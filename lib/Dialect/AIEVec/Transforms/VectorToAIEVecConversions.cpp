@@ -1787,7 +1787,7 @@ struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
 
     rewriter.setInsertionPoint(expOp);
     Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
-    auto funcOp = rewriter.create<emitc::CallOp>(
+    auto funcOp = rewriter.create<emitc::CallOpaqueOp>(
         expOp.getLoc(), TypeRange{accType}, "getExpBf16", nullptr, nullptr,
         expOperands);
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(
@@ -1845,7 +1845,7 @@ struct ComputeInvOpByLUTPattern : public OpConversionPattern<arith::DivFOp> {
     arith::TruncFOp truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
 
     rewriter.setInsertionPoint(truncOp);
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         truncOp, TypeRange{truncOp.getResult().getType()}, "getInvBf16",
         nullptr, nullptr, invOperands);
     rewriter.eraseOp(divOp);
@@ -1886,7 +1886,7 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
 
     rewriter.setInsertionPoint(tanhOp);
     SmallVector<Value> tanhOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         tanhOp, TypeRange{tanhOp.getResult().getType()}, "getTanhBf16", nullptr,
         nullptr, tanhOperands);
     return success();
@@ -1927,7 +1927,7 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
 
     rewriter.setInsertionPoint(sqrtOp);
     SmallVector<Value> sqrtOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         sqrtOp, TypeRange{sqrtOp.getResult().getType()}, "getSqrtBf16", nullptr,
         nullptr, sqrtOperands);
     return success();
@@ -1968,7 +1968,7 @@ struct ComputeRsqrtOpPattern : public OpConversionPattern<math::RsqrtOp> {
 
     rewriter.setInsertionPoint(rsqrtOp);
     SmallVector<Value> rsqrtOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         rsqrtOp, TypeRange{rsqrtOp.getResult().getType()}, "getRsqrtBf16",
         nullptr, nullptr, rsqrtOperands);
     return success();
@@ -2009,7 +2009,7 @@ struct ComputeErfOpPattern : public OpConversionPattern<math::ErfOp> {
 
     rewriter.setInsertionPoint(erfOp);
     SmallVector<Value> erfOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         erfOp, TypeRange{erfOp.getResult().getType()}, "getErfBf16", nullptr,
         nullptr, erfOperands);
     return success();
@@ -2034,7 +2034,7 @@ struct ComputeAbsOpPattern : public OpConversionPattern<SrcOpTy> {
 
     rewriter.setInsertionPoint(absOp);
     SmallVector<Value> absOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         absOp, TypeRange{absOp.getResult().getType()}, "getAbs", nullptr,
         nullptr, absOperands);
     return success();
@@ -2193,11 +2193,11 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
 
   if (!((isa<math::ExpOp>(addLvalOp) && isa<arith::ConstantOp>(addRvalOp)) ||
         (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)) ||
-        (isa<emitc::CallOp>(addLvalOp) &&
-         cast<emitc::CallOp>(addLvalOp).getCallee() == "getExpBf16" &&
+        (isa<emitc::CallOpaqueOp>(addLvalOp) &&
+         cast<emitc::CallOpaqueOp>(addLvalOp).getCallee() == "getExpBf16" &&
          isa<arith::ConstantOp>(addRvalOp)) ||
-        (isa<emitc::CallOp>(addRvalOp) &&
-         cast<emitc::CallOp>(addRvalOp).getCallee() == "getExpBf16" &&
+        (isa<emitc::CallOpaqueOp>(addRvalOp) &&
+         cast<emitc::CallOpaqueOp>(addRvalOp).getCallee() == "getExpBf16" &&
          isa<arith::ConstantOp>(addLvalOp)))) {
     return false;
   }
@@ -2217,15 +2217,16 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
 
   auto expOp = isa<math::ExpOp>(addLvalOp)
                    ? cast<math::ExpOp>(addLvalOp)
-                   : (isa<emitc::CallOp>(addLvalOp)
-                          ? cast<emitc::CallOp>(addLvalOp)
+                   : (isa<emitc::CallOpaqueOp>(addLvalOp)
+                          ? cast<emitc::CallOpaqueOp>(addLvalOp)
                           : (isa<math::ExpOp>(addRvalOp)
                                  ? cast<math::ExpOp>(addRvalOp)
-                                 : cast<emitc::CallOp>(addRvalOp)));
+                                 : cast<emitc::CallOpaqueOp>(addRvalOp)));
 
-  auto expOperand = isa<math::ExpOp>(expOp)
-                        ? cast<math::ExpOp>(expOp).getOperand()
-                        : *(cast<emitc::CallOp>(expOp).getOperands().begin());
+  auto expOperand =
+      isa<math::ExpOp>(expOp)
+          ? cast<math::ExpOp>(expOp).getOperand()
+          : *(cast<emitc::CallOpaqueOp>(expOp).getOperands().begin());
   negOp = dyn_cast<arith::NegFOp>(expOperand.getDefiningOp());
 
   if (!negOp) {
@@ -2285,7 +2286,7 @@ struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
 
     rewriter.setInsertionPoint(divfOp);
     SmallVector<Value> sigmoidOperands = {negOp.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         divfOp, TypeRange{adaptor.getLhs().getType()}, "getSigmoidBf16",
         nullptr, nullptr, sigmoidOperands);
 
@@ -2325,7 +2326,7 @@ struct ComputeCeilOpPattern : public OpConversionPattern<math::CeilOp> {
 
     rewriter.setInsertionPoint(ceilOp);
     SmallVector<Value> ceilOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         ceilOp, TypeRange{ceilOp.getResult().getType()}, "getCeilBf16", nullptr,
         nullptr, ceilOperands);
     return success();
@@ -2364,7 +2365,7 @@ struct ComputeFloorOpPattern : public OpConversionPattern<math::FloorOp> {
 
     rewriter.setInsertionPoint(floorOp);
     SmallVector<Value> floorOperands = {adaptor.getOperand()};
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOpaqueOp>(
         floorOp, TypeRange{floorOp.getResult().getType()}, "getFloorBf16",
         nullptr, nullptr, floorOperands);
     return success();

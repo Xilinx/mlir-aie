@@ -10,7 +10,6 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
-#include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
 #include "mlir/Dialect/Transform/Utils/Utils.h"
@@ -98,9 +97,12 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
   convertedValues.try_emplace(static_cast<Value>(srcBlock.getArgument(1)), baB);
   convertedValues.try_emplace(static_cast<Value>(srcBlock.getArgument(2)), baC);
   auto indexingMaps = rewriter.getAffineMapArrayAttr(
-      {AffineMap::getPermutationMap({1, 0, 2}, ctx).dropResults(0),
-       AffineMap::getPermutationMap({0, 2, 1}, ctx).dropResults(0),
-       AffineMap::getPermutationMap({2, 0, 1}, ctx).dropResults(0)});
+      {AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
+           .dropResults(0),
+       AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 2, 1}, ctx)
+           .dropResults(0),
+       AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
+           .dropResults(0)});
   auto iteratorTypes = rewriter.getArrayAttr(
       {vector::IteratorTypeAttr::get(ctx, vector::IteratorType::parallel),
        vector::IteratorTypeAttr::get(ctx, vector::IteratorType::parallel),
@@ -200,9 +202,15 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
   //===
 
   // 1. Build the indexing maps for the operands of a GEMM contraction
-  auto mmAidxMap = AffineMap::getPermutationMap({1, 0, 2}, ctx).dropResults(0);
-  auto mmBidxMap = AffineMap::getPermutationMap({0, 2, 1}, ctx).dropResults(0);
-  auto mmCidxMap = AffineMap::getPermutationMap({2, 0, 1}, ctx).dropResults(0);
+  auto mmAidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
+          .dropResults(0);
+  auto mmBidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 2, 1}, ctx)
+          .dropResults(0);
+  auto mmCidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
+          .dropResults(0);
 
   // 2. Get the indexing maps for the 2 innermost dimmensions of each operand
   SmallVector<int64_t> outerMostResults;

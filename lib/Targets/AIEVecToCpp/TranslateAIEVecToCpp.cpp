@@ -12,8 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "TranslateAIEVecToCpp.h"
+
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
@@ -27,16 +29,16 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/IndentedOstream.h"
 #include "mlir/Support/MathExtras.h"
-#include "llvm/ADT/DenseMap.h"
+
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+
 #include <limits>
 #include <stack>
 
@@ -2197,7 +2199,8 @@ static LogicalResult printOperation(CppEmitter &emitter, func::CallOp callOp) {
   return success();
 }
 
-static LogicalResult printOperation(CppEmitter &emitter, emitc::CallOp callOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    emitc::CallOpaqueOp callOp) {
   raw_ostream &os = emitter.ostream();
   Operation &op = *callOp.getOperation();
   if (callOp.getCallee() == "getTanhBf16" ||
@@ -2746,7 +2749,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
         break;
       default:
         break;
-      };
+      }
       os << strValue;
     } else if (val.isNaN()) {
       os << "NAN";
@@ -3036,7 +3039,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   LogicalResult status =
       llvm::TypeSwitch<Operation *, LogicalResult>(&op)
           // EmitC ops.
-          .Case<emitc::ApplyOp, emitc::CallOp, emitc::ConstantOp>(
+          .Case<emitc::ApplyOp, emitc::CallOpaqueOp, emitc::ConstantOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<emitc::IncludeOp>([&](auto op) {
             StringRef name = op.getInclude();

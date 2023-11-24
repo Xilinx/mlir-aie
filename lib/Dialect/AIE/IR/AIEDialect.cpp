@@ -48,8 +48,7 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   void handleTerminator(Operation *op, Block *newDest) const final {}
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op,
-                        ArrayRef<Value> valuesToRepl) const final {}
+  void handleTerminator(Operation *op, ArrayRef<Value> valuesToRepl) const {}
 };
 
 struct AIEDialectFoldInterface : public DialectFoldInterface {
