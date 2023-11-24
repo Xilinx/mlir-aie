@@ -55,22 +55,21 @@ createAIEObjectFifoRegisterProcessPass();
 /// 3. rewrite flows to stream-switches using 'weights' from analysis pass.
 /// 4. check a region is legal
 /// 5. rewrite stream-switches (within a bounding box) back to flows
-struct AIEPathfinderPass
-    : public AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   DynamicTileAnalysis analyzer;
 
   AIEPathfinderPass() = default;
-  AIEPathfinderPass(DynamicTileAnalysis analyzer) : analyzer(analyzer) {}
+  AIEPathfinderPass(DynamicTileAnalysis analyzer)
+      : analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
 
-  bool attemptFixupMemTileRouting(mlir::OpBuilder builder,
-                                  SwitchboxOp memtileSwOp,
+  bool attemptFixupMemTileRouting(const mlir::OpBuilder &builder,
                                   SwitchboxOp northSwOp, SwitchboxOp southSwOp,
                                   ConnectOp &problemConnect);
 
-  bool reconnectConnectOps(mlir::OpBuilder builder, SwitchboxOp sw,
+  bool reconnectConnectOps(const mlir::OpBuilder &builder, SwitchboxOp sw,
                            ConnectOp problemConnect, bool isIncomingToSW,
                            WireBundle problemBundle, int problemChan,
                            int emptyChan);

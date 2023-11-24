@@ -87,8 +87,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
     Switchbox srcSB = {srcCoords.col, srcCoords.row};
-    PathEndPoint srcPoint = {srcSB, srcPort};
-    if (!analyzer.processedFlows[srcPoint]) {
+    if (PathEndPoint srcPoint = {srcSB, srcPort};
+        !analyzer.processedFlows[srcPoint]) {
       SwitchSettings settings = analyzer.flowSolutions[srcPoint];
       // add connections for all the Switchboxes in SwitchSettings
       for (const auto &[curr, setting] : settings) {
@@ -196,7 +196,8 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
-  analyzer.runAnalysis(d);
+  if (failed(analyzer.runAnalysis(d)))
+    return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
 
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
@@ -211,7 +212,7 @@ void AIEPathfinderPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
-    signalPassFailure();
+    return signalPassFailure();
 
   // Populate wires between switchboxes and tiles.
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
@@ -302,13 +303,13 @@ void AIEPathfinderPass::runOnOperation() {
     auto swBox = connect->getParentOfType<SwitchboxOp>();
     builder.setInsertionPoint(connect);
     auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
-    auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
-    attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect);
+    if (auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
+        !attemptFixupMemTileRouting(builder, northSw, southSw, connect))
+      return signalPassFailure();
   }
 }
 
-bool AIEPathfinderPass::attemptFixupMemTileRouting(OpBuilder builder,
-                                                   SwitchboxOp memtileSwOp,
+bool AIEPathfinderPass::attemptFixupMemTileRouting(const OpBuilder &builder,
                                                    SwitchboxOp northSwOp,
                                                    SwitchboxOp southSwOp,
                                                    ConnectOp &problemConnect) {
@@ -348,7 +349,8 @@ bool AIEPathfinderPass::attemptFixupMemTileRouting(OpBuilder builder,
   return false;
 }
 
-bool AIEPathfinderPass::reconnectConnectOps(OpBuilder builder, SwitchboxOp sw,
+bool AIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
+                                            SwitchboxOp sw,
                                             ConnectOp problemConnect,
                                             bool isIncomingToSW,
                                             WireBundle problemBundle,

@@ -137,7 +137,7 @@ private:
       }
       MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
                                 maskValue.value |
-                                    nextMaskValue.mask & nextMaskValue.value};
+                                    (nextMaskValue.mask & nextMaskValue.value)};
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
