@@ -304,23 +304,24 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, SwitchboxNode *src) {
     distance.emplace(sb, INF);
   distance[src] = 0.0;
 
+  std::map<SwitchboxNode *, std::vector<ChannelEdge *>> edges;
+
   enum Color { WHITE, GRAY, BLACK };
   std::map<SwitchboxNode *, Color> colors;
-  for (SwitchboxNode *sb : graph)
+  for (SwitchboxNode *sb : graph) {
     colors[sb] = WHITE;
+    edges[sb] = {sb->getEdges().begin(), sb->getEdges().end()};
+    std::sort(edges[sb].begin(), edges[sb].end(),
+              [](const ChannelEdge *c1, ChannelEdge *c2) {
+                return c1->getTargetNode().id < c2->getTargetNode().id;
+              });
+  }
 
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
     Q.pop();
-    // TODO: cache this somewhere
-    std::vector<ChannelEdge *> edges(src->getEdges().begin(),
-                                     src->getEdges().end());
-    std::sort(edges.begin(), edges.end(),
-              [](const ChannelEdge *c1, ChannelEdge *c2) {
-                return c1->getTargetNode().id < c2->getTargetNode().id;
-              });
-    for (ChannelEdge *e : edges) {
+    for (ChannelEdge *e : edges[src]) {
       SwitchboxNode *dest = &e->getTargetNode();
       bool relax = distance[src] + e->demand < distance[dest];
       if (colors[dest] == WHITE) {
