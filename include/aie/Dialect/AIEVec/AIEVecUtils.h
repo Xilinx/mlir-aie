@@ -54,7 +54,7 @@ inline unsigned getVectorLaneSize(mlir::VectorType type) {
   assert(type.getRank() > 0 && "Cannot handle rank-0 vectors");
   auto dimSize = type.getDimSize(type.getRank() - 1);
   assert(dimSize >= 0 && "Vector dimension cannot be negative");
-  return std::max(1u, (unsigned)dimSize);
+  return std::max(1u, static_cast<unsigned>(dimSize));
 }
 
 // For a 1D vector, return its size in bits. For an nD vector, return the size
@@ -75,29 +75,30 @@ inline bool isAIEOp(mlir::Operation *op) {
 inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIEML) {
   mlir::Type stype = type.getElementType();
 
-  if (auto itype = stype.dyn_cast<mlir::IntegerType>()) {
+  if (auto itype = llvm::dyn_cast<mlir::IntegerType>(stype)) {
     // Integer vector types are sized for the appropriate accumulators
     assert(itype.getWidth() <= 64);
-    unsigned width = 0;
-    if (AIEML) {
+    unsigned width;
+    if (AIEML)
       width = itype.getWidth() <= 16 ? 32 : 64;
-    } else {
+    else
       width = itype.getWidth() <= 16 ? 48 : 80;
-    }
 
     mlir::Type ctype = mlir::IntegerType::get(itype.getContext(), width);
     return mlir::VectorType::get(type.getShape(), ctype);
-  } else if (auto ftype = stype.dyn_cast<mlir::FloatType>()) {
-    if (AIEML && ftype.getWidth() == 16) {
+  }
+
+  if (auto ftype = llvm::dyn_cast<mlir::FloatType>(stype)) {
+    if (AIEML && ftype.getWidth() == 16)
       return mlir::VectorType::get(type.getShape(),
-                                   ftype.getF32(ftype.getContext()));
-    }
+                                   mlir::FloatType::getF32(ftype.getContext()));
 
     // Floating point vector types for aie1 are returned as is since the
     // floating point operations write back to registers and not accumulators
     return type;
-  } else
-    llvm::report_fatal_error("Unsupported destination type");
+  }
+
+  llvm::report_fatal_error("Unsupported destination type");
 }
 
 // Linearize the exprVec as a strided access, but do not simplify
@@ -109,24 +110,23 @@ flattenedStridedExpr(llvm::ArrayRef<int64_t> sizes,
   if (sizes.empty() || exprs.empty())
     return nullptr;
 
-  if (llvm::is_contained(sizes, 0))
+  if (is_contained(sizes, 0))
     return getAffineConstantExpr(0, context);
 
   auto maps = mlir::AffineMap::inferFromExprList(exprs);
-  if (maps.empty()) {
+  if (maps.empty())
     return nullptr;
-  }
 
   unsigned nSymbols = maps[0].getNumSymbols();
 
   mlir::AffineExpr expr;
   bool dynamicPoisonBit = false;
   int64_t runningSize = 1;
-  for (auto en : llvm::zip(llvm::reverse(exprs), llvm::reverse(sizes))) {
+  for (auto en : zip(reverse(exprs), reverse(sizes))) {
     int64_t size = std::get<1>(en);
-
     if (size == 0)
       continue;
+
     mlir::AffineExpr dimExpr = std::get<0>(en);
     mlir::AffineExpr stride = dynamicPoisonBit
                                   ? getAffineSymbolExpr(nSymbols++, context)
@@ -134,21 +134,17 @@ flattenedStridedExpr(llvm::ArrayRef<int64_t> sizes,
     expr = expr ? expr + dimExpr * stride : dimExpr * stride;
     if (size > 0) {
       runningSize *= size;
-      if (runningSize <= 0) {
+      if (runningSize <= 0)
         return nullptr;
-      }
-    } else {
+    } else
       dynamicPoisonBit = true;
-    }
   }
   return expr;
 }
 
 // Construct a linearized affine expression for the upd op.
-inline mlir::AffineExpr
-constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
-  mlir::MemRefType memRefType =
-      updOp.getSource().getType().cast<mlir::MemRefType>();
+inline mlir::AffineExpr constructLinearizedAffineExprForUPDOp(UPDOp updOp) {
+  auto memRefType = updOp.getSource().getType().cast<mlir::MemRefType>();
   mlir::MLIRContext *context = memRefType.getContext();
 
   llvm::SmallVector<mlir::AffineExpr, 8> exprVec;
@@ -158,12 +154,12 @@ constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
     if (auto apOf = value.getDefiningOp<mlir::affine::AffineApplyOp>()) {
       mlir::AffineMap map = apOf.getAffineMap();
       // Cannot create linearized mlir::AffineExpr for complicated index.
-      if (map.getNumResults() != 1) {
+      if (map.getNumResults() != 1)
         return nullptr;
-      }
+
       llvm::SmallVector<mlir::AffineExpr, 4> indexExprs;
 
-      for (auto index : apOf.getMapOperands()) {
+      for (auto index : apOf.getMapOperands())
         if (auto cIdx = index.getDefiningOp<mlir::arith::ConstantOp>()) {
           auto idxVal = cIdx.getValue().cast<mlir::IntegerAttr>().getValue();
           unsigned idx = idxVal.getSExtValue();
@@ -174,7 +170,6 @@ constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
                 getAffineDimExpr(indexToExprDimMap.size(), context);
           indexExprs.push_back(indexToExprDimMap[index]);
         }
-      }
 
       exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
     } else if (auto cOp = value.getDefiningOp<mlir::arith::ConstantOp>()) {
@@ -189,13 +184,11 @@ constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
     }
   }
 
-  if (exprVec.empty()) {
+  if (exprVec.empty())
     return nullptr;
-  }
 
   auto ret = flattenedStridedExpr(memRefType.getShape(), exprVec,
                                   memRefType.getContext());
-
   return ret;
 }
 
@@ -208,17 +201,17 @@ extractBaseAndOffset(mlir::AffineExpr expr) {
   mlir::AffineExpr base = expr;
   int32_t offset = 0;
 
-  if (auto constExpr = expr.dyn_cast<mlir::AffineConstantExpr>()) {
+  if (auto constExpr = llvm::dyn_cast<mlir::AffineConstantExpr>(expr)) {
     base = nullptr;
     offset += constExpr.getValue();
-  } else if (auto binopExpr = expr.dyn_cast<mlir::AffineBinaryOpExpr>()) {
+  } else if (auto binopExpr = llvm::dyn_cast<mlir::AffineBinaryOpExpr>(expr)) {
     if (binopExpr.getKind() == mlir::AffineExprKind::Add) {
       mlir::AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
-      if (auto constExpr = lhs.dyn_cast<mlir::AffineConstantExpr>()) {
+      if (auto constExpr = llvm::dyn_cast<mlir::AffineConstantExpr>(lhs)) {
         base = rhs;
         offset += constExpr.getValue();
       }
-      if (auto constExpr = rhs.dyn_cast<mlir::AffineConstantExpr>()) {
+      if (auto constExpr = llvm::dyn_cast<mlir::AffineConstantExpr>(rhs)) {
         base = base == rhs ? nullptr : lhs;
         offset += constExpr.getValue();
       }
@@ -235,10 +228,9 @@ extractBaseAndOffset(mlir::AffineExpr expr) {
 // parent of the block.
 inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(mlir::Block *block) {
   for (mlir::Operation *parentOp = block->getParentOp(); parentOp;
-       parentOp = parentOp->getParentOp()) {
+       parentOp = parentOp->getParentOp())
     if (parentOp->hasAttr("tosa.no_implicit_broadcast_of_dynamic_sizes"))
       return true;
-  }
   return false;
 }
 

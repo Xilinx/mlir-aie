@@ -769,7 +769,7 @@ struct AIEObjectFifoStatefulTransformPass
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
-    Block *succ = nullptr;
+    Block *succ;
     Block *curr = bdBlock;
     size_t blockIndex = 0;
     for (size_t i = 0; i < numBlocks; i++) {
@@ -965,15 +965,16 @@ struct AIEObjectFifoStatefulTransformPass
                                        .getDefiningOp<arith::ConstantOp>()
                                        .getValue();
             int64_t old_upper_value =
-                old_upper_bound.dyn_cast<IntegerAttr>().getInt();
+                llvm::dyn_cast<IntegerAttr>(old_upper_bound).getInt();
             auto old_lower_bound = forLoop.getLowerBound()
                                        .getDefiningOp<arith::ConstantOp>()
                                        .getValue();
             int64_t old_lower_value =
-                old_lower_bound.dyn_cast<IntegerAttr>().getInt();
+                llvm::dyn_cast<IntegerAttr>(old_lower_bound).getInt();
             auto old_step =
                 forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
-            int64_t old_step_value = old_step.dyn_cast<IntegerAttr>().getInt();
+            int64_t old_step_value =
+                llvm::dyn_cast<IntegerAttr>(old_step).getInt();
             int64_t num_iter =
                 (old_upper_value - old_lower_value) / old_step_value;
 

@@ -12,7 +12,7 @@
 
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
-#include "mlir/IR/AffineMap.h"
+
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -59,8 +59,8 @@ void UPDOp::print(OpAsmPrinter &p) {
 // Verify UPD op.
 LogicalResult UPDOp::verify() {
   // Verify the types: source is memref, and result is vector
-  MemRefType sourceType = getSource().getType().dyn_cast<MemRefType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  MemRefType sourceType = llvm::dyn_cast<MemRefType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType)
     return emitError("requires memref type");
   if (!resultType)
@@ -71,7 +71,7 @@ LogicalResult UPDOp::verify() {
   // If this UPD op is linked to another UPD op, then verify that the linked
   // vector and the result vector match.
   if (getVector()) {
-    Type vecType = getVector().getType().dyn_cast<VectorType>();
+    Type vecType = llvm::dyn_cast<VectorType>(getVector().getType());
     if (vecType != resultType)
       return emitError("result types of linked UPD ops do not match");
   }
@@ -107,10 +107,10 @@ ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  auto memrefType = types[0].dyn_cast<MemRefType>();
+  auto memrefType = llvm::dyn_cast<MemRefType>(types[0]);
   if (!memrefType)
     return parser.emitError(typesLoc, "requires memref type");
-  VectorType vectorType = types[1].dyn_cast<VectorType>();
+  VectorType vectorType = llvm::dyn_cast<VectorType>(types[1]);
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
   auto indicesType = builder.getIndexType();
@@ -152,8 +152,8 @@ void CastOp::print(OpAsmPrinter &p) {
 // Verify Cast op.
 LogicalResult CastOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType)
     return emitError("requires source vector type");
   if (!resultType)
@@ -190,10 +190,10 @@ ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification of types
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
   if (!sourceType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType vectorType = types[1].dyn_cast<VectorType>();
+  VectorType vectorType = llvm::dyn_cast<VectorType>(types[1]);
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -248,8 +248,8 @@ void SRSOp::print(OpAsmPrinter &p) {
 // Verify SRS op.
 LogicalResult SRSOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType)
     return emitError("requires accumulator type");
   if (!resultType)
@@ -299,15 +299,15 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires three types");
 
   // Some verification of types
-  VectorType accType = types[0].dyn_cast<VectorType>();
+  VectorType accType = llvm::dyn_cast<VectorType>(types[0]);
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  IntegerType shiftType = types[1].dyn_cast<IntegerType>();
+  IntegerType shiftType = llvm::dyn_cast<IntegerType>(types[1]);
   if (!shiftType)
     return parser.emitError(typesLoc, "requires integer type");
 
-  VectorType vectorType = types[2].dyn_cast<VectorType>();
+  VectorType vectorType = llvm::dyn_cast<VectorType>(types[2]);
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -353,8 +353,8 @@ void UPSOp::print(OpAsmPrinter &p) {
 // Verify UPS op.
 LogicalResult UPSOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType)
     return emitError("requires vector type");
   if (!resultType)
@@ -403,10 +403,10 @@ ParseResult UPSOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType vectorType = types[0].dyn_cast<VectorType>();
+  VectorType vectorType = llvm::dyn_cast<VectorType>(types[0]);
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType accType = types[1].dyn_cast<VectorType>();
+  VectorType accType = llvm::dyn_cast<VectorType>(types[1]);
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -436,8 +436,8 @@ void BroadcastOp::print(OpAsmPrinter &p) {
 // Verify Broadcast op.
 LogicalResult BroadcastOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
 
   if (!sourceType)
     return emitError("requires vector type");
@@ -490,11 +490,11 @@ ParseResult BroadcastOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType vecType = types[0].dyn_cast<VectorType>();
+  VectorType vecType = llvm::dyn_cast<VectorType>(types[0]);
   if (!vecType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  VectorType resType = types[1].dyn_cast<VectorType>();
+  VectorType resType = llvm::dyn_cast<VectorType>(types[1]);
   if (!resType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -522,7 +522,7 @@ void BroadcastScalarOp::print(OpAsmPrinter &p) {
 LogicalResult BroadcastScalarOp::verify() {
   // Verify the types
   Type sourceType = getSource().getType();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
 
   if (!resultType)
     return emitError("requires vector type");
@@ -548,7 +548,7 @@ ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
   if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  if (result.attributes.getAttrs().size() != 0)
+  if (!result.attributes.getAttrs().empty())
     return parser.emitError(typesLoc, "do not require attributes");
 
   // Assert that there is two type (source and result vector)
@@ -556,7 +556,7 @@ ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType resType = types[1].dyn_cast<VectorType>();
+  VectorType resType = llvm::dyn_cast<VectorType>(types[1]);
   if (!resType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -575,7 +575,7 @@ ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
 // some specializations to print those fields specifically for FMA op.
 
 // Print the accumulator
-template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
+template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
 template <> inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
   p << ", " << op.getAcc();
 }
@@ -583,7 +583,7 @@ template <> inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
 
 // Mark fmsub indicator as elided if the FMA op is not fmsub
 template <typename T>
-inline void elideFMSubAttr(T op, SmallVector<StringRef, 10> &elidedAttrs);
+void elideFMSubAttr(T op, SmallVector<StringRef, 10> &elidedAttrs);
 template <>
 inline void elideFMSubAttr(aievec::FMAOp op,
                            SmallVector<StringRef, 10> &elidedAttrs) {
@@ -634,14 +634,13 @@ void aievec::FMAOp::print(OpAsmPrinter &p) {
 // Verify Mul and FMA op.
 template <typename T> LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
-  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  VectorType resultType =
-      op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
   if (!resultType)
     return op.emitError("requires vector type");
 
@@ -733,15 +732,15 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
     return parser.emitError(typesLoc, "requires three types");
 
   // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Int ops use the accumulator while float ops use normal vector registers
-  VectorType accType = types[2].dyn_cast<VectorType>();
+  VectorType accType = llvm::dyn_cast<VectorType>(types[2]);
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -777,7 +776,7 @@ ParseResult FMAOp::parse(OpAsmParser &parser, OperationState &result) {
 // FMAElemOp and MULElemOp.
 
 // Print the accumulator
-template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
+template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
 template <>
 inline void printAccumulator(OpAsmPrinter &p, aievec::FMAElemOp op) {
   p << ", " << op.getAcc();
@@ -787,7 +786,7 @@ inline void printAccumulator(OpAsmPrinter &p, aievec::MulElemOp op) {}
 
 // Mark fmsub indicator as elided if the FMAElem op is not fmsub
 template <typename T>
-inline void elideFMSubAttr(T op, SmallVector<StringRef, 4> &elidedAttrs);
+void elideFMSubAttr(T op, SmallVector<StringRef, 4> &elidedAttrs);
 template <>
 inline void elideFMSubAttr(aievec::FMAElemOp op,
                            SmallVector<StringRef, 4> &elidedAttrs) {
@@ -831,14 +830,13 @@ void aievec::FMAElemOp::print(OpAsmPrinter &p) {
 // Verify MulElem and FMAElem op.
 template <typename T> LogicalResult verifyMulFMAElemOp(T op) {
   // Verify the types
-  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  VectorType resultType =
-      op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
 
   if (!resultType)
     return op.emitError("requires vector type");
@@ -920,15 +918,15 @@ ParseResult parseMulFMAElemOp(OpAsmParser &parser, OperationState &result,
     return parser.emitError(typesLoc, "requires three types");
 
   // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Int ops use the accumulator while float ops use normal vector registers
-  VectorType accType = types[2].dyn_cast<VectorType>();
+  VectorType accType = llvm::dyn_cast<VectorType>(types[2]);
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -995,10 +993,9 @@ void aievec::SubOp::print(OpAsmPrinter &p) {
 // Verify Add and Sub op.
 template <typename T> LogicalResult verifyAddSubOp(T op) {
   // Verify the types
-  VectorType resultType =
-      op.getResult().getType().template dyn_cast<VectorType>();
-  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
+  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType || !resultType)
     return op.emitError("requires vector type");
@@ -1039,13 +1036,13 @@ ParseResult parseAddSubOp(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires three types");
 
   // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType resultType = types[2].dyn_cast<VectorType>();
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[2]);
   if (!resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1091,15 +1088,15 @@ LogicalResult ConcatOp::verify() {
 
   // Verify the types
   VectorType sourceType =
-      getSources().getTypes().front().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+      llvm::dyn_cast<VectorType>(getSources().getTypes().front());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
   SmallVector<Value, 8> srcs(getSources().begin(), getSources().end());
   // All the sources must have the same type
   for (auto source : srcs) {
-    VectorType type = source.getType().dyn_cast<VectorType>();
+    VectorType type = llvm::dyn_cast<VectorType>(source.getType());
     if (!type)
       return emitError("requires vector type");
     if (type != sourceType)
@@ -1109,7 +1106,7 @@ LogicalResult ConcatOp::verify() {
   // The lanes in concatenated type must be the sum of lanes of source vector
   unsigned totalLanes = 0;
   for (auto source : srcs) {
-    VectorType type = source.getType().dyn_cast<VectorType>();
+    VectorType type = llvm::dyn_cast<VectorType>(source.getType());
     totalLanes += getVectorLaneSize(type);
   }
 
@@ -1144,8 +1141,8 @@ ParseResult ConcatOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1175,8 +1172,8 @@ void ExtOp::print(OpAsmPrinter &p) {
 // Verify Ext op.
 LogicalResult ExtOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
@@ -1229,8 +1226,8 @@ ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1277,8 +1274,8 @@ void aievec::SelectOp::print(OpAsmPrinter &p) {
 // Verify select op.
 LogicalResult aievec::SelectOp::verify() {
   // Verify the types
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
-  VectorType xbuffType = getXbuff().getType().dyn_cast<VectorType>();
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  VectorType xbuffType = llvm::dyn_cast<VectorType>(getXbuff().getType());
 
   if (!resultType || !xbuffType)
     return emitError("requires vector type");
@@ -1291,7 +1288,7 @@ LogicalResult aievec::SelectOp::verify() {
 
   // If yuff is present, its vector type should be same as xbuff
   if (getYbuff()) {
-    VectorType ybuffType = getYbuff().getType().dyn_cast<VectorType>();
+    VectorType ybuffType = llvm::dyn_cast<VectorType>(getYbuff().getType());
     if (xbuffType != ybuffType)
       return emitError("types of xbuff and ybuff must match");
   }
@@ -1330,16 +1327,16 @@ ParseResult SelectOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires at least two type");
 
   // Some verification
-  VectorType xbuffType = types[0].dyn_cast<VectorType>();
+  VectorType xbuffType = llvm::dyn_cast<VectorType>(types[0]);
   if (!xbuffType)
     return parser.emitError(typesLoc, "requires vector type");
   VectorType ybuffType;
   if (hasYbuff.succeeded()) {
-    ybuffType = types[1].dyn_cast<VectorType>();
+    ybuffType = llvm::dyn_cast<VectorType>(types[1]);
     if (!ybuffType)
       return parser.emitError(typesLoc, "requires vector type");
   }
-  VectorType resultType = types.back().dyn_cast<VectorType>();
+  VectorType resultType = llvm::dyn_cast<VectorType>(types.back());
   if (!resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1377,10 +1374,8 @@ void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 // Verify Pack and Unpack op.
 template <typename T> LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
-  VectorType sourceType =
-      op.getSource().getType().template dyn_cast<VectorType>();
-  VectorType resultType =
-      op.getResult().getType().template dyn_cast<VectorType>();
+  auto sourceType = op.getSource().getType().template dyn_cast<VectorType>();
+  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return op.emitError("requires vector type");
 
@@ -1440,8 +1435,8 @@ ParseResult parsePackUnpackOp(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1483,13 +1478,13 @@ void ShiftOp::print(OpAsmPrinter &p) {
 // Verify Shift op.
 LogicalResult ShiftOp::verify() {
   // Verify the types
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!resultType)
     return emitError("requires vector type");
 
   // lhs, rhs and result must have the same type
-  VectorType lhsType = getLhs().getType().dyn_cast<VectorType>();
-  VectorType rhsType = getRhs().getType().dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(getLhs().getType());
+  VectorType rhsType = llvm::dyn_cast<VectorType>(getRhs().getType());
 
   if (!lhsType || !rhsType)
     return emitError("requires vector type");
@@ -1527,10 +1522,10 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires four types");
 
   // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
-  IntegerType shiftType = types[2].dyn_cast<IntegerType>();
-  VectorType resultType = types[3].dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
+  IntegerType shiftType = llvm::dyn_cast<IntegerType>(types[2]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[3]);
   if (!lhsType || !rhsType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1565,8 +1560,8 @@ void ShuffleOp::print(OpAsmPrinter &p) {
 // Verify Shuffle op.
 LogicalResult ShuffleOp::verify() {
   // Verify the types
-  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
-  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
@@ -1609,8 +1604,8 @@ ParseResult ShuffleOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "expects one attribute");
 
   // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
@@ -1631,7 +1626,7 @@ ParseResult ShuffleOp::parse(OpAsmParser &parser, OperationState &result) {
 // FMAConvOp and MULConvOp.
 
 // Print the accumulator
-template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
+template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
 template <>
 inline void printAccumulator(OpAsmPrinter &p, aievec::FMAConvOp op) {
   p << ", " << op.getAcc();
@@ -1641,16 +1636,16 @@ inline void printAccumulator(OpAsmPrinter &p, aievec::MulConvOp op) {}
 
 // Mark fmsub indicator as elided if the FMAElem op is not fmsub
 template <typename T>
-inline void elideFMSubAttr(T op, SmallVector<StringRef, 4> &elidedAttrs);
+void elideFMSubAttr(T op, SmallVector<StringRef, 4> &elidedAttrs);
 template <>
-inline void elideFMSubAttr(aievec::FMAConvOp op,
+inline void elideFMSubAttr(FMAConvOp op,
                            SmallVector<StringRef, 4> &elidedAttrs) {
   if (!op.getFmsub())
     elidedAttrs.push_back(op.getSubAttrName());
 }
 
 template <>
-inline void elideFMSubAttr(aievec::MulConvOp op,
+inline void elideFMSubAttr(MulConvOp op,
                            SmallVector<StringRef, 4> &elidedAttrs) {}
 
 // Print out MulConv and FMAConv op.
@@ -1685,8 +1680,8 @@ void aievec::FMAConvOp::print(OpAsmPrinter &p) {
 // Verify MulConv and FMAConv op.
 template <typename T> LogicalResult verifyMulFMAConvOp(T op) {
   // Verify the types
-  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
@@ -1694,13 +1689,11 @@ template <typename T> LogicalResult verifyMulFMAConvOp(T op) {
   unsigned M = op.getM();
   unsigned N = op.getN();
 
-  if (M <= 0 || N <= 0 || 2 * M < M + N - 1) {
+  if (M <= 0 || N <= 0 || 2 * M < M + N - 1)
     return op.emitError(
         "M and N should be larger than 0 and 2*M should be no less than M+N-1");
-  }
 
-  VectorType resultType =
-      op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
 
   if (!resultType)
     return op.emitError("requires vector type");
@@ -1781,15 +1774,15 @@ ParseResult parseMulFMAConvOp(OpAsmParser &parser, OperationState &result,
     return parser.emitError(typesLoc, "requires three types");
 
   // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Int ops use the accumulator
-  VectorType accType = types[2].dyn_cast<VectorType>();
+  VectorType accType = llvm::dyn_cast<VectorType>(types[2]);
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
 

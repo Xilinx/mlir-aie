@@ -166,15 +166,14 @@ struct Scheme {
 //===----------------------------------------------------------------------===//
 
 // Combine the result of vector-related utilities into a single utility.
-static inline AIEVecAttributes getVectorStats(VectorType type) {
+static AIEVecAttributes getVectorStats(VectorType type) {
   return AIEVecAttributes(getVectorLaneSize(type), getVectorSizeInBits(type),
                           type.getElementType(), getElementSizeInBits(type));
 }
 
 // Get the vector stats for an operation's result.
-static inline AIEVecAttributes getResultVecStats(Operation *op,
-                                                 unsigned idx = 0) {
-  VectorType vtype = op->getResult(idx).getType().cast<VectorType>();
+static AIEVecAttributes getResultVecStats(Operation *op, unsigned idx = 0) {
+  auto vtype = op->getResult(idx).getType().cast<VectorType>();
   return getVectorStats(vtype);
 }
 
@@ -186,11 +185,11 @@ static Operation *getOperandDefOp(VectState *state, Operation *op,
 }
 
 // Get the vector stats for an operation's operand.
-static inline AIEVecAttributes
-getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
+static AIEVecAttributes getOperandVecStats(Operation *op, VectState *state,
+                                           unsigned idx = 0) {
   assert(op->getNumOperands() > idx);
   Operation *defOp = getOperandDefOp(state, op, idx);
-  VectorType vtype = defOp->getResult(0).getType().cast<VectorType>();
+  auto vtype = defOp->getResult(0).getType().cast<VectorType>();
   auto ret = getVectorStats(vtype);
   // if the defining op is a transfer read, get the extent read from source
   if (auto readOp = dyn_cast<TransferReadOp>(defOp)) {
@@ -205,20 +204,20 @@ getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
 }
 
 // Get the number of rows and columns in the vector scheme.
-static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
-                                                            VectState *state) {
+static std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
+                                                     VectState *state) {
   assert(op->getNumOperands() >= 2 && op->getNumResults() == 1);
 
   Operation *left = getOperandDefOp(state, op, 0);
   Operation *right = getOperandDefOp(state, op, 1);
 
   // Get the number of lanes
-  VectorType vtype = op->getResult(0).getType().cast<VectorType>();
+  auto vtype = op->getResult(0).getType().cast<VectorType>();
   int32_t lanes = getVectorLaneSize(vtype);
 
   // Get the data sizes for left and right operands
-  VectorType ltype = left->getResult(0).getType().cast<VectorType>();
-  VectorType rtype = right->getResult(0).getType().cast<VectorType>();
+  auto ltype = left->getResult(0).getType().cast<VectorType>();
+  auto rtype = right->getResult(0).getType().cast<VectorType>();
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
@@ -247,8 +246,7 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
 // operand of Op2 has access extent [128,512], where these two accesses belong
 // to the same ReuseInterval, then the union is [0,512]. This union will be the
 // new access extent of the left operands of both Op1 and Op2.
-static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
-                                    VectState *state) {
+static void fuseAccessExtent(Operation *Op1, Operation *Op2, VectState *state) {
   // Assert that the input operations are of expected type
   assert([&] {
     bool expectedTypes =
@@ -333,11 +331,11 @@ static bool isWellFormedVectorOp(Operation *Op) {
       return false;
   }
 
-  VectorType refType = operandsAndResults.back().getType().cast<VectorType>();
+  auto refType = operandsAndResults.back().getType().cast<VectorType>();
   Type scalarType = refType.getElementType();
   unsigned refSize = getVectorLaneSize(refType);
   for (auto val : operandsAndResults) {
-    VectorType vtype = val.getType().cast<VectorType>();
+    auto vtype = val.getType().cast<VectorType>();
     // Check 2. All the vector sizes must be same
     if (refSize != getVectorLaneSize(vtype))
       return false;
@@ -426,7 +424,7 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
 
   SmallVector<Value, 4> indices(readOp.getIndices().begin(),
                                 readOp.getIndices().end());
-  MemRefType memRefType = readOp.getSource().getType().cast<MemRefType>();
+  auto memRefType = readOp.getSource().getType().cast<MemRefType>();
   MLIRContext *context = memRefType.getContext();
 
   SmallVector<AffineExpr, 8> exprVec;
@@ -438,8 +436,7 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
     // If the access is a map via affine apply op (e.g., A[i+2], where the map
     // is d0 -> d0+2), push in the map after replacing all the dims with unique
     // index identifiers (e.g., let the unique identifier for index i be k0).
-    if (affine::AffineApplyOp apOf =
-            value.getDefiningOp<affine::AffineApplyOp>()) {
+    if (auto apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       assert(map.getNumResults() == 1 &&
              "Failed to create linearized affineExpr for complicated index");
@@ -495,21 +492,21 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
   AffineExpr base = expr;
   int32_t offset = 0;
   // If expr is already a constant, the base is nullptr, and offset is expr
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = llvm::dyn_cast<AffineConstantExpr>(expr)) {
     base = nullptr;
     offset += constExpr.getValue();
   }
   // If this is a binary '+' expression, compute the constant offset. Currently
   // this is just a simple FSM. This must evolve as we explore more complex
   // access patterns.
-  else if (auto binopExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  else if (auto binopExpr = llvm::dyn_cast<AffineBinaryOpExpr>(expr)) {
     if (binopExpr.getKind() == AffineExprKind::Add) {
       AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
-      if (auto constExpr = lhs.dyn_cast<AffineConstantExpr>()) {
+      if (auto constExpr = llvm::dyn_cast<AffineConstantExpr>(lhs)) {
         base = rhs;
         offset += constExpr.getValue();
       }
-      if (auto constExpr = rhs.dyn_cast<AffineConstantExpr>()) {
+      if (auto constExpr = llvm::dyn_cast<AffineConstantExpr>(rhs)) {
         base = base == rhs ? nullptr : lhs;
         offset += constExpr.getValue();
       }
@@ -526,7 +523,7 @@ static aievec::CastOp generateCastOp(Value source, VectorType resType,
                                      bool isResAcc, VectState *state,
                                      Location loc) {
   // Create the Cast op
-  aievec::CastOp castOp =
+  auto castOp =
       state->builder.create<aievec::CastOp>(loc, resType, source, isResAcc);
 
   assert(castOp && "could not create srs op");
@@ -550,8 +547,8 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
   auto shiftParamOp = state->builder.create<arith::ConstantOp>(
       loc, state->builder.getI32IntegerAttr(state->shift));
   // Create the SRS op
-  aievec::SRSOp srsOp = state->builder.create<aievec::SRSOp>(
-      loc, srsType, source, shiftParamOp.getResult());
+  auto srsOp = state->builder.create<aievec::SRSOp>(loc, srsType, source,
+                                                    shiftParamOp.getResult());
 
   assert(srsOp && "could not create srs op");
   return srsOp;
@@ -567,7 +564,7 @@ static aievec::UPSOp generateUPSOp(Value source, VectState *state,
          "ups source should not be accumulator");
 
   // Create a new UPS instruction
-  aievec::UPSOp upsOp =
+  auto upsOp =
       state->builder.create<aievec::UPSOp>(loc, accType, source, state->shift);
 
   assert(upsOp && "could not create ups op");
@@ -577,9 +574,9 @@ static aievec::UPSOp generateUPSOp(Value source, VectState *state,
 // Generate and return a Broadcast op.
 static aievec::BroadcastOp generateBroadcastOp(Value source, int8_t idx,
                                                VectState *state, Location loc) {
-  VectorType type = source.getType().cast<VectorType>();
+  auto type = source.getType().cast<VectorType>();
   // Create a new Broadcast instruction
-  aievec::BroadcastOp broadcastOp =
+  auto broadcastOp =
       state->builder.create<aievec::BroadcastOp>(loc, type, source, idx);
 
   assert(broadcastOp && "could not create broadcast op");
@@ -592,11 +589,11 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
                                          VectorType concatType = nullptr) {
   assert(sources.size() > 1 && "must concat at least two vectors");
 
-  VectorType vecType = sources.back().getType().cast<VectorType>();
+  auto vecType = sources.back().getType().cast<VectorType>();
 
   assert([&] {
     for (auto source : sources) {
-      VectorType type = source.getType().cast<VectorType>();
+      auto type = source.getType().cast<VectorType>();
       if (type != vecType) {
         printf("sources of concat op not of same type\n");
         return false;
@@ -613,7 +610,7 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
   }
 
   // Create the concat op
-  aievec::ConcatOp concatOp =
+  auto concatOp =
       state->builder.create<aievec::ConcatOp>(loc, concatType, sources);
 
   assert(concatOp && "could not create concat op");
@@ -631,14 +628,14 @@ static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  VectorType xtype = xbuff.getType().cast<VectorType>();
+  auto xtype = xbuff.getType().cast<VectorType>();
   // Verify that lanes is <= xtype lanes
   assert(lanes <= getVectorLaneSize(xtype));
   // Create the result type
   VectorType resultType = createVectorType(lanes, xtype.getElementType());
 
   // Create AIE dialect select op
-  aievec::SelectOp selectOp = state->builder.create<aievec::SelectOp>(
+  auto selectOp = state->builder.create<aievec::SelectOp>(
       loc, resultType, xbuff, opAttr.select, opAttr.start[0], opAttr.offset[0],
       opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
       opAttr.offset_hi[1], opAttr.square[1], ybuff);
@@ -651,14 +648,14 @@ static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
 // output, and idx defines which part of source is extracted.
 static aievec::ExtOp generateExtOp(Value source, unsigned lanes, int8_t idx,
                                    VectState *state, Location loc) {
-  VectorType stype = source.getType().cast<VectorType>();
+  auto stype = source.getType().cast<VectorType>();
   // Verify that lanes*idx is <= stype lanes
   assert(lanes * (idx + 1) <= getVectorLaneSize(stype));
   // Create the result type
   VectorType resultType = createVectorType(lanes, stype.getElementType());
 
   // Create AIE dialect ext op
-  aievec::ExtOp extOp =
+  auto extOp =
       state->builder.create<aievec::ExtOp>(loc, resultType, source, idx);
 
   assert(extOp && "could not create ext op");
@@ -669,14 +666,13 @@ static aievec::ExtOp generateExtOp(Value source, unsigned lanes, int8_t idx,
 static aievec::PackOp generatePackOp(Value source, VectState *state,
                                      Location loc) {
   // Create the result type
-  VectorType stype = source.getType().cast<VectorType>();
+  auto stype = source.getType().cast<VectorType>();
   unsigned lanes = getVectorLaneSize(stype);
-  Type i8Type = mlir::IntegerType::get(source.getContext(), 8);
+  Type i8Type = IntegerType::get(source.getContext(), 8);
   VectorType resultType = createVectorType(lanes, i8Type);
 
   // Create AIE dialect pack op
-  aievec::PackOp packOp =
-      state->builder.create<aievec::PackOp>(loc, resultType, source);
+  auto packOp = state->builder.create<aievec::PackOp>(loc, resultType, source);
 
   assert(packOp && "could not create pack op");
   return packOp;
@@ -689,7 +685,7 @@ static aievec::AddOp generateAddOp(Operation *Op, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  aievec::AddOp addOp = state->builder.create<aievec::AddOp>(
+  auto addOp = state->builder.create<aievec::AddOp>(
       Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
       Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
       opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
@@ -704,7 +700,7 @@ static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  aievec::SubOp subOp = state->builder.create<aievec::SubOp>(
+  auto subOp = state->builder.create<aievec::SubOp>(
       Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
       Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
       opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
@@ -715,10 +711,10 @@ static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
 static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
                                        VectState *state, Location loc,
                                        VectorType resType = nullptr) {
-  VectorType vecType = rhs.getType().cast<VectorType>();
+  auto vecType = rhs.getType().cast<VectorType>();
 
   assert([&] {
-    VectorType type = lhs.getType().cast<VectorType>();
+    auto type = lhs.getType().cast<VectorType>();
     if (type != vecType) {
       printf("lhs and rhs do not have same type\n");
       return false;
@@ -732,7 +728,7 @@ static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
     resType = createVectorType(lanes, scalarType);
   }
 
-  arith::ConstantOp constOp = state->builder.create<arith::ConstantOp>(
+  auto constOp = state->builder.create<arith::ConstantOp>(
       loc, state->builder.getI32IntegerAttr(shiftBytes));
   auto shiftOp = state->builder.create<aievec::ShiftOp>(loc, resType, lhs, rhs,
                                                         constOp.getResult());
@@ -743,7 +739,7 @@ static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
 static aievec::ShuffleOp generateShuffleOp(Value source, VectState *state,
                                            Location loc, unsigned mode,
                                            VectorType resType = nullptr) {
-  VectorType vecType = source.getType().cast<VectorType>();
+  auto vecType = source.getType().cast<VectorType>();
 
   if (!resType) {
     unsigned lanes = 512 / getElementSizeInBits(vecType);
@@ -774,14 +770,14 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
   Value rhs = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
                   ? Op->getOperand(0).getDefiningOp()->getOperand(0)
                   : Op->getOperand(0);
-  VectorType vType = lhs.getType().cast<VectorType>();
+  auto vType = lhs.getType().cast<VectorType>();
   Type stype = vType.getElementType();
-  IntegerType itype = stype.cast<IntegerType>();
+  auto itype = stype.cast<IntegerType>();
   unsigned width = itype.getWidth() <= 8 ? 32 : 64;
   int32_t M = 32;
   int32_t N = 8;
 
-  Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+  Type ctype = IntegerType::get(itype.getContext(), width);
   Type opType = VectorType::get(vType.getShape(), ctype);
   auto defOp = rhs.getDefiningOp();
   state->builder.setInsertionPointAfter(defOp);
@@ -848,7 +844,6 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 
   // Check if this is an fmsub op, and if so, then we need to generate msc op
   bool isSub = state->mscOps.count(fmaOp);
-  Operation *xfmaOp = nullptr;
 
   // We need to generate a UPS op for the integer and AIEML path if the
   // accumulator is coming from a vector register.
@@ -858,6 +853,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
                    .getElementType()
                    .isa<IntegerType>();
 
+  Operation *xfmaOp;
   if (AIEML && getVectorSizeInBits(rhs.getType().cast<VectorType>()) == 512) {
     if (!writesToAccumulator(acc.getDefiningOp())) {
       acc = generateUPSOp(acc, state, fmaOp->getLoc());
@@ -983,7 +979,7 @@ generateUPDOp(TransferReadOp readOp,
   // Create the upd vector type. To do so, we need the underlying element type.
   // We can divide the interval size by that to get the number of lanes in the
   // result vector of upd op.
-  VectorType vecType = readOp.getVector().getType().cast<VectorType>();
+  auto vecType = readOp.getVector().getType().cast<VectorType>();
   Type elementType = vecType.getElementType();
   int32_t elementSizeInBits = getElementSizeInBits(vecType);
   int intervalWidthInBytes = intervalWidth / elementSizeInBits;
@@ -1027,10 +1023,8 @@ generateUPDOp(TransferReadOp readOp,
                                 readOp.getIndices().end());
   // Get the linearized access expression for the read to compute the offset
   AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
-  AffineExpr base;
-  int32_t offset;
   // Get the base and offset from linear access expr
-  std::tie(base, offset) = getBaseAndOffset(linearAccess);
+  auto [base, offset] = getBaseAndOffset(linearAccess);
   offset *= elementSizeInBits; // get the offset in bits
 
   // The insertion point depends on whether the region has a single block or
@@ -1076,8 +1070,7 @@ generateUPDOp(TransferReadOp readOp,
       // If the transfer_read has some apply operations, then they also need to
       // be hoisted.
       for (auto &value : indices) {
-        if (affine::AffineApplyOp apOf =
-                value.getDefiningOp<affine::AffineApplyOp>()) {
+        if (auto apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
           // Skip hoisting if already above in lexicographical order
           if (apOf->getBlock() == readOp->getBlock() &&
               apOf->isBeforeInBlock(updOp))
@@ -1109,7 +1102,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
     return 1;
 
   int32_t step = 0;
-  VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
+  auto vectorType = readOp.getResult().getType().cast<VectorType>();
   SmallVector<Value, 4> indices(readOp.getIndices().begin(),
                                 readOp.getIndices().end());
   assert(vectorType && !indices.empty());
@@ -1123,7 +1116,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
   // The vectorized (i.e., last) index of the permutation must correspond to a
   // loop nest. If not, this is a splat read.
   AffineExpr expr = readOp.getPermutationMap().getResults().back();
-  if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+  if (auto dimExpr = llvm::dyn_cast<AffineDimExpr>(expr)) {
     assert(dimExpr.getPosition() <= indices.size() &&
            "Failed to find the permutation index in index map");
     auto index = indices[dimExpr.getPosition()];
@@ -1132,7 +1125,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
     [[maybe_unused]] bool found = false;
     for (auto loop : enclosingLoops) {
       auto iv = cast<affine::AffineForOp>(loop).getInductionVar();
-      auto invariants = mlir::affine::getInvariantAccesses(iv, indices);
+      auto invariants = affine::getInvariantAccesses(iv, indices);
       if (!invariants.count(index)) {
         assert(
             !found &&
@@ -1162,15 +1155,13 @@ int32_t computeStartInAIEVec(Operation *op, VectState *state) {
   auto readOp = cast<TransferReadOp>(op);
 
   // Get the scalar element type's size in bits
-  VectorType vtype = readOp.getVector().getType().cast<VectorType>();
+  auto vtype = readOp.getVector().getType().cast<VectorType>();
   int32_t scalarSizeInBits = getElementSizeInBits(vtype);
 
   // Get the linearized access expr for this read
   AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
-  AffineExpr base;
-  int32_t offset;
   // get the base and offset from linear access expr
-  std::tie(base, offset) = getBaseAndOffset(linearAccess);
+  auto [base, offset] = getBaseAndOffset(linearAccess);
   offset *= scalarSizeInBits; // compute offset in bits
   // Now find the reuse interval to which this readOp belongs
   IntervalReuse *iv = state->getIntervalForOperation(op);
@@ -1198,7 +1189,7 @@ static Operation *concatAndInterleave_i8xi8(Operation *source1,
   // v16int16 vector, since select operation does not operate on v16int8
   // vector.
   Type i16Type =
-      mlir::IntegerType::get(source1->getResult(0).getType().getContext(), 16);
+      IntegerType::get(source1->getResult(0).getType().getContext(), 16);
   auto srsOp1 = generateSRSOp(source1->getResult(0), i16Type, state, loc);
   auto srsOp2 = generateSRSOp(source2->getResult(0), i16Type, state, loc);
 
@@ -1288,8 +1279,8 @@ static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
     return false;
 
   // Check 7. All the vector sizes must be same
-  VectorType lhsType = lhs.getType().cast<VectorType>();
-  VectorType rhsType = rhs.getType().cast<VectorType>();
+  auto lhsType = lhs.getType().cast<VectorType>();
+  auto rhsType = rhs.getType().cast<VectorType>();
   VectorType accType = state->sextTruncDefMap.count(
                            acc.getDefiningOp()->getOperand(0).getDefiningOp())
                            ? acc.getDefiningOp()
@@ -1442,7 +1433,7 @@ static void fuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
 // generates one MulConvOp or FMAConvOp for each vector dialect mul/fma op.
 static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
                                AIEOpAttributes &opAttr, VectState *state,
-                               std::string nextStart = "") {
+                               const std::string &nextStart = "") {
   // Assert that we computed the attributes for both the operands
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
@@ -1458,15 +1449,15 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
   // Generate an AIE dialect mul/fma op from a vector dialect mul/fma op
   auto genOp = [&](Operation *Op, AIEOpAttributes &opAttr, VectState *state,
                    bool i8xi8_pairedOp = false) {
-    Operation *repOp = nullptr;
+    Operation *repOp;
     // Create aievec::FMAOp corresponding to the vector::FMAOp
-    if (vector::FMAOp fmaOp = dyn_cast<vector::FMAOp>(Op))
+    if (auto fmaOp = dyn_cast<vector::FMAOp>(Op))
       repOp = generateFMAOp(fmaOp, opAttr, state, i8xi8_pairedOp);
     // Create aievec::MulOp corresponding to the vector::MulIOp
-    else if (MulIOp mulOp = dyn_cast<MulIOp>(Op))
+    else if (auto mulOp = dyn_cast<MulIOp>(Op))
       repOp = generateMulOp<MulIOp>(mulOp, opAttr, state);
     // Create aievec::MulOp corresponding to the vector::MulFOp
-    else if (MulFOp mulOp = dyn_cast<MulFOp>(Op))
+    else if (auto mulOp = dyn_cast<MulFOp>(Op))
       repOp = generateMulOp<MulFOp>(mulOp, opAttr, state);
     else
       llvm_unreachable("Operation not mul/fma op");
@@ -1483,9 +1474,9 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
   if (!nextStart.empty()) {
     if (AIEML && scheme.lanes == 32 && scheme.xbits == 8 && scheme.zbits == 8) {
       repOp = generateMulOrFMAConvOpForInt8(Op, opAttr, state);
-      if (llvm::any_of(repOp->getUsers(), notMulOrFMAOp)) {
-        Type i8Type = mlir::IntegerType::get(
-            repOp->getResult(0).getType().getContext(), 8);
+      if (any_of(repOp->getUsers(), notMulOrFMAOp)) {
+        Type i8Type =
+            IntegerType::get(repOp->getResult(0).getType().getContext(), 8);
         repOp =
             generateSRSOp(repOp->getResult(0), i8Type, state, repOp->getLoc());
       }
@@ -1499,7 +1490,7 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
       state->pairedOp[repOp] = pairedOp;
       // If any of the uses of incoming op is not a mul/fma op, then we need to
       // concatenate the paired ops and generate a v16xi8 vector.
-      if (llvm::any_of(Op->getUsers(), notMulOrFMAOp))
+      if (any_of(Op->getUsers(), notMulOrFMAOp))
         repOp = concatAndInterleave_i8xi8(repOp, pairedOp, state, Op->getLoc());
     }
   }
@@ -1546,23 +1537,21 @@ static void computeXbuffAttr_i16xi16(
   assert((accIncr <= 1 || colOffset <= 1) &&
          "cannot generate offset and square for xbuff");
 
-  std::string startStr, offsetStr, offsetHiStr, squareStr;
-
   // Arch restriction: xstart should be a multiple of 2.
   int32_t m2start = (start / 2) * 2;
-  startStr = std::to_string(m2start);
+  std::string startStr = std::to_string(m2start);
   // m2Offset accounts for the extra 1 if the start is not a multiple of 2
   int32_t m2Offset = start - m2start;
 
   // Compute hi and lo offsets to something resembling "0x_7_6_5_4" and
   // "0x_3_2_1_0" respectively. The '_' are 0 if colOffset is 1.
-  offsetStr = "0x";
+  std::string offsetStr = "0x";
   int32_t offset = std::max(colOffset, accIncr);
   for (int i = vecSize / 2 - 2; i >= 0; i -= 2) {
     offsetStr.push_back(offset <= 1 ? '0' : getHexValue((offset - 2) / 2));
     offsetStr.push_back(getHexValue((i * accIncr) / 2));
   }
-  offsetHiStr = "0x";
+  std::string offsetHiStr = "0x";
   for (int i = vecSize - 2, e = vecSize / 2; i >= e; i -= 2) {
     offsetHiStr.push_back(offset <= 1 ? '0' : getHexValue((offset - 2) / 2));
     offsetHiStr.push_back(getHexValue((i * accIncr) / 2));
@@ -1574,7 +1563,7 @@ static void computeXbuffAttr_i16xi16(
   assert(m2Offset == 0 || (astep <= 1 && cstep <= 1));
 
   SmallVector<int32_t> sqPattern = {astep + cstep, astep, cstep, 0};
-  squareStr = "0x";
+  std::string squareStr = "0x";
   for (auto sq : sqPattern)
     squareStr.push_back(getHexValue(sq + m2Offset));
 
@@ -1594,10 +1583,10 @@ static void computeZbuffAttr_i16xi16(
     int32_t zeroOffset, // offset of 0 value in the filter
     int32_t colOffset,  // zbuff access distance between vector cols
     AIEOpAttributes &opAttr) {
-  std::string startStr, offsetStr, offsetHiStr, stepStr;
+  std::string offsetStr, offsetHiStr;
   // zstart must be 4b value.
   assert(start < (AIEML ? 32 : 16) && "zstart must be 4b value");
-  startStr = std::to_string(start);
+  std::string startStr = std::to_string(start);
 
   // If zbuff comes from splat, use default offsets
   if (accIncr == 0)
@@ -1615,7 +1604,7 @@ static void computeZbuffAttr_i16xi16(
   // Compute step between columns
   int32_t step = colOffset == -1 ? zeroOffset - 1 - start : colOffset;
   assert(step >= 0 && "zstep cannot be negative");
-  stepStr = std::to_string(step);
+  std::string stepStr = std::to_string(step);
 
   // And now we have everything to push into opAttr
   opAttr.start.push_back(startStr);
@@ -1643,10 +1632,9 @@ static void computeXbuffAttr_i8xi8(
   int32_t colStep = 2 * colOffset;
   assert(colStep % 4 == 0 && "xstep must be multiple of 4");
 
-  std::string startStr, offsetStr, squareStr, stepStr;
   // Arch restriction: xstart must be a multiple of 4
   int32_t m4start = (start / 4) * 4;
-  startStr = std::to_string(m4start);
+  std::string startStr = std::to_string(m4start);
   // m4Offset accounts for the excess if start is not a multiple of 4
   int32_t m4Offset = start - m4start;
   // Because of duplication, m4Offset can only be 0 or 2
@@ -1654,12 +1642,12 @@ static void computeXbuffAttr_i8xi8(
 
   // Compute offsetStr to something resembling "0x_0_0_0_0", where _ is
   // (colStep-4)/4.
-  offsetStr = "0x";
+  std::string offsetStr = "0x";
   for (int i = vecSize / 4 - 1; i >= 0; --i) {
     offsetStr.push_back(getHexValue(colStep / 4 - 1));
     offsetStr += "0";
   }
-  stepStr = std::to_string(colStep);
+  std::string stepStr = std::to_string(colStep);
 
   // Now compute the square for zbuff. We want a {0,x,0,x} pattern.
   int32_t offsetWithoutDup = colOffset / 2;
@@ -1669,7 +1657,7 @@ static void computeXbuffAttr_i8xi8(
   assert(m4Offset == 0 || rstep <= 1);
 
   SmallVector<int32_t> sqPattern = {rstep, 0, rstep, 0};
-  squareStr = "0x";
+  std::string squareStr = "0x";
   for (auto sq : sqPattern)
     squareStr.push_back(getHexValue(sq + m4Offset));
 
@@ -1693,22 +1681,21 @@ static void computeZbuffAttr_i8xi8(
   // The colOffset must be either <=1, or a multiple of 2
   assert((colOffset <= 1 || colOffset % 2 == 0) && "zbuff value not supported");
 
-  std::string startStr, offsetStr, squareStr, stepStr;
   // Arch restriction: zstart is a multiple of 2
   int32_t m2start = (start / 2) * 2;
-  startStr = std::to_string(m2start);
+  std::string startStr = std::to_string(m2start);
   // m2Offset accounts for the extra 1 if the start is not a multiple of 2
   int32_t m2Offset = start - m2start;
 
   // Compute offsetStr to something resembling "0x43322110". The usual pattern
   // is "0x_3_2_1_0", and the purpose is to fill the "_".
-  offsetStr = "0x";
+  std::string offsetStr = "0x";
   for (int i = vecSize / 4 - 1; i >= 0; --i) {
     int32_t val = i * accIncr + (colOffset + 1) / 2;
     offsetStr.push_back(getHexValue(val));
     offsetStr.push_back(getHexValue(i * accIncr));
   }
-  stepStr = std::to_string(2 * std::abs(colOffset));
+  std::string stepStr = std::to_string(2 * std::abs(colOffset));
   nextStart = std::to_string(m2start + 2 * accIncr * (vecSize / 4));
 
   // Now compute the square for zbuff. We want a {0,1+x,y,y+1+x} pattern, where
@@ -1717,7 +1704,7 @@ static void computeZbuffAttr_i8xi8(
   assert(m2Offset == 0 || rstep <= 1);
 
   SmallVector<int32_t> sqPattern = {accIncr + rstep, accIncr, rstep, 0};
-  squareStr = "0x";
+  std::string squareStr = "0x";
   for (auto sq : sqPattern)
     squareStr.push_back(getHexValue(sq + m2Offset));
 
@@ -2028,13 +2015,11 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
   llvm::SmallSet<Operation *, 8> fusedOpSet;
 
   // Fuse FMA ops to exploit column topology
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     if (isa<MulIOp, MulFOp, vector::FMAOp>(op)) {
       // Only process fma ops that are not already fused with another mul/fma
       if (!fusedOpSet.count(op)) {
-        // Get the rows and columns for this topology
-        int32_t lanes, cols;
-        std::tie(lanes, cols) = getNumRowsAndCols(op, state);
+        auto [lanes, cols] = getNumRowsAndCols(op, state);
         // Try fusing a linear chain of FMA ops (max length = cols) starting at
         // op.
         fuseFMAOps(op, fusedOpSet, cols, state);
@@ -2057,11 +2042,11 @@ static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
          curOp.getOffsetHi(1) == defOp.getOffsetHi(1) &&
          curOp.getSquare(1) == defOp.getSquare(1) &&
          curOp.getStep(1) == defOp.getStep(1) &&
-         stoi((std::string)curOp.getStart(0)) -
-                 stoi((std::string)defOp.getStart(0)) ==
+         stoi(static_cast<std::string>(curOp.getStart(0))) -
+                 stoi(static_cast<std::string>(defOp.getStart(0))) ==
              2 &&
-         stoi((std::string)curOp.getStart(1)) -
-                 stoi((std::string)defOp.getStart(1)) ==
+         stoi(static_cast<std::string>(curOp.getStart(1))) -
+                 stoi(static_cast<std::string>(defOp.getStart(1))) ==
              2;
 }
 
@@ -2099,22 +2084,20 @@ static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
 // aievec.fma_conv %8, %2, %7 {M = 16 : si32, N = 4 : si32}
 // Currently, we only support mul_conv_16x4 and mac_conv_16x4 intrinsics for
 // int16 type of AIE-ML architecture.
-static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
+static bool canFuseMulFMAOpsForInt16(Operation *Op) {
   // Check 1. This should be an aievec fma operation
   assert(isa<aievec::FMAOp>(Op) && "operation must be an aievec fma op");
-  aievec::FMAOp curOp = cast<aievec::FMAOp>(Op);
+  auto curOp = cast<aievec::FMAOp>(Op);
 
   // Check 2. Element type should be int16
-  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  auto vType = Op->getOperand(1).getType().cast<VectorType>();
   Type stype = vType.getElementType();
-  IntegerType itype = stype.dyn_cast<IntegerType>();
+  auto itype = llvm::dyn_cast<IntegerType>(stype);
 
   if (!itype)
     return false;
 
-  unsigned width = itype.getWidth();
-
-  if (width != 16)
+  if (unsigned width = itype.getWidth(); width != 16)
     return false;
 
   // Check 3. acc operand of the Op should be a mul op or fma op
@@ -2180,7 +2163,7 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 
 // Rewrite a mul/fma and fma op as a aievec MUL_conv or FMA_Conv op
 static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
-  aievec::FMAOp curOp = cast<aievec::FMAOp>(Op);
+  auto curOp = cast<aievec::FMAOp>(Op);
 
   Value lhs = curOp->getOperand(0);
 
@@ -2214,19 +2197,19 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // Get the def op of acc. It is either a mul op or a fma op.
   Operation *convOp = nullptr;
   Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
-  aievec::MulOp mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp);
-  aievec::FMAOp fmaOp = dyn_cast<aievec::FMAOp>(mulOrFMAOp);
-  int32_t zStart = 0;
+  auto mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp);
+  auto fmaOp = dyn_cast<aievec::FMAOp>(mulOrFMAOp);
+  int32_t zStart;
 
   if (mulOp) {
     aievec::MulOp defOp = mulOp;
-    zStart = stoi((std::string)defOp.getStart(1));
+    zStart = stoi(static_cast<std::string>(defOp.getStart(1)));
   } else {
     aievec::FMAOp defOp = fmaOp;
-    zStart = stoi((std::string)defOp.getStart(1));
+    zStart = stoi(static_cast<std::string>(defOp.getStart(1)));
   }
 
-  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  auto vType = Op->getOperand(1).getType().cast<VectorType>();
   int32_t shiftBytes = zStart * getElementSizeInBits(vType) / 8;
 
   auto defOp = mulOp ? mulOp : fmaOp;
@@ -2234,17 +2217,13 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   Location loc = defOp->getLoc();
 
   // Generate a shift_bytes operation for concatRhs if needed.
-  if (shiftBytes) {
+  if (shiftBytes)
     concatRhs = generateShiftOp(concatRhs, concatRhs, shiftBytes, state, loc);
-  }
 
   Type stype = vType.getElementType();
-  unsigned width = 0;
-  IntegerType itype = stype.cast<IntegerType>();
-
-  width = itype.getWidth() <= 8 ? 32 : 64;
-
-  Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+  auto itype = stype.cast<IntegerType>();
+  unsigned width = itype.getWidth() <= 8 ? 32 : 64;
+  Type ctype = IntegerType::get(itype.getContext(), width);
   Type opType = VectorType::get(vType.getShape(), ctype);
   Value acc = nullptr;
   // Curently, we only support 16x4 convolution intrinsics for int16 type
@@ -2255,10 +2234,10 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // operation with index 1
   lhs = curOp->getOperand(0);
 
-  if (mulOp) {
+  if (mulOp)
     convOp = state->builder.create<aievec::MulConvOp>(loc, opType, lhs,
                                                       concatRhs, M, N);
-  } else {
+  else {
     acc = defOp->getOperand(2);
     bool isSub = state->mscOps.count(defOp);
     convOp = state->builder.create<aievec::FMAConvOp>(
@@ -2271,10 +2250,9 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 }
 
 static void fuseMulFMAOpsByMulFMAConv(func::FuncOp func, VectState *state) {
-  func.walk([&](mlir::Operation *Op) {
-    if (isa<aievec::FMAOp>(Op) && canFuseMulFMAOpsForInt16(Op, state)) {
+  func.walk([&](Operation *Op) {
+    if (isa<aievec::FMAOp>(Op) && canFuseMulFMAOpsForInt16(Op))
       fuseMulFMAOpsForInt16(Op, state);
-    }
   });
 }
 
@@ -2287,7 +2265,7 @@ static void fuseMulFMAOpsByMulFMAConv(func::FuncOp func, VectState *state) {
 static void generateAIEMulOrFMAOpsInFunc(func::FuncOp func, VectState *state) {
   // For each mul/fma op, compute the scheme-dependent operand attributes, and
   // generate corresponding AIE dialect ops.
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     if (isa<MulIOp, MulFOp, vector::FMAOp>(op))
       generateSchemeBasedMulOrFMAOp(op, state);
   });
@@ -2427,7 +2405,7 @@ static void generateSchemeBasedAddOrSubOp(Operation *Op, VectState *state) {
 // for the adds involving splat. If none of the operands of the add op is
 // splat, we must generate simple scheme add op.
 static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     if (isa<AddIOp, AddFOp, SubIOp, SubFOp>(op))
       generateSchemeBasedAddOrSubOp(op, state);
   });
@@ -2491,7 +2469,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
   // operation is non-AIE op, then we need to generate SRS op to move value
   // from accumulator to vector
   auto isNonAIEOp = [&](Operation *op) { return !isAIEOp(op); };
-  if (!llvm::any_of(Op->getUsers(), isNonAIEOp))
+  if (!any_of(Op->getUsers(), isNonAIEOp))
     return;
 
   // Given an accumulator, one can use different srs intrinsic to generate
@@ -2510,7 +2488,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
 
     // Get the underlying scalar element type of user op. If the user is a
     // write op, it won't have a result. So get the element type from memref.
-    Type scalarType = nullptr;
+    Type scalarType;
     MemRefType memRefType = nullptr;
     if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
       // Get the element type from the memref output
@@ -2546,7 +2524,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
           user->replaceUsesOfWith(operand, castOp);
           break;
         }
-        aievec::SRSOp srsOp = nullptr;
+        aievec::SRSOp srsOp;
         if (!typeToSRSOpMap.count(scalarType)) {
           srsOp =
               generateSRSOp(Op->getResult(0), scalarType, state, Op->getLoc());
@@ -2566,7 +2544,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
 // Generate SRS op whenever we move data from an accumulator AIE dialect to a
 // vector.
 static void insertSRSOpsInFunc(func::FuncOp func, VectState *state) {
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     // Insert an SRS op if the op outputs to an accumulator
     if (writesToAccumulator(op))
       insertSRSOp(op, state);
@@ -2663,7 +2641,7 @@ computeEnclosingLoopsPerBlock(affine::AffineForOp forOp, VectState *state,
 // this rule is the 8x8 bit scheme, where the xbuff is a bit more restrictive,
 // so we prefer splat as left operand of multiplication for 8x8 scheme.
 static void reassociateMulOpInFunc(func::FuncOp func, VectState *state) {
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     // Only reassociate vector mul ops that are well formed. This also includes
     // the multiplication component in fma ops.
     if (isa<MulIOp, MulFOp, vector::FMAOp>(op) && isWellFormedVectorOp(op)) {
@@ -2682,7 +2660,7 @@ static void reassociateMulOpInFunc(func::FuncOp func, VectState *state) {
 // commutativity of add op, and is only applied so that we can leverage the
 // same code functionality for generating mac and msc ops.
 static void reassociateAddOpInFunc(func::FuncOp func, VectState *state) {
-  func.walk([&](mlir::Operation *op) {
+  func.walk([&](Operation *op) {
     // Only reassociate vector add ops that are well formed.
     if (isa<AddIOp, AddFOp>(op) && isWellFormedVectorOp(op)) {
       // addOp must have two operands and one result
@@ -2768,10 +2746,8 @@ static void recordSextOps(func::FuncOp func, VectState *state) {
 static void computeReuse(TransferReadOp readOp, VectState *state) {
   // Construct a linearized access expression for the transfer_read
   AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
-  AffineExpr base;
-  int32_t offset;
   // Decompose the linear access into a base and constant offset value
-  std::tie(base, offset) = getBaseAndOffset(linearAccess);
+  auto [base, offset] = getBaseAndOffset(linearAccess);
 
   // Get the step size of the vectorized loop that encloses this read operation
   int32_t step = computeVecorizedLoopStepSize(readOp, state);
@@ -2811,7 +2787,7 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
     }
   }
 
-  VectorType vecType = readOp.getVector().getType().cast<VectorType>();
+  auto vecType = readOp.getVector().getType().cast<VectorType>();
   if (AIEML && (getVectorSizeInBits(vecType) == 512 ||
                 getElementSizeInBits(vecType) == 8)) {
     minVecSize *= 2;
@@ -2838,7 +2814,7 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
   // If no reuse is found, create a new IntervalReuse object with just this
   // operation's read access extent.
   if (!found) {
-    IntervalReuse *iv = new IntervalReuse(readOp, base);
+    auto iv = new IntervalReuse(readOp, base);
     iv->insertInterval(readOp, state->opToIntervalMap, offset, step, isSplat,
                        minVecSize);
     state->reuseIntervals.push_back(iv);
@@ -2846,7 +2822,7 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
 }
 
 static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
-  VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
+  auto vectorType = readOp.getResult().getType().cast<VectorType>();
   unsigned lanes = getVectorLaneSize(vectorType);
 
   AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
@@ -2854,7 +2830,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
     return success();
   }
 
-  MemRefType memRefType = readOp.getSource().getType().cast<MemRefType>();
+  auto memRefType = readOp.getSource().getType().cast<MemRefType>();
   MLIRContext *context = memRefType.getContext();
   ArrayRef<int64_t> sizes = memRefType.getShape();
   int numDims = sizes.size();
@@ -2869,19 +2845,18 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
 
   // If the lowest dim has iv, check whether its corresponding loop step is
   // divisible by the vector lanes.
-  int32_t step = 0;
   if (auto dimExpr =
-          getAffineDimExpr(numDims - 1, context).dyn_cast<AffineDimExpr>()) {
+          dyn_cast<AffineDimExpr>(getAffineDimExpr(numDims - 1, context))) {
     auto index = indices[dimExpr.getPosition()];
     // Iterate over all enclosing loops, and find the one that is variant in
     // index.
     for (auto loop : enclosingLoops) {
       auto affineForOp = cast<affine::AffineForOp>(loop);
       auto iv = affineForOp.getInductionVar();
-      auto invariants = mlir::affine::getInvariantAccesses(iv, indices);
+      auto invariants = affine::getInvariantAccesses(iv, indices);
 
       if (!invariants.count(index)) {
-        step = affineForOp.getStepAsInt();
+        int step = affineForOp.getStepAsInt();
         if (step % lanes) {
           return readOp->emitError()
                  << "Loop step of inner index of " << readOp->getName()
@@ -2982,7 +2957,7 @@ static void reassociateOpsInFunc(func::FuncOp func, VectState *state) {
   reassociateAddOpInFunc(func, state);
 }
 
-struct AIEVectorize : public AIEVectorizeBase<AIEVectorize> {
+struct AIEVectorize : AIEVectorizeBase<AIEVectorize> {
   AIEVectorize() = default;
   void runOnOperation() override;
 };
@@ -3008,7 +2983,7 @@ void AIEVectorize::runOnOperation() {
   // Iterate over all the functions in this module, and vectorize them
   for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // Create a new global state
-    VectState *state =
+    auto state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
 
     // record the sext op and its operand's def op to sextTruncDefMap
@@ -3074,6 +3049,6 @@ void AIEVectorize::runOnOperation() {
   postCanonicalizeIR(module);
 }
 
-std::unique_ptr<Pass> xilinx::aievec::createAIEVectorizePass() {
+std::unique_ptr<Pass> aievec::createAIEVectorizePass() {
   return std::make_unique<AIEVectorize>();
 }

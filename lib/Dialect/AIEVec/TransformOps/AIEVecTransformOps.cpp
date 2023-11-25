@@ -93,9 +93,9 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
   auto baC = static_cast<Value>(dstBlock.getArgument(2));
   // Store vectorized values for op replacement
   llvm::DenseMap<Value, Value> convertedValues;
-  convertedValues.try_emplace(static_cast<Value>(srcBlock.getArgument(0)), baA);
-  convertedValues.try_emplace(static_cast<Value>(srcBlock.getArgument(1)), baB);
-  convertedValues.try_emplace(static_cast<Value>(srcBlock.getArgument(2)), baC);
+  convertedValues.try_emplace(srcBlock.getArgument(0), baA);
+  convertedValues.try_emplace(srcBlock.getArgument(1), baB);
+  convertedValues.try_emplace(srcBlock.getArgument(2), baC);
   auto indexingMaps = rewriter.getAffineMapArrayAttr(
       {AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
            .dropResults(0),
@@ -127,15 +127,14 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
             opA = convertedValues[rhsDefOp->getOperand(0)];
             opB = convertedValues[rhsDefOp->getOperand(1)];
             opC = convertedValues[lhs];
-          } else {
+          } else
             return WalkResult::interrupt();
-          }
           auto conOp = rewriter.create<vector::ContractionOp>(
               loc, opA, opB, opC, indexingMaps, iteratorTypes);
           convertedValues.try_emplace(op->getResult(0), conOp.getResult());
           return WalkResult::advance();
         })
-        .Case<arith::MulIOp, arith::MulFOp>([&](auto mulOp) {
+        .Case<arith::MulIOp, arith::MulFOp>([&](auto) {
           if (mulOpFound)
             return WalkResult::interrupt();
           mulOpFound = true;
@@ -172,14 +171,13 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
 }
 
 DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
-    transform::TransformRewriter &rewriter, linalg::GenericOp target,
-    transform::ApplyToEachResultList &results,
-    transform::TransformState &state) {
+    TransformRewriter &rewriter, linalg::GenericOp target,
+    ApplyToEachResultList &results, TransformState &state) {
 
   auto ctx = target.getContext();
   SmallVector<Value> inputs = target.getInputs();
-  SmallVector<Value> outputs = target.getOutputs();
-  if (inputs.size() != 2 || outputs.size() != 1)
+  if (SmallVector<Value> outputs = target.getOutputs();
+      inputs.size() != 2 || outputs.size() != 1)
     return emitSilenceableError() << "payload is not a contraction.";
 
   // Split the iterators in two: inner contraction + remaining

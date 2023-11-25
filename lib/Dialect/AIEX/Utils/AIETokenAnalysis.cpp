@@ -12,8 +12,6 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
@@ -84,6 +82,8 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     }
   }
 
+  int releaseValue = 0;
+  int acquireValue = 0;
   // Look for a pair of UseTokenOps (or UseTokenOp and MemcpyOp) such that one
   // releases and one acquires the same token + value. They form a chain of
   // releasing and acquiring a token. From the chains of tokens collected, we
@@ -93,7 +93,6 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     auto tokenRels = map.second;
     auto tokenAcqs = tokenAcqMap[tokenName];
     for (auto ROp : tokenRels) {
-      int releaseValue;
 
       if (auto op = dyn_cast<UseTokenOp>(ROp))
         releaseValue = op.getTokenValue();
@@ -101,7 +100,6 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
         releaseValue = op.getReleaseTokenValue();
 
       for (auto AOp : tokenAcqs) {
-        int acquireValue;
 
         if (auto op = dyn_cast<UseTokenOp>(AOp))
           acquireValue = op.getTokenValue();

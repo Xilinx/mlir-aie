@@ -29,7 +29,7 @@ using namespace xilinx::AIE;
 
 namespace {
 
-struct AIEInlinerInterface : public DialectInlinerInterface {
+struct AIEInlinerInterface : DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
@@ -51,7 +51,7 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   void handleTerminator(Operation *op, ArrayRef<Value> valuesToRepl) const {}
 };
 
-struct AIEDialectFoldInterface : public DialectFoldInterface {
+struct AIEDialectFoldInterface : DialectFoldInterface {
   using DialectFoldInterface::DialectFoldInterface;
 
   /// Registered hook to check if the given region, which is attached to an
@@ -130,7 +130,7 @@ struct UsesAreAccessable {
 
 namespace detail {
 /// This class represents the internal storage of the AIE `ObjectFifoType`.
-struct AIEObjectFifoTypeStorage : public TypeStorage {
+struct AIEObjectFifoTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
@@ -182,7 +182,7 @@ Type AIEObjectFifoType::getElementType() {
 namespace detail {
 /// This class represents the internal storage of the AIE
 /// `ObjectFifoSubviewType`.
-struct AIEObjectFifoSubviewTypeStorage : public TypeStorage {
+struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
@@ -237,12 +237,11 @@ Type AIEObjectFifoSubviewType::getElementType() {
 ///   AIE-type
 ///         ::= `objectFifo` `<` type `>`
 ///         ::= `objectFifoSubview` `<` type `>`
-static OptionalParseResult aieTypeParser(MLIRContext *context,
-                                         DialectAsmParser &parser,
+static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
                                          StringRef name, Type &result) {
   if (name.equals("objectFifo")) {
     Type elementType;
-    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
         parser.parseGreater())
       return failure();
@@ -265,7 +264,7 @@ static OptionalParseResult aieTypeParser(MLIRContext *context,
     // Parse the element type of the struct.
     Type elementType;
     // Parse the current element type.
-    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseType(elementType))
       return failure();
 
@@ -292,11 +291,9 @@ static OptionalParseResult aieTypeParser(MLIRContext *context,
 /// refer to a type defined in this dialect.
 static ParseResult parse(Type &result, StringRef name,
                          DialectAsmParser &parser) {
-  auto *context = parser.getBuilder().getContext();
-  OptionalParseResult parseResult;
 
-  parseResult = aieTypeParser(context, parser, name, result);
-  if (parseResult.has_value())
+  if (OptionalParseResult parseResult = aieTypeParser(parser, name, result);
+      parseResult.has_value())
     return parseResult.value();
 
   parser.emitError(parser.getNameLoc(), "unknown AIE dialect type: \"")
@@ -355,8 +352,8 @@ template <typename... TerminatorOpTypes> struct HasSomeTerminator {
     for (auto &region : op->getRegions()) {
       for (auto &block : region) {
         if (!block.empty()) {
-          Operation *operation = &block.back();
-          if (!llvm::isa_and_nonnull<TerminatorOpTypes...>(operation))
+          if (Operation *operation = &block.back();
+              !llvm::isa_and_nonnull<TerminatorOpTypes...>(operation))
             return operation->emitOpError("is not an allowed terminator")
                 .attachNote(op->getLoc())
                 .append("in this context: ");
@@ -380,7 +377,7 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &block : element.getBody()) {
     if (!block.template getOps<DMABDOp>().empty()) {
       if (bdNum >= bdMax) {
-        auto bd = *(block.template getOps<DMABDOp>().begin());
+        auto bd = *block.template getOps<DMABDOp>().begin();
         return (op->emitOpError("has more than ") << bdMax << " blocks")
             .attachNote(bd.getLoc())
             .append("no space for this bd: ");
@@ -416,8 +413,8 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 // ObjectFifoCreateOp
 LogicalResult ObjectFifoCreateOp::verify() {
   if (isa<ArrayAttr>(getElemNumber())) {
-    size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
-    if (numDepths != (getConsumerTiles().size() + 1)) // +1 for producer depth
+    if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
+        numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
       return emitOpError("does not have enough depths specified for producer "
                          "and for each consumer.");
   }
@@ -437,10 +434,10 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
 namespace xilinx::AIE {
 
 ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
-                                        OpAsmParser::UnresolvedOperand &tile,
+                                        OpAsmParser::UnresolvedOperand &operand,
                                         DimTupleArrayAttr &dimensions) {
   std::vector<DimTupleAttr> emptyDims = {};
-  if (parser.parseOperand(tile))
+  if (parser.parseOperand(operand))
     return failure();
   if (succeeded(parser.parseOptionalKeyword("toStream"))) {
     if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(
@@ -448,18 +445,18 @@ ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
       return failure();
     }
   } else {
-    dimensions = DimTupleArrayAttr::get(parser.getContext(),
-                                        ArrayRef<DimTupleAttr>(emptyDims));
+    dimensions =
+        DimTupleArrayAttr::get(parser.getContext(), ArrayRef(emptyDims));
   }
   return success();
 }
 
-void printObjectFifoProducerTile(OpAsmPrinter &_odsPrinter, Operation *op,
+void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
                                  Value operand, DimTupleArrayAttr dimensions) {
-  _odsPrinter << operand;
+  printer << operand;
   if (!dimensions.empty()) {
-    _odsPrinter << " toStream ";
-    _odsPrinter.printStrippedAttrOrType(dimensions);
+    printer << " toStream ";
+    printer.printStrippedAttrOrType(dimensions);
   }
 }
 
@@ -497,19 +494,19 @@ ParseResult parseObjectFifoConsumerTiles(
   return success();
 }
 
-void printObjectFifoConsumerTiles(OpAsmPrinter &odsPrinter, Operation *op,
+void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
                                   OperandRange tiles,
                                   DimTupleArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
   for (auto tile : tiles) {
-    odsPrinter << tile;
+    printer << tile;
     if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
         dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
-      odsPrinter << " fromStream ";
-      odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
+      printer << " fromStream ";
+      printer.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
     }
     if (tileIdx < tiles.size() - 1) {
-      odsPrinter << ", ";
+      printer << ", ";
     }
     tileIdx++;
   }
@@ -523,8 +520,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  auto sharedTile = getOptionalSharedTile();
-  if (!sharedTile)
+  if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
 
@@ -569,8 +565,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if ((!fifoOut.getDimensionsToStream().empty()) &&
-          (fifoOut.getConsumerTiles().size() > 1)) {
+      if (!fifoOut.getDimensionsToStream().empty() &&
+          fifoOut.getConsumerTiles().size() > 1) {
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsToStream and multiple consumers.");
       }
@@ -613,8 +609,8 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
   }
 
   auto fifoIn = getInputObjectFifos();
-  auto fifoOut = getOutputObjectFifos();
-  if (!fifoIn.empty() && !fifoOut.empty())
+  if (auto fifoOut = getOutputObjectFifos();
+      !fifoIn.empty() && !fifoOut.empty())
     for (auto consumerIn : fifoIn[0].getConsumerTiles())
       if (consumerIn == fifoOut[0].getProducerTile())
         return {fifoOut[0].getProducerTile()};
@@ -628,8 +624,8 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        auto st = SymbolTable::lookupSymbolIn(parent, name);
-        if (st && isa<ObjectFifoCreateOp>(st))
+        if (auto st = SymbolTable::lookupSymbolIn(parent, name);
+            st && isa<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
     }
@@ -644,8 +640,8 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        auto st = SymbolTable::lookupSymbolIn(parent, name);
-        if (st && isa<ObjectFifoCreateOp>(st))
+        if (auto st = SymbolTable::lookupSymbolIn(parent, name);
+            st && isa<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
     }
@@ -669,8 +665,8 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-      if (st && isa<ObjectFifoCreateOp>(st))
+      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -714,8 +710,8 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-      if (st && isa<ObjectFifoCreateOp>(st))
+      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -759,8 +755,8 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-      if (st && isa<ObjectFifoCreateOp>(st))
+      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -769,12 +765,12 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
 
 // ObjectFifoSubviewAccessOp
 LogicalResult ObjectFifoSubviewAccessOp::verify() {
-  auto parent = getOperation()->getParentOfType<CoreOp>();
-  if (parent == nullptr)
+  if (auto parent = getOperation()->getParentOfType<CoreOp>();
+      parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-  if (getIndex() >= acqOp.acqNumber())
+  if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+      getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 
@@ -804,8 +800,8 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-      if (st && isa<ObjectFifoCreateOp>(st))
+      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -894,10 +890,9 @@ LogicalResult SwitchboxOp::verify() {
                  << index << " for " << dir << " bundle "
                  << stringifyWireBundle(bundle) << " must be less than "
                  << bound;
-        else
-          return ops.emitOpError()
-                 << dir << " bundle " << stringifyWireBundle(bundle)
-                 << " not supported; index: " << index << ", bound: " << bound;
+        return ops.emitOpError()
+               << dir << " bundle " << stringifyWireBundle(bundle)
+               << " not supported; index: " << index << ", bound: " << bound;
       }
       return success();
     };
@@ -964,7 +959,7 @@ LogicalResult SwitchboxOp::verify() {
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
         auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
-        if ((arbiter != -1) && (arbiter != amsel.arbiterIndex()))
+        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
           return connectOp.emitOpError(
               "a master port can only be tied to one arbiter");
         arbiter = amsel.arbiterIndex();
@@ -1107,8 +1102,7 @@ int ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult PacketRulesOp::verify() {
-  Region &body = getRules();
-  if (body.empty())
+  if (Region &body = getRules(); body.empty())
     return emitOpError("should have non-empty body");
   return success();
 }
@@ -1162,7 +1156,7 @@ LogicalResult BufferOp::verify() {
 uint64_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
   if (auto buf = dyn_cast<BufferOp>(bufOp))
     return buf.address();
-  else if (isa_and_nonnull<ExternalBufferOp>(bufOp))
+  if (isa_and_nonnull<ExternalBufferOp>(bufOp))
     llvm::report_fatal_error(
         "External buffer addresses are assigned at runtime.");
   llvm::report_fatal_error("unknown buffer type");
@@ -1229,7 +1223,7 @@ int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
-Region *MemOp::getCallableRegion() { return &(getBody()); }
+Region *MemOp::getCallableRegion() { return &getBody(); }
 
 // MemTileDMAOp
 LogicalResult MemTileDMAOp::verify() {
@@ -1255,7 +1249,7 @@ LogicalResult MemTileDMAOp::verify() {
         // Move this code to the dialect
         // Set of blocks found to be reachable within a given region.
         llvm::SmallSet<Block *, 16> reachable;
-        llvm::SmallVector<Block *, 16> worklist;
+        SmallVector<Block *, 16> worklist;
         Block *firstBD = startOp.getSuccessor(0);
         reachable.insert(firstBD);
         worklist.push_back(firstBD);
@@ -1271,10 +1265,10 @@ LogicalResult MemTileDMAOp::verify() {
             }
           }
         }
-        for (auto b : reachable) {
-          for (auto bd : b->getOps<DMABDOp>()) {
-            auto bufferOp = bd.getBufferOp();
-            if (bufferOp.getTileOp().colIndex() != colIndex() ||
+        for (Block *b : reachable) {
+          for (DMABDOp bd : b->getOps<DMABDOp>()) {
+            if (auto bufferOp = bd.getBufferOp();
+                bufferOp.getTileOp().colIndex() != colIndex() ||
                 bufferOp.getTileOp().rowIndex() != rowIndex()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
@@ -1287,8 +1281,8 @@ LogicalResult MemTileDMAOp::verify() {
             }
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
-            auto lockOp = useLock.getLockOp();
-            if (lockOp.getTileOp().colIndex() != colIndex() ||
+            if (auto lockOp = useLock.getLockOp();
+                lockOp.getTileOp().colIndex() != colIndex() ||
                 lockOp.getTileOp().rowIndex() != rowIndex()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
@@ -1315,8 +1309,8 @@ BufferOp DMABDOp::getBufferOp() {
 
 LogicalResult DMABDOp::verify() {
   if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
-    auto bufferOp = getBufferOp();
-    if (bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
+    if (auto bufferOp = getBufferOp();
+        bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
         bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
       return emitOpError("can only access a buffer in the same tile.");
   }
@@ -1334,7 +1328,7 @@ LogicalResult DMABDOp::verify() {
     for (int64_t memrefDim : buffer.getShape())
       memrefSize *= 4 * memrefDim;
 
-    llvm::ArrayRef<DimTupleAttr> dims = *getDimensions();
+    ArrayRef<DimTupleAttr> dims = *getDimensions();
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>((*this)->getParentOp())) {
       maxNDims = 4;
@@ -1387,7 +1381,7 @@ int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
-Region *MemTileDMAOp::getCallableRegion() { return &(getBody()); }
+Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
 // SwitchboxOp
 TileOp SwitchboxOp::getTileOp() {
@@ -1417,15 +1411,15 @@ int LockOp::colIndex() { return getTileOp().colIndex(); }
 int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
-  auto result = UsesAreAccessable::verifyTrait(*this);
-  if (result.failed())
+  if (auto result = UsesAreAccessable::verifyTrait(*this); result.failed())
     return result;
 
   if (getLockID().has_value()) {
     const auto &targetModel = getTargetModel(getTileOp());
     auto tileOp = getTileOp();
-    int numLocks = targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
-    if (getLockID().value() >= numLocks)
+    if (int numLocks =
+            targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+        getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
   }
@@ -1438,8 +1432,8 @@ struct UsesOneLockInDMABlock {
     auto block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
-      auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-      if (lock.getLockID().has_value()) {
+      if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+          lock.getLockID().has_value()) {
         if (lockID != -1 && lockID != lock.getLockIDValue())
           return failure();
         lockID = lock.getLockIDValue();
@@ -1474,8 +1468,8 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = dyn_cast<UseLockOp>(op);
-      auto lock = useLock.getLockOp();
-      if (lock.getTileOp().colIndex() != memOp.colIndex() ||
+      if (auto lock = useLock.getLockOp();
+          lock.getTileOp().colIndex() != memOp.colIndex() ||
           lock.getTileOp().rowIndex() != memOp.rowIndex())
         return failure();
     }
@@ -1514,15 +1508,13 @@ LogicalResult UseLockOp::verify() {
     return success();
 
     // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
-  } else if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this)
-                 .succeeded()) {
-    return success();
-
-  } else {
-    return (*this)->emitOpError()
-           << "expects some parent op to be one of "
-           << "AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA";
   }
+  if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this).succeeded()) {
+    return success();
+  }
+  return (*this)->emitOpError()
+         << "expects some parent op to be one of "
+         << "AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA";
 }
 
 #include "aie/Dialect/AIE/IR/AIEEnums.cpp.inc"

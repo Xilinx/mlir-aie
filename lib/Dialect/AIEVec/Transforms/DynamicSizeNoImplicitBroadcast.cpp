@@ -39,7 +39,7 @@ using namespace xilinx::aievec;
 // when the CmpIOp compares the equality of a dynamic dimension's runtime size
 // to a constant 1, and is guarded by the attribute
 // `tosa.no_implicit_broadcast_of_dynamic_sizes`.
-struct DynamicSizeNoImplicitBroadcastPattern : public RewritePattern {
+struct DynamicSizeNoImplicitBroadcastPattern : RewritePattern {
   DynamicSizeNoImplicitBroadcastPattern(MLIRContext *context)
       : RewritePattern(arith::CmpIOp::getOperationName(), /*benefit=*/1,
                        context) {}
@@ -79,7 +79,7 @@ struct DynamicSizeNoImplicitBroadcastPattern : public RewritePattern {
 
     auto index =
         constIndexOp.getValue().cast<IntegerAttr>().getValue().getZExtValue();
-    auto inputDimType = lhsOp->getOperand(0).getType().dyn_cast<ShapedType>();
+    auto inputDimType = dyn_cast<ShapedType>(lhsOp->getOperand(0).getType());
     if (!inputDimType || !inputDimType.isDynamicDim(index))
       return failure();
 
@@ -95,7 +95,7 @@ struct DynamicSizeNoImplicitBroadcastPattern : public RewritePattern {
 //============================================================================//
 
 struct DynamicSizeNoImplicitBroadcastPass
-    : public PassWrapper<DynamicSizeNoImplicitBroadcastPass, OperationPass<>> {
+    : PassWrapper<DynamicSizeNoImplicitBroadcastPass, OperationPass<>> {
 
   StringRef getArgument() const final {
     return "test-dynamic-size-no-implicit-broadcast";

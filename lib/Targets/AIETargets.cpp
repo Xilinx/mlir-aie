@@ -24,7 +24,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Target/LLVMIR/Import.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
 #include "llvm/Support/JSON.h"
@@ -42,14 +41,17 @@ static llvm::cl::opt<int>
             llvm::cl::init(0));
 
 llvm::json::Value attrToJSON(Attribute &attr) {
-  if (auto a = attr.dyn_cast<StringAttr>()) {
-    return llvm::json::Value(a.getValue().str());
-  } else if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
+  if (auto a = llvm::dyn_cast<StringAttr>(attr))
+    return {a.getValue().str()};
+
+  if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     llvm::json::Array arrayJSON;
     for (auto a : arrayAttr)
       arrayJSON.push_back(attrToJSON(a));
     return llvm::json::Value(std::move(arrayJSON));
-  } else if (auto dictAttr = attr.dyn_cast<DictionaryAttr>()) {
+  }
+
+  if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     llvm::json::Object dictJSON;
     for (auto a : dictAttr) {
       auto ident = a.getName();
@@ -57,14 +59,15 @@ llvm::json::Value attrToJSON(Attribute &attr) {
       dictJSON[ident.str()] = attrToJSON(attr);
     }
     return llvm::json::Value(std::move(dictJSON));
-  } else if (auto intAttr = attr.dyn_cast<IntegerAttr>()) {
+  }
+
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr))
     return llvm::json::Value(intAttr.getInt());
-  } else
-    return llvm::json::Value(std::string(""));
+
+  return llvm::json::Value(std::string(""));
 }
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
@@ -273,7 +276,7 @@ ENTRY(_main_init)
 SECTIONS
 {
   . = 0x0;
-  .text : { 
+  .text : {
      /* the _main_init symbol from me_basic.o has to come at address zero. */
      *me_basic.o(.text)
      . = 0x200;
@@ -286,7 +289,7 @@ SECTIONS
      _dtors_end = .;
      *(.text)
   } > program
-  .data : { 
+  .data : {
      *(.data*);
      *(.rodata*)
   } > data
@@ -546,5 +549,4 @@ SECTIONS
       },
       registerDialects);
 }
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE

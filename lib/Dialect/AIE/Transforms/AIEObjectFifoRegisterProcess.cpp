@@ -127,21 +127,21 @@ struct AIEObjectFifoRegisterProcessPass
       builder.setInsertionPointToEnd(device.getBody());
       ObjectFifoCreateOp objFifo = registerOp.getObjectFifo();
       auto elementType =
-          objFifo.getElemType().dyn_cast<AIEObjectFifoType>().getElementType();
+          llvm::dyn_cast<AIEObjectFifoType>(objFifo.getElemType())
+              .getElementType();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
         std::queue<Value> consumers;
-        for (auto consumerTile : objFifo.getConsumerTiles()) {
+        for (auto consumerTile : objFifo.getConsumerTiles())
           consumers.push(consumerTile);
-        }
         consumersPerFifo[objFifo] = consumers;
       }
 
       // identify tile on which to generate the pattern
       Value tile;
-      if (registerOp.getPort() == ObjectFifoPort::Produce) {
+      if (registerOp.getPort() == ObjectFifoPort::Produce)
         tile = objFifo.getProducerTile();
-      } else if (registerOp.getPort() == ObjectFifoPort::Consume) {
+      else if (registerOp.getPort() == ObjectFifoPort::Consume) {
         assert(!consumersPerFifo[objFifo].empty() &&
                "No more available consumer tiles for process.");
         tile = consumersPerFifo[objFifo].front();
@@ -150,12 +150,11 @@ struct AIEObjectFifoRegisterProcessPass
 
       // retrieve core associated to above tile or create new one
       CoreOp *core = nullptr;
-      for (auto coreOp : device.getOps<CoreOp>()) {
+      for (auto coreOp : device.getOps<CoreOp>())
         if (coreOp.getTile() == tile) {
           core = &coreOp;
           break;
         }
-      }
       if (core == nullptr) {
         auto coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
                                              builder.getIndexType(), tile);
@@ -186,16 +185,14 @@ struct AIEObjectFifoRegisterProcessPass
         auto acqPattern =
             registerOp.getAcquirePattern().getValues<IntegerAttr>();
         std::vector<IntegerAttr> acqVector;
-        for (auto i = acqPattern.begin(); i != acqPattern.end(); ++i) {
+        for (auto i = acqPattern.begin(); i != acqPattern.end(); ++i)
           acqVector.push_back(*i);
-        }
 
         auto relPattern =
             registerOp.getReleasePattern().getValues<IntegerAttr>();
         std::vector<IntegerAttr> relVector;
-        for (auto i = relPattern.begin(); i != relPattern.end(); ++i) {
+        for (auto i = relPattern.begin(); i != relPattern.end(); ++i)
           relVector.push_back(*i);
-        }
 
         if (acqSize == 1) {
           // duplicate acquire pattern
@@ -219,7 +216,6 @@ struct AIEObjectFifoRegisterProcessPass
           auto currRel = relVector[i];
           if (i < acqSize - 1) {
             auto nextAcq = acqVector[i + 1];
-
             if (auto nextRel = relVector[i + 1];
                 currAcq.getInt() == nextAcq.getInt() &&
                 currRel.getInt() == nextRel.getInt()) {
