@@ -384,6 +384,8 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     case AIEArch::AIE2:
       triple = "aie2";
       break;
+    default:
+      llvm::report_fatal_error("unsupported arch");
     }
 
     // Ensure that we don't have an incorrect target triple.  This may override

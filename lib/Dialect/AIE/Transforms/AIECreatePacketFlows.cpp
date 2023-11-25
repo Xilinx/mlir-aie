@@ -319,7 +319,7 @@ struct AIERoutePacketFlowsPass
       Region &r = pktflow.getPorts();
       Block &b = r.front();
       int flowID = pktflow.IDInt();
-      int xSrc, ySrc;
+      int xSrc = 0, ySrc = 0;
       Port sourcePort;
 
       for (Operation &Op : b.getOperations()) {

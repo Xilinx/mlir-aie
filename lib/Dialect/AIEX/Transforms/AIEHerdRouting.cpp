@@ -12,19 +12,19 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+
+#define DEBUG_TYPE "aie-herd-routing"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-template <typename MyOp>
-struct AIEOpRemoval : public OpConversionPattern<MyOp> {
+template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
@@ -60,8 +60,8 @@ std::optional<int> getAvailableDestChannel(SmallVector<Connect, 8> &connects,
 
   // look for existing connect
   for (int i = 0; i < numChannels; i++) {
-    Port port = {destBundle, i};
-    if (std::find(connects.begin(), connects.end(),
+    if (Port port = {destBundle, i};
+        std::find(connects.begin(), connects.end(),
                   Connect{sourcePort, port}) != connects.end())
       return {i};
   }
@@ -70,8 +70,8 @@ std::optional<int> getAvailableDestChannel(SmallVector<Connect, 8> &connects,
   for (int i = 0; i < numChannels; i++) {
     Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
-    for (auto connect : connects)
-      ports.push_back(connect.dst);
+    for (auto [src, dst] : connects)
+      ports.push_back(dst);
 
     if (std::find(ports.begin(), ports.end(), port) == ports.end())
       return {i};
@@ -88,21 +88,19 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 
   int xCur = xSrc;
   int yCur = ySrc;
-  WireBundle curBundle;
-  int curChannel;
-  WireBundle lastBundle;
+  WireBundle curBundle = WireBundle::Core;
+  int curChannel = 0;
+  WireBundle lastBundle = WireBundle::Core;
   Port lastPort = {sourceBundle, sourceChannel};
 
   SmallVector<TileID, 4> congestion;
 
-  llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> " << xDest
-               << " " << yDest << '\n';
+  LLVM_DEBUG(llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> "
+                          << xDest << " " << yDest << '\n');
   // traverse horizontally, then vertically
-  while (!((xCur == xDest) && (yCur == yDest))) {
-    llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
-
+  while (!(xCur == xDest && yCur == yDest)) {
+    LLVM_DEBUG(llvm::dbgs() << "coord " << xCur << " " << yCur << '\n');
     TileID curCoord = {xCur, yCur};
-
     SmallVector<WireBundle, 4> moves;
 
     if (xCur < xDest)
@@ -133,41 +131,37 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
       if (move == lastBundle)
         continue;
 
-      if (move == WireBundle::East) {
+      if (move == WireBundle::East)
         xCur = xCur + 1;
-        // yCur = yCur;
-      } else if (move == WireBundle::West) {
+      // yCur = yCur;
+      else if (move == WireBundle::West)
         xCur = xCur - 1;
-        // yCur = yCur;
-      } else if (move == WireBundle::North) {
+      // yCur = yCur;
+      else if (move == WireBundle::North)
         // xCur = xCur;
         yCur = yCur + 1;
-      } else if (move == WireBundle::South) {
+      else if (move == WireBundle::South)
         // xCur = xCur;
         yCur = yCur - 1;
-      }
 
       if (std::find(congestion.begin(), congestion.end(), TileID{xCur, yCur}) !=
           congestion.end())
         continue;
 
       curBundle = move;
-      lastBundle = (move == WireBundle::East)    ? WireBundle::West
-                   : (move == WireBundle::West)  ? WireBundle::East
-                   : (move == WireBundle::North) ? WireBundle::South
-                   : (move == WireBundle::South) ? WireBundle::North
-                                                 : lastBundle;
+      lastBundle = move == WireBundle::East    ? WireBundle::West
+                   : move == WireBundle::West  ? WireBundle::East
+                   : move == WireBundle::North ? WireBundle::South
+                   : move == WireBundle::South ? WireBundle::North
+                                               : lastBundle;
       break;
     }
 
     assert(curChannel >= 0 && "Could not find available destination port!");
-
-    llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
-                 << lastPort.channel
-                 << "], "
-                    "["
-                 << stringifyWireBundle(curBundle) << " : " << curChannel
-                 << "]\n";
+    LLVM_DEBUG(llvm::dbgs()
+               << "[" << stringifyWireBundle(lastPort.bundle) << " : "
+               << lastPort.channel << "], [" << stringifyWireBundle(curBundle)
+               << " : " << curChannel << "]\n");
 
     Port curPort = {curBundle, curChannel};
     Connect connect = {lastPort, curPort};
@@ -179,19 +173,17 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
     lastPort = {lastBundle, curChannel};
   }
 
-  llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
-  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
-               << lastPort.channel
-               << "], "
-                  "["
-               << stringifyWireBundle(destBundle) << " : " << destChannel
-               << "]\n";
+  LLVM_DEBUG(llvm::dbgs() << "coord " << xCur << " " << yCur << '\n');
+  LLVM_DEBUG(llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle)
+                          << " : " << lastPort.channel << "], ["
+                          << stringifyWireBundle(destBundle) << " : "
+                          << destChannel << "]\n");
 
   switchboxes[std::make_pair(herdOp, TileID{xCur, yCur})].push_back(
       {lastPort, Port{destBundle, destChannel}});
 }
 
-struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
+struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
@@ -206,9 +198,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     DenseMap<std::pair<Operation *, TileID>, SmallVector<Connect, 8>>
         switchboxes;
 
-    for (auto herd : device.getOps<HerdOp>()) {
+    for (auto herd : device.getOps<HerdOp>())
       herds.push_back(herd);
-    }
 
     for (auto placeOp : device.getOps<PlaceOp>()) {
       placeOps.push_back(placeOp);
@@ -225,10 +216,10 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     for (auto routeOp : device.getOps<RouteOp>()) {
       routeOps.push_back(routeOp);
 
-      AIEX::SelectOp sourceHerds =
-          dyn_cast<AIEX::SelectOp>(routeOp.getSourceHerds().getDefiningOp());
-      AIEX::SelectOp destHerds =
-          dyn_cast<AIEX::SelectOp>(routeOp.getDestHerds().getDefiningOp());
+      auto sourceHerds =
+          dyn_cast<SelectOp>(routeOp.getSourceHerds().getDefiningOp());
+      auto destHerds =
+          dyn_cast<SelectOp>(routeOp.getDestHerds().getDefiningOp());
       WireBundle sourceBundle = routeOp.getSourceBundle();
       WireBundle destBundle = routeOp.getDestBundle();
       int sourceChannel = routeOp.getSourceChannelValue();
@@ -262,15 +253,11 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
       assert(distances.count(std::make_pair(sourceHerd, destHerd)) == 1);
 
-      std::pair<int, int> distance =
-          distances[std::make_pair(sourceHerd, destHerd)];
-      int distX = distance.first;
-      int distY = distance.second;
+      auto [distX, distY] = distances[std::make_pair(sourceHerd, destHerd)];
       // FIXME: this looks like it can be improved further ...
-      for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX) {
-        for (int ySrc = sourceStartY; ySrc < sourceEndY;
-             ySrc += sourceStrideY) {
-          for (int xDst = destStartX; xDst < destEndX; xDst += destStrideX) {
+      for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX)
+        for (int ySrc = sourceStartY; ySrc < sourceEndY; ySrc += sourceStrideY)
+          for (int xDst = destStartX; xDst < destEndX; xDst += destStrideX)
             for (int yDst = destStartY; yDst < destEndY; yDst += destStrideY) {
               // Build route (x0, y0) --> (x1, y1)
               int x0 = xSrc;
@@ -299,9 +286,6 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
               routes.push_back(route);
             }
-          }
-        }
-      }
     }
 
     for (const auto &swboxCfg : switchboxes) {
@@ -315,17 +299,15 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
       auto iterx = builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
       auto itery = builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
-      auto sel = builder.create<AIEX::SelectOp>(builder.getUnknownLoc(), herd,
-                                                iterx, itery);
+      auto sel =
+          builder.create<SelectOp>(builder.getUnknownLoc(), herd, iterx, itery);
       auto swbox = builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
       SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
                                     builder.getUnknownLoc());
       Block &b = swbox.getConnections().front();
       builder.setInsertionPoint(b.getTerminator());
 
-      for (auto connect : connects) {
-        Port sourcePort = connect.src;
-        Port destPort = connect.dst;
+      for (auto [sourcePort, destPort] : connects) {
         WireBundle sourceBundle = sourcePort.bundle;
         int sourceChannel = sourcePort.channel;
         WireBundle destBundle = destPort.bundle;
@@ -347,7 +329,6 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIEX::createAIEHerdRoutingPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIEX::createAIEHerdRoutingPass() {
   return std::make_unique<AIEHerdRoutingPass>();
 }

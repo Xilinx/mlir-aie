@@ -15,7 +15,7 @@
 # The LLVM commit to use.
 # TODO: create a branch or a tag instead, to avoid fetching main and
 # this commit later.
-commithash=e9453f3c3c7e682e39952c9e18e6b1f8152b0ffa
+commithash=3422203abccd7ff4bd839011b780b41f8fa8ca8f
 
 here=$PWD
 

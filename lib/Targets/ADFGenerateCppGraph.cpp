@@ -9,15 +9,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "AIETargets.h"
+
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
+
 #include "llvm/Support/FileSystem.h"
-#include <iostream>
+
 #include <unordered_map>
 #include <vector>
 
@@ -34,8 +36,7 @@ struct Indent {
 };
 static void resetIndent() { currentindent = 0; }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const struct Indent &indent) {
+raw_ostream &operator<<(raw_ostream &os, const Indent &indent) {
   for (int i = 0; i < currentindent; ++i)
     os << "  ";
   return os;
@@ -49,51 +50,49 @@ struct GraphWriter {
   std::unordered_map<Operation *, std::string> kernelOp2VarName;
 
   StringRef getCTypeString(const Type &type) {
-    if (const auto &t = type.dyn_cast<int8Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<int16Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<int32Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<int64Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<uint8Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<uint16Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<uint32Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<uint64Type>())
-      return t.getMnemonic();
-    if (const auto &t = type.dyn_cast<floatType>())
-      return t.getMnemonic();
-    assert(false);
-    return {};
+    if (llvm::dyn_cast<int8Type>(type))
+      return int8Type::getMnemonic();
+    if (llvm::dyn_cast<int16Type>(type))
+      return int16Type::getMnemonic();
+    if (llvm::dyn_cast<int32Type>(type))
+      return int32Type::getMnemonic();
+    if (llvm::dyn_cast<int64Type>(type))
+      return int64Type::getMnemonic();
+    if (llvm::dyn_cast<uint8Type>(type))
+      return uint8Type::getMnemonic();
+    if (llvm::dyn_cast<uint16Type>(type))
+      return uint16Type::getMnemonic();
+    if (llvm::dyn_cast<uint32Type>(type))
+      return uint32Type::getMnemonic();
+    if (llvm::dyn_cast<uint64Type>(type))
+      return uint64Type::getMnemonic();
+    if (llvm::dyn_cast<floatType>(type))
+      return floatType::getMnemonic();
+    llvm::report_fatal_error("unknown type");
   }
-  std::string getKernelTypeString(std::string direction, Type type) {
-    if (auto window = type.dyn_cast<WindowType>()) {
+
+  std::string getKernelTypeString(const std::string &direction, Type type) {
+    if (auto window = llvm::dyn_cast<WindowType>(type))
       return (direction + "_window_" + getCTypeString(window.getType()) + " *")
           .str();
-    } else if (auto stream = type.dyn_cast<StreamType>()) {
+    if (auto stream = llvm::dyn_cast<StreamType>(type))
       return (direction + "_stream_" + getCTypeString(stream.getType()) + " *")
           .str();
-    } else if (auto stream = type.dyn_cast<ParameterType>()) {
+    if (auto stream = llvm::dyn_cast<ParameterType>(type))
       return std::string(getCTypeString(stream.getType()));
-    }
-    assert(false);
-    return {};
+
+    llvm::report_fatal_error("unknown kernel type");
   }
 
   std::string getConnectionTypeString(Type type) {
-    if (auto windowType = type.dyn_cast<WindowType>()) {
+    if (auto windowType = llvm::dyn_cast<WindowType>(type))
       return std::string("window<") + std::to_string(windowType.getSize()) +
              "> ";
-    } else if (auto windowType = type.dyn_cast<StreamType>())
+    if (llvm::dyn_cast<StreamType>(type))
       return "stream";
-    else if (auto windowType = type.dyn_cast<ParameterType>())
+    if (llvm::dyn_cast<ParameterType>(type))
       return "parameter";
-    assert(false);
-    return {};
+    llvm::report_fatal_error("unknown connection type");
   }
 
   std::string getTempNetName() {
@@ -118,7 +117,6 @@ struct GraphWriter {
           output << getTempNetName() << " (" << driverOp.getName() << ", "
                  << targetKernelName << ".in[" << targetIndex << "]);\n";
         }
-
         // todo: kernel should not drive graph input, add an mlir verifier
         // condition
       }
@@ -154,13 +152,13 @@ struct GraphWriter {
           output << getTempNetName() << " (" << sourceKernelName << ".out["
                  << sourceIndex << "], " << outputOp.getName() << ");\n";
         }
-
         // todo: kernel should not drive graph input, add an mlir verifier
         // condition
       }
       sourceIndex++;
     }
   }
+
   void writeKernelFunctions(ModuleOp module) {
     output << "#include <adf.h>\n";
     output << "#ifndef FUNCTION_KERNELS_H\n";
@@ -169,13 +167,10 @@ struct GraphWriter {
     for (Block &block : module.getBodyRegion())
       for (auto funcOp : block.getOps<func::FuncOp>()) {
         output << "void " << funcOp.getSymName() << "(";
-
         FunctionType type = funcOp.getFunctionType();
-
-        for (unsigned i = 0; i < type.getNumInputs(); i++) {
+        for (unsigned i = 0; i < type.getNumInputs(); i++)
           output << getKernelTypeString("input", type.getInput(i)) << " in" << i
                  << ", ";
-        }
 
         for (unsigned i = 0; i < type.getNumResults(); i++) {
           output << getKernelTypeString("output", type.getResult(i)) << " out"
@@ -189,7 +184,7 @@ struct GraphWriter {
     output << "#endif\n\n";
   }
 
-  void writeClass(ADF::GraphOp graph) {
+  void writeClass(GraphOp graph) {
     output << "#include <adf.h>\n";
     output << "using namespace adf;\n";
     output << "class " << graph.getName() << " : public graph {\n";
@@ -239,7 +234,6 @@ struct GraphWriter {
           } else if (auto graph = dyn_cast<KernelOp>(op)) {
             visitOpResultUsers(graph);
           } else if (auto graph = dyn_cast<GraphOutputOp>(op)) {
-            ;
             // the graph output should have no users in adf, do nothing here
           }
         } // all op visited
@@ -264,23 +258,14 @@ struct GraphWriter {
   }
 };
 
-mlir::LogicalResult xilinx::AIE::ADFGenerateCPPGraph(ModuleOp module,
-                                                     raw_ostream &output) {
+LogicalResult AIE::ADFGenerateCPPGraph(ModuleOp module, raw_ostream &output) {
   GraphWriter writer(output);
   resetIndent();
 
   writer.writeKernelFunctions(module);
 
   for (Block &block : module.getBodyRegion())
-    for (auto graphOp : block.getOps<GraphOp>()) {
+    for (auto graphOp : block.getOps<GraphOp>())
       writer.writeClass(graphOp);
-    }
-  return mlir::success();
+  return success();
 }
-
-// };
-
-// std::unique_ptr<OperationPass<ModuleOp>>
-// xilinx::ADF::createADFGenerateCppGraphPass() {
-//   return std::make_unique<ADFGenerateCppGraphPass>();
-// }

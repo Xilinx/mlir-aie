@@ -28,8 +28,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
@@ -47,8 +46,7 @@ struct HasValidDMAChannels
 };
 
 class TileOp;
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
@@ -56,13 +54,11 @@ class TileOp;
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIE/IR/AIEDialect.h.inc"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 void registerAIETranslations();
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Custom Types for the Dialect ///////////////////////////
@@ -72,8 +68,7 @@ void registerAIETranslations();
 #define GET_TYPEDEF_CLASSES 1
 #include "aie/Dialect/AIE/IR/AIETypes.h.inc"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 namespace detail {
 struct AIEObjectFifoTypeStorage;
 }
@@ -122,8 +117,7 @@ public:
   Type getElementType();
 };
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 ////////////////////////////////////////////////////////////////////////////////
 // Custom Attributes ///////////////////////////////////////////////////////////
@@ -136,8 +130,7 @@ public:
 //////////////////// Custom Operations for the Dialect /////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 #define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                             \
   friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) {              \
@@ -224,7 +217,7 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
                             DimTupleArrayAttr &dimensions);
 
-void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter,
+void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value tile,
                                  mlir::Attribute dimensions);
 
@@ -233,14 +226,13 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
     llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions);
 
-void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
+void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   mlir::Attribute dimensions);
 
 uint64_t getBufferBaseAddress(mlir::Operation *bufOp);
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES

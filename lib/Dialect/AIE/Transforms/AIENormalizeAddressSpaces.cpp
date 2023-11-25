@@ -23,7 +23,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 Type memRefToDefaultAddressSpace(Type t) {
-  if (auto memRefType = t.dyn_cast<MemRefType>();
+  if (auto memRefType = llvm::dyn_cast<MemRefType>(t);
       memRefType && memRefType.getMemorySpace() != nullptr)
     return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
                            memRefType.getLayout(), nullptr /* Address Space */);
