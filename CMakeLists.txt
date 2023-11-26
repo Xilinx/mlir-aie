@@ -169,6 +169,12 @@ if(AIE_INCLUDE_DOCS)
   add_dependencies(docs mlir-doc)
 endif()
 
+append_if(BUILD_INSTRUMENTED_COVERAGE "-O0 --coverage -fprofile-arcs -ftest-coverage -fprofile-instr-generate=code-%p-%100000000m.profraw -fcoverage-mapping"
+  CMAKE_CXX_FLAGS
+  CMAKE_C_FLAGS
+  CMAKE_EXE_LINKER_FLAGS
+  CMAKE_SHARED_LINKER_FLAGS)
+
 if(AIE_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
   mlir_configure_python_dev_packages()
@@ -230,3 +236,27 @@ add_subdirectory(reference_designs)
 add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(cmake/modules)
+
+get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)
+find_program(LLVM_COV "llvm-cov" ${COMPILER_DIRECTORY} NO_DEFAULT_PATH)
+find_program(LLVM_PROFDATA "llvm-profdata" ${COMPILER_DIRECTORY} NO_DEFAULT_PATH)
+set(LLVM_PROFILE_DATA_DIR ${PROJECT_BINARY_DIR})
+file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/report" REPORT_DIR)
+
+if (NOT INSTRUMENTED_COVERAGE_FILES)
+  set(INSTRUMENTED_COVERAGE_FILES
+    "${AIE_SOURCE_DIR}/lib"
+    "${AIE_SOURCE_DIR}/include"
+    "${AIE_SOURCE_DIR}/tools"
+    "${AIE_SOURCE_DIR}/python"
+  )
+endif()
+
+add_custom_target(generate-aie-coverage-report
+  COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/prepare-code-coverage-artifact.py
+  ${LLVM_PROFDATA} ${LLVM_COV} ${LLVM_PROFILE_DATA_DIR}
+  ${REPORT_DIR}
+  ${CMAKE_BINARY_DIR}/bin/aie-opt
+  --unified-report --restrict ${INSTRUMENTED_COVERAGE_FILES}
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+  DEPENDS check-aie) # Run tests

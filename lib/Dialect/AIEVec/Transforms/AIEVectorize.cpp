@@ -16,6 +16,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
+
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -26,6 +27,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+
 #include "llvm/ADT/SmallSet.h"
 
 using namespace mlir;

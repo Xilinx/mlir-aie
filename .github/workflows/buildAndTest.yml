@@ -168,6 +168,8 @@ jobs:
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
@@ -183,6 +185,7 @@ jobs:
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          
           ninja
           ninja check-aie
           ninja check-tutorials
@@ -195,7 +198,10 @@ jobs:
           mkdir build_release
           cd build_release
           cmake .. \
+            -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
@@ -210,10 +216,11 @@ jobs:
             -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
-          make -j$(nproc)
-          make check-aie
-          make check-tutorials
-          make check-reference-designs
+          
+          ninja
+          ninja check-aie
+          ninja check-tutorials
+          ninja check-reference-designs
 
   lint-repo:
     name: Check code format
@@ -338,3 +345,122 @@ jobs:
             cat clang-tidy.patch
             echo "================"
           fi
+
+  code-coverage:
+
+    name: Code Coverage
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python and other packages
+        run: |
+          pip install cmake numpy psutil pybind11 rich
+
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+
+      - name: Install llvm-cov
+        run: sudo apt-get install -y clang lld llvm
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          git fetch origin main
+          # Because for the life of me I cannot figure out how to read the output of git diff into a bash array.
+          CHANGED_FILES=$(python utils/get_git_changed_files.py)
+          echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
+
+      - name: Get LLVM
+        if: steps.changed-files.outputs.changed-files != ''
+        id: clone-llvm
+        run: utils/clone-llvm.sh
+
+      - name: Get LLVM commit hash
+        if: steps.changed-files.outputs.changed-files != ''
+        id: get-llvm-commit-hash
+        run: echo "hash=$(cd llvm ; git log -1 --format='%H')" >> $GITHUB_OUTPUT
+
+      - name: Ccache for C++ compilation
+        if: steps.changed-files.outputs.changed-files != ''
+        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
+        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
+        with:
+          key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
+          max-size: 1G
+
+      - name: Build and install LLVM
+        if: steps.changed-files.outputs.changed-files != ''
+        run: LLVM_ENABLE_RTTI=ON utils/build-llvm.sh
+
+      - name: Install our python reqs
+        if: steps.changed-files.outputs.changed-files != ''
+        run: pip install -r python/requirements.txt
+
+      - name: Build and generate coverage (Release)
+        if: steps.changed-files.outputs.changed-files != ''
+        run: |
+          mkdir build_release
+          cd build_release
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=/home/runner/work/mlir-aie/mlir-aie/llvm/install/lib/cmake/mlir \
+            -DLLVM_DIR=/home/runner/work/mlir-aie/mlir-aie/llvm/install/lib/cmake/llvm \
+            -DLLVM_USE_LINKER=lld \
+            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
+            \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DBUILD_INSTRUMENTED_COVERAGE=ON \
+            -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
+          
+          ninja && ninja generate-aie-coverage-report
+
+      - name: Format coverage report
+        if: steps.changed-files.outputs.changed-files != ''
+        id: format-report
+        run: |
+          sed -i.bak 's/<!doctype html>/<!--<!doctype codecov html>-->/g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/<pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/<\/pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/([0-9]*\/[0-9]*)//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak "s/href=/href=''/g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          WORKSPACE=$(echo "/home/runner/work/mlir-aie/mlir-aie/" | sed 's/\//\\\//g')
+          sed -i.bak "s/$WORKSPACE//g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+
+
+      - name: Update PR with coverage results
+        if: steps.changed-files.outputs.changed-files != ''
+        uses: edumserrano/find-create-or-update-comment@v2
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!--<!doctype codecov html>-->'
+          comment-author: 'github-actions[bot]'
+          body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          edit-mode: replace
