@@ -441,6 +441,8 @@ jobs:
             -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
           
           ninja && ninja generate-aie-coverage-report
+          
+          cat /home/runner/work/mlir-aie/mlir-aie/build_release/report/summary.txt
 
       - name: Format coverage report
         if: steps.changed-files.outputs.changed-files != ''
@@ -456,7 +458,7 @@ jobs:
 
 
       - name: Update PR with coverage results
-        if: steps.changed-files.outputs.changed-files != ''
+        if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
         uses: edumserrano/find-create-or-update-comment@v2
         with:
           issue-number: ${{ github.event.pull_request.number }}

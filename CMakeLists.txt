@@ -169,7 +169,7 @@ if(AIE_INCLUDE_DOCS)
   add_dependencies(docs mlir-doc)
 endif()
 
-append_if(BUILD_INSTRUMENTED_COVERAGE "-O0 --coverage -fprofile-arcs -ftest-coverage -fprofile-instr-generate=code-%p-%100000000m.profraw -fcoverage-mapping"
+append_if(BUILD_INSTRUMENTED_COVERAGE "-O0 -fprofile-arcs -ftest-coverage -fprofile-instr-generate=code-%p-%100000000m.profraw -fcoverage-mapping"
   CMAKE_CXX_FLAGS
   CMAKE_C_FLAGS
   CMAKE_EXE_LINKER_FLAGS
