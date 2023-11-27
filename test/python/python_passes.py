@@ -28,6 +28,7 @@ def run(f):
 
 THIS_FILE = __file__
 
+
 # CHECK-LABEL: TEST: test_broadcast
 @run
 def test_broadcast(ctx):
@@ -641,3 +642,29 @@ def test_vecmul_4x4(ctx):
         pprint(paths)
 
     print(mlir_module)
+
+
+# @run
+def test_unit_fixed_connections(ctx):
+    for mlir_module in (
+        open(
+            Path(THIS_FILE).parent.parent
+            / "create-flows"
+            / "unit_fixed_connections.mlir"
+        )
+        .read()
+        .split("// -----")
+    ):
+        mlir_module = Module.parse(mlir_module)
+        r = Router()
+        pass_ = create_pathfinder_flows_with_python_pass(r)
+        pm = PassManager()
+        pass_manager_add_owned_pass(pm, pass_)
+        device = mlir_module.body.operations[0]
+        pm.run(device.operation)
+
+        for src, paths in r.routing_solution.items():
+            print(src)
+            pprint(paths)
+
+        print(mlir_module)

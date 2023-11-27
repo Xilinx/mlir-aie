@@ -12,8 +12,8 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Pass.h"
-#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
@@ -49,13 +49,15 @@ public:
         PathEndPoint{{dstCoords.col, dstCoords.row}, dstPort});
   }
 
-  bool addFixedConnection(TileID coords, Port port) override {
-    return router.attr("add_fixed_connection")(coords, port).cast<bool>();
+  bool addFixedConnection(ConnectOp connectOp) override {
+    auto sb = connectOp->getParentOfType<SwitchboxOp>();
+    if (sb.getTileOp().isShimNOCTile())
+      return true;
+
+    return router.attr("add_fixed_connection")(wrap(connectOp)).cast<bool>();
   }
 
-  bool isLegal() override { return router.attr("is_legal")().cast<bool>(); }
-
-  std::map<PathEndPoint, SwitchSettings>
+  std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(const int maxIterations) override {
     return router.attr("find_paths")()
         .cast<std::map<PathEndPoint, SwitchSettings>>();
@@ -79,7 +81,8 @@ createPathfinderFlowsWithPythonPassWithRouter(py::object router) {
 }
 
 MlirPass mlirCreatePathfinderFlowsWithPythonPassWithRouter(py::object router) {
-  return wrap(createPathfinderFlowsWithPythonPassWithRouter(router).release());
+  return wrap(createPathfinderFlowsWithPythonPassWithRouter(std::move(router))
+                  .release());
 }
 
 void registerPathfinderFlowsWithPythonPassWithRouter(const py::object &router) {
@@ -90,9 +93,9 @@ void registerPathfinderFlowsWithPythonPassWithRouter(const py::object &router) {
 
 #define MLIR_PYTHON_CAPSULE_PASS MAKE_MLIR_PYTHON_QUALNAME("ir.Pass._CAPIPtr")
 
-static inline PyObject *mlirPassToPythonCapsule(MlirPass pass) {
+static PyObject *mlirPassToPythonCapsule(MlirPass pass) {
   return PyCapsule_New(MLIR_PYTHON_GET_WRAPPED_POINTER(pass),
-                       MLIR_PYTHON_CAPSULE_PASS, NULL);
+                       MLIR_PYTHON_CAPSULE_PASS, nullptr);
 }
 
 static inline MlirPass mlirPythonCapsuleToPass(PyObject *capsule) {
@@ -109,7 +112,7 @@ PYBIND11_MODULE(_aie_python_passes, m) {
         [](const py::object &router) {
           MlirPass pass =
               mlirCreatePathfinderFlowsWithPythonPassWithRouter(router);
-          py::object capsule =
+          auto capsule =
               py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
           return capsule;
         });

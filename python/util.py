@@ -510,8 +510,8 @@ class Router:
     def add_flow(self, src: "PathEndPoint", tgt: "PathEndPoint"):
         self.flows.append((src, tgt))
 
-    def add_fixed_connection(self, coords: "TileID", port: "Port"):
-        raise NotImplemented("adding fixed connections not implemented yet.")
+    def add_fixed_connection(self, connect_op):
+        raise NotImplementedError("adding fixed connections not implemented yet.")
 
     def find_paths(self):
         DG = build_graph(self.max_col, self.max_row, self.target_model)
