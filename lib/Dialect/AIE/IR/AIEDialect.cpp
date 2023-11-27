@@ -34,21 +34,22 @@ struct AIEInlinerInterface : DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       IRMapping &valueMapping) const final {
+                       IRMapping &valueMapping) const final override {
     return true;
   }
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
-                       IRMapping &) const final {
+                       IRMapping &) const final override {
     return true;
   }
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block.
-  void handleTerminator(Operation *op, Block *newDest) const final {}
+  void handleTerminator(Operation *op, Block *newDest) const final override {}
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op, ArrayRef<Value> valuesToRepl) const {}
+  void handleTerminator(Operation *op,
+                        ValueRange valuesToRepl) const final override {}
 };
 
 struct AIEDialectFoldInterface : DialectFoldInterface {
@@ -57,7 +58,7 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
-  bool shouldMaterializeInto(Region *region) const final {
+  bool shouldMaterializeInto(Region *region) const final override {
     // If this is an AIE::CoreOp region, then insert into it.
     return isa<CoreOp>(region->getParentOp());
   }
