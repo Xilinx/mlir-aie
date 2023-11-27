@@ -159,7 +159,7 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
 } // namespace detail
 
 AIEObjectFifoType AIEObjectFifoType::get(Type elementType) {
-  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
+  // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
   return Base::get(ctx, elementType);
