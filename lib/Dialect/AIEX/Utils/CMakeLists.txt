@@ -18,7 +18,6 @@ add_mlir_dialect_library(AIEXUtils
   MLIRAIEInterfacesIncGen
   MLIRAIEOpsIncGen
   MLIRAIEPassIncGen
-  MLIRAIETypesIncGen
   MLIRAIEXIncGen
   MLIRAIEXPassIncGen
 

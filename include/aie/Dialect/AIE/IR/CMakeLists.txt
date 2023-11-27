@@ -22,13 +22,6 @@ mlir_tablegen(AIEOps.cpp.inc -gen-op-defs)
 add_public_tablegen_target(MLIRAIEOpsIncGen)
 add_dependencies(aie-headers MLIRAIEOpsIncGen)
 
-# Add AIE types
-set(LLVM_TARGET_DEFINITIONS AIETypes.td)
-mlir_tablegen(AIETypesGen.h.inc -gen-typedef-decls -typedefs-dialect=AIE)
-mlir_tablegen(AIETypesGen.cpp.inc -gen-typedef-defs -typedefs-dialect=AIE)
-add_public_tablegen_target(MLIRAIETypesIncGen)
-add_dependencies(aie-headers MLIRAIETypesIncGen)
-
 # Add AIE enums
 set(LLVM_TARGET_DEFINITIONS AIEAttrs.td)
 mlir_tablegen(AIEEnums.h.inc -gen-enum-decls)

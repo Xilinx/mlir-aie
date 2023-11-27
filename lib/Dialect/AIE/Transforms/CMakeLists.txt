@@ -31,7 +31,6 @@ add_mlir_dialect_library(
   MLIRAIENormalizeAddressSpacesIncGen
   MLIRAIEOpsIncGen
   MLIRAIEPassIncGen
-  MLIRAIETypesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
