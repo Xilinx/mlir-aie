@@ -191,32 +191,46 @@ typedef struct FlowNode {
   std::vector<PathEndPointNode> dsts;
 } FlowNode;
 
-class Pathfinder {
-  SwitchboxGraph graph;
-  std::vector<FlowNode> flows;
-  std::map<TileID, SwitchboxNode> grid;
-  // Use a list instead of a vector because nodes have an edge list of raw
-  // pointers to edges (so growing a vector would invalidate the pointers).
-  std::list<ChannelEdge> edges;
+class Router {
+public:
+  Router() = default;
+  // This has to go first so it can serve as a key function.
+  // https://lld.llvm.org/missingkeyfunction
+  virtual ~Router() = default;
+  virtual void initialize(int maxCol, int maxRow,
+                          const AIETargetModel &targetModel) = 0;
+  virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
+                       Port dstPort) = 0;
+  virtual bool addFixedConnection(ConnectOp connectOp) = 0;
+  virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
+  findPaths(int maxIterations) = 0;
+  virtual Switchbox *getSwitchbox(TileID coords) = 0;
+};
 
+class Pathfinder : public Router {
 public:
   Pathfinder() = default;
-  virtual void initialize(int maxCol, int maxRow,
-                          const AIETargetModel &targetModel);
-  virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort);
-  virtual bool addFixedConnection(ConnectOp connectOp);
-  virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
+  void initialize(int maxCol, int maxRow, const AIETargetModel &targetModel);
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
+  bool addFixedConnection(ConnectOp connectOp);
+  std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations);
 
-  virtual Switchbox *getSwitchbox(TileID coords) {
+  Switchbox *getSwitchbox(TileID coords) {
     auto sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
       return sb->col == coords.col && sb->row == coords.row;
     });
     assert(sb != graph.end() && "couldn't find sb");
     return *sb;
   }
-  virtual ~Pathfinder() = default;
+
+private:
+  SwitchboxGraph graph;
+  std::vector<FlowNode> flows;
+  std::map<TileID, SwitchboxNode> grid;
+  // Use a list instead of a vector because nodes have an edge list of raw
+  // pointers to edges (so growing a vector would invalidate the pointers).
+  std::list<ChannelEdge> edges;
 };
 
 WireBundle getConnectingBundle(WireBundle dir);
@@ -228,7 +242,7 @@ WireBundle getConnectingBundle(WireBundle dir);
 class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
-  std::shared_ptr<Pathfinder> pathfinder;
+  std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
 
@@ -240,8 +254,7 @@ public:
   const int maxIterations = 1000; // how long until declared unroutable
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
-  DynamicTileAnalysis(std::shared_ptr<Pathfinder> p)
-      : pathfinder(std::move(p)) {}
+  DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 

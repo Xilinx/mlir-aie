@@ -1,4 +1,4 @@
-//===- PathfinderFlowsWithPython.cpp ----------------------------*- C++ -*-===//
+//===- PythonRouter.cpp ----------------------------*- C++ -*-===//
 //
 // Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -32,9 +32,9 @@ namespace py = pybind11;
 //    │     │   │     │
 //    └─────┘   └─────┘
 
-class PythonPathFinder : public Pathfinder {
+class PythonRouter : public Router {
 public:
-  explicit PythonPathFinder(py::object router) : router(std::move(router)) {}
+  explicit PythonRouter(py::object router) : router(std::move(router)) {}
 
   void initialize(const int maxCol, const int maxRow,
                   const AIETargetModel &targetModel) override {
@@ -62,33 +62,29 @@ public:
     return router.attr("find_paths")()
         .cast<std::map<PathEndPoint, SwitchSettings>>();
   }
+  Switchbox *getSwitchbox(TileID coords) {}
 
   py::object router;
 };
 
-struct PathfinderFlowsWithPython : AIEPathfinderPass {
+struct PythonRouterPass : AIEPathfinderPass {
   using AIEPathfinderPass::AIEPathfinderPass;
 
-  StringRef getArgument() const final {
-    return "aie-create-pathfinder-flows-with-python";
-  }
+  StringRef getArgument() const final { return "aie-create-python-router"; }
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createPathfinderFlowsWithPythonPassWithRouter(py::object router) {
-  return std::make_unique<PathfinderFlowsWithPython>(DynamicTileAnalysis(
-      std::make_shared<PythonPathFinder>(std::move(router))));
+createPythonRouterPass(py::object router) {
+  return std::make_unique<PythonRouterPass>(
+      DynamicTileAnalysis(std::make_shared<PythonRouter>(std::move(router))));
 }
 
-MlirPass mlirCreatePathfinderFlowsWithPythonPassWithRouter(py::object router) {
-  return wrap(createPathfinderFlowsWithPythonPassWithRouter(std::move(router))
-                  .release());
+MlirPass mlircreatePythonRouterPass(py::object router) {
+  return wrap(createPythonRouterPass(std::move(router)).release());
 }
 
-void registerPathfinderFlowsWithPythonPassWithRouter(const py::object &router) {
-  registerPass([router] {
-    return createPathfinderFlowsWithPythonPassWithRouter(router);
-  });
+void registerPythonRouterPassWithRouter(const py::object &router) {
+  registerPass([router] { return createPythonRouterPass(router); });
 }
 
 #define MLIR_PYTHON_CAPSULE_PASS MAKE_MLIR_PYTHON_QUALNAME("ir.Pass._CAPIPtr")
@@ -108,14 +104,12 @@ PYBIND11_MODULE(_aie_python_passes, m) {
 
   bindTypes(m);
 
-  m.def("create_pathfinder_flows_with_python_pass",
-        [](const py::object &router) {
-          MlirPass pass =
-              mlirCreatePathfinderFlowsWithPythonPassWithRouter(router);
-          auto capsule =
-              py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
-          return capsule;
-        });
+  m.def("create_python_router_pass", [](const py::object &router) {
+    MlirPass pass = mlircreatePythonRouterPass(router);
+    auto capsule =
+        py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
+    return capsule;
+  });
 
   m.def("pass_manager_add_owned_pass",
         [](MlirPassManager passManager, py::handle passHandle) {

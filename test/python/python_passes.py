@@ -10,7 +10,7 @@ from pathlib import Path
 from pprint import pprint
 
 from aie._mlir_libs._aie_python_passes import (
-    create_pathfinder_flows_with_python_pass,
+    create_python_router_pass,
     pass_manager_add_owned_pass,
 )
 from aie.dialects.aie import register_dialect
@@ -36,7 +36,7 @@ def test_broadcast(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "broadcast.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -222,7 +222,7 @@ def test_flow_test_1(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_1.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -242,7 +242,7 @@ def test_flow_test_2(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_2.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -262,7 +262,7 @@ def test_flow_test_3(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_3.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -282,7 +282,7 @@ def test_many_flows(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -302,7 +302,7 @@ def test_many_flows2(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows2.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -322,7 +322,7 @@ def test_memtile(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "memtile.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -346,7 +346,7 @@ def test_memtile_routing_constraints(ctx):
         ).read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -366,7 +366,7 @@ def test_mmult(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "mmult.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -389,7 +389,7 @@ def test_more_flows_shim(ctx):
     ):
         mlir_module = Module.parse(mlir_module)
         r = Router()
-        pass_ = create_pathfinder_flows_with_python_pass(r)
+        pass_ = create_python_router_pass(r)
         pm = PassManager()
         pass_manager_add_owned_pass(pm, pass_)
         device = mlir_module.body.operations[0]
@@ -409,7 +409,7 @@ def test_over_flows(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "over_flows.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -431,7 +431,7 @@ def test_routed_herd_3x1(ctx):
         ).read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -453,7 +453,7 @@ def test_routed_herd_3x2(ctx):
         ).read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -473,7 +473,7 @@ def test_simple(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "simple.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -511,7 +511,7 @@ def test_simple2(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "simple2.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -546,7 +546,7 @@ def test_simple_flows(ctx):
         ).read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -568,7 +568,7 @@ def test_simple_flows2(ctx):
         ).read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -612,7 +612,7 @@ def test_simple_flows_shim(ctx):
     ):
         mlir_module = Module.parse(mlir_module)
         r = Router()
-        pass_ = create_pathfinder_flows_with_python_pass(r)
+        pass_ = create_python_router_pass(r)
         pm = PassManager()
         pass_manager_add_owned_pass(pm, pass_)
         device = mlir_module.body.operations[0]
@@ -631,7 +631,7 @@ def test_vecmul_4x4(ctx):
         open(Path(THIS_FILE).parent.parent / "create-flows" / "vecmul_4x4.mlir").read()
     )
     r = Router()
-    pass_ = create_pathfinder_flows_with_python_pass(r)
+    pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
     device = mlir_module.body.operations[0]
@@ -657,7 +657,33 @@ def test_unit_fixed_connections(ctx):
     ):
         mlir_module = Module.parse(mlir_module)
         r = Router()
-        pass_ = create_pathfinder_flows_with_python_pass(r)
+        pass_ = create_python_router_pass(r)
+        pm = PassManager()
+        pass_manager_add_owned_pass(pm, pass_)
+        device = mlir_module.body.operations[0]
+        pm.run(device.operation)
+
+        for src, paths in r.routing_solution.items():
+            print(src)
+            pprint(paths)
+
+        print(mlir_module)
+
+
+# @run
+def test_unit_fixed_connections(ctx):
+    for mlir_module in (
+        open(
+            Path(THIS_FILE).parent.parent
+            / "create-flows"
+            / "unit_fixed_connections.mlir"
+        )
+        .read()
+        .split("// -----")
+    ):
+        mlir_module = Module.parse(mlir_module)
+        r = Router()
+        pass_ = create_python_router_pass(r)
         pm = PassManager()
         pass_manager_add_owned_pass(pm, pass_)
         device = mlir_module.body.operations[0]
