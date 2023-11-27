@@ -2,7 +2,7 @@
 #include <cstring>
 #include <iostream>
 // We really should not do this!
-#include "../aie_control.cpp"
+#include "aie_control.cpp"
 extern "C" {
 #include "cdo_driver.h"
 }
