@@ -395,7 +395,6 @@ all:
 
       install_path = aie.compiler.aiecc.configure.install_path()
       data_path = os.path.join(install_path, "data")
-      shutil.copytree(data_path, self.tmpdirname, dirs_exist_ok=True)
 
       runtime_xaiengine_path = os.path.join(install_path, 'runtime_lib',
                                             opts.host_target.split('-')[0], 'xaiengine', 'cdo')
@@ -421,14 +420,14 @@ all:
                                '-I' + xaiengine_include_path,
                                '-I' + os.path.join(opts.aietools_path, "include"),
                                '-o', os.path.join(self.tmpdirname, 'gen_cdo.o'),
-                               os.path.join(self.tmpdirname, 'generated-source/gen_cdo.cpp')])
+                               os.path.join(data_path, 'generated-source/gen_cdo.cpp')])
       p1 = self.do_call(task, ['clang++',
                                '-fPIC', '-c', '-std=c++17',
                                '-I' + self.tmpdirname,
                                '-I' + xaiengine_include_path,
                                '-I' + os.path.join(opts.aietools_path, "include"),
                                '-o', os.path.join(self.tmpdirname, 'cdo_main.o'),
-                               os.path.join(self.tmpdirname, 'generated-source/cdo_main.cpp')])
+                               os.path.join(data_path, 'generated-source/cdo_main.cpp')])
       await asyncio.gather(p0, p1)
       await self.do_call(task, ['clang++',
                                 '-L' + xaiengine_lib_path,
@@ -461,7 +460,7 @@ all:
                                 '-o', os.path.join(self.tmpdirname,'design.pdi'),
                                 '-w'])
       await self.do_call(task, ['xclbinutil',
-                                '--input' , os.path.join(self.tmpdirname,'1x4.xclbin'),
+                                '--input' , os.path.join(data_path,'1x4.xclbin'),
                                 '--add-kernel', os.path.join(self.tmpdirname,'kernels.json'),
                                 '--add-replace-section',
                                 'AIE_PARTITION:JSON:'+os.path.join(self.tmpdirname,'aie_partition.json'),
