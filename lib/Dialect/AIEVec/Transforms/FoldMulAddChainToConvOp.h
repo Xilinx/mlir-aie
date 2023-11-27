@@ -6,6 +6,9 @@
 //
 // (c) Copyright 2023 Xilinx Inc.
 
+#ifndef FOLDMULADDCHAINTOCONVOP_H
+#define FOLDMULADDCHAINTOCONVOP_H
+
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -23,3 +26,5 @@ void configureAIEVecConvOpTransformationLegalizations(
 void populateAIEVecConvOpTransformationPatterns(
     mlir::RewritePatternSet &patterns, mlir::AnalysisManager &am,
     unsigned shiftParam);
+
+#endif // FOLDMULADDCHAINTOCONVOP_H

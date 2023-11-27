@@ -22,8 +22,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
 
-#include <utility>
-
 #define DEBUG_TYPE "fold-mul-add-chain-to-conv"
 
 using namespace mlir;
@@ -286,8 +284,8 @@ struct LongestConvMACChainAnalysis {
       return nullptr;
 
     // Obtain the ext or ext->shift op feeding into the MulIOp
-    aievec::ExtOp extOp = nullptr;
-    aievec::ShiftOp shiftOp = nullptr;
+    aievec::ExtOp extOp;
+    aievec::ShiftOp shiftOp;
     shiftOp = dyn_cast<aievec::ShiftOp>(mulOpLhsDefOp);
     if (shiftOp)
       extOp = shiftOp.getLhs().getDefiningOp<aievec::ExtOp>();

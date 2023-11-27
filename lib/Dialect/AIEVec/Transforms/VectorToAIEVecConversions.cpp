@@ -11,7 +11,6 @@
 // dialect. Conversions assume that the Vector dialect has been rectricted
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
-#include "VectorToAIEVecConversions.h"
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"

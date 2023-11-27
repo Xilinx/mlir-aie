@@ -24,8 +24,7 @@
 
 using namespace mlir;
 
-namespace xilinx {
-namespace aievec {
+namespace xilinx::aievec {
 
 struct BufferParams {
   uint32_t start;
@@ -42,7 +41,7 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
   ss << "v" << size;
   if (auto intType = dyn_cast<IntegerType>(type.getElementType())) {
     ss << (acc ? "acc" : abbrev ? "i" : "int") << intType.getWidth();
-  } else if (auto floatType = dyn_cast<FloatType>(type.getElementType())) {
+  } else if (dyn_cast<FloatType>(type.getElementType())) {
     ss << (abbrev ? "f" : "float");
   }
   return ss.str();
@@ -50,23 +49,21 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
 
 std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
-  Value lhs, rhs, result;
+  Value lhs, result;
   if (auto mulOp = dyn_cast<aievec::MulOp>(op)) {
     baseName = "mul";
     lhs = mulOp.getLhs();
-    rhs = mulOp.getRhs();
     result = mulOp.getResult();
   } else if (auto fmaOp = dyn_cast<aievec::FMAOp>(op)) {
     baseName = "mac";
     lhs = fmaOp.getLhs();
-    rhs = fmaOp.getRhs();
     result = fmaOp.getResult();
   }
   VectorType resultType = cast<VectorType>(result.getType());
   int resultSize = getVectorLaneSize(resultType);
   std::stringstream ss;
   ss << "llvm.aie.";
-  if (auto intType = dyn_cast<IntegerType>(resultType.getElementType())) {
+  if (dyn_cast<IntegerType>(resultType.getElementType())) {
     ss << baseName;
     ss << resultSize << "."
        << getVectorTypeString(cast<VectorType>(lhs.getType()));
@@ -722,6 +719,7 @@ class MatMulOpConversion
 
   struct DecodedMatMulOp {
     typedef enum { I32, I64, BF16 } Kind;
+
     Kind kind;
     Value lhs;
     Value rhs;
@@ -822,9 +820,9 @@ class MatMulOpConversion
     if (vecTy.getRank() == 1)
       return vecTy;
     auto shape = vecTy.getShape();
-    return VectorType::get({std::accumulate(shape.begin(), shape.end(), 1,
-                                            std::multiplies<int64_t>())},
-                           vecTy.getElementType());
+    return VectorType::get(
+        {std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>())},
+        vecTy.getElementType());
   }
 
   LogicalResult
@@ -906,10 +904,10 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
 }
 
 struct ConvertAIEVecToLLVMPass
-    : public ConvertAIEVecToLLVMBase<ConvertAIEVecToLLVMPass> {
+    : ConvertAIEVecToLLVMBase<ConvertAIEVecToLLVMPass> {
   void runOnOperation() override {
-    mlir::RewritePatternSet patterns(&getContext());
-    mlir::LLVMTypeConverter converter(&getContext());
+    RewritePatternSet patterns(&getContext());
+    LLVMTypeConverter converter(&getContext());
 
     // Don't convert vector types, we want to handle multi-dimensional
     // vector on our own.
@@ -934,5 +932,4 @@ createConvertAIEVecToLLVMPass() {
   return std::make_unique<ConvertAIEVecToLLVMPass>();
 }
 
-} // namespace aievec
-} // namespace xilinx
+} // namespace xilinx::aievec

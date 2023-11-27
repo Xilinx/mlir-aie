@@ -36,7 +36,6 @@ public:
 
 } // namespace
 
-void xilinx::aievec::registerTransformDialectExtension(
-    mlir::DialectRegistry &registry) {
+void aievec::registerTransformDialectExtension(DialectRegistry &registry) {
   registry.addExtensions<AIEVecTransformDialectExtension>();
 }

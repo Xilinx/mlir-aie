@@ -12,75 +12,62 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
-#include "llvm/ADT/DenseSet.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-namespace xilinx {
-namespace AIEX {
+namespace xilinx::AIEX {
 
 // FIXME: use Tablegen'd dialect class
-AIEXDialect::AIEXDialect(mlir::MLIRContext *ctx)
-    : mlir::Dialect("AIEX", ctx, ::mlir::TypeID::get<AIEXDialect>()) {
+AIEXDialect::AIEXDialect(MLIRContext *ctx)
+    : Dialect("AIEX", ctx, TypeID::get<AIEXDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
       >();
 }
 
-} // namespace AIEX
-} // namespace xilinx
+} // namespace xilinx::AIEX
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
-LogicalResult xilinx::AIEX::UseTokenOp::verify() {
+LogicalResult AIEX::UseTokenOp::verify() {
   auto parentOp = (*this)->getParentOp();
-  if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
-      isa<xilinx::AIE::MemOp>(parentOp) ||
-      isa<xilinx::AIE::ShimDMAOp>(parentOp))
+  if (isa<func::FuncOp>(parentOp) || isa<CoreOp>(parentOp) ||
+      isa<MemOp>(parentOp) || isa<ShimDMAOp>(parentOp))
     return success();
   return failure();
 }
 
-LogicalResult xilinx::AIEX::MulticastOp::verify() {
+LogicalResult AIEX::MulticastOp::verify() {
   Region &body = getPorts();
   assert(getOperation()->getNumRegions());
   assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIEX::MultiDestOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
+  for (auto &ops : body.front())
+    if (!isa<MultiDestOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a Multicast op");
-    }
-  }
 
   return success();
 }
 
-LogicalResult xilinx::AIEX::BroadcastPacketOp::verify() {
+LogicalResult AIEX::BroadcastPacketOp::verify() {
   Region &body = getPorts();
   assert(getOperation()->getNumRegions());
   assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIEX::BPIDOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
+  for (auto &ops : body.front())
+    if (!isa<BPIDOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a BroadcastPacket op");
-    }
-  }
 
   return success();
 }
 
-LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
-  ::mlir::MemRefType buffer = getMemref().getType();
+LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
+  MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
   uint32_t strides[3]{0, 0, 0};
@@ -106,11 +93,11 @@ LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
   if (auto const_op = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
     lengths[0] = static_cast<uint32_t>(const_op.value());
   }
-  if (static_cast<uint32_t>(lengths[3]) > 64)
+  if (lengths[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
-  if (strides[1] && static_cast<uint32_t>(lengths[1]) > 0x3FF)
+  if (strides[1] && lengths[1] > 0x3FF)
     return emitOpError("Length 1 exceeds the [0:1023] range.");
-  if (strides[0] && static_cast<uint32_t>(lengths[0]) > 0x3FF)
+  if (strides[0] && lengths[0] > 0x3FF)
     return emitOpError("Length 0 exceeds the [0:1023] range.");
   if (strides[2] > 0x100000)
     return emitOpError("Stride 3 exceeds the [1:1M] range.");
@@ -121,7 +108,7 @@ LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIEX::IpuShimTilePushQueueOp::verify() {
+LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
   const auto &target_model = getTargetModel(*this);
   auto num_bds = target_model.getNumBDs(0, 0); // assume shim
   if (getBdId() > num_bds)
@@ -131,7 +118,7 @@ LogicalResult xilinx::AIEX::IpuShimTilePushQueueOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIEX::IpuWriteBdExShimTileOp::verify() {
+LogicalResult AIEX::IpuWriteBdExShimTileOp::verify() {
   const auto &target_model = getTargetModel(*this);
   auto num_bds = target_model.getNumBDs(0, 0); // assume shim
   if (getBdId() > num_bds)
