@@ -4,10 +4,9 @@
 //
 // This file is licensed under the MIT License.
 // SPDX-License-Identifier: MIT
-// 
+//
 //
 //===----------------------------------------------------------------------===//
-
 
 extern "C" {
 void vec_hdiff(int32_t *restrict in0, int32_t *restrict in1,

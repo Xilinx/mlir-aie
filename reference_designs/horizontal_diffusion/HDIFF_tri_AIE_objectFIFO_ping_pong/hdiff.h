@@ -4,11 +4,9 @@
 //
 // This file is licensed under the MIT License.
 // SPDX-License-Identifier: MIT
-// 
+//
 //
 //===----------------------------------------------------------------------===//
-
-
 
 extern "C" {
 void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,

@@ -4,10 +4,9 @@
 //
 // This file is licensed under the MIT License.
 // SPDX-License-Identifier: MIT
-// 
+//
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "./include.h"
 #include "hdiff.h"
@@ -164,7 +163,6 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
 
       acc_0 = lmsc8(acc_0, data_buf1, 2, 0x76543210, coeffs, 0,
                     0x00000000); // g, m , k * 4
-
 
       acc_0 = lmac8(acc_0, data_buf1, 1, 0x76543210, coeffs_rest, 0,
                     0x00000000); // g, m , k * 4, j
