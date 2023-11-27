@@ -17,7 +17,6 @@ add_mlir_dialect_library(AIE
   MLIRAIEIncGen
   MLIRAIEInterfacesIncGen
   MLIRAIEOpsIncGen
-  MLIRAIETypesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR

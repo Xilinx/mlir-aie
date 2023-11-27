@@ -330,7 +330,7 @@ void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
 void AIEDialect::initialize() {
   addTypes<
 #define GET_TYPE_LIST
-#include "aie/Dialect/AIE/IR/AIETypesGen.cpp.inc"
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
       >();
   addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addAttributes<
