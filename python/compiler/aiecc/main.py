@@ -399,7 +399,7 @@ all:
       runtime_xaiengine_path = os.path.join(install_path, 'runtime_lib',
                                             opts.host_target.split('-')[0], 'xaiengine', 'cdo')
       xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
-      xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
+      xaiengine_lib_path = os.path.join(runtime_xaiengine_path)
 
       for elf in glob.glob('*.elf'):
         shutil.copy(elf, self.tmpdirname)
