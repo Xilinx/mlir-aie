@@ -4,8 +4,18 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
-from aie.dialects.aie import *
+from aie.dialects.aie import (
+    AIEDevice,
+    tile,
+    Device,
+    Core,
+    end,
+    Buffer,
+)
 from aie.dialects.extras import memref, arith
+from aie.ir import InsertionPoint, Block
+
+from util import construct_and_print_module
 
 
 # CHECK:  module {
@@ -23,7 +33,7 @@ from aie.dialects.extras import memref, arith
 # CHECK:      }
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def simple_with_bindings_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)

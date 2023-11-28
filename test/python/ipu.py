@@ -7,15 +7,32 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
+from aie.dialects.aie import (
+    AIEDevice,
+    Call,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    core,
+    device,
+    external_func,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    tile,
+)
+from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
 from aie.dialects.extras import memref, arith
+from aie.dialects.func import FuncOp
+from aie.dialects.scf import for_
+from aie.dialects.scf import yield_
+from aie.ir import Context, Location, Module, InsertionPoint, TypeAttr
 from aie.passmanager import PassManager
 
 range_ = for_
 
 
-def constructAndPrintInModule(f):
+def construct_and_print_module(f):
     with Context() as ctx, Location.unknown():
         module = Module.create()
         print("\nTEST:", f.__name__)
@@ -66,7 +83,7 @@ def constructAndPrintInModule(f):
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def my_vector_scalar():
     N = 4096
     n = 1024
@@ -124,9 +141,9 @@ def my_vector_scalar():
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
         )
         def sequence(A, B, C):
-            IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-            IpuDmaMemcpyNd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: my_matmul
@@ -186,7 +203,7 @@ def my_vector_scalar():
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def my_matmul():
     M = 128
     K = 128
@@ -323,7 +340,7 @@ def my_matmul():
                 num_tile_rows = min(
                     [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                 )
-                IpuDmaMemcpyNd(
+                ipu_dma_memcpy_nd(
                     metadata="outC",
                     bd_id=0,
                     mem=C,
@@ -339,7 +356,7 @@ def my_matmul():
                         * word_size_in
                         // 4
                     )
-                    IpuDmaMemcpyNd(
+                    ipu_dma_memcpy_nd(
                         metadata="inA",
                         bd_id=2 * tile_row + 1,
                         mem=A,
@@ -347,7 +364,7 @@ def my_matmul():
                         lengths=[N_div_n, K_div_k, m, k_in_i32s],
                         strides=[0, k_in_i32s, K_in_i32s],
                     )
-                    IpuDmaMemcpyNd(
+                    ipu_dma_memcpy_nd(
                         metadata="inB",
                         bd_id=2 * tile_row + 2,
                         mem=B,
@@ -355,7 +372,7 @@ def my_matmul():
                         strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                     )
 
-                IpuSync(column=0, row=0, direction=0, channel=0)
+                ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: edge_detect
@@ -507,7 +524,7 @@ def my_matmul():
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def edge_detect():
     @device(AIEDevice.ipu)
     def device_body():
@@ -808,21 +825,21 @@ def edge_detect():
             T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="outOF_L2L3",
                 bd_id=0,
                 mem=O,
                 lengths=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="inOF_L3L2",
                 bd_id=1,
                 mem=I,
                 lengths=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: my_add_one_objFifo
@@ -871,7 +888,7 @@ def edge_detect():
 #     }
 #   }
 # }
-@constructAndPrintInModule
+@construct_and_print_module
 def my_add_one_objFifo():
     @device(AIEDevice.ipu)
     def device_body():
@@ -941,8 +958,10 @@ def my_add_one_objFifo():
             T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
             )
-            IpuDmaMemcpyNd(metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_dma_memcpy_nd(
+                metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64]
+            )
+            ipu_sync(column=0, row=0, direction=0, channel=0)

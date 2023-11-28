@@ -8,12 +8,21 @@ from functools import wraps
 
 from ._AIE_enum_gen import *
 from ._AIE_ops_gen import *
+from .extras.arith import constant
+from .func import CallOp, FuncOp
+from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..dialects.extras.arith import constant
-from ..dialects.func import *
-from ..dialects.scf import *
-from ..ir import *
-from ..ir import _i32ArrayAttr
+from .._mlir_libs._aie import ObjectFifoType
+from ..extras import types as T
+from ..ir import (
+    Attribute,
+    FlatSymbolRefAttr,
+    FunctionType,
+    InsertionPoint,
+    IntegerAttr,
+    IntegerType,
+    _i32ArrayAttr,
+)
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -156,41 +165,27 @@ def _objectFifo_depth_attr(x, context):
 
 #### AIE Wrappers ####
 
-
-# Create and print ModuleOp.
-def constructAndPrintInModule(f):
-    with Context() as ctx, Location.unknown():
-        module = Module.create()
-        with InsertionPoint(module.body):
-            f()
-        assert module.operation.verify()
-        print(module)
-
-
 Device = DeviceOp
 
 
 class Core(CoreOp):
-    # Until https://github.com/llvm/llvm-project/blob/7c850867b9ef4427375da6d83c34d0b9c944fcb8/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp#L587-L586
-    # gets figured out.
+    # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
     def __init__(self, tile, link_with=None):
-        super().__init__(result=IndexType.get(), tile=tile, link_with=link_with)
+        super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
 # Create an aie buffer of (size x datatype) on given tile.
 # size examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
     def __init__(self, tile, size, datatype, name=None):
-        super().__init__(
-            buffer=MemRefType.get(size, datatype), tile=tile, sym_name=name
-        )
+        super().__init__(buffer=T.memref(*size, datatype), tile=tile, sym_name=name)
 
 
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
     def __init__(self, size, datatype, name=None):
-        super().__init__(buffer=MemRefType.get(size, datatype), sym_name=name)
+        super().__init__(buffer=T.memref(*size, datatype), sym_name=name)
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
@@ -286,5 +281,5 @@ class PacketFlow(PacketFlowOp):
 
 
 #### Global Wrappers ####
-core = region_op(Core, terminator=lambda *args: EndOp())
+core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device)

@@ -4,8 +4,23 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
-from aie.dialects.aie import *
-from aie.dialects.scf import *
+from aie.dialects.aie import (
+    AIEDevice,
+    Call,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    core,
+    device,
+    external_func,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    tile,
+)
+from aie.dialects.scf import for_, yield_
+from aie.ir import TypeAttr
+from util import construct_and_print_module
 
 range_ = for_
 
@@ -33,7 +48,7 @@ range_ = for_
 # CHECK:      } {link_with = "test.o"}
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def codeRegion():
     @device(AIEDevice.xcve2802)
     def device_body():

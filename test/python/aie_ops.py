@@ -4,22 +4,32 @@
 # RUN: %PYTHON %s | FileCheck %s
 
 
-from aie.dialects.aie import *
+from aie.dialects.aie import (
+    AIEDevice,
+    Buffer,
+    Core,
+    Device,
+    ExternalBuffer,
+    MemOp,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    end,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    objectFifo_subview_access,
+    tile,
+)
 from aie.extras import types as T
+from aie.ir import InsertionPoint, Block, TypeAttr
 
-
-def constructAndPrintInModule(f):
-    with Context() as ctx, Location.unknown():
-        module = Module.create()
-        print("\nTEST:", f.__name__)
-        with InsertionPoint(module.body):
-            f()
-        print(module)
+from util import construct_and_print_module
 
 
 # CHECK-LABEL: tileOp
 # CHECK: AIE.tile(0, 0)
-@constructAndPrintInModule
+@construct_and_print_module
 def tileOp():
     t = tile(col=0, row=0)
 
@@ -29,7 +39,7 @@ def tileOp():
 # CHECK: %[[VAL2:.*]] = AIE.core(%[[VAL1]]) {
 # CHECK:   AIE.end
 # CHECK: }
-@constructAndPrintInModule
+@construct_and_print_module
 def coreOp():
     t = tile(col=1, row=1)
     c = Core(t)
@@ -43,10 +53,10 @@ def coreOp():
 # CHECK: %[[VAL2:.*]] = AIE.mem(%[[VAL1]]) {
 # CHECK:   AIE.end
 # CHECK: }
-@constructAndPrintInModule
+@construct_and_print_module
 def memOp():
     t = tile(col=2, row=2)
-    m = MemOp(IndexType.get(), t)
+    m = MemOp(T.index(), t)
     bb = Block.create_at_start(m.body)
     with InsertionPoint(bb):
         end()
@@ -54,7 +64,7 @@ def memOp():
 
 # CHECK-LABEL: deviceOp
 # CHECK: AIE.device
-@constructAndPrintInModule
+@construct_and_print_module
 def deviceOp():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
@@ -65,26 +75,24 @@ def deviceOp():
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = AIE.tile(0, 3)
 # CHECK: %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<12xi32>
-@constructAndPrintInModule
+@construct_and_print_module
 def bufferOp():
-    iTy = IntegerType.get_signless(32)
     t = tile(col=0, row=3)
-    b = Buffer(tile=t, size=(12,), datatype=iTy)
+    b = Buffer(tile=t, size=(12,), datatype=T.i32())
 
 
 # CHECK-LABEL: externalBufferOp
 # CHECK: %[[VAL_0:.*]] = AIE.external_buffer : memref<12xi32>
-@constructAndPrintInModule
+@construct_and_print_module
 def externalBufferOp():
-    iTy = IntegerType.get_signless(32)
-    b = ExternalBuffer(size=(12,), datatype=iTy)
+    b = ExternalBuffer(size=(12,), datatype=T.i32())
 
 
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
 # CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
@@ -110,7 +118,7 @@ def objFifo():
 # CHECK: AIE.objectFifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 # CHECK: AIE.objectFifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 # CHECK: AIE.objectFifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
@@ -145,7 +153,7 @@ def objFifoLink():
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 # CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
@@ -179,7 +187,7 @@ def objFifoAcquire():
 # CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 # CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
 # CHECK: %[[VAL_4:.*]] = AIE.objectFifo.subview.access %[[VAL_3]][0] : !AIE.objectFifoSubview<memref<12xf16>> -> memref<12xf16>
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
@@ -215,7 +223,7 @@ def objFifoSubviewAccess():
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 # CHECK: AIE.objectFifo.release @[[VAL_2]](Produce, 1)
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)

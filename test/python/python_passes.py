@@ -5,18 +5,10 @@
 # REQUIRES: python_passes
 
 
+import aie.dialects.aie
 from aie._mlir_libs import _aie_python_passes
-from aie.dialects.aie import *
+from aie.ir import Context, Location, Module, InsertionPoint
 from aie.passmanager import PassManager
-
-
-def constructAndPrintInModule(f):
-    with Context() as ctx, Location.unknown():
-        module = Module.create()
-        print("\nTEST:", f.__name__)
-        with InsertionPoint(module.body):
-            f()
-        print(module)
 
 
 def testPythonPassDemo():

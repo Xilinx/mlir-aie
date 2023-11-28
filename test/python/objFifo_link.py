@@ -4,7 +4,17 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
-from aie.dialects.aie import *
+from aie.dialects.aie import (
+    AIEDevice,
+    ObjectFifoType,
+    objectFifo,
+    objectFifo_link,
+    tile,
+    Device,
+)
+from aie.ir import InsertionPoint, TypeAttr, Block
+
+from util import construct_and_print_module
 
 
 # CHECK:  module {
@@ -19,7 +29,7 @@ from aie.dialects.aie import *
 # CHECK:      AIE.objectFifo @of2(%tile_1_2 toStream [<1, 2>], {%tile_2_2 fromStream [<1, 2>], %tile_2_3 fromStream [<1, 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectFifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def link_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)

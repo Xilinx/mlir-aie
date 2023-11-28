@@ -4,8 +4,26 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
+from aie.dialects._AIE_ops_gen import end
+from aie.dialects.aie import (
+    AIEDevice,
+    Call,
+    Core,
+    Device,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    external_func,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    tile,
+)
 from aie.dialects.extras import arith
-from aie.dialects.aie import *
+from aie.dialects.scf import for_, yield_
+from aie.ir import TypeAttr, Block, InsertionPoint
+
+from util import construct_and_print_module
 
 range_ = for_
 
@@ -34,7 +52,7 @@ range_ = for_
 # CHECK:      } {link_with = "test.o"}
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def core_ext_kernel():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)

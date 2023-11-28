@@ -4,11 +4,22 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
-from aie.dialects.aie import *
-from aie.dialects.extras import memref
-from aie.dialects.extras import arith
-from aie.dialects.scf import *
-from aie.ir import TypeAttr
+from aie.dialects.aie import (
+    AIEDevice,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    objectFifo,
+    objectFifo_release,
+    tile,
+    Device,
+    Core,
+    end,
+)
+from aie.dialects.extras import memref, arith
+from aie.ir import InsertionPoint, TypeAttr, Block
+
+from util import construct_and_print_module
 
 
 # CHECK:  module {
@@ -27,7 +38,7 @@ from aie.ir import TypeAttr
 # CHECK:      }
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.bodyRegion)
