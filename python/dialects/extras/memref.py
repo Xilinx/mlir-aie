@@ -35,7 +35,7 @@ def alloca(
     return _alloc(memref.AllocaOp, sizes, element_type, loc=loc, ip=ip)
 
 
-def load(mem: Value, indices: Sequence[Value | int], *, loc=None, ip=None):
+def load(mem: Value, indices: Sequence[Union[Value, int]], *, loc=None, ip=None):
     indices = list(indices)
     for idx, i in enumerate(indices):
         if isinstance(i, int):
@@ -44,7 +44,7 @@ def load(mem: Value, indices: Sequence[Value | int], *, loc=None, ip=None):
 
 
 def store(
-    value: Value, mem: Value, indices: Sequence[Value | int], *, loc=None, ip=None
+    value: Value, mem: Value, indices: Sequence[Union[Value, int]], *, loc=None, ip=None
 ):
     indices = list(indices)
     for idx, i in enumerate(indices):

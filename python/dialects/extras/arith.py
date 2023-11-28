@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Union, Optional
 
-from .. import arith
+from ..arith import *
 from .. import complex
 from ..linalg.opdsl.lang.emitter import (
     _is_floating_point_type,
@@ -80,4 +80,4 @@ def constant(
             type=type,
         )
 
-    return arith.ConstantOp(type, value, loc=loc, ip=ip)
+    return ConstantOp(type, value, loc=loc, ip=ip)

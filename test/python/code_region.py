@@ -36,23 +36,39 @@ range_ = for_
 @constructAndPrintInModule
 def codeRegion():
     @device(AIEDevice.xcve2802)
-    def deviceBody():
-        privateFunc("test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()])
+    def device_body():
+        external_func("test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()])
 
-        S = Tile(0, 2)
-        M = Tile(1, 2)
-        tile = Tile(3, 3)
+        S = tile(0, 2)
+        M = tile(1, 2)
+        N = tile(3, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32()))
-        OrderedObjectBuffer("of1", M, tile, 2, T.memref(8, 8, T.i32()))
-        Link(["of0"], ["of1"])
+        objectFifo(
+            "of0",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "of1",
+            M,
+            [N],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["of0"], ["of1"])
 
-        @core(tile, "test.o")
-        def coreBody():
+        @core(N, "test.o")
+        def core_body():
             for _ in range_(10):
-                elem0 = Acquire(
+                elem0 = acquire(
                     ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
-                ).acquiredElem()
+                ).acquired_elem()
                 res = Call("test_func", [elem0], [T.i32()])
-                Release(ObjectFifoPort.Consume, "of1", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "of1", 1)
                 yield_([])

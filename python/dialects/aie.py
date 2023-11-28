@@ -9,39 +9,22 @@ from functools import wraps
 from ._AIE_enum_gen import *
 from ._AIE_ops_gen import *
 from .._mlir_libs._aie import *
-from ..dialects import arith
-from ..dialects import memref
+from ..dialects.extras.arith import constant
 from ..dialects.func import *
 from ..dialects.scf import *
 from ..ir import *
-from ..dialects.extras.arith import constant
-
+from ..ir import _i32ArrayAttr
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
 
-# Wrapper for func FuncOp with "private" visibility.
-class privateFunc(FuncOp):
-    """Specialize FuncOp class constructor to take python integers"""
-
-    def __init__(self, name, inputs, outputs=[], visibility="private"):
-        super().__init__(
-            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
-        )
-
-
-# Wrapper for func FuncOp with "private" visibility.
-class publicFunc(FuncOp):
-    """Specialize FuncOp class constructor to take python integers"""
-
-    def __init__(self, name, callbackFunc, inputs, outputs=[], visibility="public"):
-        super().__init__(
-            name=name,
-            type=FunctionType.get(inputs, outputs),
-            visibility=visibility,
-            body_builder=callbackFunc,
-        )
+def external_func(name, inputs, outputs=None, visibility="private"):
+    if outputs is None:
+        outputs = []
+    return FuncOp(
+        name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+    )
 
 
 # Wrapper for func CallOp.
@@ -164,6 +147,13 @@ def _i64Attr(x, context):
     return IntegerAttr.get(IntegerType.get_signless(64, context=context), x)
 
 
+@register_attribute_builder("AIE_ObjectFifo_Depth")
+def _objectFifo_depth_attr(x, context):
+    if isinstance(x, list):
+        return _i32ArrayAttr(x, context)
+    return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
 #### AIE Wrappers ####
 
 
@@ -173,63 +163,39 @@ def constructAndPrintInModule(f):
         module = Module.create()
         with InsertionPoint(module.body):
             f()
+        assert module.operation.verify()
         print(module)
 
 
 Device = DeviceOp
 
 
-# Create an aie tile on specified (col, row).
-class Tile(TileOp):
-    """Specialize TileOp class constructor to take python integers"""
-
-    def __init__(self, col, row):
-        idx_ty = IndexType.get()
-        super().__init__(result=idx_ty, col=col, row=row)
-
-
-# Create an aie core on specified aie tile.
 class Core(CoreOp):
-    """Specialize CoreOp class constructor to take python integers"""
-
+    # Until https://github.com/llvm/llvm-project/blob/7c850867b9ef4427375da6d83c34d0b9c944fcb8/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp#L587-L586
+    # gets figured out.
     def __init__(self, tile, link_with=None):
-        idx_ty = IndexType.get()
-        if link_with != None:
-            super().__init__(result=idx_ty, tile=tile, link_with=link_with)
-        else:
-            super().__init__(result=idx_ty, tile=tile)
+        super().__init__(result=IndexType.get(), tile=tile, link_with=link_with)
 
 
 # Create an aie buffer of (size x datatype) on given tile.
 # size examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
-    """Specialize BufferOp class constructor to take python integers"""
-
     def __init__(self, tile, size, datatype, name=None):
-        memRef_ty = MemRefType.get(size, datatype)
-        if name is None:
-            super().__init__(buffer=memRef_ty, tile=tile)
-        else:
-            super().__init__(buffer=memRef_ty, tile=tile, sym_name=name)
+        super().__init__(
+            buffer=MemRefType.get(size, datatype), tile=tile, sym_name=name
+        )
 
 
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
-    """Specialize ExternalBufferOp class constructor to take python integers"""
-
     def __init__(self, size, datatype, name=None):
-        memRef_ty = MemRefType.get(size, datatype)
-        if name is None:
-            super().__init__(buffer=memRef_ty)
-        super().__init__(buffer=memRef_ty, sym_name=name)
+        super().__init__(buffer=MemRefType.get(size, datatype), sym_name=name)
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class OrderedObjectBuffer(ObjectFifoCreateOp):
-    """Specialize ObjectFifoCreateOp class constructor to take python integers"""
-
     def __init__(
         self,
         name,
@@ -264,44 +230,27 @@ class OrderedObjectBuffer(ObjectFifoCreateOp):
         )
 
 
-# Create an aie objectFifo link op between specified input and output arrays of objFifos.
-class Link(ObjectFifoLinkOp):
-    """Specialize ObjectFifoLinkOp class constructor to take python integers"""
-
-    def __init__(self, ofIns, ofOuts):
-        ofIns_sym = []
-        ofOuts_sym = []
-        for o in ofIns:
-            ofIns_sym.append(FlatSymbolRefAttr.get(o))
-        for o in ofOuts:
-            ofOuts_sym.append(FlatSymbolRefAttr.get(o))
-        super().__init__(fifoIns=ofIns_sym, fifoOuts=ofOuts_sym)
-
-
 # Create an aie objectFifo acquire op of given number of elements with given memref datatype,
 # from objFifo with given name.
-class Acquire(ObjectFifoAcquireOp):
-    """Specialize ObjectFifoAcquireOp class constructor to take python integers"""
-
+class ObjectFifoAcquireOp(ObjectFifoAcquireOp):
     def __init__(self, port, of_name, num_elem, datatype):
-        subview_Ty = ObjectFifoSubviewType.get(datatype)
+        subview_t = ObjectFifoSubviewType.get(datatype)
         self.datatype = datatype
-        super().__init__(
-            subview=subview_Ty, port=port, objFifo_name=of_name, size=num_elem
-        )
+        super().__init__(subview_t, port, of_name, num_elem)
 
-    def acquiredElem(self):
+    def acquired_elem(self):
         objects = []
         if self.size.value == 1:
-            return SubviewAccess(self.datatype, self.subview, self.size.value - 1)
+            return ObjectFifoSubviewAccessOp(
+                self.datatype, self.subview, self.size.value - 1
+            )
         for i in range(self.size.value):
-            objects.append(SubviewAccess(self.datatype, self.subview, i))
+            objects.append(ObjectFifoSubviewAccessOp(self.datatype, self.subview, i))
         return objects
 
 
-SubviewAccess = ObjectFifoSubviewAccessOp
-
-Release = ObjectFifoReleaseOp
+def acquire(port, of_name, num_elem, datatype):
+    return ObjectFifoAcquireOp(port, of_name, num_elem, datatype)
 
 
 # Create a flow between source and destination tile ports.

@@ -5,8 +5,7 @@
 
 import aie.extras.types as T
 from aie.dialects.aie import *
-from aie.dialects.extras import memref
-from aie.dialects.extras.arith import constant
+from aie.dialects.extras import memref, arith
 
 
 # CHECK:  module {
@@ -29,13 +28,13 @@ def simple_with_bindings_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        tile = Tile(1, 4)
-        buff = Buffer(tile=tile, size=(256,), datatype=T.i32())
+        tile_a = tile(1, 4)
+        buff = Buffer(tile=tile_a, size=(256,), datatype=T.i32())
 
-        C = Core(tile)
+        C = Core(tile_a)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             val = memref.load(buff, [3])
-            add = arith.addi(val, constant(4))
+            add = arith.addi(val, arith.constant(4))
             memref.store(add, buff, [3])
-            EndOp()
+            end()

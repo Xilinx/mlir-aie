@@ -4,6 +4,7 @@
 # RUN: %python %s | FileCheck %s
 
 import aie.extras.types as T
+from aie.dialects.extras import arith
 from aie.dialects.aie import *
 
 range_ = for_
@@ -38,26 +39,42 @@ def core_ext_kernel():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        privateFunc(
+        external_func(
             "test_func", inputs=[T.memref(8, 8, T.i32()), T.i32()], outputs=[T.i32()]
         )
 
-        S = Tile(0, 2)
-        M = Tile(1, 2)
-        tile = Tile(3, 3)
+        S = tile(0, 2)
+        M = tile(1, 2)
+        N = tile(3, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32()))
-        OrderedObjectBuffer("of1", M, tile, 2, T.memref(8, 8, T.i32()))
-        Link(["of0"], ["of1"])
+        objectFifo(
+            "of0",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "of1",
+            M,
+            [N],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["of0"], ["of1"])
 
-        C = Core(tile, "test.o")
+        C = Core(N, "test.o")
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             for _ in range_(10):
-                elem0 = Acquire(
+                elem0 = acquire(
                     ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
-                ).acquiredElem()
-                res = Call("test_func", [elem0, constant(4)], [T.i32()])
-                Release(ObjectFifoPort.Consume, "of1", 1)
-                YieldOp([])
-            EndOp()
+                ).acquired_elem()
+                res = Call("test_func", [elem0, arith.constant(4)], [T.i32()])
+                objectFifo_release(ObjectFifoPort.Consume, "of1", 1)
+                yield_([])
+            end()
