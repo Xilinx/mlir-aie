@@ -17,15 +17,15 @@
 
 // Note that llc determines the architecture from the llvm IR.
 
-// XCHESSCC-NOT: {{^llc}}
+// XCHESSCC-NOT: {{^[^ ]*llc}}
 // XCHESSCC: xchesscc_wrapper aie
-// XCHESSCC-NOT: {{^llc}}
+// XCHESSCC-NOT: {{^[^ ]*llc}}
 // PEANO-NOT: xchesscc_wrapper
-// PEANO: {{^llc}}
+// PEANO: {{^[^ ]*llc}}
 // PEANO-SAME: --march=aie
 // PEANO-NOT: xchesscc_wrapper
 // NOCOMPILE-NOT: xchesscc_wrapper
-// NOCOMPILE-NOT: {{^llc}}
+// NOCOMPILE-NOT: {{^[^ ]*llc}}
 
 module {
   %12 = AIE.tile(1, 2)
