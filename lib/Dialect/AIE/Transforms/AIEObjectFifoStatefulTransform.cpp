@@ -168,23 +168,23 @@ struct AIEObjectFifoStatefulTransformPass
   // have been created and should be used
 
   /// Function that returns true if two tiles in the AIE array share a memory
-  /// module. share_direction is equal to:
+  /// module. shareDirection is equal to:
   ///   * -1 if the shared memory module is that of the first input tile,
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
-  bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
+  bool isSharedMemory(TileOp a, TileOp b, int *shareDirection) {
     const auto &targetModel = getTargetModel(a.getOperation());
 
     if ((a.isShimTile() && !b.isShimTile()) ||
         (!a.isShimTile() && b.isShimTile())) {
-      *share_direction = 0;
+      *shareDirection = 0;
       return false;
     }
     if ((targetModel.isMemTile(a.getCol(), a.getRow()) &&
          !targetModel.isMemTile(b.getCol(), b.getRow())) ||
         (!targetModel.isMemTile(a.getCol(), a.getRow()) &&
          targetModel.isMemTile(b.getCol(), b.getRow()))) {
-      *share_direction = 0;
+      *shareDirection = 0;
       return false;
     }
     bool rightShared = targetModel.isLegalMemAffinity(
@@ -194,11 +194,11 @@ struct AIEObjectFifoStatefulTransformPass
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
-      *share_direction = -1;
+      *shareDirection = -1;
     else if (rightShared)
-      *share_direction = 1;
+      *shareDirection = 1;
     else
-      *share_direction = 0;
+      *shareDirection = 0;
 
     return leftShared || rightShared;
   }
@@ -208,7 +208,7 @@ struct AIEObjectFifoStatefulTransformPass
   // the objectFifo broadcasts to multiple tiles, or if one of the consumers
   // or the producer wants to use the multi-dimensional address generation
   // features of the DMA.
-  bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
+  bool requiresDMAs(ObjectFifoCreateOp createOp, int &shareDirection) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
 
@@ -220,7 +220,7 @@ struct AIEObjectFifoStatefulTransformPass
         if (auto consumerTileOp =
                 dyn_cast<TileOp>(consumerTile.getDefiningOp());
             isSharedMemory(createOp.getProducerTileOp(), consumerTileOp,
-                           &share_direction))
+                           &shareDirection))
           hasSharedMemory = true;
       }
     }
@@ -283,42 +283,42 @@ struct AIEObjectFifoStatefulTransformPass
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile) {
+                                            TileOp creationTile) {
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
-    if (creation_tile.isShimTile())
+    if (creationTile.isShimTile())
       numElem = externalBuffersPerFifo[op].size();
     if (target.getTargetArch() == AIEArch::AIE1) {
-      int of_elem_index = 0; // used to give objectFifo elements a symbolic name
+      int ofElemIndex = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
-        int lockID = lockAnalysis.getLockID(creation_tile);
+        int lockID = lockAnalysis.getLockID(creationTile);
         assert(lockID >= 0 && "No more locks to allocate!");
         auto lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, lockID, 0);
+                                           creationTile, lockID, 0);
         lock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_lock_" +
-                                  std::to_string(of_elem_index)));
+                                  std::to_string(ofElemIndex)));
         locks.push_back(lock);
-        of_elem_index++;
+        ofElemIndex++;
       }
     } else {
       // create corresponding aie2 locks
-      int prodLockID = lockAnalysis.getLockID(creation_tile);
+      int prodLockID = lockAnalysis.getLockID(creationTile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
+      auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                             creationTile, prodLockID, numElem);
       prodLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
       locks.push_back(prodLock);
 
-      int consLockID = lockAnalysis.getLockID(creation_tile);
+      int consLockID = lockAnalysis.getLockID(creationTile);
       assert(consLockID >= 0 && "No more locks to allocate!");
       auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID, 0);
+                                             creationTile, consLockID, 0);
       consLock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
@@ -330,7 +330,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
   void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                                ObjectFifoCreateOp op, int share_direction) {
+                                ObjectFifoCreateOp op, int shareDirection) {
     if (!op.size())
       return;
 
@@ -338,7 +338,7 @@ struct AIEObjectFifoStatefulTransformPass
     auto elemType =
         op.getElemType().cast<MemRefType>().getElementType().cast<MemRefType>();
     int numElem = op.size();
-    int of_elem_index = 0; // used to give objectFifo elements a symbolic name
+    int ofElemIndex = 0; // used to give objectFifo elements a symbolic name
 
     // if this objectFifo is linked to another, check if the other's elements
     // have already been created (the elements that are created are those of
@@ -382,13 +382,13 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    TileOp creation_tile;
-    if (share_direction == 0 || share_direction == -1)
-      creation_tile = op.getProducerTileOp();
+    TileOp creationTile;
+    if (shareDirection == 0 || shareDirection == -1)
+      creationTile = op.getProducerTileOp();
     else {
       auto consumerTileOp =
           dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-      creation_tile = consumerTileOp;
+      creationTile = consumerTileOp;
     }
 
     // Reset opbuilder location to after the last tile declaration
@@ -401,14 +401,14 @@ struct AIEObjectFifoStatefulTransformPass
     for (int i = 0; i < numElem; i++) {
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
-      if (!creation_tile.isShimTile()) {
+      if (!creationTile.isShimTile()) {
         auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile,
+            builder.getUnknownLoc(), elemType, creationTile,
             builder.getStringAttr(op.name().str() + "_buff_" +
-                                  std::to_string(of_elem_index)));
+                                  std::to_string(ofElemIndex)));
         buffers.push_back(buff);
       }
-      of_elem_index++;
+      ofElemIndex++;
     }
     if (linked) {
       if (linkOp->isDistribute())
@@ -417,8 +417,8 @@ struct AIEObjectFifoStatefulTransformPass
         numElem *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
-    std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile);
+    std::vector<LockOp> locks =
+        createObjectFifoLocks(builder, lockAnalysis, op, numElem, creationTile);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -873,15 +873,15 @@ struct AIEObjectFifoStatefulTransformPass
         clone->setOperand(operandIndex, result);
 
       } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
-        int64_t increment_value;
+        int64_t incrementValue;
         if (inLoop)
           // +1 because we do not duplicate original loop body
-          increment_value = (currentDuplication + 1) * step;
+          incrementValue = (currentDuplication + 1) * step;
         else
-          increment_value = currentDuplication * step;
+          incrementValue = currentDuplication * step;
 
         auto increment = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
+            builder.getUnknownLoc(), builder.getIndexAttr(incrementValue));
         auto sum = builder.create<arith::AddIOp>(builder.getUnknownLoc(),
                                                  builder.getIndexType(), base,
                                                  increment->getResult(0));
@@ -969,67 +969,65 @@ struct AIEObjectFifoStatefulTransformPass
             //    with that index in original loop body
 
             // find new loop size and step
-            auto old_upper_bound = forLoop.getUpperBound()
-                                       .getDefiningOp<arith::ConstantOp>()
-                                       .getValue();
-            int64_t old_upper_value =
-                llvm::dyn_cast<IntegerAttr>(old_upper_bound).getInt();
-            auto old_lower_bound = forLoop.getLowerBound()
-                                       .getDefiningOp<arith::ConstantOp>()
-                                       .getValue();
-            int64_t old_lower_value =
-                llvm::dyn_cast<IntegerAttr>(old_lower_bound).getInt();
-            auto old_step =
+            auto oldUpperBound = forLoop.getUpperBound()
+                                     .getDefiningOp<arith::ConstantOp>()
+                                     .getValue();
+            int64_t oldUpperValue =
+                llvm::dyn_cast<IntegerAttr>(oldUpperBound).getInt();
+            auto oldLowerBound = forLoop.getLowerBound()
+                                     .getDefiningOp<arith::ConstantOp>()
+                                     .getValue();
+            int64_t oldLowerValue =
+                llvm::dyn_cast<IntegerAttr>(oldLowerBound).getInt();
+            auto oldStep =
                 forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
-            int64_t old_step_value =
-                llvm::dyn_cast<IntegerAttr>(old_step).getInt();
-            int64_t num_iter =
-                (old_upper_value - old_lower_value) / old_step_value;
+            int64_t oldStepValue =
+                llvm::dyn_cast<IntegerAttr>(oldStep).getInt();
+            int64_t numIter = (oldUpperValue - oldLowerValue) / oldStepValue;
 
-            int64_t num_unrolls; // number of times to unroll loop, not counting
-                                 // original body
+            int64_t numUnrolls; // number of times to unroll loop, not counting
+                                // original body
 
             identifyDependencies(forLoop, forLoop, operations, opIndex,
                                  dependencies, 0);
 
-            if (num_iter <= unrollFactor) {
+            if (numIter <= unrollFactor) {
               // duplicate loop body and remove loop
-              num_unrolls = num_iter;
+              numUnrolls = numIter;
               builder.setInsertionPointAfter(forLoop);
-              duplicateBlock(builder, num_unrolls, operations, dependencies,
-                             forLoop.getLowerBound(), old_step_value, false);
+              duplicateBlock(builder, numUnrolls, operations, dependencies,
+                             forLoop.getLowerBound(), oldStepValue, false);
               forLoop.getOperation()->erase();
 
             } else {
-              num_unrolls = unrollFactor - 1; // -1 without original loop body
+              numUnrolls = unrollFactor - 1; // -1 without original loop body
 
               // create new upper bound and step
-              int64_t new_step_value =
-                  static_cast<int64_t>(unrollFactor) * old_step_value;
-              int64_t remainder = (old_upper_value - old_lower_value) %
-                                  new_step_value / old_step_value;
+              int64_t newStepValue =
+                  static_cast<int64_t>(unrollFactor) * oldStepValue;
+              int64_t remainder =
+                  (oldUpperValue - oldLowerValue) % newStepValue / oldStepValue;
               builder.setInsertionPoint(forLoop);
               if (remainder > 0) {
-                int64_t new_upper_bound = (old_upper_value - old_lower_value) /
-                                          new_step_value * new_step_value;
+                int64_t newUpperBound = (oldUpperValue - oldLowerValue) /
+                                        newStepValue * newStepValue;
                 auto uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
-                    builder.getIndexAttr(new_upper_bound));
+                    builder.getIndexAttr(newUpperBound));
                 forLoop.setUpperBound(uBound);
               }
-              auto new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(),
-                  builder.getIndexAttr(new_step_value));
-              forLoop.setStep(new_step);
+              auto newStep = builder.create<arith::ConstantOp>(
+                  builder.getUnknownLoc(), builder.getIndexAttr(newStepValue));
+              forLoop.setStep(newStep);
 
               // duplicate loop body, insert before terminator operation
               builder.setInsertionPoint(&body->back());
-              duplicateBlock(builder, num_unrolls, operations, dependencies,
-                             forLoop.getInductionVar(), old_step_value, true);
+              duplicateBlock(builder, numUnrolls, operations, dependencies,
+                             forLoop.getInductionVar(), oldStepValue, true);
               // duplicate remainder operations after loop body
               builder.setInsertionPointAfter(forLoop);
               duplicateBlock(builder, remainder, operations, dependencies,
-                             forLoop.getUpperBound(), old_step_value, false);
+                             forLoop.getUpperBound(), oldStepValue, false);
             }
           }
         });
@@ -1601,12 +1599,12 @@ struct AIEObjectFifoStatefulTransformPass
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       builder.setInsertionPointToStart(&device.getBodyRegion().front());
-      auto sym_name = createOp.getName();
+      auto symName = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr("__erase_" + sym_name));
+                        builder.getStringAttr("__erase_" + symName));
       auto memrefType =
           createOp.getElemType().getElementType().cast<MemRefType>();
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
+      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), symName,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
     }

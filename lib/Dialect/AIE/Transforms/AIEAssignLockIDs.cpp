@@ -48,42 +48,42 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     // that stores the currently assigned lockIDs.
     for (auto lock : device.getOps<LockOp>()) {
       if (lock.getLockID().has_value()) {
-        Operation *lock_tile = lock.getTile().getDefiningOp();
-        tileToLastID[lock_tile].first = 0;
-        tileToLastID[lock_tile].second.insert(lock.getLockIDValue());
+        Operation *lockTile = lock.getTile().getDefiningOp();
+        tileToLastID[lockTile].first = 0;
+        tileToLastID[lockTile].second.insert(lock.getLockIDValue());
       }
     }
 
     // The second pass scans for locks with no lockIDs and assigns locks.
     for (auto lock : device.getOps<LockOp>()) {
-      Operation *lock_tile = lock.getTile().getDefiningOp();
+      Operation *lockTile = lock.getTile().getDefiningOp();
       if (!lock.getLockID().has_value()) {
-        if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
+        if (tileToLastID.find(lockTile) == tileToLastID.end()) {
           // If the tile operation corresponding to the lock does not exist in
           // the data structure, initialize the lockID with 0 with an empty set.
-          tileToLastID[lock_tile].first = 0;
-        } else if (tileToLastID[lock_tile].first < 15) {
+          tileToLastID[lockTile].first = 0;
+        } else if (tileToLastID[lockTile].first < 15) {
           // If the tile operation of the lock exists, the potential lockID is
           // checked with the set containing occupied lockIDs until a lockID
           // that is free is found.
-          int potential_ID = tileToLastID[lock_tile].first;
+          int potentialID = tileToLastID[lockTile].first;
           while (true) {
-            if (tileToLastID[lock_tile].second.find(potential_ID) !=
-                tileToLastID[lock_tile].second.end())
-              potential_ID++;
+            if (tileToLastID[lockTile].second.find(potentialID) !=
+                tileToLastID[lockTile].second.end())
+              potentialID++;
             else
               break;
           }
-          tileToLastID[lock_tile].first = potential_ID;
+          tileToLastID[lockTile].first = potentialID;
         } else {
           lock->emitError() << "Exceeded the number of unique LockIDs";
           return;
         }
 
         // The lockID is assigned and is stored in the set.
-        lock->setAttr("lockID", rewriter.getI32IntegerAttr(
-                                    tileToLastID[lock_tile].first));
-        tileToLastID[lock_tile].second.insert(tileToLastID[lock_tile].first);
+        lock->setAttr("lockID",
+                      rewriter.getI32IntegerAttr(tileToLastID[lockTile].first));
+        tileToLastID[lockTile].second.insert(tileToLastID[lockTile].first);
       }
     }
   }

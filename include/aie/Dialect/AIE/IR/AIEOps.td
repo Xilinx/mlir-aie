@@ -1418,7 +1418,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AnyMemRef>:$elem_type,
+        TypeAttrOf<AnyMemRef>:$elemType,
         AIE_DimTupleArrayAttr:$dimensionsToStream,
         AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
@@ -1432,7 +1432,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         `}` 
         `,` 
         $elemNumber 
-    `)` attr-dict `:` $elem_type
+    `)` attr-dict `:` $elemType
   }];
   
   let hasVerifier = 1;
@@ -1457,14 +1457,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
 
   let builders = [
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
-                   "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
+                   "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elemType,
                    CArg<"llvm::ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
                    CArg<"llvm::ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
       odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
-      odsState.addAttribute(getElemTypeAttrName(odsState.name), mlir::TypeAttr::get(elem_type));
+      odsState.addAttribute(getElemTypeAttrName(odsState.name), mlir::TypeAttr::get(elemType));
       odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
                             odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
       odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
