@@ -39,24 +39,5 @@ PYBIND11_MODULE(_aie, m) {
       },
       py::arg("registry"));
 
-  // AIE types bindings
-  mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)
-      .def_classmethod(
-          "get",
-          [](py::object cls, MlirType type) {
-            return cls(aieObjectFifoTypeGet(type));
-          },
-          "Get an instance of ObjectFifoType with given element type.",
-          py::arg("self"), py::arg("type") = py::none());
-
-  mlir_type_subclass(m, "ObjectFifoSubviewType", aieTypeIsObjectFifoSubviewType)
-      .def_classmethod(
-          "get",
-          [](py::object cls, MlirType type) {
-            return cls(aieObjectFifoSubviewTypeGet(type));
-          },
-          "Get an instance of ObjectFifoSubviewType with given element type.",
-          py::arg("self"), py::arg("type") = py::none());
-
   m.attr("__version__") = "dev";
 }

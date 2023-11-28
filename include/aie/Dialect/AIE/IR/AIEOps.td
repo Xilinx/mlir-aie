@@ -1418,7 +1418,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
+        TypeAttrOf<AnyMemRef>:$elem_type,
         AIE_DimTupleArrayAttr:$dimensionsToStream,
         AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
@@ -1597,7 +1597,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
   );
 
-  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+  let results = (outs AnyMemRef:$subview);
 
   let assemblyFormat = [{
     attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
@@ -1661,7 +1661,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview, 
+    ins AnyMemRef:$subview, 
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
   );
 

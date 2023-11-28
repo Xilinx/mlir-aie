@@ -68,57 +68,6 @@ void registerAIETranslations();
 #define GET_TYPEDEF_CLASSES 1
 #include "aie/Dialect/AIE/IR/AIETypes.h.inc"
 
-namespace xilinx::AIE {
-namespace detail {
-struct AIEObjectFifoTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifo type.
-class AIEObjectFifoType
-    : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
-                                  detail::AIEObjectFifoTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `ObjectFifoType` with the given element type.
-  static AIEObjectFifoType get(Type elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         Type elementType);
-
-  /// Returns the element type of this ObjectFifoType.
-  Type getElementType();
-};
-
-namespace detail {
-struct AIEObjectFifoSubviewTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifoSubview type.
-class AIEObjectFifoSubviewType
-    : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
-                                  detail::AIEObjectFifoSubviewTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `SubviewType` with the given element type.
-  static AIEObjectFifoSubviewType get(Type elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         Type elementType);
-
-  /// Returns the element type of this SubviewType.
-  Type getElementType();
-};
-
-} // namespace xilinx::AIE
-
 ////////////////////////////////////////////////////////////////////////////////
 // Custom Attributes ///////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

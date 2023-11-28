@@ -81,15 +81,17 @@ struct AIEObjectFifoRegisterProcessPass
 
     // acquires
     if (acqNumber.getInt() > 0) {
-      auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
-          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
+          builder.getUnknownLoc(),
+          MemRefType::get({acqNumber.getInt()}, elementType.cast<MemRefType>()),
+          regOp.getPortAttr(), SymbolRefAttr::get(ctx, regOp.getObjFifoName()),
+          acqNumber);
 
       // subview accesses
       for (int i = 0; i < acqNumber.getInt(); i++)
         (void)builder.create<ObjectFifoSubviewAccessOp>(
-            builder.getUnknownLoc(), elementType, acqOp.getSubview(),
+            builder.getUnknownLoc(), elementType.cast<MemRefType>(),
+            acqOp.getSubview(),
             builder.getIntegerAttr(builder.getI32Type(), i));
 
       // apply kernel
@@ -127,8 +129,7 @@ struct AIEObjectFifoRegisterProcessPass
       builder.setInsertionPointToEnd(device.getBody());
       ObjectFifoCreateOp objFifo = registerOp.getObjectFifo();
       auto elementType =
-          llvm::dyn_cast<AIEObjectFifoType>(objFifo.getElemType())
-              .getElementType();
+          objFifo.getElemType().getElementType().cast<MemRefType>();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
         std::queue<Value> consumers;

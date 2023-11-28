@@ -18,26 +18,4 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEX, aiex, xilinx::AIEX::AIEXDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec,
                                       xilinx::aievec::AIEVecDialect)
 
-//===---------------------------------------------------------------------===//
-// ObjectFifoType
-//===---------------------------------------------------------------------===//
 
-bool aieTypeIsObjectFifoType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoType>();
-}
-
-MlirType aieObjectFifoTypeGet(MlirType type) {
-  return wrap(xilinx::AIE::AIEObjectFifoType::get(unwrap(type)));
-}
-
-//===---------------------------------------------------------------------===//
-// ObjectFifoSubviewType
-//===---------------------------------------------------------------------===//
-
-bool aieTypeIsObjectFifoSubviewType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoSubviewType>();
-}
-
-MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
-  return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(unwrap(type)));
-}

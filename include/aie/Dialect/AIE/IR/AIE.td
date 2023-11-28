@@ -26,7 +26,7 @@ def AIE_Dialect : Dialect {
     `switch` keyword in C/C++.
 
   }];
-  let useDefaultTypePrinterParser = 1;
+  let useDefaultTypePrinterParser = 0;
   let useDefaultAttributePrinterParser = 1;
 }
 

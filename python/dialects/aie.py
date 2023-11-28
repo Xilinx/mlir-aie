@@ -12,7 +12,6 @@ from .extras.arith import constant
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from .._mlir_libs._aie import ObjectFifoType
 from ..extras import types as T
 from ..ir import (
     Attribute,
@@ -229,7 +228,7 @@ class OrderedObjectBuffer(ObjectFifoCreateOp):
 # from objFifo with given name.
 class ObjectFifoAcquireOp(ObjectFifoAcquireOp):
     def __init__(self, port, of_name, num_elem, datatype):
-        subview_t = ObjectFifoSubviewType.get(datatype)
+        subview_t = T.memref(num_elem, datatype)
         self.datatype = datatype
         super().__init__(subview_t, port, of_name, num_elem)
 
