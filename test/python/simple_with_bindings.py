@@ -5,6 +5,8 @@
 
 import aie.extras.types as T
 from aie.dialects.aie import *
+from aie.dialects.extras import memref
+from aie.dialects.extras.arith import constant
 
 
 # CHECK:  module {
@@ -33,7 +35,7 @@ def simple_with_bindings_example():
         C = Core(tile)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            val = Load(buff, 3)
-            add = AddI(val, 4)
-            Store(add, buff, 3)
+            val = memref.load(buff, [3])
+            add = arith.addi(val, constant(4))
+            memref.store(add, buff, [3])
             EndOp()

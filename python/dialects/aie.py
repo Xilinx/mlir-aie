@@ -14,22 +14,11 @@ from ..dialects import memref
 from ..dialects.func import *
 from ..dialects.scf import *
 from ..ir import *
-from ..util import constant
+from ..dialects.extras.arith import constant
 
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-
-
-class AddI(arith.AddIOp):
-    """Specialize AddIOp class constructor to take python integers"""
-
-    def __init__(self, lhs, rhs):
-        if isinstance(lhs, int):
-            lhs = constant(lhs)
-        if isinstance(rhs, int):
-            rhs = constant(rhs)
-        super().__init__(lhs=lhs, rhs=rhs)
 
 
 # Wrapper for func FuncOp with "private" visibility.
@@ -76,36 +65,6 @@ class Call(CallOp):
                 argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
                 arguments=attrInputs,
             )
-
-
-class Load(memref.LoadOp):
-    """Specialize LoadOp class constructor to take python integers"""
-
-    def __init__(self, mem, indices):
-        valueIndices = []
-        if isinstance(indices, list):
-            for i in indices:
-                valueIndices.append(constant(i, index=True))
-        else:
-            valueIndices.append(constant(indices, index=True))
-        super().__init__(memref=mem, indices=valueIndices)
-
-
-class Store(memref.StoreOp):
-    """Specialize StoreOp class constructor to take python integers"""
-
-    def __init__(self, val, mem, indices):
-        if isinstance(val, int):
-            intVal = constant(val)
-        else:
-            intVal = val
-        valueIndices = []
-        if isinstance(indices, list):
-            for i in indices:
-                valueIndices.append(constant(i, index=True))
-        else:
-            valueIndices.append(constant(indices, index=True))
-        super().__init__(value=intVal, memref=mem, indices=valueIndices)
 
 
 def op_region_builder(op, op_region, terminator=None):

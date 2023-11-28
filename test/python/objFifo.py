@@ -5,6 +5,8 @@
 
 import aie.extras.types as T
 from aie.dialects.aie import *
+from aie.dialects.extras import memref
+from aie.dialects.extras import arith
 from aie.dialects.scf import *
 
 
@@ -40,6 +42,6 @@ def objFifo_example():
             elem0 = Acquire(
                 ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32())
             ).acquiredElem()
-            Store(10, elem0, 0)
+            memref.store(arith.constant(10), elem0.result, [0])
             Release(ObjectFifoPort.Consume, "of0", 1)
             EndOp()

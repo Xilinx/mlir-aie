@@ -9,6 +9,7 @@
 import aie.extras.types as T
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.dialects.extras import memref
 from aie.passmanager import PassManager
 
 range_ = for_
@@ -553,19 +554,19 @@ def edge_detect():
 
         @core(T3, "filter2d.cc.o")
         def coreBody():
-            kernel = memref.AllocOp(T.memref(3, 3, T.i16()), [], [])
+            kernel = memref.alloc([3, 3], T.i16())
             v0 = constant(0, T.i16())
             v1 = constant(4096, T.i16())
             vMinus4 = constant(-16384, T.i16())
-            Store(v0, kernel, [0, 0])
-            Store(v1, kernel, [0, 1])
-            Store(v0, kernel, [0, 2])
-            Store(v1, kernel, [1, 0])
-            Store(vMinus4, kernel, [1, 1])
-            Store(v1, kernel, [1, 2])
-            Store(v0, kernel, [2, 0])
-            Store(v1, kernel, [2, 1])
-            Store(v0, kernel, [2, 2])
+            memref.store(v0, kernel, [0, 0])
+            memref.store(v1, kernel, [0, 1])
+            memref.store(v0, kernel, [0, 2])
+            memref.store(v1, kernel, [1, 0])
+            memref.store(vMinus4, kernel, [1, 1])
+            memref.store(v1, kernel, [1, 2])
+            memref.store(v0, kernel, [2, 0])
+            memref.store(v1, kernel, [2, 1])
+            memref.store(v0, kernel, [2, 2])
 
             # Preamble : Top Border
             elemsInPre = Acquire(
