@@ -3,11 +3,24 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
-from aie.dialects.aie import *
-from aie.dialects.func import *
-from aie.dialects.scf import *
-import aie.types as T
+import aie.extras.types as T
+from aie.dialects.aie import (
+    AIEDevice,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    objectFifo,
+    objectFifo_release,
+    tile,
+    Device,
+    Core,
+    end,
+)
+from aie.dialects.extras import memref, arith
+from aie.ir import InsertionPoint, TypeAttr, Block
+
+from util import construct_and_print_module
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2302) {
@@ -25,22 +38,30 @@ import aie.types as T
 # CHECK:      }
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        S = Tile(0, 2)
-        tile = Tile(1, 2)
+        S = tile(0, 2)
+        T_ = tile(1, 2)
 
-        OrderedObjectBuffer("of0", S, tile, 2, T.memref(256, T.i32))
+        objectFifo(
+            "of0",
+            S,
+            [T_],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
 
-        C = Core(tile)
+        C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            elem0 = Acquire(
-               ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32)
-            ).acquiredElem()
-            Store(10, elem0, 0)
-            Release(ObjectFifoPort.Consume, "of0", 1)
-            EndOp()
+            elem0 = acquire(
+                ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32())
+            ).acquired_elem()
+            memref.store(arith.constant(10), elem0.result, [0])
+            objectFifo_release(ObjectFifoPort.Consume, "of0", 1)
+            end()

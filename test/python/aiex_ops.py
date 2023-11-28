@@ -3,28 +3,16 @@
 
 # RUN: %PYTHON %s | FileCheck %s
 
-import aie
-from aie.ir import *
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects import arith
-
-
-def constructAndPrintInModule(f):
-    with Context() as ctx, Location.unknown():
-        aie.dialects.aiex.register_dialect(ctx)
-        module = Module.create()
-        print("\nTEST:", f.__name__)
-        with InsertionPoint(module.body):
-            f()
-        print(module)
+from aie.dialects.aiex import GetTileOp
+from aie.dialects.extras import arith
+from aie.extras import types as T
+from util import construct_and_print_module
 
 
 # CHECK-LABEL: getTileOp
 # CHECK: AIEX.getTile
-@constructAndPrintInModule
+@construct_and_print_module
 def getTileOp():
-    iTy = IndexType.get()
-    four = arith.ConstantOp(iTy, 4)
-    two = arith.ConstantOp(iTy, 2)
-    GetTileOp(IndexType.get(), four, two)
+    four = arith.constant(4, index=True)
+    two = arith.constant(2, index=True)
+    GetTileOp(T.index(), four, two)

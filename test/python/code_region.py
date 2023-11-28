@@ -3,12 +3,27 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
-from aie.dialects.aie import *
-from aie.dialects.scf import *
-import aie.types as T
+import aie.extras.types as T
+from aie.dialects.aie import (
+    AIEDevice,
+    Call,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    core,
+    device,
+    external_func,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    tile,
+)
+from aie.dialects.scf import for_, yield_
+from aie.ir import TypeAttr
+from util import construct_and_print_module
 
 range_ = for_
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -33,26 +48,42 @@ range_ = for_
 # CHECK:      } {link_with = "test.o"}
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def codeRegion():
     @device(AIEDevice.xcve2802)
-    def deviceBody():
-        privateFunc("test_func", inputs=[T.memref(8, 8, T.i32)], outputs=[T.i32])
+    def device_body():
+        external_func("test_func", inputs=[T.memref(8, 8, T.i32())], outputs=[T.i32()])
 
-        S = Tile(0, 2)
-        M = Tile(1, 2)
-        tile = Tile(3, 3)
+        S = tile(0, 2)
+        M = tile(1, 2)
+        N = tile(3, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32))
-        OrderedObjectBuffer("of1", M, tile, 2, T.memref(8, 8, T.i32))
-        Link(["of0"], ["of1"])
+        objectFifo(
+            "of0",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "of1",
+            M,
+            [N],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["of0"], ["of1"])
 
-        @core(tile, "test.o")
-        def coreBody():
+        @core(N, "test.o")
+        def core_body():
             for _ in range_(10):
-                elem0 = Acquire(
-                    ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32)
-                ).acquiredElem()
-                res = Call("test_func", [elem0], [T.i32])
-                Release(ObjectFifoPort.Consume, "of1", 1)
+                elem0 = acquire(
+                    ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
+                ).acquired_elem()
+                res = Call("test_func", [elem0], [T.i32()])
+                objectFifo_release(ObjectFifoPort.Consume, "of1", 1)
                 yield_([])

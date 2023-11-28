@@ -6,23 +6,34 @@
 
 # RUN: %python %s | FileCheck %s
 
-import aie
-from aie.ir import *
-from aie.dialects.func import *
-from aie.dialects.arith import *
-from aie.dialects.scf import *
-from aie.dialects.memref import *
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
+import aie.extras.types as T
+from aie.dialects.aie import (
+    AIEDevice,
+    Call,
+    ObjectFifoPort,
+    ObjectFifoType,
+    acquire,
+    core,
+    device,
+    external_func,
+    objectFifo,
+    objectFifo_link,
+    objectFifo_release,
+    tile,
+)
+from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
+from aie.dialects.extras import memref, arith
+from aie.dialects.func import FuncOp
+from aie.dialects.scf import for_
+from aie.dialects.scf import yield_
+from aie.ir import Context, Location, Module, InsertionPoint, TypeAttr
 from aie.passmanager import PassManager
-import aie.types as T
 
 range_ = for_
 
 
-def constructAndPrintInModule(f):
+def construct_and_print_module(f):
     with Context() as ctx, Location.unknown():
-        aie.dialects.aie.register_dialect(ctx)
         module = Module.create()
         print("\nTEST:", f.__name__)
         with InsertionPoint(module.body):
@@ -72,7 +83,7 @@ def constructAndPrintInModule(f):
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def my_vector_scalar():
     N = 4096
     n = 1024
@@ -81,40 +92,58 @@ def my_vector_scalar():
     buffer_depth = 2
 
     @device(AIEDevice.ipu)
-    def deviceBody():
-        scale_int32 = privateFunc(
-            "scale_int32", inputs=[T.memref(n, T.i32), T.memref(n, T.i32)]
+    def device_body():
+        scale_int32 = external_func(
+            "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
         )
 
-        S = Tile(0, 0)
-        tile = Tile(0, 2)
+        S = tile(0, 0)
+        M = tile(0, 2)
 
-        OrderedObjectBuffer("in", S, tile, buffer_depth, T.memref(n, T.i32))
-        OrderedObjectBuffer("out", tile, S, buffer_depth, T.memref(n, T.i32))
+        objectFifo(
+            "in",
+            S,
+            [M],
+            buffer_depth,
+            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "out",
+            M,
+            [S],
+            buffer_depth,
+            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
+            [],
+            [],
+        )
 
-        @core(tile, "scale.o")
-        def coreBody():
+        @core(M, "scale.o")
+        def core_body():
             # Effective while(1)
             for _ in range_(0xFFFFFFFF):
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
-                    elemOut = Acquire(
-                        ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32)
-                    ).acquiredElem()
-                    elemIn = Acquire(
-                        ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32)
-                    ).acquiredElem()
-                    Call(scale_int32, [elemIn, elemOut])
-                    Release(ObjectFifoPort.Consume, "in", 1)
-                    Release(ObjectFifoPort.Produce, "out", 1)
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32())
+                    ).acquired_elem()
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
+                    ).acquired_elem()
+                    Call(scale_int32, [elem_in, elem_out])
+                    objectFifo_release(ObjectFifoPort.Consume, "in", 1)
+                    objectFifo_release(ObjectFifoPort.Produce, "out", 1)
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(T.memref(N, T.i32), T.memref(N, T.i32), T.memref(N, T.i32))
+        @FuncOp.from_py_func(
+            T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+        )
         def sequence(A, B, C):
-            IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-            IpuDmaMemcpyNd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: my_matmul
@@ -125,7 +154,6 @@ def my_vector_scalar():
 # CHECK:     func.func private @matmul_scalar_i16_i16(memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>)
 # CHECK:     func.func private @matmul_i16_i16(memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
-# CHECK:     %tile_0_1 = AIE.tile(0, 1)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
 # CHECK:     AIE.objectFifo @inA(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<64x32xi16>>
 # CHECK:     AIE.objectFifo @inB(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<32x64xi16>>
@@ -175,7 +203,7 @@ def my_vector_scalar():
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def my_matmul():
     M = 128
     K = 128
@@ -213,69 +241,92 @@ def my_matmul():
     vectorized = True
 
     @device(AIEDevice.ipu)
-    def deviceBody():
-        zero_scalar = privateFunc("zero_scalar_i16", inputs=[T.memref(m, n, T.i16)])
-        zero = privateFunc("zero_i16", inputs=[T.memref(m, n, T.i16)])
-        matmul_scalar = privateFunc(
+    def device_body():
+        zero_scalar = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
+        zero = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
+        matmul_scalar = external_func(
             "matmul_scalar_i16_i16",
             inputs=[
-                T.memref(m, k, T.i16),
-                T.memref(k, n, T.i16),
-                T.memref(m, n, T.i16),
+                T.memref(m, k, T.i16()),
+                T.memref(k, n, T.i16()),
+                T.memref(m, n, T.i16()),
             ],
         )
-        matmul = privateFunc(
+        matmul = external_func(
             "matmul_i16_i16",
             inputs=[
-                T.memref(m, k, T.i16),
-                T.memref(k, n, T.i16),
-                T.memref(m, n, T.i16),
+                T.memref(m, k, T.i16()),
+                T.memref(k, n, T.i16()),
+                T.memref(m, n, T.i16()),
             ],
         )
 
-        S = Tile(0, 0)
-        M = Tile(0, 1)
-        tile = Tile(0, 2)
+        S = tile(0, 0)
+        M = tile(0, 2)
 
-        OrderedObjectBuffer("inA", S, tile, 2, T.memref(m, k, T.i16))
-        OrderedObjectBuffer("inB", S, tile, 2, T.memref(k, n, T.i16))
-        OrderedObjectBuffer("outC", tile, S, 2, T.memref(m, n, T.i16))
+        objectFifo(
+            "inA",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(m, k, T.i16()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "inB",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(k, n, T.i16()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "outC",
+            M,
+            [S],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(m, n, T.i16()))),
+            [],
+            [],
+        )
 
-        @core(tile, "mm.o")
-        def coreBody():
+        @core(M, "mm.o")
+        def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles):
-                    elemOut = Acquire(
-                        ObjectFifoPort.Produce, "outC", 1, T.memref(m, n, T.i16)
-                    ).acquiredElem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "outC", 1, T.memref(m, n, T.i16())
+                    ).acquired_elem()
                     if vectorized:
-                        Call(zero, [elemOut])
+                        Call(zero, [elem_out])
                     else:
-                        Call(zero_scalar, [elemOut])
+                        Call(zero_scalar, [elem_out])
 
                     for _ in range_(K_div_k):
-                        elemInA = Acquire(
-                            ObjectFifoPort.Consume, "inA", 1, T.memref(m, k, T.i16)
-                        ).acquiredElem()
-                        elemInB = Acquire(
-                            ObjectFifoPort.Consume, "inB", 1, T.memref(k, n, T.i16)
-                        ).acquiredElem()
+                        elem_in_a = acquire(
+                            ObjectFifoPort.Consume, "inA", 1, T.memref(m, k, T.i16())
+                        ).acquired_elem()
+                        elem_in_b = acquire(
+                            ObjectFifoPort.Consume, "inB", 1, T.memref(k, n, T.i16())
+                        ).acquired_elem()
                         if vectorized:
-                            Call(matmul, [elemInA, elemInB, elemOut])
+                            Call(matmul, [elem_in_a, elem_in_b, elem_out])
                         else:
-                            Call(matmul_scalar, [elemInA, elemInB, elemOut])
-                        Release(ObjectFifoPort.Consume, "inA", 1)
-                        Release(ObjectFifoPort.Consume, "inB", 1)
+                            Call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                        objectFifo_release(ObjectFifoPort.Consume, "inA", 1)
+                        objectFifo_release(ObjectFifoPort.Consume, "inB", 1)
                         yield_([])
 
-                    Release(ObjectFifoPort.Produce, "outC", 1)
+                    objectFifo_release(ObjectFifoPort.Produce, "outC", 1)
                     yield_([])
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(A_sz_in_i32s, T.i32),
-            T.memref(B_sz_in_i32s, T.i32),
-            T.memref(C_sz_in_i32s, T.i32),
+            T.memref(A_sz_in_i32s, T.i32()),
+            T.memref(B_sz_in_i32s, T.i32()),
+            T.memref(C_sz_in_i32s, T.i32()),
         )
         def sequence(A, B, C):
             # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
@@ -289,7 +340,7 @@ def my_matmul():
                 num_tile_rows = min(
                     [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                 )
-                IpuDmaMemcpyNd(
+                ipu_dma_memcpy_nd(
                     metadata="outC",
                     bd_id=0,
                     mem=C,
@@ -305,7 +356,7 @@ def my_matmul():
                         * word_size_in
                         // 4
                     )
-                    IpuDmaMemcpyNd(
+                    ipu_dma_memcpy_nd(
                         metadata="inA",
                         bd_id=2 * tile_row + 1,
                         mem=A,
@@ -313,7 +364,7 @@ def my_matmul():
                         lengths=[N_div_n, K_div_k, m, k_in_i32s],
                         strides=[0, k_in_i32s, K_in_i32s],
                     )
-                    IpuDmaMemcpyNd(
+                    ipu_dma_memcpy_nd(
                         metadata="inB",
                         bd_id=2 * tile_row + 2,
                         mem=B,
@@ -321,17 +372,17 @@ def my_matmul():
                         strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                     )
 
-                IpuSync(column=0, row=0, direction=0, channel=0)
+                ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: edge_detect
 # CHECK: module {
 # CHECK:   AIE.device(ipu) {
-# CHECK:     func.func private @rgba2grayLine(memref<256xui8>, memref<64xui8>, i32)
-# CHECK:     func.func private @filter2dLine(memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>)
-# CHECK:     func.func private @thresholdLine(memref<64xui8>, memref<64xui8>, i32, i16, i16, i8)
-# CHECK:     func.func private @gray2rgbaLine(memref<64xui8>, memref<256xui8>, i32)
-# CHECK:     func.func private @addWeightedLine(memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8)
+# CHECK:     func.func private @rgba2gray_line(memref<256xui8>, memref<64xui8>, i32)
+# CHECK:     func.func private @filter2d_line(memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>)
+# CHECK:     func.func private @threshold_line(memref<64xui8>, memref<64xui8>, i32, i16, i16, i8)
+# CHECK:     func.func private @gray2rgba_line(memref<64xui8>, memref<256xui8>, i32)
+# CHECK:     func.func private @add_weighted_line(memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
 # CHECK:     %tile_0_1 = AIE.tile(0, 1)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
@@ -358,7 +409,7 @@ def my_matmul():
 # CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
 # CHECK:         %2 = AIE.objectFifo.acquire @OF_2to3(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
 # CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         func.call @rgba2grayLine(%1, %3, %c64_i32) : (memref<256xui8>, memref<64xui8>, i32) -> ()
+# CHECK:         func.call @rgba2gray_line(%1, %3, %c64_i32) : (memref<256xui8>, memref<64xui8>, i32) -> ()
 # CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_2to3(Produce, 1)
 # CHECK:       }
@@ -388,7 +439,7 @@ def my_matmul():
 # CHECK:       %2 = AIE.objectFifo.subview.access %0[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:       %3 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
 # CHECK:       %4 = AIE.objectFifo.subview.access %3[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       func.call @filter2dLine(%1, %1, %2, %4, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
+# CHECK:       func.call @filter2d_line(%1, %1, %2, %4, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
 # CHECK:       scf.for %arg0 = %c1 to %c35 step %c1 {
 # CHECK:         %10 = AIE.objectFifo.acquire @OF_2to3(Consume, 3) : !AIE.objectFifoSubview<memref<64xui8>>
@@ -397,7 +448,7 @@ def my_matmul():
 # CHECK:         %13 = AIE.objectFifo.subview.access %10[2] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         %14 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
 # CHECK:         %15 = AIE.objectFifo.subview.access %14[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         func.call @filter2dLine(%11, %12, %13, %15, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
+# CHECK:         func.call @filter2d_line(%11, %12, %13, %15, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:         AIE.objectFifo.release @OF_2to3(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_3to4(Produce, 1)
 # CHECK:       }
@@ -406,7 +457,7 @@ def my_matmul():
 # CHECK:       %7 = AIE.objectFifo.subview.access %5[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:       %8 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
 # CHECK:       %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       func.call @filter2dLine(%6, %7, %7, %9, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
+# CHECK:       func.call @filter2d_line(%6, %7, %7, %9, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:       AIE.objectFifo.release @OF_2to3(Consume, 2)
 # CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
 # CHECK:       AIE.end
@@ -424,7 +475,7 @@ def my_matmul():
 # CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         %2 = AIE.objectFifo.acquire @OF_4to5(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
 # CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         func.call @thresholdLine(%1, %3, %c64_i32, %c10_i16, %c255_i16, %c0_i8) : (memref<64xui8>, memref<64xui8>, i32, i16, i16, i8) -> ()
+# CHECK:         func.call @threshold_line(%1, %3, %c64_i32, %c10_i16, %c255_i16, %c0_i8) : (memref<64xui8>, memref<64xui8>, i32, i16, i16, i8) -> ()
 # CHECK:         AIE.objectFifo.release @OF_3to4(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_4to5(Produce, 1)
 # CHECK:       }
@@ -443,7 +494,7 @@ def my_matmul():
 # CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         %2 = AIE.objectFifo.acquire @OF_5to5(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
 # CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         func.call @gray2rgbaLine(%1, %3, %c64_i32) : (memref<64xui8>, memref<256xui8>, i32) -> ()
+# CHECK:         func.call @gray2rgba_line(%1, %3, %c64_i32) : (memref<64xui8>, memref<256xui8>, i32) -> ()
 # CHECK:         AIE.objectFifo.release @OF_4to5(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_5to5(Produce, 1)
 # CHECK:         %4 = AIE.objectFifo.acquire @OF_5to5(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
@@ -452,7 +503,7 @@ def my_matmul():
 # CHECK:         %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
 # CHECK:         %8 = AIE.objectFifo.acquire @outOF_L1L2(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
 # CHECK:         %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         func.call @addWeightedLine(%5, %7, %9, %c256_i32, %c16384_i16, %c16384_i16, %c0_i8) : (memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8) -> ()
+# CHECK:         func.call @add_weighted_line(%5, %7, %9, %c256_i32, %c16384_i16, %c16384_i16, %c0_i8) : (memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8) -> ()
 # CHECK:         AIE.objectFifo.release @OF_5to5(Consume, 1)
 # CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
 # CHECK:         AIE.objectFifo.release @outOF_L1L2(Produce, 1)
@@ -473,256 +524,322 @@ def my_matmul():
 # CHECK: }
 
 
-@constructAndPrintInModule
+@construct_and_print_module
 def edge_detect():
     @device(AIEDevice.ipu)
-    def deviceBody():
-        rgba2grayLine = privateFunc(
-            "rgba2grayLine", inputs=[T.memref(256, T.ui8), T.memref(64, T.ui8), T.i32]
+    def device_body():
+        rgba2gray_line = external_func(
+            "rgba2gray_line",
+            inputs=[T.memref(256, T.ui8()), T.memref(64, T.ui8()), T.i32()],
         )
-        filter2dLine = privateFunc(
-            "filter2dLine",
+        filter2d_line = external_func(
+            "filter2d_line",
             inputs=[
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.i32,
-                T.memref(3, 3, T.i16),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.i32(),
+                T.memref(3, 3, T.i16()),
             ],
         )
-        thresholdLine = privateFunc(
-            "thresholdLine",
+        threshold_line = external_func(
+            "threshold_line",
             inputs=[
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.i32,
-                T.i16,
-                T.i16,
-                T.i8,
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.i32(),
+                T.i16(),
+                T.i16(),
+                T.i8(),
             ],
         )
-        gray2rgbaLine = privateFunc(
-            "gray2rgbaLine", inputs=[T.memref(64, T.ui8), T.memref(256, T.ui8), T.i32]
+        gray2rgba_line = external_func(
+            "gray2rgba_line",
+            inputs=[T.memref(64, T.ui8()), T.memref(256, T.ui8()), T.i32()],
         )
-        addWeightedLine = privateFunc(
-            "addWeightedLine",
+        add_weighted_line = external_func(
+            "add_weighted_line",
             inputs=[
-                T.memref(256, T.ui8),
-                T.memref(256, T.ui8),
-                T.memref(256, T.ui8),
-                T.i32,
-                T.i16,
-                T.i16,
-                T.i8,
+                T.memref(256, T.ui8()),
+                T.memref(256, T.ui8()),
+                T.memref(256, T.ui8()),
+                T.i32(),
+                T.i16(),
+                T.i16(),
+                T.i8(),
             ],
         )
 
-        S = Tile(0, 0)
-        M = Tile(0, 1)
-        T2 = Tile(0, 2)
-        T3 = Tile(0, 3)
-        T4 = Tile(0, 4)
-        T5 = Tile(0, 5)
+        S = tile(0, 0)
+        M = tile(0, 1)
+        T2 = tile(0, 2)
+        T3 = tile(0, 3)
+        T4 = tile(0, 4)
+        T5 = tile(0, 5)
 
-        OrderedObjectBuffer("inOF_L3L2", S, M, 2, T.memref(256, T.ui8))
-        OrderedObjectBuffer("inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8))
-        Link(["inOF_L3L2"], ["inOF_L2L1"])
+        objectFifo(
+            "inOF_L3L2",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "inOF_L2L1",
+            M,
+            [T2, T5],
+            [2, 2, 7],
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
-        OrderedObjectBuffer("outOF_L2L3", M, S, 2, T.memref(256, T.ui8))
-        OrderedObjectBuffer("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8))
-        Link(["outOF_L1L2"], ["outOF_L2L3"])
+        objectFifo(
+            "outOF_L2L3",
+            M,
+            [S],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "outOF_L1L2",
+            T5,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
-        OrderedObjectBuffer("OF_2to3", T2, T3, 4, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_3to4", T3, T4, 2, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_4to5", T4, T5, 2, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_5to5", T5, T5, 1, T.memref(256, T.ui8))
+        objectFifo(
+            "OF_2to3",
+            T2,
+            [T3],
+            4,
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "OF_3to4",
+            T3,
+            [T4],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "OF_4to5",
+            T4,
+            [T5],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "OF_5to5",
+            T5,
+            [T5],
+            1,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            [],
+            [],
+        )
 
         @core(T2, "rgba2gray.cc.o")
-        def coreBody():
+        def core_body():
             for _ in range_(36):
-                elemIn = Acquire(
-                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8)
-                ).acquiredElem()
-                elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_2to3", 1, T.memref(64, T.ui8)
-                ).acquiredElem()
+                elem_in = acquire(
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8())
+                ).acquired_elem()
+                elem_out = acquire(
+                    ObjectFifoPort.Produce, "OF_2to3", 1, T.memref(64, T.ui8())
+                ).acquired_elem()
 
-                Call(rgba2grayLine, [elemIn, elemOut, constant(64)])
+                Call(rgba2gray_line, [elem_in, elem_out, arith.constant(64)])
 
-                Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
-                Release(ObjectFifoPort.Produce, "OF_2to3", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
                 yield_([])
 
         @core(T3, "filter2d.cc.o")
-        def coreBody():
-            kernel = memref.AllocOp(T.memref(3, 3, T.i16), [], [])
-            v0 = constant(0, T.i16)
-            v1 = constant(4096, T.i16)
-            vMinus4 = constant(-16384, T.i16)
-            Store(v0, kernel, [0, 0])
-            Store(v1, kernel, [0, 1])
-            Store(v0, kernel, [0, 2])
-            Store(v1, kernel, [1, 0])
-            Store(vMinus4, kernel, [1, 1])
-            Store(v1, kernel, [1, 2])
-            Store(v0, kernel, [2, 0])
-            Store(v1, kernel, [2, 1])
-            Store(v0, kernel, [2, 2])
+        def core_body():
+            kernel = memref.alloc([3, 3], T.i16())
+            v0 = arith.constant(0, T.i16())
+            v1 = arith.constant(4096, T.i16())
+            v_minus4 = arith.constant(-16384, T.i16())
+            memref.store(v0, kernel, [0, 0])
+            memref.store(v1, kernel, [0, 1])
+            memref.store(v0, kernel, [0, 2])
+            memref.store(v1, kernel, [1, 0])
+            memref.store(v_minus4, kernel, [1, 1])
+            memref.store(v1, kernel, [1, 2])
+            memref.store(v0, kernel, [2, 0])
+            memref.store(v1, kernel, [2, 1])
+            memref.store(v0, kernel, [2, 2])
 
             # Preamble : Top Border
-            elemsInPre = Acquire(
-                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8)
-            ).acquiredElem()
-            elemPreOut = Acquire(
-                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
-            ).acquiredElem()
+            elems_in_pre = acquire(
+                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8())
+            ).acquired_elem()
+            elem_pre_out = acquire(
+                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
+            ).acquired_elem()
             Call(
-                filter2dLine,
+                filter2d_line,
                 [
-                    elemsInPre[0],
-                    elemsInPre[0],
-                    elemsInPre[1],
-                    elemPreOut,
-                    constant(64),
+                    elems_in_pre[0],
+                    elems_in_pre[0],
+                    elems_in_pre[1],
+                    elem_pre_out,
+                    arith.constant(64),
                     kernel,
                 ],
             )
-            Release(ObjectFifoPort.Produce, "OF_3to4", 1)
+            objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
             # Steady State : Middle
             for _ in range_(1, 35):
-                elemsIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(64, T.ui8)
-                ).acquiredElem()
-                elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
-                ).acquiredElem()
+                elems_in = acquire(
+                    ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(64, T.ui8())
+                ).acquired_elem()
+                elem_out = acquire(
+                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
+                ).acquired_elem()
                 Call(
-                    filter2dLine,
+                    filter2d_line,
                     [
-                        elemsIn[0],
-                        elemsIn[1],
-                        elemsIn[2],
-                        elemOut,
-                        constant(64),
+                        elems_in[0],
+                        elems_in[1],
+                        elems_in[2],
+                        elem_out,
+                        arith.constant(64),
                         kernel,
                     ],
                 )
-                Release(ObjectFifoPort.Consume, "OF_2to3", 1)
-                Release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
                 yield_([])
 
             # Postamble : Bottom Border
-            elemsInPost = Acquire(
-                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8)
-            ).acquiredElem()
-            elemPostOut = Acquire(
-                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
-            ).acquiredElem()
+            elems_in_post = acquire(
+                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8())
+            ).acquired_elem()
+            elem_post_out = acquire(
+                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
+            ).acquired_elem()
             Call(
-                filter2dLine,
+                filter2d_line,
                 [
-                    elemsInPost[0],
-                    elemsInPost[1],
-                    elemsInPost[1],
-                    elemPostOut,
-                    constant(64),
+                    elems_in_post[0],
+                    elems_in_post[1],
+                    elems_in_post[1],
+                    elem_post_out,
+                    arith.constant(64),
                     kernel,
                 ],
             )
-            Release(ObjectFifoPort.Consume, "OF_2to3", 2)
-            Release(ObjectFifoPort.Produce, "OF_3to4", 1)
+            objectFifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
+            objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
         @core(T4, "threshold.cc.o")
-        def coreBody():
-            vThr = constant(10, T.i16)
-            vMax = constant(255, T.i16)
-            vTyp = constant(0, T.i8)
+        def core_body():
+            v_thr = arith.constant(10, T.i16())
+            v_max = arith.constant(255, T.i16())
+            v_typ = arith.constant(0, T.i8())
 
             for _ in range_(36):
-                elemIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_3to4", 1, T.memref(64, T.ui8)
-                ).acquiredElem()
-                elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_4to5", 1, T.memref(64, T.ui8)
-                ).acquiredElem()
+                elem_in = acquire(
+                    ObjectFifoPort.Consume, "OF_3to4", 1, T.memref(64, T.ui8())
+                ).acquired_elem()
+                elem_out = acquire(
+                    ObjectFifoPort.Produce, "OF_4to5", 1, T.memref(64, T.ui8())
+                ).acquired_elem()
 
                 Call(
-                    thresholdLine,
-                    [elemIn, elemOut, constant(64), vThr, vMax, vTyp],
+                    threshold_line,
+                    [elem_in, elem_out, arith.constant(64), v_thr, v_max, v_typ],
                 )
 
-                Release(ObjectFifoPort.Consume, "OF_3to4", 1)
-                Release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
                 yield_([])
 
         @core(T5, "combined_gray2rgba_addWeighted.a")
-        def coreBody():
+        def core_body():
             for _ in range_(36):
-                elemIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_4to5", 1, T.memref(64, T.ui8)
-                ).acquiredElem()
-                elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_5to5", 1, T.memref(256, T.ui8)
-                ).acquiredElem()
+                elem_in = acquire(
+                    ObjectFifoPort.Consume, "OF_4to5", 1, T.memref(64, T.ui8())
+                ).acquired_elem()
+                elem_out = acquire(
+                    ObjectFifoPort.Produce, "OF_5to5", 1, T.memref(256, T.ui8())
+                ).acquired_elem()
 
-                Call(gray2rgbaLine, [elemIn, elemOut, constant(64)])
+                Call(gray2rgba_line, [elem_in, elem_out, arith.constant(64)])
 
-                Release(ObjectFifoPort.Consume, "OF_4to5", 1)
-                Release(ObjectFifoPort.Produce, "OF_5to5", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
-                elemIn1 = Acquire(
-                    ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(256, T.ui8)
-                ).acquiredElem()
-                elemIn2 = Acquire(
-                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8)
-                ).acquiredElem()
-                elemOut2 = Acquire(
-                    ObjectFifoPort.Produce, "outOF_L1L2", 1, T.memref(256, T.ui8)
-                ).acquiredElem()
+                elem_in1 = acquire(
+                    ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(256, T.ui8())
+                ).acquired_elem()
+                elem_in2 = acquire(
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8())
+                ).acquired_elem()
+                elem_out2 = acquire(
+                    ObjectFifoPort.Produce, "outOF_L1L2", 1, T.memref(256, T.ui8())
+                ).acquired_elem()
 
-                alpha = constant(16384, T.i16)
-                beta = constant(16384, T.i16)
-                gamma = constant(0, T.i8)
+                alpha = arith.constant(16384, T.i16())
+                beta = arith.constant(16384, T.i16())
+                gamma = arith.constant(0, T.i8())
 
                 Call(
-                    addWeightedLine,
+                    add_weighted_line,
                     [
-                        elemIn1,
-                        elemIn2,
-                        elemOut2,
-                        constant(256),
+                        elem_in1,
+                        elem_in2,
+                        elem_out2,
+                        arith.constant(256),
                         alpha,
                         beta,
                         gamma,
                     ],
                 )
 
-                Release(ObjectFifoPort.Consume, "OF_5to5", 1)
-                Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
-                Release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "OF_5to5", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(2304, T.i32), T.memref(2304, T.i32), T.memref(2304, T.i32)
+            T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="outOF_L2L3",
                 bd_id=0,
                 mem=O,
                 lengths=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="inOF_L3L2",
                 bd_id=1,
                 mem=I,
                 lengths=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # CHECK-LABEL: my_add_one_objFifo
@@ -771,46 +888,80 @@ def edge_detect():
 #     }
 #   }
 # }
-@constructAndPrintInModule
+@construct_and_print_module
 def my_add_one_objFifo():
     @device(AIEDevice.ipu)
-    def deviceBody():
-        ShimTile = Tile(0, 0)
-        MemTile = Tile(0, 1)
-        ComputeTile2 = Tile(0, 2)
+    def device_body():
+        shim_tile = tile(0, 0)
+        mem_tile = tile(0, 1)
+        compute_tile2 = tile(0, 2)
 
-        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, T.memref(16, T.i32))
-        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, T.memref(8, T.i32))
-        Link(["in0"], ["in1"])
-        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, T.memref(8, T.i32))
-        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, T.memref(16, T.i32))
-        Link(["out1"], ["out0"])
+        objectFifo(
+            "in0",
+            shim_tile,
+            [mem_tile],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(16, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "in1",
+            mem_tile,
+            [compute_tile2],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(8, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["in0"], ["in1"])
+        objectFifo(
+            "out0",
+            mem_tile,
+            [shim_tile],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(8, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "out1",
+            compute_tile2,
+            [mem_tile],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(16, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["out1"], ["out0"])
 
-        @core(ComputeTile2)
-        def coreBody():
+        @core(compute_tile2)
+        def core_body():
             # Effective while(1)
             for _ in range_(8):
-                elemIn = Acquire(
-                    ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32)
-                ).acquiredElem()
-                elemOut = Acquire(
-                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32)
-                ).acquiredElem()
+                elem_in = acquire(
+                    ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32())
+                ).acquired_elem()
+                elem_out = acquire(
+                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32())
+                ).acquired_elem()
                 for i in range_(8):
-                    v0 = memref.load(elemIn, [i])
-                    v1 = arith.addi(v0, constant(1, T.i32))
-                    memref.store(v1, elemOut, [i])
+                    v0 = memref.load(elem_in, [i])
+                    v1 = arith.addi(v0, arith.constant(1, T.i32()))
+                    memref.store(v1, elem_out, [i])
                     yield_([])
-                Release(ObjectFifoPort.Consume, "in1", 1)
-                Release(ObjectFifoPort.Produce, "out1", 1)
+                objectFifo_release(ObjectFifoPort.Consume, "in1", 1)
+                objectFifo_release(ObjectFifoPort.Produce, "out1", 1)
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(64, T.i32), T.memref(32, T.i32), T.memref(64, T.i32)
+            T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(
+            ipu_dma_memcpy_nd(
                 metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
             )
-            IpuDmaMemcpyNd(metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+            ipu_dma_memcpy_nd(
+                metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64]
+            )
+            ipu_sync(column=0, row=0, direction=0, channel=0)

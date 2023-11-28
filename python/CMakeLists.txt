@@ -33,7 +33,9 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/AIEBinding.td
   SOURCES
     dialects/aie.py
-    types.py
+    dialects/extras/__init__.py
+    dialects/extras/arith.py
+    dialects/extras/memref.py
     util.py
   DIALECT_NAME AIE
   GEN_ENUM_BINDINGS_TD_FILE

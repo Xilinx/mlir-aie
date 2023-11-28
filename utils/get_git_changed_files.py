@@ -13,6 +13,8 @@ changed_files = (
 cov_files = list(
     filter(lambda f: re.search(r"(\.cpp|\.c|\.h|\.hpp)$", f), changed_files)
 )
+# Can't track back to python.exe for some reason so don't bother.
+cov_files = [f for f in cov_files if "python" not in f]
 print(
     ";".join(
         [

@@ -3,9 +3,19 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
-from aie.dialects.aie import *
-import aie.types as T
+import aie.extras.types as T
+from aie.dialects.aie import (
+    AIEDevice,
+    ObjectFifoType,
+    objectFifo,
+    objectFifo_link,
+    tile,
+    Device,
+)
+from aie.ir import InsertionPoint, TypeAttr, Block
+
+from util import construct_and_print_module
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -19,26 +29,42 @@ import aie.types as T
 # CHECK:      AIE.objectFifo @of2(%tile_1_2 toStream [<1, 2>], {%tile_2_2 fromStream [<1, 2>], %tile_2_3 fromStream [<1, 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectFifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
-@constructAndPrintInModule
+@construct_and_print_module
 def link_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        S = Tile(0, 2)
-        M = Tile(1, 2)
-        T0 = Tile(2, 2)
-        T1 = Tile(2, 3)
+        S = tile(0, 2)
+        M = tile(1, 2)
+        T0 = tile(2, 2)
+        T1 = tile(2, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32))
-        OrderedObjectBuffer("of1", M, [T0, T1], 2, T.memref(64, T.i32))
-        Link(["of0"], ["of1"])
+        objectFifo(
+            "of0",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo(
+            "of1",
+            M,
+            [T0, T1],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.i32()))),
+            [],
+            [],
+        )
+        objectFifo_link(["of0"], ["of1"])
 
-        OrderedObjectBuffer(
+        objectFifo(
             "of2",
             M,
             [T0, T1],
             [2, 2, 7],
-            MemRefType.get((256,), T.ui8),
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
             [(1, 2)],
             [[(1, 2)], [(1, 2)]],
         )

@@ -18,6 +18,7 @@ include "aie/Dialect/AIE/IR/AIETypes.td"
 
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
@@ -67,6 +68,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 def AIE_TileOp: AIE_Op<"tile", [
     FlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
@@ -122,15 +124,6 @@ def AIE_TileOp: AIE_Op<"tile", [
 
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "int":$col, "int":$row),
-    [{
-      build($_builder, $_state, $_builder.getIndexType(),
-            $_builder.getI32IntegerAttr(col),
-            $_builder.getI32IntegerAttr(row));
-    }]>
-  ];
-
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
@@ -153,8 +146,9 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     Interconnect, TileElement,
-    SingleBlockImplicitTerminator<"EndOp">
-  ]>, Results<(outs Index)> {
+    SingleBlockImplicitTerminator<"EndOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index:$result)> {
   let arguments = (ins Index:$tile);
 
   let summary = "Declare a switch";
@@ -183,17 +177,11 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames;
   }];
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile),
-    [{
-      build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>
-  ];
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [
-    SingleBlockImplicitTerminator<"EndOp">
+    SingleBlockImplicitTerminator<"EndOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (ins AIEI32Attr:$col);
   let summary = "Declare a switch in the PL shim";
@@ -218,7 +206,8 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [
 
 def AIE_ShimMuxOp: AIE_Op<"shimmux", [
     Interconnect, TileElement, IsShimTile,
-    SingleBlockImplicitTerminator<"EndOp">
+    SingleBlockImplicitTerminator<"EndOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -249,17 +238,12 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
   }];
-
- let builders = [
-    OpBuilder<(ins "mlir::Value":$tile), [{
-      build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>
- ];
 }
 
 def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
     FlowEndPoint, TileElement, HasValidBDs,
-    HasValidDMAChannels, IsShimNOCTile
+    HasValidDMAChannels, IsShimNOCTile,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -300,7 +284,8 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
-    FlowEndPoint, IsCoreTile, TileElement
+    FlowEndPoint, IsCoreTile, TileElement,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
@@ -368,7 +353,9 @@ def AIE_DebugOp: AIE_Op<"debug", []> {
   let assemblyFormat = [{ `(` $arg `:` type($arg) `)` attr-dict }];
 }
 
-def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
+def AIE_PLIOOp: AIE_Op<"plio", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
   let arguments = (ins AIEI32Attr:$col);
   let summary = "Declare an interface to the PL";
   let description = [{
@@ -453,7 +440,10 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   }];
 }
 
-def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
+def AIE_AMSelOp: AIE_Op<"amsel", [
+    HasParent<"SwitchboxOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
         ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
@@ -498,7 +488,10 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   ];
 }
 
-def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
+def AIE_MasterSetOp: AIE_Op<"masterset", [
+    HasParent<"SwitchboxOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins WireBundle:$destBundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$destChannel,
@@ -846,7 +839,8 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [
     ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
-    Terminator
+    Terminator,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -886,20 +880,14 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [
     bool isSend() { return (static_cast<int32_t>(getChannelDir()) == 1); }
     bool isRecv() { return (static_cast<int32_t>(getChannelDir()) == 0); }
   }];
-
-  let builders = [
-    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "mlir::Block *":$dest, "mlir::Block *":$chain),
-    [{
-      build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
-    }]>
-  ];
 }
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, FlowEndPoint, CallableOpInterface,
-    IsCoreTile, HasValidBDs, HasValidDMAChannels
+    IsCoreTile, HasValidBDs, HasValidDMAChannels,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -939,19 +927,14 @@ def AIE_MemOp: AIE_Op<"mem", [
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
   }];
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile), [{
-      build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>
-  ];
 }
 
 // This op is not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
     TileElement, FlowEndPoint, CallableOpInterface,
-    IsMemTile, HasValidBDs, HasValidDMAChannels
+    IsMemTile, HasValidBDs, HasValidDMAChannels,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a memTileDMA op";
   let description = [{
@@ -994,12 +977,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
   }];
-
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile), [{
-      build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>
-  ];
 }
 
 def AIE_NextBDOp: AIE_Op<"nextBd", [
@@ -1034,7 +1011,10 @@ def AIE_NextBDOp: AIE_Op<"nextBd", [
   }];
 }
 
-def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
+def AIE_LockOp: AIE_Op<"lock", [
+    TileElement,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
     This operation creates a physical lock. For this operation the lockID variable is optional. 
@@ -1519,8 +1499,8 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   }];
 
   let arguments = (
-    ins ArrayAttr:$fifoIns,
-        ArrayAttr:$fifoOuts
+    ins SymbolRefArrayAttr:$fifoIns,
+        SymbolRefArrayAttr:$fifoOuts
   );
 
   let hasCustomAssemblyFormat = 1;
