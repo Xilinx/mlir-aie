@@ -62,7 +62,7 @@ public:
     return router.attr("find_paths")()
         .cast<std::map<PathEndPoint, SwitchSettings>>();
   }
-  Switchbox *getSwitchbox(TileID coords) {}
+  Switchbox *getSwitchbox(TileID coords) override { return nullptr; }
 
   py::object router;
 };

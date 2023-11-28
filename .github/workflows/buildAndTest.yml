@@ -13,6 +13,13 @@ env:
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
   DEBIAN_FRONTEND: noninteractive
 
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   build-repo:
     name: Build and Test

@@ -210,13 +210,15 @@ public:
 class Pathfinder : public Router {
 public:
   Pathfinder() = default;
-  void initialize(int maxCol, int maxRow, const AIETargetModel &targetModel);
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
-  bool addFixedConnection(ConnectOp connectOp);
+  void initialize(int maxCol, int maxRow,
+                  const AIETargetModel &targetModel) override;
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
+               Port dstPort) override;
+  bool addFixedConnection(ConnectOp connectOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
-  findPaths(int maxIterations);
+  findPaths(int maxIterations) override;
 
-  Switchbox *getSwitchbox(TileID coords) {
+  Switchbox *getSwitchbox(TileID coords) override {
     auto sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
       return sb->col == coords.col && sb->row == coords.row;
     });
