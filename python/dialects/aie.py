@@ -212,7 +212,7 @@ class OrderedObjectBuffer(ObjectFifoCreateOp):
             for d in depth:
                 int_depths.append(IntegerAttr.get(int_ty, d))
             int_depth = ArrayAttr.get(int_depths)
-        of_Ty = ObjectFifoType.get(datatype)
+        of_Ty = datatype
         super().__init__(
             sym_name=name,
             producerTile=tile0,

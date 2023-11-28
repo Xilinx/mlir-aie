@@ -94,8 +94,8 @@ module @link_L1_DDR {
         %tile21 = AIE.tile(2, 1)
         %tile22 = AIE.tile(2, 2)
 
-        AIE.objectFifo @to_memTile (%tile22, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-        AIE.objectFifo @from_memTile (%tile21, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
+        AIE.objectFifo @to_memTile (%tile22, {%tile21}, 2 : i32) : memref<16xi32>
+        AIE.objectFifo @from_memTile (%tile21, {%tile20}, 2 : i32) : memref<48xi32>
 
         AIE.objectFifo.link [@to_memTile] -> [@from_memTile] ()
 

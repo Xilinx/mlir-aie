@@ -201,12 +201,12 @@ module @ndDMAObjFifoAIE2 {
     AIE.objectFifo @of0 (%tile12 toStream [<16, 1>, <16, 16>, <1, 1>], // transpose
                          {%tile13 fromStream [<1, 1>],
                           %tile33 fromStream [<3, 4>]},
-                         4 : i32) : !AIE.objectFifo<memref<256xi32>>
+                         4 : i32) : memref<256xi32>
 
     AIE.objectFifo @of1 (%tile12 toStream [<128, 2>], {%tile33},
-                         2 : i32) : !AIE.objectFifo<memref<256xi32>>
+                         2 : i32) : memref<256xi32>
 
     AIE.objectFifo @of3 (%tile22, {%tile23 fromStream [<9, 9>]},
-                         2 : i32) : !AIE.objectFifo<memref<256xi32>>
+                         2 : i32) : memref<256xi32>
  }
 }

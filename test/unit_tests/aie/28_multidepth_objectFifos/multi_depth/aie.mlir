@@ -22,8 +22,8 @@ module @multi_depth {
         %lock_out = AIE.lock(%tile25, 1) {sym_name = "lock_out"}
         %buff_out = AIE.buffer(%tile25) {sym_name = "buff_out"} : memref<4x32xi32>
 
-        AIE.objectFifo @of_in (%tile20, {%tile23, %tile25}, [2, 2, 3]) : !AIE.objectFifo<memref<32xi32>>
-        AIE.objectFifo @of_inter (%tile23, {%tile25}, 2 : i32) : !AIE.objectFifo<memref<32xi32>>
+        AIE.objectFifo @of_in (%tile20, {%tile23, %tile25}, [2, 2, 3]) : memref<32xi32>
+        AIE.objectFifo @of_inter (%tile23, {%tile25}, 2 : i32) : memref<32xi32>
 
         %ext_buffer_in_0  = AIE.external_buffer {sym_name = "ext_buffer_in_0"} : memref<32xi32>
         %ext_buffer_in_1  = AIE.external_buffer {sym_name = "ext_buffer_in_1"} : memref<32xi32>
@@ -63,11 +63,11 @@ module @multi_depth {
             %iter_max = arith.constant 4 : index
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<32xi32>>
-                %elemIn = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : memref<32xi32>
+                %elemIn = AIE.objectFifo.subview.access %subviewIn[0] : memref<32xi32> -> memref<32xi32>
 
-                %subviewOut = AIE.objectFifo.acquire @of_inter (Produce, 1) : !AIE.objectFifoSubview<memref<32xi32>>
-                %elemOut = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<32xi32>> -> memref<32xi32>
+                %subviewOut = AIE.objectFifo.acquire @of_inter (Produce, 1) : memref<32xi32>
+                %elemOut = AIE.objectFifo.subview.access %subviewOut[0] : memref<32xi32> -> memref<32xi32>
 
                 func.call @add_one(%elemIn, %elemOut) : (memref<32xi32>, memref<32xi32>) -> ()
 
@@ -89,11 +89,11 @@ module @multi_depth {
             AIE.useLock(%lock_out, Acquire, 0)
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %subviewIn_21 = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<32xi32>>
-                %elemIn_21 = AIE.objectFifo.subview.access %subviewIn_21[0] : !AIE.objectFifoSubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn_21 = AIE.objectFifo.acquire @of_in (Consume, 1) : memref<32xi32>
+                %elemIn_21 = AIE.objectFifo.subview.access %subviewIn_21[0] : memref<32xi32> -> memref<32xi32>
 
-                %subviewIn_22 = AIE.objectFifo.acquire @of_inter (Consume, 1) : !AIE.objectFifoSubview<memref<32xi32>>
-                %elemIn_22 = AIE.objectFifo.subview.access %subviewIn_22[0] : !AIE.objectFifoSubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn_22 = AIE.objectFifo.acquire @of_inter (Consume, 1) : memref<32xi32>
+                %elemIn_22 = AIE.objectFifo.subview.access %subviewIn_22[0] : memref<32xi32> -> memref<32xi32>
 
                 func.call @add_store(%elemIn_21, %elemIn_22, %buff_out, %iter) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
 

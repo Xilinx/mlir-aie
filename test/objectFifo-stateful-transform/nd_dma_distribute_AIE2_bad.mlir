@@ -19,19 +19,19 @@ module @ndDMAObjFifoAIE2 {
 
     AIE.objectFifo @of0 (%tile10, {%tile11 fromStream [<32, 16>,
                                                        < 8,  1>]}, 
-                         2 : i32) : !AIE.objectFifo<memref<256xi32>>
+                         2 : i32) : memref<256xi32>
 
     AIE.objectFifo @of1 (%tile11 toStream [< 4,64>,
                                            < 2, 4>, 
                                            < 8, 8>, 
                                            < 4, 1>],
-                        {%tile22}, 2 : i32) : !AIE.objectFifo<memref<128xi32>>
+                        {%tile22}, 2 : i32) : memref<128xi32>
 
     AIE.objectFifo @of2 (%tile11 toStream [< 4,64>,
                                            < 2, 4>, 
                                            < 8, 8>, 
                                            < 4, 1>],
-                        {%tile23}, 2 : i32) : !AIE.objectFifo<memref<128xi32>>
+                        {%tile23}, 2 : i32) : memref<128xi32>
    // expected-error@+1 {{'AIE.objectFifo.link' op currently does not support objectFifos with dimensionsFromStreamPerConsumer.}}
    AIE.objectFifo.link [ @of0 ] -> [ @of1, @of2 ] ()
  }

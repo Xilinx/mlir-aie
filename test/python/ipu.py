@@ -11,7 +11,6 @@ from aie.dialects.aie import (
     AIEDevice,
     Call,
     ObjectFifoPort,
-    ObjectFifoType,
     acquire,
     core,
     device,
@@ -50,8 +49,8 @@ def construct_and_print_module(f):
 # CHECK:     func.func private @scale_int32(memref<1024xi32>, memref<1024xi32>)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
-# CHECK:     AIE.objectFifo @in(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<1024xi32>>
-# CHECK:     AIE.objectFifo @out(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<1024xi32>>
+# CHECK:     AIE.objectFifo @in(%tile_0_0, {%tile_0_2}, 2 : i32) : memref<1024xi32>
+# CHECK:     AIE.objectFifo @out(%tile_0_2, {%tile_0_0}, 2 : i32) : memref<1024xi32>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c4 = arith.constant 4 : index
 # CHECK:       %c0 = arith.constant 0 : index
@@ -59,10 +58,10 @@ def construct_and_print_module(f):
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
 # CHECK:         scf.for %arg1 = %c0 to %c4 step %c1 {
-# CHECK:           %0 = AIE.objectFifo.acquire @out(Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-# CHECK:           %2 = AIE.objectFifo.acquire @in(Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-# CHECK:           %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+# CHECK:           %0 = AIE.objectFifo.acquire @out(Produce, 1) : memref<1024xi32>
+# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : memref<1024xi32> -> memref<1024xi32>
+# CHECK:           %2 = AIE.objectFifo.acquire @in(Consume, 1) : memref<1024xi32>
+# CHECK:           %3 = AIE.objectFifo.subview.access %2[0] : memref<1024xi32> -> memref<1024xi32>
 # CHECK:           func.call @scale_int32(%3, %1) : (memref<1024xi32>, memref<1024xi32>) -> ()
 # CHECK:           AIE.objectFifo.release @in(Consume, 1)
 # CHECK:           AIE.objectFifo.release @out(Produce, 1)
@@ -105,7 +104,7 @@ def my_vector_scalar():
             S,
             [M],
             buffer_depth,
-            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
+            TypeAttr.get(T.memref(n, T.i32())),
             [],
             [],
         )
@@ -114,7 +113,7 @@ def my_vector_scalar():
             M,
             [S],
             buffer_depth,
-            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
+            TypeAttr.get(T.memref(n, T.i32())),
             [],
             [],
         )
@@ -155,9 +154,9 @@ def my_vector_scalar():
 # CHECK:     func.func private @matmul_i16_i16(memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
-# CHECK:     AIE.objectFifo @inA(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<64x32xi16>>
-# CHECK:     AIE.objectFifo @inB(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<32x64xi16>>
-# CHECK:     AIE.objectFifo @outC(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<64x64xi16>>
+# CHECK:     AIE.objectFifo @inA(%tile_0_0, {%tile_0_2}, 2 : i32) : memref<64x32xi16>
+# CHECK:     AIE.objectFifo @inB(%tile_0_0, {%tile_0_2}, 2 : i32) : memref<32x64xi16>
+# CHECK:     AIE.objectFifo @outC(%tile_0_2, {%tile_0_0}, 2 : i32) : memref<64x64xi16>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c4 = arith.constant 4 : index
 # CHECK:       %c0 = arith.constant 0 : index
@@ -165,14 +164,14 @@ def my_vector_scalar():
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
 # CHECK:         scf.for %arg1 = %c0 to %c4 step %c1 {
-# CHECK:           %0 = AIE.objectFifo.acquire @outC(Produce, 1) : !AIE.objectFifoSubview<memref<64x64xi16>>
-# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64x64xi16>> -> memref<64x64xi16>
+# CHECK:           %0 = AIE.objectFifo.acquire @outC(Produce, 1) : memref<64x64xi16>
+# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : memref<64x64xi16> -> memref<64x64xi16>
 # CHECK:           func.call @zero_i16(%1) : (memref<64x64xi16>) -> ()
 # CHECK:           scf.for %arg2 = %c0 to %c4 step %c1 {
-# CHECK:             %2 = AIE.objectFifo.acquire @inA(Consume, 1) : !AIE.objectFifoSubview<memref<64x32xi16>>
-# CHECK:             %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64x32xi16>> -> memref<64x32xi16>
-# CHECK:             %4 = AIE.objectFifo.acquire @inB(Consume, 1) : !AIE.objectFifoSubview<memref<32x64xi16>>
-# CHECK:             %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<32x64xi16>> -> memref<32x64xi16>
+# CHECK:             %2 = AIE.objectFifo.acquire @inA(Consume, 1) : memref<64x32xi16>
+# CHECK:             %3 = AIE.objectFifo.subview.access %2[0] : memref<64x32xi16> -> memref<64x32xi16>
+# CHECK:             %4 = AIE.objectFifo.acquire @inB(Consume, 1) : memref<32x64xi16>
+# CHECK:             %5 = AIE.objectFifo.subview.access %4[0] : memref<32x64xi16> -> memref<32x64xi16>
 # CHECK:             func.call @matmul_i16_i16(%3, %5, %1) : (memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>) -> ()
 # CHECK:             AIE.objectFifo.release @inA(Consume, 1)
 # CHECK:             AIE.objectFifo.release @inB(Consume, 1)
@@ -269,7 +268,7 @@ def my_matmul():
             S,
             [M],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(m, k, T.i16()))),
+            TypeAttr.get(T.memref(m, k, T.i16())),
             [],
             [],
         )
@@ -278,7 +277,7 @@ def my_matmul():
             S,
             [M],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(k, n, T.i16()))),
+            TypeAttr.get(T.memref(k, n, T.i16())),
             [],
             [],
         )
@@ -287,7 +286,7 @@ def my_matmul():
             M,
             [S],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(m, n, T.i16()))),
+            TypeAttr.get(T.memref(m, n, T.i16())),
             [],
             [],
         )
@@ -389,26 +388,26 @@ def my_matmul():
 # CHECK:     %tile_0_3 = AIE.tile(0, 3)
 # CHECK:     %tile_0_4 = AIE.tile(0, 4)
 # CHECK:     %tile_0_5 = AIE.tile(0, 5)
-# CHECK:     AIE.objectFifo @inOF_L3L2(%tile_0_0, {%tile_0_1}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo @inOF_L2L1(%tile_0_1, {%tile_0_2, %tile_0_5}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectFifo<memref<256xui8>>
+# CHECK:     AIE.objectFifo @inOF_L3L2(%tile_0_0, {%tile_0_1}, 2 : i32) : memref<256xui8>
+# CHECK:     AIE.objectFifo @inOF_L2L1(%tile_0_1, {%tile_0_2, %tile_0_5}, [2 : i32, 2 : i32, 7 : i32]) : memref<256xui8>
 # CHECK:     AIE.objectFifo.link [@inOF_L3L2] -> [@inOF_L2L1]()
-# CHECK:     AIE.objectFifo @outOF_L2L3(%tile_0_1, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo @outOF_L1L2(%tile_0_5, {%tile_0_1}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
+# CHECK:     AIE.objectFifo @outOF_L2L3(%tile_0_1, {%tile_0_0}, 2 : i32) : memref<256xui8>
+# CHECK:     AIE.objectFifo @outOF_L1L2(%tile_0_5, {%tile_0_1}, 2 : i32) : memref<256xui8>
 # CHECK:     AIE.objectFifo.link [@outOF_L1L2] -> [@outOF_L2L3]()
-# CHECK:     AIE.objectFifo @OF_2to3(%tile_0_2, {%tile_0_3}, 4 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_3to4(%tile_0_3, {%tile_0_4}, 2 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_4to5(%tile_0_4, {%tile_0_5}, 2 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_5to5(%tile_0_5, {%tile_0_5}, 1 : i32) : !AIE.objectFifo<memref<256xui8>>
+# CHECK:     AIE.objectFifo @OF_2to3(%tile_0_2, {%tile_0_3}, 4 : i32) : memref<64xui8>
+# CHECK:     AIE.objectFifo @OF_3to4(%tile_0_3, {%tile_0_4}, 2 : i32) : memref<64xui8>
+# CHECK:     AIE.objectFifo @OF_4to5(%tile_0_4, {%tile_0_5}, 2 : i32) : memref<64xui8>
+# CHECK:     AIE.objectFifo @OF_5to5(%tile_0_5, {%tile_0_5}, 1 : i32) : memref<256xui8>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c64_i32 = arith.constant 64 : i32
 # CHECK:       %c0 = arith.constant 0 : index
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_2to3(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %0 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : memref<256xui8>
+# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : memref<256xui8> -> memref<256xui8>
+# CHECK:         %2 = AIE.objectFifo.acquire @OF_2to3(Produce, 1) : memref<64xui8>
+# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : memref<64xui8> -> memref<64xui8>
 # CHECK:         func.call @rgba2gray_line(%1, %3, %c64_i32) : (memref<256xui8>, memref<64xui8>, i32) -> ()
 # CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_2to3(Produce, 1)
@@ -434,29 +433,29 @@ def my_matmul():
 # CHECK:       memref.store %c0_i16, %alloc[%c2, %c0] : memref<3x3xi16>
 # CHECK:       memref.store %c4096_i16, %alloc[%c2, %c1] : memref<3x3xi16>
 # CHECK:       memref.store %c0_i16, %alloc[%c2, %c2] : memref<3x3xi16>
-# CHECK:       %0 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %2 = AIE.objectFifo.subview.access %0[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %3 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %4 = AIE.objectFifo.subview.access %3[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %0 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : memref<64xui8>
+# CHECK:       %1 = AIE.objectFifo.subview.access %0[0] : memref<64xui8> -> memref<64xui8>
+# CHECK:       %2 = AIE.objectFifo.subview.access %0[1] : memref<64xui8> -> memref<64xui8>
+# CHECK:       %3 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : memref<64xui8>
+# CHECK:       %4 = AIE.objectFifo.subview.access %3[0] : memref<64xui8> -> memref<64xui8>
 # CHECK:       func.call @filter2d_line(%1, %1, %2, %4, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
 # CHECK:       scf.for %arg0 = %c1 to %c35 step %c1 {
-# CHECK:         %10 = AIE.objectFifo.acquire @OF_2to3(Consume, 3) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %12 = AIE.objectFifo.subview.access %10[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %13 = AIE.objectFifo.subview.access %10[2] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %14 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %15 = AIE.objectFifo.subview.access %14[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %10 = AIE.objectFifo.acquire @OF_2to3(Consume, 3) : memref<64xui8>
+# CHECK:         %11 = AIE.objectFifo.subview.access %10[0] : memref<64xui8> -> memref<64xui8>
+# CHECK:         %12 = AIE.objectFifo.subview.access %10[1] : memref<64xui8> -> memref<64xui8>
+# CHECK:         %13 = AIE.objectFifo.subview.access %10[2] : memref<64xui8> -> memref<64xui8>
+# CHECK:         %14 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : memref<64xui8>
+# CHECK:         %15 = AIE.objectFifo.subview.access %14[0] : memref<64xui8> -> memref<64xui8>
 # CHECK:         func.call @filter2d_line(%11, %12, %13, %15, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:         AIE.objectFifo.release @OF_2to3(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_3to4(Produce, 1)
 # CHECK:       }
-# CHECK:       %5 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %7 = AIE.objectFifo.subview.access %5[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %8 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %5 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : memref<64xui8>
+# CHECK:       %6 = AIE.objectFifo.subview.access %5[0] : memref<64xui8> -> memref<64xui8>
+# CHECK:       %7 = AIE.objectFifo.subview.access %5[1] : memref<64xui8> -> memref<64xui8>
+# CHECK:       %8 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : memref<64xui8>
+# CHECK:       %9 = AIE.objectFifo.subview.access %8[0] : memref<64xui8> -> memref<64xui8>
 # CHECK:       func.call @filter2d_line(%6, %7, %7, %9, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
 # CHECK:       AIE.objectFifo.release @OF_2to3(Consume, 2)
 # CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
@@ -471,10 +470,10 @@ def my_matmul():
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @OF_3to4(Consume, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_4to5(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %0 = AIE.objectFifo.acquire @OF_3to4(Consume, 1) : memref<64xui8>
+# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : memref<64xui8> -> memref<64xui8>
+# CHECK:         %2 = AIE.objectFifo.acquire @OF_4to5(Produce, 1) : memref<64xui8>
+# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : memref<64xui8> -> memref<64xui8>
 # CHECK:         func.call @threshold_line(%1, %3, %c64_i32, %c10_i16, %c255_i16, %c0_i8) : (memref<64xui8>, memref<64xui8>, i32, i16, i16, i8) -> ()
 # CHECK:         AIE.objectFifo.release @OF_3to4(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_4to5(Produce, 1)
@@ -490,19 +489,19 @@ def my_matmul():
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @OF_4to5(Consume, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_5to5(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %0 = AIE.objectFifo.acquire @OF_4to5(Consume, 1) : memref<64xui8>
+# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : memref<64xui8> -> memref<64xui8>
+# CHECK:         %2 = AIE.objectFifo.acquire @OF_5to5(Produce, 1) : memref<256xui8>
+# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : memref<256xui8> -> memref<256xui8>
 # CHECK:         func.call @gray2rgba_line(%1, %3, %c64_i32) : (memref<64xui8>, memref<256xui8>, i32) -> ()
 # CHECK:         AIE.objectFifo.release @OF_4to5(Consume, 1)
 # CHECK:         AIE.objectFifo.release @OF_5to5(Produce, 1)
-# CHECK:         %4 = AIE.objectFifo.acquire @OF_5to5(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %6 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %8 = AIE.objectFifo.acquire @outOF_L1L2(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %4 = AIE.objectFifo.acquire @OF_5to5(Consume, 1) : memref<256xui8>
+# CHECK:         %5 = AIE.objectFifo.subview.access %4[0] : memref<256xui8> -> memref<256xui8>
+# CHECK:         %6 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : memref<256xui8>
+# CHECK:         %7 = AIE.objectFifo.subview.access %6[0] : memref<256xui8> -> memref<256xui8>
+# CHECK:         %8 = AIE.objectFifo.acquire @outOF_L1L2(Produce, 1) : memref<256xui8>
+# CHECK:         %9 = AIE.objectFifo.subview.access %8[0] : memref<256xui8> -> memref<256xui8>
 # CHECK:         func.call @add_weighted_line(%5, %7, %9, %c256_i32, %c16384_i16, %c16384_i16, %c0_i8) : (memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8) -> ()
 # CHECK:         AIE.objectFifo.release @OF_5to5(Consume, 1)
 # CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
@@ -583,7 +582,7 @@ def edge_detect():
             S,
             [M],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            TypeAttr.get(T.memref(256, T.ui8())),
             [],
             [],
         )
@@ -592,7 +591,7 @@ def edge_detect():
             M,
             [T2, T5],
             [2, 2, 7],
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            TypeAttr.get(T.memref(256, T.ui8())),
             [],
             [],
         )
@@ -603,7 +602,7 @@ def edge_detect():
             M,
             [S],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            TypeAttr.get(T.memref(256, T.ui8())),
             [],
             [],
         )
@@ -612,7 +611,7 @@ def edge_detect():
             T5,
             [M],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            TypeAttr.get(T.memref(256, T.ui8())),
             [],
             [],
         )
@@ -623,7 +622,7 @@ def edge_detect():
             T2,
             [T3],
             4,
-            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            TypeAttr.get(T.memref(64, T.ui8())),
             [],
             [],
         )
@@ -632,7 +631,7 @@ def edge_detect():
             T3,
             [T4],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            TypeAttr.get(T.memref(64, T.ui8())),
             [],
             [],
         )
@@ -641,7 +640,7 @@ def edge_detect():
             T4,
             [T5],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8()))),
+            TypeAttr.get(T.memref(64, T.ui8())),
             [],
             [],
         )
@@ -650,7 +649,7 @@ def edge_detect():
             T5,
             [T5],
             1,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            TypeAttr.get(T.memref(256, T.ui8())),
             [],
             [],
         )
@@ -849,11 +848,11 @@ def edge_detect():
 #     %t01 = AIE.tile(0, 1)
 #     %t02 = AIE.tile(0, 2)
 #
-#     AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-#     AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+#     AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : memref<16xi32>
+#     AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : memref<8xi32>
 #     AIE.objectFifo.link [@objFifo_in0] -> [@objFifo_in1] ()
-#     AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-#     AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+#     AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : memref<16xi32>
+#     AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : memref<8xi32>
 #     AIE.objectFifo.link [@objFifo_out1] -> [@objFifo_out0] ()
 #
 #     AIE.core(%t02) {
@@ -863,10 +862,10 @@ def edge_detect():
 #       %c1_32 = arith.constant 1 : i32
 #
 #       scf.for %steps = %c0 to %c8 step %c1 {
-#         %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-#         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
-#         %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-#         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
+#         %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : memref<8xi32>
+#         %elem0 = AIE.objectFifo.subview.access %subview0[0] : memref<8xi32> -> memref<8xi32>
+#         %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : memref<8xi32>
+#         %elem1 = AIE.objectFifo.subview.access %subview1[0] : memref<8xi32> -> memref<8xi32>
 #         scf.for %arg3 = %c0 to %c8 step %c1 {
 #             %0 = memref.load %elem0[%arg3] : memref<8xi32>
 #             %1 = arith.addi %0, %c1_32 : i32
@@ -901,7 +900,7 @@ def my_add_one_objFifo():
             shim_tile,
             [mem_tile],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(16, T.i32()))),
+            TypeAttr.get(T.memref(16, T.i32())),
             [],
             [],
         )
@@ -910,7 +909,7 @@ def my_add_one_objFifo():
             mem_tile,
             [compute_tile2],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(8, T.i32()))),
+            TypeAttr.get(T.memref(8, T.i32())),
             [],
             [],
         )
@@ -920,7 +919,7 @@ def my_add_one_objFifo():
             mem_tile,
             [shim_tile],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(8, T.i32()))),
+            TypeAttr.get(T.memref(8, T.i32())),
             [],
             [],
         )
@@ -929,7 +928,7 @@ def my_add_one_objFifo():
             compute_tile2,
             [mem_tile],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(16, T.i32()))),
+            TypeAttr.get(T.memref(16, T.i32())),
             [],
             [],
         )

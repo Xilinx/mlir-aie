@@ -22,6 +22,6 @@ module @broadcast_error {
         %tile32 = AIE.tile(3, 2)
         %tile33 = AIE.tile(3, 3)
 
-        AIE.objectFifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3]) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3]) : memref<16xi32>
     }
 }

@@ -12,7 +12,6 @@ from aie.dialects.aie import (
     ExternalBuffer,
     MemOp,
     ObjectFifoPort,
-    ObjectFifoType,
     acquire,
     end,
     objectFifo,
@@ -91,7 +90,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : memref<12xf16>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -104,7 +103,7 @@ def objFifo():
             tile0,
             [tile1],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [(1, 2)],
             [[(1, 2)]],
         )
@@ -115,8 +114,8 @@ def objFifo():
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: %[[VAL_2:.*]] = AIE.tile(7, 7)
-# CHECK: AIE.objectFifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: AIE.objectFifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: AIE.objectFifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : memref<12xf16>
+# CHECK: AIE.objectFifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : memref<12xf16>
 # CHECK: AIE.objectFifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @construct_and_print_module
 def objFifoLink():
@@ -131,7 +130,7 @@ def objFifoLink():
             tile0,
             [tile1],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [],
             [],
         )
@@ -140,7 +139,7 @@ def objFifoLink():
             tile1,
             [tile2],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [],
             [],
         )
@@ -151,8 +150,8 @@ def objFifoLink():
 # CHECK-LABEL: objFifoAcquire
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
+# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : memref<12xf16>
+# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : memref<12xf16>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -165,7 +164,7 @@ def objFifoAcquire():
             tile0,
             [tile1],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [],
             [],
         )
@@ -184,9 +183,9 @@ def objFifoAcquire():
 # CHECK-LABEL: objFifoSubviewAccess
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
-# CHECK: %[[VAL_4:.*]] = AIE.objectFifo.subview.access %[[VAL_3]][0] : !AIE.objectFifoSubview<memref<12xf16>> -> memref<12xf16>
+# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : memref<12xf16>
+# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : memref<12xf16>
+# CHECK: %[[VAL_4:.*]] = AIE.objectFifo.subview.access %[[VAL_3]][0] : memref<12xf16> -> memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
@@ -199,7 +198,7 @@ def objFifoSubviewAccess():
             tile0,
             [tile1],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [],
             [],
         )
@@ -221,7 +220,7 @@ def objFifoSubviewAccess():
 # CHECK-LABEL: objFifoRelease
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : memref<12xf16>
 # CHECK: AIE.objectFifo.release @[[VAL_2]](Produce, 1)
 @construct_and_print_module
 def objFifoRelease():
@@ -235,7 +234,7 @@ def objFifoRelease():
             tile0,
             [tile1],
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            TypeAttr.get(T.memref(12, T.f16())),
             [],
             [],
         )
