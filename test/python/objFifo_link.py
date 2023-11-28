@@ -3,9 +3,9 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
+import aie.extras.types as T
 from aie.dialects.aie import *
-import aie.types as T
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -29,8 +29,8 @@ def link_example():
         T0 = Tile(2, 2)
         T1 = Tile(2, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32))
-        OrderedObjectBuffer("of1", M, [T0, T1], 2, T.memref(64, T.i32))
+        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32()))
+        OrderedObjectBuffer("of1", M, [T0, T1], 2, T.memref(64, T.i32()))
         Link(["of0"], ["of1"])
 
         OrderedObjectBuffer(
@@ -38,7 +38,7 @@ def link_example():
             M,
             [T0, T1],
             [2, 2, 7],
-            MemRefType.get((256,), T.ui8),
+            T.memref(256, T.ui8()),
             [(1, 2)],
             [[(1, 2)], [(1, 2)]],
         )

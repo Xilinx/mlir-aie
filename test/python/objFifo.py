@@ -3,11 +3,10 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
+import aie.extras.types as T
 from aie.dialects.aie import *
-from aie.dialects.func import *
 from aie.dialects.scf import *
-import aie.types as T
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2302) {
@@ -33,13 +32,13 @@ def objFifo_example():
         S = Tile(0, 2)
         tile = Tile(1, 2)
 
-        OrderedObjectBuffer("of0", S, tile, 2, T.memref(256, T.i32))
+        OrderedObjectBuffer("of0", S, tile, 2, T.memref(256, T.i32()))
 
         C = Core(tile)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             elem0 = Acquire(
-               ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32)
+                ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32())
             ).acquiredElem()
             Store(10, elem0, 0)
             Release(ObjectFifoPort.Consume, "of0", 1)

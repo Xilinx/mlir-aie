@@ -29,20 +29,15 @@ PYBIND11_MODULE(_aie, m) {
 
   m.def(
       "register_dialect",
-      [](MlirContext context, bool load) {
+      [](MlirDialectRegistry registry) {
         MlirDialectHandle aie_handle = mlirGetDialectHandle__aie__();
-        mlirDialectHandleRegisterDialect(aie_handle, context);
         MlirDialectHandle aiex_handle = mlirGetDialectHandle__aiex__();
-        mlirDialectHandleRegisterDialect(aiex_handle, context);
         MlirDialectHandle aievec_handle = mlirGetDialectHandle__aievec__();
-        mlirDialectHandleRegisterDialect(aievec_handle, context);
-        if (load) {
-          mlirDialectHandleLoadDialect(aie_handle, context);
-          mlirDialectHandleLoadDialect(aiex_handle, context);
-          mlirDialectHandleLoadDialect(aievec_handle, context);
-        }
+        mlirDialectHandleInsertDialect(aie_handle, registry);
+        mlirDialectHandleInsertDialect(aiex_handle, registry);
+        mlirDialectHandleInsertDialect(aievec_handle, registry);
       },
-      py::arg("context"), py::arg("load") = true);
+      py::arg("registry"));
 
   // AIE types bindings
   mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)

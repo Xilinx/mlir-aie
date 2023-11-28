@@ -3,16 +3,11 @@
 
 # RUN: %PYTHON %s | FileCheck %s
 
-import aie
-from aie.ir import *
-from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects import arith
 
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
-        aie.dialects.aiex.register_dialect(ctx)
         module = Module.create()
         print("\nTEST:", f.__name__)
         with InsertionPoint(module.body):

@@ -5,12 +5,10 @@
 
 # CHECK: xchesscc_wrapper aie
 
-import aie.dialects.aie
-from aie.ir import Context, Location, Module
+import sys
 
 import aie.compiler.aiecc.main as aiecc
-
-import sys
+from aie.ir import Context, Location, Module
 
 module = """
 module {
@@ -26,7 +24,6 @@ module {
 """
 
 with Context() as ctx, Location.unknown():
-    aie.dialects.aie.register_dialect(ctx)
     mlir_module = Module.parse(module)
 
 aiecc.run(mlir_module, sys.argv[1:])

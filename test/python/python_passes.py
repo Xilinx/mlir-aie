@@ -5,18 +5,13 @@
 # REQUIRES: python_passes
 
 
-import aie
-from aie.ir import *
+from aie._mlir_libs import _aie_python_passes
 from aie.dialects.aie import *
 from aie.passmanager import PassManager
-from aie._mlir_libs import _aie_python_passes
-
-from typing import List
 
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
-        aie.dialects.aie.register_dialect(ctx)
         module = Module.create()
         print("\nTEST:", f.__name__)
         with InsertionPoint(module.body):
@@ -53,7 +48,6 @@ def testPythonPassDemo():
     # CHECK: AIE.core
     # CHECK: builtin.module
     with Context() as ctx, Location.unknown():
-        aie.dialects.aie.register_dialect(ctx)
         _aie_python_passes.register_python_pass_demo_pass(print_ops)
         mlir_module = Module.parse(module)
         PassManager.parse("builtin.module(python-pass-demo)").run(mlir_module.operation)

@@ -4,11 +4,15 @@
 # RUN: %PYTHON %s 2>&1 | FileCheck %s
 # REQUIRES: has_mlir_runtime_libraries
 
+import gc
+import os
 import pathlib
-import gc, sys, os, tempfile
+import sys
+import tempfile
+
+from aie.execution_engine import *
 from aie.ir import *
 from aie.passmanager import *
-from aie.execution_engine import *
 from aie.runtime import *
 
 

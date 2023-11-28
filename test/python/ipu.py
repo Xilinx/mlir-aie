@@ -6,23 +6,16 @@
 
 # RUN: %python %s | FileCheck %s
 
-import aie
-from aie.ir import *
-from aie.dialects.func import *
-from aie.dialects.arith import *
-from aie.dialects.scf import *
-from aie.dialects.memref import *
+import aie.extras.types as T
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.passmanager import PassManager
-import aie.types as T
 
 range_ = for_
 
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
-        aie.dialects.aie.register_dialect(ctx)
         module = Module.create()
         print("\nTEST:", f.__name__)
         with InsertionPoint(module.body):
@@ -83,14 +76,14 @@ def my_vector_scalar():
     @device(AIEDevice.ipu)
     def deviceBody():
         scale_int32 = privateFunc(
-            "scale_int32", inputs=[T.memref(n, T.i32), T.memref(n, T.i32)]
+            "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
         )
 
         S = Tile(0, 0)
         tile = Tile(0, 2)
 
-        OrderedObjectBuffer("in", S, tile, buffer_depth, T.memref(n, T.i32))
-        OrderedObjectBuffer("out", tile, S, buffer_depth, T.memref(n, T.i32))
+        OrderedObjectBuffer("in", S, tile, buffer_depth, T.memref(n, T.i32()))
+        OrderedObjectBuffer("out", tile, S, buffer_depth, T.memref(n, T.i32()))
 
         @core(tile, "scale.o")
         def coreBody():
@@ -99,10 +92,10 @@ def my_vector_scalar():
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
                     elemOut = Acquire(
-                        ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32)
+                        ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32())
                     ).acquiredElem()
                     elemIn = Acquire(
-                        ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32)
+                        ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
                     ).acquiredElem()
                     Call(scale_int32, [elemIn, elemOut])
                     Release(ObjectFifoPort.Consume, "in", 1)
@@ -110,7 +103,9 @@ def my_vector_scalar():
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(T.memref(N, T.i32), T.memref(N, T.i32), T.memref(N, T.i32))
+        @FuncOp.from_py_func(
+            T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+        )
         def sequence(A, B, C):
             IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
             IpuDmaMemcpyNd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
@@ -214,22 +209,22 @@ def my_matmul():
 
     @device(AIEDevice.ipu)
     def deviceBody():
-        zero_scalar = privateFunc("zero_scalar_i16", inputs=[T.memref(m, n, T.i16)])
-        zero = privateFunc("zero_i16", inputs=[T.memref(m, n, T.i16)])
+        zero_scalar = privateFunc("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
+        zero = privateFunc("zero_i16", inputs=[T.memref(m, n, T.i16())])
         matmul_scalar = privateFunc(
             "matmul_scalar_i16_i16",
             inputs=[
-                T.memref(m, k, T.i16),
-                T.memref(k, n, T.i16),
-                T.memref(m, n, T.i16),
+                T.memref(m, k, T.i16()),
+                T.memref(k, n, T.i16()),
+                T.memref(m, n, T.i16()),
             ],
         )
         matmul = privateFunc(
             "matmul_i16_i16",
             inputs=[
-                T.memref(m, k, T.i16),
-                T.memref(k, n, T.i16),
-                T.memref(m, n, T.i16),
+                T.memref(m, k, T.i16()),
+                T.memref(k, n, T.i16()),
+                T.memref(m, n, T.i16()),
             ],
         )
 
@@ -237,16 +232,16 @@ def my_matmul():
         M = Tile(0, 1)
         tile = Tile(0, 2)
 
-        OrderedObjectBuffer("inA", S, tile, 2, T.memref(m, k, T.i16))
-        OrderedObjectBuffer("inB", S, tile, 2, T.memref(k, n, T.i16))
-        OrderedObjectBuffer("outC", tile, S, 2, T.memref(m, n, T.i16))
+        OrderedObjectBuffer("inA", S, tile, 2, T.memref(m, k, T.i16()))
+        OrderedObjectBuffer("inB", S, tile, 2, T.memref(k, n, T.i16()))
+        OrderedObjectBuffer("outC", tile, S, 2, T.memref(m, n, T.i16()))
 
         @core(tile, "mm.o")
         def coreBody():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles):
                     elemOut = Acquire(
-                        ObjectFifoPort.Produce, "outC", 1, T.memref(m, n, T.i16)
+                        ObjectFifoPort.Produce, "outC", 1, T.memref(m, n, T.i16())
                     ).acquiredElem()
                     if vectorized:
                         Call(zero, [elemOut])
@@ -255,10 +250,10 @@ def my_matmul():
 
                     for _ in range_(K_div_k):
                         elemInA = Acquire(
-                            ObjectFifoPort.Consume, "inA", 1, T.memref(m, k, T.i16)
+                            ObjectFifoPort.Consume, "inA", 1, T.memref(m, k, T.i16())
                         ).acquiredElem()
                         elemInB = Acquire(
-                            ObjectFifoPort.Consume, "inB", 1, T.memref(k, n, T.i16)
+                            ObjectFifoPort.Consume, "inB", 1, T.memref(k, n, T.i16())
                         ).acquiredElem()
                         if vectorized:
                             Call(matmul, [elemInA, elemInB, elemOut])
@@ -273,9 +268,9 @@ def my_matmul():
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(A_sz_in_i32s, T.i32),
-            T.memref(B_sz_in_i32s, T.i32),
-            T.memref(C_sz_in_i32s, T.i32),
+            T.memref(A_sz_in_i32s, T.i32()),
+            T.memref(B_sz_in_i32s, T.i32()),
+            T.memref(C_sz_in_i32s, T.i32()),
         )
         def sequence(A, B, C):
             # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
@@ -478,43 +473,45 @@ def edge_detect():
     @device(AIEDevice.ipu)
     def deviceBody():
         rgba2grayLine = privateFunc(
-            "rgba2grayLine", inputs=[T.memref(256, T.ui8), T.memref(64, T.ui8), T.i32]
+            "rgba2grayLine",
+            inputs=[T.memref(256, T.ui8()), T.memref(64, T.ui8()), T.i32()],
         )
         filter2dLine = privateFunc(
             "filter2dLine",
             inputs=[
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.i32,
-                T.memref(3, 3, T.i16),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.i32(),
+                T.memref(3, 3, T.i16()),
             ],
         )
         thresholdLine = privateFunc(
             "thresholdLine",
             inputs=[
-                T.memref(64, T.ui8),
-                T.memref(64, T.ui8),
-                T.i32,
-                T.i16,
-                T.i16,
-                T.i8,
+                T.memref(64, T.ui8()),
+                T.memref(64, T.ui8()),
+                T.i32(),
+                T.i16(),
+                T.i16(),
+                T.i8(),
             ],
         )
         gray2rgbaLine = privateFunc(
-            "gray2rgbaLine", inputs=[T.memref(64, T.ui8), T.memref(256, T.ui8), T.i32]
+            "gray2rgbaLine",
+            inputs=[T.memref(64, T.ui8()), T.memref(256, T.ui8()), T.i32()],
         )
         addWeightedLine = privateFunc(
             "addWeightedLine",
             inputs=[
-                T.memref(256, T.ui8),
-                T.memref(256, T.ui8),
-                T.memref(256, T.ui8),
-                T.i32,
-                T.i16,
-                T.i16,
-                T.i8,
+                T.memref(256, T.ui8()),
+                T.memref(256, T.ui8()),
+                T.memref(256, T.ui8()),
+                T.i32(),
+                T.i16(),
+                T.i16(),
+                T.i8(),
             ],
         )
 
@@ -525,27 +522,27 @@ def edge_detect():
         T4 = Tile(0, 4)
         T5 = Tile(0, 5)
 
-        OrderedObjectBuffer("inOF_L3L2", S, M, 2, T.memref(256, T.ui8))
-        OrderedObjectBuffer("inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8))
+        OrderedObjectBuffer("inOF_L3L2", S, M, 2, T.memref(256, T.ui8()))
+        OrderedObjectBuffer("inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8()))
         Link(["inOF_L3L2"], ["inOF_L2L1"])
 
-        OrderedObjectBuffer("outOF_L2L3", M, S, 2, T.memref(256, T.ui8))
-        OrderedObjectBuffer("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8))
+        OrderedObjectBuffer("outOF_L2L3", M, S, 2, T.memref(256, T.ui8()))
+        OrderedObjectBuffer("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8()))
         Link(["outOF_L1L2"], ["outOF_L2L3"])
 
-        OrderedObjectBuffer("OF_2to3", T2, T3, 4, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_3to4", T3, T4, 2, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_4to5", T4, T5, 2, T.memref(64, T.ui8))
-        OrderedObjectBuffer("OF_5to5", T5, T5, 1, T.memref(256, T.ui8))
+        OrderedObjectBuffer("OF_2to3", T2, T3, 4, T.memref(64, T.ui8()))
+        OrderedObjectBuffer("OF_3to4", T3, T4, 2, T.memref(64, T.ui8()))
+        OrderedObjectBuffer("OF_4to5", T4, T5, 2, T.memref(64, T.ui8()))
+        OrderedObjectBuffer("OF_5to5", T5, T5, 1, T.memref(256, T.ui8()))
 
         @core(T2, "rgba2gray.cc.o")
         def coreBody():
             for _ in range_(36):
                 elemIn = Acquire(
-                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8)
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8())
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_2to3", 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Produce, "OF_2to3", 1, T.memref(64, T.ui8())
                 ).acquiredElem()
 
                 Call(rgba2grayLine, [elemIn, elemOut, constant(64)])
@@ -556,10 +553,10 @@ def edge_detect():
 
         @core(T3, "filter2d.cc.o")
         def coreBody():
-            kernel = memref.AllocOp(T.memref(3, 3, T.i16), [], [])
-            v0 = constant(0, T.i16)
-            v1 = constant(4096, T.i16)
-            vMinus4 = constant(-16384, T.i16)
+            kernel = memref.AllocOp(T.memref(3, 3, T.i16()), [], [])
+            v0 = constant(0, T.i16())
+            v1 = constant(4096, T.i16())
+            vMinus4 = constant(-16384, T.i16())
             Store(v0, kernel, [0, 0])
             Store(v1, kernel, [0, 1])
             Store(v0, kernel, [0, 2])
@@ -572,10 +569,10 @@ def edge_detect():
 
             # Preamble : Top Border
             elemsInPre = Acquire(
-                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8)
+                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8())
             ).acquiredElem()
             elemPreOut = Acquire(
-                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
+                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
             ).acquiredElem()
             Call(
                 filter2dLine,
@@ -593,10 +590,10 @@ def edge_detect():
             # Steady State : Middle
             for _ in range_(1, 35):
                 elemsIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(64, T.ui8)
+                    ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(64, T.ui8())
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
                 ).acquiredElem()
                 Call(
                     filter2dLine,
@@ -615,10 +612,10 @@ def edge_detect():
 
             # Postamble : Bottom Border
             elemsInPost = Acquire(
-                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8)
+                ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(64, T.ui8())
             ).acquiredElem()
             elemPostOut = Acquire(
-                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
+                ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8())
             ).acquiredElem()
             Call(
                 filter2dLine,
@@ -636,16 +633,16 @@ def edge_detect():
 
         @core(T4, "threshold.cc.o")
         def coreBody():
-            vThr = constant(10, T.i16)
-            vMax = constant(255, T.i16)
-            vTyp = constant(0, T.i8)
+            vThr = constant(10, T.i16())
+            vMax = constant(255, T.i16())
+            vTyp = constant(0, T.i8())
 
             for _ in range_(36):
                 elemIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_3to4", 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Consume, "OF_3to4", 1, T.memref(64, T.ui8())
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_4to5", 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Produce, "OF_4to5", 1, T.memref(64, T.ui8())
                 ).acquiredElem()
 
                 Call(
@@ -661,10 +658,10 @@ def edge_detect():
         def coreBody():
             for _ in range_(36):
                 elemIn = Acquire(
-                    ObjectFifoPort.Consume, "OF_4to5", 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Consume, "OF_4to5", 1, T.memref(64, T.ui8())
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "OF_5to5", 1, T.memref(256, T.ui8)
+                    ObjectFifoPort.Produce, "OF_5to5", 1, T.memref(256, T.ui8())
                 ).acquiredElem()
 
                 Call(gray2rgbaLine, [elemIn, elemOut, constant(64)])
@@ -673,18 +670,18 @@ def edge_detect():
                 Release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
                 elemIn1 = Acquire(
-                    ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(256, T.ui8)
+                    ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(256, T.ui8())
                 ).acquiredElem()
                 elemIn2 = Acquire(
-                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8)
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(256, T.ui8())
                 ).acquiredElem()
                 elemOut2 = Acquire(
-                    ObjectFifoPort.Produce, "outOF_L1L2", 1, T.memref(256, T.ui8)
+                    ObjectFifoPort.Produce, "outOF_L1L2", 1, T.memref(256, T.ui8())
                 ).acquiredElem()
 
-                alpha = constant(16384, T.i16)
-                beta = constant(16384, T.i16)
-                gamma = constant(0, T.i8)
+                alpha = constant(16384, T.i16())
+                beta = constant(16384, T.i16())
+                gamma = constant(0, T.i8())
 
                 Call(
                     addWeightedLine,
@@ -705,7 +702,7 @@ def edge_detect():
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(2304, T.i32), T.memref(2304, T.i32), T.memref(2304, T.i32)
+            T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
             IpuDmaMemcpyNd(
@@ -779,11 +776,11 @@ def my_add_one_objFifo():
         MemTile = Tile(0, 1)
         ComputeTile2 = Tile(0, 2)
 
-        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, T.memref(16, T.i32))
-        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, T.memref(8, T.i32))
+        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, T.memref(16, T.i32()))
+        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, T.memref(8, T.i32()))
         Link(["in0"], ["in1"])
-        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, T.memref(8, T.i32))
-        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, T.memref(16, T.i32))
+        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, T.memref(8, T.i32()))
+        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, T.memref(16, T.i32()))
         Link(["out1"], ["out0"])
 
         @core(ComputeTile2)
@@ -791,14 +788,14 @@ def my_add_one_objFifo():
             # Effective while(1)
             for _ in range_(8):
                 elemIn = Acquire(
-                    ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32)
+                    ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32())
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32)
+                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32())
                 ).acquiredElem()
                 for i in range_(8):
                     v0 = memref.load(elemIn, [i])
-                    v1 = arith.addi(v0, constant(1, T.i32))
+                    v1 = arith.addi(v0, constant(1, T.i32()))
                     memref.store(v1, elemOut, [i])
                     yield_([])
                 Release(ObjectFifoPort.Consume, "in1", 1)
@@ -806,7 +803,7 @@ def my_add_one_objFifo():
                 yield_([])
 
         @FuncOp.from_py_func(
-            T.memref(64, T.i32), T.memref(32, T.i32), T.memref(64, T.i32)
+            T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):
             IpuDmaMemcpyNd(

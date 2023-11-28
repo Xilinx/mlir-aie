@@ -3,9 +3,9 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.ir import *
+import aie.extras.types as T
 from aie.dialects.aie import *
-import aie.types as T
+
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -28,7 +28,7 @@ def simple_with_bindings_example():
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
         tile = Tile(1, 4)
-        buff = Buffer(tile=tile, size=(256,), datatype=T.i32)
+        buff = Buffer(tile=tile, size=(256,), datatype=T.i32())
 
         C = Core(tile)
         bb = Block.create_at_start(C.body)

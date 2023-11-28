@@ -17,6 +17,10 @@ from ..ir import *
 from ..util import constant
 
 
+# Comes from _aie
+register_dialect(get_dialect_registry())
+
+
 class AddI(arith.AddIOp):
     """Specialize AddIOp class constructor to take python integers"""
 
@@ -207,7 +211,6 @@ def _i64Attr(x, context):
 # Create and print ModuleOp.
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
-        register_dialect(ctx)
         module = Module.create()
         with InsertionPoint(module.body):
             f()

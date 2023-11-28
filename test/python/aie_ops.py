@@ -4,15 +4,11 @@
 # RUN: %PYTHON %s | FileCheck %s
 
 
-import aie
-from aie.ir import *
 from aie.dialects.aie import *
-from aie.passmanager import PassManager
 
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
-        aie.dialects.aie.register_dialect(ctx)
         module = Module.create()
         print("\nTEST:", f.__name__)
         with InsertionPoint(module.body):

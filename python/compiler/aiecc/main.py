@@ -98,7 +98,6 @@ class flow_runner:
       if self.opts.verbose:
         print("Running:", pass_pipeline)
       with Context() as ctx, Location.unknown():
-        aiedialect.register_dialect(ctx)
         module = Module.parse(mlir_module_str)
         PassManager.parse(pass_pipeline).run(module.operation)
         mlir_module_str = str(module)
@@ -263,7 +262,6 @@ class flow_runner:
   async def emit_design_partition_json(self, output_filename, kernel_id='0x901'):
 
     with Context() as ctx, Location.unknown():
-      aiedialect.register_dialect(ctx)
       with open(self.file_with_addresses, 'r') as f:
           mlir_module = Module.parse(f.read())
 
@@ -809,7 +807,6 @@ def main():
 
   try:
     with Context() as ctx, Location.unknown():
-      aiedialect.register_dialect(ctx)
       with open(opts.filename, 'r') as f:
         module = Module.parse(f.read())
       module_str = str(module)

@@ -8,6 +8,9 @@ from .._mlir_libs._aie import *
 from ..ir import *
 from ..dialects import arith
 
+# Comes from _aie
+register_dialect(get_dialect_registry())
+
 
 class IpuSync(IpuSyncOp):
     """Rename IpuSyncOp class"""
