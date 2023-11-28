@@ -100,9 +100,9 @@ module @shim_broadcast {
       %tile23 = AIE.tile(2, 3)
       %tile33 = AIE.tile(3, 3)
 
-      AIE.objectFifo @of_in (%tile20, {%tile22, %tile23, %tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of_in (%tile20, {%tile22, %tile23, %tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
       %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-      AIE.objectFifo.registerExternalBuffers @of_in (%tile20, {%ext_buffer_in}) : (memref<64xi32>)
+      AIE.objectfifo.register_external_buffers @of_in (%tile20, {%ext_buffer_in}) : (memref<64xi32>)
    }
 }

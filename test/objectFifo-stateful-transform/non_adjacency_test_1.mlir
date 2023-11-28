@@ -96,7 +96,7 @@ module @non_adjacency {
         %tile12 = AIE.tile(1, 2)
         %tile33 = AIE.tile(3, 3)
 
-        AIE.objectFifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         func.func @some_work(%lineOut : memref<16xi32>) -> () {
             return
@@ -108,10 +108,10 @@ module @non_adjacency {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = AIE.objectFifo.acquire @objfifo (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @objfifo (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-                AIE.objectFifo.release @objfifo (Produce, 1)
+                AIE.objectfifo.release @objfifo (Produce, 1)
             }
 
             AIE.end
@@ -123,10 +123,10 @@ module @non_adjacency {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = AIE.objectFifo.acquire @objfifo (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @objfifo (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-                AIE.objectFifo.release @objfifo (Consume, 1)
+                AIE.objectfifo.release @objfifo (Consume, 1)
             }
 
             AIE.end

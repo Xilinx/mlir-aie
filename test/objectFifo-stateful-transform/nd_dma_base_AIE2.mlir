@@ -132,11 +132,11 @@ module @ndDMAObjFifoAIE2 {
     // Even if an objectFifo could be implemented in shared memory, as with
     // this case between two adjacent tiles, we need to use DMAs if a data
     // layout transformation with toStream and fromStream was specified.
-    AIE.objectFifo @of0 (%tile12 toStream [<16, 1>, <16, 16>, <1, 1>], // transpose
+    AIE.objectfifo @of0 (%tile12 toStream [<16, 1>, <16, 16>, <1, 1>], // transpose
                          {%tile13 fromStream [<1, 1>]},
-                         4 : i32) : !AIE.objectFifo<memref<256xi32>>
+                         4 : i32) : !AIE.objectfifo<memref<256xi32>>
 
-    AIE.objectFifo @of1 (%tile12 toStream [<128, 2>], {%tile33},
-                         2 : i32) : !AIE.objectFifo<memref<256xi32>>
+    AIE.objectfifo @of1 (%tile12 toStream [<128, 2>], {%tile33},
+                         2 : i32) : !AIE.objectfifo<memref<256xi32>>
  }
 }

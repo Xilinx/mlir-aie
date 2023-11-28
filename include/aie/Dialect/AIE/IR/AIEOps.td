@@ -1336,7 +1336,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
@@ -1473,7 +1473,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   ];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
@@ -1527,12 +1527,12 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers", [
     HasParent<"DeviceOp">, TileElement, IsShimNOCTile
   ]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
-    The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
+    The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
     to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
     generated for those shim tiles will use the registered external buffers. This is currently done because 
     external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
@@ -1543,7 +1543,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
       AIE.objectFifo @of1 (%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
       %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-      AIE.objectFifo.registerExternalBuffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+      AIE.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
     This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
   }];
@@ -1568,19 +1568,19 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   }];
 }
 
-def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
+def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
+    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
     of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port
-    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
     the acquired objects which can be used to access them.
 
     This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations on
     the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
     new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
     to be released by the same process, then performing another acquire operation on the same `objectFifo`
-    within the same process of size two or less will not result in any new useLock operations (and for size 
+    within the same process of size two or less will not result in any new useLock operations (and for size
     greater than two, only (size - 2) useLock operations will be performed).
 
     Example:
@@ -1611,12 +1611,12 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   }];
 }
 
-def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
+def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
-    The `aie.objectFifo.release` operation releases the locks of the given number of objects 
+    The `aie.objectFifo.release` operation releases the locks of the given number of objects
     in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
-    (producer: release for read, consumer: release for write). 
+    (producer: release for read, consumer: release for write).
 
     This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations.
 
@@ -1645,7 +1645,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   }];
 }
 
-def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
+def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let summary = "ObjectFifoSubview type accessor method";
   let description = [{
     Access the Nth element of a value of `ObjectFifoSubview` type.
@@ -1679,14 +1679,14 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   ];
 }
 
-def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
+def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
   let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
   let description = [{
     The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
     acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
     on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case
-    of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
-    This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
+    of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop.
+    This may result in multiple for loops of different sizes being generated. If there is no repetition, then no
     loops will be generated.
 
     Example:
@@ -1697,7 +1697,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
       func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
 
-      AIE.objectFifo.registerProcess @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+      AIE.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```
     This operation registers function @producer_work and associated patterns to the produce end of @of1.
     @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.

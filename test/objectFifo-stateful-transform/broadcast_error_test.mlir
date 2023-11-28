@@ -12,7 +12,7 @@
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
 
-// CHECK:   error: 'AIE.objectFifo' op does not have enough depths specified for producer and for each consumer.
+// CHECK:   error: 'AIE.objectfifo' op does not have enough depths specified for producer and for each consumer.
 
 module @broadcast_error {
     AIE.device(xcvc1902) {
@@ -22,6 +22,6 @@ module @broadcast_error {
         %tile32 = AIE.tile(3, 2)
         %tile33 = AIE.tile(3, 3)
 
-        AIE.objectFifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3]) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3]) : !AIE.objectfifo<memref<16xi32>>
     }
 }

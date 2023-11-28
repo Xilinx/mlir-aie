@@ -16,9 +16,9 @@ from aie.dialects.aie import (
     core,
     device,
     external_func,
-    objectFifo,
-    objectFifo_link,
-    objectFifo_release,
+    objectfifo,
+    objectfifo_link,
+    objectfifo_release,
     tile,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
@@ -50,8 +50,8 @@ def construct_and_print_module(f):
 # CHECK:     func.func private @scale_int32(memref<1024xi32>, memref<1024xi32>)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
-# CHECK:     AIE.objectFifo @in(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<1024xi32>>
-# CHECK:     AIE.objectFifo @out(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<1024xi32>>
+# CHECK:     AIE.objectfifo @in(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectfifo<memref<1024xi32>>
+# CHECK:     AIE.objectfifo @out(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectfifo<memref<1024xi32>>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c4 = arith.constant 4 : index
 # CHECK:       %c0 = arith.constant 0 : index
@@ -59,13 +59,13 @@ def construct_and_print_module(f):
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
 # CHECK:         scf.for %arg1 = %c0 to %c4 step %c1 {
-# CHECK:           %0 = AIE.objectFifo.acquire @out(Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-# CHECK:           %2 = AIE.objectFifo.acquire @in(Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-# CHECK:           %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+# CHECK:           %0 = AIE.objectfifo.acquire @out(Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+# CHECK:           %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
+# CHECK:           %2 = AIE.objectfifo.acquire @in(Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+# CHECK:           %3 = AIE.objectfifo.subview.access %2[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 # CHECK:           func.call @scale_int32(%3, %1) : (memref<1024xi32>, memref<1024xi32>) -> ()
-# CHECK:           AIE.objectFifo.release @in(Consume, 1)
-# CHECK:           AIE.objectFifo.release @out(Produce, 1)
+# CHECK:           AIE.objectfifo.release @in(Consume, 1)
+# CHECK:           AIE.objectfifo.release @out(Produce, 1)
 # CHECK:         }
 # CHECK:       }
 # CHECK:       AIE.end
@@ -100,7 +100,7 @@ def my_vector_scalar():
         S = tile(0, 0)
         M = tile(0, 2)
 
-        objectFifo(
+        objectfifo(
             "in",
             S,
             [M],
@@ -109,7 +109,7 @@ def my_vector_scalar():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "out",
             M,
             [S],
@@ -132,8 +132,8 @@ def my_vector_scalar():
                         ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
                     ).acquired_elem()
                     Call(scale_int32, [elem_in, elem_out])
-                    objectFifo_release(ObjectFifoPort.Consume, "in", 1)
-                    objectFifo_release(ObjectFifoPort.Produce, "out", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "in", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "out", 1)
                     yield_([])
                 yield_([])
 
@@ -155,9 +155,9 @@ def my_vector_scalar():
 # CHECK:     func.func private @matmul_i16_i16(memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>)
 # CHECK:     %tile_0_0 = AIE.tile(0, 0)
 # CHECK:     %tile_0_2 = AIE.tile(0, 2)
-# CHECK:     AIE.objectFifo @inA(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<64x32xi16>>
-# CHECK:     AIE.objectFifo @inB(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectFifo<memref<32x64xi16>>
-# CHECK:     AIE.objectFifo @outC(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<64x64xi16>>
+# CHECK:     AIE.objectfifo @inA(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectfifo<memref<64x32xi16>>
+# CHECK:     AIE.objectfifo @inB(%tile_0_0, {%tile_0_2}, 2 : i32) : !AIE.objectfifo<memref<32x64xi16>>
+# CHECK:     AIE.objectfifo @outC(%tile_0_2, {%tile_0_0}, 2 : i32) : !AIE.objectfifo<memref<64x64xi16>>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c4 = arith.constant 4 : index
 # CHECK:       %c0 = arith.constant 0 : index
@@ -165,19 +165,19 @@ def my_vector_scalar():
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
 # CHECK:         scf.for %arg1 = %c0 to %c4 step %c1 {
-# CHECK:           %0 = AIE.objectFifo.acquire @outC(Produce, 1) : !AIE.objectFifoSubview<memref<64x64xi16>>
-# CHECK:           %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64x64xi16>> -> memref<64x64xi16>
+# CHECK:           %0 = AIE.objectfifo.acquire @outC(Produce, 1) : !AIE.objectfifosubview<memref<64x64xi16>>
+# CHECK:           %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<64x64xi16>> -> memref<64x64xi16>
 # CHECK:           func.call @zero_i16(%1) : (memref<64x64xi16>) -> ()
 # CHECK:           scf.for %arg2 = %c0 to %c4 step %c1 {
-# CHECK:             %2 = AIE.objectFifo.acquire @inA(Consume, 1) : !AIE.objectFifoSubview<memref<64x32xi16>>
-# CHECK:             %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64x32xi16>> -> memref<64x32xi16>
-# CHECK:             %4 = AIE.objectFifo.acquire @inB(Consume, 1) : !AIE.objectFifoSubview<memref<32x64xi16>>
-# CHECK:             %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<32x64xi16>> -> memref<32x64xi16>
+# CHECK:             %2 = AIE.objectfifo.acquire @inA(Consume, 1) : !AIE.objectfifosubview<memref<64x32xi16>>
+# CHECK:             %3 = AIE.objectfifo.subview.access %2[0] : !AIE.objectfifosubview<memref<64x32xi16>> -> memref<64x32xi16>
+# CHECK:             %4 = AIE.objectfifo.acquire @inB(Consume, 1) : !AIE.objectfifosubview<memref<32x64xi16>>
+# CHECK:             %5 = AIE.objectfifo.subview.access %4[0] : !AIE.objectfifosubview<memref<32x64xi16>> -> memref<32x64xi16>
 # CHECK:             func.call @matmul_i16_i16(%3, %5, %1) : (memref<64x32xi16>, memref<32x64xi16>, memref<64x64xi16>) -> ()
-# CHECK:             AIE.objectFifo.release @inA(Consume, 1)
-# CHECK:             AIE.objectFifo.release @inB(Consume, 1)
+# CHECK:             AIE.objectfifo.release @inA(Consume, 1)
+# CHECK:             AIE.objectfifo.release @inB(Consume, 1)
 # CHECK:           }
-# CHECK:           AIE.objectFifo.release @outC(Produce, 1)
+# CHECK:           AIE.objectfifo.release @outC(Produce, 1)
 # CHECK:         }
 # CHECK:       }
 # CHECK:       AIE.end
@@ -264,7 +264,7 @@ def my_matmul():
         S = tile(0, 0)
         M = tile(0, 2)
 
-        objectFifo(
+        objectfifo(
             "inA",
             S,
             [M],
@@ -273,7 +273,7 @@ def my_matmul():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "inB",
             S,
             [M],
@@ -282,7 +282,7 @@ def my_matmul():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "outC",
             M,
             [S],
@@ -315,11 +315,11 @@ def my_matmul():
                             Call(matmul, [elem_in_a, elem_in_b, elem_out])
                         else:
                             Call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
-                        objectFifo_release(ObjectFifoPort.Consume, "inA", 1)
-                        objectFifo_release(ObjectFifoPort.Consume, "inB", 1)
+                        objectfifo_release(ObjectFifoPort.Consume, "inA", 1)
+                        objectfifo_release(ObjectFifoPort.Consume, "inB", 1)
                         yield_([])
 
-                    objectFifo_release(ObjectFifoPort.Produce, "outC", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "outC", 1)
                     yield_([])
                 yield_([])
 
@@ -389,29 +389,29 @@ def my_matmul():
 # CHECK:     %tile_0_3 = AIE.tile(0, 3)
 # CHECK:     %tile_0_4 = AIE.tile(0, 4)
 # CHECK:     %tile_0_5 = AIE.tile(0, 5)
-# CHECK:     AIE.objectFifo @inOF_L3L2(%tile_0_0, {%tile_0_1}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo @inOF_L2L1(%tile_0_1, {%tile_0_2, %tile_0_5}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo.link [@inOF_L3L2] -> [@inOF_L2L1]()
-# CHECK:     AIE.objectFifo @outOF_L2L3(%tile_0_1, {%tile_0_0}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo @outOF_L1L2(%tile_0_5, {%tile_0_1}, 2 : i32) : !AIE.objectFifo<memref<256xui8>>
-# CHECK:     AIE.objectFifo.link [@outOF_L1L2] -> [@outOF_L2L3]()
-# CHECK:     AIE.objectFifo @OF_2to3(%tile_0_2, {%tile_0_3}, 4 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_3to4(%tile_0_3, {%tile_0_4}, 2 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_4to5(%tile_0_4, {%tile_0_5}, 2 : i32) : !AIE.objectFifo<memref<64xui8>>
-# CHECK:     AIE.objectFifo @OF_5to5(%tile_0_5, {%tile_0_5}, 1 : i32) : !AIE.objectFifo<memref<256xui8>>
+# CHECK:     AIE.objectfifo @inOF_L3L2(%tile_0_0, {%tile_0_1}, 2 : i32) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:     AIE.objectfifo @inOF_L2L1(%tile_0_1, {%tile_0_2, %tile_0_5}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:     AIE.objectfifo.link [@inOF_L3L2] -> [@inOF_L2L1]()
+# CHECK:     AIE.objectfifo @outOF_L2L3(%tile_0_1, {%tile_0_0}, 2 : i32) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:     AIE.objectfifo @outOF_L1L2(%tile_0_5, {%tile_0_1}, 2 : i32) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:     AIE.objectfifo.link [@outOF_L1L2] -> [@outOF_L2L3]()
+# CHECK:     AIE.objectfifo @OF_2to3(%tile_0_2, {%tile_0_3}, 4 : i32) : !AIE.objectfifo<memref<64xui8>>
+# CHECK:     AIE.objectfifo @OF_3to4(%tile_0_3, {%tile_0_4}, 2 : i32) : !AIE.objectfifo<memref<64xui8>>
+# CHECK:     AIE.objectfifo @OF_4to5(%tile_0_4, {%tile_0_5}, 2 : i32) : !AIE.objectfifo<memref<64xui8>>
+# CHECK:     AIE.objectfifo @OF_5to5(%tile_0_5, {%tile_0_5}, 1 : i32) : !AIE.objectfifo<memref<256xui8>>
 # CHECK:     %core_0_2 = AIE.core(%tile_0_2) {
 # CHECK:       %c64_i32 = arith.constant 64 : i32
 # CHECK:       %c0 = arith.constant 0 : index
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_2to3(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %0 = AIE.objectfifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectfifosubview<memref<256xui8>>
+# CHECK:         %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %2 = AIE.objectfifo.acquire @OF_2to3(Produce, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %3 = AIE.objectfifo.subview.access %2[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         func.call @rgba2gray_line(%1, %3, %c64_i32) : (memref<256xui8>, memref<64xui8>, i32) -> ()
-# CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
-# CHECK:         AIE.objectFifo.release @OF_2to3(Produce, 1)
+# CHECK:         AIE.objectfifo.release @inOF_L2L1(Consume, 1)
+# CHECK:         AIE.objectfifo.release @OF_2to3(Produce, 1)
 # CHECK:       }
 # CHECK:       AIE.end
 # CHECK:     } {link_with = "rgba2gray.cc.o"}
@@ -434,32 +434,32 @@ def my_matmul():
 # CHECK:       memref.store %c0_i16, %alloc[%c2, %c0] : memref<3x3xi16>
 # CHECK:       memref.store %c4096_i16, %alloc[%c2, %c1] : memref<3x3xi16>
 # CHECK:       memref.store %c0_i16, %alloc[%c2, %c2] : memref<3x3xi16>
-# CHECK:       %0 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %2 = AIE.objectFifo.subview.access %0[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %3 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %4 = AIE.objectFifo.subview.access %3[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %0 = AIE.objectfifo.acquire @OF_2to3(Consume, 2) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:       %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %2 = AIE.objectfifo.subview.access %0[1] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %3 = AIE.objectfifo.acquire @OF_3to4(Produce, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:       %4 = AIE.objectfifo.subview.access %3[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:       func.call @filter2d_line(%1, %1, %2, %4, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
-# CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
+# CHECK:       AIE.objectfifo.release @OF_3to4(Produce, 1)
 # CHECK:       scf.for %arg0 = %c1 to %c35 step %c1 {
-# CHECK:         %10 = AIE.objectFifo.acquire @OF_2to3(Consume, 3) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %12 = AIE.objectFifo.subview.access %10[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %13 = AIE.objectFifo.subview.access %10[2] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %14 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %15 = AIE.objectFifo.subview.access %14[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %10 = AIE.objectfifo.acquire @OF_2to3(Consume, 3) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %11 = AIE.objectfifo.subview.access %10[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %12 = AIE.objectfifo.subview.access %10[1] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %13 = AIE.objectfifo.subview.access %10[2] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %14 = AIE.objectfifo.acquire @OF_3to4(Produce, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %15 = AIE.objectfifo.subview.access %14[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         func.call @filter2d_line(%11, %12, %13, %15, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
-# CHECK:         AIE.objectFifo.release @OF_2to3(Consume, 1)
-# CHECK:         AIE.objectFifo.release @OF_3to4(Produce, 1)
+# CHECK:         AIE.objectfifo.release @OF_2to3(Consume, 1)
+# CHECK:         AIE.objectfifo.release @OF_3to4(Produce, 1)
 # CHECK:       }
-# CHECK:       %5 = AIE.objectFifo.acquire @OF_2to3(Consume, 2) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %7 = AIE.objectFifo.subview.access %5[1] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:       %8 = AIE.objectFifo.acquire @OF_3to4(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:       %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %5 = AIE.objectfifo.acquire @OF_2to3(Consume, 2) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:       %6 = AIE.objectfifo.subview.access %5[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %7 = AIE.objectfifo.subview.access %5[1] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:       %8 = AIE.objectfifo.acquire @OF_3to4(Produce, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:       %9 = AIE.objectfifo.subview.access %8[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:       func.call @filter2d_line(%6, %7, %7, %9, %c64_i32, %alloc) : (memref<64xui8>, memref<64xui8>, memref<64xui8>, memref<64xui8>, i32, memref<3x3xi16>) -> ()
-# CHECK:       AIE.objectFifo.release @OF_2to3(Consume, 2)
-# CHECK:       AIE.objectFifo.release @OF_3to4(Produce, 1)
+# CHECK:       AIE.objectfifo.release @OF_2to3(Consume, 2)
+# CHECK:       AIE.objectfifo.release @OF_3to4(Produce, 1)
 # CHECK:       AIE.end
 # CHECK:     } {link_with = "filter2d.cc.o"}
 # CHECK:     %core_0_4 = AIE.core(%tile_0_4) {
@@ -471,13 +471,13 @@ def my_matmul():
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @OF_3to4(Consume, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_4to5(Produce, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %0 = AIE.objectfifo.acquire @OF_3to4(Consume, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %2 = AIE.objectfifo.acquire @OF_4to5(Produce, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %3 = AIE.objectfifo.subview.access %2[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
 # CHECK:         func.call @threshold_line(%1, %3, %c64_i32, %c10_i16, %c255_i16, %c0_i8) : (memref<64xui8>, memref<64xui8>, i32, i16, i16, i8) -> ()
-# CHECK:         AIE.objectFifo.release @OF_3to4(Consume, 1)
-# CHECK:         AIE.objectFifo.release @OF_4to5(Produce, 1)
+# CHECK:         AIE.objectfifo.release @OF_3to4(Consume, 1)
+# CHECK:         AIE.objectfifo.release @OF_4to5(Produce, 1)
 # CHECK:       }
 # CHECK:       AIE.end
 # CHECK:     } {link_with = "threshold.cc.o"}
@@ -490,23 +490,23 @@ def my_matmul():
 # CHECK:       %c36 = arith.constant 36 : index
 # CHECK:       %c1 = arith.constant 1 : index
 # CHECK:       scf.for %arg0 = %c0 to %c36 step %c1 {
-# CHECK:         %0 = AIE.objectFifo.acquire @OF_4to5(Consume, 1) : !AIE.objectFifoSubview<memref<64xui8>>
-# CHECK:         %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
-# CHECK:         %2 = AIE.objectFifo.acquire @OF_5to5(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %3 = AIE.objectFifo.subview.access %2[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %0 = AIE.objectfifo.acquire @OF_4to5(Consume, 1) : !AIE.objectfifosubview<memref<64xui8>>
+# CHECK:         %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<64xui8>> -> memref<64xui8>
+# CHECK:         %2 = AIE.objectfifo.acquire @OF_5to5(Produce, 1) : !AIE.objectfifosubview<memref<256xui8>>
+# CHECK:         %3 = AIE.objectfifo.subview.access %2[0] : !AIE.objectfifosubview<memref<256xui8>> -> memref<256xui8>
 # CHECK:         func.call @gray2rgba_line(%1, %3, %c64_i32) : (memref<64xui8>, memref<256xui8>, i32) -> ()
-# CHECK:         AIE.objectFifo.release @OF_4to5(Consume, 1)
-# CHECK:         AIE.objectFifo.release @OF_5to5(Produce, 1)
-# CHECK:         %4 = AIE.objectFifo.acquire @OF_5to5(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %6 = AIE.objectFifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
-# CHECK:         %8 = AIE.objectFifo.acquire @outOF_L1L2(Produce, 1) : !AIE.objectFifoSubview<memref<256xui8>>
-# CHECK:         %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         AIE.objectfifo.release @OF_4to5(Consume, 1)
+# CHECK:         AIE.objectfifo.release @OF_5to5(Produce, 1)
+# CHECK:         %4 = AIE.objectfifo.acquire @OF_5to5(Consume, 1) : !AIE.objectfifosubview<memref<256xui8>>
+# CHECK:         %5 = AIE.objectfifo.subview.access %4[0] : !AIE.objectfifosubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %6 = AIE.objectfifo.acquire @inOF_L2L1(Consume, 1) : !AIE.objectfifosubview<memref<256xui8>>
+# CHECK:         %7 = AIE.objectfifo.subview.access %6[0] : !AIE.objectfifosubview<memref<256xui8>> -> memref<256xui8>
+# CHECK:         %8 = AIE.objectfifo.acquire @outOF_L1L2(Produce, 1) : !AIE.objectfifosubview<memref<256xui8>>
+# CHECK:         %9 = AIE.objectfifo.subview.access %8[0] : !AIE.objectfifosubview<memref<256xui8>> -> memref<256xui8>
 # CHECK:         func.call @add_weighted_line(%5, %7, %9, %c256_i32, %c16384_i16, %c16384_i16, %c0_i8) : (memref<256xui8>, memref<256xui8>, memref<256xui8>, i32, i16, i16, i8) -> ()
-# CHECK:         AIE.objectFifo.release @OF_5to5(Consume, 1)
-# CHECK:         AIE.objectFifo.release @inOF_L2L1(Consume, 1)
-# CHECK:         AIE.objectFifo.release @outOF_L1L2(Produce, 1)
+# CHECK:         AIE.objectfifo.release @OF_5to5(Consume, 1)
+# CHECK:         AIE.objectfifo.release @inOF_L2L1(Consume, 1)
+# CHECK:         AIE.objectfifo.release @outOF_L1L2(Produce, 1)
 # CHECK:       }
 # CHECK:       AIE.end
 # CHECK:     } {link_with = "combined_gray2rgba_addWeighted.a"}
@@ -578,7 +578,7 @@ def edge_detect():
         T4 = tile(0, 4)
         T5 = tile(0, 5)
 
-        objectFifo(
+        objectfifo(
             "inOF_L3L2",
             S,
             [M],
@@ -587,7 +587,7 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "inOF_L2L1",
             M,
             [T2, T5],
@@ -596,9 +596,9 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo_link(["inOF_L3L2"], ["inOF_L2L1"])
+        objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
-        objectFifo(
+        objectfifo(
             "outOF_L2L3",
             M,
             [S],
@@ -607,7 +607,7 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "outOF_L1L2",
             T5,
             [M],
@@ -616,9 +616,9 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo_link(["outOF_L1L2"], ["outOF_L2L3"])
+        objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
-        objectFifo(
+        objectfifo(
             "OF_2to3",
             T2,
             [T3],
@@ -627,7 +627,7 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "OF_3to4",
             T3,
             [T4],
@@ -636,7 +636,7 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "OF_4to5",
             T4,
             [T5],
@@ -645,7 +645,7 @@ def edge_detect():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "OF_5to5",
             T5,
             [T5],
@@ -667,8 +667,8 @@ def edge_detect():
 
                 Call(rgba2gray_line, [elem_in, elem_out, arith.constant(64)])
 
-                objectFifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
                 yield_([])
 
         @core(T3, "filter2d.cc.o")
@@ -705,7 +705,7 @@ def edge_detect():
                     kernel,
                 ],
             )
-            objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+            objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
             # Steady State : Middle
             for _ in range_(1, 35):
@@ -726,8 +726,8 @@ def edge_detect():
                         kernel,
                     ],
                 )
-                objectFifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
                 yield_([])
 
             # Postamble : Bottom Border
@@ -748,8 +748,8 @@ def edge_detect():
                     kernel,
                 ],
             )
-            objectFifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
-            objectFifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+            objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
+            objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
         @core(T4, "threshold.cc.o")
         def core_body():
@@ -770,8 +770,8 @@ def edge_detect():
                     [elem_in, elem_out, arith.constant(64), v_thr, v_max, v_typ],
                 )
 
-                objectFifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
                 yield_([])
 
         @core(T5, "combined_gray2rgba_addWeighted.a")
@@ -786,8 +786,8 @@ def edge_detect():
 
                 Call(gray2rgba_line, [elem_in, elem_out, arith.constant(64)])
 
-                objectFifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "OF_5to5", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
                 elem_in1 = acquire(
                     ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(256, T.ui8())
@@ -816,9 +816,9 @@ def edge_detect():
                     ],
                 )
 
-                objectFifo_release(ObjectFifoPort.Consume, "OF_5to5", 1)
-                objectFifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "OF_5to5", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                 yield_([])
 
         @FuncOp.from_py_func(
@@ -849,12 +849,12 @@ def edge_detect():
 #     %t01 = AIE.tile(0, 1)
 #     %t02 = AIE.tile(0, 2)
 #
-#     AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-#     AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
-#     AIE.objectFifo.link [@objFifo_in0] -> [@objFifo_in1] ()
-#     AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-#     AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
-#     AIE.objectFifo.link [@objFifo_out1] -> [@objFifo_out0] ()
+#     AIE.objectfifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+#     AIE.objectfifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !AIE.objectfifo<memref<8xi32>>
+#     AIE.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ()
+#     AIE.objectfifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+#     AIE.objectfifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !AIE.objectfifo<memref<8xi32>>
+#     AIE.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ()
 #
 #     AIE.core(%t02) {
 #       %c8 = arith.constant 8 : index
@@ -863,17 +863,17 @@ def edge_detect():
 #       %c1_32 = arith.constant 1 : i32
 #
 #       scf.for %steps = %c0 to %c8 step %c1 {
-#         %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-#         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
-#         %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-#         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
+#         %subview0 = AIE.objectfifo.acquire @objFifo_in1(Consume, 1) : !AIE.objectfifosubview<memref<8xi32>>
+#         %elem0 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+#         %subview1 = AIE.objectfifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectfifosubview<memref<8xi32>>
+#         %elem1 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<8xi32>> -> memref<8xi32>
 #         scf.for %arg3 = %c0 to %c8 step %c1 {
 #             %0 = memref.load %elem0[%arg3] : memref<8xi32>
 #             %1 = arith.addi %0, %c1_32 : i32
 #             memref.store %1, %elem1[%arg3] : memref<8xi32>
 #         }
-#         AIE.objectFifo.release @objFifo_in1(Consume, 1)
-#         AIE.objectFifo.release @objFifo_out1(Produce, 1)
+#         AIE.objectfifo.release @objFifo_in1(Consume, 1)
+#         AIE.objectfifo.release @objFifo_out1(Produce, 1)
 #       }
 #       AIE.end
 #     }
@@ -896,7 +896,7 @@ def my_add_one_objFifo():
         mem_tile = tile(0, 1)
         compute_tile2 = tile(0, 2)
 
-        objectFifo(
+        objectfifo(
             "in0",
             shim_tile,
             [mem_tile],
@@ -905,7 +905,7 @@ def my_add_one_objFifo():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "in1",
             mem_tile,
             [compute_tile2],
@@ -914,8 +914,8 @@ def my_add_one_objFifo():
             [],
             [],
         )
-        objectFifo_link(["in0"], ["in1"])
-        objectFifo(
+        objectfifo_link(["in0"], ["in1"])
+        objectfifo(
             "out0",
             mem_tile,
             [shim_tile],
@@ -924,7 +924,7 @@ def my_add_one_objFifo():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "out1",
             compute_tile2,
             [mem_tile],
@@ -933,7 +933,7 @@ def my_add_one_objFifo():
             [],
             [],
         )
-        objectFifo_link(["out1"], ["out0"])
+        objectfifo_link(["out1"], ["out0"])
 
         @core(compute_tile2)
         def core_body():
@@ -950,8 +950,8 @@ def my_add_one_objFifo():
                     v1 = arith.addi(v0, arith.constant(1, T.i32()))
                     memref.store(v1, elem_out, [i])
                     yield_([])
-                objectFifo_release(ObjectFifoPort.Consume, "in1", 1)
-                objectFifo_release(ObjectFifoPort.Produce, "out1", 1)
+                objectfifo_release(ObjectFifoPort.Consume, "in1", 1)
+                objectfifo_release(ObjectFifoPort.Produce, "out1", 1)
                 yield_([])
 
         @FuncOp.from_py_func(

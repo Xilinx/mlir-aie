@@ -76,10 +76,10 @@ module @shimRow_mem {
         %tile71 = AIE.tile(7, 1)
         %tile70 = AIE.tile(7, 0)
 
-        AIE.objectFifo @objfifo (%tile70, {%tile71}, 3 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @objfifo (%tile70, {%tile71}, 3 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-        AIE.objectFifo.registerExternalBuffers @objfifo (%tile70, {%ext_buffer_in}) : (memref<64xi32>)
+        AIE.objectfifo.register_external_buffers @objfifo (%tile70, {%ext_buffer_in}) : (memref<64xi32>)
 
         func.func @some_work(%a : memref<16xi32>, %b : memref<16xi32>) -> () {
             return
@@ -90,11 +90,11 @@ module @shimRow_mem {
             %c1 = arith.constant 1 : index
             %height = arith.constant 12 : index
 
-            %subview = AIE.objectFifo.acquire @objfifo (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @objfifo (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem1 = AIE.objectfifo.subview.access %subview[1] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
-            AIE.objectFifo.release @objfifo (Consume, 1)
+            AIE.objectfifo.release @objfifo (Consume, 1)
             
             AIE.end
         }

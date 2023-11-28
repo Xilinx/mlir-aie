@@ -198,7 +198,7 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
   let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
   let description = [{
     Generate acquire/release patterns in the CoreOps of associated cores for each 
-    aie.objectFifo.registerProcess operation. Patterns are generated as for loops
+    aie.objectfifo.register_process operation. Patterns are generated as for loops
     of different sizes depending on input patterns.
   }];
 

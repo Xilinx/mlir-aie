@@ -75,10 +75,10 @@ module @elementGenerationAIE1 {
       %tile33 = AIE.tile(3, 3)
 
       // In the shared memory case, the number of elements does not change.
-      AIE.objectFifo @of0 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of0 (%tile12, {%tile13}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
 
       // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
       // the processes running on each core (here nothing is specified so it cannot be derived).
-      AIE.objectFifo @of1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
    }
 }

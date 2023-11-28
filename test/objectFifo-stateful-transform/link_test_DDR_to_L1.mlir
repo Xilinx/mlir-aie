@@ -94,12 +94,12 @@ module @link_DDR_L1 {
         %tile21 = AIE.tile(2, 1)
         %tile22 = AIE.tile(2, 2)
 
-        AIE.objectFifo @to_memTile (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-        AIE.objectFifo @from_memTile (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @to_memTile (%tile20, {%tile21}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        AIE.objectfifo @from_memTile (%tile21, {%tile22}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
-        AIE.objectFifo.link [@to_memTile] -> [@from_memTile] ()
+        AIE.objectfifo.link [@to_memTile] -> [@from_memTile] ()
 
         %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32>
-        AIE.objectFifo.registerExternalBuffers @to_memTile (%tile20, {%ext_buff_in}) : (memref<16xi32>)
+        AIE.objectfifo.register_external_buffers @to_memTile (%tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }

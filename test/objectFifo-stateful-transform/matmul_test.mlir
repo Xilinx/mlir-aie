@@ -131,9 +131,9 @@ module @matmul {
     %t00 = AIE.tile(0, 0)
     %t02 = AIE.tile(0, 2)
 
-    AIE.objectFifo @inA  (%t00, { %t02 }, 2 : i32) : !AIE.objectFifo<memref<16x8xi16>>
-    AIE.objectFifo @inB  (%t00, { %t02 }, 2 : i32) : !AIE.objectFifo<memref<8x16xi16>>
-    AIE.objectFifo @outC (%t02, { %t00 }, 2 : i32) : !AIE.objectFifo<memref<16x16xi16>>
+    AIE.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !AIE.objectfifo<memref<16x8xi16>>
+    AIE.objectfifo @inB  (%t00, { %t02 }, 2 : i32) : !AIE.objectfifo<memref<8x16xi16>>
+    AIE.objectfifo @outC (%t02, { %t00 }, 2 : i32) : !AIE.objectfifo<memref<16x16xi16>>
 
     func.func @zero_scalar_i16(%elem0 : memref<16x16xi16>) -> () { return }
     func.func @matmul_scalar_i16_i16(%elem0 : memref<16x8xi16>, %elem1 : memref<8x16xi16>, %elem2 : memref<16x16xi16>) -> () { return }
@@ -147,22 +147,22 @@ module @matmul {
       scf.for %reps = %c0 to %intmax step %c1 {
 
         scf.for %arg2 = %c0 to %c4 step %c1 {
-          %subview2 = AIE.objectFifo.acquire @outC (Produce, 1) : !AIE.objectFifoSubview<memref<16x16xi16>>
-          %elem2 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<16x16xi16>> -> memref<16x16xi16>
+          %subview2 = AIE.objectfifo.acquire @outC (Produce, 1) : !AIE.objectfifosubview<memref<16x16xi16>>
+          %elem2 = AIE.objectfifo.subview.access %subview2[0] : !AIE.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
           func.call @zero_scalar_i16(%elem2) : (memref<16x16xi16>) -> ()
 
           scf.for %arg3 = %c0 to %c4 step %c1 {
-            %subview0 = AIE.objectFifo.acquire @inA (Consume, 1) : !AIE.objectFifoSubview<memref<16x8xi16>>
-            %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16x8xi16>> -> memref<16x8xi16>
-            %subview1 = AIE.objectFifo.acquire @inB (Consume, 1) : !AIE.objectFifoSubview<memref<8x16xi16>>
-            %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8x16xi16>> -> memref<8x16xi16>
+            %subview0 = AIE.objectfifo.acquire @inA (Consume, 1) : !AIE.objectfifosubview<memref<16x8xi16>>
+            %elem0 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
+            %subview1 = AIE.objectfifo.acquire @inB (Consume, 1) : !AIE.objectfifosubview<memref<8x16xi16>>
+            %elem1 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
 
             func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem2) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
 
-            AIE.objectFifo.release @inA (Consume, 1)
-            AIE.objectFifo.release @inB (Consume, 1)
+            AIE.objectfifo.release @inA (Consume, 1)
+            AIE.objectfifo.release @inB (Consume, 1)
           }
-          AIE.objectFifo.release @outC (Produce, 1)
+          AIE.objectfifo.release @outC (Produce, 1)
         }
       }
       AIE.end

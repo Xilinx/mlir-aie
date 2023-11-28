@@ -187,16 +187,16 @@ module @link_AIE2 {
         %tile02 = AIE.tile(0, 2)
         %tile03 = AIE.tile(0, 3)
 
-        AIE.objectFifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !AIE.objectFifo<memref<3000xi32>>
-        AIE.objectFifo @mem_out (%tile01, {%tile03}, 7 : i32) : !AIE.objectFifo<memref<3000xi32>>
-        AIE.objectFifo.link [@mem_in] -> [@mem_out] ()
+        AIE.objectfifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !AIE.objectfifo<memref<3000xi32>>
+        AIE.objectfifo @mem_out (%tile01, {%tile03}, 7 : i32) : !AIE.objectfifo<memref<3000xi32>>
+        AIE.objectfifo.link [@mem_in] -> [@mem_out] ()
 
         %core02 = AIE.core(%tile02) {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = AIE.objectFifo.acquire @mem_in (Consume, 1) : !AIE.objectFifoSubview<memref<3000xi32>>
-            %subview_obj = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview = AIE.objectfifo.acquire @mem_in (Consume, 1) : !AIE.objectfifosubview<memref<3000xi32>>
+            %subview_obj = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             AIE.end
         }
@@ -205,8 +205,8 @@ module @link_AIE2 {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = AIE.objectFifo.acquire @mem_out (Consume, 3) : !AIE.objectFifoSubview<memref<3000xi32>>
-            %subview_obj = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview = AIE.objectfifo.acquire @mem_out (Consume, 3) : !AIE.objectfifosubview<memref<3000xi32>>
+            %subview_obj = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             AIE.end
         }
