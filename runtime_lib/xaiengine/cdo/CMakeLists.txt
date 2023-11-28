@@ -19,4 +19,4 @@ add_aiert_library(xaienginecdo ${XAIE_SOURCE})
 
 target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
 
-install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/cdo/lib)
+install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/cdo)
