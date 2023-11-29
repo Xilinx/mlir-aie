@@ -9,10 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --no-unified --xchesscc    --xbridge %s
-// RUN: aiecc.py --unified    --xchesscc    --xbridge %s
-// RUN: aiecc.py --no-unified --no-xchesscc --xbridge %s
-// RUN: aiecc.py --unified    --no-xchesscc --xbridge %s
+// RUN: %PYTHON aiecc.py --no-unified --xchesscc    --xbridge %s
+// RUN: %PYTHON aiecc.py --unified    --xchesscc    --xbridge %s
+// RUN: %PYTHON aiecc.py --no-unified --no-xchesscc --xbridge %s
+// RUN: %PYTHON aiecc.py --unified    --no-xchesscc --xbridge %s
 // UN: aiecc.py --no-unified --xchesscc    --no-xbridge %s
 // UN: aiecc.py --unified    --xchesscc    --no-xbridge %s
 

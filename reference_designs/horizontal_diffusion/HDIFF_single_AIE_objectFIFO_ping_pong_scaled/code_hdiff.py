@@ -151,10 +151,10 @@ def main():
             # print(bb)
             bb_sym = bb[:-1]
             print("shim={}".format(shim_place))
-            f.write("  %%buf_in_%d_shim_%d = AIE.objectFifo.createObjectFifo(%%tile%d_0,{%s},6) { sym_name = \"%s\" } : !AIE.objectFifo<memref<%dxi32>>\n" %(col, shim_place,shim_place, bb_sym,  symbol, bufsize))
+            f.write("  %%buf_in_%d_shim_%d = AIE.objectfifo.createObjectFifo(%%tile%d_0,{%s},6) { sym_name = \"%s\" } : !AIE.objectfifo<memref<%dxi32>>\n" %(col, shim_place,shim_place, bb_sym,  symbol, bufsize))
             for b_tile in range (startrow,startrow+ broadcast_cores+1):
                 symbol = "obj_out_%d_%d" % (col,b_tile)
-                f.write("  %%buf_out_%d_%d_shim_%d = AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_0},2) { sym_name = \"%s\" } : !AIE.objectFifo<memref<%dxi32>>\n" %(  col,b_tile,shim_place,col, b_tile,shim_place, symbol, bufsize))
+                f.write("  %%buf_out_%d_%d_shim_%d = AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_0},2) { sym_name = \"%s\" } : !AIE.objectfifo<memref<%dxi32>>\n" %(  col,b_tile,shim_place,col, b_tile,shim_place, symbol, bufsize))
             f.write("\n")
         
             if(col==startcol + arraycols-1):
@@ -187,9 +187,9 @@ def main():
             cur_noc_count=0
         shim_place=noc_div_two_channel(cur_noc_count)
         print(shim_place)
-        f.write("  AIE.objectFifo.registerExternalBuffers(%%tile%d_0, %%buf_in_%d_shim_%d  : !AIE.objectFifo<memref<%dxi32>>, {%%ext_buffer_in_%d}) : (memref<%dxi32>)\n" %( shim_place,col, shim_place,bufsize,col,dram_bufsize_in))
+        f.write("  AIE.objectfifo.register_external_buffers(%%tile%d_0, %%buf_in_%d_shim_%d  : !AIE.objectfifo<memref<%dxi32>>, {%%ext_buffer_in_%d}) : (memref<%dxi32>)\n" %( shim_place,col, shim_place,bufsize,col,dram_bufsize_in))
         for b_tile in range (startrow, startrow+broadcast_cores+1):
-            f.write("  AIE.objectFifo.registerExternalBuffers(%%tile%d_0, %%buf_out_%d_%d_shim_%d  : !AIE.objectFifo<memref<%dxi32>>, {%%ext_buffer_out_%d_%d}) : (memref<%dxi32>)\n" %( shim_place,col, b_tile,shim_place,bufsize,col,b_tile,dram_bufsize_out))
+            f.write("  AIE.objectfifo.register_external_buffers(%%tile%d_0, %%buf_out_%d_%d_shim_%d  : !AIE.objectfifo<memref<%dxi32>>, {%%ext_buffer_out_%d_%d}) : (memref<%dxi32>)\n" %( shim_place,col, b_tile,shim_place,bufsize,col,b_tile,dram_bufsize_out))
             cur_noc_count=cur_noc_count+1
         f.write("\n")
         
@@ -213,20 +213,20 @@ def main():
             f.write("    %ub = arith.constant 2 : index\n")
             f.write("    %step = arith.constant 1 : index\n")
             f.write("    scf.for %iv = %lb to %ub step %step {  \n")
-            f.write("      %%obj_in_subview = AIE.objectFifo.acquire<Consume>(%%buf_in_%d_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 5) : !AIE.objectFifoSubview<memref<%dxi32>>\n" %(col,shim_place, bufsize,bufsize))
-            f.write("      %%row0 = AIE.objectFifo.subview.access %%obj_in_subview[0] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
-            f.write("      %%row1 = AIE.objectFifo.subview.access %%obj_in_subview[1] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
-            f.write("      %%row2 = AIE.objectFifo.subview.access %%obj_in_subview[2] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
-            f.write("      %%row3 = AIE.objectFifo.subview.access %%obj_in_subview[3] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
-            f.write("      %%row4 = AIE.objectFifo.subview.access %%obj_in_subview[4] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%obj_in_subview = AIE.objectfifo.acquire<Consume>(%%buf_in_%d_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 5) : !AIE.objectfifosubview<memref<%dxi32>>\n" %(col,shim_place, bufsize,bufsize))
+            f.write("      %%row0 = AIE.objectfifo.subview.access %%obj_in_subview[0] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%row1 = AIE.objectfifo.subview.access %%obj_in_subview[1] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%row2 = AIE.objectfifo.subview.access %%obj_in_subview[2] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%row3 = AIE.objectfifo.subview.access %%obj_in_subview[3] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%row4 = AIE.objectfifo.subview.access %%obj_in_subview[4] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
    
-            f.write("      %%obj_out_subview = AIE.objectFifo.acquire<Produce>(%%buf_out_%d_%d_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 5) : !AIE.objectFifoSubview<memref<%dxi32>>\n" %(col, row,shim_place,bufsize,bufsize))
-            f.write("      %obj_out = AIE.objectFifo.subview.access %obj_out_subview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n" )
+            f.write("      %%obj_out_subview = AIE.objectfifo.acquire<Produce>(%%buf_out_%d_%d_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 5) : !AIE.objectfifosubview<memref<%dxi32>>\n" %(col, row,shim_place,bufsize,bufsize))
+            f.write("      %obj_out = AIE.objectfifo.subview.access %obj_out_subview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n" )
             f.write("      func.call @vec_hdiff(%row0,%row1,%row2,%row3,%row4,%obj_out) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>) -> ()\n")
-            f.write("      AIE.objectFifo.release<Consume>(%%buf_in_%d_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(col, shim_place,bufsize))
-            f.write("      AIE.objectFifo.release<Produce>(%%buf_out_%d_%d_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(col, row,shim_place,bufsize))
+            f.write("      AIE.objectfifo.release<Consume>(%%buf_in_%d_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(col, shim_place,bufsize))
+            f.write("      AIE.objectfifo.release<Produce>(%%buf_out_%d_%d_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(col, row,shim_place,bufsize))
             f.write("  }\n\n")
-            f.write("  AIE.objectFifo.release<Consume>(%%buf_in_%d_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 4)\n" %(col, shim_place,bufsize))
+            f.write("  AIE.objectfifo.release<Consume>(%%buf_in_%d_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 4)\n" %(col, shim_place,bufsize))
             f.write("  AIE.end\n")
             f.write(" } { link_with=\"hdiff.o\" }\n\n")
     cur_count=0

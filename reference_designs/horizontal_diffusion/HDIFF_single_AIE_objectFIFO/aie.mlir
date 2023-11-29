@@ -10,16 +10,16 @@ module @hdiff_single_AIE {
   
   %lock71_14 = AIE.lock(%t71, 14) {sym_name = "lock71_14"}
 
-  AIE.objectFifo @obj_in (%t70, {%t71}, 5 : i32) : !AIE.objectFifo<memref<256xi32>>
-  AIE.objectFifo @obj_out (%t71, {%t70}, 1 : i32) : !AIE.objectFifo<memref<256xi32>>
+  AIE.objectfifo @obj_in (%t70, {%t71}, 5 : i32) : !AIE.objectfifo<memref<256xi32>>
+  AIE.objectfifo @obj_out (%t71, {%t70}, 1 : i32) : !AIE.objectfifo<memref<256xi32>>
 
    // DDR buffer
   %ext_buffer_in0 = AIE.external_buffer {sym_name = "ddr_test_buffer_in0"}: memref<1536 x i32>
   %ext_buffer_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<512 x i32>
       
   // Register the external memory pointers to the object FIFOs.
-  AIE.objectFifo.registerExternalBuffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xi32>)
-  AIE.objectFifo.registerExternalBuffers @obj_out (%t70, {%ext_buffer_out}) : (memref<512xi32>)
+  AIE.objectfifo.register_external_buffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xi32>)
+  AIE.objectfifo.register_external_buffers @obj_out (%t70, {%ext_buffer_out}) : (memref<512xi32>)
 
   func.func private @vec_hdiff(%A: memref<256xi32>,%B: memref<256xi32>, %C:  memref<256xi32>, %D: memref<256xi32>, %E:  memref<256xi32>,  %O: memref<256xi32>) -> ()
 
@@ -29,22 +29,22 @@ module @hdiff_single_AIE {
     %step = arith.constant 1 : index
     AIE.useLock(%lock71_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
-      %obj_in_subview = AIE.objectFifo.acquire @obj_in (Consume, 5) : !AIE.objectFifoSubview<memref<256xi32>>
-      %row0 = AIE.objectFifo.subview.access %obj_in_subview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
-      %row1 = AIE.objectFifo.subview.access %obj_in_subview[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
-      %row2 = AIE.objectFifo.subview.access %obj_in_subview[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
-      %row3 = AIE.objectFifo.subview.access %obj_in_subview[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
-      %row4 = AIE.objectFifo.subview.access %obj_in_subview[4] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+      %obj_in_subview = AIE.objectfifo.acquire @obj_in (Consume, 5) : !AIE.objectfifosubview<memref<256xi32>>
+      %row0 = AIE.objectfifo.subview.access %obj_in_subview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+      %row1 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+      %row2 = AIE.objectfifo.subview.access %obj_in_subview[2] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+      %row3 = AIE.objectfifo.subview.access %obj_in_subview[3] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+      %row4 = AIE.objectfifo.subview.access %obj_in_subview[4] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
-      %obj_out_subview = AIE.objectFifo.acquire @obj_out (Produce, 1) : !AIE.objectFifoSubview<memref<256xi32>>
-      %obj_out = AIE.objectFifo.subview.access %obj_out_subview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+      %obj_out_subview = AIE.objectfifo.acquire @obj_out (Produce, 1) : !AIE.objectfifosubview<memref<256xi32>>
+      %obj_out = AIE.objectfifo.subview.access %obj_out_subview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
     
       func.call @vec_hdiff(%row0,%row1,%row2,%row3,%row4,%obj_out) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>) -> ()
-      AIE.objectFifo.release @obj_in (Consume, 1)
-      AIE.objectFifo.release @obj_out (Produce, 1)
+      AIE.objectfifo.release @obj_in (Consume, 1)
+      AIE.objectfifo.release @obj_out (Produce, 1)
     }
     AIE.useLock(%lock71_14, "Release", 0) // stop the timer
-    AIE.objectFifo.release @obj_in (Consume, 4)
+    AIE.objectfifo.release @obj_in (Consume, 4)
 
     AIE.end
   } { link_with="hdiff.o" }

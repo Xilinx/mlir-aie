@@ -13,6 +13,7 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           memref.global "public" @loop_of : memref<16xi32>
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 2)
 // CHECK:           %[[VAL_1:.*]] = AIE.tile(1, 3)
 // CHECK:           %[[VAL_2:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
@@ -59,26 +60,28 @@
 // CHECK:             }
 // CHECK:             AIE.useLock(%[[VAL_7]], Acquire, 0)
 // CHECK:             %[[VAL_27:.*]] = arith.constant 0 : index
-// CHECK:             func.call @some_work(%[[VAL_3]], %[[VAL_18]]) : (memref<16xi32>, index) -> ()
+// CHECK:             %[[VAL_28:.*]] = arith.addi %[[VAL_18]], %[[VAL_27]] : index
+// CHECK:             func.call @some_work(%[[VAL_3]], %[[VAL_28]]) : (memref<16xi32>, index) -> ()
 // CHECK:             AIE.useLock(%[[VAL_7]], Release, 1)
 // CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 0)
-// CHECK:             %[[VAL_28:.*]] = arith.constant 2 : index
-// CHECK:             %[[VAL_29:.*]] = arith.addi %[[VAL_18]], %[[VAL_28]] : index
-// CHECK:             func.call @some_work(%[[VAL_4]], %[[VAL_29]]) : (memref<16xi32>, index) -> ()
+// CHECK:             %[[VAL_29:.*]] = arith.constant 2 : index
+// CHECK:             %[[VAL_30:.*]] = arith.addi %[[VAL_18]], %[[VAL_29]] : index
+// CHECK:             func.call @some_work(%[[VAL_4]], %[[VAL_30]]) : (memref<16xi32>, index) -> ()
 // CHECK:             AIE.useLock(%[[VAL_8]], Release, 1)
 // CHECK:             AIE.useLock(%[[VAL_9]], Acquire, 0)
-// CHECK:             %[[VAL_30:.*]] = arith.constant 0 : index
-// CHECK:             func.call @some_work(%[[VAL_5]], %[[VAL_14]]) : (memref<16xi32>, index) -> ()
+// CHECK:             %[[VAL_31:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_32:.*]] = arith.addi %[[VAL_14]], %[[VAL_31]] : index
+// CHECK:             func.call @some_work(%[[VAL_5]], %[[VAL_32]]) : (memref<16xi32>, index) -> ()
 // CHECK:             AIE.useLock(%[[VAL_9]], Release, 1)
 // CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 0)
-// CHECK:             %[[VAL_31:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_32:.*]] = arith.addi %[[VAL_14]], %[[VAL_31]] : index
-// CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_32]]) : (memref<16xi32>, index) -> ()
+// CHECK:             %[[VAL_33:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_34:.*]] = arith.addi %[[VAL_14]], %[[VAL_33]] : index
+// CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_34]]) : (memref<16xi32>, index) -> ()
 // CHECK:             AIE.useLock(%[[VAL_6]], Release, 1)
 // CHECK:             AIE.useLock(%[[VAL_7]], Acquire, 0)
-// CHECK:             %[[VAL_33:.*]] = arith.constant 2 : index
-// CHECK:             %[[VAL_34:.*]] = arith.addi %[[VAL_14]], %[[VAL_33]] : index
-// CHECK:             func.call @some_work(%[[VAL_3]], %[[VAL_34]]) : (memref<16xi32>, index) -> ()
+// CHECK:             %[[VAL_35:.*]] = arith.constant 2 : index
+// CHECK:             %[[VAL_36:.*]] = arith.addi %[[VAL_14]], %[[VAL_35]] : index
+// CHECK:             func.call @some_work(%[[VAL_3]], %[[VAL_36]]) : (memref<16xi32>, index) -> ()
 // CHECK:             AIE.useLock(%[[VAL_7]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
@@ -89,7 +92,7 @@ module @loop  {
         %tile12 = AIE.tile(1, 2)
         %tile13 = AIE.tile(1, 3)
 
-        AIE.objectFifo @loop_of (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @loop_of (%tile12, {%tile13}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         func.func @some_work(%line_in:memref<16xi32>, %index:index) -> () {
             return
@@ -102,23 +105,23 @@ module @loop  {
             %c4 = arith.constant 4 : index
             %c21 = arith.constant 21 : index
 
-            %subviewTop0 = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elemTop0 = AIE.objectFifo.subview.access %subviewTop0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subviewTop0 = AIE.objectfifo.acquire @loop_of (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+            %elemTop0 = AIE.objectfifo.subview.access %subviewTop0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elemTop0, %c0) : (memref<16xi32>,index) -> ()
-            AIE.objectFifo.release @loop_of (Produce, 1)
+            AIE.objectfifo.release @loop_of (Produce, 1)
 
             scf.for %indexInHeight = %c1 to %c21 step %c2 {
-                %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @loop_of (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-                AIE.objectFifo.release @loop_of (Produce, 1)
+                AIE.objectfifo.release @loop_of (Produce, 1)
             }
 
             scf.for %indexInHeight = %c1 to %c4 step %c1 {
-                %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @loop_of (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-                AIE.objectFifo.release @loop_of (Produce, 1)
+                AIE.objectfifo.release @loop_of (Produce, 1)
             }
 
             AIE.end

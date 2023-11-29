@@ -64,6 +64,6 @@ module @memTile {
       %tile11 = AIE.tile(2, 1)
       %tile12 = AIE.tile(2, 2)
 
-      AIE.objectFifo @of (%tile11, {%tile12}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of (%tile11, {%tile12}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
    }
 }

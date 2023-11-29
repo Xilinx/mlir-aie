@@ -11,7 +11,7 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 // This test uses all four channels of the tileDMAs of tiles (1, 2) and (3, 3) as four object FIFOs.
@@ -27,11 +27,11 @@ module @dmaChannels {
         %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
         %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
 
-        AIE.objectFifo @of_in0 (%tile33, {%tile12}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-        AIE.objectFifo @of_in1 (%tile33, {%tile12}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @of_in0 (%tile33, {%tile12}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        AIE.objectfifo @of_in1 (%tile33, {%tile12}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
-        AIE.objectFifo @of_out0 (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-        AIE.objectFifo @of_out1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @of_out0 (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        AIE.objectfifo @of_out1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         func.func @copy(%lineIn : memref<16xi32>, %lineOut : memref<16xi32>) -> () {
             %c0 = arith.constant 0 : index
@@ -51,25 +51,25 @@ module @dmaChannels {
             %height = arith.constant 10 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
-                %subviewIn0 = AIE.objectFifo.acquire @of_in0 (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemIn0 = AIE.objectFifo.subview.access %subviewIn0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn0 = AIE.objectfifo.acquire @of_in0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemIn0 = AIE.objectfifo.subview.access %subviewIn0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewIn1 = AIE.objectFifo.acquire @of_in1 (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemIn1 = AIE.objectFifo.subview.access %subviewIn1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn1 = AIE.objectfifo.acquire @of_in1 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemIn1 = AIE.objectfifo.subview.access %subviewIn1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut0 = AIE.objectFifo.acquire @of_out0 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemOut0 = AIE.objectFifo.subview.access %subviewOut0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut0 = AIE.objectfifo.acquire @of_out0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemOut0 = AIE.objectfifo.subview.access %subviewOut0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut1 = AIE.objectFifo.acquire @of_out1 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemOut1 = AIE.objectFifo.subview.access %subviewOut1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut1 = AIE.objectfifo.acquire @of_out1 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemOut1 = AIE.objectfifo.subview.access %subviewOut1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @copy(%elemIn0, %elemOut0) : (memref<16xi32>, memref<16xi32>) -> ()
                 func.call @copy(%elemIn1, %elemOut1) : (memref<16xi32>, memref<16xi32>) -> ()
 
-                AIE.objectFifo.release @of_in0 (Consume, 1)
-                AIE.objectFifo.release @of_in1 (Consume, 1)
-                AIE.objectFifo.release @of_out0 (Produce, 1)
-                AIE.objectFifo.release @of_out1 (Produce, 1)
+                AIE.objectfifo.release @of_in0 (Consume, 1)
+                AIE.objectfifo.release @of_in1 (Consume, 1)
+                AIE.objectfifo.release @of_out0 (Produce, 1)
+                AIE.objectfifo.release @of_out1 (Produce, 1)
             }
             
             AIE.end
@@ -112,29 +112,29 @@ module @dmaChannels {
             AIE.useLock(%lock_out, "Acquire", 0) // acquire for produce
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
-                %subviewOut0 = AIE.objectFifo.acquire @of_in0 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemOut0 = AIE.objectFifo.subview.access %subviewOut0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut0 = AIE.objectfifo.acquire @of_in0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemOut0 = AIE.objectfifo.subview.access %subviewOut0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut1 = AIE.objectFifo.acquire @of_in1 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemOut1 = AIE.objectFifo.subview.access %subviewOut1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut1 = AIE.objectfifo.acquire @of_in1 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemOut1 = AIE.objectfifo.subview.access %subviewOut1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @generateLineScalar(%elemOut0) : (memref<16xi32>) -> ()
                 func.call @generateLineScalar(%elemOut1) : (memref<16xi32>) -> ()
 
-                AIE.objectFifo.release @of_in0 (Produce, 1)
-                AIE.objectFifo.release @of_in1 (Produce, 1)
+                AIE.objectfifo.release @of_in0 (Produce, 1)
+                AIE.objectfifo.release @of_in1 (Produce, 1)
 
 
-                %subviewIn0 = AIE.objectFifo.acquire @of_out0 (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemIn0 = AIE.objectFifo.subview.access %subviewIn0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn0 = AIE.objectfifo.acquire @of_out0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemIn0 = AIE.objectfifo.subview.access %subviewIn0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewIn1 = AIE.objectFifo.acquire @of_out1 (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elemIn1 = AIE.objectFifo.subview.access %subviewIn1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn1 = AIE.objectfifo.acquire @of_out1 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elemIn1 = AIE.objectfifo.subview.access %subviewIn1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @addAndStore(%elemIn0, %elemIn1, %indexInHeight, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
 
-                AIE.objectFifo.release @of_out0 (Consume, 1)
-                AIE.objectFifo.release @of_out1 (Consume, 1)
+                AIE.objectfifo.release @of_out0 (Consume, 1)
+                AIE.objectfifo.release @of_out1 (Consume, 1)
             }
 
             // release output buffer

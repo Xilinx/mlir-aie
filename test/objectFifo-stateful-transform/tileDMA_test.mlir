@@ -112,7 +112,7 @@ module @tileDMA_channels {
         %buff2 = AIE.buffer(%tile12) : memref<16xi32>
         %lock2 = AIE.lock(%tile12, 2)
 
-        AIE.objectFifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         func.func @some_work(%lineOut : memref<16xi32>) -> () {
             return
@@ -124,10 +124,10 @@ module @tileDMA_channels {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = AIE.objectFifo.acquire @objfifo (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @objfifo (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-                AIE.objectFifo.release @objfifo (Produce, 1)
+                AIE.objectfifo.release @objfifo (Produce, 1)
             }
             
             AIE.end

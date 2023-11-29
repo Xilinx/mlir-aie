@@ -20,9 +20,9 @@ AIE.device(ipu) {
         %tile00 = AIE.tile(0, 0)
         %tile02 = AIE.tile(0, 4)
 
-        AIE.objectFifo @inOF(%tile00, {%tile02}, 2 : i32) : !AIE.objectFifo<memref<512xui32>>
-        AIE.objectFifo @outOF(%tile02, {%tile00}, 2 : i32) : !AIE.objectFifo<memref<512xui32>>
-        AIE.objectFifo @logoutOF(%tile02, {%tile00}, 2 : i32) : !AIE.objectFifo<memref<512xui32>>
+        AIE.objectfifo @inOF(%tile00, {%tile02}, 2 : i32) : !AIE.objectfifo<memref<512xui32>>
+        AIE.objectfifo @outOF(%tile02, {%tile00}, 2 : i32) : !AIE.objectfifo<memref<512xui32>>
+        AIE.objectfifo @logoutOF(%tile02, {%tile00}, 2 : i32) : !AIE.objectfifo<memref<512xui32>>
        
         // Define the algorithm for the core of tile(0,2) 
         %core02 = AIE.core(%tile02) {
@@ -30,19 +30,19 @@ AIE.device(ipu) {
             %c1 = arith.constant 1 : index
 
             // Acquire objectFifos and get subviews
-            %subviewIn = AIE.objectFifo.acquire @inOF(Consume, 1) : !AIE.objectFifoSubview<memref<512xui32>>
-            %elemIn = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<512xui32>> -> memref<512xui32>
-            %subviewOut = AIE.objectFifo.acquire @outOF(Produce, 1) : !AIE.objectFifoSubview<memref<512xui32>>
-            %elemOut = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<512xui32>> -> memref<512xui32>
-            %subviewLogOut = AIE.objectFifo.acquire @logoutOF(Produce, 1) : !AIE.objectFifoSubview<memref<512xui32>>
-            %elemLogout = AIE.objectFifo.subview.access %subviewLogOut[0] : !AIE.objectFifoSubview<memref<512xui32>> -> memref<512xui32>
+            %subviewIn = AIE.objectfifo.acquire @inOF(Consume, 1) : !AIE.objectfifosubview<memref<512xui32>>
+            %elemIn = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<512xui32>> -> memref<512xui32>
+            %subviewOut = AIE.objectfifo.acquire @outOF(Produce, 1) : !AIE.objectfifosubview<memref<512xui32>>
+            %elemOut = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<512xui32>> -> memref<512xui32>
+            %subviewLogOut = AIE.objectfifo.acquire @logoutOF(Produce, 1) : !AIE.objectfifosubview<memref<512xui32>>
+            %elemLogout = AIE.objectfifo.subview.access %subviewLogOut[0] : !AIE.objectfifosubview<memref<512xui32>> -> memref<512xui32>
 
             func.call @kernel(%elemIn, %elemOut, %elemLogout) : (memref<512xui32>, memref<512xui32>, memref<512xui32>) -> ()
 
             // Release objectFifos
-            AIE.objectFifo.release @inOF(Consume, 1)
-            AIE.objectFifo.release @outOF(Produce, 1)
-            AIE.objectFifo.release @logoutOF(Produce, 1)
+            AIE.objectfifo.release @inOF(Consume, 1)
+            AIE.objectfifo.release @outOF(Produce, 1)
+            AIE.objectfifo.release @logoutOF(Produce, 1)
            
             AIE.end
         } { link_with="kernel.o" } // indicate kernel object name used by this core

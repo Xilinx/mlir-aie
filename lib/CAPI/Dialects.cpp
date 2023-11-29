@@ -27,7 +27,8 @@ bool aieTypeIsObjectFifoType(MlirType type) {
 }
 
 MlirType aieObjectFifoTypeGet(MlirType type) {
-  return wrap(xilinx::AIE::AIEObjectFifoType::get(unwrap(type)));
+  return wrap(xilinx::AIE::AIEObjectFifoType::get(
+      unwrap(type).cast<mlir::MemRefType>()));
 }
 
 //===---------------------------------------------------------------------===//
@@ -39,5 +40,6 @@ bool aieTypeIsObjectFifoSubviewType(MlirType type) {
 }
 
 MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
-  return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(unwrap(type)));
+  return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
+      unwrap(type).cast<mlir::MemRefType>()));
 }

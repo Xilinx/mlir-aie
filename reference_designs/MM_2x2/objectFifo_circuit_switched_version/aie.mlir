@@ -26,18 +26,18 @@ module @MM_2x2 {
 
   %t100 = AIE.tile(10, 0)
 
-  AIE.objectFifo @of_LHS0 (%t60, {%t63, %t73}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_LHS1 (%t60, {%t64, %t74}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_RHS0 (%t70, {%t63}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_RHS1 (%t70, {%t64}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_RHS2 (%t100, {%t73}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_RHS3 (%t100, {%t74}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
+  AIE.objectfifo @of_LHS0 (%t60, {%t63, %t73}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_LHS1 (%t60, {%t64, %t74}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_RHS0 (%t70, {%t63}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_RHS1 (%t70, {%t64}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_RHS2 (%t100, {%t73}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_RHS3 (%t100, {%t74}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
 
-  AIE.objectFifo @of_out0 (%t64, {%t60}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_out1 (%t74, {%t60}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
+  AIE.objectfifo @of_out0 (%t64, {%t60}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_out1 (%t74, {%t60}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
 
-  AIE.objectFifo @of_acc0 (%t63, {%t64}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-  AIE.objectFifo @of_acc1 (%t73, {%t74}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
+  AIE.objectfifo @of_acc0 (%t63, {%t64}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+  AIE.objectfifo @of_acc1 (%t73, {%t74}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
 
   %buffer0 = AIE.external_buffer {sym_name = "LHS_tile0"} : memref<1024 x i32>     //LHS_tile0
   %buffer1 = AIE.external_buffer {sym_name = "LHS_tile1"} : memref<1024 x i32>     //LHS_tile1
@@ -48,16 +48,16 @@ module @MM_2x2 {
   %buffer6 = AIE.external_buffer {sym_name = "Out_tile0"} : memref<1024 x i32>     //Out_tile0
   %buffer7 = AIE.external_buffer {sym_name = "Out_tile1"} : memref<1024 x i32>     //Out_tile1
 
-  AIE.objectFifo.registerExternalBuffers @of_LHS0 (%t60, {%buffer0}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers @of_LHS1 (%t60, {%buffer1}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers @of_out0 (%t60, {%buffer6}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers @of_out1 (%t60, {%buffer7}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_LHS0 (%t60, {%buffer0}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_LHS1 (%t60, {%buffer1}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_out0 (%t60, {%buffer6}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_out1 (%t60, {%buffer7}) : (memref<1024xi32>)
 
-  AIE.objectFifo.registerExternalBuffers @of_RHS0 (%t70, {%buffer2}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers @of_RHS1 (%t70, {%buffer3}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_RHS0 (%t70, {%buffer2}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_RHS1 (%t70, {%buffer3}) : (memref<1024xi32>)
 
-  AIE.objectFifo.registerExternalBuffers @of_RHS2 (%t100, {%buffer4}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers @of_RHS3 (%t100, {%buffer5}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_RHS2 (%t100, {%buffer4}) : (memref<1024xi32>)
+  AIE.objectfifo.register_external_buffers @of_RHS3 (%t100, {%buffer5}) : (memref<1024xi32>)
 
   %buf63 = AIE.buffer(%t63) {sym_name = "buf63"} : memref<1024xi32>  //Accumulator0
   %buf73 = AIE.buffer(%t73) {sym_name = "buf73"} : memref<1024xi32>  //Accumulator1
@@ -65,85 +65,85 @@ module @MM_2x2 {
   func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> ()
 
   %core63 = AIE.core(%t63) { 
-    %LHS0Subview = AIE.objectFifo.acquire @of_LHS0 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %LHS0 = AIE.objectFifo.subview.access %LHS0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %LHS0Subview = AIE.objectfifo.acquire @of_LHS0 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %LHS0 = AIE.objectfifo.subview.access %LHS0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %RHS0Subview = AIE.objectFifo.acquire @of_RHS0 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %RHS0 = AIE.objectFifo.subview.access %RHS0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %RHS0Subview = AIE.objectfifo.acquire @of_RHS0 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %RHS0 = AIE.objectfifo.subview.access %RHS0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %ACC0Subview = AIE.objectFifo.acquire @of_acc0 (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %ACC0 = AIE.objectFifo.subview.access %ACC0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %ACC0Subview = AIE.objectfifo.acquire @of_acc0 (Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %ACC0 = AIE.objectfifo.subview.access %ACC0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
     func.call @extern_kernel(%LHS0, %RHS0, %buf63, %ACC0) : (memref<1024xi32>, memref<1024xi32>, memref<1024xi32>, memref<1024xi32>) -> ()
     
-    AIE.objectFifo.release @of_LHS0 (Consume, 1)
-    AIE.objectFifo.release @of_RHS0 (Consume, 1)
-    AIE.objectFifo.release @of_acc0 (Produce, 1)
+    AIE.objectfifo.release @of_LHS0 (Consume, 1)
+    AIE.objectfifo.release @of_RHS0 (Consume, 1)
+    AIE.objectfifo.release @of_acc0 (Produce, 1)
 
     AIE.end
   } { link_with="kernel.o" }
 
   %core64 = AIE.core(%t64) { 
-    %LHS1Subview = AIE.objectFifo.acquire @of_LHS1 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %LHS1 = AIE.objectFifo.subview.access %LHS1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %LHS1Subview = AIE.objectfifo.acquire @of_LHS1 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %LHS1 = AIE.objectfifo.subview.access %LHS1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %RHS1Subview = AIE.objectFifo.acquire @of_RHS1 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %RHS1 = AIE.objectFifo.subview.access %RHS1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %RHS1Subview = AIE.objectfifo.acquire @of_RHS1 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %RHS1 = AIE.objectfifo.subview.access %RHS1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %ACC0Subview = AIE.objectFifo.acquire @of_acc0 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %ACC0 = AIE.objectFifo.subview.access %ACC0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %ACC0Subview = AIE.objectfifo.acquire @of_acc0 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %ACC0 = AIE.objectfifo.subview.access %ACC0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %Out0Subview = AIE.objectFifo.acquire @of_out0 (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %Out0 = AIE.objectFifo.subview.access %Out0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %Out0Subview = AIE.objectfifo.acquire @of_out0 (Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %Out0 = AIE.objectfifo.subview.access %Out0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
     func.call @extern_kernel(%LHS1, %RHS1, %ACC0, %Out0) : (memref<1024xi32>, memref<1024xi32>, memref<1024xi32>, memref<1024xi32>) -> ()
     
-    AIE.objectFifo.release @of_LHS1 (Consume, 1)
-    AIE.objectFifo.release @of_RHS1 (Consume, 1)
-    AIE.objectFifo.release @of_acc0 (Consume, 1)
-    AIE.objectFifo.release @of_out0 (Produce, 1)
+    AIE.objectfifo.release @of_LHS1 (Consume, 1)
+    AIE.objectfifo.release @of_RHS1 (Consume, 1)
+    AIE.objectfifo.release @of_acc0 (Consume, 1)
+    AIE.objectfifo.release @of_out0 (Produce, 1)
 
     AIE.end
   } { link_with="kernel.o" }
 
   %core73 = AIE.core(%t73) { 
-    %LHS0Subview = AIE.objectFifo.acquire @of_LHS0 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %LHS0 = AIE.objectFifo.subview.access %LHS0Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %LHS0Subview = AIE.objectfifo.acquire @of_LHS0 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %LHS0 = AIE.objectfifo.subview.access %LHS0Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %RHS2Subview = AIE.objectFifo.acquire @of_RHS2 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %RHS2 = AIE.objectFifo.subview.access %RHS2Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %RHS2Subview = AIE.objectfifo.acquire @of_RHS2 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %RHS2 = AIE.objectfifo.subview.access %RHS2Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %ACC1Subview = AIE.objectFifo.acquire @of_acc1 (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %ACC1 = AIE.objectFifo.subview.access %ACC1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %ACC1Subview = AIE.objectfifo.acquire @of_acc1 (Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %ACC1 = AIE.objectfifo.subview.access %ACC1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
     func.call @extern_kernel(%LHS0, %RHS2, %buf73, %ACC1) : (memref<1024xi32>, memref<1024xi32>, memref<1024xi32>, memref<1024xi32>) -> ()
     
-    AIE.objectFifo.release @of_LHS0 (Consume, 1)
-    AIE.objectFifo.release @of_RHS2 (Consume, 1)
-    AIE.objectFifo.release @of_acc1 (Produce, 1)
+    AIE.objectfifo.release @of_LHS0 (Consume, 1)
+    AIE.objectfifo.release @of_RHS2 (Consume, 1)
+    AIE.objectfifo.release @of_acc1 (Produce, 1)
 
     AIE.end
   } { link_with="kernel.o" }
 
   %core74 = AIE.core(%t74) { 
-    %LHS1Subview = AIE.objectFifo.acquire @of_LHS1 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %LHS1 = AIE.objectFifo.subview.access %LHS1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %LHS1Subview = AIE.objectfifo.acquire @of_LHS1 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %LHS1 = AIE.objectfifo.subview.access %LHS1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %RHS3Subview = AIE.objectFifo.acquire @of_RHS3 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %RHS3 = AIE.objectFifo.subview.access %RHS3Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %RHS3Subview = AIE.objectfifo.acquire @of_RHS3 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %RHS3 = AIE.objectfifo.subview.access %RHS3Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %ACC1Subview = AIE.objectFifo.acquire @of_acc1 (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %ACC1 = AIE.objectFifo.subview.access %ACC1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %ACC1Subview = AIE.objectfifo.acquire @of_acc1 (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %ACC1 = AIE.objectfifo.subview.access %ACC1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
-    %Out1Subview = AIE.objectFifo.acquire @of_out1 (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-    %Out1 = AIE.objectFifo.subview.access %Out1Subview[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+    %Out1Subview = AIE.objectfifo.acquire @of_out1 (Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+    %Out1 = AIE.objectfifo.subview.access %Out1Subview[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
     func.call @extern_kernel(%LHS1, %RHS3, %ACC1, %Out1) : (memref<1024xi32>, memref<1024xi32>, memref<1024xi32>, memref<1024xi32>) -> ()
     
-    AIE.objectFifo.release @of_LHS1 (Consume, 1)
-    AIE.objectFifo.release @of_RHS3 (Consume, 1)
-    AIE.objectFifo.release @of_acc1 (Consume, 1)
-    AIE.objectFifo.release @of_out1 (Produce, 1)
+    AIE.objectfifo.release @of_LHS1 (Consume, 1)
+    AIE.objectfifo.release @of_RHS3 (Consume, 1)
+    AIE.objectfifo.release @of_acc1 (Consume, 1)
+    AIE.objectfifo.release @of_out1 (Produce, 1)
 
     AIE.end
   } { link_with="kernel.o" }

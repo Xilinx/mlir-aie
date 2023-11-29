@@ -27,15 +27,15 @@ module @autocorrelation {
     %inputExt = AIE.external_buffer {sym_name = "input"} : memref<1024 x i32>
     %outputExt = AIE.external_buffer {sym_name = "output"} : memref<1024 x i32>
 
-    AIE.objectFifo @of_in (%tile7_0, {%tile0_1, %tile0_2, %tile0_3, %tile0_4}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-    AIE.objectFifo @of_out (%tile0_1, {%tile7_0}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
+    AIE.objectfifo @of_in (%tile7_0, {%tile0_1, %tile0_2, %tile0_3, %tile0_4}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+    AIE.objectfifo @of_out (%tile0_1, {%tile7_0}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
 
-    AIE.objectFifo.registerExternalBuffers(%tile7_0, %objFifoIn : !AIE.objectFifo<memref<1024xi32>>, {%inputExt}) : (memref<1024xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile7_0, %objFifoOut : !AIE.objectFifo<memref<1024xi32>>, {%outputExt}) : (memref<1024xi32>)
+    AIE.objectfifo.register_external_buffers(%tile7_0, %objFifoIn : !AIE.objectfifo<memref<1024xi32>>, {%inputExt}) : (memref<1024xi32>)
+    AIE.objectfifo.register_external_buffers(%tile7_0, %objFifoOut : !AIE.objectfifo<memref<1024xi32>>, {%outputExt}) : (memref<1024xi32>)
 
-    AIE.objectFifo @of_04_03 (%tile0_4, {%tile0_3}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-    AIE.objectFifo @of_03_02 (%tile0_3, {%tile0_2}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
-    AIE.objectFifo @of_02_01 (%tile0_2, {%tile0_1}, 1 : i32) : !AIE.objectFifo<memref<1024xi32>>
+    AIE.objectfifo @of_04_03 (%tile0_4, {%tile0_3}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+    AIE.objectfifo @of_03_02 (%tile0_3, {%tile0_2}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
+    AIE.objectfifo @of_02_01 (%tile0_2, {%tile0_1}, 1 : i32) : !AIE.objectfifo<memref<1024xi32>>
 
     func.func @autocorrelate(%bufin: memref<1024xi32>, %bufout:memref<1024xi32>, %offset:index, %blocksize:index) -> () {
         %c0 = arith.constant 0 : index
@@ -58,102 +58,102 @@ module @autocorrelation {
     }
 
     AIE.core(%tile0_1) {
-        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %subviewOut = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %subviewOut = AIE.objectfifo.acquire @of_out (Produce, 1) : !AIE.objectfifosubview<memref<1024xi32>>
         
-        %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-        %output = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %input = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
+        %output = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
         %offset = arith.constant 0 : index
         %blocksize = arith.constant 16 : index
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release @of_in (Consume, 1)
+        AIE.objectfifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
-        %subviewIn2 = AIE.objectFifo.acquire @of_in (%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %input2 = AIE.objectFifo.subview.access %subviewIn2[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %subviewIn2 = AIE.objectfifo.acquire @of_in (%objFifo_02_01 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %input2 = AIE.objectfifo.subview.access %subviewIn2[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
         %1 = memref.subview %input2[0][64][1] : memref<1024xi32> to memref<64xi32>
         %2 = memref.subview %output[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
         memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
         
-        AIE.objectFifo.release<Consume>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release<Consume>(%objFifo_02_01 : !AIE.objectfifo<memref<1024xi32>>, 1)
 
-        AIE.objectFifo.release @of_out (Produce, 1)
+        AIE.objectfifo.release @of_out (Produce, 1)
         
         AIE.end
     }
 
     AIE.core(%tile0_2) {
-        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %subviewOut = AIE.objectfifo.acquire<Produce>(%objFifo_02_01 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
         
-        %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-        %output = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %input = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
+        %output = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
         %offset = arith.constant 16 : index
         %blocksize = arith.constant 16 : index
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release @of_in (Consume, 1)
+        AIE.objectfifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
-        %subviewIn3 = AIE.objectFifo.acquire<Consume>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %input3 = AIE.objectFifo.subview.access %subviewIn3[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %subviewIn3 = AIE.objectfifo.acquire<Consume>(%objFifo_03_02 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %input3 = AIE.objectfifo.subview.access %subviewIn3[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
         %1 = memref.subview %input3[0][64][1] : memref<1024xi32> to memref<64xi32>
         %2 = memref.subview %output[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
         memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
         
-        AIE.objectFifo.release<Consume>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release<Consume>(%objFifo_03_02 : !AIE.objectfifo<memref<1024xi32>>, 1)
 
-        AIE.objectFifo.release<Produce>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release<Produce>(%objFifo_02_01 : !AIE.objectfifo<memref<1024xi32>>, 1)
         
         AIE.end
     }
 
     AIE.core(%tile0_3) {
-        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %subviewOut = AIE.objectfifo.acquire<Produce>(%objFifo_03_02 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
         
-        %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-        %output = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %input = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
+        %output = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
         %offset = arith.constant 32 : index
         %blocksize = arith.constant 16 : index
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release @of_in (Consume, 1)
+        AIE.objectfifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
-        %subviewIn4 = AIE.objectFifo.acquire<Consume>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %input4 = AIE.objectFifo.subview.access %subviewIn4[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %subviewIn4 = AIE.objectfifo.acquire<Consume>(%objFifo_04_03 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %input4 = AIE.objectfifo.subview.access %subviewIn4[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
 
         %1 = memref.subview %input4[0][64][1] : memref<1024xi32> to memref<64xi32>
         %2 = memref.subview %output[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
         memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
         
-        AIE.objectFifo.release<Consume>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release<Consume>(%objFifo_04_03 : !AIE.objectfifo<memref<1024xi32>>, 1)
 
-        AIE.objectFifo.release<Produce>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release<Produce>(%objFifo_03_02 : !AIE.objectfifo<memref<1024xi32>>, 1)
         
         AIE.end
     }
 
     AIE.core(%tile0_4) {
-        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<1024xi32>>
+        %subviewOut = AIE.objectfifo.acquire<Produce>(%objFifo_04_03 : !AIE.objectfifo<memref<1024xi32>>, 1) : !AIE.objectfifosubview<memref<1024xi32>>
 
-        %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
-        %output = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
+        %input = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
+        %output = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
         %offset = arith.constant 48 : index
         %blocksize = arith.constant 16 : index
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release<Produce>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1)
-        AIE.objectFifo.release @of_in (Consume, 1)
+        AIE.objectfifo.release<Produce>(%objFifo_04_03 : !AIE.objectfifo<memref<1024xi32>>, 1)
+        AIE.objectfifo.release @of_in (Consume, 1)
         
         AIE.end
     }
