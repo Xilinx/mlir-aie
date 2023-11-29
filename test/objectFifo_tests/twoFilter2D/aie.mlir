@@ -27,8 +27,8 @@ module @twoFilter2D  {
         %buff_out = AIE.buffer(%tile14) { sym_name = "out" } :  memref<10x16xi32>
         %lock_out = AIE.lock(%tile14, 0) { sym_name = "lock_out" }
 
-        AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : memref<16xi32>
-        AIE.objectFifo @of2 (%tile13, {%tile14}, 4 : i32) : memref<16xi32>
+        AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @of2 (%tile13, {%tile14}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         // Kernel Functions
         func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
@@ -112,8 +112,8 @@ module @twoFilter2D  {
             %height = arith.constant 10 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
-                %subview = AIE.objectFifo.acquire @of1 (Produce, 1) : memref<16xi32>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : memref<16xi32> -> memref<16xi32>
+                %subview = AIE.objectFifo.acquire @of1 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
                 func.call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
                 AIE.objectFifo.release @of1 (Produce, 1)
             }
@@ -130,12 +130,12 @@ module @twoFilter2D  {
             %height = arith.constant 9 : index
 
             // Top Border
-            %subviewOneTop = AIE.objectFifo.acquire @of1 (Consume, 2) : memref<16xi32>
-            %elemOneTop0 = AIE.objectFifo.subview.access %subviewOneTop[0] : memref<16xi32> -> memref<16xi32>
-            %elemOneTop1 = AIE.objectFifo.subview.access %subviewOneTop[1] : memref<16xi32> -> memref<16xi32>
+            %subviewOneTop = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemOneTop0 = AIE.objectFifo.subview.access %subviewOneTop[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %elemOneTop1 = AIE.objectFifo.subview.access %subviewOneTop[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
-            %subviewTwoTop = AIE.objectFifo.acquire @of2 (Produce, 1) : memref<16xi32>
-            %elemTwoTop0 = AIE.objectFifo.subview.access %subviewTwoTop[0] : memref<16xi32> -> memref<16xi32>
+            %subviewTwoTop = AIE.objectFifo.acquire @of2 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemTwoTop0 = AIE.objectFifo.subview.access %subviewTwoTop[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
             func.call @firstFilterTwoLines(%elemOneTop0, %elemOneTop1, %elemTwoTop0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
@@ -143,13 +143,13 @@ module @twoFilter2D  {
 
             // Middle 
             scf.for %indexInHeight = %c1 to %height step %c1 { 
-                %subviewOne = AIE.objectFifo.acquire @of1 (Consume, 3) : memref<16xi32>
-                %elemOne0 = AIE.objectFifo.subview.access %subviewOne[0] : memref<16xi32> -> memref<16xi32>
-                %elemOne1 = AIE.objectFifo.subview.access %subviewOne[1] : memref<16xi32> -> memref<16xi32>
-                %elemOne2 = AIE.objectFifo.subview.access %subviewOne[2] : memref<16xi32> -> memref<16xi32>
+                %subviewOne = AIE.objectFifo.acquire @of1 (Consume, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elemOne0 = AIE.objectFifo.subview.access %subviewOne[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elemOne1 = AIE.objectFifo.subview.access %subviewOne[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elemOne2 = AIE.objectFifo.subview.access %subviewOne[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewTwo = AIE.objectFifo.acquire @of2 (Produce, 1) : memref<16xi32>
-                %elemTwo0 = AIE.objectFifo.subview.access %subviewTwo[0] : memref<16xi32> -> memref<16xi32>
+                %subviewTwo = AIE.objectFifo.acquire @of2 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elemTwo0 = AIE.objectFifo.subview.access %subviewTwo[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
                 
                 func.call @firstFilterThreeLines(%elemOne0, %elemOne1, %elemOne2, %elemTwo0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
@@ -158,12 +158,12 @@ module @twoFilter2D  {
             }
 
             // Bottom Border
-            %subviewOneBottom = AIE.objectFifo.acquire @of1 (Consume, 2) : memref<16xi32>
-            %elemOneBottom0 = AIE.objectFifo.subview.access %subviewOneBottom[0] : memref<16xi32> -> memref<16xi32>
-            %elemOneBottom1 = AIE.objectFifo.subview.access %subviewOneBottom[1] : memref<16xi32> -> memref<16xi32>
+            %subviewOneBottom = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemOneBottom0 = AIE.objectFifo.subview.access %subviewOneBottom[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %elemOneBottom1 = AIE.objectFifo.subview.access %subviewOneBottom[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
-            %subviewTwoBottom = AIE.objectFifo.acquire @of2 (Produce, 1) : memref<16xi32>
-            %elemTwoBottom0 = AIE.objectFifo.subview.access %subviewTwoBottom[0] : memref<16xi32> -> memref<16xi32>
+            %subviewTwoBottom = AIE.objectFifo.acquire @of2 (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemTwoBottom0 = AIE.objectFifo.subview.access %subviewTwoBottom[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             
             func.call @firstFilterTwoLines(%elemOneBottom0, %elemOneBottom1, %elemTwoBottom0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
@@ -184,25 +184,25 @@ module @twoFilter2D  {
             AIE.useLock(%lock_out, "Acquire", 0) // acquire output buffer for produce
 
             // Top Border
-            %subviewTop = AIE.objectFifo.acquire @of2 (Consume, 2) : memref<16xi32>
-            %elemTop0 = AIE.objectFifo.subview.access %subviewTop[0] : memref<16xi32> -> memref<16xi32>
-            %elemTop1 = AIE.objectFifo.subview.access %subviewTop[1] : memref<16xi32> -> memref<16xi32>
+            %subviewTop = AIE.objectFifo.acquire @of2 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemTop0 = AIE.objectFifo.subview.access %subviewTop[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %elemTop1 = AIE.objectFifo.subview.access %subviewTop[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @secondFilterTwoLines(%elemTop0, %elemTop1, %c0, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
 
             // Middle
             scf.for %indexInHeight = %c1 to %height step %c1 { 
-                %subview = AIE.objectFifo.acquire @of2 (Consume, 3) : memref<16xi32>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : memref<16xi32> -> memref<16xi32>
-                %elem1 = AIE.objectFifo.subview.access %subview[1] : memref<16xi32> -> memref<16xi32>
-                %elem2 = AIE.objectFifo.subview.access %subview[2] : memref<16xi32> -> memref<16xi32>
+                %subview = AIE.objectFifo.acquire @of2 (Consume, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elem2 = AIE.objectFifo.subview.access %subview[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
                 func.call @secondFilterThreeLines(%elem0, %elem1, %elem2, %indexInHeight, %buff_out) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
                 AIE.objectFifo.release @of2 (Consume, 1)
             }
 
             // Bottom Border
-            %subviewBottom = AIE.objectFifo.acquire @of2 (Consume, 2) : memref<16xi32>
-            %elemBottom0 = AIE.objectFifo.subview.access %subviewBottom[0] : memref<16xi32> -> memref<16xi32>
-            %elemBottom1 = AIE.objectFifo.subview.access %subviewBottom[1] : memref<16xi32> -> memref<16xi32>
+            %subviewBottom = AIE.objectFifo.acquire @of2 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemBottom0 = AIE.objectFifo.subview.access %subviewBottom[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %elemBottom1 = AIE.objectFifo.subview.access %subviewBottom[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @secondFilterTwoLines(%elemBottom0, %elemBottom1, %height, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
             AIE.objectFifo.release @of2 (Consume, 2)
 

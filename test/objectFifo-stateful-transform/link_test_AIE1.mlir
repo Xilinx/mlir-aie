@@ -93,8 +93,8 @@ module @link_AIE1 {
         %tile22 = AIE.tile(2, 2)
         %tile24 = AIE.tile(2, 4)
 
-        AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : memref<16xi32>
-        AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : memref<16xi32>
+        AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         AIE.objectFifo.link [@of1] -> [@of2] ()
 

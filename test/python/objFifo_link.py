@@ -6,6 +6,7 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
+    ObjectFifoType,
     objectFifo,
     objectFifo_link,
     tile,
@@ -22,10 +23,10 @@ from util import construct_and_print_module
 # CHECK:      %tile_1_2 = AIE.tile(1, 2)
 # CHECK:      %tile_2_2 = AIE.tile(2, 2)
 # CHECK:      %tile_2_3 = AIE.tile(2, 3)
-# CHECK:      AIE.objectFifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : memref<256xi32>
-# CHECK:      AIE.objectFifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : memref<64xi32>
+# CHECK:      AIE.objectFifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !AIE.objectFifo<memref<256xi32>>
+# CHECK:      AIE.objectFifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : !AIE.objectFifo<memref<64xi32>>
 # CHECK:      AIE.objectFifo.link [@of0] -> [@of1]()
-# CHECK:      AIE.objectFifo @of2(%tile_1_2 toStream [<1, 2>], {%tile_2_2 fromStream [<1, 2>], %tile_2_3 fromStream [<1, 2>]}, [2 : i32, 2 : i32, 7 : i32]) : memref<256xui8>
+# CHECK:      AIE.objectFifo @of2(%tile_1_2 toStream [<1, 2>], {%tile_2_2 fromStream [<1, 2>], %tile_2_3 fromStream [<1, 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectFifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
 @construct_and_print_module
@@ -43,7 +44,7 @@ def link_example():
             S,
             [M],
             2,
-            TypeAttr.get(T.memref(256, T.i32())),
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
             [],
             [],
         )
@@ -52,7 +53,7 @@ def link_example():
             M,
             [T0, T1],
             2,
-            TypeAttr.get(T.memref(64, T.i32())),
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.i32()))),
             [],
             [],
         )
@@ -63,7 +64,7 @@ def link_example():
             M,
             [T0, T1],
             [2, 2, 7],
-            TypeAttr.get(T.memref(256, T.ui8())),
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
             [(1, 2)],
             [[(1, 2)], [(1, 2)]],
         )
