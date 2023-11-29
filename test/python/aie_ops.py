@@ -23,6 +23,7 @@ from aie.dialects.aie import (
 )
 from aie.extras import types as T
 from aie.ir import InsertionPoint, Block, TypeAttr
+from aie.util import mlir_mod_ctx
 
 from util import construct_and_print_module
 
@@ -244,3 +245,26 @@ def objFifoRelease():
         with InsertionPoint(bb):
             acq = objectfifo_release(ObjectFifoPort.Produce, "of0", 1)
             end()
+
+
+# CHECK-LABEL: test_module_context
+# CHECK: module {
+# CHECK:   %tile_1_1 = AIE.tile(1, 1)
+# CHECK:   %core_1_1 = AIE.core(%tile_1_1) {
+# CHECK:     AIE.end
+# CHECK:   }
+# CHECK: }
+def test_module_context():
+    print("test_module_context")
+
+    with mlir_mod_ctx() as ctx:
+        t = tile(col=1, row=1)
+        c = Core(t)
+        bb = Block.create_at_start(c.body)
+        with InsertionPoint(bb):
+            end()
+
+    print(ctx.module)
+
+
+test_module_context()
