@@ -21,6 +21,7 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #include <cassert>
+#include <numeric>
 
 namespace xilinx::aievec {
 
@@ -52,9 +53,11 @@ inline int32_t getElementSizeInBits(mlir::VectorType type) {
 // type. For a multidimensional vector, return the innermost dimension size
 inline unsigned getVectorLaneSize(mlir::VectorType type) {
   assert(type.getRank() > 0 && "Cannot handle rank-0 vectors");
-  auto dimSize = type.getDimSize(type.getRank() - 1);
-  assert(dimSize >= 0 && "Vector dimension cannot be negative");
-  return std::max(1u, static_cast<unsigned>(dimSize));
+  auto vShape = type.getShape();
+  assert(llvm::all_of(vShape, [](int64_t dim) { return dim > 0; }) &&
+         "Vector dimensions cannot be dynamic");
+  return std::accumulate(vShape.begin(), vShape.end(), 1,
+                         std::multiplies<int64_t>());
 }
 
 // For a 1D vector, return its size in bits. For an nD vector, return the size
