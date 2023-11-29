@@ -20,7 +20,7 @@ MLIR_AIE_SYSROOT ?= ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-l
 # The libstdc++ version that is installed in the sysroot given above. This is
 # used for include and library paths. If you built the sysroot with Vitis
 # 2022.2 and PetaLinux 2022.2, libstdc++ 11.2.0 will be installed. 
-LIBCXX_VERSION ?= 11.2.0
+LIBCXX_VERSION ?= 12.2.0
 
 # The following flags are passed to both AI core and host compilation for
 # aiecc.py invocations.
