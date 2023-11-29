@@ -207,45 +207,45 @@ def main():
                         broad_in= broad_in+("%%tile%d_%d," % (col+b_col_shift*3,row+b_row_shift*4))
             bb_sym = broad_in[:-1]
             # print(broad_in)
-            f.write("  %%block_%d_buf_in_shim_%d = AIE.objectFifo.createObjectFifo(%%tile%d_0,{%s},%d) { sym_name = \"%s\" } : !AIE.objectFifo<memref<%dxi32>> //B block input\n" \
+            f.write("  %%block_%d_buf_in_shim_%d = AIE.objectfifo.createObjectFifo(%%tile%d_0,{%s},%d) { sym_name = \"%s\" } : !AIE.objectfifo<memref<%dxi32>> //B block input\n" \
              %(block, shim_place,shim_place, bb_sym,input_rows,  symbol_in, bufsize))
             
             for row in range (startrow, startrow+b_block_depth): #
                 if(block%2==0):
                     col=0+b_col_shift*3
                     # broad_in= broad_in+("%%tile%d_%d," % (col,row))
-                    f.write("  %%block_%d_buf_row_%d_inter_lap= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_row_%d_inter_lap\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                    f.write("  %%block_%d_buf_row_%d_inter_lap= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_row_%d_inter_lap\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row, col, row, col+1, row, block, row, bufsize))
                     
                     col=1+b_col_shift*3
-                    f.write("  %%block_%d_buf_row_%d_inter_flx1= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},6) { sym_name =\"block_%d_buf_row_%d_inter_flx1\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                    f.write("  %%block_%d_buf_row_%d_inter_flx1= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},6) { sym_name =\"block_%d_buf_row_%d_inter_flx1\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row, col, row, col+1, row, block, row, bufsize_flx1))
                     col=2+b_col_shift*3
                  
                     if(row==startrow+b_block_depth-3):
-                        f.write("  %%block_%d_buf_out_shim_%d= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_out_shim_%d\"} : !AIE.objectFifo<memref<%dxi32>> //B block output\n" \
+                        f.write("  %%block_%d_buf_out_shim_%d= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_out_shim_%d\"} : !AIE.objectfifo<memref<%dxi32>> //B block output\n" \
                         %(block,  shim_place,col, row, shim_place, 0, block, shim_place, bufsize_flx2))
                         
                     else:
-                        f.write("  %%block_%d_buf_row_%d_out_flx2= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},2) { sym_name =\"block_%d_buf_row_%d_out_flx2\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                        f.write("  %%block_%d_buf_row_%d_out_flx2= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},2) { sym_name =\"block_%d_buf_row_%d_out_flx2\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row, col, row, col, b_block_depth+startrow-3, block, row, bufsize_flx2))
                 else:
                     col=0+b_col_shift*3
                     # broad_in= broad_in+("%%tile%d_%d," % (col,row))
-                    f.write("  %%block_%d_buf_row_%d_inter_lap= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_row_%d_inter_lap\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                    f.write("  %%block_%d_buf_row_%d_inter_lap= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_row_%d_inter_lap\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row+b_row_shift*4, col, row+b_row_shift*4, col+1, row+b_row_shift*4, block, row+b_row_shift*4, bufsize))
                     
                     col=1+b_col_shift*3
-                    f.write("  %%block_%d_buf_row_%d_inter_flx1= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},6) { sym_name =\"block_%d_buf_row_%d_inter_flx1\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                    f.write("  %%block_%d_buf_row_%d_inter_flx1= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},6) { sym_name =\"block_%d_buf_row_%d_inter_flx1\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row+b_row_shift*4, col, row+b_row_shift*4, col+1, row+b_row_shift*4, block, row+b_row_shift*4, bufsize_flx1))
                     col=2+b_col_shift*3
                  
                     if(row==startrow+b_block_depth-3):
-                        f.write("  %%block_%d_buf_out_shim_%d= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_out_shim_%d\"} : !AIE.objectFifo<memref<%dxi32>> //B block output\n" \
+                        f.write("  %%block_%d_buf_out_shim_%d= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},5){ sym_name =\"block_%d_buf_out_shim_%d\"} : !AIE.objectfifo<memref<%dxi32>> //B block output\n" \
                         %(block,  shim_place,col, row+b_row_shift*4, shim_place, 0, block, shim_place, bufsize_flx2))
                         
                     else:
-                        f.write("  %%block_%d_buf_row_%d_out_flx2= AIE.objectFifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},2) { sym_name =\"block_%d_buf_row_%d_out_flx2\"} : !AIE.objectFifo<memref<%dxi32>>\n" \
+                        f.write("  %%block_%d_buf_row_%d_out_flx2= AIE.objectfifo.createObjectFifo(%%tile%d_%d,{%%tile%d_%d},2) { sym_name =\"block_%d_buf_row_%d_out_flx2\"} : !AIE.objectfifo<memref<%dxi32>>\n" \
                     %(block, row+b_row_shift*4, col, row+b_row_shift*4, col, b_block_depth+startrow-3+b_row_shift*4, block, row+b_row_shift*4, bufsize_flx2))
 
                     
@@ -283,10 +283,10 @@ def main():
         # cur_noc_count=cur_noc_count+1
         shim_place=noc_div_two_channel(block)
         # print(shim_place)
-        f.write("  AIE.objectFifo.registerExternalBuffers(%%tile%d_0, %%block_%d_buf_in_shim_%d : !AIE.objectFifo<memref<%dxi32>>, {%%ext_buffer_in_%d}) : (memref<%dxi32>)\n"\
+        f.write("  AIE.objectfifo.register_external_buffers(%%tile%d_0, %%block_%d_buf_in_shim_%d : !AIE.objectfifo<memref<%dxi32>>, {%%ext_buffer_in_%d}) : (memref<%dxi32>)\n"\
          %( shim_place,block, shim_place,bufsize,block,dram_bufsize_in))
     
-        f.write("  AIE.objectFifo.registerExternalBuffers(%%tile%d_0, %%block_%d_buf_out_shim_%d : !AIE.objectFifo<memref<%dxi32>>, {%%ext_buffer_out_%d}) : (memref<%dxi32>)\n"\
+        f.write("  AIE.objectfifo.register_external_buffers(%%tile%d_0, %%block_%d_buf_out_shim_%d : !AIE.objectfifo<memref<%dxi32>>, {%%ext_buffer_out_%d}) : (memref<%dxi32>)\n"\
          %( shim_place,block, shim_place,bufsize,block,dram_bufsize_out))
            
         f.write("\n")
@@ -318,27 +318,27 @@ def main():
             if((col%hdiff_col==0 ) and (row==startrow+1 or row==startrow+b_block_depth+1)):
                 f.write("    AIE.useLock(%%lock%d%d_14, \"Acquire\", 0) // start the timer\n"%(col,row))
             f.write("    scf.for %iv = %lb to %ub step %step {  \n")
-            f.write("      %%obj_in_subview = AIE.objectFifo.acquire<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, %d) : !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block,shim_place, bufsize,input_rows-1,bufsize))
-            f.write("      %%row0 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row,bufsize,bufsize))
-            f.write("      %%row1 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+1,bufsize,bufsize))
-            f.write("      %%row2 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+2,bufsize,bufsize))
-            f.write("      %%row3 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+3,bufsize,bufsize))
-            f.write("      %%row4 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n\n" %(block_row+4,bufsize,bufsize))
+            f.write("      %%obj_in_subview = AIE.objectfifo.acquire<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, %d) : !AIE.objectfifosubview<memref<%dxi32>>\n" %(block,shim_place, bufsize,input_rows-1,bufsize))
+            f.write("      %%row0 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row,bufsize,bufsize))
+            f.write("      %%row1 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+1,bufsize,bufsize))
+            f.write("      %%row2 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+2,bufsize,bufsize))
+            f.write("      %%row3 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+3,bufsize,bufsize))
+            f.write("      %%row4 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n\n" %(block_row+4,bufsize,bufsize))
    
-            f.write("      %%obj_out_subview_lap = AIE.objectFifo.acquire<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 4): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, row,bufsize,bufsize))
-            f.write("      %obj_out_lap1 = AIE.objectFifo.subview.access %obj_out_subview_lap[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap2 = AIE.objectFifo.subview.access %obj_out_subview_lap[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap3 = AIE.objectFifo.subview.access %obj_out_subview_lap[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap4 = AIE.objectFifo.subview.access %obj_out_subview_lap[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n\n")
+            f.write("      %%obj_out_subview_lap = AIE.objectfifo.acquire<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 4): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, row,bufsize,bufsize))
+            f.write("      %obj_out_lap1 = AIE.objectfifo.subview.access %obj_out_subview_lap[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap2 = AIE.objectfifo.subview.access %obj_out_subview_lap[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap3 = AIE.objectfifo.subview.access %obj_out_subview_lap[2] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap4 = AIE.objectfifo.subview.access %obj_out_subview_lap[3] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n\n")
             
             f.write("      func.call @hdiff_lap(%row0,%row1,%row2,%row3,%row4,%obj_out_lap1,%obj_out_lap2,%obj_out_lap3,%obj_out_lap4) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>,  memref<256xi32>,  memref<256xi32>,  memref<256xi32>) -> ()\n\n")
-            f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
-            f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 4)\n" %(block, row,bufsize))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
+            f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
+            f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 4)\n" %(block, row,bufsize))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize))
             f.write("    }\n")
-            f.write("    AIE.objectFifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 4)\n" %(block, shim_place,bufsize))
+            f.write("    AIE.objectfifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 4)\n" %(block, shim_place,bufsize))
             f.write("    AIE.end\n")
             f.write("  } { link_with=\"hdiff_lap.o\" }\n\n")
 
@@ -349,39 +349,39 @@ def main():
             f.write("    %ub = arith.constant 2 : index\n")
             f.write("    %step = arith.constant 1 : index\n")
             f.write("    scf.for %iv = %lb to %ub step %step {  \n")
-            f.write("      %%obj_in_subview = AIE.objectFifo.acquire<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, %d) : !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block,shim_place, bufsize,input_rows-1,bufsize))
-            # f.write("      %%row0 = AIE.objectFifo.subview.access %%obj_in_subview[0] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
-            f.write("      %%row1 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+1,bufsize,bufsize))
-            f.write("      %%row2 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+2,bufsize,bufsize))
-            f.write("      %%row3 = AIE.objectFifo.subview.access %%obj_in_subview[%d] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n\n" %(block_row+3,bufsize,bufsize))
-            # f.write("      %%row4 = AIE.objectFifo.subview.access %%obj_in_subview[4] : !AIE.objectFifoSubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%obj_in_subview = AIE.objectfifo.acquire<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, %d) : !AIE.objectfifosubview<memref<%dxi32>>\n" %(block,shim_place, bufsize,input_rows-1,bufsize))
+            # f.write("      %%row0 = AIE.objectfifo.subview.access %%obj_in_subview[0] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
+            f.write("      %%row1 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+1,bufsize,bufsize))
+            f.write("      %%row2 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(block_row+2,bufsize,bufsize))
+            f.write("      %%row3 = AIE.objectfifo.subview.access %%obj_in_subview[%d] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n\n" %(block_row+3,bufsize,bufsize))
+            # f.write("      %%row4 = AIE.objectfifo.subview.access %%obj_in_subview[4] : !AIE.objectfifosubview<memref<%dxi32>> -> memref<%dxi32>\n" %(bufsize,bufsize))
    
-            f.write("      %%obj_out_subview_lap = AIE.objectFifo.acquire<Consume>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 4): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, row,bufsize,bufsize))
-            f.write("      %obj_out_lap1 = AIE.objectFifo.subview.access %obj_out_subview_lap[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap2 = AIE.objectFifo.subview.access %obj_out_subview_lap[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap3 = AIE.objectFifo.subview.access %obj_out_subview_lap[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-            f.write("      %obj_out_lap4 = AIE.objectFifo.subview.access %obj_out_subview_lap[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n\n")
+            f.write("      %%obj_out_subview_lap = AIE.objectfifo.acquire<Consume>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 4): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, row,bufsize,bufsize))
+            f.write("      %obj_out_lap1 = AIE.objectfifo.subview.access %obj_out_subview_lap[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap2 = AIE.objectfifo.subview.access %obj_out_subview_lap[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap3 = AIE.objectfifo.subview.access %obj_out_subview_lap[2] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+            f.write("      %obj_out_lap4 = AIE.objectfifo.subview.access %obj_out_subview_lap[3] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n\n")
 
-            f.write("      %%obj_out_subview_flux1 = AIE.objectFifo.acquire<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 5): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, row,bufsize_flx1,bufsize_flx1))
-            f.write("      %obj_out_flux_inter1 = AIE.objectFifo.subview.access %obj_out_subview_flux1[0] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_out_flux_inter2 = AIE.objectFifo.subview.access %obj_out_subview_flux1[1] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_out_flux_inter3 = AIE.objectFifo.subview.access %obj_out_subview_flux1[2] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_out_flux_inter4 = AIE.objectFifo.subview.access %obj_out_subview_flux1[3] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_out_flux_inter5 = AIE.objectFifo.subview.access %obj_out_subview_flux1[4] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n\n")
+            f.write("      %%obj_out_subview_flux1 = AIE.objectfifo.acquire<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 5): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, row,bufsize_flx1,bufsize_flx1))
+            f.write("      %obj_out_flux_inter1 = AIE.objectfifo.subview.access %obj_out_subview_flux1[0] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_out_flux_inter2 = AIE.objectfifo.subview.access %obj_out_subview_flux1[1] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_out_flux_inter3 = AIE.objectfifo.subview.access %obj_out_subview_flux1[2] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_out_flux_inter4 = AIE.objectfifo.subview.access %obj_out_subview_flux1[3] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_out_flux_inter5 = AIE.objectfifo.subview.access %obj_out_subview_flux1[4] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n\n")
 
             f.write("      func.call @hdiff_flux1(%row1,%row2,%row3,%obj_out_lap1,%obj_out_lap2,%obj_out_lap3,%obj_out_lap4, %obj_out_flux_inter1 , %obj_out_flux_inter2, %obj_out_flux_inter3, %obj_out_flux_inter4, %obj_out_flux_inter5) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>) -> ()\n\n")
-            # f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
+            # f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
             
-            f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectFifo<memref<%dxi32>>, 4)\n" %(block, row,bufsize))
+            f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_row_%d_inter_lap: !AIE.objectfifo<memref<%dxi32>>, 4)\n" %(block, row,bufsize))
 
-            f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 5)\n" %(block, row,bufsize_flx1))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
-            # f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
-            f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
+            f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 5)\n" %(block, row,bufsize_flx1))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
+            # f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,bufsize_flx1))
+            f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, shim_place,bufsize))
             f.write("    }\n")
-            f.write("    AIE.objectFifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 7)\n" %(block, shim_place,bufsize))
+            f.write("    AIE.objectfifo.release<Consume>(%%block_%d_buf_in_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 7)\n" %(block, shim_place,bufsize))
             f.write("    AIE.end\n")
             f.write("  } { link_with=\"hdiff_flux1.o\" }\n\n")
 
@@ -395,21 +395,21 @@ def main():
             
             f.write("    scf.for %iv = %lb to %ub step %step {  \n")
 
-            f.write("      %%obj_out_subview_flux_inter1 = AIE.objectFifo.acquire<Consume>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectFifo<memref<%dxi32>>, 5): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, row,bufsize_flx1,bufsize_flx1))
-            f.write("      %obj_flux_inter_element1 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[0] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_flux_inter_element2 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[1] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_flux_inter_element3 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[2] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_flux_inter_element4 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[3] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n")
-            f.write("      %obj_flux_inter_element5 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[4] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>\n\n")
+            f.write("      %%obj_out_subview_flux_inter1 = AIE.objectfifo.acquire<Consume>(%%block_%d_buf_row_%d_inter_flx1: !AIE.objectfifo<memref<%dxi32>>, 5): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, row,bufsize_flx1,bufsize_flx1))
+            f.write("      %obj_flux_inter_element1 = AIE.objectfifo.subview.access %obj_out_subview_flux_inter1[0] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_flux_inter_element2 = AIE.objectfifo.subview.access %obj_out_subview_flux_inter1[1] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_flux_inter_element3 = AIE.objectfifo.subview.access %obj_out_subview_flux_inter1[2] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_flux_inter_element4 = AIE.objectfifo.subview.access %obj_out_subview_flux_inter1[3] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n")
+            f.write("      %obj_flux_inter_element5 = AIE.objectfifo.subview.access %obj_out_subview_flux_inter1[4] : !AIE.objectfifosubview<memref<512xi32>> -> memref<512xi32>\n\n")
             if(row==2 or row==6):
-                f.write("      %%obj_out_subview_flux = AIE.objectFifo.acquire<Produce>(%%block_%d_buf_out_shim_%d: !AIE.objectFifo<memref<%dxi32>>, 4): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, shim_place,256,256))
+                f.write("      %%obj_out_subview_flux = AIE.objectfifo.acquire<Produce>(%%block_%d_buf_out_shim_%d: !AIE.objectfifo<memref<%dxi32>>, 4): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, shim_place,256,256))
                 
                 
                 f.write("  // Acquire all elements and add in order\n")
-                f.write("      %obj_out_flux_element0 = AIE.objectFifo.subview.access %obj_out_subview_flux[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-                f.write("      %obj_out_flux_element1 = AIE.objectFifo.subview.access %obj_out_subview_flux[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-                f.write("      %obj_out_flux_element2 = AIE.objectFifo.subview.access %obj_out_subview_flux[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
-                f.write("      %obj_out_flux_element3 = AIE.objectFifo.subview.access %obj_out_subview_flux[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n")
+                f.write("      %obj_out_flux_element0 = AIE.objectfifo.subview.access %obj_out_subview_flux[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+                f.write("      %obj_out_flux_element1 = AIE.objectfifo.subview.access %obj_out_subview_flux[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+                f.write("      %obj_out_flux_element2 = AIE.objectfifo.subview.access %obj_out_subview_flux[2] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
+                f.write("      %obj_out_flux_element3 = AIE.objectfifo.subview.access %obj_out_subview_flux[3] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n")
                 
                 f.write("  // Acquiring outputs from other flux\n")
                 b_row_shift=0
@@ -417,8 +417,8 @@ def main():
                     b_row_shift=b_row_shift+1
                 for order in range (startrow,startrow+broadcast_cores+b_block_depth):  
                     if(order!=2):
-                        f.write("      %%obj_out_subview_flux%d = AIE.objectFifo.acquire<Consume>(%%block_%d_buf_row_%d_out_flx2: !AIE.objectFifo<memref<%dxi32>>, 1): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(order,block, order+b_row_shift*4,256,256))
-                        f.write("      %%final_out_from%d = AIE.objectFifo.subview.access %%obj_out_subview_flux%d[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n\n"%(order,order))
+                        f.write("      %%obj_out_subview_flux%d = AIE.objectfifo.acquire<Consume>(%%block_%d_buf_row_%d_out_flx2: !AIE.objectfifo<memref<%dxi32>>, 1): !AIE.objectfifosubview<memref<%dxi32>>\n" %(order,block, order+b_row_shift*4,256,256))
+                        f.write("      %%final_out_from%d = AIE.objectfifo.subview.access %%obj_out_subview_flux%d[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n\n"%(order,order))
                 
                 f.write("  // Ordering and copying data to gather tile (src-->dst)\n")
                 f.write("      memref.copy %final_out_from1 , %obj_out_flux_element0 : memref<256xi32> to memref<256xi32>\n")
@@ -426,12 +426,12 @@ def main():
                 f.write("      memref.copy %final_out_from4 , %obj_out_flux_element3 : memref<256xi32> to memref<256xi32>\n")
                 ###############
             else:
-                f.write("      %%obj_out_subview_flux = AIE.objectFifo.acquire<Produce>(%%block_%d_buf_row_%d_out_flx2: !AIE.objectFifo<memref<%dxi32>>, 1): !AIE.objectFifoSubview<memref<%dxi32>>\n" %(block, row,256,256))
-                f.write("      %obj_out_flux_element1 = AIE.objectFifo.subview.access %obj_out_subview_flux[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>\n\n")
+                f.write("      %%obj_out_subview_flux = AIE.objectfifo.acquire<Produce>(%%block_%d_buf_row_%d_out_flx2: !AIE.objectfifo<memref<%dxi32>>, 1): !AIE.objectfifosubview<memref<%dxi32>>\n" %(block, row,256,256))
+                f.write("      %obj_out_flux_element1 = AIE.objectfifo.subview.access %obj_out_subview_flux[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>\n\n")
 
             f.write("      func.call @hdiff_flux2(%obj_flux_inter_element1, %obj_flux_inter_element2,%obj_flux_inter_element3, %obj_flux_inter_element4, %obj_flux_inter_element5,  %obj_out_flux_element1 ) : ( memref<512xi32>,  memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()\n\n")
        
-            f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_row_%d_inter_flx1 :!AIE.objectFifo<memref<%dxi32>>, 5)\n" %(block, row,bufsize_flx1))
+            f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_row_%d_inter_flx1 :!AIE.objectfifo<memref<%dxi32>>, 5)\n" %(block, row,bufsize_flx1))
             
             if(row==2 or row==6):
                 # addded for output ordering
@@ -443,10 +443,10 @@ def main():
                     b_row_shift=b_row_shift+1
                 for order in range (startrow,startrow+broadcast_cores+b_block_depth):  
                     if(order!=2):
-                        f.write("      AIE.objectFifo.release<Consume>(%%block_%d_buf_row_%d_out_flx2:!AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, order+b_row_shift*4, 256))
-                f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_out_shim_%d:!AIE.objectFifo<memref<%dxi32>>, 4)\n" %(block, shim_place,256))
+                        f.write("      AIE.objectfifo.release<Consume>(%%block_%d_buf_row_%d_out_flx2:!AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, order+b_row_shift*4, 256))
+                f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_out_shim_%d:!AIE.objectfifo<memref<%dxi32>>, 4)\n" %(block, shim_place,256))
             else:
-                f.write("      AIE.objectFifo.release<Produce>(%%block_%d_buf_row_%d_out_flx2 :!AIE.objectFifo<memref<%dxi32>>, 1)\n" %(block, row,256))
+                f.write("      AIE.objectfifo.release<Produce>(%%block_%d_buf_row_%d_out_flx2 :!AIE.objectfifo<memref<%dxi32>>, 1)\n" %(block, row,256))
           
             f.write("    }\n")
             if((col+1)%(hdiff_col)==0 and (row==startrow+1 or row==startrow+b_block_depth+1)):

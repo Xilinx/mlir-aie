@@ -1314,7 +1314,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
     ```
       %tile00 = AIE.tile(0, 0)
       %tile02 = AIE.tile(0, 2)
-      AIE.objectFifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectfifo<memref<64xi16>>
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
@@ -1356,7 +1356,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 
     1-to-1 tile example:
     ```
-      AIE.objectFifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12` and `%tile23` of 4 elements, each a buffer of 16 32-bit integers.
     Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`,
@@ -1365,14 +1365,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 
     1-to-2 tiles broadcast example:
     ```
-      AIE.objectFifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16
     32-bit integers.
 
     1-to-2 tiles broadcast with explicit sizes example:
     ```
-      AIE.objectFifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool
     at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis
@@ -1405,11 +1405,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     all even indices from the stream, followed by all odd indices:
 
     ```
-      AIE.objectFifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>], 
+      AIE.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
                            {%tile13 fromStream [],
                             %tile23 fromStream [<2, 1>, <128, 2>]}, 
                            2 : i32
-                          ) : !AIE.objectFifo<memref<256xi32>>
+                          ) : !AIE.objectfifo<memref<256xi32>>
     ```
   }];
 
@@ -1485,9 +1485,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
     Example:
     ```
-      AIE.objectFifo @of1 (%t70, { %t72 }, 2) : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo @of2 (%t72, { %t74 }, 2) : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link [@of1] -> [@of2] ()
+      AIE.objectfifo @of1 (%t70, { %t72 }, 2) : !AIE.objectfifo<memref<64xi16>>
+      AIE.objectfifo @of2 (%t72, { %t74 }, 2) : !AIE.objectfifo<memref<64xi16>>
+      AIE.objectfifo.link [@of1] -> [@of2] ()
     ```
     This operation links two `objectFifos` which have tile `%t72` as a link point.
 
@@ -1540,7 +1540,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
 
     Example:
     ```
-      AIE.objectFifo @of1 (%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectfifo @of1 (%t70, %t73, 2) : !AIE.objectfifo<memref<64xi16>>
       %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
       AIE.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
@@ -1585,7 +1585,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectfifo.acquire @of1 (Consume, 2) : !AIE.objectfifosubivew<memref<16xi32>>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
     port and returns a subview of the acquired objects.
@@ -1622,7 +1622,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
 
     Example:
     ```
-      AIE.objectFifo.release @of1 (Produce, 1)
+      AIE.objectfifo.release @of1 (Produce, 1)
     ```
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
   }];
@@ -1652,8 +1652,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire @of1 (Produce, 3) : !AIE.objectFifoSubview<memref<16xi32>>
-      %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+      %subview = AIE.objectfifo.acquire @of1 (Produce, 3) : !AIE.objectfifosubivew<memref<16xi32>>
+      %elem = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubivew<memref<16xi32>> -> memref<16xi32>
     ```
     In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
     the `objectFifo` if other acquire operations took place beforehand.
@@ -1691,11 +1691,11 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
 
     Example:
     ```
-      AIE.objectFifo @of1 (%t72, %t73, 2) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectfifo @of1 (%t72, %t73, 2) : !AIE.objectfifo<memref<16xi32>>
       %length = arith.constant 10 : index
       %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
-      func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
+      func @producer_work(%input : !AIE.objectfifosubivew<memref<16xi32>>) -> () { ... }
 
       AIE.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```

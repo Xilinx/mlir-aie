@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --unified %s
-// RUN: aiecc.py --no-unified %s
+// RUN: %PYTHON aiecc.py --unified %s
+// RUN: %PYTHON aiecc.py --no-unified %s
 
 module @test00_itsalive {
   %tile12 = AIE.tile(1, 2)

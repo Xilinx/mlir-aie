@@ -84,12 +84,12 @@ def main():
         for row in range (1, rows): # row 1 -> 8
             f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" %(col, row, col, row))
             
-    # %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    # %objFifo = AIE.objectfifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectfifo<memref<16xi32>>
 
-    # %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-    # %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+    # %subview = AIE.objectfifo.acquire<Produce>(%objFifo : !AIE.objectfifo<memref<16xi32>>, 1) : !AIE.objectfifosubview<memref<16xi32>>
+    # %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-    # AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+    # AIE.objectfifo.release<Produce>(%objFifo : !AIE.objectfifo<memref<16xi32>>, 1)
 
 
 
