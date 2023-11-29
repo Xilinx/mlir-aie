@@ -10,7 +10,9 @@
 
 # <ins>Color Threshold</ins>
 
-The Color Threshold pipeline design consists of 4 threshold blocks in separate tiles that process a different region of an input image. The results are then merged back together and sent to the output.
+The Color Threshold pipeline design consists of 4 threshold blocks in separate AIE tiles that process a different region of an input image. 
+
+The input image is brought into the array via Shim tile (0, 0) and first sent to Mem tile (0, 1) where it is then split into 4 blocks and distributed to the 4 AIE tiles (0, 2) to (0, 5). Each AIE tile applies a threshold kernel on its data. The results are then merged back together in the Mem tile and sent back to the output through the Shim tile.
 
 To compile desing in Windows:
 ```
