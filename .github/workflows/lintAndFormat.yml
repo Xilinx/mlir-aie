@@ -165,8 +165,7 @@ jobs:
         if: success() || failure()
         id: black-format
         run: |
-          black --exclude python/compiler/aiecc/main.py . || true
-          # black -l 10000 python/compiler/aiecc/main.py || true
+          black . || true
           git diff > black-format.diff
           cat black-format.diff
 
