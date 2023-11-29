@@ -13,11 +13,13 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -33,25 +35,6 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-objectFifo-stateful-transform"
 
 #define LOOP_VAR_DEPENDENCY (-2)
-
-//===----------------------------------------------------------------------===//
-// Conversion Pattern
-//===----------------------------------------------------------------------===//
-template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-
-  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit) {}
-
-  LogicalResult
-  matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 //===----------------------------------------------------------------------===//
 // Lock Analysis
@@ -1593,8 +1576,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto sym_name = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(createOp.getElemType()).getElementType());
+      auto memrefType =
+          createOp.getElemType().cast<AIEObjectFifoType>().getElementType();
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
@@ -1603,17 +1586,17 @@ struct AIEObjectFifoStatefulTransformPass
     //===------------------------------------------------------------------===//
     // Remove old ops
     //===------------------------------------------------------------------===//
-    ConversionTarget target(getContext());
-    RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(device.getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoLinkOp>>(device.getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(
-        device.getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(device.getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(device.getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(device.getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
-      signalPassFailure();
+    SetVector<Operation *> opsToErase;
+    device.walk([&](Operation *op) {
+      if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
+              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
+              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
+        opsToErase.insert(op);
+    });
+    topologicalSort(opsToErase);
+    IRRewriter rewriter(&getContext());
+    for (auto it = opsToErase.rbegin(); it != opsToErase.rend(); ++it)
+      (*it)->erase();
   }
 };
 

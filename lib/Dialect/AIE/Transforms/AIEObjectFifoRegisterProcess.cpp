@@ -31,25 +31,6 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-register-objectFifos"
 
 //===----------------------------------------------------------------------===//
-// Conversion Patterns
-//===----------------------------------------------------------------------===//
-struct RemoveAIERegisterProcess
-    : OpConversionPattern<ObjectFifoRegisterProcessOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  RemoveAIERegisterProcess(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoRegisterProcessOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-//===----------------------------------------------------------------------===//
 // Register objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoRegisterProcessPass
@@ -68,7 +49,7 @@ struct AIEObjectFifoRegisterProcessPass
   }
 
   void createPattern(OpBuilder &builder, DeviceOp &device,
-                     ObjectFifoRegisterProcessOp regOp, Type elementType,
+                     ObjectFifoRegisterProcessOp regOp, MemRefType elementType,
                      IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
     auto ctx = device->getContext();
     // create for loop
@@ -233,11 +214,13 @@ struct AIEObjectFifoRegisterProcessPass
     //===----------------------------------------------------------------------===//
     // Remove old ops
     //===----------------------------------------------------------------------===//
-    ConversionTarget target(getContext());
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<RemoveAIERegisterProcess>(device.getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
-      signalPassFailure();
+    SmallVector<Operation *> opsToErase;
+    device.walk([&](Operation *op) {
+      if (isa<ObjectFifoRegisterProcessOp>(op))
+        opsToErase.push_back(op);
+    });
+    for (auto op : opsToErase)
+      op->erase();
   }
 };
 

@@ -37,15 +37,18 @@ struct AIEInlinerInterface : DialectInlinerInterface {
                        IRMapping &valueMapping) const final override {
     return true;
   }
+
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
                        IRMapping &) const final override {
     return true;
   }
+
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block.
   void handleTerminator(Operation *op, Block *newDest) const final override {}
+
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
   void handleTerminator(Operation *op,
@@ -135,10 +138,10 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
-  using KeyTy = Type;
+  using KeyTy = MemRefType;
 
   /// A constructor for the objectFifo type storage instance.
-  AIEObjectFifoTypeStorage(Type elementType) : elementType(elementType) {}
+  AIEObjectFifoTypeStorage(MemRefType elementType) : elementType(elementType) {}
 
   /// Define the comparison function for the key type with the current storage
   /// instance. This is used when constructing a new instance to ensure that we
@@ -155,11 +158,11 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
         AIEObjectFifoTypeStorage(key);
   }
 
-  Type elementType;
+  MemRefType elementType;
 };
 } // namespace detail
 
-AIEObjectFifoType AIEObjectFifoType::get(Type elementType) {
+AIEObjectFifoType AIEObjectFifoType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
@@ -168,14 +171,11 @@ AIEObjectFifoType AIEObjectFifoType::get(Type elementType) {
 
 LogicalResult
 AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
-                          Type elementType) {
-  // Memref element type expected.
-  if (!elementType.isa<MemRefType>())
-    return emitError() << "non memref-type passed to 'ObjectFifoType'";
+                          MemRefType elementType) {
   return success();
 }
 
-Type AIEObjectFifoType::getElementType() {
+mlir::MemRefType AIEObjectFifoType::getElementType() {
   // 'getImpl' returns a pointer to the internal storage instance.
   return getImpl()->elementType;
 }
@@ -187,10 +187,10 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
-  using KeyTy = Type;
+  using KeyTy = MemRefType;
 
   /// A constructor for the subview type storage instance.
-  AIEObjectFifoSubviewTypeStorage(Type elementType)
+  AIEObjectFifoSubviewTypeStorage(MemRefType elementType)
       : elementType(elementType) {}
 
   /// Define the comparison function for the key type with the current storage
@@ -208,11 +208,11 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
         AIEObjectFifoSubviewTypeStorage(key);
   }
 
-  Type elementType;
+  MemRefType elementType;
 };
 } // namespace detail
 
-AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(Type elementType) {
+AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
@@ -222,26 +222,23 @@ AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(Type elementType) {
 /// This method is used to verify the construction invariants.
 LogicalResult
 AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 Type elementType) {
-  // Memref element type expected.
-  if (!elementType.isa<MemRefType>())
-    return emitError() << "non memref-type passed to 'ObjectFifoSubviewType'";
+                                 MemRefType elementType) {
   return success();
 }
 
-Type AIEObjectFifoSubviewType::getElementType() {
+MemRefType AIEObjectFifoSubviewType::getElementType() {
   return getImpl()->elementType;
 }
 
 /// Parse an instance of a type registered to the AIE dialect.
 /// Parse an AIE type in the following forms:
 ///   AIE-type
-///         ::= `objectFifo` `<` type `>`
-///         ::= `objectFifoSubview` `<` type `>`
+///         ::= `objectfifo` `<` type `>`
+///         ::= `objectfifosubview` `<` type `>`
 static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
                                          StringRef name, Type &result) {
-  if (name.equals("objectFifo")) {
-    Type elementType;
+  if (name.equals("objectfifo")) {
+    MemRefType elementType;
     SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
         parser.parseGreater())
@@ -258,12 +255,12 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
     return result = AIEObjectFifoType::get(elementType), success();
   }
 
-  if (name.equals("objectFifoSubview")) {
+  if (name.equals("objectfifosubview")) {
     if (parser.parseLess())
       return failure();
 
     // Parse the element type of the struct.
-    Type elementType;
+    MemRefType elementType;
     // Parse the current element type.
     SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseType(elementType))
@@ -315,23 +312,19 @@ Type AIEDialect::parseType(DialectAsmParser &parser) const {
 void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
   if (type.isa<AIEObjectFifoType>()) {
     auto objectFifoType = type.cast<AIEObjectFifoType>();
-    printer << "objectFifo<";
+    printer << "objectfifo<";
     printer << objectFifoType.getElementType();
     printer << '>';
 
   } else if (type.isa<AIEObjectFifoSubviewType>()) {
     auto subviewType = type.cast<AIEObjectFifoSubviewType>();
-    printer << "objectFifoSubview<";
+    printer << "objectfifosubview<";
     printer << subviewType.getElementType();
     printer << '>';
   }
 }
 
 void AIEDialect::initialize() {
-  addTypes<
-#define GET_TYPE_LIST
-#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
-      >();
   addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
@@ -527,16 +520,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    auto fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifoType.getElementType().cast<MemRefType>();
+    auto elemType =
+        fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
     int64_t outputSize = 1;
     for (auto dim : elemType.getShape())
       outputSize *= dim;
 
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
-      auto fifo = fifoIn.getElemType().cast<AIEObjectFifoType>();
-      auto elemType = fifo.getElementType().cast<MemRefType>();
+      auto elemType =
+          fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
       int64_t nextInputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextInputSize *= dim;
@@ -558,8 +551,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
                            "dimensionsFromStreamPerConsumer.");
     }
 
-    auto fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifoType.getElementType().cast<MemRefType>();
+    auto elemType =
+        fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
     int64_t inputSize = 1;
     for (auto dim : elemType.getShape())
       inputSize *= dim;
@@ -577,8 +570,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
                              "dimensionsFromStreamPerConsumer.");
       }
 
-      auto fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
-      auto elemType = fifo.getElementType().cast<MemRefType>();
+      auto elemType =
+          fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
       int64_t nextOutputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextOutputSize *= dim;

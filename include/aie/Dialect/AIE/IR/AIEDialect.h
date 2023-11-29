@@ -22,7 +22,6 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -64,10 +63,6 @@ void registerAIETranslations();
 /////////////////////// Custom Types for the Dialect ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// Include generated TableGen-generated type definitions
-#define GET_TYPEDEF_CLASSES 1
-#include "aie/Dialect/AIE/IR/AIETypes.h.inc"
-
 namespace xilinx::AIE {
 namespace detail {
 struct AIEObjectFifoTypeStorage;
@@ -82,15 +77,15 @@ public:
   using Base::Base;
 
   /// Create an instance of a `ObjectFifoType` with the given element type.
-  static AIEObjectFifoType get(Type elementType);
+  static AIEObjectFifoType get(mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
   static mlir::LogicalResult
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         Type elementType);
+         mlir::MemRefType elementType);
 
   /// Returns the element type of this ObjectFifoType.
-  Type getElementType();
+  mlir::MemRefType getElementType();
 };
 
 namespace detail {
@@ -106,15 +101,15 @@ public:
   using Base::Base;
 
   /// Create an instance of a `SubviewType` with the given element type.
-  static AIEObjectFifoSubviewType get(Type elementType);
+  static AIEObjectFifoSubviewType get(mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
   static mlir::LogicalResult
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         Type elementType);
+         mlir::MemRefType elementType);
 
   /// Returns the element type of this SubviewType.
-  Type getElementType();
+  mlir::MemRefType getElementType();
 };
 
 } // namespace xilinx::AIE
