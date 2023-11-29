@@ -60,7 +60,7 @@ module @aie2_static_l1 {
 
         // ObjectFifo that can hold 4 memref<i32>s, populated by tile22 and
         // consumed by tile23
-        AIE.objectFifo @fifo (%tile22, {%tile23}, 4 : i32) : !AIE.objectFifo<memref<i32>>
+        AIE.objectFifo @fifo (%tile22, {%tile23}, 4 : i32) : memref<4xmemref<i32>>
 
         // Producer core
         %core22 = AIE.core(%tile22) {
@@ -73,8 +73,8 @@ module @aie2_static_l1 {
             scf.for %idx = %i_c0 to %i_c16 step %i_c1 {
                 %val0 = memref.load %srcbuf22[] : memref<i32>
                 // Produce 1 elements, so acquire 1 element
-                %subview = AIE.objectFifo.acquire @fifo (Produce, 1) : !AIE.objectFifoSubview<memref<i32>>
-                %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
+                %subview = AIE.objectFifo.acquire @fifo (Produce, 1) : memref<1xmemref<i32>>
+                %elem = AIE.objectFifo.subview.access %subview[0] : memref<1xmemref<i32>> -> memref<i32>
                 memref.store %val0, %elem[] : memref<i32>
                 AIE.objectFifo.release @fifo (Produce, 1)
                 // Increment
@@ -89,9 +89,9 @@ module @aie2_static_l1 {
         %core23 = AIE.core(%tile23) {
             scf.for %idx = %i_c0 to %i_c16 step %i_c2 {
                 // Consume _two_ elements at once (cyclo static)
-                %subview = AIE.objectFifo.acquire @fifo (Consume, 2) : !AIE.objectFifoSubview<memref<i32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
+                %subview = AIE.objectFifo.acquire @fifo (Consume, 2) : memref<2xmemref<i32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : memref<2xmemref<i32>> -> memref<i32>
+                %elem1 = AIE.objectFifo.subview.access %subview[1] : memref<2xmemref<i32>> -> memref<i32>
                 %val0 = memref.load %elem0[] : memref<i32>
                 %val1 = memref.load %elem1[] : memref<i32>
                 // Pass through to destination buffer

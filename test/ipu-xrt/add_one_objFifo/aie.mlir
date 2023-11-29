@@ -11,11 +11,11 @@ module {
     %t01 = AIE.tile(0, 1)
     %t02 = AIE.tile(0, 2)
   
-    AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-    AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+    AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : memref<2xmemref<16xi32>>
+    AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : memref<2xmemref<8xi32>>
     AIE.objectFifo.link [@objFifo_in0] -> [@objFifo_in1] ()
-    AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-    AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+    AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : memref<2xmemref<16xi32>>
+    AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : memref<2xmemref<8xi32>>
     AIE.objectFifo.link [@objFifo_out1] -> [@objFifo_out0] ()
   
     AIE.core(%t02) {
@@ -25,10 +25,10 @@ module {
       %c1_32 = arith.constant 1 : i32
   
       scf.for %steps = %c0 to %c8 step %c1 {
-        %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-        %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
-        %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectFifoSubview<memref<8xi32>>
-        %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
+        %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : memref<1xmemref<8xi32>>
+        %elem0 = AIE.objectFifo.subview.access %subview0[0] : memref<1xmemref<8xi32>> -> memref<8xi32>
+        %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : memref<1xmemref<8xi32>>
+        %elem1 = AIE.objectFifo.subview.access %subview1[0] : memref<1xmemref<8xi32>> -> memref<8xi32>
         scf.for %arg3 = %c0 to %c8 step %c1 {
             %0 = memref.load %elem0[%arg3] : memref<8xi32>
             %1 = arith.addi %0, %c1_32 : i32
