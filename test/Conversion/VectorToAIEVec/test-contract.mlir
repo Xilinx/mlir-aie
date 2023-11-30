@@ -8,8 +8,10 @@
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xbf16>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x4xbf16>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xf32>) -> vector<4x4xf32> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x4xf32>, vector<4x4xf32>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x8xbf16>, vector<8x4xbf16> into vector<4x4xf32>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x4xf32>, vector<4x4xf32>
 // CHECK:        return %[[R]] : vector<4x4xf32>
 func.func @contractbf16bf16f32(%A : vector<4x8xbf16>,
                                %B : vector<8x4xbf16>,
@@ -25,8 +27,10 @@ func.func @contractbf16bf16f32(%A : vector<4x8xbf16>,
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x8xi32>, vector<4x8xi32>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x8xi32>, vector<4x8xi32>
 // CHECK:        return %[[R]] : vector<4x8xi32>
 func.func @contracti16i8i32(%A : vector<4x4xi16>,
                             %B : vector<4x8xi8>,
@@ -43,8 +47,10 @@ func.func @contracti16i8i32(%A : vector<4x4xi16>,
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x4xi64>, vector<4x4xi64>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x4xi64>, vector<4x4xi64>
 // CHECK:        return %[[R]] : vector<4x4xi64>
 func.func @contracti32i16i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
@@ -61,8 +67,10 @@ func.func @contracti32i16i64(%A : vector<4x2xi32>,
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xbf16>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x4xbf16>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xf32>) -> vector<4x4xf32> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x4xf32>, vector<4x4xf32>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x8xbf16>, vector<8x4xbf16> into vector<4x4xf32>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x4xf32>, vector<4x4xf32>
 // CHECK:        return %[[R]] : vector<4x4xf32>
 func.func @contractf32f32f32(%A : vector<4x8xbf16>,
                              %B : vector<8x4xbf16>,
@@ -80,8 +88,10 @@ func.func @contractf32f32f32(%A : vector<4x8xbf16>,
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x8xi32>, vector<4x8xi32>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x8xi32>, vector<4x8xi32>
 // CHECK:        return %[[R]] : vector<4x8xi32>
 func.func @contracti32i32i32(%A : vector<4x4xi16>,
                              %B : vector<4x8xi8>,
@@ -99,8 +109,10 @@ func.func @contracti32i32i32(%A : vector<4x4xi16>,
 // CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK:        %[[R:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x4xi64>, vector<4x4xi64>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
 // CHECK-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x4xi64>, vector<4x4xi64>
 // CHECK:        return %[[R]] : vector<4x4xi64>
 func.func @contracti64i64i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
