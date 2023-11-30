@@ -30,6 +30,101 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+#pragma clang diagnostic error "-Wswitch-enum"
+
+static StringRef getArchIntrinsicString(AIEArch arch) {
+  switch (arch) {
+  case AIEArch::AIE1:
+    return "aie";
+  case AIEArch::AIE2:
+    return "aie2";
+  }
+  llvm::report_fatal_error("unsupported arch");
+}
+
+typedef std::tuple<const char *, std::vector<Type>, std::vector<Type>>
+    IntrinsicDecl;
+typedef std::vector<IntrinsicDecl> IntrinsicDecls;
+
+static auto getAIE1Intrinsics(OpBuilder &builder) {
+  Type int32Type = IntegerType::get(builder.getContext(), 32);
+  Type int128Type = IntegerType::get(builder.getContext(), 128);
+  Type int384Type = IntegerType::get(builder.getContext(), 384);
+  Type floatType = FloatType::getF32(builder.getContext());
+
+  // Note that not all of these are valid for a particular design, or needed.
+  // For right now, we will just accept the noise.
+  IntrinsicDecls functions = {
+      {"debug_i32", {int32Type}, {}},
+      {"llvm.aie.event0", {}, {}},
+      {"llvm.aie.event1", {}, {}},
+      {"llvm.aie.put.ms",
+       {int32Type, int32Type},
+       {}}, //(%channel, %value) -> ()
+      {"llvm.aie.put.wms",
+       {int32Type, int128Type},
+       {}}, //(%channel, %value) -> ()
+      {"llvm.aie.put.fms",
+       {int32Type, floatType},
+       {}},                                          //(%channel, %value) -> ()
+      {"llvm.aie.get.ss", {int32Type}, {int32Type}}, //(%channel, %value) -> ()
+      {"llvm.aie.get.wss",
+       {int32Type},
+       {int128Type}},                                 //(%channel, %value) -> ()
+      {"llvm.aie.get.fss", {int32Type}, {floatType}}, //(%channel, %value) -> ()
+      {"llvm.aie.put.mcd", {int384Type}, {}},
+      {"llvm.aie.get.scd", {}, {int384Type}},
+      {"llvm.aie.lock.acquire.reg",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie.lock.release.reg",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+  };
+  return functions;
+}
+
+static auto getAIE2Intrinsics(OpBuilder &builder) {
+  Type int32Type = IntegerType::get(builder.getContext(), 32);
+  Type int512Type = IntegerType::get(builder.getContext(), 512);
+  IntrinsicDecls functions = {
+      {"debug_i32", {int32Type}, {}},
+      {"llvm.aie2.put.ms", {int32Type, int32Type}, {}}, //(%value, %tlast) -> ()
+      {"llvm.aie2.get.ss", {}, {int32Type, int32Type}}, //() -> (%value, %tlast)
+      {"llvm.aie2.put.mcd", {int512Type}, {}},
+      {"llvm.aie2.get.scd", {}, {int512Type}},
+      {"llvm.aie2.acquire",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2.release",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+  };
+  return functions;
+}
+
+static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
+  auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
+    for (auto &i : functions) {
+      auto [name, argTypes, retTypes] = i;
+      builder
+          .create<func::FuncOp>(
+              builder.getUnknownLoc(), name,
+              FunctionType::get(builder.getContext(), argTypes, retTypes))
+          .setPrivate();
+    }
+  };
+  switch (arch) {
+  case AIEArch::AIE1:
+    registerIntrinsics(getAIE1Intrinsics(builder));
+    return;
+  case AIEArch::AIE2:
+    registerIntrinsics(getAIE2Intrinsics(builder));
+    return;
+  }
+  llvm::report_fatal_error("unsupported arch");
+}
+
 template <typename MyAIEOp> struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
   using OpAdaptor = typename MyAIEOp::Adaptor;
@@ -64,7 +159,8 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
     std::string funcName = "debug_i32";
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
     if (!func)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
@@ -85,8 +181,14 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
   matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
+    auto device = op->getParentOfType<DeviceOp>();
+    const auto &targetModel = device.getTargetModel();
+    std::string funcName;
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      funcName = "llvm.aie.put.";
+    else
+      funcName = "llvm.aie2.put.";
 
-    std::string funcName = "llvm.aie.put.";
     if (op.isWideStream())
       funcName += "wms";
     else if (op.isFloatStream())
@@ -96,10 +198,18 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
 
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMSFunc)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     SmallVector<Value, 2> args;
-    args.push_back(op.getChannel());
-    args.push_back(op.getStreamValue());
+    if (targetModel.getTargetArch() == AIEArch::AIE1) {
+      args.push_back(op.getChannel());
+      args.push_back(op.getStreamValue());
+    } else {
+      args.push_back(op.getStreamValue());
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          rewriter.getI32IntegerAttr(0))); // tlast
+    }
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -117,7 +227,14 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
   LogicalResult
   matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "llvm.aie.get.";
+    auto device = op->getParentOfType<DeviceOp>();
+    const auto &targetModel = device.getTargetModel();
+    std::string funcName;
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      funcName = "llvm.aie.get.";
+    else
+      funcName = "llvm.aie2.get.";
+
     if (op.isWideStream())
       funcName += "wss";
     else if (op.isFloatStream())
@@ -127,12 +244,15 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
 
     auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!getSSFunc)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     SmallVector<Value, 2> args;
-    args.push_back(op.getChannel());
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                    getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
+    // Capture TLAST in AIEv2?
     return success();
   }
 };
@@ -149,11 +269,17 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
   matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-
-    std::string funcName = "llvm.aie.put.mcd";
+    auto device = op->getParentOfType<DeviceOp>();
+    const auto &targetModel = device.getTargetModel();
+    std::string funcName;
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      funcName = "llvm.aie.put.mcd";
+    else
+      funcName = "llvm.aie2.put.mcd";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMCDFunc)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
@@ -173,10 +299,17 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
   LogicalResult
   matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "llvm.aie.get.scd";
+    auto device = op->getParentOfType<DeviceOp>();
+    const auto &targetModel = device.getTargetModel();
+    std::string funcName;
+    if (targetModel.getTargetArch() == AIEArch::AIE1)
+      funcName = "llvm.aie.get.scd";
+    else
+      funcName = "llvm.aie2.get.scd";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!getSCDFunc)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
@@ -216,7 +349,7 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
       if (!useLockFunc)
-        return module.emitOpError("Could not find the intrinsic function!");
+        return useLock.emitOpError("Could not find the intrinsic function!");
 
       SmallVector<Value, 2> args;
       auto lockValue = useLock.getLockValue();
@@ -356,7 +489,8 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
     std::string funcName = "llvm.aie.event" + std::to_string(op.getVal());
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)
-      return module.emitOpError("Could not find the intrinsic function!");
+      return op.emitOpError("Could not find the intrinsic function ")
+             << funcName;
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc,
                                   ValueRange({}));
     rewriter.eraseOp(op);
@@ -376,23 +510,12 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     }
     DeviceOp device = *m.getOps<DeviceOp>().begin();
     const auto &targetModel = device.getTargetModel();
-    const char *triple;
-    switch (targetModel.getTargetArch()) {
-    case AIEArch::AIE1:
-      triple = "aie";
-      break;
-    case AIEArch::AIE2:
-      triple = "aie2";
-      break;
-    default:
-      llvm::report_fatal_error("unsupported arch");
-    }
 
     // Ensure that we don't have an incorrect target triple.  This may override
-    // some bogus target triple in the original mlir.  In reality this should
-    // pick the 'aie' target triple.
+    // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
-               builder.getStringAttr(triple));
+               builder.getStringAttr(
+                   getArchIntrinsicString(targetModel.getTargetArch())));
 
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
 
@@ -401,126 +524,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     // peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look
     // at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
     builder.setInsertionPointToStart(m.getBody());
-
-    SmallVector<Type, 2> callArgTypes;
-
-    Type int32Type = IntegerType::get(builder.getContext(), 32);
-    Type int128Type = IntegerType::get(builder.getContext(), 128);
-    Type int384Type = IntegerType::get(builder.getContext(), 384);
-    Type floatType = FloatType::getF32(builder.getContext());
-
-    // Note that not all of these are valid for a particular design, or needed.
-    // For right now, we will just accept the noise.
-
-    // llvm.func @debug_i32(%val: !llvm.i32) -> ()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "debug_i32",
-            FunctionType::get(builder.getContext(), {int32Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.event0() -> ()
-    builder
-        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event0",
-                              FunctionType::get(builder.getContext(), {}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.event1() -> ()
-    builder
-        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event1",
-                              FunctionType::get(builder.getContext(), {}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) ->
-    // ()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.put.ms",
-            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.put.mws(%channel: !llvm.i1, %stream_val: !llvm.i128)
-    // -> ()
-    builder
-        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
-                              FunctionType::get(builder.getContext(),
-                                                {int32Type, int128Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.put.mfs(%channel: !llvm.i1, %stream_val: !llvm.float)
-    // -> ()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.put.fms",
-            FunctionType::get(builder.getContext(), {int32Type, floatType}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.get.ss(%channel: !llvm.i1) -> !llvm.i32
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.get.ss",
-            FunctionType::get(builder.getContext(), {int32Type}, {int32Type}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.get.wss(%channel: !llvm.i1) -> !llvm.i128
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.get.wss",
-            FunctionType::get(builder.getContext(), {int32Type}, {int128Type}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.get.fss(%channel: !llvm.i1) -> !llvm.float
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.get.fss",
-            FunctionType::get(builder.getContext(), {int32Type}, {floatType}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.put.scd(%scd_val: !llvm.i384) -> ()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.put.mcd",
-            FunctionType::get(builder.getContext(), {int384Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.get.scd() -> !llvm.i384
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.get.scd",
-            FunctionType::get(builder.getContext(), {}, {int384Type}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.lock.acquire.reg(%lock_id: !llvm.i32, %lock_val:
-    // !llvm.i32) ->()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
-            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie.lock.release.reg(%lock_id: !llvm.i32, %lock_val:
-    // !llvm.i32) ->()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
-            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie2.acquire(%lock_id: !llvm.i32, %lock_val:
-    // !llvm.i32) ->()v
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie2.acquire",
-            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
-        .setPrivate();
-
-    // llvm.func @llvm.aie2.release(%lock_id: !llvm.i32, %lock_val:
-    // !llvm.i32) ->()
-    builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie2.release",
-            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
-        .setPrivate();
+    declareAIEIntrinsics(targetModel.getTargetArch(), builder);
 
     IRMapping mapper;
     ConversionTarget target(getContext());
