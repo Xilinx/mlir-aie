@@ -1,8 +1,12 @@
-# (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-  
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# /scratch/gagandee/mlir-air/utils/mlir-aie/reference_designs/horizontal_diffusion/HDIFF_tri_AIE_objectFIFO_ping_pong_scaled/gen_hdiff_cpp.py -*- Python -*-
+#
+# (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+#
+# This file is licensed under the MIT License.
+# SPDX-License-Identifier: MIT
+# 
+
+
 
 import sys
 import re
@@ -44,11 +48,17 @@ def main():
     cols = arraycols
 
     f = open("test_%d.cpp"%(total_b_block), "w+")
-    f.write("""// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-    
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n\n\n""")
+    f.write("""//===- hdiff.cc -------------------------------------------------*- C++ -*-===//  
+//  
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+//
+// This file is licensed under the MIT License.
+// SPDX-License-Identifier: MIT
+// 
+//
+//===----------------------------------------------------------------------===//\n\n\n""")
+
+
     def noc_div_two_channel(block):
         # print(block)
         seg=2
