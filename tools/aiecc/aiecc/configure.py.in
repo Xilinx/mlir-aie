@@ -13,7 +13,6 @@ aie_disable_link = @CONFIG_DISABLE_LINK@
 aie_disable_compile = @CONFIG_DISABLE_COMPILE@
 aie_unified_compile = True
 host_disable_compile = @CONFIG_DISABLE_HOST_COMPILE@
-peano_install_dir = "@CONFIG_PEANO_INSTALL_DIR@"
 host_architecture = "@LLVM_HOST_TRIPLE@"
 
 def install_path():

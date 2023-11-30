@@ -16,15 +16,15 @@
 // RUN: %PYTHON aiecc.py --no-unified --no-compile --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%host_runtime_lib% %host_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
 
 // Note that llc determines the architecture from the llvm IR.
-// XCHESSCC-NOT: {{^llc}}
+// XCHESSCC-NOT: {{^[^ ]*llc}}
 // XCHESSCC: xchesscc_wrapper aie2
-// XCHESSCC-NOT: {{^llc}}
+// XCHESSCC-NOT: {{^[^ ]*llc}}
 // PEANO-NOT: xchesscc_wrapper
-// PEANO: {{^llc}}
+// PEANO: {{^[^ ]*llc}}
 // PEANO-SAME: --march=aie2
 // PEANO-NOT: xchesscc_wrapper
 // NOCOMPILE-NOT: xchesscc_wrapper
-// NOCOMPILE-NOT: {{^llc}}
+// NOCOMPILE-NOT: {{^[^ ]*llc}}
 
 module {
   AIE.device(xcve2302) {
