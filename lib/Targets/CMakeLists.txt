@@ -7,7 +7,7 @@
 
 add_subdirectory(AIEVecToCpp)
 
-set(LLVM_OPTIONAL_SOURCES AIETargetCDODirect.cpp)
+set(LLVM_OPTIONAL_SOURCES AIETargetCDODirect.cpp AIETargetAirbin.cpp)
 
 set(_sources
   AIETargets.cpp
@@ -18,7 +18,6 @@ set(_sources
   AIETargetXAIEV2.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
-  AIETargetAirbin.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp
@@ -26,6 +25,10 @@ set(_sources
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   list(APPEND _sources AIETargetCDODirect.cpp)
+endif()
+
+if(AIE_ENABLE_AIRBIN)
+  list(APPEND _sources AIETargetAirbin.cpp)
 endif()
 
 add_mlir_library(AIETargets
@@ -61,4 +64,9 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   target_include_directories(AIETargets PUBLIC ${VITIS_AIETOOLS_DIR}/include)
   add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
   target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()
+
+if(AIE_ENABLE_AIRBIN)
+  target_link_libraries(AIETargets PRIVATE elf)
+  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_AIRBIN)
 endif()

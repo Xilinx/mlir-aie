@@ -175,6 +175,10 @@ cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
   "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
 
+find_library(ELF_LIB elf)
+cmake_dependent_option(AIE_ENABLE_AIRBIN
+        "Enables emitting AIRBIN ELF binaries." ON "ELF_LIB" OFF)
+
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
 
