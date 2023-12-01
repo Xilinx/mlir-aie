@@ -84,6 +84,7 @@ public:
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
          mlir::MemRefType elementType);
 
+  static constexpr llvm::StringLiteral name = "objectfifo";
   /// Returns the element type of this ObjectFifoType.
   mlir::MemRefType getElementType();
 };
@@ -108,6 +109,7 @@ public:
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
          mlir::MemRefType elementType);
 
+  static constexpr llvm::StringLiteral name = "objectfifosubview";
   /// Returns the element type of this SubviewType.
   mlir::MemRefType getElementType();
 };
