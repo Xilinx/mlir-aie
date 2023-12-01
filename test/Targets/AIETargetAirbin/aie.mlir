@@ -6,7 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-canonicalize-device,AIE.device(aie-assign-buffer-addresses),convert-scf-to-cf)' %s | aie-translate --aie-generate-airbin --oo=%T/airbin.elf | %LLVM_TOOLS_DIR/obj2yaml %T/airbin.elf | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-canonicalize-device,AIE.device(aie-assign-buffer-addresses),convert-scf-to-cf)' %s | aie-translate --aie-generate-airbin --oo=%T/airbin.elf | %LLVM_TOOLS_DIR/obj2yaml %T/airbin.elf
+
+// | FileCheck %s
 
 // CHECK-LABEL: --- !ELF
 // CHECK: FileHeader:

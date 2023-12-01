@@ -9,9 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <ext/stdio_filebuf.h>
@@ -34,12 +37,6 @@
 #define UNREACHABLE assert(false)
 
 #define DEBUG_AIRBIN
-
-#ifdef DEBUG_AIRBIN
-#define DBG_PRINTF printf
-#else
-#define DBG_PRINTF(...)
-#endif // DEBUG_AIRBIN
 
 #define EM_AMDAIR 225 /* AMD AIR */
 
@@ -424,11 +421,17 @@ static uint32_t read32(Address addr) {
         Set every address in the range to 0
 */
 void TileAddress::clearRange(uint32_t start, uint32_t length) {
-  assert(start % 4 == 0);
-  assert(length % 4 == 0);
+  if (start % 4 != 0)
+    llvm::report_fatal_error(llvm::Twine("start address ") +
+                             std::to_string(start) +
+                             " must word 4 byte aligned");
+  if (start % 4 != 0)
+    llvm::report_fatal_error(llvm::Twine("length ") + std::to_string(start) +
+                             " must be a multiple of 4 bytes");
 
-  DBG_PRINTF("%s <%u,%u> 0x%x - 0x%x (len: %u)\n", __func__, column, row, start,
-             start + length, length);
+  LLVM_DEBUG(llvm::dbgs() << llvm::format("<%u,%u> 0x%x - 0x%x (len: %u)\n",
+                                          column, row, start, start + length,
+                                          length));
   // TODO(max): why don't all the hex digits agree? packing?
 #ifdef DEBUG_AIRBIN
   for (auto off = start; off < start + length; off += 4u) {
@@ -446,26 +449,23 @@ void TileAddress::clearRange(uint32_t start, uint32_t length) {
    output in the airbin ELF
 */
 static bool loadElf(TileAddress tile, const std::string &filename) {
-//  LLVM_DEBUG(llvm::dbgs() << "Reading ELF file " << filename << " for tile "
-//                          << tile << '\n');
+  LLVM_DEBUG(llvm::dbgs() << "Reading ELF file " << filename << " for tile "
+                          << tile << '\n');
 
   int elf_fd = open(filename.c_str(), O_RDONLY);
-  if (elf_fd < 0) {
-    printf("Can't open %s\n", filename.c_str());
-    return false;
-  }
+  if (elf_fd < 0)
+    llvm::report_fatal_error(llvm::Twine("Can't open elf file ") + filename);
 
   elf_version(EV_CURRENT);
-  Elf *inelf = elf_begin(elf_fd, ELF_C_READ, NULL);
+  Elf *inelf = elf_begin(elf_fd, ELF_C_READ, nullptr);
 
   // check the characteristics
   GElf_Ehdr *ehdr;
   GElf_Ehdr ehdr_mem;
   ehdr = gelf_getehdr(inelf, &ehdr_mem);
-  if (ehdr == NULL) {
-    printf("cannot get ELF header: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!ehdr)
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot get ELF header: %s\n", elf_errmsg(-1)).str()));
 
   // Read data as 32-bit little endian
   assert(ehdr->e_ident[EI_CLASS] == ELFCLASS32);
@@ -473,14 +473,19 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
 
   size_t phnum;
   if (elf_getphdrnum(inelf, &phnum) != 0)
-    printf("cannot get program header count: %s", elf_errmsg(-1));
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot get program header count: %s", elf_errmsg(-1))
+            .str()));
 
   // iterate through all program headers
   for (unsigned int ndx = 0; ndx < phnum; ndx++) {
     GElf_Phdr phdr_mem;
     GElf_Phdr *phdr = gelf_getphdr(inelf, ndx, &phdr_mem);
-    if (phdr == NULL)
-      printf("cannot get program header entry %d: %s", ndx, elf_errmsg(-1));
+    if (!phdr)
+      llvm::report_fatal_error(
+          llvm::Twine(llvm::formatv("cannot get program header entry %d: %s",
+                                    elf_errmsg(-1))
+                          .str()));
 
     // for each loadable program header
     if (phdr->p_type != PT_LOAD)
@@ -493,8 +498,9 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
     else
       dest = ME_DATA_MEM_BASE + (phdr->p_vaddr & (DATA_MEM_SIZE - 1));
 
-    printf("ELF flags=0x%x vaddr=0x%lx dest=0x%x\r\n", phdr->p_flags,
-           phdr->p_vaddr, dest);
+    LLVM_DEBUG(llvm::dbgs()
+               << llvm::format("ELF flags=0x%x vaddr=0x%lx dest=0x%x\r\n",
+                               phdr->p_flags, phdr->p_vaddr, dest));
     // read data one word at a time and write it to the output list
     // TODO since we know these are data and not registers, we could likely
     // bypass the output list and write a section directly into the AIRBIN
@@ -515,8 +521,6 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
 
   // close the file
   close(elf_fd);
-
-  return true;
 }
 
 /*
@@ -544,7 +548,6 @@ static void config_shim_tile(TileOp &tileOp) {
   Generate the config for an ME tile
 */
 static void config_ME_tile(TileOp tileOp) {
-  printf("%s\n", __func__);
   TileAddress tileAddress{tileOp};
   // Reset configuration
 
@@ -567,34 +570,23 @@ static void config_ME_tile(TileOp tileOp) {
 
   // read the AIE executable and copy the loadable parts
   if (auto coreOp = tileOp.getCoreOp()) {
-    std::string fileName;
-    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
-      fileName = std::string(fileAttr.getValue());
-    } else {
-      std::stringstream ss;
-      ss << "core_" << tileOp.colIndex() << '_' << tileOp.rowIndex() << ".elf";
-      fileName = ss.str();
-    }
-    if (!loadElf(tileAddress, fileName)) {
-      llvm::outs() << "Error loading " << fileName;
-    }
+    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
+      loadElf(tileAddress, std::string(fileAttr.getValue()));
+    else
+      llvm::report_fatal_error(llvm::Twine("no elf for core ") +
+                               to_string(coreOp.getTileOp().getTileID()));
   }
 }
 
 // Write the initial configuration for every tile specified in the MLIR.
 static void configure_cores(DeviceOp &targetOp) {
-  printf("%s\n", __func__);
-
   // set up each tile
   for (auto tileOp : targetOp.getOps<TileOp>()) {
-
-    printf("CC: tile=<%u,%u>\n", static_cast<uint8_t>(tileOp.colIndex()),
-           static_cast<uint8_t>(tileOp.rowIndex()));
-    if (tileOp.isShimTile()) {
+    LLVM_DEBUG(llvm::dbgs() << "CC: tile=" << tileOp.getTileID());
+    if (tileOp.isShimTile())
       config_shim_tile(tileOp);
-    } else {
+    else
       config_ME_tile(tileOp);
-    }
   }
 }
 
@@ -652,8 +644,7 @@ static void configure_dmas(DeviceOp &targetOp) {
 
   for (auto memOp : targetOp.getOps<MemOp>()) {
     TileAddress tile{memOp};
-    printf("DMA: tile=<%u,%u>\n", static_cast<uint8_t>(memOp.colIndex()),
-           static_cast<uint8_t>(memOp.rowIndex()));
+    LLVM_DEBUG(llvm::dbgs() << "DMA: tile=" << memOp.getTile());
     // Clear the CTRL and QUEUE registers for the DMA channels.
     for (auto chNum = 0u; chNum < DMA_S2MM_CHANNEL_COUNT; ++chNum) {
       write32({tile, reg_dma_s2mm_ctrl(chNum)},
@@ -898,7 +889,6 @@ static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
 }
 
 static void configure_switchboxes(DeviceOp &targetOp) {
-  printf("%s\n", __func__);
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     Region &r = switchboxOp.getConnections();
     Block &b = r.front();
@@ -1160,15 +1150,16 @@ static uint8_t sec_addr2index(uint64_t in) {
 */
 static void group_sections(std::vector<Section *> &sections) {
   uint64_t last_addr = 0;
-  Section *section = NULL;
+  Section *section = nullptr;
 
   for (auto write : mem_writes) {
     if (write.first != last_addr + 4) {
       if (section)
         sections.push_back(section);
       section = new Section(write.first);
-      printf("Starting new section @ 0x%lx (last=0x%lx)\n", write.first,
-             last_addr);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Starting new section @ "
+                 << llvm::format("0x%lx (last=0x%lx)", write.first, last_addr));
     }
     section->add_data(write.second);
     last_addr = write.first;
@@ -1185,11 +1176,6 @@ static size_t add_string(Elf_Scn *scn, const char *str) {
   size_t size = strlen(str) + 1;
 
   Elf_Data *data = elf_newdata(scn);
-  if (data == NULL) {
-    printf("cannot create data SHSTRTAB section: %s\n", elf_errmsg(-1));
-    return -1;
-  }
-
   data->d_buf = (void *)str;
   data->d_type = ELF_T_BYTE;
   data->d_size = size;
@@ -1203,22 +1189,14 @@ static size_t add_string(Elf_Scn *scn, const char *str) {
 Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
   size_t size = section->get_length();
 #ifdef DEBUG_AIRBIN
-  uint32_t *buf = (uint32_t *)malloc(size);
+  auto *buf = (uint32_t *)malloc(size);
 #else
-  uint32_t *buf = (uint32_t *)malloc(1);
+  auto *buf = (uint32_t *)malloc(1);
   *buf = size;
 #endif
-  if (!buf)
-    return NULL;
 
   // create a data object for the section
   Elf_Data *data = elf_newdata(scn);
-  if (!data) {
-    printf("cannot add data to section: %s\n", elf_errmsg(-1));
-    free(data);
-    return NULL;
-  }
-
   data->d_buf = buf;
   data->d_type = ELF_T_BYTE;
   data->d_size = size;
@@ -1233,7 +1211,7 @@ Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
 }
 
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
-                                         std::string outputFilename) {
+                                         const std::string &outputFilename) {
   int tmp_elf_fd;
   Elf *outelf;
   GElf_Ehdr ehdr_mem;
@@ -1252,7 +1230,8 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   DenseMap<Operation *, SwitchboxOp> switchboxes;
 
   if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("no operations found");
+    LLVM_DEBUG(llvm::dbgs() << "no device ops found");
+    return success();
   }
 
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
@@ -1263,24 +1242,23 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
 
   group_sections(sections);
 
-  printf("mem_writes: %lu in %lu sections\n", mem_writes.size(),
-         sections.size());
+  LLVM_DEBUG(llvm::dbgs() << llvm::format("mem_writes: %lu in %lu sections\n",
+                                          mem_writes.size(), sections.size()));
 
   elf_version(EV_CURRENT);
   tmp_elf_fd =
       open(outputFilename.c_str(), O_RDWR | O_CREAT | O_TRUNC, DEFFILEMODE);
-  outelf = elf_begin(tmp_elf_fd, ELF_C_WRITE, NULL);
+  outelf = elf_begin(tmp_elf_fd, ELF_C_WRITE, nullptr);
 
-  if (gelf_newehdr(outelf, ELFCLASS64) == 0) {
-    printf("Error creating ELF64 header: %s\n", elf_errmsg(-1));
-    return success();
-  }
+  if (!gelf_newehdr(outelf, ELFCLASS64))
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("Error creating ELF64 header: %s\n", elf_errmsg(-1))
+            .str()));
 
   ehdr = gelf_getehdr(outelf, &ehdr_mem);
-  if (ehdr == NULL) {
-    printf("cannot get ELF header: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!ehdr)
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot get ELF header: %s\n", elf_errmsg(-1)).str()));
 
   // Initialize header.
   ehdr->e_ident[EI_DATA] = ELFDATA2LSB;
@@ -1288,26 +1266,27 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   ehdr->e_type = ET_NONE;
   ehdr->e_machine = EM_AMDAIR;
   ehdr->e_version = EV_CURRENT;
-  if (gelf_update_ehdr(outelf, ehdr) == 0) {
-    printf("cannot update ELF header: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (gelf_update_ehdr(outelf, ehdr) == 0)
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot update ELF header: %s\n", elf_errmsg(-1)).str()));
 
   // Create new section for the 'section header string table'
   Elf_Scn *shstrtab_scn = elf_newscn(outelf);
-  if (shstrtab_scn == NULL) {
-    printf("cannot create new shstrtab section: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!shstrtab_scn)
+    llvm::report_fatal_error(
+        llvm::Twine(llvm::formatv("cannot create new shstrtab section: %s\n",
+                                  elf_errmsg(-1))
+                        .str()));
 
   // the first entry in the string table must be a NULL string
   add_string(shstrtab_scn, empty_str);
 
   shdr = gelf_getshdr(shstrtab_scn, &shdr_mem);
-  if (shdr == NULL) {
-    printf("cannot get header for sh_strings section: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!shdr)
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot get header for sh_strings section: %s\n",
+                      elf_errmsg(-1))
+            .str()));
 
   shdr->sh_type = SHT_STRTAB;
   shdr->sh_flags = 0;
@@ -1328,33 +1307,33 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   int ndx = elf_ndxscn(shstrtab_scn);
   ehdr->e_shstrndx = ndx;
 
-  if (gelf_update_ehdr(outelf, ehdr) == 0) {
-    printf("cannot update ELF header: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!gelf_update_ehdr(outelf, ehdr))
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot update ELF header: %s\n", elf_errmsg(-1)).str()));
 
   // Finished new shstrtab section, update the header.
-  if (gelf_update_shdr(shstrtab_scn, shdr) == 0) {
-    printf("cannot update new shstrtab section header: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (!gelf_update_shdr(shstrtab_scn, shdr))
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("cannot update new shstrtab section header: %s\n",
+                      elf_errmsg(-1))
+            .str()));
 
   // output the rest of the sections
   for (const Section *section : sections) {
     uint64_t addr = section->get_addr();
     Elf_Scn *scn = elf_newscn(outelf);
-    if (!scn) {
-      printf("cannot create new %s section: %s\n",
-             sec_name_str[sec_addr2index(addr)], elf_errmsg(-1));
-      break;
-    }
+    if (!scn)
+      llvm::report_fatal_error(llvm::Twine(
+          llvm::formatv("cannot create new %s section: %s\n",
+                        sec_name_str[sec_addr2index(addr)], elf_errmsg(-1))
+              .str()));
 
     shdr = gelf_getshdr(scn, &shdr_mem);
-    if (!shdr) {
-      printf("cannot get header for %s section: %s\n",
-             sec_name_str[sec_addr2index(addr)], elf_errmsg(-1));
-      break;
-    }
+    if (!shdr)
+      llvm::report_fatal_error(llvm::Twine(
+          llvm::formatv("cannot get header for %s section: %s\n",
+                        sec_name_str[sec_addr2index(addr)], elf_errmsg(-1))
+              .str()));
 
     Elf_Data *data = section_add_data(scn, section);
 
@@ -1368,17 +1347,16 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
     shdr->sh_size = data->d_size;
     shdr->sh_name = sec_name_offset[sec_addr2index(addr)];
 
-    if (!gelf_update_shdr(scn, shdr)) {
-      printf("cannot update section header: %s\n", elf_errmsg(-1));
-      break;
-    }
+    if (!gelf_update_shdr(scn, shdr))
+      llvm::report_fatal_error(llvm::Twine(
+          llvm::formatv("cannot update section header: %s\n", elf_errmsg(-1))
+              .str()));
   }
 
   // Write everything to disk.
-  if (elf_update(outelf, ELF_C_WRITE) < 0) {
-    printf("failure in elf_update: %s\n", elf_errmsg(-1));
-    exit(1);
-  }
+  if (elf_update(outelf, ELF_C_WRITE) < 0)
+    llvm::report_fatal_error(llvm::Twine(
+        llvm::formatv("failure in elf_update: %s\n", elf_errmsg(-1)).str()));
 
   // close the elf object
   elf_end(outelf);
