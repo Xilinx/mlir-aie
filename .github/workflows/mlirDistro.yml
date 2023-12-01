@@ -36,7 +36,7 @@ on:
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-  pull_request:
+#  pull_request:
 
   schedule:
     # At minute 0 past every 6th hour. (see https://crontab.guru)
