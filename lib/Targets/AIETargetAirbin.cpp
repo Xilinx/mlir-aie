@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -15,16 +18,12 @@
 #include <fcntl.h> // open
 #include <gelf.h>
 #include <iostream>
+#include <libelf.h>
 #include <sstream>
-#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h> // read
 #include <utility>  // pair
 #include <vector>
-
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "libelf.h"
 
 // Marks a particular code path as unfinished.
 #define TODO assert(false)
@@ -38,6 +37,8 @@
 #else
 #define DBG_PRINTF(...)
 #endif // DEBUG_AIRBIN
+
+#define EM_AMDAIR 225 /* AMD AIR */
 
 using namespace mlir;
 
@@ -1218,7 +1219,7 @@ Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
 }
 
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output) {
+                                         std::string outputFilename) {
   int tmp_elf_fd;
   Elf *outelf;
   GElf_Ehdr ehdr_mem;
@@ -1228,8 +1229,6 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   char empty_str[] = "";
   char strtab_name[] = ".shstrtab";
   std::vector<Section *> sections;
-
-  assert(!output.is_displayed());
 
   DenseMap<std::pair<int, int>, Operation *> tiles;
   DenseMap<Operation *, CoreOp> cores;
@@ -1254,7 +1253,8 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
          sections.size());
 
   elf_version(EV_CURRENT);
-  tmp_elf_fd = open("airbin.elf", O_RDWR | O_CREAT | O_TRUNC, DEFFILEMODE);
+  tmp_elf_fd =
+      open(outputFilename.c_str(), O_RDWR | O_CREAT | O_TRUNC, DEFFILEMODE);
   outelf = elf_begin(tmp_elf_fd, ELF_C_WRITE, NULL);
 
   if (gelf_newehdr(outelf, ELFCLASS64) == 0) {
@@ -1370,19 +1370,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   elf_end(outelf);
 
   // copy the file to the compiler's output stream
-  /*
-          lseek(tmp_elf_fd, 0, SEEK_SET);
-          __gnu_cxx::stdio_filebuf<char> filebuf(tmp_elf_fd, std::ios::in);
-          std::istream is(&filebuf);
-          output << is.rdbuf();
-  */
-
   close(tmp_elf_fd);
-
-  std::ifstream is;
-  is.open("airbin.elf", std::ios::in | std::ios::binary);
-  output << is.rdbuf();
-  is.close();
 
   return success();
 }

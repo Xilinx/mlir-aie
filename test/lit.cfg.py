@@ -37,6 +37,7 @@ config.suffixes = [".mlir", ".py"]
 config.test_source_root = os.path.dirname(__file__)
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
+config.substitutions.append(("%AIE_SRC_ROOT", config.aie_src_root))
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))

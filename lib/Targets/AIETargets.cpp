@@ -114,6 +114,12 @@ void registerAIETranslations() {
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
 
+#ifdef AIE_ENABLE_AIRBIN
+  static llvm::cl::opt<std::string> outputFilename(
+      "oo", llvm::cl::desc("Output airbin file path (including filename)"),
+      llvm::cl::value_desc("airbin-filepath"), llvm::cl::init("airbin.elf"));
+#endif
+
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
@@ -257,21 +263,14 @@ void registerAIETranslations() {
         registry.insert<xilinx::ADF::ADFDialect>();
         registerDialects(registry);
       });
+#ifdef AIE_ENABLE_AIRBIN
   TranslateFromMLIRRegistration registrationAirbin(
       "aie-generate-airbin", "Generate configuration binary blob",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToAirbin(module, output);
+      [](ModuleOp module, raw_ostream &) {
+        return AIETranslateToAirbin(module, outputFilename);
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
+#endif
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
