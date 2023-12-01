@@ -114,6 +114,7 @@ jobs:
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_AIRBIN=ON \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
@@ -149,6 +150,7 @@ jobs:
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_AIRBIN=ON \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \

@@ -116,8 +116,15 @@ void registerAIETranslations() {
 
 #ifdef AIE_ENABLE_AIRBIN
   static llvm::cl::opt<std::string> outputFilename(
-      "oo", llvm::cl::desc("Output airbin file path (including filename)"),
-      llvm::cl::value_desc("airbin-filepath"), llvm::cl::init("airbin.elf"));
+      "airbin-output-filepath",
+      llvm::cl::desc("Output airbin file path (including filename)"),
+      llvm::cl::value_desc("airbin-output-filepath"),
+      llvm::cl::init("airbin.elf"));
+
+  static llvm::cl::opt<std::string> coreFilesDir(
+      "airbin-aux-core-dir-path",
+      llvm::cl::desc("Auxiliary core elf files dir path"),
+      llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
 #endif
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
