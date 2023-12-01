@@ -158,8 +158,6 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
         AIEObjectFifoTypeStorage(key);
   }
 
-  static constexpr llvm::StringLiteral name = "objectfifo";
-
   MemRefType elementType;
 };
 } // namespace detail
@@ -209,8 +207,6 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
     return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
         AIEObjectFifoSubviewTypeStorage(key);
   }
-
-  static constexpr llvm::StringLiteral name = "objectfifosubview";
 
   MemRefType elementType;
 };
