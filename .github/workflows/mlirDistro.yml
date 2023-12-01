@@ -306,7 +306,7 @@ jobs:
     # done
 
     - name: Upload wheels
-      if: github.event_name == 'workflow_dispatch' && (success() || failure())
+#      if: github.event_name == 'workflow_dispatch' && (success() || failure())
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
@@ -314,7 +314,7 @@ jobs:
 
   upload_distro_wheels:
 
-    if: github.event_name == 'workflow_dispatch'
+    # if: github.event_name == 'workflow_dispatch'
 
     needs: build
 
