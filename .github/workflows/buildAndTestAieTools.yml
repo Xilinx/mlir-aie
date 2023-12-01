@@ -54,11 +54,11 @@ jobs:
             
             cd /
             git clone --recursive https://github.com/Xilinx/mlir-aie.git
-            pip -q download mlir==18.0.0.2023112901+4eb42119 -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
+            pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
             
             cd /mlir-aie
-            # wget -q https://gist.githubusercontent.com/makslevental/5437d26f74cb5ab4a65317b0c5b8158c/raw/fec953b6af0fab5ea949ada24dd6892c9679bf11/toolchain.diff && git apply toolchain.diff
-            cd cmake/modulesXilinx && wget https://patch-diff.githubusercontent.com/raw/Xilinx/cmakeModules/pull/17.diff && git apply 17.diff
+            
+            cd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake
             
             mkdir -p /mlir-aie/build
             cd /mlir-aie/build
@@ -78,5 +78,6 @@ jobs:
               -DCMAKE_INSTALL_PREFIX=install 
             
             ninja
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j1/g' ../test/CMakeLists.txt
-            LIT_FILTER=unit_tests PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
+            
+            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j2/g' ../test/CMakeLists.txt
+            LIT_FILTER="dialect|Conversion|Targets|Integration|python" PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
