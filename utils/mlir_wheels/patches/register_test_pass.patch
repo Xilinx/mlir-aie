@@ -1,0 +1,796 @@
+diff --git a/llvm/cmake/modules/CrossCompile.cmake b/llvm/cmake/modules/CrossCompile.cmake
+index 6af47b51d4c6..babe609eb740 100644
+--- a/llvm/cmake/modules/CrossCompile.cmake
++++ b/llvm/cmake/modules/CrossCompile.cmake
+@@ -86,6 +86,7 @@ function(llvm_create_cross_target project_name target_name toolchain buildtype)
+         -DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN="${LLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN}"
+         -DLLVM_INCLUDE_BENCHMARKS=OFF
+         -DLLVM_INCLUDE_TESTS=OFF
++        -DMLIR_INCLUDE_TESTS=ON
+         ${build_type_flags} ${linker_flag} ${external_clang_dir}
+         ${ARGN}
+     WORKING_DIRECTORY ${${project_name}_${target_name}_BUILD}
+diff --git a/mlir/CMakeLists.txt b/mlir/CMakeLists.txt
+index 16ff95008973..a8a75aa747a6 100644
+--- a/mlir/CMakeLists.txt
++++ b/mlir/CMakeLists.txt
+@@ -200,7 +200,8 @@ if (MLIR_INCLUDE_TESTS)
+   else()
+     message(WARNING "gtest not found, unittests will not be available")
+   endif()
+-  add_subdirectory(test)
++  add_subdirectory(test/lib)
++  add_subdirectory(test/python)
+ endif()
+ # Tools needs to come late to ensure that MLIR_ALL_LIBS is populated.
+ # Generally things after this point may depend on MLIR_ALL_LIBS or libMLIR.so.
+diff --git a/mlir/include/mlir-c/RegisterEverything.h b/mlir/include/mlir-c/RegisterEverything.h
+index ea2ea8644972..8f204ce44479 100644
+--- a/mlir/include/mlir-c/RegisterEverything.h
++++ b/mlir/include/mlir-c/RegisterEverything.h
+@@ -31,6 +31,8 @@ MLIR_CAPI_EXPORTED void mlirRegisterAllLLVMTranslations(MlirContext context);
+ /// Register all compiler passes of MLIR.
+ MLIR_CAPI_EXPORTED void mlirRegisterAllPasses(void);
+ 
++MLIR_CAPI_EXPORTED void registerTestPasses(void);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/mlir/lib/CAPI/RegisterEverything/CMakeLists.txt b/mlir/lib/CAPI/RegisterEverything/CMakeLists.txt
+index 8b9a39558a03..03d39bd8c6cb 100644
+--- a/mlir/lib/CAPI/RegisterEverything/CMakeLists.txt
++++ b/mlir/lib/CAPI/RegisterEverything/CMakeLists.txt
+@@ -3,6 +3,43 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+ get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
+ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+ get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
++
++set(test_libs
++  ${cuda_test_libs}
++  MLIRTestFuncToLLVM
++  MLIRAffineTransformsTestPasses
++  MLIRArithTestPasses
++  MLIRBufferizationTestPasses
++  MLIRControlFlowTestPasses
++  MLIRDLTITestPasses
++  MLIRFuncTestPasses
++  MLIRGPUTestPasses
++  MLIRLinalgTestPasses
++  MLIRLoopLikeInterfaceTestPasses
++  MLIRMathTestPasses
++  MLIRMemRefTestPasses
++  MLIRNVGPUTestPasses
++  MLIRSCFTestPasses
++  MLIRShapeTestPasses
++  MLIRSPIRVTestPasses
++  MLIRTensorTestPasses
++  MLIRTestAnalysis
++  MLIRTestDynDialect
++  MLIRTestIR
++  MLIRTestOneToNTypeConversionPass
++  MLIRTestPass
++  MLIRTestPDLL
++  MLIRTestReducer
++  MLIRTestRewrite
++  MLIRTestTransformDialect
++  MLIRTestTransforms
++  MLIRTilingInterfaceTestPasses
++  MLIRVectorTestPasses
++  MLIRTestVectorToSPIRV
++  MLIRLLVMTestPasses
++  MLIRTosaTestPasses
++)
++
+ add_mlir_upstream_c_api_library(MLIRCAPIRegisterEverything
+   RegisterEverything.cpp
+ 
+@@ -11,6 +48,7 @@ add_mlir_upstream_c_api_library(MLIRCAPIRegisterEverything
+   ${translation_libs}
+   ${conversion_libs}
+   ${extension_libs}
++  ${test_libs}
+ 
+   MLIRBuiltinToLLVMIRTranslation
+   MLIRCAPIIR
+diff --git a/mlir/lib/CAPI/RegisterEverything/RegisterEverything.cpp b/mlir/lib/CAPI/RegisterEverything/RegisterEverything.cpp
+index c1c4a418b255..5595bb075bab 100644
+--- a/mlir/lib/CAPI/RegisterEverything/RegisterEverything.cpp
++++ b/mlir/lib/CAPI/RegisterEverything/RegisterEverything.cpp
+@@ -16,10 +16,245 @@
+ #include "mlir/Target/LLVMIR/Dialect/All.h"
+ #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+ #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
++#include "mlir/IR/DialectRegistry.h"
++
++using namespace mlir;
++
++// Defined in the test directory, no public header.
++namespace mlir {
++void registerConvertToTargetEnvPass();
++void registerCloneTestPasses();
++void registerLazyLoadingTestPasses();
++void registerPassManagerTestPass();
++void registerPrintSpirvAvailabilityPass();
++void registerLoopLikeInterfaceTestPasses();
++void registerShapeFunctionTestPasses();
++void registerSideEffectTestPasses();
++void registerSliceAnalysisTestPass();
++void registerSymbolTestPasses();
++void registerRegionTestPasses();
++void registerTestAffineDataCopyPass();
++void registerTestAffineReifyValueBoundsPass();
++void registerTestDecomposeAffineOpPass();
++void registerTestAffineLoopUnswitchingPass();
++void registerTestAllReduceLoweringPass();
++void registerTestFunc();
++void registerTestGpuMemoryPromotionPass();
++void registerTestLoopPermutationPass();
++void registerTestMatchers();
++void registerTestOperationEqualPass();
++void registerTestPrintDefUsePass();
++void registerTestPrintInvalidPass();
++void registerTestPrintNestingPass();
++void registerTestPreserveUseListOrders();
++void registerTestReducer();
++void registerTestSpirvEntryPointABIPass();
++void registerTestSpirvModuleCombinerPass();
++void registerTestTraitsPass();
++void registerTosaTestQuantUtilAPIPass();
++void registerVectorizerTestPass();
++
++namespace test {
++void registerCommutativityUtils();
++void registerConvertCallOpPass();
++void registerInliner();
++void registerMemRefBoundCheck();
++void registerPatternsTestPass();
++void registerSimpleParametricTilingPass();
++void registerTestAffineLoopParametricTilingPass();
++void registerTestArithEmulateWideIntPass();
++void registerTestAliasAnalysisPass();
++void registerTestBuiltinAttributeInterfaces();
++void registerTestBuiltinDistinctAttributes();
++void registerTestCallGraphPass();
++void registerTestCfAssertPass();
++void registerTestConstantFold();
++void registerTestControlFlowSink();
++void registerTestGpuSerializeToHsacoPass();
++void registerTestDataLayoutPropagation();
++void registerTestDataLayoutQuery();
++void registerTestDeadCodeAnalysisPass();
++void registerTestDecomposeCallGraphTypes();
++void registerTestDiagnosticsPass();
++void registerTestDominancePass();
++void registerTestDynamicPipelinePass();
++void registerTestEmulateNarrowTypePass();
++void registerTestExpandMathPass();
++void registerTestFooAnalysisPass();
++void registerTestComposeSubView();
++void registerTestMultiBuffering();
++void registerTestIntRangeInference();
++void registerTestIRVisitorsPass();
++void registerTestGenericIRVisitorsPass();
++void registerTestGenericIRVisitorsInterruptPass();
++void registerTestInterfaces();
++void registerTestLastModifiedPass();
++void registerTestLinalgDecomposeOps();
++void registerTestLinalgDropUnitDims();
++void registerTestLinalgElementwiseFusion();
++void registerTestLinalgGreedyFusion();
++void registerTestLinalgTransforms();
++void registerTestLivenessAnalysisPass();
++void registerTestLivenessPass();
++void registerTestLoopFusion();
++void registerTestCFGLoopInfoPass();
++void registerTestLoopMappingPass();
++void registerTestLoopUnrollingPass();
++void registerTestLowerToLLVM();
++void registerTestLowerToNVVM();
++void registerTestMakeIsolatedFromAbovePass();
++void registerTestMatchReductionPass();
++void registerTestMathAlgebraicSimplificationPass();
++void registerTestMathPolynomialApproximationPass();
++void registerTestMemRefDependenceCheck();
++void registerTestMemRefStrideCalculation();
++void registerTestNextAccessPass();
++void registerTestOneToNTypeConversionPass();
++void registerTestOpaqueLoc();
++void registerTestPadFusion();
++void registerTestPDLByteCodePass();
++void registerTestPDLLPasses();
++void registerTestPreparationPassWithAllowedMemrefResults();
++void registerTestRecursiveTypesPass();
++void registerTestSCFUtilsPass();
++void registerTestSCFWhileOpBuilderPass();
++void registerTestShapeMappingPass();
++void registerTestSliceAnalysisPass();
++void registerTestTensorCopyInsertionPass();
++void registerTestTensorTransforms();
++void registerTestTilingInterface();
++void registerTestTopologicalSortAnalysisPass();
++void registerTestTransformDialectEraseSchedulePass();
++void registerTestTransformDialectInterpreterPass();
++void registerTestWrittenToPass();
++void registerTestVectorLowerings();
++void registerTestVectorReductionToSPIRVDotProd();
++void registerTestNvgpuLowerings();
++} // namespace test
++} // namespace mlir
++
++namespace test {
++void registerTestTransformDialectExtension(DialectRegistry &);
++void registerTestDynDialect(DialectRegistry &);
++} // namespace test
++
++void registerTestPasses() {
++  registerCloneTestPasses();
++  registerConvertToTargetEnvPass();
++  registerPassManagerTestPass();
++  registerPrintSpirvAvailabilityPass();
++  registerLazyLoadingTestPasses();
++  registerLoopLikeInterfaceTestPasses();
++  registerShapeFunctionTestPasses();
++  registerSideEffectTestPasses();
++  registerSliceAnalysisTestPass();
++  registerSymbolTestPasses();
++  registerRegionTestPasses();
++  registerTestAffineDataCopyPass();
++  registerTestAffineReifyValueBoundsPass();
++  registerTestDecomposeAffineOpPass();
++  registerTestAffineLoopUnswitchingPass();
++  registerTestAllReduceLoweringPass();
++  registerTestFunc();
++  registerTestGpuMemoryPromotionPass();
++  registerTestLoopPermutationPass();
++  registerTestMatchers();
++  registerTestOperationEqualPass();
++  registerTestPrintDefUsePass();
++  registerTestPrintInvalidPass();
++  registerTestPrintNestingPass();
++  registerTestPreserveUseListOrders();
++  registerTestReducer();
++  registerTestSpirvEntryPointABIPass();
++  registerTestSpirvModuleCombinerPass();
++  registerTestTraitsPass();
++  registerVectorizerTestPass();
++  registerTosaTestQuantUtilAPIPass();
++
++  mlir::test::registerCommutativityUtils();
++  mlir::test::registerConvertCallOpPass();
++  mlir::test::registerInliner();
++  mlir::test::registerMemRefBoundCheck();
++  mlir::test::registerPatternsTestPass();
++  mlir::test::registerSimpleParametricTilingPass();
++  mlir::test::registerTestAffineLoopParametricTilingPass();
++  mlir::test::registerTestAliasAnalysisPass();
++  mlir::test::registerTestArithEmulateWideIntPass();
++  mlir::test::registerTestBuiltinAttributeInterfaces();
++  mlir::test::registerTestBuiltinDistinctAttributes();
++  mlir::test::registerTestCallGraphPass();
++  mlir::test::registerTestCfAssertPass();
++  mlir::test::registerTestConstantFold();
++  mlir::test::registerTestControlFlowSink();
++  mlir::test::registerTestDiagnosticsPass();
++#if MLIR_CUDA_CONVERSIONS_ENABLED
++  mlir::test::registerTestLowerToNVVM();
++#endif
++#if MLIR_ROCM_CONVERSIONS_ENABLED
++  mlir::test::registerTestGpuSerializeToHsacoPass();
++#endif
++  mlir::test::registerTestDecomposeCallGraphTypes();
++  mlir::test::registerTestDataLayoutPropagation();
++  mlir::test::registerTestDataLayoutQuery();
++  mlir::test::registerTestDeadCodeAnalysisPass();
++  mlir::test::registerTestDominancePass();
++  mlir::test::registerTestDynamicPipelinePass();
++  mlir::test::registerTestEmulateNarrowTypePass();
++  mlir::test::registerTestExpandMathPass();
++  mlir::test::registerTestFooAnalysisPass();
++  mlir::test::registerTestComposeSubView();
++  mlir::test::registerTestMultiBuffering();
++  mlir::test::registerTestIntRangeInference();
++  mlir::test::registerTestIRVisitorsPass();
++  mlir::test::registerTestGenericIRVisitorsPass();
++  mlir::test::registerTestInterfaces();
++  mlir::test::registerTestLastModifiedPass();
++  mlir::test::registerTestLinalgDecomposeOps();
++  mlir::test::registerTestLinalgDropUnitDims();
++  mlir::test::registerTestLinalgElementwiseFusion();
++  mlir::test::registerTestLinalgGreedyFusion();
++  mlir::test::registerTestLinalgTransforms();
++  mlir::test::registerTestLivenessAnalysisPass();
++  mlir::test::registerTestLivenessPass();
++  mlir::test::registerTestLoopFusion();
++  mlir::test::registerTestCFGLoopInfoPass();
++  mlir::test::registerTestLoopMappingPass();
++  mlir::test::registerTestLoopUnrollingPass();
++  mlir::test::registerTestLowerToLLVM();
++  mlir::test::registerTestMakeIsolatedFromAbovePass();
++  mlir::test::registerTestMatchReductionPass();
++  mlir::test::registerTestMathAlgebraicSimplificationPass();
++  mlir::test::registerTestMathPolynomialApproximationPass();
++  mlir::test::registerTestMemRefDependenceCheck();
++  mlir::test::registerTestMemRefStrideCalculation();
++  mlir::test::registerTestNextAccessPass();
++  mlir::test::registerTestOneToNTypeConversionPass();
++  mlir::test::registerTestOpaqueLoc();
++  mlir::test::registerTestPadFusion();
++  mlir::test::registerTestPDLByteCodePass();
++  mlir::test::registerTestPDLLPasses();
++  mlir::test::registerTestRecursiveTypesPass();
++  mlir::test::registerTestSCFUtilsPass();
++  mlir::test::registerTestSCFWhileOpBuilderPass();
++  mlir::test::registerTestShapeMappingPass();
++  mlir::test::registerTestSliceAnalysisPass();
++  mlir::test::registerTestTensorCopyInsertionPass();
++  mlir::test::registerTestTensorTransforms();
++  mlir::test::registerTestTilingInterface();
++  mlir::test::registerTestTopologicalSortAnalysisPass();
++  mlir::test::registerTestTransformDialectEraseSchedulePass();
++  mlir::test::registerTestTransformDialectInterpreterPass();
++  mlir::test::registerTestVectorLowerings();
++  mlir::test::registerTestVectorReductionToSPIRVDotProd();
++  mlir::test::registerTestNvgpuLowerings();
++  mlir::test::registerTestWrittenToPass();
++}
+ 
+ void mlirRegisterAllDialects(MlirDialectRegistry registry) {
+   mlir::registerAllDialects(*unwrap(registry));
+   mlir::registerAllExtensions(*unwrap(registry));
++  ::test::registerTestTransformDialectExtension(*unwrap(registry));
++  ::test::registerTestDynDialect(*unwrap(registry));
+ }
+ 
+ void mlirRegisterAllLLVMTranslations(MlirContext context) {
+@@ -29,4 +264,7 @@ void mlirRegisterAllLLVMTranslations(MlirContext context) {
+   ctx.appendDialectRegistry(registry);
+ }
+ 
+-void mlirRegisterAllPasses() { mlir::registerAllPasses(); }
++void mlirRegisterAllPasses() {
++  registerTestPasses();
++  mlir::registerAllPasses();
++}
+diff --git a/mlir/test/lib/Analysis/CMakeLists.txt b/mlir/test/lib/Analysis/CMakeLists.txt
+index d168888c1e71..0f97fada1907 100644
+--- a/mlir/test/lib/Analysis/CMakeLists.txt
++++ b/mlir/test/lib/Analysis/CMakeLists.txt
+@@ -17,7 +17,7 @@ add_mlir_library(MLIRTestAnalysis
+   DataFlow/TestLivenessAnalysis.cpp
+   DataFlow/TestSparseBackwardDataFlowAnalysis.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineDialect
+diff --git a/mlir/test/lib/Conversion/FuncToLLVM/CMakeLists.txt b/mlir/test/lib/Conversion/FuncToLLVM/CMakeLists.txt
+index 45ba62d839d3..f3ef8b1bb80e 100644
+--- a/mlir/test/lib/Conversion/FuncToLLVM/CMakeLists.txt
++++ b/mlir/test/lib/Conversion/FuncToLLVM/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRTestFuncToLLVM
+   TestConvertCallOp.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRFuncToLLVM
+diff --git a/mlir/test/lib/Conversion/OneToNTypeConversion/CMakeLists.txt b/mlir/test/lib/Conversion/OneToNTypeConversion/CMakeLists.txt
+index b72302202f72..5fc8310cc414 100644
+--- a/mlir/test/lib/Conversion/OneToNTypeConversion/CMakeLists.txt
++++ b/mlir/test/lib/Conversion/OneToNTypeConversion/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_mlir_library(MLIRTestOneToNTypeConversionPass
+   TestOneToNTypeConversionPass.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRFuncDialect
+diff --git a/mlir/test/lib/Conversion/VectorToSPIRV/CMakeLists.txt b/mlir/test/lib/Conversion/VectorToSPIRV/CMakeLists.txt
+index 09ed283ac97b..d51f5a0f76df 100644
+--- a/mlir/test/lib/Conversion/VectorToSPIRV/CMakeLists.txt
++++ b/mlir/test/lib/Conversion/VectorToSPIRV/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRTestVectorToSPIRV
+   TestVectorReductionToSPIRVDotProd.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRVectorToSPIRV
+diff --git a/mlir/test/lib/Dialect/Affine/CMakeLists.txt b/mlir/test/lib/Dialect/Affine/CMakeLists.txt
+index af9f312694ab..731dad3b69bf 100644
+--- a/mlir/test/lib/Dialect/Affine/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Affine/CMakeLists.txt
+@@ -10,7 +10,7 @@ add_mlir_library(MLIRAffineTransformsTestPasses
+   TestLoopPermutation.cpp
+   TestVectorizationUtils.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Affine
+diff --git a/mlir/test/lib/Dialect/Arith/CMakeLists.txt b/mlir/test/lib/Dialect/Arith/CMakeLists.txt
+index 33615ab21a17..fcb1ad934f15 100644
+--- a/mlir/test/lib/Dialect/Arith/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Arith/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRArithTestPasses
+   TestEmulateWideInt.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRArithDialect
+diff --git a/mlir/test/lib/Dialect/Bufferization/CMakeLists.txt b/mlir/test/lib/Dialect/Bufferization/CMakeLists.txt
+index a183d02cefed..d9a6d5fa5f80 100644
+--- a/mlir/test/lib/Dialect/Bufferization/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Bufferization/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRBufferizationTestPasses
+   TestTensorCopyInsertion.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRBufferizationDialect
+diff --git a/mlir/test/lib/Dialect/ControlFlow/CMakeLists.txt b/mlir/test/lib/Dialect/ControlFlow/CMakeLists.txt
+index 39d9555c7405..c68459b6a152 100644
+--- a/mlir/test/lib/Dialect/ControlFlow/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/ControlFlow/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRControlFlowTestPasses
+   TestAssert.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRControlFlowToLLVM
+diff --git a/mlir/test/lib/Dialect/DLTI/CMakeLists.txt b/mlir/test/lib/Dialect/DLTI/CMakeLists.txt
+index fddc3e342e0a..18fec4883baf 100644
+--- a/mlir/test/lib/Dialect/DLTI/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/DLTI/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRDLTITestPasses
+   TestDataLayoutQuery.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRDLTIDialect
+diff --git a/mlir/test/lib/Dialect/Func/CMakeLists.txt b/mlir/test/lib/Dialect/Func/CMakeLists.txt
+index 6adf893e44f0..90788832ca00 100644
+--- a/mlir/test/lib/Dialect/Func/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Func/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRFuncTestPasses
+   TestDecomposeCallGraphTypes.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineDialect
+diff --git a/mlir/test/lib/Dialect/GPU/CMakeLists.txt b/mlir/test/lib/Dialect/GPU/CMakeLists.txt
+index 3f20e5a6ecfc..fdd330cefc86 100644
+--- a/mlir/test/lib/Dialect/GPU/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/GPU/CMakeLists.txt
+@@ -35,7 +35,7 @@ add_mlir_library(MLIRGPUTestPasses
+   TestGpuRewrite.cpp
+   TestLowerToNVVM.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   ${LIBS}
+diff --git a/mlir/test/lib/Dialect/LLVM/CMakeLists.txt b/mlir/test/lib/Dialect/LLVM/CMakeLists.txt
+index 734757ce79da..24183dc6c34e 100644
+--- a/mlir/test/lib/Dialect/LLVM/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/LLVM/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRLLVMTestPasses
+   TestLowerToLLVM.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineToStandard
+diff --git a/mlir/test/lib/Dialect/Linalg/CMakeLists.txt b/mlir/test/lib/Dialect/Linalg/CMakeLists.txt
+index b28f2b356466..4457dd60d7b8 100644
+--- a/mlir/test/lib/Dialect/Linalg/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Linalg/CMakeLists.txt
+@@ -8,7 +8,7 @@ add_mlir_library(MLIRLinalgTestPasses
+   TestLinalgTransforms.cpp
+   TestPadFusion.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineDialect
+diff --git a/mlir/test/lib/Dialect/Math/CMakeLists.txt b/mlir/test/lib/Dialect/Math/CMakeLists.txt
+index 195d392d6ad3..da305a4d8075 100644
+--- a/mlir/test/lib/Dialect/Math/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Math/CMakeLists.txt
+@@ -4,7 +4,7 @@ add_mlir_library(MLIRMathTestPasses
+   TestExpandMath.cpp
+   TestPolynomialApproximation.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRMathTransforms
+diff --git a/mlir/test/lib/Dialect/MemRef/CMakeLists.txt b/mlir/test/lib/Dialect/MemRef/CMakeLists.txt
+index 0498de3eb931..d35057c61a9d 100644
+--- a/mlir/test/lib/Dialect/MemRef/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/MemRef/CMakeLists.txt
+@@ -4,7 +4,7 @@ add_mlir_library(MLIRMemRefTestPasses
+   TestEmulateNarrowType.cpp
+   TestMultiBuffer.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRPass
+diff --git a/mlir/test/lib/Dialect/NVGPU/CMakeLists.txt b/mlir/test/lib/Dialect/NVGPU/CMakeLists.txt
+index 6b333bdb3c08..b3486bf784c3 100644
+--- a/mlir/test/lib/Dialect/NVGPU/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/NVGPU/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRNVGPUTestPasses
+   TestNVGPUTransforms.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRIR
+diff --git a/mlir/test/lib/Dialect/SCF/CMakeLists.txt b/mlir/test/lib/Dialect/SCF/CMakeLists.txt
+index 22c2f2388de6..ad645c3cf179 100644
+--- a/mlir/test/lib/Dialect/SCF/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/SCF/CMakeLists.txt
+@@ -5,7 +5,7 @@ add_mlir_library(MLIRSCFTestPasses
+   TestSCFUtils.cpp
+   TestWhileOpBuilder.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRMemRefDialect
+diff --git a/mlir/test/lib/Dialect/SPIRV/CMakeLists.txt b/mlir/test/lib/Dialect/SPIRV/CMakeLists.txt
+index 11760da0005c..822465809605 100644
+--- a/mlir/test/lib/Dialect/SPIRV/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/SPIRV/CMakeLists.txt
+@@ -4,7 +4,7 @@ add_mlir_library(MLIRSPIRVTestPasses
+   TestEntryPointAbi.cpp
+   TestModuleCombiner.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/SPIRV
+diff --git a/mlir/test/lib/Dialect/Shape/CMakeLists.txt b/mlir/test/lib/Dialect/Shape/CMakeLists.txt
+index 545f13db25a8..5a70a2bc63ce 100644
+--- a/mlir/test/lib/Dialect/Shape/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Shape/CMakeLists.txt
+@@ -3,7 +3,7 @@ add_mlir_library(MLIRShapeTestPasses
+   TestShapeFunctions.cpp
+   TestShapeMappingAnalysis.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Shape
+diff --git a/mlir/test/lib/Dialect/Tensor/CMakeLists.txt b/mlir/test/lib/Dialect/Tensor/CMakeLists.txt
+index f22b21d17329..1754be13e488 100644
+--- a/mlir/test/lib/Dialect/Tensor/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Tensor/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRTensorTestPasses
+   TestTensorTransforms.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRArithDialect
+diff --git a/mlir/test/lib/Dialect/Test/CMakeLists.txt b/mlir/test/lib/Dialect/Test/CMakeLists.txt
+index b82b1631eead..0e6751c6d57b 100644
+--- a/mlir/test/lib/Dialect/Test/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Test/CMakeLists.txt
+@@ -53,7 +53,7 @@ add_mlir_library(MLIRTestDialect
+   TestOpsSyntax.cpp
+   TestDialectInterfaces.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   DEPENDS
+   MLIRTestAttrDefIncGen
+diff --git a/mlir/test/lib/Dialect/TestDyn/CMakeLists.txt b/mlir/test/lib/Dialect/TestDyn/CMakeLists.txt
+index 13eb9040b074..cfd85ea7b00a 100644
+--- a/mlir/test/lib/Dialect/TestDyn/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/TestDyn/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_mlir_dialect_library(MLIRTestDynDialect
+   TestDynDialect.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRIR
+diff --git a/mlir/test/lib/Dialect/Tosa/CMakeLists.txt b/mlir/test/lib/Dialect/Tosa/CMakeLists.txt
+index e5dd35d6dbcb..0990e704534a 100644
+--- a/mlir/test/lib/Dialect/Tosa/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Tosa/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_mlir_dialect_library(MLIRTosaTestPasses
+   TosaTestPasses.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Tosa/Transforms
+diff --git a/mlir/test/lib/Dialect/Transform/CMakeLists.txt b/mlir/test/lib/Dialect/Transform/CMakeLists.txt
+index c7e83d3a7128..d2d8d0f2addb 100644
+--- a/mlir/test/lib/Dialect/Transform/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Transform/CMakeLists.txt
+@@ -10,7 +10,7 @@ add_mlir_library(MLIRTestTransformDialect
+   TestTransformDialectInterpreter.cpp
+   TestTransformStateExtension.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   DEPENDS
+   MLIRTestTransformDialectExtensionIncGen
+diff --git a/mlir/test/lib/Dialect/Vector/CMakeLists.txt b/mlir/test/lib/Dialect/Vector/CMakeLists.txt
+index d8e6b24b0c26..b292156f89f1 100644
+--- a/mlir/test/lib/Dialect/Vector/CMakeLists.txt
++++ b/mlir/test/lib/Dialect/Vector/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRVectorTestPasses
+   TestVectorTransforms.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineDialect
+diff --git a/mlir/test/lib/IR/CMakeLists.txt b/mlir/test/lib/IR/CMakeLists.txt
+index 69c63fd7e524..3a0f84d75da6 100644
+--- a/mlir/test/lib/IR/CMakeLists.txt
++++ b/mlir/test/lib/IR/CMakeLists.txt
+@@ -24,7 +24,7 @@ add_mlir_library(MLIRTestIR
+   TestVisitors.cpp
+   TestVisitorsGeneric.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRPass
+diff --git a/mlir/test/lib/Interfaces/LoopLikeInterface/CMakeLists.txt b/mlir/test/lib/Interfaces/LoopLikeInterface/CMakeLists.txt
+index f20219e00cb8..8fca6edeb0c6 100644
+--- a/mlir/test/lib/Interfaces/LoopLikeInterface/CMakeLists.txt
++++ b/mlir/test/lib/Interfaces/LoopLikeInterface/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_mlir_library(MLIRLoopLikeInterfaceTestPasses
+   TestBlockInLoop.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRPass
+diff --git a/mlir/test/lib/Interfaces/TilingInterface/CMakeLists.txt b/mlir/test/lib/Interfaces/TilingInterface/CMakeLists.txt
+index 5f974b619898..f974605b144c 100644
+--- a/mlir/test/lib/Interfaces/TilingInterface/CMakeLists.txt
++++ b/mlir/test/lib/Interfaces/TilingInterface/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_mlir_library(MLIRTilingInterfaceTestPasses
+   TestTilingInterface.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   LINK_LIBS PUBLIC
+   MLIRAffineDialect
+diff --git a/mlir/test/lib/Pass/CMakeLists.txt b/mlir/test/lib/Pass/CMakeLists.txt
+index dd90c228cdaf..5116befa3388 100644
+--- a/mlir/test/lib/Pass/CMakeLists.txt
++++ b/mlir/test/lib/Pass/CMakeLists.txt
+@@ -3,7 +3,7 @@ add_mlir_library(MLIRTestPass
+   TestDynamicPipeline.cpp
+   TestPassManager.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Pass
+diff --git a/mlir/test/lib/Reducer/CMakeLists.txt b/mlir/test/lib/Reducer/CMakeLists.txt
+index 61743b6097d6..5a3ec8670903 100644
+--- a/mlir/test/lib/Reducer/CMakeLists.txt
++++ b/mlir/test/lib/Reducer/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRTestReducer
+   MLIRTestReducer.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
+diff --git a/mlir/test/lib/Rewrite/CMakeLists.txt b/mlir/test/lib/Rewrite/CMakeLists.txt
+index fd5d5d586160..bfaba0f1869e 100644
+--- a/mlir/test/lib/Rewrite/CMakeLists.txt
++++ b/mlir/test/lib/Rewrite/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ add_mlir_library(MLIRTestRewrite
+   TestPDLByteCode.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Rewrite
+diff --git a/mlir/test/lib/Tools/PDLL/CMakeLists.txt b/mlir/test/lib/Tools/PDLL/CMakeLists.txt
+index 5ad13062e2a6..2b3e12bb7f5e 100644
+--- a/mlir/test/lib/Tools/PDLL/CMakeLists.txt
++++ b/mlir/test/lib/Tools/PDLL/CMakeLists.txt
+@@ -11,7 +11,7 @@ add_mlir_pdll_library(MLIRTestPDLLPatternsIncGen
+ add_mlir_library(MLIRTestPDLL
+   TestPDLL.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Tools/PDLL
+diff --git a/mlir/test/lib/Transforms/CMakeLists.txt b/mlir/test/lib/Transforms/CMakeLists.txt
+index e032ce7200fb..60982170d364 100644
+--- a/mlir/test/lib/Transforms/CMakeLists.txt
++++ b/mlir/test/lib/Transforms/CMakeLists.txt
+@@ -18,7 +18,7 @@ add_mlir_library(MLIRTestTransforms
+   TestMakeIsolatedFromAbove.cpp
+   TestTopologicalSort.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   ADDITIONAL_HEADER_DIRS
+   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms
+diff --git a/mlir/test/python/lib/CMakeLists.txt b/mlir/test/python/lib/CMakeLists.txt
+index d7cbbfbc2147..f5724eac1495 100644
+--- a/mlir/test/python/lib/CMakeLists.txt
++++ b/mlir/test/python/lib/CMakeLists.txt
+@@ -7,7 +7,7 @@ set(LLVM_OPTIONAL_SOURCES
+ add_mlir_library(MLIRPythonTestDialect
+   PythonTestDialect.cpp
+ 
+-  EXCLUDE_FROM_LIBMLIR
++  # EXCLUDE_FROM_LIBMLIR
+ 
+   DEPENDS
+   MLIRPythonTestIncGen
