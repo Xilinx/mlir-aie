@@ -4,7 +4,7 @@
 Types and operations for AIE vector dialect
 [TOC]
 
-## Operation definition
+## Operations
 
 ### `aievec.add` (::xilinx::aievec::AddOp)
 

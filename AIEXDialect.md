@@ -8,7 +8,7 @@ to the more mature AIE dialect.
 
 [TOC]
 
-## Operation definition
+## Operations
 
 ### `AIEX.bp_dest` (::xilinx::AIEX::BPDestOp)
 

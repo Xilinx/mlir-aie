@@ -9,7 +9,7 @@ the C++ syntactic level.
 
 [TOC]
 
-## Operation definition
+## Operations
 
 ### `ADF.graph` (::xilinx::ADF::GraphOp)
 
@@ -234,7 +234,7 @@ Effects: MemoryEffects::Effect{}
 &laquo;unnamed&raquo; | 
 
 
-## Type definition
+## Types
 
 ### InterfaceType
 
