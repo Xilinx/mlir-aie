@@ -6,41 +6,145 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-canonicalize-device,AIE.device(aie-assign-buffer-addresses),convert-scf-to-cf)' %s | aie-translate --aie-generate-airbin --oo=%T/airbin.elf | %PYTHON %AIE_SRC_ROOT/utils/read_elf.py %T/airbin.elf | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-canonicalize-device,AIE.device(aie-assign-buffer-addresses),convert-scf-to-cf)' %s | aie-translate --aie-generate-airbin --oo=%T/airbin.elf | %LLVM_TOOLS_DIR/obj2yaml %T/airbin.elf | FileCheck %s
 
-// CHECK-LABEL: Output airbin.elf
-// CHECK: {
-// CHECK:   "EI_MAG": [
-// CHECK:     127,
-// CHECK:     69,
-// CHECK:     76,
-// CHECK:     70
-// CHECK:   ],
-// CHECK:   "EI_CLASS": "ELFCLASS64",
-// CHECK:   "EI_DATA": "ELFDATA2LSB",
-// CHECK:   "EI_VERSION": "EV_CURRENT",
-// CHECK:   "EI_OSABI": "ELFOSABI_LINUX",
-// CHECK:   "EI_ABIVERSION": 0
-// CHECK: }
-// CHECK: section.name='.shstrtab'
-// CHECK: section.name='.sdma.bd'
-// CHECK: section.name='.ssmast'
-// CHECK: section.name='.ssslve'
-// CHECK: section.name='.sspckt'
-// CHECK: section.name='.data.mem'
-// CHECK: section.name='.sdma.bd'
-// CHECK: section.name='.tdma.ctl'
-// CHECK: section.name='.prgm.mem'
-// CHECK: section.name='.ssmast'
-// CHECK: section.name='.ssslve'
-// CHECK: section.name='.sspckt'
-// CHECK: section.name='.data.mem'
-// CHECK: section.name='.sdma.bd'
-// CHECK: section.name='.tdma.ctl'
-// CHECK: section.name='.prgm.mem'
-// CHECK: section.name='.ssmast'
-// CHECK: section.name='.ssslve'
-// CHECK: section.name='.sspckt'
+// CHECK-LABEL: --- !ELF
+// CHECK: FileHeader:
+// CHECK:   Class:           ELFCLASS64
+// CHECK:   Data:            ELFDATA2LSB
+// CHECK:   OSABI:           ELFOSABI_GNU
+// CHECK:   Type:            ET_NONE
+// CHECK:   Machine:         0xE1
+// CHECK: Sections:
+// CHECK:   - Name:            .sdma.bd
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x301D000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '40010000'
+// CHECK:   - Name:            .ssmast
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x303F000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         5C000000
+// CHECK:   - Name:            .ssslve
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x303F100
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '60000000'
+// CHECK:   - Name:            .sspckt
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x303F200
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '80010000'
+// CHECK:   - Name:            .data.mem
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x3040000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '00800000'
+// CHECK:   - Name:            '.sdma.bd (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x305D000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '00020000'
+// CHECK:   - Name:            .tdma.ctl
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x305DE00
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '10000000'
+// CHECK:   - Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x305DE10
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '10000000'
+// CHECK:   - Name:            .prgm.mem
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x3060000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '00400000'
+// CHECK:   - Name:            '.ssmast (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x307F000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '64000000'
+// CHECK:   - Name:            '.ssslve (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x307F100
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         6C000000
+// CHECK:   - Name:            '.sspckt (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x307F200
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         C0060000
+// CHECK:   - Name:            '.data.mem (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x3080000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '00800000'
+// CHECK:   - Name:            '.sdma.bd (2)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x309D000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         00013D00
+// CHECK:   - Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x309D020
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         10017D00
+// CHECK:   - Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x309D040
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         0801AF00
+// CHECK:   - Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x309D060
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         1801EF00
+// CHECK:   - Name:            '.tdma.ctl (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x309DE00
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '0100000000000000000000000000000001000000020000000000000000000000'
+// CHECK:   - Name:            '.prgm.mem (1)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x30A0000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '00400000'
+// CHECK:   - Name:            '.ssmast (2)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x30BF000
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         '64000000'
+// CHECK:   - Name:            '.ssslve (2)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x30BF100
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         6C000000
+// CHECK:   - Name:            '.sspckt (2)'
+// CHECK:     Type:            SHT_PROGBITS
+// CHECK:     Flags:           [ SHF_ALLOC ]
+// CHECK:     Address:         0x30BF200
+// CHECK:     AddressAlign:    0x1
+// CHECK:     Content:         C0060000
+// CHECK: ...
 
 module {
   %t70 = AIE.tile(6, 0)

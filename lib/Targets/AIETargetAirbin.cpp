@@ -25,6 +25,8 @@
 #include <utility>  // pair
 #include <vector>
 
+#define DEBUG_TYPE "aie-generate-airbin"
+
 // Marks a particular code path as unfinished.
 #define TODO assert(false)
 
@@ -32,6 +34,7 @@
 #define UNREACHABLE assert(false)
 
 #define DEBUG_AIRBIN
+
 #ifdef DEBUG_AIRBIN
 #define DBG_PRINTF printf
 #else
@@ -42,8 +45,7 @@
 
 using namespace mlir;
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 enum {
   SEC_IDX_NULL,
@@ -425,11 +427,18 @@ void TileAddress::clearRange(uint32_t start, uint32_t length) {
   assert(start % 4 == 0);
   assert(length % 4 == 0);
 
-  DBG_PRINTF("%s <%u,%u> 0x%x - 0x%x\n", __func__, column, row, start,
-             start + length);
-
+  DBG_PRINTF("%s <%u,%u> 0x%x - 0x%x (len: %u)\n", __func__, column, row, start,
+             start + length, length);
+  // TODO(max): why don't all the hex digits agree? packing?
+#ifdef DEBUG_AIRBIN
+  for (auto off = start; off < start + length; off += 4u) {
+    write32(Address{*this, off}, length);
+    break;
+  }
+#else
   for (auto off = start; off < start + length; off += 4u)
     write32(Address{*this, off}, 0);
+#endif
 }
 
 /*
@@ -437,8 +446,8 @@ void TileAddress::clearRange(uint32_t start, uint32_t length) {
    output in the airbin ELF
 */
 static bool loadElf(TileAddress tile, const std::string &filename) {
-  llvm::dbgs() << "Reading ELF file " << filename << " for tile " << tile
-               << '\n';
+//  LLVM_DEBUG(llvm::dbgs() << "Reading ELF file " << filename << " for tile "
+//                          << tile << '\n');
 
   int elf_fd = open(filename.c_str(), O_RDONLY);
   if (elf_fd < 0) {
@@ -1193,7 +1202,12 @@ static size_t add_string(Elf_Scn *scn, const char *str) {
 
 Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
   size_t size = section->get_length();
+#ifdef DEBUG_AIRBIN
   uint32_t *buf = (uint32_t *)malloc(size);
+#else
+  uint32_t *buf = (uint32_t *)malloc(1);
+  *buf = size;
+#endif
   if (!buf)
     return NULL;
 
@@ -1374,5 +1388,4 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
 
   return success();
 }
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
