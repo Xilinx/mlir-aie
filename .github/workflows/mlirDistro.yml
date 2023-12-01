@@ -74,7 +74,7 @@ jobs:
 
     needs: get_llvm_project_commit
 
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }} mlir distro
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
 
     continue-on-error: true
 
@@ -138,9 +138,9 @@ jobs:
       working-directory: ${{ env.TEMP }}
       run: |
         
-        ls ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
+        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
