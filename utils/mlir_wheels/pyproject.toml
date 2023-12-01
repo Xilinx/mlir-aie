@@ -1,0 +1,55 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "ninja",
+    "cmake>=3.12",
+    "pybind11[global]>=2.10.4",
+    "numpy",
+    "dataclasses",
+    "mlir-native-tools",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.cibuildwheel]
+build-verbosity = 3
+build = "cp310-*"
+skip = ["*-manylinux_i686", "*-musllinux*"]
+manylinux-aarch64-image = "manylinux_2_28"
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.linux]
+environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
+before-build = [
+    "{project}/scripts/docker_prepare_ccache.sh",
+    "{project}/scripts/apply_patches.sh",
+]
+environment-pass = [
+    "APPLY_PATCHES",
+    "CIBW_ARCHS",
+    "CMAKE_ARGS",
+    "CMAKE_GENERATOR",
+    "DATETIME",
+    "HOST_CCACHE_DIR",
+    "LLVM_PROJECT_COMMIT",
+    "MATRIX_OS",
+    "PARALLEL_LEVEL",
+    "PIP_FIND_LINKS",
+    "PIP_NO_BUILD_ISOLATION",
+]
+
+[tool.cibuildwheel.macos]
+environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
+before-build = [
+    "{project}/scripts/apply_patches.sh",
+]
+repair-wheel-command = [
+    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+]
+
+[tool.cibuildwheel.windows]
+environment = { PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
+before-build = [
+    "pip install delvewheel",
+    "bash {project}\\scripts\\apply_patches.sh",
+]

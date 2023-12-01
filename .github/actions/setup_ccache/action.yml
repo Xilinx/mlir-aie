@@ -1,0 +1,58 @@
+name: "Setup ccache"
+
+inputs:
+  MATRIX_OS:
+    description: ''
+    required: true
+  MATRIX_ARCH:
+    description: ''
+    required: true
+  EXTRA_KEY:
+    description: ''
+    required: false
+
+outputs:
+  HOST_CCACHE_DIR:
+    description: ''
+    value: ${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }}
+
+description: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2.9
+      with:
+        key: ${{ inputs.MATRIX_OS }}-${{ inputs.MATRIX_ARCH }}-${{ inputs.EXTRA_KEY }}
+        max-size: "1G"
+        verbose: 2
+
+    - name: Configure ccache dir on host ubuntu
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' }}
+      shell: bash
+      id: configure_ccache_dir_on_host
+      run: |
+        
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        mkdir -p $HOST_CCACHE_DIR
+        echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
+
+    - name: Configure ccache
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      shell: bash
+      run: |
+        
+        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-11" ]; then
+          echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
+        else
+          echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH
+        fi
+
+    - name: Configure ccache
+      shell: bash
+      run: |
+        ccache -z
+        # See https://github.com/hendrikmuhs/ccache-action/issues/146
+        ccache --set-config=compiler_check=content
+        ccache --set-config=sloppiness=locale,time_macros
