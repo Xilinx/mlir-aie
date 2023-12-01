@@ -103,7 +103,8 @@ class CMakeBuild(build_ext):
             "-DLLVM_INCLUDE_TOOLS=ON",
             "-DLLVM_INCLUDE_UTILS=ON",
             "-DLLVM_INSTALL_UTILS=ON",
-            "-DMLIR_BUILD_MLIR_C_DYLIB=1",
+            # Maybe re-enable after the `LLVMContextCreate` thing is fixed?
+            "-DMLIR_BUILD_MLIR_C_DYLIB=0",
             "-DMLIR_ENABLE_BINDINGS_PYTHON=ON",
             "-DMLIR_ENABLE_EXECUTION_ENGINE=ON",
             "-DMLIR_ENABLE_SPIRV_CPU_RUNNER=ON",

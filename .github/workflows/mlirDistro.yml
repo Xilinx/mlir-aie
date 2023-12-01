@@ -34,14 +34,13 @@ on:
         required: false
         default: 'true'
 
+  # this is only for debugging this same yamls
+  # comment it out when you're not working on these yamls
   pull_request:
-  release:
-    types:
-      - published
 
-#  schedule:
-#    # At minute 0 past hour 1. (see https://crontab.guru)
-#    - cron: '00 01 * * *'
+  schedule:
+    # At minute 0 past every 6th hour. (see https://crontab.guru)
+    - cron: '0 */6 * * *'
 
 jobs:
 
@@ -93,9 +92,6 @@ jobs:
           - OS: ubuntu-20.04
             ARCH: aarch64
 
-          - OS: ubuntu-20.04
-            ARCH: x86_64
-
           - OS: windows-2019
             ARCH: AMD64
 
@@ -110,6 +106,8 @@ jobs:
     - name: Checkout actions
       uses: actions/checkout@v3
       with:
+        # checkout just the actions in order to pick and choose
+        # where the actual repo is checked out manually (see actions/setup_base)
         sparse-checkout: |
           .github/actions
 
@@ -132,6 +130,8 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro
 
+    # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
+    # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
     - name: Shift workspace root
       id: workspace_root
       shell: bash
@@ -233,6 +233,10 @@ jobs:
         ls -la $HOST_CCACHE_DIR
         ccache -s
 
+    # For whatever reason, the timestamps on all of the files that come out of the docker container
+    # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
+    # within that window ccache will not hit because the timestamps of the cached objects are ahead of
+    # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
     - name: Reset datetime ccache
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
@@ -240,8 +244,12 @@ jobs:
         
         ccache --print-stats
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        # Set the timestamp to the beginning of the current hour.
         find $HOST_CCACHE_DIR -exec touch -a -m -t "${{ needs.get_llvm_project_commit.outputs.DATETIME }}00" {} \;
 
+    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
+    # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
+    # mean that the python bindings themselves will confusingly not work in other envs (!=3.11)
     - name: rename non-windows
       if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -262,6 +270,10 @@ jobs:
         ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
         ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
+    # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
+    # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
+    # together here and now and make them also available as a separate, much lighter wheel,
+    # instead of asking/expecting someone to download the entire distro just for tblgen.
     - name: Build native_tools wheel
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
@@ -294,13 +306,15 @@ jobs:
     # done
 
     - name: Upload wheels
-      if: success() || failure()
+      if: github.event_name == 'workflow_dispatch' && (success() || failure())
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
   upload_distro_wheels:
+
+    if: github.event_name == 'workflow_dispatch'
 
     needs: build
 
