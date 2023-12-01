@@ -1,0 +1,345 @@
+name: MLIR Distro
+
+on:
+  workflow_dispatch:
+    inputs:
+      DEBUG_ENABLED:
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        type: boolean
+        required: false
+        default: false
+      DEBUG_OS:
+        description: 'which runner os to run the tmate action in (if the tmate action is run)'
+        type: string
+        default: 'windows-2019'
+        required: false
+      DEBUG_ARCH:
+        description: 'which runner arch to run the tmate action in (if the tmate action is run)'
+        type: string
+        default: 'x86_64'
+        required: false
+      DEBUG_DETACHED:
+        description: 'whether to launch tmate in detached mode (if the tmate action is run)'
+        type: boolean
+        required: false
+        default: true
+      LLVM_COMMIT:
+        description: 'llvm commit to build'
+        type: string
+        required: false
+        default: ''
+      APPLY_PATCHES:
+        description: 'whether to apply patches to source'
+        type: string
+        required: false
+        default: 'true'
+
+  # this is only for debugging this same yamls
+  # comment it out when you're not working on these yamls
+#  pull_request:
+
+  schedule:
+    # At minute 0 past every 6th hour. (see https://crontab.guru)
+    - cron: '0 */6 * * *'
+
+jobs:
+
+  get_llvm_project_commit:
+
+    name: Get latest LLVM commit
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      LLVM_PROJECT_COMMIT: ${{ steps.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
+      DATETIME: ${{ steps.get_llvm_project_commit.outputs.DATETIME }}
+
+    steps:
+      - name: Get llvm-project commit
+        id: get_llvm_project_commit
+        run: |
+          
+          if [ x"${{ inputs.LLVM_COMMIT }}" == x"" ]; then
+            sudo apt install jq
+            LLVM_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/llvm/llvm-project/commits/main | jq -r '.sha[:8]')
+          else
+            LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
+          fi
+          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}" | tee -a $GITHUB_OUTPUT
+          DATETIME=$(date +"%Y%m%d%H")
+          echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
+
+  build:
+
+    needs: get_llvm_project_commit
+
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+
+    continue-on-error: true
+
+    runs-on: ${{ matrix.OS }}
+
+    outputs:
+      MLIR_WHEEL_VERSION: ${{ steps.get_wheel_version.outputs.MLIR_WHEEL_VERSION }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+
+          - OS: windows-2019
+            ARCH: AMD64
+
+          - OS: macos-11
+            ARCH: x86_64
+
+          - OS: macos-11
+            ARCH: arm64
+
+    steps:
+
+    - name: Checkout actions
+      uses: actions/checkout@v3
+      with:
+        # checkout just the actions in order to pick and choose
+        # where the actual repo is checked out manually (see actions/setup_base)
+        sparse-checkout: |
+          .github/actions
+
+    - uses: ./.github/actions/setup_base
+      id: setup_base
+      with:
+        # optional
+        DEBUG_ENABLED: ${{ inputs.DEBUG_ENABLED }}
+        DEBUG_OS: ${{ inputs.DEBUG_OS }}
+        DEBUG_ARCH: ${{ inputs.DEBUG_ARCH }}
+        DEBUG_DETACHED: ${{ inputs.DEBUG_DETACHED }}
+        # required
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
+
+    - uses: ./.github/actions/setup_ccache
+      id: setup_ccache
+      with:
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
+        EXTRA_KEY: mlir-distro
+
+    # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
+    # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
+    - name: Shift workspace root
+      id: workspace_root
+      shell: bash
+      working-directory: ${{ env.TEMP }}
+      run: |
+        
+        ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
+        
+        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
+        else
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
+        fi
+        
+        echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
+
+      # setup llvm
+
+    - name: Get LLVM
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        curl -s https://codeload.github.com/llvm/llvm-project/zip/${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} -o llvm.zip
+        unzip -q llvm.zip
+        rm -rf llvm.zip
+        LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
+        mv llvm-project-$LLVM_PROJECT_COMMIT llvm-project
+
+    # build
+
+    - name: cibuildwheel
+      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      shell: bash
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+        
+        APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR=Ninja \
+        DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
+        HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
+        cibuildwheel --output-dir wheelhouse
+
+    - name: build aarch ubuntu wheel
+      if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
+        ./scripts/apply_patches.sh
+        
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR=Ninja \
+        DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
+        LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
+        PIP_FIND_LINKS="https://makslevental.github.io/wheels" \
+        pip wheel . -v -w wheelhouse
+
+    - name: Clean llvm-project
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        rm -rf llvm-project
+        rm -rf build
+
+    - name: Docker prune
+      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      shell: bash
+      run: |
+        docker system prune -a -f
+
+    - name: Get wheel version
+      id: get_wheel_version
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        pip install pkginfo
+        WHL=$(ls wheelhouse/mlir-*whl)
+        echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
+
+    - name: Download cache from container ubuntu
+      if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        ccache -s
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        rm -rf $HOST_CCACHE_DIR
+        mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+        ls -la $HOST_CCACHE_DIR
+        ccache -s
+
+    # For whatever reason, the timestamps on all of the files that come out of the docker container
+    # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
+    # within that window ccache will not hit because the timestamps of the cached objects are ahead of
+    # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
+    - name: Reset datetime ccache
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        ccache --print-stats
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        # Set the timestamp to the beginning of the current hour.
+        find $HOST_CCACHE_DIR -exec touch -a -m -t "${{ needs.get_llvm_project_commit.outputs.DATETIME }}00" {} \;
+
+    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
+    # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
+    # mean that the python bindings themselves will confusingly not work in other envs (!=3.11)
+    - name: rename non-windows
+      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir-*whl
+        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir-*whl
+        
+        if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
+          rename 's/x86_64/aarch64/' wheelhouse/mlir-*whl
+        fi
+
+    - name: rename windows
+      if: ${{ matrix.OS == 'windows-2019' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+        ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
+        ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
+
+    # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
+    # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
+    # together here and now and make them also available as a separate, much lighter wheel,
+    # instead of asking/expecting someone to download the entire distro just for tblgen.
+    - name: Build native_tools wheel
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      id: build_native_tools_wheel
+      run: |
+        
+        for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
+          if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+            TOOL="$TOOL.exe"
+          fi
+          unzip -j wheelhouse/mlir-*whl "mlir/bin/$TOOL" -d native_tools/
+        done
+        
+        if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ]; then
+          PLAT="linux"
+        elif [ x"${{ matrix.OS }}" == x"macos-11" ]; then
+          PLAT="macosx_11_0"
+        elif [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+          PLAT="win"
+        fi
+        
+        PLAT=${PLAT}_$(echo ${{ matrix.ARCH }} | tr '[:upper:]' '[:lower:]')
+        pushd native_tools
+
+        MLIR_WHEEL_VERSION=${{ steps.get_wheel_version.outputs.MLIR_WHEEL_VERSION }} \
+        python setup.py bdist_wheel --dist-dir ../wheelhouse --plat $PLAT
+        
+        popd
+
+    # done
+
+    - name: Upload wheels
+      if: github.event_name == 'workflow_dispatch' && (success() || failure())
+      uses: actions/upload-artifact@v3
+      with:
+        path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+        name: build_artifact
+
+  upload_distro_wheels:
+
+    if: github.event_name == 'workflow_dispatch'
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          # unpacks default artifact into dist/
+          # if `name: artifact` is omitted, the action will create extra parent dir
+          name: build_artifact
+          path: dist
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "dist/*.whl,dist/*.tar.xz"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: "mlir-distro"
+          name: "mlir-distro"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
