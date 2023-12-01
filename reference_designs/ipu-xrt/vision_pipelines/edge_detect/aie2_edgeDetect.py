@@ -53,7 +53,7 @@ def edge_detect():
         ComputeTile4 = Tile(0, 4)
         ComputeTile5 = Tile(0, 5)
 
-       # set up AIE-array data movement with Ordered Object Bufferss
+        # set up AIE-array data movement with Ordered Object Buffers
 
         # input RGBA broadcast + memtile for skip
         OrderedObjectBuffer("inOOB_L3L2", ShimTile, [ComputeTile2, MemTile], [2, 2, 7], line_bytes_ty)

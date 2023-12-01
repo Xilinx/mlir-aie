@@ -18,7 +18,7 @@ The [Pass Through pipeline design](./passthrough/) consists of a simple pipeline
 
 ## <ins>[Edge Detect](./edge_detect/)</ins>
 
-The [Edge Detect pipeline design](./edge_detect/) consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `addWeighted`, `gray2rgba`.
+The [Edge Detect pipeline design](./edge_detect/) consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
 
 ## <ins>[Color Threshold](./color_threshold/)</ins>
 
