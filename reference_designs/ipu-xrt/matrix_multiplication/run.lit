@@ -1,9 +1,6 @@
 // (c) Copyright 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: valid_xchess_license
-// RUN: xchesscc +s -f -p me -P %aietools/data/aie_ml/lib -D__AIENGINE__=2 -D__AIEARCH__=20  -DBIT_WIDTH=8 -I %aietools/include -c %S/mm.cc -o mm.o
-// RUN: %python %S/aie2.py > aie.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=final.xclbin --ipu-insts-name=insts.txt aie.mlir
-// RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall -I/opt/xilinx/xrt/include -lrt -lstdc++ -luuid  -lboost_program_options -lboost_filesystem -lprotobuf -lxrt_coreutil -lxdp_core -L/opt/xilinx/xrt/lib
-// RUN: %run_on_ipu ./test.exe -x final.xclbin -k MLIR_AIE -i insts.txt
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm.cc -o ./mm.o
+// RUN: %python %S/aie2.py > ./aie.mlir
+// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=final.xclbin --ipu-insts-name=insts.txt ./aie.mlir

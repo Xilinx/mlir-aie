@@ -12,21 +12,16 @@ all: build/final.xclbin
 
 targetname = addOneObjfifo
 
-# build/aie.mlir: aie2.py
-# 	mkdir -p ${@D}
-# 	python3 $< > $@
-
-build/aie.mlir: aie.mlir
+build/aie.mlir: aie2.py
 	mkdir -p ${@D}
-	cp $< $@
+	python3 $< > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
 
-build/${targetname}.exe: test.cpp
-	mkdir -p ${@D}
+${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
@@ -37,8 +32,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe build/final.xclbin build/insts.txt
+run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build
+	rm -rf build _build ${targetname}.exe

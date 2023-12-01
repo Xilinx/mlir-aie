@@ -13,6 +13,8 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.dialects.extras import memref, arith
+from aie.util import mlir_mod_ctx
 
 N = 4096
 N_in_bytes = N * 4
@@ -20,37 +22,42 @@ N_in_bytes = N * 4
 if len(sys.argv) == 2:
     N = int(sys.argv[1])
 
-@constructAndPrintInModule
 def my_passthrough():
     buffer_depth = 2
 
-    @device(AIEDevice.ipu)
-    def deviceBody():
-        int32_ty = IntegerType.get_signless(32)
-        memRef_ty = MemRefType.get((1024,), int32_ty)
+    with mlir_mod_ctx() as ctx:
 
-        # tile declarations
-        ShimTile     = Tile(0, 0)
-        ComputeTile2 = Tile(0, 2)
+        @device(AIEDevice.ipu)
+        def device_body():
+            # int32_ty = IntegerType.get_signless(32)
+            memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(1024, T.i32())))
 
-        # set up AIE-array data movement with Ordered Object Buffers
-        OrderedObjectBuffer("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
-        OrderedObjectBuffer("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
-        Link(["in"],["out"])
-        
-        memRef_tmp_ty = MemRefType.get((1,), int32_ty)
-        @core(ComputeTile2)
-        def coreBody():
-            tmp = memref.AllocOp(memRef_tmp_ty, [], [])
-            v0 = integerConstant(0, int32_ty)
-            Store(v0, tmp, [0])
+            # tile declarations
+            ShimTile     = tile(0, 0)
+            ComputeTile2 = tile(0, 2)
+
+            # set up AIE-array data movement with Ordered Object Buffers
+            objectfifo("in", ShimTile, [ComputeTile2], buffer_depth, memRef_ty, [], [])
+            objectfifo("out", ComputeTile2, [ShimTile], buffer_depth, memRef_ty, [], [])
+            objectfifo_link(["in"],["out"])
             
+            # memRef_tmp_ty = MemRefType.get((1,), int32_ty)
+            # memRef_tmp_ty = TypeAttr.get(MemRefType.get(T.memref(1, T.i32())))
+            @core(ComputeTile2)
+            def core_body():
+                tmp = memref.alloc([1], T.i32())
+                v0 = arith.constant(0, T.i32())
+                memref.store(v0, tmp, [0])
+                
+            # to/from AIE-array data movement 
+            @FuncOp.from_py_func(
+                T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+            )
+            def sequence(A, B, C):
+                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
+                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+                ipu_sync(column=0, row=0, direction=0, channel=0)
 
-        memRef_mem_ty = MemRefType.get((N,), int32_ty)
+    print(ctx.module)
 
-        # to/from AIE-array data movement 
-        @FuncOp.from_py_func(memRef_mem_ty, memRef_mem_ty, memRef_mem_ty)
-        def sequence(A, B, C):
-            IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-            IpuDmaMemcpyNd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+my_passthrough()

@@ -13,55 +13,59 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.util import mlir_mod_ctx
 
-@constructAndPrintInModule
 def my_vector_scalar():
     N = 4096
     n = 1024
     N_div_n = N // n
-    N_in_bytes = N * 4
 
     buffer_depth = 2
 
-    @device(AIEDevice.ipu)
-    def deviceBody():
-        int32_ty = IntegerType.get_signless(32)
-        memRef_ty = MemRefType.get((n,), int32_ty)
+    with mlir_mod_ctx() as ctx:
+            
+        @device(AIEDevice.ipu)
+        def device_body():
+            memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32())))
 
-        scale_int32 = privateFunc("scale_int32", inputs=[memRef_ty, memRef_ty])
+            scale_int32 = external_func(
+                "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
+            )
 
-        # tile declarations
-        ShimTile     = Tile(0, 0)
-        ComputeTile2 = Tile(0, 2)
+            ShimTile     = tile(0, 0)
+            ComputeTile2 = tile(0, 2)
 
-        # set up AIE-array data movement with Ordered Object Buffers
-        OrderedObjectBuffer("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
-        OrderedObjectBuffer("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
+            objectfifo("in", ShimTile, [ComputeTile2], buffer_depth, memRef_ty,
+                [],[])
+            objectfifo("out", ComputeTile2, [ShimTile], buffer_depth, memRef_ty,
+                [], [])
 
-        # set up compute tiles
-        @core(ComputeTile2, "scale.o")
-        def coreBody():
-            # Effective while(1)
-            @forLoop(lowerBound=0, upperBound=sys.maxsize, step=1)
-            def loopReps():
-                # Number of sub-vector "tile" iterations
-                @forLoop(lowerBound=0, upperBound=N_div_n, step=1)
-                def loopTile():
-                    elemOut = Acquire(
-                        ObjectFifoPort.Produce, "out", 1, memRef_ty
-                    ).acquiredElem()
-                    elemIn = Acquire(
-                        ObjectFifoPort.Consume, "in", 1, memRef_ty
-                    ).acquiredElem()
-                    Call(scale_int32, [elemIn, elemOut])
-                    Release(ObjectFifoPort.Consume, "in", 1)
-                    Release(ObjectFifoPort.Produce, "out", 1)
+            @core(ComputeTile2, "scale.o")
+            def core_body():
+                # Effective while(1)
+                for _ in for_(0xFFFFFFFF):
+                    # Number of sub-vector "tile" iterations
+                    for _ in for_(N_div_n):
+                        elem_out = acquire(
+                            ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32())
+                        ).acquired_elem()
+                        elem_in = acquire(
+                            ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
+                        ).acquired_elem()
+                        Call(scale_int32, [elem_in, elem_out])
+                        objectfifo_release(ObjectFifoPort.Consume, "in", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "out", 1)
+                        yield_([])
+                    yield_([])
 
-        memRef_mem_ty = MemRefType.get((N,), int32_ty)
+            @FuncOp.from_py_func(
+                T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+            )
+            def sequence(A, B, C):
+                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
+                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+                ipu_sync(column=0, row=0, direction=0, channel=0)
+    
+    print(ctx.module)
 
-        # to/from AIE-array data movement 
-        @FuncOp.from_py_func(memRef_mem_ty, memRef_mem_ty, memRef_mem_ty)
-        def sequence(A, B, C):
-            IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-            IpuDmaMemcpyNd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
-            IpuSync(column=0, row=0, direction=0, channel=0)
+my_vector_scalar()

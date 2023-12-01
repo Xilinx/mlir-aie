@@ -12,12 +12,27 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
-set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
-set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 
-SET (ProjectName addOneObjFIFO)
-SET (currentTarget addOneObjFIFO)
+find_program(WSL NAMES powershell.exe)
+
+if (NOT WSL)
+    set(BOOST_ROOT /usr/include/boost CACHE STRING "Path to Boost install")
+    set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
+    set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
+else()
+    set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
+    set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
+    set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+endif()
+
+set(TARGET_NAME test CACHE STRING "Target to be built")
+
+SET (ProjectName ${TARGET_NAME})
+SET (currentTarget ${TARGET_NAME})
+
+if ( WSL )
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+endif ()
 
 project(${ProjectName})
 
@@ -40,6 +55,15 @@ target_link_directories(${currentTarget} PUBLIC
     ${Boost_LIBRARY_DIRS}
 )
 
-target_link_libraries(${currentTarget} PUBLIC
-    xrt_coreutil
-)
+if (NOT WSL)
+    target_link_libraries(${currentTarget} PUBLIC
+        xrt_coreutil
+        boost_program_options
+        boost_filesystem
+    )
+else()
+    target_link_libraries(${currentTarget} PUBLIC
+        xrt_coreutil
+    )
+endif()
+

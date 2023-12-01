@@ -54,8 +54,6 @@ def main():
     parser.add_argument("--output", default="elfstrings.csv")
     args = parser.parse_args()
     
-<<<<<<< HEAD
-<<<<<<< HEAD
     # Collect all the elfs
     ofiles = []
     for filename in os.listdir(args.input):
@@ -71,18 +69,6 @@ def main():
         ro_offset = _get_ro_offset(ofile)
         d = _gen_string_dict(object_strings_str, ro_offset) 
         res = {**res, **d}
-=======
-=======
->>>>>>> b3f0b719 (Move hello_world)
-    ofile = args.input+"/core_0_2.elf"
-    strings_cmd = f"strings --radix x -a {ofile}"
-    object_strings_str = call_unix_proc(strings_cmd)
-    ro_offset = _get_ro_offset(ofile)
-    res = _gen_string_dict(object_strings_str, ro_offset)
-<<<<<<< HEAD
->>>>>>> 7dfe8e2d (Added small README for simple printf example reference design)
-=======
->>>>>>> b3f0b719 (Move hello_world)
     with open(args.output, "w") as fp:
         for addr,s in res.items():
             fp.write(f"{addr},{s}\n")

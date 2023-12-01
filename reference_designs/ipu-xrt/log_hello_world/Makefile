@@ -28,7 +28,7 @@ build/hello_world.xclbin: build/hello_world.mlir build/kernel.o
 hello_world_elfstrings.csv: build/hello_world.xclbin
 	python3 elfStringParser.py --input ./build --output $@
 
-build/${targetname}.exe: test.cpp
+${targetname}.exe: test.cpp
 	mkdir -p ${@D}
 	rm -rf _build
 	mkdir -p _build
@@ -40,9 +40,9 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe hello_world_elfstrings.csv
+run: ${targetname}.exe hello_world_elfstrings.csv
 	${powershell} ./$< -x build/hello_world.xclbin -i build/insts.txt \
 		-k MLIR_AIE -e $(word 2,$^)
 
 clean:
-	rm -rf build _build *.csv
+	rm -rf build _build *.csv ${powershell}.exe

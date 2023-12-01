@@ -5,13 +5,15 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import aie
 from aie.ir import *
 from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.dialects.extras import memref, arith
+from aie.util import mlir_mod_ctx
 
-@constructAndPrintInModule
 def my_matmul():
 
     M = 128
@@ -52,114 +54,131 @@ def my_matmul():
 
     vectorized = True
 
-    @device(AIEDevice.ipu)
-    def deviceBody():
-        in_ty = IntegerType.get_signless(16)
-        out_ty = IntegerType.get_signless(16)
-        memRef_A_ty = MemRefType.get((m,k,), in_ty)
-        memRef_B_ty = MemRefType.get((k,n,), in_ty)
-        memRef_C_ty = MemRefType.get((m,n,), out_ty)
+    with mlir_mod_ctx() as ctx:
 
-        zero_scalar = privateFunc("zero_scalar_i16", inputs = [memRef_C_ty])
-        zero = privateFunc("zero_i16", inputs = [memRef_C_ty])
-        matmul_scalar = privateFunc("matmul_scalar_i16_i16", inputs = [memRef_A_ty, memRef_B_ty, memRef_C_ty])
-        matmul = privateFunc("matmul_i16_i16", inputs = [memRef_A_ty, memRef_B_ty, memRef_C_ty])
+        @device(AIEDevice.ipu)
+        def device_body():
+            memRef_A_ty = TypeAttr.get(ObjectFifoType.get(T.memref(m, k, T.i16())))
+            memRef_B_ty = TypeAttr.get(ObjectFifoType.get(T.memref(k, n, T.i16())))
+            memRef_C_ty = TypeAttr.get(ObjectFifoType.get(T.memref(m, n, T.i16())))
 
-        ShimTile     = Tile(0, 0)
-        MemTile      = Tile(0, 1)
-        ComputeTile2 = Tile(0, 2)
+            zero_scalar   = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
+            zero          = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
+            matmul_scalar = external_func("matmul_scalar_i16_i16", inputs=[T.memref(m, k, 
+                            T.i16()), T.memref(k, n, T.i16()), T.memref(m, n, T.i16())])
+            matmul        = external_func("matmul_i16_i16", inputs=[T.memref(m, k, T.i16()),
+                            T.memref(k, n, T.i16()), T.memref(m, n, T.i16())])
 
-        OrderedObjectBuffer("inA", ShimTile, MemTile, 2, memRef_A_ty)
-        OrderedObjectBuffer("memA", MemTile, ComputeTile2, 2, memRef_A_ty,
-                                    [(m//r, r*k*word_size_in//4), 
-                                     (k//s, s*word_size_in//4), 
-                                     (r, k*word_size_in//4), 
-                                     (s*word_size_in//4, 1)])
-        Link(["inA"], ["memA"])
-        
-        OrderedObjectBuffer("inB", ShimTile, MemTile, 2, memRef_B_ty)
-        OrderedObjectBuffer("memB", MemTile, ComputeTile2, 2, memRef_B_ty,
-                                    [(k//s, s*n*word_size_in//4), 
-                                     (n//t, t*word_size_in//4), 
-                                     (s, n*word_size_in//4), 
-                                     (t*word_size_in//4, 1)])
-        Link(["inB"], ["memB"])
-        
-        OrderedObjectBuffer("memC", ComputeTile2, MemTile, 2, memRef_C_ty)
-        OrderedObjectBuffer("outC", MemTile, ShimTile, 2, memRef_C_ty,
-                                    [(m//r, r*n*word_size_out//4), 
-                                     (r, t*word_size_out//4), 
-                                     (n//t, r*t*word_size_out//4), 
-                                     (t*word_size_out//4, 1)])
-        Link(["memC"], ["outC"])
+            ShimTile     = tile(0, 0)
+            MemTile      = tile(0, 1)
+            ComputeTile2 = tile(0, 2)
 
-        @core(ComputeTile2, "mm.o")
-        def coreBody():
-            @forLoop(lowerBound = 0, upperBound = 0XFFFFFFFF, step = 1)
-            def loopReps():
-                @forLoop(lowerBound = 0, upperBound = tiles, step = 1)
-                def loopTile():
-                    elemOut = Acquire(
-                        ObjectFifoPort.Produce, "memC", 1, memRef_C_ty
-                    ).acquiredElem() 
-                    if vectorized:
-                        Call(zero, [elemOut])
-                    else:
-                        Call(zero_scalar, [elemOut])
+            objectfifo("inA", ShimTile, [MemTile], 2, memRef_A_ty, [], [])
+            objectfifo("memA", MemTile, [ComputeTile2], 2, memRef_A_ty,
+                                        [(m//r, r*k*word_size_in//4), 
+                                        (k//s, s*word_size_in//4), 
+                                        (r, k*word_size_in//4), 
+                                        (s*word_size_in//4, 1)], [])
+            objectfifo_link(["inA"], ["memA"])
 
-                    @forLoop(lowerBound = 0, upperBound = K_div_k, step = 1)
-                    def loopK():
-                        elemInA = Acquire(
-                            ObjectFifoPort.Consume, "memA", 1, memRef_A_ty
-                        ).acquiredElem()
-                        elemInB = Acquire(
-                            ObjectFifoPort.Consume, "memB", 1, memRef_B_ty
-                        ).acquiredElem()
+            objectfifo("inB", ShimTile, [MemTile], 2, memRef_B_ty, [], [])
+            objectfifo("memB", MemTile, [ComputeTile2], 2, memRef_B_ty,
+                                        [(k//s, s*n*word_size_in//4), 
+                                        (n//t, t*word_size_in//4), 
+                                        (s, n*word_size_in//4), 
+                                        (t*word_size_in//4, 1)], [])
+            objectfifo_link(["inB"], ["memB"])
+
+            objectfifo("memC", ComputeTile2, [MemTile], 2, memRef_C_ty, [], [])
+            objectfifo("outC", MemTile, [ShimTile], 2, memRef_C_ty,
+                                        [(m//r, r*n*word_size_out//4), 
+                                        (r, t*word_size_out//4), 
+                                        (n//t, r*t*word_size_out//4), 
+                                        (t*word_size_out//4, 1)], [])
+            objectfifo_link(["memC"], ["outC"])
+
+            @core(ComputeTile2, "mm.o")
+            def core_body():
+                for _ in for_(0xFFFFFFFF):
+                    for _ in for_(tiles):
+                        elem_out = acquire(
+                            ObjectFifoPort.Produce, "memC", 1, T.memref(m, n, T.i16())
+                        ).acquired_elem()
                         if vectorized:
-                            Call(matmul, [elemInA, elemInB, elemOut])
+                            Call(zero, [elem_out])
                         else:
-                            Call(matmul_scalar, [elemInA, elemInB, elemOut])
-                        Release(ObjectFifoPort.Consume, "memA", 1)
-                        Release(ObjectFifoPort.Consume, "memB", 1)
+                            Call(zero_scalar, [elem_out])
 
-                    Release(ObjectFifoPort.Produce, "memC", 1)
+                        for _ in for_(K_div_k):
+                            elem_in_a = acquire(
+                                ObjectFifoPort.Consume, "memA", 1, T.memref(m, k, T.i16())
+                            ).acquired_elem()
+                            elem_in_b = acquire(
+                                ObjectFifoPort.Consume, "memB", 1, T.memref(k, n, T.i16())
+                            ).acquired_elem()
+                            if vectorized:
+                                Call(matmul, [elem_in_a, elem_in_b, elem_out])
+                            else:
+                                Call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            objectfifo_release(ObjectFifoPort.Consume, "memA", 1)
+                            objectfifo_release(ObjectFifoPort.Consume, "memB", 1)
+                            yield_([])
 
+                        objectfifo_release(ObjectFifoPort.Produce, "memC", 1)
+                        yield_([])
+                    yield_([])
 
-        int32_ty = IntegerType.get_signless(32)
-        memRef_Ain_ty  =  MemRefType.get((A_sz_in_i32s,), int32_ty)
-        memRef_Bin_ty  =  MemRefType.get((B_sz_in_i32s,), int32_ty)
-        memRef_Cout_ty =  MemRefType.get((C_sz_in_i32s,), int32_ty)
-        @FuncOp.from_py_func(memRef_Ain_ty, memRef_Bin_ty, memRef_Cout_ty)
-        def sequence(A, B, C):
-            # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-            rows_per_block = 5
-            for tile_row_block in range((M_div_m+rows_per_block-1)//rows_per_block):
-                C_row_offset_in_i32s = tile_row_block*rows_per_block*m*N*word_size_out//4
-                num_tile_rows = min([rows_per_block, M_div_m-tile_row_block*rows_per_block])
-                IpuDmaMemcpyNd(
-                    metadata = "outC", 
-                    bd_id = 0, 
-                    mem = C, 
-                    offsets = [0, 0, 0, C_row_offset_in_i32s], 
-                    lengths = [num_tile_rows, N_div_n, m, n_in_i32s_out], 
-                    strides = [m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out]
-                )
-                for tile_row in range(num_tile_rows):
-                    A_row_offset_in_i32s = ((tile_row_block*rows_per_block)+tile_row)*m*K*word_size_in//4
-                    IpuDmaMemcpyNd(
-                        metadata = "inA", 
-                        bd_id = 2*tile_row+1, 
-                        mem = A, 
-                        offsets = [0, 0, 0, A_row_offset_in_i32s],
-                        lengths = [N_div_n, K_div_k, m, k_in_i32s], 
-                        strides = [0, k_in_i32s, K_in_i32s]
+            @FuncOp.from_py_func(
+                T.memref(A_sz_in_i32s, T.i32()),
+                T.memref(B_sz_in_i32s, T.i32()),
+                T.memref(C_sz_in_i32s, T.i32()),
+            )
+            def sequence(A, B, C):
+                # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
+                rows_per_block = 5
+                for tile_row_block in range(
+                    (M_div_m + rows_per_block - 1) // rows_per_block
+                ):
+                    C_row_offset_in_i32s = (
+                        tile_row_block * rows_per_block * m * N * word_size_out // 4
                     )
-                    IpuDmaMemcpyNd(
-                        metadata = "inB", 
-                        bd_id = 2*tile_row+2, 
-                        mem = B, 
-                        lengths = [N_div_n, K_div_k, k, n_in_i32s], 
-                        strides = [n_in_i32s, k_x_N_in_i32s, N_in_i32s]
+                    num_tile_rows = min(
+                        [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
+                    ipu_dma_memcpy_nd(
+                        metadata="outC",
+                        bd_id=0,
+                        mem=C,
+                        offsets=[0, 0, 0, C_row_offset_in_i32s],
+                        lengths=[num_tile_rows, N_div_n, m, n_in_i32s_out],
+                        strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                    )
+                    for tile_row in range(num_tile_rows):
+                        A_row_offset_in_i32s = (
+                            ((tile_row_block * rows_per_block) + tile_row)
+                            * m
+                            * K
+                            * word_size_in
+                            // 4
+                        )
+                        ipu_dma_memcpy_nd(
+                            metadata="inA",
+                            bd_id=2 * tile_row + 1,
+                            mem=A,
+                            offsets=[0, 0, 0, A_row_offset_in_i32s],
+                            lengths=[N_div_n, K_div_k, m, k_in_i32s],
+                            strides=[0, k_in_i32s, K_in_i32s],
+                        )
+                        ipu_dma_memcpy_nd(
+                            metadata="inB",
+                            bd_id=2 * tile_row + 2,
+                            mem=B,
+                            lengths=[N_div_n, K_div_k, k, n_in_i32s],
+                            strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                        )
 
-                IpuSync(column = 0, row = 0, direction = 0, channel = 0)
+                    ipu_sync(column=0, row=0, direction=0, channel=0)
+
+    print(ctx.module)
+
+my_matmul()
