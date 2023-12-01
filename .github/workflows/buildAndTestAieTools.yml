@@ -1,0 +1,82 @@
+name: Build and Test with AIE tools
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-repo:
+    name: Build and Test
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false 
+
+      - name: Docker prune
+        shell: bash
+        run: |
+          docker system prune -a -f
+          
+      - uses: uraimo/run-on-arch-action@v2.5.0
+        name: Run commands
+        id: runcmd
+        with:
+          distro: none
+          base_image: ghcr.io/xilinx/mlir-aie/xilinx:latest
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --mac-address ${{ secrets.XILINX_MAC }}
+          run: |
+            ls -l /opt/Xilinx/Vitis/2023.2/
+            
+            echo -n "${{ secrets.XILINX_LIC }}" | base64 --decode > ~/.Xilinx/Xilinx.lic
+            
+            cd /
+            git clone --recursive https://github.com/Xilinx/mlir-aie.git
+            pip -q download mlir==18.0.0.2023112901+4eb42119 -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
+            
+            cd /mlir-aie
+            # wget -q https://gist.githubusercontent.com/makslevental/5437d26f74cb5ab4a65317b0c5b8158c/raw/fec953b6af0fab5ea949ada24dd6892c9679bf11/toolchain.diff && git apply toolchain.diff
+            cd cmake/modulesXilinx && wget https://patch-diff.githubusercontent.com/raw/Xilinx/cmakeModules/pull/17.diff && git apply 17.diff
+            
+            mkdir -p /mlir-aie/build
+            cd /mlir-aie/build
+            cmake .. -G Ninja \
+              -DMLIR_DIR=/mlir/lib/cmake/mlir \
+              -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2/ \
+              -DVitis_VERSION_MAJOR=2023 \
+              -DVitis_VERSION_MINOR=2 \
+              -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+              -DLLVM_EXTERNAL_LIT=$(which lit) \
+              -DAIE_INCLUDE_INTEGRATION_TESTS=ON \
+              -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_INSTALL_PREFIX=install 
+            
+            ninja
+            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j1/g' ../test/CMakeLists.txt
+            LIT_FILTER=unit_tests/aie2 PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
