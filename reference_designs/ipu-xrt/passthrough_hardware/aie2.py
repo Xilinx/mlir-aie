@@ -13,11 +13,8 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-<<<<<<< HEAD
-=======
 from aie.dialects.extras import memref, arith
 from aie.util import mlir_mod_ctx
->>>>>>> e29240d60fc2a6ab7adac93136e5df01b0b4e25f
 
 N = 4096
 N_in_bytes = N * 4
