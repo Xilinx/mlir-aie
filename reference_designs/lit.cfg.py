@@ -41,6 +41,9 @@ config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment('AIETOOLS', config.vitis_aietools_dir)
 
+# for python
+llvm_config.with_environment('PYTHONPATH', os.path.join(config.aie_obj_root,"python"))
+
 if(config.enable_board_tests):
     config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))
 else:

@@ -25,8 +25,7 @@ build/final.xclbin: build/aie.mlir build/scale.o
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
 
-build/${targetname}.exe: test.cpp
-	mkdir -p ${@D}
+${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
@@ -37,8 +36,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe build/final.xclbin build/insts.txt
+run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build
+	rm -rf build _build ${targetname}.exe
