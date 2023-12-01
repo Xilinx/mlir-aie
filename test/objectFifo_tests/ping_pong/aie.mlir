@@ -10,7 +10,7 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 // This test uses a special case of the objectFifo, an objectFifo with two elements. 
@@ -26,7 +26,7 @@ module @ping_pong {
         %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
         %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
 
-        AIE.objectFifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         // Fills the given memref with the same input index value.
         func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
@@ -50,14 +50,14 @@ module @ping_pong {
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 // acquire next element for produce
-                %subview = AIE.objectFifo.acquire @objfifo (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @objfifo (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 // call generator function
                 func.call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
 
                 // release next element for consume
-                AIE.objectFifo.release @objfifo (Produce, 1)
+                AIE.objectfifo.release @objfifo (Produce, 1)
             }
             
             AIE.end
@@ -86,14 +86,14 @@ module @ping_pong {
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 // acquire next element for consume
-                %subview = AIE.objectFifo.acquire @objfifo (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %subview = AIE.objectfifo.acquire @objfifo (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 // call consumer function
                 func.call @storeLineScalar(%elem0, %indexInHeight, %buff_out) : (memref<16xi32>, index, memref<10x16xi32>) -> ()
 
                 // release next element for produce
-                AIE.objectFifo.release @objfifo (Consume, 1)
+                AIE.objectfifo.release @objfifo (Consume, 1)
             }
 
             // release output buffer

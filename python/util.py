@@ -1,3 +1,6 @@
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from typing import Optional
 from typing import Union
 
 import numpy as np
@@ -8,6 +11,10 @@ from .ir import (
     F64Type,
     IntegerType,
     RankedTensorType,
+    Context,
+    Module,
+    Location,
+    InsertionPoint,
 )
 
 _np_dtype_to_mlir_type_ctor = {
@@ -46,13 +53,13 @@ def infer_mlir_type(
     if isinstance(py_val, bool):
         return T.bool()
     elif isinstance(py_val, int):
-        if -(2**31) <= py_val < 2**31:
+        if -(2 ** 31) <= py_val < 2 ** 31:
             return T.i32()
-        elif 2**31 <= py_val < 2**32:
+        elif 2 ** 31 <= py_val < 2 ** 32:
             return T.ui32()
-        elif -(2**63) <= py_val < 2**63:
+        elif -(2 ** 63) <= py_val < 2 ** 63:
             return T.i64()
-        elif 2**63 <= py_val < 2**64:
+        elif 2 ** 63 <= py_val < 2 ** 64:
             return T.ui64()
         else:
             raise RuntimeError(f"Nonrepresentable integer {py_val}.")
@@ -78,3 +85,37 @@ def infer_mlir_type(
 def mlir_type_to_np_dtype(mlir_type):
     _mlir_type_to_np_dtype = {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()}
     return _mlir_type_to_np_dtype.get(mlir_type)
+
+
+@dataclass
+class MLIRContext:
+    context: Context
+    module: Module
+
+    def __str__(self):
+        return str(self.module)
+
+
+@contextmanager
+def mlir_mod_ctx(
+    src: Optional[str] = None,
+    context: Context = None,
+    location: Location = None,
+    allow_unregistered_dialects=False,
+) -> MLIRContext:
+    if context is None:
+        context = Context()
+    if allow_unregistered_dialects:
+        context.allow_unregistered_dialects = True
+    with ExitStack() as stack:
+        stack.enter_context(context)
+        if location is None:
+            location = Location.unknown()
+        stack.enter_context(location)
+        if src is not None:
+            module = Module.parse(src)
+        else:
+            module = Module.create()
+        ip = InsertionPoint(module.body)
+        stack.enter_context(ip)
+        yield MLIRContext(context, module)

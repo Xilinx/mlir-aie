@@ -26,7 +26,7 @@ module @tutorial_3 {
         // The size of the object FIFO, i.e. its number of elements, is 1.
         // Objects, i.e. allocated memory elements, have type memref<256xi32>
         // These tiles share memory between them.
-        AIE.objectFifo @of (%tile14, {%tile24}, 1 : i32) : !AIE.objectFifo<memref<256xi32>>
+        AIE.objectfifo @of (%tile14, {%tile24}, 1 : i32) : !AIE.objectfifo<memref<256xi32>>
 
         // This lock will be used to gate when our 2nd core is done
         %lock24_2 = AIE.lock(%tile24, 2) { sym_name = "lock_a24_2" }
@@ -38,10 +38,10 @@ module @tutorial_3 {
             // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
             // This core acquires objects as a Producer: this impacts the acquire value of the lock 
             // that is generated through the object FIFO lowering.
-            %inputSubview = AIE.objectFifo.acquire @of (Produce, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+            %inputSubview = AIE.objectfifo.acquire @of (Produce, 1) : !AIE.objectfifosubivew<memref<256xi32>>
             
             // Access the first, and only, element of the subview.
-            %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
 
             %val = arith.constant 14 : i32 
             %idx = arith.constant 3 : index 
@@ -51,7 +51,7 @@ module @tutorial_3 {
             // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
             // This core releases objects as a Producer: this impacts the release value of the lock 
             // that is generated through the object FIFO lowering.
-            AIE.objectFifo.release @of (Produce, 1)
+            AIE.objectfifo.release @of (Produce, 1)
             AIE.end
         }
 
@@ -61,8 +61,8 @@ module @tutorial_3 {
             // This acquire succeeds when the core is enabled
             AIE.useLock(%lock24_2, "Acquire", 0)
 
-            %inputSubview = AIE.objectFifo.acquire @of (Consume, 1) : !AIE.objectFifoSubview<memref<256xi32>>
-            %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+            %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubivew<memref<256xi32>>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %input[%idx1] : memref<256xi32>
@@ -71,7 +71,7 @@ module @tutorial_3 {
             %idx2 = arith.constant 5 : index
             memref.store %d2, %input[%idx2] : memref<256xi32> 
 
-            AIE.objectFifo.release @of (Consume, 1)
+            AIE.objectfifo.release @of (Consume, 1)
 
             // This release means our 2nd core is done
             AIE.useLock(%lock24_2, "Release", 1)

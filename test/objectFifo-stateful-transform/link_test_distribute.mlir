@@ -166,14 +166,14 @@ module @link_distribute {
         %tile23 = AIE.tile(2, 3)
         %tile33 = AIE.tile(3, 3)
 
-        AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
-        AIE.objectFifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<4x4xi32>>
-        AIE.objectFifo @link3 (%tile21, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<20xi32>>
-        AIE.objectFifo @link4 (%tile21, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<12xi32>>
+        AIE.objectfifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectfifo<memref<48xi32>>
+        AIE.objectfifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectfifo<memref<4x4xi32>>
+        AIE.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !AIE.objectfifo<memref<20xi32>>
+        AIE.objectfifo @link4 (%tile21, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<12xi32>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
-        AIE.objectFifo.registerExternalBuffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
+        AIE.objectfifo.register_external_buffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
 
-        AIE.objectFifo.link [@link1] -> [@link2, @link3, @link4] ()
+        AIE.objectfifo.link [@link1] -> [@link2, @link3, @link4] ()
     }
 }

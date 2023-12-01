@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py -j4 %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py -j4 %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 AIE.device(xcvc1902) {
@@ -30,11 +30,11 @@ AIE.device(xcvc1902) {
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32>
 
-    AIE.objectFifo @of_in (%tile70, {%tile34}, 1 : i32) : !AIE.objectFifo<memref<64xi32>>
-    AIE.objectFifo @of_out (%tile34, {%tile70}, 1 : i32) : !AIE.objectFifo<memref<64xi32>>
+    AIE.objectfifo @of_in (%tile70, {%tile34}, 1 : i32) : !AIE.objectfifo<memref<64xi32>>
+    AIE.objectfifo @of_out (%tile34, {%tile70}, 1 : i32) : !AIE.objectfifo<memref<64xi32>>
 
-    AIE.objectFifo.registerExternalBuffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
-    AIE.objectFifo.registerExternalBuffers @of_out (%tile70, {%ext_buf70_out}) : (memref<64xi32>)
+    AIE.objectfifo.register_external_buffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
+    AIE.objectfifo.register_external_buffers @of_out (%tile70, {%ext_buf70_out}) : (memref<64xi32>)
 
     %core34 = AIE.core(%tile34) {
         %c0 = arith.constant 0 : index
@@ -51,19 +51,19 @@ AIE.device(xcvc1902) {
 
             AIE.useLock(%hostLock, Acquire, 1)
 
-            %inputSubview = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<64xi32>>
-            %outputSubview = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<64xi32>>
+            %inputSubview = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<64xi32>>
+            %outputSubview = AIE.objectfifo.acquire @of_out (Produce, 1) : !AIE.objectfifosubview<memref<64xi32>>
 
-            %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<64xi32>> -> memref<64xi32>
-            %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi32>> -> memref<64xi32>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<64xi32>> -> memref<64xi32>
+            %output = AIE.objectfifo.subview.access %outputSubview[0] : !AIE.objectfifosubview<memref<64xi32>> -> memref<64xi32>
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
                 %d1 = memref.load %input[%indexInHeight] : memref<64xi32>
                 memref.store %d1, %output[%indexInHeight] : memref<64xi32>
             }
 
-            AIE.objectFifo.release @of_in (Consume, 1)
-            AIE.objectFifo.release @of_out (Produce, 1)
+            AIE.objectfifo.release @of_in (Consume, 1)
+            AIE.objectfifo.release @of_out (Produce, 1)
 
             AIE.useLock(%hostLock, Release, 0)
 

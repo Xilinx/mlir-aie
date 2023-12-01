@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --no-unified %s
-// RUN: aiecc.py --unified    %s
+// RUN: %PYTHON aiecc.py --no-unified %s
+// RUN: %PYTHON aiecc.py --unified    %s
 
 module @test00_itsalive {
   AIE.device(xcve2802) {

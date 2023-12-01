@@ -2540,6 +2540,8 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto rhs = adaptor.getRhs();
     auto acc = adaptor.getAcc();
 
+    acc = rewriter.create<aievec::CastOp>(contractOp.getLoc(), acc.getType(),
+                                          acc, true);
     auto matmulOp = rewriter.create<aievec::MatMulOp>(
         contractOp.getLoc(), contractOp.getResult().getType(), lhs, rhs, acc);
     {
@@ -2573,8 +2575,9 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
       if (failed(matmulOp.verifyInvariants()))
         return failure();
     }
-
-    rewriter.replaceOp(contractOp, matmulOp);
+    auto resCastOp = rewriter.create<aievec::CastOp>(
+        contractOp.getLoc(), acc.getType(), matmulOp, false);
+    rewriter.replaceOp(contractOp, resCastOp);
 
     return success();
   }

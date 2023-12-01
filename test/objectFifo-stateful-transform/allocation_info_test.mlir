@@ -32,10 +32,10 @@ module @alloc {
         %tile22 = AIE.tile(2, 2)
         %tile23 = AIE.tile(2, 3)
 
-        AIE.objectFifo @of_in_0 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
-        AIE.objectFifo @of_out_0 (%tile22, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectfifo @of_in_0 (%tile20, {%tile22}, 2 : i32) : !AIE.objectfifo<memref<64xi16>>
+        AIE.objectfifo @of_out_0 (%tile22, {%tile20}, 2 : i32) : !AIE.objectfifo<memref<64xi16>>
 
-        AIE.objectFifo @of_in_1 (%tile20, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
-        AIE.objectFifo @of_out_1 (%tile23, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectfifo @of_in_1 (%tile20, {%tile23}, 2 : i32) : !AIE.objectfifo<memref<64xi16>>
+        AIE.objectfifo @of_out_1 (%tile23, {%tile20}, 2 : i32) : !AIE.objectfifo<memref<64xi16>>
     }
 }

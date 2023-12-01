@@ -15,14 +15,15 @@ from aie.dialects.aie import (
     ObjectFifoType,
     acquire,
     end,
-    objectFifo,
-    objectFifo_link,
-    objectFifo_release,
-    objectFifo_subview_access,
+    objectfifo,
+    objectfifo_link,
+    objectfifo_release,
+    objectfifo_subview_access,
     tile,
 )
 from aie.extras import types as T
 from aie.ir import InsertionPoint, Block, TypeAttr
+from aie.util import mlir_mod_ctx
 
 from util import construct_and_print_module
 
@@ -91,7 +92,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: AIE.objectfifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -99,7 +100,7 @@ def objFifo():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectFifo(
+        objectfifo(
             "of0",
             tile0,
             [tile1],
@@ -115,9 +116,9 @@ def objFifo():
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: %[[VAL_2:.*]] = AIE.tile(7, 7)
-# CHECK: AIE.objectFifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: AIE.objectFifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: AIE.objectFifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
+# CHECK: AIE.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: AIE.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: AIE.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcvc1902)
@@ -126,7 +127,7 @@ def objFifoLink():
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
         tile2 = tile(col=7, row=7)
-        objectFifo(
+        objectfifo(
             "of0",
             tile0,
             [tile1],
@@ -135,7 +136,7 @@ def objFifoLink():
             [],
             [],
         )
-        objectFifo(
+        objectfifo(
             "of1",
             tile1,
             [tile2],
@@ -144,15 +145,15 @@ def objFifoLink():
             [],
             [],
         )
-        objectFifo_link(["of0"], ["of1"])
+        objectfifo_link(["of0"], ["of1"])
         end()
 
 
 # CHECK-LABEL: objFifoAcquire
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
+# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = AIE.objectfifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectfifosubview<memref<12xf16>>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -160,7 +161,7 @@ def objFifoAcquire():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectFifo(
+        objectfifo(
             "of0",
             tile0,
             [tile1],
@@ -184,9 +185,9 @@ def objFifoAcquire():
 # CHECK-LABEL: objFifoSubviewAccess
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
-# CHECK: %[[VAL_4:.*]] = AIE.objectFifo.subview.access %[[VAL_3]][0] : !AIE.objectFifoSubview<memref<12xf16>> -> memref<12xf16>
+# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = AIE.objectfifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_4:.*]] = AIE.objectfifo.subview.access %[[VAL_3]][0] : !AIE.objectfifosubview<memref<12xf16>> -> memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
@@ -194,7 +195,7 @@ def objFifoSubviewAccess():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectFifo(
+        objectfifo(
             "of0",
             tile0,
             [tile1],
@@ -212,7 +213,7 @@ def objFifoSubviewAccess():
                 num_elem=1,
                 datatype=T.memref(12, T.f16()),
             )
-            subview = objectFifo_subview_access(
+            subview = objectfifo_subview_access(
                 T.memref(12, T.f16()), subview=acq, index=0
             )
             end()
@@ -221,8 +222,8 @@ def objFifoSubviewAccess():
 # CHECK-LABEL: objFifoRelease
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
-# CHECK: AIE.objectFifo.release @[[VAL_2]](Produce, 1)
+# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: AIE.objectfifo.release @[[VAL_2]](Produce, 1)
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
@@ -230,7 +231,7 @@ def objFifoRelease():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectFifo(
+        objectfifo(
             "of0",
             tile0,
             [tile1],
@@ -242,5 +243,28 @@ def objFifoRelease():
         C = Core(tile0)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = objectFifo_release(ObjectFifoPort.Produce, "of0", 1)
+            acq = objectfifo_release(ObjectFifoPort.Produce, "of0", 1)
             end()
+
+
+# CHECK-LABEL: test_module_context
+# CHECK: module {
+# CHECK:   %tile_1_1 = AIE.tile(1, 1)
+# CHECK:   %core_1_1 = AIE.core(%tile_1_1) {
+# CHECK:     AIE.end
+# CHECK:   }
+# CHECK: }
+def test_module_context():
+    print("test_module_context")
+
+    with mlir_mod_ctx() as ctx:
+        t = tile(col=1, row=1)
+        c = Core(t)
+        bb = Block.create_at_start(c.body)
+        with InsertionPoint(bb):
+            end()
+
+    print(ctx.module)
+
+
+test_module_context()

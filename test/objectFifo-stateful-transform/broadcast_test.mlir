@@ -274,7 +274,7 @@ module @broadcast {
     %tile32 = AIE.tile(3, 2)
     %tile33 = AIE.tile(3, 3)
 
-    AIE.objectFifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3, 4, 3]) : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectfifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3, 4, 3]) : !AIE.objectfifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
@@ -286,10 +286,10 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire @broadcast_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @broadcast_of (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release @broadcast_of (Produce, 1)
+            AIE.objectfifo.release @broadcast_of (Produce, 1)
         }
         
         AIE.end
@@ -301,10 +301,10 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire @broadcast_of (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @broadcast_of (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release @broadcast_of (Consume, 1)
+            AIE.objectfifo.release @broadcast_of (Consume, 1)
         }
         
         AIE.end
@@ -316,12 +316,12 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire @broadcast_of (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @broadcast_of (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem1 = AIE.objectfifo.subview.access %subview[1] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release @broadcast_of (Consume, 2)
+            AIE.objectfifo.release @broadcast_of (Consume, 2)
         }
         
         AIE.end
@@ -333,14 +333,14 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire @broadcast_of (Consume, 3) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem2 = AIE.objectFifo.subview.access %subview[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @broadcast_of (Consume, 3) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem1 = AIE.objectfifo.subview.access %subview[1] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem2 = AIE.objectfifo.subview.access %subview[2] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release @broadcast_of (Consume, 1)
+            AIE.objectfifo.release @broadcast_of (Consume, 1)
         }
         
         AIE.end
@@ -352,12 +352,12 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire @broadcast_of (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            %subview = AIE.objectfifo.acquire @broadcast_of (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
+            %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem1 = AIE.objectfifo.subview.access %subview[1] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release @broadcast_of (Consume, 1)
+            AIE.objectfifo.release @broadcast_of (Consume, 1)
         }
         
         AIE.end
