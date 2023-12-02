@@ -119,33 +119,27 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Install Python and other packages
-        # Install cmake here to get the latest version to compile
-        # LLVM. The Ubuntu 20.04 cmake version is only 3.16.3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python packages
         run: |
-          apt-get install -y pip
-          pip install cmake numpy psutil pybind11 rich
+          pip install cmake numpy psutil pybind11 rich pkginfo lit
 
       - name: Install Ninja
-        # Can not use the following since it wants to use `sudo` not
-        # available in the case of Docker execution
-        # https://github.com/llvm/actions/tree/main/install-ninja
-        # uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
-        # So just use the specific implementation instead:
         run: apt-get install -y ninja-build
 
       - name: Install lld and clang (for aiecc)
         run: apt-get install -y clang lld
 
-      - name: Get LLVM
-        id: clone-llvm
-        run: utils/clone-llvm.sh
-
-      - name: Get LLVM commit hash
-        id: get-llvm-commit-hash
-        # Get the LLVM commit hash to be used in the ccache database key to
-        # avoid mixing different binaries compiled by different LLVM versions
-        run: echo "hash=$(cd llvm ; git log -1 --format='%H')" >> $GITHUB_OUTPUT
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          WHL=$(ls mlir-*.whl)
+          echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
@@ -153,11 +147,8 @@ jobs:
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition
-          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
+          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}
           max-size: 1G
-
-      - name: Build and install LLVM
-        run: LLVM_ENABLE_RTTI=ON utils/build-llvm.sh
 
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
@@ -180,10 +171,10 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           
           ninja
@@ -212,10 +203,10 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
+            -DLLVM_EXTERNAL_LIT=$(which lit)
           
           ninja
           ninja check-aie
@@ -369,7 +360,7 @@ jobs:
 
       - name: Install Python and other packages
         run: |
-          pip install cmake numpy psutil pybind11 rich
+          pip install cmake numpy psutil pybind11 rich lit
 
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build
@@ -385,16 +376,6 @@ jobs:
           CHANGED_FILES=$(python utils/get_git_changed_files.py)
           echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
 
-      - name: Get LLVM
-        if: steps.changed-files.outputs.changed-files != ''
-        id: clone-llvm
-        run: utils/clone-llvm.sh
-
-      - name: Get LLVM commit hash
-        if: steps.changed-files.outputs.changed-files != ''
-        id: get-llvm-commit-hash
-        run: echo "hash=$(cd llvm ; git log -1 --format='%H')" >> $GITHUB_OUTPUT
-
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
@@ -402,10 +383,6 @@ jobs:
         with:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
           max-size: 1G
-
-      - name: Build and install LLVM
-        if: steps.changed-files.outputs.changed-files != ''
-        run: LLVM_ENABLE_RTTI=ON utils/build-llvm.sh
 
       - name: Install our python reqs
         if: steps.changed-files.outputs.changed-files != ''
@@ -429,10 +406,10 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=/home/runner/work/mlir-aie/mlir-aie/llvm/install/lib/cmake/mlir \
-            -DLLVM_DIR=/home/runner/work/mlir-aie/mlir-aie/llvm/install/lib/cmake/llvm \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
             \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \

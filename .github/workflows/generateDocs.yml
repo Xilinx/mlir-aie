@@ -56,13 +56,12 @@ jobs:
         run: git clone --depth 1 https://github.com/Xilinx/cmakeModules.git
         shell: bash
 
-      - name: Get LLVM
-        id: clone-llvm
-        run: utils/clone-llvm.sh
-        shell: bash
-
-      - name: Rebuild and Install LLVM
-        run: utils/build-llvm.sh
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+          pip install lit
 
       # Build the repo test target in release mode to build and test.
       - name: Build Docs
@@ -73,11 +72,11 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DAIE_INCLUDE_DOCS=ON \
-            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
+            -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd
           cp -r docs/* build_release/docs
