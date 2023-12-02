@@ -29,7 +29,7 @@
 
 //#define IMAGE_WIDTH_IN 128
 //#define IMAGE_HEIGHT_IN 64
-constexpr int testImageWidth  = COLORTHRESHOLD_WIDTH;
+constexpr int testImageWidth = COLORTHRESHOLD_WIDTH;
 constexpr int testImageHeight = COLORTHRESHOLD_HEIGHT;
 
 //#define IMAGE_WIDTH_OUT IMAGE_WIDTH_IN
@@ -38,11 +38,11 @@ constexpr int testImageHeight = COLORTHRESHOLD_HEIGHT;
 //#define IMAGE_AREA_IN (IMAGE_HEIGHT_IN * IMAGE_WIDTH_IN)
 //#define IMAGE_AREA_OUT (IMAGE_HEIGHT_OUT * IMAGE_WIDTH_OUT)
 
-constexpr int imageAreaIn  = testImageWidth*testImageHeight;
-constexpr int imageAreaOut = testImageWidth*testImageHeight;
+constexpr int imageAreaIn = testImageWidth * testImageHeight;
+constexpr int imageAreaOut = testImageWidth * testImageHeight;
 
-//constexpr int IN_SIZE = (IMAGE_AREA_IN * sizeof(uint8_t));
-//constexpr int OUT_SIZE = (IMAGE_AREA_OUT * sizeof(uint8_t));
+// constexpr int IN_SIZE = (IMAGE_AREA_IN * sizeof(uint8_t));
+// constexpr int OUT_SIZE = (IMAGE_AREA_OUT * sizeof(uint8_t));
 constexpr int IN_SIZE = (imageAreaIn * sizeof(uint8_t));
 constexpr int OUT_SIZE = (imageAreaOut * sizeof(uint8_t));
 

@@ -228,7 +228,8 @@ void addSaltPepperNoise(cv::Mat &src, float percentWhite, float percentBlack) {
 }
 
 // FROM: https://www.softwaretestinghelp.com/insertion-sort/
-template <typename T> static void insertion_sort(T *a, int32_t size) {
+template <typename T>
+static void insertion_sort(T *a, int32_t size) {
   for (int k = 1; k < size; k++) {
     T temp = a[k];
     int j = k - 1;
