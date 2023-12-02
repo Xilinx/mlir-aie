@@ -302,6 +302,12 @@ jobs:
           CHANGED_FILES=$(python utils/get_git_changed_files.py)
           echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
 
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
