@@ -36,16 +36,10 @@ def passThroughAIE2():
         @device(AIEDevice.ipu)
         def device_body():
             # define types
-            line_ty = TypeAttr.get(ObjectFifoType.get(T.memref(lineWidthInBytes, T.ui8())))
+            line_ty       = T.memref(lineWidthInBytes, T.ui8())
+            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
 
-            passThroughLine = external_func(
-                "passThroughLine", 
-                inputs = [
-                    T.memref(lineWidthInBytes, T.ui8()),
-                    T.memref(lineWidthInBytes, T.ui8()),
-                    T.i32()
-                ],
-            )
+            passThroughLine = external_func("passThroughLine", inputs = [line_ty, line_ty,T.i32()])
 
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
@@ -53,18 +47,18 @@ def passThroughAIE2():
             if enableTrace:
                 Flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
-            objectfifo("in", ShimTile, [ComputeTile2], 2, line_ty, [], [])
-            objectfifo("out", ComputeTile2, [ShimTile], 2, line_ty, [], [])
+            objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_line_ty, [], [])
+            objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_line_ty, [], [])
 
             @core(ComputeTile2, "passThrough.cc.o")
             def core_body():
                 for _ in for_(sys.maxsize):
                     for _ in for_(height):
                         elemOut = acquire(
-                            ObjectFifoPort.Produce, "out", 1, T.memref(lineWidthInBytes, T.ui8())
+                            ObjectFifoPort.Produce, "out", 1, line_ty
                         ).acquired_elem()  
                         elemIn = acquire(
-                            ObjectFifoPort.Consume, "in", 1, T.memref(lineWidthInBytes, T.ui8())
+                            ObjectFifoPort.Consume, "in", 1, line_ty
                         ).acquired_elem() 
                         Call(passThroughLine, [elemIn, elemOut, width])
                         objectfifo_release(ObjectFifoPort.Consume,"in", 1)
@@ -74,10 +68,10 @@ def passThroughAIE2():
 
             tensorSize = width*height
             tensorSizeInInt32s = tensorSize // 4
+            tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
+ 
             @FuncOp.from_py_func(
-                T.memref(tensorSizeInInt32s, T.i32()),
-                T.memref(tensorSizeInInt32s, T.i32()),
-                T.memref(tensorSizeInInt32s, T.i32()),
+                tensor_ty, tensor_ty, tensor_ty
             )
             def sequence(inTensor, notUsed, outTensor):
                 if enableTrace:

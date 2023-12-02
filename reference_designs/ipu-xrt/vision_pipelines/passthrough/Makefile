@@ -10,10 +10,10 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
+PASSTHROUGH_WIDTH = 512
+PASSTHROUGH_HEIGHT = 9
 #PASSTHROUGH_WIDTH = 1920
 #PASSTHROUGH_HEIGHT = 1080
-PASSTHROUGH_WIDTH = 64
-PASSTHROUGH_HEIGHT = 36
 
 targetname = passThrough
 

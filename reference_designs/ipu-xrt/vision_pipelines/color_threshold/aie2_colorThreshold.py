@@ -54,6 +54,7 @@ def color_threshold():
 
             # thresholdLine = privateFunc("thresholdLine", inputs = [lineWidth, lineWidth, int32_ty, int32_ty, int32_ty, int8_ty])
         
+            # tile declarations
             ShimTile     = tile(0, 0)
             MemTile      = tile(0, 1)
             ComputeTile2 = tile(0, 2)
@@ -61,7 +62,6 @@ def color_threshold():
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
 
-            # set up AIE-array data movement with Ordered Object Buffers
             line_bytes_ty = TypeAttr.get(ObjectFifoType.get(T.memref(lineWidthInBytes, T.ui8())))
             line_ty       = TypeAttr.get(ObjectFifoType.get(T.memref(lineWidth, T.ui8())))
 
@@ -95,9 +95,7 @@ def color_threshold():
                 maxValue = 255
                 thresholdValue = memref.load(rtpComputeTile2, [0])
                 thresholdType = memref.load(rtpComputeTile2, [1])
-                # @forLoop(lowerBound = 0, upperBound = 4096, step = 1)
                 for _ in for_(4096):
-                # def loopBody():
                     elemIn  = acquire(
                         ObjectFifoPort.Consume, "inOOB_L2L1_0", 1, T.memref(lineWidth, T.ui8())
                     ).acquired_elem()
@@ -116,9 +114,7 @@ def color_threshold():
                 maxValue = 255
                 thresholdValue = memref.load(rtpComputeTile3, [0])
                 thresholdType = memref.load(rtpComputeTile3, [1])
-                # @forLoop(lowerBound = 0, upperBound = 4096, step = 1)
                 for _ in for_(4096):
-                # def loopBody():
                     elemIn  = acquire(
                         ObjectFifoPort.Consume, "inOOB_L2L1_1", 1, T.memref(lineWidth, T.ui8())
                     ).acquired_elem()
@@ -137,9 +133,7 @@ def color_threshold():
                 maxValue = 255
                 thresholdValue = memref.load(rtpComputeTile4, [0])
                 thresholdType = memref.load(rtpComputeTile4, [1])
-                # @forLoop(lowerBound = 0, upperBound = 4096, step = 1)
                 for _ in for_(4096):
-                # def loopBody():
                     elemIn  = acquire(
                         ObjectFifoPort.Consume, "inOOB_L2L1_2", 1, T.memref(lineWidth, T.ui8())
                     ).acquired_elem()
@@ -158,9 +152,7 @@ def color_threshold():
                 maxValue = 255
                 thresholdValue = memref.load(rtpComputeTile5, [0])
                 thresholdType = memref.load(rtpComputeTile5, [1])
-                # @forLoop(lowerBound = 0, upperBound = 4096, step = 1)
                 for _ in for_(4096):
-                # def loopBody():
                     elemIn  = acquire(
                         ObjectFifoPort.Consume, "inOOB_L2L1_3", 1, T.memref(lineWidth, T.ui8())
                     ).acquired_elem()
@@ -178,12 +170,7 @@ def color_threshold():
             
             tensorSize = width*4 # 4 channels
             tensorSizeInInt32s = tensorSize // 4
-            # tensor_ty =  MemRefType.get((tensorSizeInInt32s,), int32_ty)
-            # memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
             @FuncOp.from_py_func(
-                # tensor_ty, 
-                # memRef_16x16_ty, 
-                # tensor_ty
                 T.memref(tensorSizeInInt32s, T.i32()),
                 T.memref(16,16, T.i32()),
                 T.memref(tensorSizeInInt32s, T.i32()),

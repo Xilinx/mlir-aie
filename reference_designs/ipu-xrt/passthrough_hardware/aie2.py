@@ -28,20 +28,18 @@ def my_passthrough():
 
         @device(AIEDevice.ipu)
         def device_body():
-            # int32_ty = IntegerType.get_signless(32)
-            memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(1024, T.i32())))
+            memRef_ty       = T.memref(1024, T.i32())
+            ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
             # tile declarations
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
             # set up AIE-array data movement with Ordered Object Buffers
-            objectfifo("in", ShimTile, [ComputeTile2], 2, memRef_ty, [], [])
-            objectfifo("out", ComputeTile2, [ShimTile], 2, memRef_ty, [], [])
+            objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_memRef_ty, [], [])
+            objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
             objectfifo_link(["in"],["out"])
             
-            # memRef_tmp_ty = MemRefType.get((1,), int32_ty)
-            # memRef_tmp_ty = TypeAttr.get(MemRefType.get(T.memref(1, T.i32())))
             @core(ComputeTile2)
             def core_body():
                 tmp = memref.alloc([1], T.i32())
@@ -49,8 +47,9 @@ def my_passthrough():
                 memref.store(v0, tmp, [0])
                 
             # to/from AIE-array data movement 
+            tensor_ty = T.memref(N, T.i32())
             @FuncOp.from_py_func(
-                T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+                tensor_ty, tensor_ty, tensor_ty
             )
             def sequence(A, B, C):
                 ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])

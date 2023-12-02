@@ -347,3 +347,4 @@ int main(int argc, const char *argv[]) {
     printf("Testing edgeDetect done!\n");
     return res;
   }
+}

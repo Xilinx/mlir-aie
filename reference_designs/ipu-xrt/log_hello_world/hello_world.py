@@ -19,28 +19,28 @@ def printf():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(N, T.i32())))
+            memRef_ty       = T.memref(N, T.i32())
+            ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
-            kernel = external_func("kernel", inputs=[T.memref(N, T.i32()), 
-                                   T.memref(N, T.i32()), T.memref(N, T.i32())])
+            kernel = external_func("kernel", inputs=[memRef_ty, memRef_ty, memRef_ty])
 
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
-            objectfifo("inOF", ShimTile, [ComputeTile2], 2, memRef_ty, [], [])
-            objectfifo("outOF", ComputeTile2, [ShimTile], 2, memRef_ty, [], [])
-            objectfifo("logoutOF", ComputeTile2, [ShimTile], 2, memRef_ty, [], [])
+            objectfifo("inOF", ShimTile, [ComputeTile2], 2, ofifo_memRef_ty, [], [])
+            objectfifo("outOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
+            objectfifo("logoutOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
 
             @core(ComputeTile2, "kernel.o")
             def core_body():
                 elemOut = acquire(
-                    ObjectFifoPort.Produce, "outOF", 1, T.memref(N, T.i32())
+                    ObjectFifoPort.Produce, "outOF", 1, memRef_ty
                 ).acquired_elem()
                 elemIn = acquire(
-                    ObjectFifoPort.Consume, "inOF", 1, T.memref(N, T.i32())
+                    ObjectFifoPort.Consume, "inOF", 1, memRef_ty
                 ).acquired_elem()
                 elemLogout = acquire(
-                    ObjectFifoPort.Produce, "logoutOF", 1, T.memref(N, T.i32())
+                    ObjectFifoPort.Produce, "logoutOF", 1, memRef_ty
                 ).acquired_elem()
                 Call(kernel, [elemIn, elemOut, elemLogout])
                 objectfifo_release(ObjectFifoPort.Consume, "inOF", 1)
@@ -48,7 +48,7 @@ def printf():
                 objectfifo_release(ObjectFifoPort.Produce, "logoutOF", 1)
 
             @FuncOp.from_py_func(
-                T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+                memRef_ty, memRef_ty, memRef_ty
             )
             def sequence(in_mem, out_mem, logout):
                 ipu_dma_memcpy_nd(metadata="outOF", bd_id=0, mem=out_mem, lengths=[1, 1, 1, N])

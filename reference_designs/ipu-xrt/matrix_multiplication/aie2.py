@@ -58,39 +58,44 @@ def my_matmul():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_A_ty = TypeAttr.get(ObjectFifoType.get(T.memref(m, k, T.i16())))
-            memRef_B_ty = TypeAttr.get(ObjectFifoType.get(T.memref(k, n, T.i16())))
-            memRef_C_ty = TypeAttr.get(ObjectFifoType.get(T.memref(m, n, T.i16())))
 
-            zero_scalar   = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
-            zero          = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
-            matmul_scalar = external_func("matmul_scalar_i16_i16", inputs=[T.memref(m, k, 
-                            T.i16()), T.memref(k, n, T.i16()), T.memref(m, n, T.i16())])
-            matmul        = external_func("matmul_i16_i16", inputs=[T.memref(m, k, T.i16()),
-                            T.memref(k, n, T.i16()), T.memref(m, n, T.i16())])
+            memRef_A_ty = T.memref(m, k, T.i16())
+            memRef_B_ty = T.memref(k, n, T.i16())
+            memRef_C_ty = T.memref(m, n, T.i16())
+
+            ofifo_memRef_A_ty = TypeAttr.get(ObjectFifoType.get(memRef_A_ty))
+            ofifo_memRef_B_ty = TypeAttr.get(ObjectFifoType.get(memRef_B_ty))
+            ofifo_memRef_C_ty = TypeAttr.get(ObjectFifoType.get(memRef_C_ty))
+
+            zero_scalar   = external_func("zero_scalar_i16", inputs=[memRef_C_ty])
+            zero          = external_func("zero_i16", inputs=[memRef_C_ty])
+            matmul_scalar = external_func("matmul_scalar_i16_i16", 
+                            inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty])
+            matmul        = external_func("matmul_i16_i16", 
+                            inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty])
 
             ShimTile     = tile(0, 0)
             MemTile      = tile(0, 1)
             ComputeTile2 = tile(0, 2)
 
-            objectfifo("inA", ShimTile, [MemTile], 2, memRef_A_ty, [], [])
-            objectfifo("memA", MemTile, [ComputeTile2], 2, memRef_A_ty,
+            objectfifo("inA", ShimTile, [MemTile], 2, ofifo_memRef_A_ty, [], [])
+            objectfifo("memA", MemTile, [ComputeTile2], 2, ofifo_memRef_A_ty,
                                         [(m//r, r*k*word_size_in//4), 
                                         (k//s, s*word_size_in//4), 
                                         (r, k*word_size_in//4), 
                                         (s*word_size_in//4, 1)], [])
             objectfifo_link(["inA"], ["memA"])
 
-            objectfifo("inB", ShimTile, [MemTile], 2, memRef_B_ty, [], [])
-            objectfifo("memB", MemTile, [ComputeTile2], 2, memRef_B_ty,
+            objectfifo("inB", ShimTile, [MemTile], 2, ofifo_memRef_B_ty, [], [])
+            objectfifo("memB", MemTile, [ComputeTile2], 2, ofifo_memRef_B_ty,
                                         [(k//s, s*n*word_size_in//4), 
                                         (n//t, t*word_size_in//4), 
                                         (s, n*word_size_in//4), 
                                         (t*word_size_in//4, 1)], [])
             objectfifo_link(["inB"], ["memB"])
 
-            objectfifo("memC", ComputeTile2, [MemTile], 2, memRef_C_ty, [], [])
-            objectfifo("outC", MemTile, [ShimTile], 2, memRef_C_ty,
+            objectfifo("memC", ComputeTile2, [MemTile], 2, ofifo_memRef_C_ty, [], [])
+            objectfifo("outC", MemTile, [ShimTile], 2, ofifo_memRef_C_ty,
                                         [(m//r, r*n*word_size_out//4), 
                                         (r, t*word_size_out//4), 
                                         (n//t, r*t*word_size_out//4), 
@@ -102,7 +107,7 @@ def my_matmul():
                 for _ in for_(0xFFFFFFFF):
                     for _ in for_(tiles):
                         elem_out = acquire(
-                            ObjectFifoPort.Produce, "memC", 1, T.memref(m, n, T.i16())
+                            ObjectFifoPort.Produce, "memC", 1, memRef_C_ty
                         ).acquired_elem()
                         if vectorized:
                             Call(zero, [elem_out])
@@ -111,10 +116,10 @@ def my_matmul():
 
                         for _ in for_(K_div_k):
                             elem_in_a = acquire(
-                                ObjectFifoPort.Consume, "memA", 1, T.memref(m, k, T.i16())
+                                ObjectFifoPort.Consume, "memA", 1, memRef_A_ty
                             ).acquired_elem()
                             elem_in_b = acquire(
-                                ObjectFifoPort.Consume, "memB", 1, T.memref(k, n, T.i16())
+                                ObjectFifoPort.Consume, "memB", 1, memRef_B_ty
                             ).acquired_elem()
                             if vectorized:
                                 Call(matmul, [elem_in_a, elem_in_b, elem_out])

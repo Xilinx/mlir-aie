@@ -26,19 +26,19 @@ def my_vector_scalar():
             
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32())))
 
-            scale_int32 = external_func(
-                "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
-            )
+            memRef_ty       = T.memref(n, T.i32())
+            ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
+
+            scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
 
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
-            objectfifo("in", ShimTile, [ComputeTile2], buffer_depth, memRef_ty,
-                [],[])
-            objectfifo("out", ComputeTile2, [ShimTile], buffer_depth, memRef_ty,
-                [], [])
+            objectfifo("in", ShimTile, [ComputeTile2], buffer_depth, 
+                ofifo_memRef_ty, [],[])
+            objectfifo("out", ComputeTile2, [ShimTile], buffer_depth, 
+                ofifo_memRef_ty, [], [])
 
             @core(ComputeTile2, "scale.o")
             def core_body():
@@ -47,10 +47,10 @@ def my_vector_scalar():
                     # Number of sub-vector "tile" iterations
                     for _ in for_(N_div_n):
                         elem_out = acquire(
-                            ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32())
+                            ObjectFifoPort.Produce, "out", 1, memRef_ty
                         ).acquired_elem()
                         elem_in = acquire(
-                            ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
+                            ObjectFifoPort.Consume, "in", 1, memRef_ty
                         ).acquired_elem()
                         Call(scale_int32, [elem_in, elem_out])
                         objectfifo_release(ObjectFifoPort.Consume, "in", 1)
@@ -58,8 +58,9 @@ def my_vector_scalar():
                         yield_([])
                     yield_([])
 
+            tensor_ty = T.memref(N, T.i32())
             @FuncOp.from_py_func(
-                T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
+                tensor_ty, tensor_ty, tensor_ty
             )
             def sequence(A, B, C):
                 ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])

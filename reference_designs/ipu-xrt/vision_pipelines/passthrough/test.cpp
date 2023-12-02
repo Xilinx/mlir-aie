@@ -23,7 +23,7 @@
 #include "xrtUtils.h"
 
 constexpr int channels = 4;
-constexpr int testImageWidth = PASSTHROUGH_WIDTH * channels;
+constexpr int testImageWidth = PASSTHROUGH_WIDTH;
 constexpr int testImageHeight = PASSTHROUGH_HEIGHT;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 

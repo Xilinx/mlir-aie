@@ -24,14 +24,17 @@ def my_add_one_objFifo():
             MemTile      = tile(0, 1)
             ComputeTile2 = tile(0, 2)
 
-            memRef_16_ty = TypeAttr.get(ObjectFifoType.get(T.memref(16, T.i32())))
-            memRef_8_ty  = TypeAttr.get(ObjectFifoType.get(T.memref(8, T.i32())))
+            memRef_16_ty       = T.memref(16, T.i32())
+            memRef_8_ty        = T.memref(8, T.i32())
+            ofifo_memRef_16_ty = TypeAttr.get(ObjectFifoType.get(memRef_16_ty))
+            ofifo_memRef_8_ty  = TypeAttr.get(ObjectFifoType.get(memRef_8_ty))
 
-            objectfifo("in0", ShimTile, [MemTile], 2, memRef_16_ty, [], [])
-            objectfifo("in1", MemTile, [ComputeTile2], 2, memRef_8_ty, [], [])
+            objectfifo("in0", ShimTile, [MemTile], 2, ofifo_memRef_16_ty, [], [])
+            objectfifo("in1", MemTile, [ComputeTile2], 2, ofifo_memRef_8_ty, [], [])
             objectfifo_link(["in0"], ["in1"])
-            objectfifo("out0", MemTile, [ShimTile], 2, memRef_16_ty, [], [])
-            objectfifo("out1", ComputeTile2, [MemTile], 2, memRef_8_ty, [], [])
+
+            objectfifo("out0", MemTile, [ShimTile], 2, ofifo_memRef_16_ty, [], [])
+            objectfifo("out1", ComputeTile2, [MemTile], 2, ofifo_memRef_8_ty, [], [])
             objectfifo_link(["out1"], ["out0"])
 
             @core(ComputeTile2)
@@ -39,10 +42,10 @@ def my_add_one_objFifo():
                 # Effective while(1)
                 for _ in for_(8):
                     elem_in = acquire(
-                        ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32())
+                        ObjectFifoPort.Consume, "in1", 1, memRef_8_ty
                     ).acquired_elem()
                     elem_out = acquire(
-                        ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32())
+                        ObjectFifoPort.Produce, "out1", 1, memRef_8_ty
                     ).acquired_elem()
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
@@ -53,8 +56,11 @@ def my_add_one_objFifo():
                     objectfifo_release(ObjectFifoPort.Produce, "out1", 1)
                     yield_([])
 
+            memRef_64_ty = T.memref(64, T.i32())
+            memRef_32_ty = T.memref(32, T.i32())
+
             @FuncOp.from_py_func(
-                T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
+                memRef_64_ty, memRef_32_ty, memRef_64_ty
             )
             def sequence(inTensor, notUsed, outTensor):
                 ipu_dma_memcpy_nd(
