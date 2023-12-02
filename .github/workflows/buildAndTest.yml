@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install cmake numpy psutil pybind11 rich pkginfo lit
+          pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
 
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build
