@@ -360,8 +360,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install python dependencies
-        run: pip install -r utils/git/requirements_formatting.txt
+      - name: Install black
+        run: pip install black
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -386,6 +386,7 @@ jobs:
         run: |
           FORMATTED=0
           black . || FORMATTED=$?
+          git status
           echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
 
       - name: Annotate diff changes using reviewdog
