@@ -8,13 +8,6 @@ on:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
 
-defaults:
-  run:
-    # This is already the default, except when running inside another Docker
-    # image, which is the case here. So set it up globally to avoid
-    # repeating elsewhere.
-    shell: bash
-
 env:
   # Run apt package manager in the CI in non-interactive mode.
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
@@ -53,11 +46,8 @@ jobs:
         run: |
           pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
 
-      - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
-
-      - name: Install lld and clang (for aiecc)
-        run: sudo apt-get install -y clang lld
+      - name: Install packages
+        run: sudo apt-get install -y ninja-build clang lld
 
       - name: Get MLIR
         id: mlir-wheels
@@ -68,7 +58,6 @@ jobs:
           echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
       - name: Ccache for C++ compilation
-        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           # Since there are now several compilation jobs running in parallel,
@@ -141,6 +130,8 @@ jobs:
 
   clang-tidy:
 
+    name: C/C++ Lint
+
     runs-on: ubuntu-22.04
 
     permissions:
@@ -205,7 +196,6 @@ jobs:
         run: |
           git fetch origin main
           git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
-          cat fixes.yml
 
       - name: Post clang-tidy requests
         env:
@@ -222,9 +212,72 @@ jobs:
           --request-changes "false" \
           --suggestions-per-comment 10
 
+  formatting:
+
+    name: Python and C/C++ Formatting
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
+        with:
+          clangformat: 17.0.1
+
+      - name: Setup Python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install black
+        run: pip install black[jupyter]
+
+      - name: Run git-clang-format
+        id: git-clang-format
+        run: |
+          git fetch origin main
+          # git clang-format returns an error if changes made?
+          git clang-format origin/main || true
+
+      - name: Check C/C++ format
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: clang-format
+          level: error
+          fail_on_error: true
+          cleanup: true
+
+      - name: Run black format
+        if: success() || failure()
+        id: black-format
+        run: |
+          # FORMATTED=0
+          black --exclude python/compiler/aiecc/main.py . || true
+          black -l 10000 python/compiler/aiecc/main.py || true
+          # FORMATTED=$(git status -s -uno | wc -l | xargs)
+          # echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
+
+      - name: Check Python format
+        if: success() || failure()
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: black
+          level: error
+          fail_on_error: true
+
   code-coverage:
 
-    name: Code Coverage
+    name: C/C++ test code coverage
 
     runs-on: ubuntu-latest
 
@@ -248,10 +301,7 @@ jobs:
           pip install cmake numpy psutil pybind11 rich lit
 
       - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
-
-      - name: Install llvm-cov
-        run: sudo apt-get install -y clang lld llvm
+        run: sudo apt-get install -y ninja-build clang lld llvm
 
       - name: Get changed files
         id: changed-files
@@ -269,7 +319,6 @@ jobs:
 
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
-        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
@@ -335,95 +384,3 @@ jobs:
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
 
-  CppFormatting:
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Get the project repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
-          submodules: "true"
-
-      - name: Install clang-format
-        uses: aminya/setup-cpp@v1
-        with:
-          clangformat: 17.0.1
-
-      - name: Setup Python env
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Run git-clang-format
-        id: git-clang-format
-        run: |
-          git fetch origin main
-          FORMATTED=0
-          git clang-format origin/main || FORMATTED=$?
-          echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
-
-      - name: Annotate diff changes using reviewdog
-        if: steps.git-clang-format.outputs.FORMATTED != '0'
-        uses: reviewdog/action-suggester@v1
-        with:
-          tool_name: clang-format
-
-      - name: Fail
-        if: steps.git-clang-format.outputs.FORMATTED != '0'
-        run: |
-          exit 1
-
-
-  PythonFormatting:
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Get the project repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
-          submodules: "true"
-
-      - name: Install clang-format
-        uses: aminya/setup-cpp@v1
-        with:
-          clangformat: 17.0.1
-
-      - name: Setup Python env
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install black
-        run: pip install black
-
-      - name: Run black format
-        id: black-format
-        run: |
-          FORMATTED=0
-          black . || FORMATTED=$?
-          FORMATTED=$($FORMATTED || git status -s -uno | wc -l | xargs)
-          echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
-          git diff
-
-      - name: Annotate diff changes using reviewdog
-        if: steps.black-format.outputs.FORMATTED != '0'
-        uses: reviewdog/action-suggester@v1
-        with:
-          tool_name: black
-
-      - name: Fail
-        if: steps.black-format.outputs.FORMATTED != '0'
-        run: |
-          exit 1
