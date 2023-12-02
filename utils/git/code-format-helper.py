@@ -38,7 +38,7 @@ class FormatHelper:
 
     def pr_comment_text_for_diff(self, diff: str) -> str:
         return f"""
-:warning: {self.friendly_name}, {self.name} found issues in your code. :warning:
+<b style='color:red;'> {self.friendly_name}, {self.name} found issues in your code. </b>
 
 <details>
 <summary>
@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
     changed_files = []
     if args.changed_files:
-        changed_files = args.changed_files.split(",")
+        changed_files = args.changed_files.split(";")
 
     failed_formatters = []
     for fmt in ALL_FORMATTERS:

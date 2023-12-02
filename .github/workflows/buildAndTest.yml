@@ -229,15 +229,10 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Fetch base branch
-        run: |
-          git remote add upstream "https://github.com/${{ github.event.pull_request.base.repo.full_name }}"
-          git fetch --no-tags --no-recurse-submodules upstream "${{ github.event.pull_request.base.ref }}"
-
       - name: Install clang-tidy
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy ninja-build
+          sudo apt-get install -y clang-tidy ninja-build clang
 
       - uses: actions/setup-python@v4
         with:
@@ -260,6 +255,8 @@ jobs:
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
@@ -281,22 +278,23 @@ jobs:
 
       - name: Analyze
         run: |
-          git diff -U0 "$(git merge-base HEAD "upstream/${{ github.event.pull_request.base.ref }}")" | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+          git fetch origin main
+          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
           cat fixes.yml
 
-      - name: Run code formatter
+      - name: Post clang-tidy requests
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
           echo $PULL_REQUEST_ID
           
-          python utils/git/clang-tidy-pr.py \
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}  python utils/git/clang-tidy-pr.py \
           --clang-tidy-fixes fixes.yml \
           --pull-request-id "$PULL_REQUEST_ID" \
           --repository "$GITHUB_REPOSITORY" \
           --repository-root "$PWD" \
-          --request-changes "true" \
+          --request-changes "false" \
           --suggestions-per-comment 10
 
   code-coverage:
@@ -412,9 +410,13 @@ jobs:
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
 
-  code_formatter:
+  Formatting:
 
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Get the project repository
@@ -459,3 +461,15 @@ jobs:
             --start-rev $START_REV \
             --end-rev $END_REV \
             --changed-files "$CHANGED_FILES"
+
+      - name: Check files using the black formatter
+        uses: rickstaa/action-black@v1
+        id: action_black
+        with:
+          black_args: "."
+
+      - name: Annotate diff changes using reviewdog
+        if: steps.action_black.outputs.is_formatted == 'true'
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: blackfmt
