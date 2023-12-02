@@ -618,8 +618,8 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto st = SymbolTable::lookupSymbolIn(parent, name);
-            st && isa<ObjectFifoCreateOp>(st))
+        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
+            isa_and_nonnull<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
     }
@@ -634,8 +634,8 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto st = SymbolTable::lookupSymbolIn(parent, name);
-            st && isa<ObjectFifoCreateOp>(st))
+        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
+            isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
     }

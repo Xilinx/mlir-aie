@@ -139,129 +139,165 @@ jobs:
           ninja check-tutorials
           ninja check-reference-designs
 
-  lint-repo:
-    name: Check code format
-    runs-on: ubuntu-20.04
-    steps:
-      # We'll be running clang-tidy later in this flow.
-      - name: Install clang-tidy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy-12
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
-            /usr/bin/clang-tidy-12 100
+#  lint-repo:
+#
+#    name: Check formatting and lint
+#
+#    runs-on: ubuntu-latest
+#
+#    permissions:
+#      contents: write
+#      pull-requests: write
+#
+#    steps:
+#      - name: Get repo
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 2
+#          submodules: "true"
+#
+#      - uses: actions/setup-python@v4
+#        with:
+#          python-version: '3.9'
+#
+#      - name: Install Python packages
+#        run: |
+#          pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
+#
+#      - name: Install Ninja
+#        run: sudo apt-get install -y ninja-build
+#
+#      - name: Get MLIR
+#        id: mlir-wheels
+#        run: |
+#          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+#          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+#
+#      - name: Build for compilation db
+#        run: |
+#          mkdir build_assert
+#          pushd build_assert
+#          cmake .. \
+#            -GNinja \
+#            -DCMAKE_BUILD_TYPE=Release \
+#            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+#            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+#            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+#            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+#            -DAIE_COMPILER=NONE \
+#            -DAIE_LINKER=NONE \
+#            -DHOST_COMPILER=NONE \
+#            -DLLVM_ENABLE_ASSERTIONS=ON \
+#            -DLLVM_ENABLE_RTTI=ON \
+#            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+#            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+#            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+#            -DLLVM_EXTERNAL_LIT=$(which lit) \
+#            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+#
+#          ninja aie-headers mlir-headers
+#          popd
+#
+#      - uses: cpp-linter/cpp-linter-action@v2
+#        id: linter
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        with:
+#          style: file
+#          database: build_assert
+#          files-changed-only: true
+#          # this is a combined list from LLVM and MLIR
+#          tidy-checks: '-*,clang-diagnostic-*,llvm-*,misc-*,-misc-const-correctness,-misc-unused-parameters,-misc-non-private-member-variables-in-classes,-misc-no-recursion,-misc-use-anonymous-namespace,readability-identifier-naming,-misc-const-correctness,bugprone-argument-comment,bugprone-assert-side-effect,bugprone-branch-clone,bugprone-copy-constructor-init,bugprone-dangling-handle,bugprone-dynamic-static-initializers,bugprone-macro-parentheses,bugprone-macro-repeated-side-effects,bugprone-misplaced-widening-cast,bugprone-move-forwarding-reference,bugprone-multiple-statement-macro,bugprone-suspicious-semicolon,bugprone-swapped-arguments,bugprone-terminating-continue,bugprone-unused-raii,bugprone-unused-return-value,misc-redundant-expression,misc-static-assert,misc-unused-using-decls,modernize-use-bool-literals,modernize-loop-convert,modernize-make-unique,modernize-raw-string-literal,modernize-use-equals-default,modernize-use-default-member-init,modernize-use-emplace,modernize-use-nullptr,modernize-use-override,modernize-use-using,performance-for-range-copy,performance-implicit-conversion-in-loop,performance-inefficient-algorithm,performance-inefficient-vector-operation,performance-move-const-arg,performance-no-automatic-move,performance-trivially-destructible,performance-unnecessary-copy-initialization,performance-unnecessary-value-param,readability-avoid-const-params-in-decls,readability-const-return-type,readability-container-size-empty,readability-inconsistent-declaration-parameter-name,readability-misleading-indentation,readability-redundant-control-flow,readability-redundant-smartptr-get,readability-simplify-boolean-expr,readability-simplify-subscript-expr,readability-use-anyofallof'
+#          thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
+#
+#      - name: Pass/Fail
+#        if: steps.linter.outputs.checks-failed > 0
+#        run: exit 1
 
-      # Clone the repo and its submodules. Do shallow clone to save clone
-      # time.
-      - name: Get repo
-        uses: actions/checkout@v3
+  clang-tidy:
+
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
           submodules: "true"
 
-      # --------
-      # Lint the code.
-      # -------
-
-      # Choose the git commit to diff against for the purposes of linting.
-      # Since this workflow is triggered on both pushes and pull requests, we
-      # have to determine if the pull request target branch is set (which it
-      # will only be on the PR triggered flow). If it's not, then compare
-      # against the last commit.
-      - name: choose-commit
-        if: always()
-        env:
-          # Base ref is the target branch, in text form (not hash)
-          PR_BASE: ${{ github.base_ref }}
+      - name: Fetch base branch
         run: |
-          # Run clang-format
-          if [[ -z "$PR_BASE" ]]; then
-            DIFF_COMMIT_NAME="HEAD^"
-          else
-            DIFF_COMMIT_NAME="$PR_BASE"
-          fi
-          echo "DIFF_COMMIT_NAME=$DIFF_COMMIT_NAME" >> $GITHUB_ENV
+          git remote add upstream "https://github.com/${{ github.event.pull_request.base.repo.full_name }}"
+          git fetch --no-tags --no-recurse-submodules upstream "${{ github.event.pull_request.base.ref }}"
 
-      # Since we did a shallow fetch for this repo, we must fetch the commit
-      # upon which we be diff'ing. The last step set the ref name in the
-      # $DIFF_COMMIT_NAME environment variable. When running the fetch, resolve
-      # it to the commit hash and pass that hash along to subsequent steps.
-      - name: git fetch base commit
-        continue-on-error: true
+      - name: Install clang-tidy
         run: |
-          if [[ ! "$DIFF_COMMIT_NAME" == *"HEAD"* ]]; then
-            git fetch --recurse-submodules=no origin $DIFF_COMMIT_NAME
-            DIFF_COMMIT_SHA=$( git rev-parse origin/$DIFF_COMMIT_NAME )
-          else
-            DIFF_COMMIT_SHA=$( git rev-parse $DIFF_COMMIT_NAME )
-          fi
-          echo "DIFF_COMMIT=$DIFF_COMMIT_SHA" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy ninja-build
 
-      # Run 'git clang-format', comparing against the target commit hash. If
-      # clang-format fixed anything, fail and output a patch.
-      - name: clang-format
-        if: always()
-        run: |
-          # Run clang-format
-          git clang-format-12 $DIFF_COMMIT
-          git diff --ignore-submodules > clang-format.patch
-          if [ -s clang-format.patch ]; then
-            echo "Clang-format found formatting problems in the following " \
-              "files. See diff in the clang-format.patch artifact."
-            git diff --ignore-submodules --name-only
-            git checkout .
-            exit 1
-          fi
-          echo "Clang-format found no formatting problems"
-          exit 0
-
-      # Run clang-tidy against only the changes. The 'clang-tidy-diff' script
-      # does this if supplied with the diff.
-      - name: clang-tidy
-        if: always()
-        run: |
-          git diff -U0 $DIFF_COMMIT | \
-            clang-tidy-diff-12.py -path build_assert -p1 -fix
-          git diff --ignore-submodules > clang-tidy.patch
-          if [ -s clang-tidy.patch ]; then
-            echo "Clang-tidy problems in the following files. " \
-              "See diff in the clang-tidy.patch artifact."
-            git diff --ignore-submodules --name-only
-            git checkout .
-            exit 1
-          fi
-          echo "Clang-tidy found no problems"
-          exit 0
-
-      # Upload the format and tidy patches to an artifact (zip'd) associated
-      # with the workflow run. Only run this on a failure.
-      - name: Upload format and tidy patches
-        uses: actions/upload-artifact@v3
-        continue-on-error: true
-        if: failure()
+      - uses: actions/setup-python@v4
         with:
-          name: clang-format-tidy-patches
-          path: clang-*.patch
+          python-version: '3.9'
 
-      # Unfortunately, artifact uploads are always zips so display the diff as
-      # well to provide feedback at a glance.
-      - name: clang format and tidy patches display
-        if: failure()
-        continue-on-error: true
+      - name: Install Python packages
         run: |
-          # Display patches
-          if [ ! -z clang-format.patch ]; then
-            echo "Clang-format patch"
-            echo "================"
-            cat clang-format.patch
-            echo "================"
-          fi
-          if [ ! -z clang-tidy.patch ]; then
-            echo "Clang-tidy patch"
-            echo "================"
-            cat clang-tidy.patch
-            echo "================"
-          fi
+          pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML requests
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+
+      - name: Prepare compile_commands.json
+        run: |
+          mkdir build
+          pushd build
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          
+          ninja aie-headers mlir-headers
+          
+          popd
+
+      - name: Analyze
+        run: |
+          git diff -U0 "$(git merge-base HEAD "upstream/${{ github.event.pull_request.base.ref }}")" | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+          cat fixes.yml
+
+      - name: Run code formatter
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
+          echo $PULL_REQUEST_ID
+          
+          python utils/git/clang-tidy-pr.py \
+          --clang-tidy-fixes fixes.yml \
+          --pull-request-id "$PULL_REQUEST_ID" \
+          --repository "$GITHUB_REPOSITORY" \
+          --repository-root "$PWD" \
+          --request-changes "true" \
+          --suggestions-per-comment 10
 
   code-coverage:
 
@@ -375,3 +411,51 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
+
+  code_formatter:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          git fetch origin main
+          # Because for the life of me I cannot figure out how to read the output of git diff into a bash array.
+          CHANGED_FILES=$(python utils/get_git_changed_files.py)
+          echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
+
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
+        with:
+          clangformat: 17.0.1
+
+      - name: Setup Python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'code-format-tools/utils/git/requirements_formatting.txt'
+
+      - name: Install python dependencies
+        run: pip install -r utils/git/requirements_formatting.txt
+
+      - name: Run code formatter
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          START_REV: ${{ github.event.pull_request.base.sha }}
+          END_REV: ${{ github.event.pull_request.head.sha }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.changed-files }}
+        run: |
+          python utils/git/code-format-helper.py \
+            --token ${{ secrets.GITHUB_TOKEN }} \
+            --issue-number $GITHUB_PR_NUMBER \
+            --start-rev $START_REV \
+            --end-rev $END_REV \
+            --changed-files "$CHANGED_FILES"

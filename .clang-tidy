@@ -8,7 +8,7 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
   -misc-use-anonymous-namespace,
-  readability-identifier-naming'
+  readability-identifier-naming,
   -misc-const-correctness,
   bugprone-argument-comment,
   bugprone-assert-side-effect,
