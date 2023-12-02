@@ -1,0 +1,143 @@
+name: "Setup base"
+
+inputs:
+  DEBUG_ENABLED:
+    description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+    required: false
+    default: 'false'
+  DEBUG_OS:
+    description: 'which runner os to run the tmate action in (if the tmate action is run)'
+    required: false
+    default: 'windows-2019'
+  DEBUG_ARCH:
+    description: 'which runner arch to run the tmate action in (if the tmate action is run)'
+    required: false
+    default: 'x86_64'
+  DEBUG_DETACHED:
+    description: 'whether to launch tmate in detached mode (if the tmate action is run)'
+    required: false
+    default: 'true'
+  MATRIX_OS:
+    description: 'matrix.os'
+    required: true
+  MATRIX_ARCH:
+    description: 'matrix.arch'
+    required: true
+
+outputs:
+  WORKSPACE_ROOT:
+    description: ''
+    value: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+
+description: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup tmate session
+      if: ${{ inputs.DEBUG_ENABLED && inputs.DEBUG_OS == inputs.MATRIX_OS && inputs.DEBUG_ARCH == inputs.MATRIX_ARCH }}
+      uses: mxschmitt/action-tmate@v3
+      with:
+        limit-access-to-actor: true
+        detached: ${{ inputs.DEBUG_DETACHED }}
+
+    - uses: ilammy/msvc-dev-cmd@v1.4.1
+      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+
+    - name: Set up Visual Studio shell
+      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      uses: egor-tensin/vs-shell@v2
+      with:
+        arch: x64
+
+    - name: MS Build
+      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Free disk space
+      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      uses: descriptinc/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: false # This frees space on the wrong partition.
+
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Ninja
+      uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
+
+    - name: Install cross-compilation toolchain
+      shell: bash
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' && inputs.MATRIX_ARCH == 'aarch64' }}
+      run: |
+        
+        sudo apt-get update
+        sudo apt-get install -y binutils-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
+
+    - name: pip install standard tools
+      shell: bash
+      run: pip install cibuildwheel wheel
+
+    - name: install rename
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      shell: bash
+      run: |
+        
+        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-11" ]; then
+          brew install rename
+        else
+          sudo apt-get install -y rename
+        fi
+
+    # why all this? two reasons:
+    # 1. because the windows runner have not enough space on D, which is also the checkout location (why????)
+    # see https://github.com/actions/runner-images/issues/1341
+    # 2. because windows has a command length limit even in 2023 of 8192 characeters (or something like that). how
+    # do we hit that during anything we're doing here? during the linking phase of MLIR-C.dll, which links together
+    # absolutely all the libs in MLIR using their full/abs paths.
+    - run: echo "TEMP=$env:USERPROFILE\AppData\Local\Temp" >> $env:GITHUB_ENV
+      if: ${{ inputs.MATRIX_OS == 'windows-2019' }}
+      shell: pwsh
+
+    - run: echo "TEMP=/tmp" >> $GITHUB_ENV
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      shell: bash
+
+    - name: Set workspace root
+      id: workspace_root
+      shell: bash
+      working-directory: ${{ env.TEMP }}
+      run: |
+        
+        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
+          WORKSPACE_ROOT="/C/a"
+        else
+          WORKSPACE_ROOT=$GITHUB_WORKSPACE
+        fi
+        
+        if [[ -d "$WORKSPACE_ROOT" ]]; then
+          ls -la "$WORKSPACE_ROOT"
+          rm -rf "$WORKSPACE_ROOT"
+        fi 
+        
+        git clone -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
+        ls "$WORKSPACE_ROOT"
+        
+        if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
+          WORKSPACE_ROOT="C:\a"
+        fi
+        
+        echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
+
+    - name: Docker prune
+      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      shell: bash
+      run: |
+        docker system prune -a -f
