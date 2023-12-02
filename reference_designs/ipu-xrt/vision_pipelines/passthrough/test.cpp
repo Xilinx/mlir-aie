@@ -23,8 +23,8 @@
 #include "xrtUtils.h"
 
 constexpr int channels = 4;
-constexpr int testImageWidth = WIDTH * channels;
-constexpr int testImageHeight = HEIGHT;
+constexpr int testImageWidth = PASSTHROUGH_WIDTH * channels;
+constexpr int testImageHeight = PASSTHROUGH_HEIGHT;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 
 namespace po = boost::program_options;

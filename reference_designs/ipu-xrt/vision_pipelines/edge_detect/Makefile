@@ -10,22 +10,16 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
-EDGEDETECT_WIDTH = 1920
-EDGEDETECT_HEIGHT = 1080
+#EDGEDETECT_WIDTH = 1920
+#EDGEDETECT_HEIGHT = 1080
+
+#EDGEDETECT_WIDTH = 640
+#EDGEDETECT_HEIGHT = 480
+
+EDGEDETECT_WIDTH = 64
+EDGEDETECT_HEIGHT = 36
 
 targetname = edgeDetect
-
-#EDGEDETECT_WIDTH = 64
-#EDGEDETECT_HEIGHT = 36
-
-#EDGEDETECT_WIDTH = 640
-#EDGEDETECT_HEIGHT = 480
-
-#EDGEDETECT_WIDTH = 64
-#EDGEDETECT_HEIGHT = 36
-
-#EDGEDETECT_WIDTH = 640
-#EDGEDETECT_HEIGHT = 480
 
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
 
@@ -48,8 +42,7 @@ build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WID
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-build/${targetname}.exe: test.cpp
-	mkdir -p ${@D}
+${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} 
@@ -60,8 +53,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build
+	rm -rf build _build ${targetname}.exe

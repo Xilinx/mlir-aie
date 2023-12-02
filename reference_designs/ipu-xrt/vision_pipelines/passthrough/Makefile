@@ -10,33 +10,34 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
-WIDTH = 1920
-HEIGHT = 1080
+#PASSTHROUGH_WIDTH = 1920
+#PASSTHROUGH_HEIGHT = 1080
+PASSTHROUGH_WIDTH = 64
+PASSTHROUGH_HEIGHT = 36
 
 targetname = passThrough
 
 .PHONY: all template clean
 
-all: build/final_${WIDTH}.xclbin
+all: build/final_${PASSTHROUGH_WIDTH}.xclbin
 
-build/aie2_lineBased_8b_${WIDTH}.mlir: aie2.py
+build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: aie2.py
 	mkdir -p ${@D}
-	python3 $< ${WIDTH} ${HEIGHT} > $@
+	python3 $< ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper -d ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 	
-build/final_${WIDTH}.xclbin: build/aie2_lineBased_8b_${WIDTH}.mlir build/passThrough.cc.o
+build/final_${PASSTHROUGH_WIDTH}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-build/${targetname}.exe: test.cpp
-	mkdir -p ${@D}
+${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DWIDTH=${WIDTH} -DHEIGHT=${HEIGHT} 
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DPASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH} -DPASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -44,8 +45,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe build/final_${WIDTH}.xclbin build/insts.txt
-	${powershell} ./$< -x build/final_${WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
+run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin build/insts.txt
+	${powershell} ./$< -x build/final_${PASSTHROUGH_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build
+	rm -rf build _build ${targetname}.exe

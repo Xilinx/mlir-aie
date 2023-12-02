@@ -27,17 +27,24 @@
 // #define IMAGE_WIDTH_IN 256
 // #define IMAGE_HEIGHT_IN 256
 
-#define IMAGE_WIDTH_IN 128
-#define IMAGE_HEIGHT_IN 64
+//#define IMAGE_WIDTH_IN 128
+//#define IMAGE_HEIGHT_IN 64
+constexpr int testImageWidth  = COLORTHRESHOLD_WIDTH;
+constexpr int testImageHeight = COLORTHRESHOLD_HEIGHT;
 
-#define IMAGE_WIDTH_OUT IMAGE_WIDTH_IN
-#define IMAGE_HEIGHT_OUT IMAGE_HEIGHT_IN
+//#define IMAGE_WIDTH_OUT IMAGE_WIDTH_IN
+//#define IMAGE_HEIGHT_OUT IMAGE_HEIGHT_IN
 
-#define IMAGE_AREA_IN (IMAGE_HEIGHT_IN * IMAGE_WIDTH_IN)
-#define IMAGE_AREA_OUT (IMAGE_HEIGHT_OUT * IMAGE_WIDTH_OUT)
+//#define IMAGE_AREA_IN (IMAGE_HEIGHT_IN * IMAGE_WIDTH_IN)
+//#define IMAGE_AREA_OUT (IMAGE_HEIGHT_OUT * IMAGE_WIDTH_OUT)
 
-constexpr int IN_SIZE = (IMAGE_AREA_IN * sizeof(uint8_t));
-constexpr int OUT_SIZE = (IMAGE_AREA_OUT * sizeof(uint8_t));
+constexpr int imageAreaIn  = testImageWidth*testImageHeight;
+constexpr int imageAreaOut = testImageWidth*testImageHeight;
+
+//constexpr int IN_SIZE = (IMAGE_AREA_IN * sizeof(uint8_t));
+//constexpr int OUT_SIZE = (IMAGE_AREA_OUT * sizeof(uint8_t));
+constexpr int IN_SIZE = (imageAreaIn * sizeof(uint8_t));
+constexpr int OUT_SIZE = (imageAreaOut * sizeof(uint8_t));
 
 namespace po = boost::program_options;
 
@@ -121,7 +128,7 @@ int main(int argc, const char *argv[]) {
   uint8_t *bufIn = bo_in.map<uint8_t *>();
   // Copy cv::Mat input image to xrt buffer object
   std::vector<uint8_t> srcVec;
-  for (int i = 0; i < IMAGE_AREA_IN; i++)
+  for (int i = 0; i < imageAreaIn; i++)
     srcVec.push_back(rand() % UINT8_MAX);
   memcpy(bufIn, srcVec.data(), (srcVec.size() * sizeof(uint8_t)));
 
@@ -154,7 +161,7 @@ int main(int argc, const char *argv[]) {
    ****************************************************************************
    */
   std::cout << std::dec;
-  for (uint32_t i = 0; i < IMAGE_AREA_OUT; i++) {
+  for (uint32_t i = 0; i < imageAreaOut; i++) {
     if (srcVec[i] <= 50) { // Obviously change this back to 100
       if (*(bufOut + i) != 0) {
         if (errors < max_errors)

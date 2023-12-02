@@ -23,7 +23,6 @@ if len(sys.argv) == 2:
     N = int(sys.argv[1])
 
 def my_passthrough():
-    buffer_depth = 2
 
     with mlir_mod_ctx() as ctx:
 
@@ -37,8 +36,8 @@ def my_passthrough():
             ComputeTile2 = tile(0, 2)
 
             # set up AIE-array data movement with Ordered Object Buffers
-            objectfifo("in", ShimTile, [ComputeTile2], buffer_depth, memRef_ty, [], [])
-            objectfifo("out", ComputeTile2, [ShimTile], buffer_depth, memRef_ty, [], [])
+            objectfifo("in", ShimTile, [ComputeTile2], 2, memRef_ty, [], [])
+            objectfifo("out", ComputeTile2, [ShimTile], 2, memRef_ty, [], [])
             objectfifo_link(["in"],["out"])
             
             # memRef_tmp_ty = MemRefType.get((1,), int32_ty)

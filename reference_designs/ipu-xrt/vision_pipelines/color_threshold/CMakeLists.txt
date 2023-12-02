@@ -28,6 +28,9 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
+set(COLORTHRESHOLD_WIDTH 128 CACHE STRING "image width")
+set(COLORTHRESHOLD_HEIGHT 64 CACHE STRING "image height")
+
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -52,7 +55,11 @@ add_executable(${currentTarget}
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC 
+	COLORTHRESHOLD_WIDTH=${COLORTHRESHOLD_WIDTH}
+	COLORTHRESHOLD_HEIGHT=${COLORTHRESHOLD_HEIGHT}
+	DISABLE_ABI_CHECK=1
+)
 
 target_include_directories (${currentTarget} PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils

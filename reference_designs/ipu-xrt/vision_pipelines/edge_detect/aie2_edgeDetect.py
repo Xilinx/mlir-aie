@@ -12,6 +12,8 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.dialects.extras import memref, arith
+from aie.util import mlir_mod_ctx
 
 width = 64
 height = 36
@@ -19,6 +21,7 @@ if len(sys.argv) == 3:
     width = int(sys.argv[1])
     height = int(sys.argv[2])
 
+heightMinus1      = height-1
 lineWidth         = width
 lineWidthInBytes  = width*4
 lineWidthInInt32s = lineWidthInBytes // 4
@@ -27,159 +30,276 @@ enableTrace = False
 traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
-@constructAndPrintInModule
 def edge_detect():
-    @device(AIEDevice.ipu)
-    def deviceBody():
-        uint8_ty = IntegerType.get_unsigned(8)
-        int8_ty = IntegerType.get_signless(8)
-        int16_ty = IntegerType.get_signless(16)
-        int32_ty = IntegerType.get_signless(32)
 
-        line_bytes_ty = MemRefType.get((lineWidthInBytes,), uint8_ty)
-        line_ty = MemRefType.get((lineWidth,), uint8_ty)
-        memRef_3x3_ty = MemRefType.get((3,3,), int16_ty)
+    with mlir_mod_ctx() as ctx:
 
-        rgba2grayLine   = privateFunc("rgba2grayLine", inputs = [line_bytes_ty, line_ty, int32_ty])
-        filter2dLine    = privateFunc("filter2dLine", inputs = [line_ty, line_ty, line_ty, line_ty, int32_ty, memRef_3x3_ty])
-        thresholdLine   = privateFunc("thresholdLine", inputs = [line_ty, line_ty, int32_ty, int16_ty, int16_ty, int8_ty])
-        gray2rgbaLine   = privateFunc("gray2rgbaLine", inputs = [line_ty, line_bytes_ty, int32_ty])
-        addWeightedLine = privateFunc("addWeightedLine", inputs = [line_bytes_ty, line_bytes_ty, line_bytes_ty, int32_ty, int16_ty, int16_ty, int8_ty])
-    
-        ShimTile = Tile(0, 0)
-        MemTile = Tile(0, 1)
-        ComputeTile2 = Tile(0, 2)
-        ComputeTile3 = Tile(0, 3)
-        ComputeTile4 = Tile(0, 4)
-        ComputeTile5 = Tile(0, 5)
+        @device(AIEDevice.ipu)
+        def device_body():
+            rgba2gray_line = external_func(
+                "rgba2grayLine",
+                inputs=[T.memref(lineWidthInBytes, T.ui8()), T.memref(lineWidth, T.ui8()), T.i32()],
+            )
+            filter2d_line = external_func(
+                "filter2dLine",
+                inputs=[
+                    T.memref(lineWidth, T.ui8()),
+                    T.memref(lineWidth, T.ui8()),
+                    T.memref(lineWidth, T.ui8()),
+                    T.memref(lineWidth, T.ui8()),
+                    T.i32(),
+                    T.memref(3, 3, T.i16()),
+                ],
+            )
+            threshold_line = external_func(
+                "thresholdLine",
+                inputs=[
+                    T.memref(lineWidth, T.ui8()),
+                    T.memref(lineWidth, T.ui8()),
+                    T.i32(),
+                    T.i16(),
+                    T.i16(),
+                    T.i8(),
+                ],
+            )
+            gray2rgba_line = external_func(
+                "gray2rgbaLine",
+                inputs=[T.memref(lineWidth, T.ui8()), T.memref(lineWidthInBytes, T.ui8()), T.i32()],
+            )
+            add_weighted_line = external_func(
+                "addWeightedLine",
+                inputs=[
+                    T.memref(lineWidthInBytes, T.ui8()),
+                    T.memref(lineWidthInBytes, T.ui8()),
+                    T.memref(lineWidthInBytes, T.ui8()),
+                    T.i32(),
+                    T.i16(),
+                    T.i16(),
+                    T.i8(),
+                ],
+            )
 
-        # set up AIE-array data movement with Ordered Object Buffers
+            ShimTile     = tile(0, 0)
+            MemTile      = tile(0, 1)
+            ComputeTile2 = tile(0, 2)
+            ComputeTile3 = tile(0, 3)
+            ComputeTile4 = tile(0, 4)
+            ComputeTile5 = tile(0, 5)
 
-        # input RGBA broadcast + memtile for skip
-        OrderedObjectBuffer("inOOB_L3L2", ShimTile, [ComputeTile2, MemTile], [2, 2, 7], line_bytes_ty)
-        OrderedObjectBuffer("inOOB_L2L1", MemTile, [ComputeTile5], 7, line_bytes_ty)
-        Link(["inOOB_L3L2"], ["inOOB_L2L1"])
+            # line_bytes_ty = TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8())))
+            # line_ty       = TypeAttr.get(ObjectFifoType.get(T.memref(64, T.ui8())))
+            line_bytes_ty = TypeAttr.get(ObjectFifoType.get(T.memref(lineWidthInBytes, T.ui8())))
+            line_ty       = TypeAttr.get(ObjectFifoType.get(T.memref(lineWidth, T.ui8())))
 
-        # output RGBA 
-        OrderedObjectBuffer("outOOB_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
-        OrderedObjectBuffer("outOOB_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty)
-        Link(["outOOB_L1L2"], ["outOOB_L2L3"])
 
-        # between computeTiles
-        OrderedObjectBuffer("OF_2to3", ComputeTile2, ComputeTile3, 4, line_ty)
-        OrderedObjectBuffer("OF_3to4", ComputeTile3, ComputeTile4, 2, line_ty)
-        OrderedObjectBuffer("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
-        OrderedObjectBuffer("OF_5to5", ComputeTile5, ComputeTile5, 1, line_bytes_ty)
+            objectfifo("inOF_L3L2", ShimTile, [MemTile], 2, line_bytes_ty, [], [],)
+            objectfifo("inOF_L2L1", MemTile, [ComputeTile2, ComputeTile5], [2, 2, 7], 
+                       line_bytes_ty, [], [],)
+            objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
-        # set up compute tiles
-        
-        #compute tile 2
-        @core(ComputeTile2, "rgba2gray.cc.o")
-        def coreBody():
-            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
-            def loopBody():
-                elemIn = Acquire(ObjectFifoPort.Consume, "inOOB_L3L2", 1, line_bytes_ty).acquiredElem()
-                elemOut = Acquire(ObjectFifoPort.Produce, "OF_2to3", 1, line_ty).acquiredElem()
+            objectfifo("outOF_L2L3", MemTile, [ShimTile], 2, line_bytes_ty, [], [],)
+            objectfifo("outOF_L1L2", ComputeTile5, [MemTile], 2, line_bytes_ty, [], [],)
+            objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
-                Call(rgba2grayLine, [elemIn, elemOut, lineWidth])
+            objectfifo("OF_2to3", ComputeTile2, [ComputeTile3], 4, line_ty, [], [],)
+            objectfifo("OF_3to4", ComputeTile3, [ComputeTile4], 2, line_ty, [], [],)
+            objectfifo("OF_4to5", ComputeTile4, [ComputeTile5], 2, line_ty, [], [],)
+            objectfifo("OF_5to5", ComputeTile5, [ComputeTile5], 1, line_bytes_ty, [], [],)
 
-                Release(ObjectFifoPort.Consume, "inOOB_L3L2", 1)
-                Release(ObjectFifoPort.Produce, "OF_2to3", 1)
+            @core(ComputeTile2, "rgba2gray.cc.o")
+            def core_body():
+                for _ in for_(4294967295):
+                # for _ in for_(36):
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(lineWidthInBytes, T.ui8())
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_2to3", 1, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
 
-        #compute tile 3
-        @core(ComputeTile3, "filter2d.cc.o")
-        def coreBody():  
-            kernel = memref.AllocOp(memRef_3x3_ty, [], [])
-            v0 = integerConstant(0, int16_ty)
-            v1 = integerConstant(4096, int16_ty)
-            vMinus4 = integerConstant(-16384, int16_ty)
-            Store(v0, kernel, [0, 0])
-            Store(v1, kernel, [0, 1])
-            Store(v0, kernel, [0, 2])
-            Store(v1, kernel, [1, 0])
-            Store(vMinus4, kernel, [1, 1])
-            Store(v1, kernel, [1, 2])
-            Store(v0, kernel, [2, 0])
-            Store(v1, kernel, [2, 1])
-            Store(v0, kernel, [2, 2])
-            
-            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
-            def loopBody():
+                    Call(rgba2gray_line, [elem_in, elem_out, arith.constant(lineWidth)])
+
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
+                    yield_([])
+
+            @core(ComputeTile3, "filter2d.cc.o")
+            def core_body():
+                kernel = memref.alloc([3, 3], T.i16())
+                v0 = arith.constant(0, T.i16())
+                v1 = arith.constant(4096, T.i16())
+                v_minus4 = arith.constant(-16384, T.i16())
+                memref.store(v0, kernel, [0, 0])
+                memref.store(v1, kernel, [0, 1])
+                memref.store(v0, kernel, [0, 2])
+                memref.store(v1, kernel, [1, 0])
+                memref.store(v_minus4, kernel, [1, 1])
+                memref.store(v1, kernel, [1, 2])
+                memref.store(v0, kernel, [2, 0])
+                memref.store(v1, kernel, [2, 1])
+                memref.store(v0, kernel, [2, 2])
 
                 # Preamble : Top Border
-                elemsInPre = Acquire(ObjectFifoPort.Consume, "OF_2to3", 2, line_ty).acquiredElem()
-                elemPreOut = Acquire(ObjectFifoPort.Produce, "OF_3to4", 1, line_ty).acquiredElem()
-                Call(filter2dLine, [elemsInPre[0], elemsInPre[0], elemsInPre[1], elemPreOut, lineWidth, kernel])
-                Release(ObjectFifoPort.Produce, "OF_3to4", 1) 
+                elems_in_pre = acquire(
+                    ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(lineWidth, T.ui8())
+                ).acquired_elem()
+                elem_pre_out = acquire(
+                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(lineWidth, T.ui8())
+                ).acquired_elem()
+                Call(
+                    filter2d_line,
+                    [
+                        elems_in_pre[0],
+                        elems_in_pre[0],
+                        elems_in_pre[1],
+                        elem_pre_out,
+                        arith.constant(lineWidth),
+                        kernel,
+                    ],
+                )
+                objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
                 # Steady State : Middle
-                @forLoop(lowerBound = 1, upperBound = height-1, step = 1)
-                def loopBody():
-                    elemsIn = Acquire(ObjectFifoPort.Consume, "OF_2to3", 3, line_ty).acquiredElem()
-                    elemOut = Acquire(ObjectFifoPort.Produce, "OF_3to4", 1, line_ty).acquiredElem()
-                    Call(filter2dLine, [elemsIn[0], elemsIn[1], elemsIn[2], elemOut, lineWidth, kernel])
-                    Release(ObjectFifoPort.Consume, "OF_2to3", 1)
-                    Release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                for _ in for_(1, heightMinus1):
+                    elems_in = acquire(
+                        ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
+                    Call(
+                        filter2d_line,
+                        [
+                            elems_in[0],
+                            elems_in[1],
+                            elems_in[2],
+                            elem_out,
+                            arith.constant(lineWidth),
+                            kernel,
+                        ],
+                    )
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                    yield_([])
 
                 # Postamble : Bottom Border
-                elemsInPost = Acquire(ObjectFifoPort.Consume, "OF_2to3", 2, line_ty).acquiredElem()
-                elemPostOut = Acquire(ObjectFifoPort.Produce, "OF_3to4", 1, line_ty).acquiredElem()
-                Call(filter2dLine, [elemsInPost[0], elemsInPost[1], elemsInPost[1], elemPostOut, lineWidth, kernel])
-                Release(ObjectFifoPort.Consume, "OF_2to3", 2)
-                Release(ObjectFifoPort.Produce, "OF_3to4", 1) 
+                elems_in_post = acquire(
+                    ObjectFifoPort.Consume, "OF_2to3", 2, T.memref(lineWidth, T.ui8())
+                ).acquired_elem()
+                elem_post_out = acquire(
+                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(lineWidth, T.ui8())
+                ).acquired_elem()
+                Call(
+                    filter2d_line,
+                    [
+                        elems_in_post[0],
+                        elems_in_post[1],
+                        elems_in_post[1],
+                        elem_post_out,
+                        arith.constant(lineWidth),
+                        kernel,
+                    ],
+                )
+                objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
+                objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
-        #compute tile 4
-        @core(ComputeTile4, "threshold.cc.o")
-        def coreBody():  
-            vThr = integerConstant(10, int16_ty)
-            vMax = integerConstant(255, int16_ty)
-            vTyp = integerConstant(0, int8_ty)
-            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
-            def loopBody():
-                elemIn = Acquire(ObjectFifoPort.Consume, "OF_3to4",  1, line_ty).acquiredElem()
-                elemOut = Acquire(ObjectFifoPort.Produce, "OF_4to5", 1, line_ty).acquiredElem()
+            @core(ComputeTile4, "threshold.cc.o")
+            def core_body():
+                v_thr = arith.constant(10, T.i16())
+                v_max = arith.constant(255, T.i16())
+                v_typ = arith.constant(0, T.i8())
 
-                Call(thresholdLine, [elemIn, elemOut, lineWidth, vThr, vMax, vTyp])
+                for _ in for_(36):
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "OF_3to4", 1, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_4to5", 1, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
 
-                Release(ObjectFifoPort.Consume, "OF_3to4", 1)
-                Release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                    Call(
+                        threshold_line,
+                        [elem_in, elem_out, arith.constant(lineWidth), v_thr, v_max, v_typ],
+                    )
 
-        #compute tile 5
-        @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
-        def coreBody():
-            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
-            def loopBody():
-                elemIn = Acquire(ObjectFifoPort.Consume, "OF_4to5", 1, line_ty).acquiredElem()
-                elemOut = Acquire(ObjectFifoPort.Produce, "OF_5to5", 1, line_bytes_ty).acquiredElem()
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                    yield_([])
 
-                Call(gray2rgbaLine, [elemIn, elemOut, lineWidth])
+            @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
+            def core_body():
+                for _ in for_(36):
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "OF_4to5", 1, T.memref(lineWidth, T.ui8())
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_5to5", 1, T.memref(256, T.ui8())
+                    ).acquired_elem()
 
-                Release(ObjectFifoPort.Consume, "OF_4to5", 1)
-                Release(ObjectFifoPort.Produce, "OF_5to5", 1)
+                    Call(gray2rgba_line, [elem_in, elem_out, arith.constant(lineWidth)])
 
-                elemIn1 = Acquire(ObjectFifoPort.Consume, "OF_5to5", 1, line_bytes_ty).acquiredElem()
-                elemIn2 = Acquire(ObjectFifoPort.Consume, "inOOB_L2L1", 1, line_bytes_ty).acquiredElem()
-                elemOut2 = Acquire(ObjectFifoPort.Produce, "outOOB_L1L2", 1, line_bytes_ty).acquiredElem()
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
-                alpha = integerConstant(16384, int16_ty)
-                beta = integerConstant(16384, int16_ty)
-                gamma = integerConstant(0, int8_ty)
+                    elem_in1 = acquire(
+                        ObjectFifoPort.Consume, "OF_5to5", 1, T.memref(lineWidthInBytes, T.ui8())
+                    ).acquired_elem()
+                    elem_in2 = acquire(
+                        ObjectFifoPort.Consume, "inOF_L2L1", 1, T.memref(lineWidthInBytes, T.ui8())
+                    ).acquired_elem()
+                    elem_out2 = acquire(
+                        ObjectFifoPort.Produce, "outOF_L1L2", 1, T.memref(lineWidthInBytes, T.ui8())
+                    ).acquired_elem()
 
-                Call(addWeightedLine, [elemIn1, elemIn2, elemOut2, lineWidthInBytes, alpha, beta, gamma])
+                    alpha = arith.constant(16384, T.i16())
+                    beta = arith.constant(16384, T.i16())
+                    gamma = arith.constant(0, T.i8())
 
-                Release(ObjectFifoPort.Consume, "OF_5to5", 1)
-                Release(ObjectFifoPort.Consume, "inOOB_L2L1", 1)
-                Release(ObjectFifoPort.Produce, "outOOB_L1L2", 1)
+                    Call(
+                        add_weighted_line,
+                        [
+                            elem_in1,
+                            elem_in2,
+                            elem_out2,
+                            arith.constant(lineWidthInBytes),
+                            alpha,
+                            beta,
+                            gamma,
+                        ],
+                    )
 
-        
-        # to/from AIE-array data movement
-        
-        tensorSize = width*height*4 # 4 channels
-        tensorSizeInInt32s = tensorSize // 4
-        tensor_ty =  MemRefType.get((tensorSizeInInt32s,), int32_ty)
-        memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
-        @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
-        def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(metadata = "inOOB_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, height * lineWidthInInt32s]) 
-            IpuDmaMemcpyNd(metadata = "outOOB_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, height * lineWidthInInt32s]) 
-            IpuSync(column = 0, row = 0, direction = 0, channel = 0)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_5to5", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                    yield_([])
+
+            tensorSize = width*height*4 # 4 channels
+            tensorSizeInInt32s = tensorSize // 4
+            @FuncOp.from_py_func(
+                T.memref(tensorSizeInInt32s, T.i32()), 
+                T.memref(tensorSizeInInt32s, T.i32()), 
+                T.memref(tensorSizeInInt32s, T.i32())
+            )
+            def sequence(I, B, O):
+                ipu_dma_memcpy_nd(
+                    metadata="outOF_L2L3",
+                    bd_id=0,
+                    mem=O,
+                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    # lengths=[1, 1, height, width],
+                    # strides=[0, 0, width],
+                )
+                ipu_dma_memcpy_nd(
+                    metadata="inOF_L3L2",
+                    bd_id=1,
+                    mem=I,
+                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    # lengths=[1, 1, height, width],
+                    # strides=[0, 0, width],
+                )
+                ipu_sync(column=0, row=0, direction=0, channel=0)
+
+    print(ctx.module)
+#    print(ctx.module.operation.verify())
+
+edge_detect()

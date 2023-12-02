@@ -10,21 +10,8 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-# from aie.passmanager import PassManager
 from aie.util import mlir_mod_ctx
 
-# def constructAndPrintInModule(f):
-#     with Context() as ctx, Location.unknown():
-#         aie.dialects.aie.register_dialect(ctx)
-#         module = Module.create()
-#         with InsertionPoint(module.body):
-#             f()
-#         pm = PassManager("builtin.module")
-#         pm.add("canonicalize")
-#         pm.run(module.operation)
-#         print(module)
-
-# @constructAndPrintInModule
 def printf():
     N = 512
 
@@ -32,8 +19,6 @@ def printf():
 
         @device(AIEDevice.ipu)
         def device_body():
-            # int32_ty = IntegerType.get_signless(32)
-            # memRef_ty = MemRefType.get((N,), int32_ty)
             memRef_ty = TypeAttr.get(ObjectFifoType.get(T.memref(N, T.i32())))
 
             kernel = external_func("kernel", inputs=[T.memref(N, T.i32()), 

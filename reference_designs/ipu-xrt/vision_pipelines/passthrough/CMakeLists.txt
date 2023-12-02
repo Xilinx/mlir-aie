@@ -28,8 +28,8 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
-set(WIDTH 1920 CACHE STRING "image width")
-set(HEIGHT 1080 CACHE STRING "image height")
+set(PASSTHROUGH_WIDTH 1920 CACHE STRING "image width")
+set(PASSTHROUGH_HEIGHT 1080 CACHE STRING "image height")
 
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
@@ -56,8 +56,8 @@ add_executable(${currentTarget}
 )
 
 target_compile_definitions(${currentTarget} PUBLIC 
-        EDGEDETECT_WIDTH=${EDGEDETECT_WIDTH}
-        EDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
+        PASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH}
+        PASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT}
         DISABLE_ABI_CHECK=1 
         )
 
