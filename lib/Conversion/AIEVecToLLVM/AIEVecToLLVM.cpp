@@ -29,7 +29,7 @@ namespace xilinx::aievec {
 struct BufferParams {
   uint32_t start;
   uint32_t offsets;
-  uint32_t offsets_hi;
+  uint32_t offsetsHi;
   uint32_t step;
   uint32_t square;
 };
@@ -157,12 +157,12 @@ public:
     BufferParams z = {};
     op.getXstart().getAsInteger(0, x.start);
     op.getXoffsets().getAsInteger(0, x.offsets);
-    op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+    op.getXoffsetsHi().getAsInteger(0, x.offsetsHi);
     op.getXstep().getAsInteger(0, x.step);
     op.getXsquare().getAsInteger(0, x.square);
     op.getZstart().getAsInteger(0, z.start);
     op.getZoffsets().getAsInteger(0, z.offsets);
-    op.getZoffsetsHi().getAsInteger(0, z.offsets_hi);
+    op.getZoffsetsHi().getAsInteger(0, z.offsetsHi);
     op.getZstep().getAsInteger(0, z.step);
     op.getZsquare().getAsInteger(0, z.square);
 
@@ -179,10 +179,10 @@ public:
         op->getLoc(), startType, rewriter.getI32IntegerAttr(z.start));
     auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsetsHi}));
     auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)z.offsets, (int32_t)z.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)z.offsets, (int32_t)z.offsetsHi}));
     auto confVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), confType,
         rewriter.getI32VectorAttr({(int32_t)conf[0], (int32_t)conf[1]}));
@@ -234,12 +234,12 @@ public:
     BufferParams z = {};
     op.getXstart().getAsInteger(0, x.start);
     op.getXoffsets().getAsInteger(0, x.offsets);
-    op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+    op.getXoffsetsHi().getAsInteger(0, x.offsetsHi);
     op.getXstep().getAsInteger(0, x.step);
     op.getXsquare().getAsInteger(0, x.square);
     op.getZstart().getAsInteger(0, z.start);
     op.getZoffsets().getAsInteger(0, z.offsets);
-    op.getZoffsetsHi().getAsInteger(0, z.offsets_hi);
+    op.getZoffsetsHi().getAsInteger(0, z.offsetsHi);
     op.getZstep().getAsInteger(0, z.step);
     op.getZsquare().getAsInteger(0, z.square);
 
@@ -256,10 +256,10 @@ public:
         op->getLoc(), startType, rewriter.getI32IntegerAttr(z.start));
     auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsetsHi}));
     auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)z.offsets, (int32_t)z.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)z.offsets, (int32_t)z.offsetsHi}));
     auto confVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), confType,
         rewriter.getI32VectorAttr({(int32_t)conf[0], (int32_t)conf[1]}));
@@ -390,9 +390,9 @@ public:
       // Determine the load size
       // TODO: no examples of 1024-bit output vectors: doesn't feel right
       // to attempt a 512-bit load to do an update like this
-      int loadSize = vecSizeInBits == 256   ? 128
-                     : vecSizeInBits == 512 ? 256
-                                            : 512;
+        int loadSize = vecSizeInBits == 256   ? 128
+                       : vecSizeInBits == 512 ? 256
+                                              : 512;
 
       // Create a vectorType for the load proper
       // Load half of the final result vector
@@ -601,11 +601,11 @@ public:
     op.getSelect().getAsInteger(0, select);
     op.getXstart().getAsInteger(0, x.start);
     op.getXoffsets().getAsInteger(0, x.offsets);
-    op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+    op.getXoffsetsHi().getAsInteger(0, x.offsetsHi);
     op.getXsquare().getAsInteger(0, x.square);
     op.getYstart().getAsInteger(0, y.start);
     op.getYoffsets().getAsInteger(0, y.offsets);
-    op.getYoffsetsHi().getAsInteger(0, y.offsets_hi);
+    op.getYoffsetsHi().getAsInteger(0, y.offsetsHi);
     op.getYsquare().getAsInteger(0, y.square);
 
     // Encode the configuration register
@@ -622,10 +622,10 @@ public:
         op->getLoc(), startType, rewriter.getI32IntegerAttr(y.start));
     auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)x.offsets, (int32_t)x.offsetsHi}));
     auto yoffsetsVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), offsetsType,
-        rewriter.getI32VectorAttr({(int32_t)y.offsets, (int32_t)y.offsets_hi}));
+        rewriter.getI32VectorAttr({(int32_t)y.offsets, (int32_t)y.offsetsHi}));
     auto confVal = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), confType,
         rewriter.getI32VectorAttr({(int32_t)conf[0], (int32_t)conf[1]}));
@@ -718,7 +718,7 @@ class MatMulOpConversion
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
 
   struct DecodedMatMulOp {
-    typedef enum { I32, I64, BF16 } Kind;
+    using Kind = enum { I32, I64, BF16 };
 
     Kind kind;
     Value lhs;
@@ -781,19 +781,16 @@ class MatMulOpConversion
         if (rhsBitWidth == 4) {
           // <4x16xi8> x <16x8xi4> + <4x8xi32>
           return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf};
-        } else {
-          // <4x8xi8> x <8x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
         }
-      } else {
-        if (rhsBitWidth == 8) {
-          // <4x4xi16> x <4x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
-        } else {
-          // <4x2xi16> x <2x8xi16> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
-        }
+        // <4x8xi8> x <8x8xi8> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
       }
+      if (rhsBitWidth == 8) {
+        // <4x4xi16> x <4x8xi8> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
+      }
+      // <4x2xi16> x <2x8xi16> + <4x8xi32>
+      return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
     }
 
     if (lhsBitWidth == 16) {
