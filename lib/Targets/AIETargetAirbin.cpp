@@ -28,14 +28,6 @@
 
 #define DEBUG_TYPE "aie-generate-airbin"
 
-// Marks a particular code path as unfinished.
-#define TODO assert(false)
-
-// Marks a particular code path as unused in normal execution.
-#define UNREACHABLE assert(false)
-
-#define DEBUG_AIRBIN
-
 #define EM_AMDAIR 225 /* AMD AIR */
 
 using namespace mlir;
@@ -73,6 +65,8 @@ static constexpr auto TILE_ADDR_COL_WIDTH = 7u;
 static constexpr auto TILE_ADDR_ARR_SHIFT =
     TILE_ADDR_COL_SHIFT + TILE_ADDR_COL_WIDTH;
 
+static bool TEST_AIRBIN = false;
+
 /********
   ME Tile
 ********/
@@ -102,7 +96,8 @@ struct me_reg_dma_bd {
   uint32_t control;
   uint32_t padding;
 };
-static_assert(sizeof(struct me_reg_dma_bd) == ME_DMA_BD_SIZE,
+
+static_assert(sizeof(me_reg_dma_bd) == ME_DMA_BD_SIZE,
               "Size of me_reg_dma_bd is incorrect");
 
 typedef me_reg_dma_bd dma_bd_reg_block[ME_DMA_BD_COUNT];
@@ -145,6 +140,7 @@ struct reg_dma_s2mm {
   uint32_t ctrl;
   uint32_t queue;
 };
+
 static_assert(sizeof(struct reg_dma_s2mm) == REG_DMA_S2MM_BLOCK_SIZE,
               "Size of reg_dma_s2mm is incorrect");
 
@@ -169,6 +165,7 @@ struct reg_dma_mm2s {
   uint32_t ctrl;
   uint32_t queue;
 };
+
 static_assert(sizeof(struct reg_dma_mm2s) == REG_DMA_MM2S_BLOCK_SIZE,
               "Size of reg_dma_mm2s is incorrect");
 
@@ -257,6 +254,7 @@ struct shim_dma_bd {
   uint32_t axi_cfg;
   uint32_t packet;
 };
+
 static_assert(sizeof(struct shim_dma_bd) == REG_SHIM_DMA_BD_SIZE,
               "Size of shim_dma_bd is incorrect");
 
@@ -361,10 +359,10 @@ typedef std::pair<uint64_t, uint32_t> Write;
 class Section {
 public:
   Section(uint64_t addr) : address(addr){};
-  uint64_t get_addr(void) const { return address; }
-  size_t get_length(void) const { return data.size() * sizeof(uint32_t); }
+  uint64_t get_addr() const { return address; }
+  size_t get_length() const { return data.size() * sizeof(uint32_t); }
   void add_data(uint32_t value) { data.push_back(value); }
-  const uint32_t *get_data(void) const { return data.data(); }
+  const uint32_t *get_data() const { return data.data(); }
 
 private:
   uint64_t address;           // start address of this section
@@ -435,9 +433,8 @@ void TileAddress::clearRange(uint32_t start, uint32_t length) {
                                           length));
   for (auto off = start; off < start + length; off += 4u) {
     write32(Address{*this, off}, 0);
-#ifdef DEBUG_AIRBIN
-    break;
-#endif
+    if (TEST_AIRBIN)
+      break;
   }
 }
 
@@ -674,18 +671,18 @@ static void configure_dmas(DeviceOp &targetOp) {
         if (op.acquire()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
-        } else if (op.release()) {
+        } else {
           relEnable = enable;
           relValue = op.getLockValue();
-        } else
-          UNREACHABLE;
+        }
       }
 
       // We either
       //  a. went thru the loop once (`lockID` should be something) xor
       //  b. did not enter the loop (the enables should be both disable)
       assert(lockID.has_value() ^
-             (acqEnable == disable and relEnable == disable));
+                 (acqEnable == disable and relEnable == disable) &&
+             "lock invariants not satisfied");
 
       for (auto op : block.getOps<DMABDPACKETOp>()) {
         bdInfo.foundBdPacket = true;
@@ -708,25 +705,20 @@ static void configure_dmas(DeviceOp &targetOp) {
           bdData.addr_a = bdAddressLockID(lockID.value()) |
                           bdAddressReleaseEnable(relEnable) |
                           bdAddressAcquireEnable(acqEnable);
-
-          if (relValue != 0xFFu) {
+          if (relValue != 0xFFu)
             bdData.addr_a |= bdAddressReleaseValueEnable(true) |
                              bdAddressReleaseValue(relValue);
-          }
-          if (acqValue != 0xFFu) {
+          if (acqValue != 0xFFu)
             bdData.addr_a |= bdAddressAcquireValueEnable(true) |
                              bdAddressAcquireValue(acqValue);
-          }
         }
-        if (bdInfo.hasB) {
-          TODO;
-        }
+        if (bdInfo.hasB)
+          llvm::report_fatal_error("bdInfo.hasB not supported");
 
         auto addr_a = bdInfo.BaseAddrA + bdInfo.offsetA;
         auto addr_b = bdInfo.BaseAddrB + bdInfo.offsetB;
 
         Field<12, 0> bdAddressBase, bdControlLength;
-
         Field<30> bdControlABMode;
         Field<28> bdControlFifo;
 
@@ -738,7 +730,8 @@ static void configure_dmas(DeviceOp &targetOp) {
 
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
-          assert(block.getNumSuccessors() == 1);
+          assert(block.getNumSuccessors() == 1 &&
+                 "block.getNumSuccessors() != 1");
           auto *nextBlock = block.getSuccessors()[0];
           auto nextBdNum = blockMap[nextBlock];
 
@@ -750,21 +743,18 @@ static void configure_dmas(DeviceOp &targetOp) {
         }
 
         if (bdInfo.foundBdPacket) {
-
           Field<14, 12> bdPacketType;
           Field<4, 0> bdPacketID;
-
           Field<27> bdControlEnablePacket;
 
           bdData.packet =
               bdPacketID(bdInfo.packetID) | bdPacketType(bdInfo.packetType);
-
           bdData.control |= bdControlEnablePacket(enable);
         }
 
         Field<31> bdControlValid;
 
-        assert(bdNum < ME_DMA_BD_COUNT);
+        assert(bdNum < ME_DMA_BD_COUNT && "bdNum >= ME_DMA_BD_COUNT");
         uint64_t bdOffset = reg_dma_addr_a_bd(bdNum);
 
         write32({tile, bdOffset}, bdData.addr_a);
@@ -803,70 +793,71 @@ static void configure_dmas(DeviceOp &targetOp) {
 }
 
 static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
-  assert(index >= 0);
-  assert(index < UINT8_MAX - 21);
+  assert(index >= 0 && "index < 0");
+  assert(index < UINT8_MAX - 21 && "index >= UINT8_MAX - 21");
 
   switch (bundle) {
   case WireBundle::DMA:
     return 2u + index;
-  case WireBundle::East:
+  case WireBundle::East: {
     if (isShim)
       return 19u + index;
-    else
-      return 21u + index;
-  case WireBundle::North:
+    return 21u + index;
+  }
+  case WireBundle::North: {
     if (isShim)
       return 15u + index;
-    else
-      return 17u + index;
-  case WireBundle::South:
+    return 17u + index;
+  }
+  case WireBundle::South: {
     if (isShim)
       return 3u + index;
-    else
-      return 7u + index;
-  case WireBundle::West:
+    return 7u + index;
+  }
+  case WireBundle::West: {
     if (isShim)
       return 11u + index;
-    else
-      return 13u + index;
+    return 13u + index;
+  }
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
-    TODO;
+    llvm::report_fatal_error("unexpected bundle");
   }
 }
 
 static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
-  assert(index >= 0);
-  assert(index < UINT8_MAX - 21);
+  assert(index >= 0 && "index < 0");
+  assert(index < UINT8_MAX - 21 && "index >= UINT8_MAX - 21");
 
   switch (bundle) {
   case WireBundle::DMA:
     return 2u + index;
-  case WireBundle::East:
+  case WireBundle::East: {
     if (isShim)
       return 19u + index;
-    else
-      return 21u + index;
-  case WireBundle::North:
+    return 21u + index;
+  }
+  case WireBundle::North: {
     if (isShim)
       return 13u + index;
-    else
-      return 15u + index;
-  case WireBundle::South:
+    return 15u + index;
+  }
+  case WireBundle::South: {
     if (isShim)
       return 3u + index;
-    else
-      return 7u + index;
-  case WireBundle::West:
+    return 7u + index;
+  }
+  case WireBundle::West: {
     if (isShim)
       return 9u + index;
-    else
-      return 11u + index;
+    return 11u + index;
+  }
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
-    TODO;
+    llvm::report_fatal_error(llvm::Twine("unexpected bundle") +
+                             std::to_string(static_cast<uint32_t>(bundle)));
   }
 }
 
@@ -879,30 +870,22 @@ static void configure_switchboxes(DeviceOp &targetOp) {
                    b.getOps<PacketRulesOp>().empty();
 
     // NOTE: may not be needed
-    auto switchbox_set = [&] {
-      std::set<TileAddress> result;
-      if (isa<TileOp>(switchboxOp.getTile().getDefiningOp())) {
-        if (!isEmpty) {
-          result.emplace(switchboxOp);
-        }
-      } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
-                     switchboxOp.getTile().getDefiningOp())) {
-        // TODO: Use XAIEV1 target and translate into write32s
-        TODO;
-      }
-
-      return result;
-    }();
+    std::set<TileAddress> switchbox_set;
+    if (isa<TileOp>(switchboxOp.getTile().getDefiningOp())) {
+      if (!isEmpty)
+        switchbox_set.emplace(switchboxOp);
+    } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
+                   switchboxOp.getTile().getDefiningOp()))
+      // TODO: Use XAIEV1 target and translate into write32s
+      llvm::report_fatal_error("select op not supported");
 
     constexpr Field<31> streamEnable;
     constexpr Field<30> streamPacketEnable;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       for (auto tile : switchbox_set) {
-
         auto slave_port =
             computeSlavePort(connectOp.getSourceBundle(),
                              connectOp.sourceIndex(), tile.isShim());
-
         auto master_port = computeMasterPort(
             connectOp.getDestBundle(), connectOp.destIndex(), tile.isShim());
 
@@ -912,10 +895,8 @@ static void configure_switchboxes(DeviceOp &targetOp) {
         // Configure master side
         {
           Address address{tile, reg_me_ss_master(master_port)};
-
           // TODO: `Field::extract(uint32_t)`?
           auto drop_header = (slave_port & 0x80u) >> 7u;
-
           auto value = streamEnable(true) | streamPacketEnable(false) |
                        streamMasterDropHeader(drop_header) |
                        streamMasterConfig(slave_port);
@@ -926,7 +907,6 @@ static void configure_switchboxes(DeviceOp &targetOp) {
         // Configure slave side
         {
           Address address{tile, reg_me_ss_slave_cfg(slave_port)};
-
           write32(address, streamEnable(true) | streamPacketEnable(false));
         }
 
@@ -937,7 +917,7 @@ static void configure_switchboxes(DeviceOp &targetOp) {
             auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
             arbiter = amsel.arbiterIndex();
             int msel = amsel.getMselValue();
-            mask |= (1u << msel);
+            mask |= 1u << msel;
           }
 
           static constexpr auto STREAM_SWITCH_MSEL_SHIFT = 3u;
@@ -947,9 +927,7 @@ static void configure_switchboxes(DeviceOp &targetOp) {
           auto config = streamMasterDropHeader(dropHeader) |
                         (mask << STREAM_SWITCH_MSEL_SHIFT) |
                         (arbiter << STREAM_SWITCH_ARB_SHIFT);
-
           Address dest{tile, reg_me_ss_master(master_port)};
-
           write32(dest, streamEnable(enable) | streamPacketEnable(enable) |
                             streamMasterDropHeader(dropHeader) |
                             streamMasterConfig(config));
@@ -982,13 +960,26 @@ static void configure_switchboxes(DeviceOp &targetOp) {
                         streamSlotMask(slotOp.maskInt()) |
                         streamSlotEnable(enable) | streamSlotMSel(msel) |
                         streamSlotArbit(arbiter);
-
           write32({tile, reg_me_ss_slave_slot(slavePort, slot)}, config);
           slot++;
         }
       }
     }
   }
+
+  const auto inputMaskFor = [](WireBundle bundle, uint8_t shiftAmt) {
+    switch (bundle) {
+    case WireBundle::PLIO:
+      return 0u << shiftAmt;
+    case WireBundle::DMA:
+      return 1u << shiftAmt;
+    case WireBundle::NOC:
+      return 2u << shiftAmt;
+    default:
+      llvm::report_fatal_error(llvm::Twine("unexpected bundle: ") +
+                               std::to_string(static_cast<uint32_t>(bundle)));
+    }
+  };
 
   std::optional<TileAddress> currentTile = std::nullopt;
   for (auto op : targetOp.getOps<ShimMuxOp>()) {
@@ -997,32 +988,16 @@ static void configure_switchboxes(DeviceOp &targetOp) {
 
     if (isa<TileOp>(op.getTile().getDefiningOp())) {
       bool isEmpty = b.getOps<ConnectOp>().empty();
-      if (!isEmpty) {
+      if (!isEmpty)
         currentTile = op;
-      }
     }
 
     for (auto connectOp : b.getOps<ConnectOp>()) {
-
-      const auto inputMaskFor = [](WireBundle bundle, uint8_t shiftAmt) {
-        switch (bundle) {
-        case WireBundle::PLIO:
-          return 0u << shiftAmt;
-        case WireBundle::DMA:
-          return 1u << shiftAmt;
-        case WireBundle::NOC:
-          return 2u << shiftAmt;
-        default:
-          UNREACHABLE;
-        }
-      };
-
       if (connectOp.getSourceBundle() == WireBundle::North) {
         // demux!
         // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
         // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
-        assert(currentTile.has_value());
-
+        assert(currentTile.has_value() && "current tile not set");
         auto shiftAmt = [index = connectOp.sourceIndex()] {
           // NOTE: hardcoded to SOUTH to match definitions from libxaie
           switch (index) {
@@ -1034,24 +1009,22 @@ static void configure_switchboxes(DeviceOp &targetOp) {
             return 8u;
           case 7:
             return 10u;
-          default:
-            UNREACHABLE; // Unsure about this, but seems safe to assume
+          default: // Unsure about this, but seems safe to assume
+            llvm::report_fatal_error(llvm::Twine("unexpected source index: ") +
+                                     std::to_string(index));
           }
         }();
 
         // We need to add to the possibly preexisting mask.
         Address addr{currentTile.value(), 0x1F004u};
         auto currentMask = read32(addr);
-
         write32(addr, currentMask |
                           inputMaskFor(connectOp.getDestBundle(), shiftAmt));
-
       } else if (connectOp.getDestBundle() == WireBundle::North) {
         // mux
         // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
         // XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
-        assert(currentTile.has_value());
-
+        assert(currentTile.has_value() && "no current tile");
         auto shiftAmt = [index = connectOp.destIndex()] {
           // NOTE: hardcoded to SOUTH to match definitions from libxaie
           switch (index) {
@@ -1063,14 +1036,14 @@ static void configure_switchboxes(DeviceOp &targetOp) {
             return 12u;
           case 7:
             return 14u;
-          default:
-            UNREACHABLE; // Unsure about this, but seems safe to assume
+          default: // Unsure about this, but seems safe to assume
+            llvm::report_fatal_error(llvm::Twine("unexpected dest index ") +
+                                     std::to_string(index));
           }
         }();
 
         Address addr{currentTile.value(), 0x1F000u};
         auto currentMask = read32(addr);
-
         write32(addr, currentMask |
                           inputMaskFor(connectOp.getSourceBundle(), shiftAmt));
       }
@@ -1124,7 +1097,6 @@ static uint8_t sec_addr2index(uint64_t in) {
   default:
     return 0;
   }
-  return 0;
 }
 
 /*
@@ -1143,9 +1115,11 @@ static void group_sections(std::vector<Section *> &sections) {
                               << llvm::format("0x%lx (last=0x%lx)\n",
                                               write.first, last_addr));
     }
+    assert(section && "section is null");
     section->add_data(write.second);
     last_addr = write.first;
   }
+
   sections.push_back(section);
 }
 
@@ -1170,10 +1144,9 @@ static size_t add_string(Elf_Scn *scn, const char *str) {
 
 Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
   size_t size = section->get_length();
-#ifdef DEBUG_AIRBIN
-  size = 4;
-#endif
-  auto *buf = (uint32_t *)malloc(size);
+  if (TEST_AIRBIN)
+    size = 4;
+  auto *buf = static_cast<uint32_t *>(malloc(size));
 
   // create a data object for the section
   Elf_Data *data = elf_newdata(scn);
@@ -1192,7 +1165,11 @@ Elf_Data *section_add_data(Elf_Scn *scn, const Section *section) {
 
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
-                                         const std::string &coreFilesDir) {
+                                         const std::string &coreFilesDir,
+                                         bool testAirBin) {
+
+  TEST_AIRBIN = testAirBin;
+
   int tmp_elf_fd;
   Elf *outelf;
   GElf_Ehdr ehdr_mem;

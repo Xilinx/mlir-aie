@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate %s --aie-generate-airbin --airbin-output-filepath=%T/airbin.elf --airbin-aux-core-dir-path=%S && %LLVM_TOOLS_DIR/obj2yaml %T/airbin.elf | FileCheck %s
+// RUN: aie-translate %s --aie-generate-airbin --test-airbin --airbin-output-filepath=%T/airbin.elf --airbin-aux-core-dir-path=%S && %LLVM_TOOLS_DIR/obj2yaml %T/airbin.elf | FileCheck %s
 
 // CHECK: --- !ELF
 // CHECK: FileHeader:
