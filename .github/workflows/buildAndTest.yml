@@ -335,7 +335,52 @@ jobs:
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
 
-  Formatting:
+  CppFormatting:
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
+        with:
+          clangformat: 17.0.1
+
+      - name: Setup Python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Run git-clang-format
+        id: git-clang-format
+        run: |
+          git fetch origin main
+          FORMATTED=0
+          git clang-format origin/main || FORMATTED=$?
+          echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
+
+      - name: Annotate diff changes using reviewdog
+        if: steps.git-clang-format.outputs.FORMATTED
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: clang-format
+
+      - name: Fail
+        if: steps.git-clang-format.outputs.FORMATTED
+        run: |
+          exit 1
+
+
+  PythonFormatting:
 
     runs-on: ubuntu-latest
 
@@ -363,24 +408,6 @@ jobs:
       - name: Install black
         run: pip install black
 
-      - name: Run git-clang-format
-        id: git-clang-format
-        run: |
-          git fetch origin main
-          FORMATTED=0
-          git clang-format origin/main || FORMATTED=$?
-          echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
-
-      - name: Annotate diff changes using reviewdog
-        if: steps.git-clang-format.outputs.FORMATTED
-        uses: reviewdog/action-suggester@v1
-        with:
-          tool_name: clang-format
-
-      - name: Reset
-        run: |
-          git checkout -- .
-
       - name: Run black format
         id: black-format
         run: |
@@ -396,6 +423,6 @@ jobs:
           tool_name: black
 
       - name: Fail
-        if: steps.git-clang-format.outputs.FORMATTED || steps.action_black.outputs.is_formatted
+        if: steps.action_black.outputs.is_formatted
         run: |
           exit 1
