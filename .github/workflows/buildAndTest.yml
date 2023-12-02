@@ -369,13 +369,13 @@ jobs:
           echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
 
       - name: Annotate diff changes using reviewdog
-        if: steps.git-clang-format.outputs.FORMATTED
+        if: steps.git-clang-format.outputs.FORMATTED != '0'
         uses: reviewdog/action-suggester@v1
         with:
           tool_name: clang-format
 
       - name: Fail
-        if: steps.git-clang-format.outputs.FORMATTED
+        if: steps.git-clang-format.outputs.FORMATTED != '0'
         run: |
           exit 1
 
@@ -413,16 +413,16 @@ jobs:
         run: |
           FORMATTED=0
           black . || FORMATTED=$?
-          git status
+          FORMATTED=$($FORMATTED || git status -s -uno | wc -l | xargs)
           echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
 
       - name: Annotate diff changes using reviewdog
-        if: steps.black-format.outputs.FORMATTED
+        if: steps.black-format.outputs.FORMATTED != '0'
         uses: reviewdog/action-suggester@v1
         with:
           tool_name: black
 
       - name: Fail
-        if: steps.action_black.outputs.is_formatted
+        if: steps.black-format.outputs.FORMATTED != '0'
         run: |
           exit 1
