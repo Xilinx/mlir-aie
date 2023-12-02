@@ -59,7 +59,7 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          pip install lit
+          pip install lit pkginfo
           pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
           WHL=$(ls mlir-*.whl)
           echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
@@ -87,9 +87,9 @@ jobs:
 
       - name: Save MLIR Version
         run: |
-          echo "{" > ../build_release/docs/build_info.json
-          echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_DIR }}\"," >> ../build_release/docs/build_info.json
-          echo "}" > ../build_release/docs/build_info.json
+          echo "{" > build_release/docs/build_info.json
+          echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}\"," >> build_release/docs/build_info.json
+          echo "}" > build_release/docs/build_info.json
 
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
