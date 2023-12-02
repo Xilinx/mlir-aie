@@ -535,7 +535,7 @@ def main():
     github_api_timeout = 10
 
     warning_comment_prefix = (
-        ":warning: `Clang-Tidy` found issue(s) with the introduced code"
+        "# :warning: `Clang-Tidy` found issue(s) with the introduced code"
     )
 
     diff_lines_per_file = get_diff_lines_per_file(

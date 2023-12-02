@@ -62,10 +62,10 @@ def infer_mlir_type(
         elif 2 ** 63 <= py_val < 2 ** 64:
             return T.ui64()
         else:
-            raise RuntimeError(f"Nonrepresentable integer {py_val}.")
+            raise RuntimeError(f'Nonrepresentable integer {py_val}.')
     elif isinstance(py_val, float):
         if (
-            abs(py_val) == float("inf")
+            abs(py_val) == float('inf')
             or abs(py_val) == 0.0
             or py_val != py_val  # NaN
             or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
@@ -78,7 +78,7 @@ def infer_mlir_type(
         return RankedTensorType.get(py_val.shape, dtype)
     else:
         raise NotImplementedError(
-            f"Unsupported Python value {py_val=} with type {type(py_val)}"
+            f'Unsupported Python value {py_val=} with type {type(py_val)}'
         )
 
 
@@ -119,3 +119,11 @@ def mlir_mod_ctx(
         ip = InsertionPoint(module.body)
         stack.enter_context(ip)
         yield MLIRContext(context, module)
+
+
+def bad_function_with_list_default_args(a=[]):
+    return a[0]
+
+
+def completelyWRONG_NamingConVenTION():
+    pass
