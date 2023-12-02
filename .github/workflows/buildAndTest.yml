@@ -415,6 +415,7 @@ jobs:
           black . || FORMATTED=$?
           FORMATTED=$($FORMATTED || git status -s -uno | wc -l | xargs)
           echo "FORMATTED=$FORMATTED" | tee -a $GITHUB_OUTPUT
+          git diff
 
       - name: Annotate diff changes using reviewdog
         if: steps.black-format.outputs.FORMATTED != '0'
