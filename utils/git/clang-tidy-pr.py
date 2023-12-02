@@ -63,14 +63,14 @@ def get_pull_request_files(
     """Generator of GitHub metadata about files modified by the processed PR"""
 
     # Request a maximum of 100 pages (3000 files)
-    for page in range(1, 10):
+    for page in range(1, 100):
         url = f"{github_api_url}/repos/{repo}/pulls/{pull_request_id:d}/files?page={page:d}"
         print(url, file=sys.stderr)
         result = requests.get(
             f"{github_api_url}/repos/{repo}/pulls/{pull_request_id:d}/files?page={page:d}",
             headers={
                 "Accept": "application/vnd.github.v3+json",
-                # "Authorization": f"token {github_token}",
+                "Authorization": f"token {github_token}",
             },
             timeout=github_api_timeout,
         )
@@ -213,6 +213,8 @@ def generate_review_comments(
             }
 
         diag_message = diag["DiagnosticMessage"]
+        if not diag_message["FilePath"]:
+            continue
 
         # Normalize paths
         diag_message["FilePath"] = posixpath.normpath(
@@ -527,7 +529,7 @@ def main():
     args = parser.parse_args()
 
     # The GitHub API token is sensitive information, pass it through the environment
-    github_token = os.environ.get("INPUT_GITHUB_TOKEN")
+    github_token = os.environ.get("GITHUB_TOKEN")
 
     github_api_url = os.environ.get("GITHUB_API_URL")
     github_api_timeout = 10
