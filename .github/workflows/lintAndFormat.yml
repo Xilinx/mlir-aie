@@ -1,0 +1,338 @@
+name: Lint and Format
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+  workflow_dispatch:
+
+env:
+  # Run apt package manager in the CI in non-interactive mode.
+  # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+
+  clang-tidy-pylint:
+
+    name: Python and C/C++ Lint
+
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy ninja-build clang
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python packages
+        run: |
+          pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML requests
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+
+      - name: Prepare compile_commands.json
+        run: |
+          mkdir build
+          pushd build
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          
+          ninja aie-headers mlir-headers
+          
+          popd
+
+      - name: Analyze
+        id: clang-tidy-fixes
+        run: |
+          git fetch origin main
+          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+          echo "FIXES=$(test -f "fixes.yml")" | tee $GITHUB_OUTPUT
+
+      - name: Post clang-tidy requests
+        if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
+          echo $PULL_REQUEST_ID
+          
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}  python utils/git/clang_tidy_pr.py \
+          --clang-tidy-fixes fixes.yml \
+          --pull-request-id "$PULL_REQUEST_ID" \
+          --repository "$GITHUB_REPOSITORY" \
+          --repository-root "$PWD" \
+          --request-changes "false" \
+          --suggestions-per-comment 10
+
+      # You can feed the pylintrc path to ciborow/action-pylint
+      # but it doesn't seem to work.
+      - name: Copy pylintrcs
+        run: |
+          cp .pylintrc python/.pylintrc
+          cp .pylintrc test/python/.pylintrc
+          cp .pylintrc tutorials/.pylintrc
+          cp .pylintrc reference_designs/.pylintrc
+          cp .pylintrc utils/.pylintrc
+
+      # You can just do this wholesale at the root (not use workdir)
+      # but it'll take too long because it picks up
+      # the stuff in the build directory.
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          # GitHub Status Check won't become failure with warning.
+          level: warning
+          filter_mode: diff_context
+          workdir: python
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: test/python
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: tutorials
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: reference_designs
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: utils
+          glob_pattern: "**/*.py"
+
+  formatting:
+
+    name: Check code format
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
+        with:
+          clangformat: 17.0.1
+
+      - name: Setup Python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install black
+        run: pip install black[jupyter]
+
+      - name: Run git-clang-format
+        id: git-clang-format
+        run: |
+          git fetch origin main
+          # git clang-format returns an error if changes made?
+          git clang-format origin/main || true
+
+      - name: Check C/C++ format
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: clang-format
+          level: error
+          fail_on_error: true
+          cleanup: true
+
+      - name: Run black format
+        if: success() || failure()
+        id: black-format
+        run: |
+          black --exclude python/compiler/aiecc/main.py . || true
+          black -l 10000 python/compiler/aiecc/main.py || true
+
+      - name: Check Python format
+        if: success() || failure()
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: black
+          level: error
+          fail_on_error: true
+
+  code-coverage:
+
+    name: C/C++ test code coverage
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python and other packages
+        run: |
+          pip install cmake numpy psutil pybind11 rich lit
+
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build clang lld llvm
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          git fetch origin main
+          # Because for the life of me I cannot figure out how to read the output of git diff into a bash array.
+          CHANGED_FILES=$(python utils/get_git_changed_files.py)
+          echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+
+      - name: Ccache for C++ compilation
+        if: steps.changed-files.outputs.changed-files != ''
+        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
+        with:
+          key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
+          max-size: 1G
+
+      - name: Install our python reqs
+        if: steps.changed-files.outputs.changed-files != ''
+        run: pip install -r python/requirements.txt
+
+      - name: Build and generate coverage (Release)
+        if: steps.changed-files.outputs.changed-files != ''
+        run: |
+          mkdir build_release
+          cd build_release
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DLLVM_USE_LINKER=lld \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DBUILD_INSTRUMENTED_COVERAGE=ON \
+            -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
+          
+          ninja && ninja generate-aie-coverage-report
+          
+          cat /home/runner/work/mlir-aie/mlir-aie/build_release/report/summary.txt
+
+      - name: Format coverage report
+        if: steps.changed-files.outputs.changed-files != ''
+        id: format-report
+        run: |
+          sed -i.bak 's/<!doctype html>/<!--<!doctype codecov html>-->/g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/<pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/<\/pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak 's/([0-9]*\/[0-9]*)//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          sed -i.bak "s/href=/href=''/g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          WORKSPACE=$(echo "/home/runner/work/mlir-aie/mlir-aie/" | sed 's/\//\\\//g')
+          sed -i.bak "s/$WORKSPACE//g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+
+
+      - name: Update PR with coverage results
+        if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: edumserrano/find-create-or-update-comment@v2
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!--<!doctype codecov html>-->'
+          comment-author: 'github-actions[bot]'
+          body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          edit-mode: replace
+
