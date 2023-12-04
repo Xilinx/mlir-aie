@@ -8,13 +8,6 @@ on:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
 
-defaults:
-  run:
-    # This is already the default, except when running inside another Docker
-    # image, which is the case here. So set it up globally to avoid
-    # repeating elsewhere.
-    shell: bash
-
 env:
   # Run apt package manager in the CI in non-interactive mode.
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
@@ -53,11 +46,8 @@ jobs:
         run: |
           pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
 
-      - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
-
-      - name: Install lld and clang (for aiecc)
-        run: sudo apt-get install -y clang lld
+      - name: Install packages
+        run: sudo apt-get install -y ninja-build clang lld
 
       - name: Get MLIR
         id: mlir-wheels
@@ -68,7 +58,6 @@ jobs:
           echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
       - name: Ccache for C++ compilation
-        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           # Since there are now several compilation jobs running in parallel,
@@ -139,133 +128,221 @@ jobs:
           ninja check-tutorials
           ninja check-reference-designs
 
-  lint-repo:
-    name: Check code format
-    runs-on: ubuntu-20.04
+  clang-tidy-pylint:
+
+    name: Python and C/C++ Lint
+
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
-      # We'll be running clang-tidy later in this flow.
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
       - name: Install clang-tidy
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy-12
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
-            /usr/bin/clang-tidy-12 100
+          sudo apt-get install -y clang-tidy ninja-build clang
 
-      # Clone the repo and its submodules. Do shallow clone to save clone
-      # time.
-      - name: Get repo
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python packages
+        run: |
+          pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML requests
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+
+      - name: Prepare compile_commands.json
+        run: |
+          mkdir build
+          pushd build
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          
+          ninja aie-headers mlir-headers
+          
+          popd
+
+      - name: Analyze
+        run: |
+          git fetch origin main
+          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+
+      - name: Post clang-tidy requests
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
+          echo $PULL_REQUEST_ID
+          
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}  python utils/git/clang_tidy_pr.py \
+          --clang-tidy-fixes fixes.yml \
+          --pull-request-id "$PULL_REQUEST_ID" \
+          --repository "$GITHUB_REPOSITORY" \
+          --repository-root "$PWD" \
+          --request-changes "false" \
+          --suggestions-per-comment 10
+
+      # You can feed the pylintrc path to ciborow/action-pylint
+      # but it doesn't seem to work.
+      - name: Copy pylintrcs
+        run: |
+          cp .pylintrc python/.pylintrc
+          cp .pylintrc test/python/.pylintrc
+          cp .pylintrc tutorials/.pylintrc
+          cp .pylintrc reference_designs/.pylintrc
+          cp .pylintrc utils/.pylintrc
+
+      # You can just do this wholesale at the root (not use workdir)
+      # but it'll take too long because it picks up
+      # the stuff in the build directory.
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          # GitHub Status Check won't become failure with warning.
+          level: warning
+          filter_mode: diff_context
+          workdir: python
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: test/python
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: tutorials
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: reference_designs
+          glob_pattern: "**/*.py"
+
+      - uses: dciborow/action-pylint@0.1.0
+        env:
+          PYTHONPATH: build/python
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          filter_mode: diff_context
+          workdir: utils
+          glob_pattern: "**/*.py"
+
+  formatting:
+
+    name: Check code format
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Get the project repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
           submodules: "true"
 
-      # --------
-      # Lint the code.
-      # -------
-
-      # Choose the git commit to diff against for the purposes of linting.
-      # Since this workflow is triggered on both pushes and pull requests, we
-      # have to determine if the pull request target branch is set (which it
-      # will only be on the PR triggered flow). If it's not, then compare
-      # against the last commit.
-      - name: choose-commit
-        if: always()
-        env:
-          # Base ref is the target branch, in text form (not hash)
-          PR_BASE: ${{ github.base_ref }}
-        run: |
-          # Run clang-format
-          if [[ -z "$PR_BASE" ]]; then
-            DIFF_COMMIT_NAME="HEAD^"
-          else
-            DIFF_COMMIT_NAME="$PR_BASE"
-          fi
-          echo "DIFF_COMMIT_NAME=$DIFF_COMMIT_NAME" >> $GITHUB_ENV
-
-      # Since we did a shallow fetch for this repo, we must fetch the commit
-      # upon which we be diff'ing. The last step set the ref name in the
-      # $DIFF_COMMIT_NAME environment variable. When running the fetch, resolve
-      # it to the commit hash and pass that hash along to subsequent steps.
-      - name: git fetch base commit
-        continue-on-error: true
-        run: |
-          if [[ ! "$DIFF_COMMIT_NAME" == *"HEAD"* ]]; then
-            git fetch --recurse-submodules=no origin $DIFF_COMMIT_NAME
-            DIFF_COMMIT_SHA=$( git rev-parse origin/$DIFF_COMMIT_NAME )
-          else
-            DIFF_COMMIT_SHA=$( git rev-parse $DIFF_COMMIT_NAME )
-          fi
-          echo "DIFF_COMMIT=$DIFF_COMMIT_SHA" >> $GITHUB_ENV
-
-      # Run 'git clang-format', comparing against the target commit hash. If
-      # clang-format fixed anything, fail and output a patch.
-      - name: clang-format
-        if: always()
-        run: |
-          # Run clang-format
-          git clang-format-12 $DIFF_COMMIT
-          git diff --ignore-submodules > clang-format.patch
-          if [ -s clang-format.patch ]; then
-            echo "Clang-format found formatting problems in the following " \
-              "files. See diff in the clang-format.patch artifact."
-            git diff --ignore-submodules --name-only
-            git checkout .
-            exit 1
-          fi
-          echo "Clang-format found no formatting problems"
-          exit 0
-
-      # Run clang-tidy against only the changes. The 'clang-tidy-diff' script
-      # does this if supplied with the diff.
-      - name: clang-tidy
-        if: always()
-        run: |
-          git diff -U0 $DIFF_COMMIT | \
-            clang-tidy-diff-12.py -path build_assert -p1 -fix
-          git diff --ignore-submodules > clang-tidy.patch
-          if [ -s clang-tidy.patch ]; then
-            echo "Clang-tidy problems in the following files. " \
-              "See diff in the clang-tidy.patch artifact."
-            git diff --ignore-submodules --name-only
-            git checkout .
-            exit 1
-          fi
-          echo "Clang-tidy found no problems"
-          exit 0
-
-      # Upload the format and tidy patches to an artifact (zip'd) associated
-      # with the workflow run. Only run this on a failure.
-      - name: Upload format and tidy patches
-        uses: actions/upload-artifact@v3
-        continue-on-error: true
-        if: failure()
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
         with:
-          name: clang-format-tidy-patches
-          path: clang-*.patch
+          clangformat: 17.0.1
 
-      # Unfortunately, artifact uploads are always zips so display the diff as
-      # well to provide feedback at a glance.
-      - name: clang format and tidy patches display
-        if: failure()
-        continue-on-error: true
+      - name: Setup Python env
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install black
+        run: pip install black[jupyter]
+
+      - name: Run git-clang-format
+        id: git-clang-format
         run: |
-          # Display patches
-          if [ ! -z clang-format.patch ]; then
-            echo "Clang-format patch"
-            echo "================"
-            cat clang-format.patch
-            echo "================"
-          fi
-          if [ ! -z clang-tidy.patch ]; then
-            echo "Clang-tidy patch"
-            echo "================"
-            cat clang-tidy.patch
-            echo "================"
-          fi
+          git fetch origin main
+          # git clang-format returns an error if changes made?
+          git clang-format origin/main || true
+
+      - name: Check C/C++ format
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: clang-format
+          level: error
+          fail_on_error: true
+          cleanup: true
+
+      - name: Run black format
+        if: success() || failure()
+        id: black-format
+        run: |
+          black --exclude python/compiler/aiecc/main.py . || true
+          black -l 10000 python/compiler/aiecc/main.py || true
+
+      - name: Check Python format
+        if: success() || failure()
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: black
+          level: error
+          fail_on_error: true
 
   code-coverage:
 
-    name: Code Coverage
+    name: C/C++ test code coverage
 
     runs-on: ubuntu-latest
 
@@ -289,10 +366,7 @@ jobs:
           pip install cmake numpy psutil pybind11 rich lit
 
       - name: Install Ninja
-        run: sudo apt-get install -y ninja-build
-
-      - name: Install llvm-cov
-        run: sudo apt-get install -y clang lld llvm
+        run: sudo apt-get install -y ninja-build clang lld llvm
 
       - name: Get changed files
         id: changed-files
@@ -310,7 +384,6 @@ jobs:
 
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
-        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
@@ -375,3 +448,4 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
+
