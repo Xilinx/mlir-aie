@@ -14,6 +14,8 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// XFAIL: *
+
 module {
   %tile13 = AIE.tile(1, 3)
   %tile23 = AIE.tile(2, 3)

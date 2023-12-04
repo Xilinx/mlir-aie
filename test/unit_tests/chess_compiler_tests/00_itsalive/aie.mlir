@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
+// REQUIRES: peano
 // RUN: %PYTHON aiecc.py --no-unified --xchesscc    --xbridge %s
 // RUN: %PYTHON aiecc.py --unified    --xchesscc    --xbridge %s
 // RUN: %PYTHON aiecc.py --no-unified --no-xchesscc --xbridge %s
