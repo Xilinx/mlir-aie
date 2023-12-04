@@ -65,8 +65,6 @@ static constexpr auto TILE_ADDR_COL_WIDTH = 7u;
 static constexpr auto TILE_ADDR_ARR_SHIFT =
     TILE_ADDR_COL_SHIFT + TILE_ADDR_COL_WIDTH;
 
-static bool TEST_AIRBIN = false;
-
 /********
   ME Tile
 ********/
@@ -437,11 +435,8 @@ void TileAddress::clearRange(uint32_t start, uint32_t length) {
   LLVM_DEBUG(llvm::dbgs() << llvm::format("<%u,%u> 0x%x - 0x%x (len: %u)\n",
                                           column, row, start, start + length,
                                           length));
-  for (auto off = start; off < start + length; off += 4u) {
+  for (auto off = start; off < start + length; off += 4u)
     write32(Address{*this, off}, 0);
-    if (TEST_AIRBIN)
-      break;
-  }
 }
 
 /*
@@ -530,9 +525,8 @@ static void configShimTile(TileOp &tileOp) {
 
   TileAddress tileAddress{tileOp};
 
-  if (tileOp.isShimNOCTile()) {
+  if (tileOp.isShimNOCTile())
     tileAddress.clearRange(SHIM_DMA_BD_BASE, sizeof(ShimDMABDBlock));
-  }
 
   tileAddress.clearRange(SHIM_SS_MASTER_BASE, sizeof(ShimSSMasterBlock));
   tileAddress.clearRange(SHIM_SS_SLAVE_CFG_BASE, sizeof(ShimSSSlaveCfgBlock));
@@ -1150,8 +1144,6 @@ static size_t addString(Elf_Scn *scn, const char *str) {
 
 Elf_Data *sectionAddData(Elf_Scn *scn, const Section *section) {
   size_t size = section->getLength();
-  if (TEST_AIRBIN)
-    size = 4;
   auto *buf = static_cast<uint32_t *>(malloc(size));
 
   // create a data object for the section
@@ -1173,9 +1165,6 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
                                          const std::string &coreFilesDir,
                                          bool testAirBin) {
-
-  TEST_AIRBIN = testAirBin;
-
   int tmpElfFD;
   Elf *outElf;
   GElf_Ehdr ehdrMem;
