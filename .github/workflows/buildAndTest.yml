@@ -194,6 +194,7 @@ jobs:
       - name: Analyze
         run: |
           git fetch origin main
+          touch fixes.yml
           git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
 
       - name: Post clang-tidy requests

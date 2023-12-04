@@ -94,7 +94,6 @@ class CMakeBuild(build_ext):
             "-DLLVM_CCACHE_BUILD=ON",
             "-DLLVM_ENABLE_ASSERTIONS=ON",
             "-DLLVM_ENABLE_RTTI=ON",
-            "-DLLVM_ENABLE_WARNINGS=OFF",
             "-DLLVM_ENABLE_ZSTD=OFF",
             "-DLLVM_INCLUDE_BENCHMARKS=OFF",
             "-DLLVM_INCLUDE_EXAMPLES=OFF",

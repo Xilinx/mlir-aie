@@ -147,13 +147,31 @@ cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." ON "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
 
+add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
+
+# What happens when you have a non-void function with no return?
+# No `ret` instruction is generated and so execution of that function just
+# proceeds as if it doesn't have a care in the world (right into whatever comes next).
+# https://godbolt.org/z/Wr9nzv6ns
+add_flag_if_supported("-Werror=return-type" WERROR_RETURN_TYPE)
+
+## Stolen from MLIR
+
+# Forbid implicit function declaration: this may lead to subtle bugs and we
+# don't have a reason to support this.
+add_flag_if_supported("-Werror=implicit-function-declaration" WERROR_IMPLICIT_FUNCTION_DECLARATION)
+
+# Forbid mismatch between declaration and definition for class vs struct. This is
+# harmless on Unix systems, but it'll be a ticking bomb for MSVC/Windows systems
+# where it creeps into the ABI.
+add_flag_if_supported("-Werror=mismatched-tags" WERROR_MISMATCHED_TAGS)
+
 # Silence a false positive GCC -Wunused-but-set-parameter warning in constexpr
 # cases, by marking SelectedCase as used. See
 # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85827 for details. The issue is
 # fixed in GCC 10.
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "10.0")
-  check_cxx_compiler_flag("-Wno-unused-but-set-parameter" CXX_SUPPORTS_WNO_UNUSED_BUT_SET_PARAMETER)
-  append_if(CXX_SUPPORTS_WNO_UNUSED_BUT_SET_PARAMETER "-Wno-unused-but-set-parameter" CMAKE_CXX_FLAGS)
+  add_flag_if_supported("-Wno-unused-but-set-parameter" WNO_UNUSED_BUT_SET_PARAMETER)
 endif()
 
 # Make sure we generate the headers
