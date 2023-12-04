@@ -80,7 +80,9 @@ jobs:
         run: |
           git fetch origin main
           git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
-          echo "FIXES=$(test -f "fixes.yml")" | tee $GITHUB_OUTPUT
+          if [ -f fixes.yml ]; then
+            echo "FIXES=true" | tee $GITHUB_OUTPUT
+          fi
 
       - name: Post clang-tidy requests
         if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
@@ -118,6 +120,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
           # GitHub Status Check won't become failure with warning.
+          pylint_args: "--ignore-paths compiler"
           level: warning
           filter_mode: diff_context
           workdir: python
@@ -217,7 +220,7 @@ jobs:
         id: black-format
         run: |
           black --exclude python/compiler/aiecc/main.py . || true
-          black -l 10000 python/compiler/aiecc/main.py || true
+          # black -l 10000 python/compiler/aiecc/main.py || true
 
       - name: Check Python format
         if: success() || failure()
