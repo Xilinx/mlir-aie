@@ -29,7 +29,7 @@ namespace xilinx::aievec {
 struct BufferParams {
   uint32_t start;
   uint32_t offsets;
-        uint32_t offsets_hi;
+  uint32_t offsets_hi;
   uint32_t step;
   uint32_t square;
 };
@@ -390,9 +390,9 @@ public:
       // Determine the load size
       // TODO: no examples of 1024-bit output vectors: doesn't feel right
       // to attempt a 512-bit load to do an update like this
-            int loadSize = vecSizeInBits == 256   ? 128
-                           : vecSizeInBits == 512 ? 256
-                                                  : 512;
+      int loadSize = vecSizeInBits == 256   ? 128
+                     : vecSizeInBits == 512 ? 256
+                                            : 512;
 
       // Create a vectorType for the load proper
       // Load half of the final result vector
@@ -718,7 +718,7 @@ class MatMulOpConversion
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
 
   struct DecodedMatMulOp {
-        typedef enum { I32, I64, BF16 } Kind;
+    typedef enum { I32, I64, BF16 } Kind;
 
     Kind kind;
     Value lhs;
@@ -776,25 +776,25 @@ class MatMulOpConversion
     unsigned rhsBitWidth = rhsScaTy.getWidth();
     auto accScaTy = cast<IntegerType>(accVecTy.getElementType());
     unsigned accBitWidth = accScaTy.getWidth();
-          if (accBitWidth == 32) {
-            if (lhsBitWidth == 8) {
-              if (rhsBitWidth == 4) {
-                // <4x16xi8> x <16x8xi4> + <4x8xi32>
-                return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf};
-              } else {
-                // <4x8xi8> x <8x8xi8> + <4x8xi32>
-                return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
-              }
-            } else {
-              if (rhsBitWidth == 8) {
-                // <4x4xi16> x <4x8xi8> + <4x8xi32>
-                return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
-              } else {
-                // <4x2xi16> x <2x8xi16> + <4x8xi32>
-                return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
-              }
-            }
-          }
+    if (accBitWidth == 32) {
+      if (lhsBitWidth == 8) {
+        if (rhsBitWidth == 4) {
+          // <4x16xi8> x <16x8xi4> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf};
+        } else {
+          // <4x8xi8> x <8x8xi8> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
+        }
+      } else {
+        if (rhsBitWidth == 8) {
+          // <4x4xi16> x <4x8xi8> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
+        } else {
+          // <4x2xi16> x <2x8xi16> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
+        }
+      }
+    }
 
     if (lhsBitWidth == 16) {
       if (rhsBitWidth == 8) {
