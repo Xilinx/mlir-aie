@@ -147,7 +147,7 @@ cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." ON "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
 
-add_flag_if_supported(-Werror=sign-compare WERROR_SIGN_COMPARE)
+add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
 
 # What happens when you have a non-void function with no return?
 # No `ret` instruction is generated and so execution of that function just
