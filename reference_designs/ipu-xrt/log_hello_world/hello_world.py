@@ -22,15 +22,21 @@ def printf():
             memRef_ty       = T.memref(N, T.i32())
             ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
+            # AIE Core Function declarations
             kernel = external_func("kernel", inputs=[memRef_ty, memRef_ty, memRef_ty])
 
+            # Tile declarations
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
+            # AIE-array data movement with object fifos
             objectfifo("inOF", ShimTile, [ComputeTile2], 2, ofifo_memRef_ty, [], [])
             objectfifo("outOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
             objectfifo("logoutOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
 
+            # Set up compute tiles
+            
+            # Compute tile 2
             @core(ComputeTile2, "kernel.o")
             def core_body():
                 elemOut = acquire(
@@ -47,6 +53,7 @@ def printf():
                 objectfifo_release(ObjectFifoPort.Produce, "outOF", 1)
                 objectfifo_release(ObjectFifoPort.Produce, "logoutOF", 1)
 
+            # To/from AIE-array data movement
             @FuncOp.from_py_func(
                 memRef_ty, memRef_ty, memRef_ty
             )

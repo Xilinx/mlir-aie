@@ -20,23 +20,30 @@ def my_add_one_objFifo():
 
         @device(AIEDevice.ipu)
         def device_body():
-            ShimTile     = tile(0, 0)
-            MemTile      = tile(0, 1)
-            ComputeTile2 = tile(0, 2)
-
             memRef_16_ty       = T.memref(16, T.i32())
             memRef_8_ty        = T.memref(8, T.i32())
             ofifo_memRef_16_ty = TypeAttr.get(ObjectFifoType.get(memRef_16_ty))
             ofifo_memRef_8_ty  = TypeAttr.get(ObjectFifoType.get(memRef_8_ty))
 
+            # Tile declarations
+            ShimTile     = tile(0, 0)
+            MemTile      = tile(0, 1)
+            ComputeTile2 = tile(0, 2)
+
+            # AIE-array data movement with object fifos
+            # Input
             objectfifo("in0", ShimTile, [MemTile], 2, ofifo_memRef_16_ty, [], [])
             objectfifo("in1", MemTile, [ComputeTile2], 2, ofifo_memRef_8_ty, [], [])
             objectfifo_link(["in0"], ["in1"])
 
+            # Output
             objectfifo("out0", MemTile, [ShimTile], 2, ofifo_memRef_16_ty, [], [])
             objectfifo("out1", ComputeTile2, [MemTile], 2, ofifo_memRef_8_ty, [], [])
             objectfifo_link(["out1"], ["out0"])
 
+            # Set up compute tiles
+    
+            # Compute tile 2
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
@@ -55,6 +62,9 @@ def my_add_one_objFifo():
                     objectfifo_release(ObjectFifoPort.Consume, "in1", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "out1", 1)
                     yield_([])
+
+
+            # To/from AIE-array data movement
 
             memRef_64_ty = T.memref(64, T.i32())
             memRef_32_ty = T.memref(32, T.i32())

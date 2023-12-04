@@ -31,22 +31,25 @@ def my_passthrough():
             memRef_ty       = T.memref(1024, T.i32())
             ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
-            # tile declarations
+            # Tile declarations
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
-            # set up AIE-array data movement with Ordered Object Buffers
+            # AIE-array data movement with object fifos
             objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_memRef_ty, [], [])
             objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
             objectfifo_link(["in"],["out"])
             
+            # Set up compute tiles
+            
+            # Compute tile 2
             @core(ComputeTile2)
             def core_body():
                 tmp = memref.alloc([1], T.i32())
                 v0 = arith.constant(0, T.i32())
                 memref.store(v0, tmp, [0])
                 
-            # to/from AIE-array data movement 
+            # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
             @FuncOp.from_py_func(
                 tensor_ty, tensor_ty, tensor_ty

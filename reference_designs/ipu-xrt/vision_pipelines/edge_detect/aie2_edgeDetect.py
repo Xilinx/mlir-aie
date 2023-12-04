@@ -41,6 +41,10 @@ def edge_detect():
             line_ty       = T.memref(lineWidth, T.ui8())
             memRef_3x3_ty = T.memref(3, 3, T.i16())
 
+            ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
+            ofifo_line_ty       = TypeAttr.get(ObjectFifoType.get(line_ty))
+
+            # AIE Core Function declarations
             rgba2gray_line = external_func("rgba2grayLine", 
                              inputs=[line_bytes_ty, line_ty, T.i32()])
             filter2d_line  = external_func( "filter2dLine", 
@@ -53,6 +57,7 @@ def edge_detect():
                                 inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, 
                                         T.i32(), T.i16(), T.i16(), T.i8()])
 
+            # Tile declarations
             ShimTile     = tile(0, 0)
             MemTile      = tile(0, 1)
             ComputeTile2 = tile(0, 2)
@@ -60,23 +65,27 @@ def edge_detect():
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
 
-            ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
-            ofifo_line_ty       = TypeAttr.get(ObjectFifoType.get(line_ty))
-
+            # AIE-array data movement with object fifos
+            # Input 
             objectfifo("inOF_L3L2", ShimTile, [MemTile], 2, ofifo_line_bytes_ty, [], [],)
             objectfifo("inOF_L2L1", MemTile, [ComputeTile2, ComputeTile5], [2, 2, 7], 
                        ofifo_line_bytes_ty, [], [],)
             objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
+            # Output 
             objectfifo("outOF_L2L3", MemTile, [ShimTile], 2, ofifo_line_bytes_ty, [], [],)
             objectfifo("outOF_L1L2", ComputeTile5, [MemTile], 2, ofifo_line_bytes_ty, [], [],)
             objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
+            # Intermediate 
             objectfifo("OF_2to3", ComputeTile2, [ComputeTile3], 4, ofifo_line_ty, [], [],)
             objectfifo("OF_3to4", ComputeTile3, [ComputeTile4], 2, ofifo_line_ty, [], [],)
             objectfifo("OF_4to5", ComputeTile4, [ComputeTile5], 2, ofifo_line_ty, [], [],)
             objectfifo("OF_5to5", ComputeTile5, [ComputeTile5], 1, ofifo_line_bytes_ty, [], [],)
 
+            # Set up compute tiles
+            
+            # Compute tile 2
             @core(ComputeTile2, "rgba2gray.cc.o")
             def core_body():
                 for _ in for_(4294967295):
@@ -94,6 +103,7 @@ def edge_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
                     yield_([])
 
+            # Compute tile 3
             @core(ComputeTile3, "filter2d.cc.o")
             def core_body():
                 kernel = memref.alloc([3, 3], T.i16())
@@ -174,6 +184,7 @@ def edge_detect():
                 objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
                 objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
+            # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
             def core_body():
                 v_thr = arith.constant(10, T.i16())
@@ -197,6 +208,7 @@ def edge_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
                     yield_([])
 
+            # Compute tile 5
             @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
             def core_body():
                 for _ in for_(36):
@@ -244,6 +256,9 @@ def edge_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                     yield_([])
 
+
+            # To/from AIE-array data movement
+
             tensorSize = width*height*4 # 4 channels
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
@@ -258,20 +273,16 @@ def edge_detect():
                     bd_id=0,
                     mem=O,
                     lengths=[1, 1, 1, tensorSizeInInt32s],
-                    # lengths=[1, 1, height, width],
-                    # strides=[0, 0, width],
                 )
                 ipu_dma_memcpy_nd(
                     metadata="inOF_L3L2",
                     bd_id=1,
                     mem=I,
                     lengths=[1, 1, 1, tensorSizeInInt32s],
-                    # lengths=[1, 1, height, width],
-                    # strides=[0, 0, width],
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
-    print(ctx.module)
 #    print(ctx.module.operation.verify())
+    print(ctx.module)
 
 edge_detect()

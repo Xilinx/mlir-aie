@@ -167,24 +167,24 @@ int main(int argc, const char *argv[]) {
         if (errors < max_errors)
           std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
                     << " should be zero "
-                    << " : input " << (uint8_t)srcVec[i] << std::endl;
+                    << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "Wow:   " << (uint8_t) * (bufOut + i) << " at " << i
+        std::cout << "Below threshold:   " << (uint8_t) * (bufOut + i) << " at " << i
                   << " is correct "
-                  << " : input " << (uint8_t)srcVec[i] << std::endl;
+                  << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
       }
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
         if (errors < max_errors)
           std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
                     << " should be UINT8_MAX "
-                    << " : input " << (uint8_t)srcVec[i] << std::endl;
+                    << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "WowT:  " << (uint8_t) * (bufOut + i) << " at " << i
+        std::cout << "Above threshold:  " << (uint8_t) * (bufOut + i) << " at " << i
                   << " is correct "
-                  << " : input " << (uint8_t)srcVec[i] << std::endl;
+                  << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
       }
     }
   }

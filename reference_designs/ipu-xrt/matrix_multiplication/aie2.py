@@ -67,6 +67,7 @@ def my_matmul():
             ofifo_memRef_B_ty = TypeAttr.get(ObjectFifoType.get(memRef_B_ty))
             ofifo_memRef_C_ty = TypeAttr.get(ObjectFifoType.get(memRef_C_ty))
 
+            # AIE Core Function declarations
             zero_scalar   = external_func("zero_scalar_i16", inputs=[memRef_C_ty])
             zero          = external_func("zero_i16", inputs=[memRef_C_ty])
             matmul_scalar = external_func("matmul_scalar_i16_i16", 
@@ -74,10 +75,13 @@ def my_matmul():
             matmul        = external_func("matmul_i16_i16", 
                             inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty])
 
+            # Tile declarations
             ShimTile     = tile(0, 0)
             MemTile      = tile(0, 1)
             ComputeTile2 = tile(0, 2)
 
+            # AIE-array data movement with object fifos
+            # Input A
             objectfifo("inA", ShimTile, [MemTile], 2, ofifo_memRef_A_ty, [], [])
             objectfifo("memA", MemTile, [ComputeTile2], 2, ofifo_memRef_A_ty,
                                         [(m//r, r*k*word_size_in//4), 
@@ -86,6 +90,7 @@ def my_matmul():
                                         (s*word_size_in//4, 1)], [])
             objectfifo_link(["inA"], ["memA"])
 
+            # Input B
             objectfifo("inB", ShimTile, [MemTile], 2, ofifo_memRef_B_ty, [], [])
             objectfifo("memB", MemTile, [ComputeTile2], 2, ofifo_memRef_B_ty,
                                         [(k//s, s*n*word_size_in//4), 
@@ -94,6 +99,7 @@ def my_matmul():
                                         (t*word_size_in//4, 1)], [])
             objectfifo_link(["inB"], ["memB"])
 
+            # Output C
             objectfifo("memC", ComputeTile2, [MemTile], 2, ofifo_memRef_C_ty, [], [])
             objectfifo("outC", MemTile, [ShimTile], 2, ofifo_memRef_C_ty,
                                         [(m//r, r*n*word_size_out//4), 
@@ -102,6 +108,9 @@ def my_matmul():
                                         (t*word_size_out//4, 1)], [])
             objectfifo_link(["memC"], ["outC"])
 
+            # Set up compute tiles
+            
+            # Compute tile 2
             @core(ComputeTile2, "mm.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
@@ -132,6 +141,8 @@ def my_matmul():
                         objectfifo_release(ObjectFifoPort.Produce, "memC", 1)
                         yield_([])
                     yield_([])
+
+            # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
                 T.memref(A_sz_in_i32s, T.i32()),

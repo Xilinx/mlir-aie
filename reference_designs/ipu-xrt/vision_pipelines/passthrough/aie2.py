@@ -39,17 +39,23 @@ def passThroughAIE2():
             line_ty       = T.memref(lineWidthInBytes, T.ui8())
             ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
 
+            # AIE Core Function declarations
             passThroughLine = external_func("passThroughLine", inputs = [line_ty, line_ty,T.i32()])
 
+            # Tile declarations
             ShimTile     = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
             if enableTrace:
                 Flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
+            # AIE-array data movement with object fifos
             objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_line_ty, [], [])
             objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_line_ty, [], [])
 
+            # Set up compute tiles
+            
+            # Compute tile 2
             @core(ComputeTile2, "passThrough.cc.o")
             def core_body():
                 for _ in for_(sys.maxsize):
@@ -65,6 +71,8 @@ def passThroughAIE2():
                         objectfifo_release(ObjectFifoPort.Produce,"out", 1)
                         yield_([])
                     yield_([])
+
+            #    print(ctx.module.operation.verify())
 
             tensorSize = width*height
             tensorSizeInInt32s = tensorSize // 4

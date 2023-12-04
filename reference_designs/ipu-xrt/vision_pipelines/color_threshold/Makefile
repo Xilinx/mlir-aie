@@ -19,7 +19,7 @@ all: build/final_${COLORTHRESHOLD_WIDTH}.xclbin
 
 mlir: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir
 
-build/threshold.o: threshold.cc
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 	
@@ -31,7 +31,7 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: aie2_colorThreshold.py
 #	mkdir -p ${@D}
 #	cp $< $@
 
-build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.o
+build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
