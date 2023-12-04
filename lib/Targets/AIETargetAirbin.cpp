@@ -50,8 +50,8 @@ enum {
   SEC_IDX_MAX
 };
 
-static constexpr auto disable = 0u;
-static constexpr auto enable = 1u;
+static constexpr auto DISABLE = 0u;
+static constexpr auto ENABLE = 1u;
 
 static constexpr auto TILE_ADDR_OFF_WIDTH = 18u;
 
@@ -381,15 +381,15 @@ public:
   static_assert(highBit < sizeof(uint32_t) * 8u,
                 "The field must live in a 32-bit register");
 
-  static constexpr auto numBitsUsed = (highBit - lowBit) + 1u;
-  static constexpr auto unshiftedMask = (1u << numBitsUsed) - 1u;
-  static_assert((lowBit != highBit) ^ (unshiftedMask == 1),
+  static constexpr auto NUM_BITS_USED = (highBit - lowBit) + 1u;
+  static constexpr auto UNSHIFTED_MASK = (1u << NUM_BITS_USED) - 1u;
+  static_assert((lowBit != highBit) ^ (UNSHIFTED_MASK == 1),
                 "1 is a valid mask iff the field is 1 bit wide");
 
-  static constexpr auto shiftedMask = unshiftedMask << lowBit;
+  static constexpr auto SHIFTED_MASK = UNSHIFTED_MASK << lowBit;
 
   [[nodiscard]] constexpr uint32_t operator()(uint32_t value) const {
-    return (value << lowBit) & shiftedMask;
+    return (value << lowBit) & SHIFTED_MASK;
   }
 };
 
@@ -586,8 +586,8 @@ struct BDInfo {
   bool hasB = false;
   std::string bufA = "0";
   std::string bufB = "0";
-  uint32_t abMode = disable;
-  uint32_t fifoMode = disable; // FIXME: when to enable FIFO mode?
+  uint32_t abMode = DISABLE;
+  uint32_t fifoMode = DISABLE; // FIXME: when to enable FIFO mode?
 };
 
 static BDInfo getBDInfo(Block &block) {
@@ -627,12 +627,12 @@ static void configureDMAs(DeviceOp &targetOp) {
     // Clear the CTRL and QUEUE registers for the DMA channels.
     for (auto chNum = 0u; chNum < DMA_S2MM_CHANNEL_COUNT; ++chNum) {
       write32({tile, regDMAS2MMCtrl(chNum)},
-              dmaChannelReset(disable) | dmaChannelEnable(disable));
+              dmaChannelReset(DISABLE) | dmaChannelEnable(DISABLE));
       write32({tile, regDMAS2MMQueue(chNum)}, 0);
     }
     for (auto chNum = 0u; chNum < DMA_MM2S_CHANNEL_COUNT; ++chNum) {
       write32({tile, regDMAMM2SCtrl(chNum)},
-              dmaChannelReset(disable) | dmaChannelEnable(disable));
+              dmaChannelReset(DISABLE) | dmaChannelEnable(DISABLE));
       write32({tile, regDMAMM2SQueue(chNum)}, 0);
     }
 
@@ -653,7 +653,7 @@ static void configureDMAs(DeviceOp &targetOp) {
       auto bdInfo = getBDInfo(block);
 
       if (bdInfo.hasA and bdInfo.hasB) {
-        bdInfo.abMode = enable;
+        bdInfo.abMode = ENABLE;
         if (bdInfo.lenA != bdInfo.lenB)
           llvm::errs() << "ABmode must have matching lengths.\n";
         if (bdInfo.bytesA != bdInfo.bytesB)
@@ -661,18 +661,18 @@ static void configureDMAs(DeviceOp &targetOp) {
       }
 
       int acqValue = 0, relValue = 0;
-      auto acqEnable = disable;
-      auto relEnable = disable;
+      auto acqEnable = DISABLE;
+      auto relEnable = DISABLE;
       std::optional<int> lockID = std::nullopt;
 
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         if (op.acquire()) {
-          acqEnable = enable;
+          acqEnable = ENABLE;
           acqValue = op.getLockValue();
         } else {
-          relEnable = enable;
+          relEnable = ENABLE;
           relValue = op.getLockValue();
         }
       }
@@ -681,7 +681,7 @@ static void configureDMAs(DeviceOp &targetOp) {
       //  a. went thru the loop once (`lockID` should be something) xor
       //  b. did not enter the loop (the enables should be both disable)
       assert(lockID.has_value() ^
-                 (acqEnable == disable and relEnable == disable) &&
+                 (acqEnable == DISABLE and relEnable == DISABLE) &&
              "lock invariants not satisfied");
 
       for (auto op : block.getOps<DMABDPACKETOp>()) {
@@ -715,15 +715,15 @@ static void configureDMAs(DeviceOp &targetOp) {
         if (bdInfo.hasB)
           llvm::report_fatal_error("bdInfo.hasB not supported");
 
-        auto addr_a = bdInfo.baseAddrA + bdInfo.offsetA;
-        auto addr_b = bdInfo.baseAddrB + bdInfo.offsetB;
+        auto addrA = bdInfo.baseAddrA + bdInfo.offsetA;
+        auto addrB = bdInfo.baseAddrB + bdInfo.offsetB;
 
         Field<12, 0> bdAddressBase, bdControlLength;
         Field<30> bdControlABMode;
         Field<28> bdControlFifo;
 
-        bdData.addrA |= bdAddressBase(addr_a >> 2u);
-        bdData.addrB |= bdAddressBase(addr_b >> 2u);
+        bdData.addrA |= bdAddressBase(addrA >> 2u);
+        bdData.addrB |= bdAddressBase(addrB >> 2u);
         bdData.control |= bdControlLength(bdInfo.lenA - 1) |
                           bdControlFifo(bdInfo.fifoMode) |
                           bdControlABMode(bdInfo.abMode);
@@ -749,7 +749,7 @@ static void configureDMAs(DeviceOp &targetOp) {
 
           bdData.packet =
               bdPacketID(bdInfo.packetID) | bdPacketType(bdInfo.packetType);
-          bdData.control |= bdControlEnablePacket(enable);
+          bdData.control |= bdControlEnablePacket(ENABLE);
         }
 
         Field<31> bdControlValid;
@@ -779,12 +779,12 @@ static void configureDMAs(DeviceOp &targetOp) {
             write32(Address{tile, regDMAMM2SQueue(chNum)},
                     dmaChannelQueueStartBd(bdNum));
             write32({tile, regDMAMM2SCtrl(chNum)},
-                    dmaChannelEnable(enable) | dmaChannelReset(disable));
+                    dmaChannelEnable(ENABLE) | dmaChannelReset(DISABLE));
           } else {
             write32(Address{tile, regDMAS2MMQueue(chNum)},
                     dmaChannelQueueStartBd(bdNum));
             write32({tile, regDMAS2MMCtrl(chNum)},
-                    dmaChannelEnable(enable) | dmaChannelReset(disable));
+                    dmaChannelEnable(ENABLE) | dmaChannelReset(DISABLE));
           }
         }
       }
@@ -879,14 +879,14 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
       // TODO: Use XAIEV1 target and translate into write32s
       llvm::report_fatal_error("select op not supported");
 
-    constexpr Field<31> streamEnable;
-    constexpr Field<30> streamPacketEnable;
+    constexpr Field<31> STREAM_ENABLE;
+    constexpr Field<30> STREAM_PACKET_ENABLE;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       for (auto tile : switchboxSet) {
         auto slavePort =
             computeSlavePort(connectOp.getSourceBundle(),
                              connectOp.sourceIndex(), tile.isShim());
-        auto master_port = computeMasterPort(
+        auto masterPort = computeMasterPort(
             connectOp.getDestBundle(), connectOp.destIndex(), tile.isShim());
 
         Field<7> streamMasterDropHeader;
@@ -894,11 +894,11 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
 
         // Configure master side
         {
-          Address address{tile, regMESSMaster(master_port)};
+          Address address{tile, regMESSMaster(masterPort)};
           // TODO: `Field::extract(uint32_t)`?
-          auto drop_header = (slavePort & 0x80u) >> 7u;
-          auto value = streamEnable(true) | streamPacketEnable(false) |
-                       streamMasterDropHeader(drop_header) |
+          auto dropHeader = (slavePort & 0x80u) >> 7u;
+          auto value = STREAM_ENABLE(true) | STREAM_PACKET_ENABLE(false) |
+                       streamMasterDropHeader(dropHeader) |
                        streamMasterConfig(slavePort);
           assert(value < UINT32_MAX);
           write32(address, value);
@@ -907,7 +907,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
         // Configure slave side
         {
           Address address{tile, regMESSSlaveCfg(slavePort)};
-          write32(address, streamEnable(true) | streamPacketEnable(false));
+          write32(address, STREAM_ENABLE(true) | STREAM_PACKET_ENABLE(false));
         }
 
         for (auto connectOp : b.getOps<MasterSetOp>()) {
@@ -923,13 +923,13 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
           static constexpr auto STREAM_SWITCH_MSEL_SHIFT = 3u;
           static constexpr auto STREAM_SWITCH_ARB_SHIFT = 0u;
 
-          const auto dropHeader = connectOp.getDestBundle() == WireBundle::DMA;
-          auto config = streamMasterDropHeader(dropHeader) |
+          const auto DROP_HEADER = connectOp.getDestBundle() == WireBundle::DMA;
+          auto config = streamMasterDropHeader(DROP_HEADER) |
                         (mask << STREAM_SWITCH_MSEL_SHIFT) |
                         (arbiter << STREAM_SWITCH_ARB_SHIFT);
-          Address dest{tile, regMESSMaster(master_port)};
-          write32(dest, streamEnable(enable) | streamPacketEnable(enable) |
-                            streamMasterDropHeader(dropHeader) |
+          Address dest{tile, regMESSMaster(masterPort)};
+          write32(dest, STREAM_ENABLE(ENABLE) | STREAM_PACKET_ENABLE(ENABLE) |
+                            streamMasterDropHeader(DROP_HEADER) |
                             streamMasterConfig(config));
         }
       }
@@ -948,7 +948,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
               computeSlavePort(connectOp.getSourceBundle(),
                                connectOp.sourceIndex(), tile.isShim());
           write32({tile, regMESSSlaveCfg(slavePort)},
-                  streamEnable(enable) | streamPacketEnable(enable));
+                  STREAM_ENABLE(ENABLE) | STREAM_PACKET_ENABLE(ENABLE));
 
           Field<28, 24> streamSlotId;
           Field<20, 16> streamSlotMask;
@@ -958,7 +958,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
 
           auto config = streamSlotId(slotOp.valueInt()) |
                         streamSlotMask(slotOp.maskInt()) |
-                        streamSlotEnable(enable) | streamSlotMSel(msel) |
+                        streamSlotEnable(ENABLE) | streamSlotMSel(msel) |
                         streamSlotArbit(arbiter);
           write32({tile, regMESSSlaveSlot(slavePort, slot)}, config);
           slot++;
@@ -967,7 +967,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
     }
   }
 
-  const auto inputMaskFor = [](WireBundle bundle, uint8_t shiftAmt) {
+  const auto INPUT_MASK_FOR = [](WireBundle bundle, uint8_t shiftAmt) {
     switch (bundle) {
     case WireBundle::PLIO:
       return 0u << shiftAmt;
@@ -1019,7 +1019,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
         Address addr{currentTile.value(), 0x1F004u};
         auto currentMask = read32(addr);
         write32(addr, currentMask |
-                          inputMaskFor(connectOp.getDestBundle(), shiftAmt));
+                          INPUT_MASK_FOR(connectOp.getDestBundle(), shiftAmt));
       } else if (connectOp.getDestBundle() == WireBundle::North) {
         // mux
         // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
@@ -1044,8 +1044,8 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
 
         Address addr{currentTile.value(), 0x1F000u};
         auto currentMask = read32(addr);
-        write32(addr, currentMask |
-                          inputMaskFor(connectOp.getSourceBundle(), shiftAmt));
+        write32(addr, currentMask | INPUT_MASK_FOR(connectOp.getSourceBundle(),
+                                                   shiftAmt));
       }
     }
   }
@@ -1171,7 +1171,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   GElf_Ehdr *ehdr;
   GElf_Shdr *shdr;
   GElf_Shdr shdrMem;
-  char empty_str[] = "";
+  char emptyStr[] = "";
   char strTabName[] = ".shstrtab";
   std::vector<Section *> sections;
 
@@ -1236,7 +1236,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
         llvm::Twine("cannot create new shstrtab section: ") + elf_errmsg(-1));
 
   // the first entry in the string table must be a NULL string
-  addString(shStrTabScn, empty_str);
+  addString(shStrTabScn, emptyStr);
 
   shdr = gelf_getshdr(shStrTabScn, &shdrMem);
   if (!shdr)
