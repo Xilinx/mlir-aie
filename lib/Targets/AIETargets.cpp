@@ -125,11 +125,6 @@ void registerAIETranslations() {
       "airbin-aux-core-dir-path",
       llvm::cl::desc("Auxiliary core elf files dir path"),
       llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
-
-  static llvm::cl::opt<bool> testAirBin(
-      "test-airbin", llvm::cl::desc("Test airbin generation"),
-      llvm::cl::value_desc("test-airbin"), llvm::cl::init(false),
-      llvm::cl::Hidden);
 #endif
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
@@ -279,8 +274,7 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationAirbin(
       "aie-generate-airbin", "Generate configuration binary blob",
       [](ModuleOp module, raw_ostream &) {
-        return AIETranslateToAirbin(module, outputFilename, coreFilesDir,
-                                    testAirBin);
+        return AIETranslateToAirbin(module, outputFilename, coreFilesDir);
       },
       registerDialects);
 #endif
