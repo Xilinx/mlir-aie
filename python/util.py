@@ -53,11 +53,11 @@ def infer_mlir_type(
     if isinstance(py_val, bool):
         return T.bool()
     elif isinstance(py_val, int):
-        if -(2 ** 31) <= py_val < 2 ** 31:
+        if -(2**31) <= py_val < 2**31:
             return T.i32()
-        elif 2 ** 31 <= py_val < 2 ** 32:
+        elif 2**31 <= py_val < 2**32:
             return T.ui32()
-        elif -(2 ** 63) <= py_val < 2 ** 63:
+        elif -(2**63) <= py_val < 2**63:
             return T.i64()
         elif 2**63 <= py_val < 2**64:
             return T.ui64()
@@ -119,11 +119,3 @@ def mlir_mod_ctx(
         ip = InsertionPoint(module.body)
         stack.enter_context(ip)
         yield MLIRContext(context, module)
-
-
-def bad_function_with_list_default_args(a=[]):
-    return a[0]
-
-
-def completelyWRONG_NamingConVenTION():
-    pass

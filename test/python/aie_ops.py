@@ -268,8 +268,3 @@ def test_module_context():
 
 
 test_module_context()
-
-
-def second_bad_function_with_unused_stuff(a):
-    b = 1
-    return 2
