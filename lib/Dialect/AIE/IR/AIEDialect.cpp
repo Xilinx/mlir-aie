@@ -802,6 +802,42 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   return {};
 }
 
+// PutCascadeOp
+LogicalResult PutCascadeOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
+  Type type = getCascadeValue().getType();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  auto bits = dataLayout.getTypeSizeInBits(type);
+  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+    if (bits != 384)
+      return emitOpError("must be a 384-bit type");
+  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
+    if (bits != 512)
+      return emitOpError("must be a 512-bit type");
+  } else
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(targetModel.getTargetArch());
+  return success();
+}
+
+// GetCascadeOp
+LogicalResult GetCascadeOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
+  Type type = getCascadeValue().getType();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  auto bits = dataLayout.getTypeSizeInBits(type);
+  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+    if (bits != 384)
+      return emitOpError("must be a 384-bit type");
+  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
+    if (bits != 512)
+      return emitOpError("must be a 512-bit type");
+  } else
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(targetModel.getTargetArch());
+  return success();
+}
+
 const AIETargetModel &DeviceOp::getTargetModel() {
   switch (getDevice()) {
   case AIEDevice::xcvc1902:
