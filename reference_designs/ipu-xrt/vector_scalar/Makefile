@@ -1,10 +1,26 @@
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# 
+##===----------------------------------------------------------------------===##
+
 include ../makefile-common
 
-targetname = addOneObjfifo
+targetname = vectorScalar
 
 all: build/final.xclbin build/insts.txt
 
-build/final.xclbin: aie.mlir
+build/%.o: %.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+
+build/aie.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)

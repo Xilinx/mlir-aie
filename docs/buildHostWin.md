@@ -76,7 +76,7 @@ All steps in Win11 (powershell where needed).
 
 ## Build a Design
 
-For your design of interest, for instance [add_one_objFifo](../test/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+For your design of interest, for instance [add_one_objFifo](../reference_designs/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (build during Prerequisites part of this guide)

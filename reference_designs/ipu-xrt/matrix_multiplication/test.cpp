@@ -10,7 +10,10 @@
 
 #include <boost/program_options.hpp>
 #include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -20,8 +23,21 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 64;
-constexpr int OUT_SIZE = 64;
+constexpr int M = 128;
+constexpr int K = 128;
+constexpr int N = 128;
+
+constexpr int A_VOLUME = M * K;
+constexpr int B_VOLUME = N * K;
+constexpr int C_VOLUME = M * N;
+
+using A_DATATYPE = std::int16_t;
+using B_DATATYPE = std::int16_t;
+using C_DATATYPE = std::int16_t;
+
+constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
+constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
+constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 namespace po = boost::program_options;
 
@@ -51,6 +67,23 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
     instr_v.push_back(a);
   }
   return instr_v;
+}
+
+static inline std::int16_t random_int16_t() {
+  return ((std::int16_t)rand() % 0x10000);
+}
+
+template <typename Tin, typename Tout>
+void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
+  for (int row = 0; row < M; row++) {
+    for (int col = 0; col < N; col++) {
+      Tout running_sum = 0;
+      for (int i = 0; i < K; i++) {
+        running_sum += a[row * K + i] * b[i * N + col];
+      }
+      c[row * N + col] += running_sum;
+    }
+  }
 }
 
 int main(int argc, const char *argv[]) {
@@ -134,48 +167,65 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_a =
+      xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_b =
+      xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_c =
+      xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
-
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
-  std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i + 1);
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
+  srand(static_cast<unsigned>(time(0)));
+  A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
+  std::vector<A_DATATYPE> AVec;
+  for (int i = 0; i < A_VOLUME; i++)
+    AVec.push_back(random_int16_t());
+  memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
+  B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
+  std::vector<B_DATATYPE> BVec;
+  for (int i = 0; i < B_VOLUME; i++)
+    BVec.push_back(random_int16_t());
+  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
+  C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
+  std::vector<C_DATATYPE> CVec;
+  for (int i = 0; i < C_VOLUME; i++)
+    CVec.push_back(0);
+  memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
+  C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
 
   int errors = 0;
+  int max_errors = 100;
 
-  for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = i + 2;
-    if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                << std::endl;
+  std::vector<C_DATATYPE> output_ref0;
+  for (uint32_t i = 0; i < C_VOLUME; i++)
+    output_ref0.push_back(0);
+  matmul(AVec, BVec, output_ref0);
+
+  for (uint32_t i = 0; i < C_VOLUME; i++) {
+    if (bufOut[i] != output_ref0[i]) {
       errors++;
-    } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                << std::endl;
+      if (errors < max_errors) {
+        std::cout << "\nerror, id " << i << " expected "
+                  << std::to_string(output_ref0[i]) << ", got "
+                  << std::to_string(bufOut[i]) << "\n";
+      }
     }
   }
 
@@ -183,6 +233,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
+    std::cout << "\nerror count: " << errors << "\n\n";
     std::cout << "\nfailed.\n\n";
     return 1;
   }

@@ -2,16 +2,16 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Xilinx Inc.
+# (c) Copyright 2023 Advanced Micro Devices, Inc.
 
 # parameters
 # -DBOOST_ROOT: Path to Boost install
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo
 # -DXRT_LIB_DIR: Path to xrt_coreutil.lib
+# -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
-
 
 find_program(WSL NAMES powershell.exe)
 
@@ -27,7 +27,7 @@ endif()
 
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
-SET (ProjectName ${TARGET_NAME})
+SET (ProjectName proj_${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
@@ -66,4 +66,3 @@ else()
         xrt_coreutil
     )
 endif()
-

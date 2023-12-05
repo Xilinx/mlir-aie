@@ -10,6 +10,7 @@
 
 #include <boost/program_options.hpp>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -19,9 +20,6 @@
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-constexpr int IN_SIZE = 64;
-constexpr int OUT_SIZE = 64;
 
 namespace po = boost::program_options;
 
@@ -54,7 +52,6 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 }
 
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
   po::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce help message")(
@@ -65,7 +62,9 @@ int main(int argc, const char *argv[]) {
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
+      "path of file containing userspace instructions to be sent to the LX6")(
+      "length,l", po::value<int>()->default_value(4096),
+      "the length of the transfer in int32_t");
   po::variables_map vm;
 
   try {
@@ -73,12 +72,12 @@ int main(int argc, const char *argv[]) {
     po::notify(vm);
 
     if (vm.count("help")) {
-      std::cout << desc << "\n";
+      std::cout << desc << std::endl;
       return 1;
     }
   } catch (const std::exception &ex) {
     std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
+    std::cerr << "Usage:\n" << desc << std::endl;
     return 1;
   }
 
@@ -90,7 +89,13 @@ int main(int argc, const char *argv[]) {
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
+    std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
+
+  int N = vm["length"].as<int>();
+  if ((N % 1024)) {
+    std::cerr << "Length must be a multiple of 1024." << std::endl;
+    return 1;
+  }
 
   // Start the XRT test code
   // Get a device handle
@@ -99,11 +104,13 @@ int main(int argc, const char *argv[]) {
 
   // Load the xclbin
   if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
+    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>()
+              << std::endl;
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
 
   if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
+    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>()
+              << std::endl;
   std::string Node = vm["kernel"].as<std::string>();
 
   // Get the kernel from the xclbin
@@ -124,29 +131,29 @@ int main(int argc, const char *argv[]) {
 
   // get a hardware context
   if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
+    std::cout << "Getting hardware context." << std::endl;
   xrt::hw_context context(device, xclbin.get_uuid());
 
   // get a kernel handle
   if (verbosity >= 1)
-    std::cout << "Getting handle to kernel:" << kernelName << "\n";
+    std::cout << "Getting handle to kernel:" << kernelName << std::endl;
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(2));
+  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(3));
+  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(4));
 
   if (verbosity >= 1)
-    std::cout << "Writing data into buffer objects.\n";
+    std::cout << "Writing data into buffer objects." << std::endl;
 
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
+  int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
+  for (int i = 0; i < N; i++)
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
@@ -157,7 +164,7 @@ int main(int argc, const char *argv[]) {
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
+    std::cout << "Running Kernel." << std::endl;
   auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
   run.wait();
 
@@ -167,23 +174,21 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = i + 2;
+  for (uint32_t i = 0; i < N; i++) {
+    uint32_t ref = (i + 1);
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                << std::endl;
       errors++;
-    } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                << std::endl;
     }
   }
 
   if (!errors) {
-    std::cout << "\nPASS!\n\n";
+    std::cout << std::endl << "PASS!" << std::endl << std::endl;
     return 0;
   } else {
-    std::cout << "\nfailed.\n\n";
+    std::cout << std::endl
+              << errors << " mismatches." << std::endl
+              << std::endl;
+    std::cout << std::endl << "fail." << std::endl << std::endl;
     return 1;
   }
 }
