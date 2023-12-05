@@ -172,7 +172,6 @@ def color_threshold():
                         1,
                         T.memref(lineWidth, T.ui8()),
                     ).acquired_elem()
-                  
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
                     thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [0]))
