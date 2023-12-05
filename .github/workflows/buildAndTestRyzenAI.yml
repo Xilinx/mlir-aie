@@ -53,7 +53,7 @@ jobs:
             -v /usr/lib/firmware/amdaie/1502:/usr/lib/firmware/amdaie/1502
             -v /opt/xilinx:/opt/xilinx
             -v /dev:/dev
-            --device-cgroup-rule="c 261:* rmw"
+            "--device-cgroup-rule=\"c 261:* rmw\""
           run: |
             cp -a $PWD /mlir-aie
 
