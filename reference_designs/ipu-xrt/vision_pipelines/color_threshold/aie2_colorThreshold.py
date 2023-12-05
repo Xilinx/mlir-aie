@@ -129,9 +129,13 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile2, [0]))
-                    maxValue       = arith.trunci(T.i16(), memref.load(rtpComputeTile2, [1]))
-                    thresholdType  = arith.trunci(T.i8(),  memref.load(rtpComputeTile2, [2]))
+                    thresholdValue = arith.trunci(
+                        T.i16(), memref.load(rtpComputeTile2, [0])
+                    )
+                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile2, [1]))
+                    thresholdType = arith.trunci(
+                        T.i8(), memref.load(rtpComputeTile2, [2])
+                    )
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
@@ -168,12 +172,16 @@ def color_threshold():
                         1,
                         T.memref(lineWidth, T.ui8()),
                     ).acquired_elem()
-                  
+
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [0]))
-                    maxValue       = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [1]))
-                    thresholdType  = arith.trunci(T.i8(),  memref.load(rtpComputeTile3, [2]))
+                    thresholdValue = arith.trunci(
+                        T.i16(), memref.load(rtpComputeTile3, [0])
+                    )
+                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [1]))
+                    thresholdType = arith.trunci(
+                        T.i8(), memref.load(rtpComputeTile3, [2])
+                    )
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
@@ -213,9 +221,13 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile4, [0]))
-                    maxValue       = arith.trunci(T.i16(), memref.load(rtpComputeTile4, [1]))
-                    thresholdType  = arith.trunci(T.i8(),  memref.load(rtpComputeTile4, [2]))
+                    thresholdValue = arith.trunci(
+                        T.i16(), memref.load(rtpComputeTile4, [0])
+                    )
+                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile4, [1]))
+                    thresholdType = arith.trunci(
+                        T.i8(), memref.load(rtpComputeTile4, [2])
+                    )
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
@@ -255,9 +267,13 @@ def color_threshold():
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile5, [0]))
-                    maxValue       = arith.trunci(T.i16(), memref.load(rtpComputeTile5, [1]))
-                    thresholdType  = arith.trunci(T.i8(),  memref.load(rtpComputeTile5, [2]))
+                    thresholdValue = arith.trunci(
+                        T.i16(), memref.load(rtpComputeTile5, [0])
+                    )
+                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile5, [1]))
+                    thresholdType = arith.trunci(
+                        T.i8(), memref.load(rtpComputeTile5, [2])
+                    )
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8()
@@ -289,21 +305,21 @@ def color_threshold():
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=2, value=0)
 
-                IpuWriteRTPOp("rtpComputeTile3", col = 0, row = 3, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile3", col = 0, row = 3, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile3", col = 0, row = 3, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=2, value=0)
 
-                IpuWriteRTPOp("rtpComputeTile4", col = 0, row = 4, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile4", col = 0, row = 4, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile4", col = 0, row = 4, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=2, value=0)
 
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=2, value=0)
 
                 ipu_dma_memcpy_nd(
                     metadata="inOOB_L3L2",
