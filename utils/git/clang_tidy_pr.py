@@ -10,6 +10,7 @@ import posixpath
 import re
 import sys
 import time
+import warnings
 
 import requests
 import yaml
@@ -75,8 +76,9 @@ def get_pull_request_files(
             timeout=github_api_timeout,
         )
 
-        print(f"{result.status_code=}")
-        assert result.status_code == requests.codes.ok  # pylint: disable=no-member
+        if result.status_code != requests.codes.ok:
+            warnings.warn("couldn't get pull request files")
+            continue
 
         chunk = json.loads(result.text)
 
@@ -103,7 +105,9 @@ def get_pull_request_comments(
             timeout=github_api_timeout,
         )
 
-        assert result.status_code == requests.codes.ok  # pylint: disable=no-member
+        if result.status_code != requests.codes.ok:
+            warnings.warn("couldn't get pull request comments")
+            continue
 
         chunk = json.loads(result.text)
 
@@ -417,10 +421,11 @@ def post_review_comments(
         )
 
         # Ignore bad gateway errors (false negatives?)
-        assert result.status_code in (
+        if result.status_code not in (
             requests.codes.ok,  # pylint: disable=no-member
             requests.codes.bad_gateway,  # pylint: disable=no-member
-        )
+        ):
+            warnings.warn("couldn't post pull review comments")
 
         # Avoid triggering abuse detection
         time.sleep(10)
@@ -447,7 +452,9 @@ def dismiss_change_requests(
         timeout=github_api_timeout,
     )
 
-    assert result.status_code == requests.codes.ok  # pylint: disable=no-member
+    if result.status_code != requests.codes.ok:  # pylint: disable=no-member
+        warnings.warn(f"couldn't dismiss change requests")
+        return
 
     reviews = json.loads(result.text)
 
@@ -477,7 +484,8 @@ def dismiss_change_requests(
             timeout=github_api_timeout,
         )
 
-        assert result.status_code == requests.codes.ok  # pylint: disable=no-member
+        if result.status_code != requests.codes.ok:
+            warnings.warn(f"couldn't dismiss {review_id=}")
 
         # Avoid triggering abuse detection
         time.sleep(10)
