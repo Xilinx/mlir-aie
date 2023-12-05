@@ -237,7 +237,7 @@ def color_threshold():
 
             # Compute tile 5
             @core(ComputeTile5, "threshold.cc.o")
-            def core_body():)
+            def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
                     elemIn = acquire(
