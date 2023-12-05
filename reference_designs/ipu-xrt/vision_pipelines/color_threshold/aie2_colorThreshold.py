@@ -301,9 +301,9 @@ def color_threshold():
                 IpuWriteRTPOp("rtpComputeTile4", col = 0, row = 4, index = 1, value = 255)
                 IpuWriteRTPOp("rtpComputeTile4", col = 0, row = 4, index = 2, value = 0)
 
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile5", col = 0, row = 5, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=2, value=0)
 
                 ipu_dma_memcpy_nd(
                     metadata="inOOB_L3L2",
