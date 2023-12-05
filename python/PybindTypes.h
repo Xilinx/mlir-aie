@@ -34,7 +34,6 @@ using Flow = struct Flow {
     os << to_string(s);
     return os;
   }
-
 };
 
 void bindTypes(py::module_ &m);

@@ -264,11 +264,9 @@ def route_using_cp(
             model.Add(
                 overlapping_demands[i, j]
                 == sum(
-                    [
-                        overlapping_flows[k, l]
-                        for k, f1 in enumerate(flat_flow_vars)
-                        for l, f2 in enumerate(flat_flow_vars[k + 1 :], start=k + 1)
-                    ]
+                    overlapping_flows[k, l]
+                    for k, f1 in enumerate(flat_flow_vars)
+                    for l, f2 in enumerate(flat_flow_vars[k + 1 :], start=k + 1)
                 )
             )
 
@@ -480,6 +478,7 @@ class Router:
     def __init__(self, use_gurobi=False):
         self.flows = []
         self.fixed_connections = []
+        self.routing_solution = None
         self.use_gurobi = use_gurobi or pythonize_bool(
             os.getenv("ROUTER_USE_GUROBI", "False")
         )
@@ -496,13 +495,14 @@ class Router:
         raise NotImplementedError("adding fixed connections not implemented yet.")
 
     def find_paths(self):
-        DG = build_graph(self.max_col, self.max_row, self.target_model)
-        if self.use_gurobi:
-            flow_paths = route_using_ilp(DG, self.flows)
-        else:
-            flow_paths = route_using_cp(DG, self.flows, num_workers=10)
+        if self.routing_solution is None:
+            DG = build_graph(self.max_col, self.max_row, self.target_model)
+            if self.use_gurobi:
+                flow_paths = route_using_ilp(DG, self.flows)
+            else:
+                flow_paths = route_using_cp(DG, self.flows, num_workers=10)
 
-        self.routing_solution = get_routing_solution(DG, flow_paths)
+            self.routing_solution = get_routing_solution(DG, flow_paths)
         return self.routing_solution
 
     def is_legal(self):

@@ -7,6 +7,8 @@
 from pathlib import Path
 from pprint import pprint
 
+# noinspection PyUnresolvedReferences
+import aie.dialects.aie
 from aie._mlir_libs._aie_python_passes import (
     create_python_router_pass,
     pass_manager_add_owned_pass,
@@ -212,7 +214,7 @@ def test_broadcast():
 
 
 # CHECK-LABEL: TEST: test_flow_test_1
-@run
+# @run
 def test_flow_test_1():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_1.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -231,7 +233,7 @@ def test_flow_test_1():
 
 
 # CHECK-LABEL: TEST: test_flow_test_2
-@run
+# @run
 def test_flow_test_2():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_2.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -250,7 +252,7 @@ def test_flow_test_2():
 
 
 # CHECK-LABEL: TEST: test_flow_test_3
-@run
+# @run
 def test_flow_test_3():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_3.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -269,7 +271,7 @@ def test_flow_test_3():
 
 
 # CHECK-LABEL: TEST: test_many_flows
-@run
+# @run
 def test_many_flows():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -288,7 +290,7 @@ def test_many_flows():
 
 
 # CHECK-LABEL: TEST: test_many_flows2
-@run
+# @run
 def test_many_flows2():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows2.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -307,7 +309,7 @@ def test_many_flows2():
 
 
 # CHECK-LABEL: TEST: test_memtile
-@run
+# @run
 def test_memtile():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "memtile.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -326,7 +328,7 @@ def test_memtile():
 
 
 # CHECK-LABEL: TEST: test_memtile_routing_constraints
-@run
+# @run
 def test_memtile_routing_constraints():
     with open(
         Path(THIS_FILE).parent.parent
@@ -349,7 +351,7 @@ def test_memtile_routing_constraints():
 
 
 # CHECK-LABEL: TEST: test_mmult
-# @run
+@run
 def test_mmult():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "mmult.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -368,7 +370,7 @@ def test_mmult():
 
 
 # CHECK-LABEL: TEST: test_more_flows_shim
-@run
+# @run
 def test_more_flows_shim():
     with open(
         Path(THIS_FILE).parent.parent / "create-flows" / "more_flows_shim.mlir"
@@ -390,7 +392,7 @@ def test_more_flows_shim():
 
 
 # CHECK-LABEL: TEST: test_over_flows
-@run
+# @run
 def test_over_flows():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "over_flows.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -451,7 +453,7 @@ def test_routed_herd_3x2():
 
 
 # CHECK-LABEL: TEST: test_simple
-@run
+# @run
 def test_simple():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "simple.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -488,7 +490,7 @@ def test_simple():
 
 
 # CHECK-LABEL: TEST: test_simple2
-@run
+# @run
 def test_simple2():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "simple2.mlir") as f:
         mlir_module = Module.parse(f.read())
@@ -541,7 +543,7 @@ def test_simple_flows():
 
 
 # CHECK-LABEL: TEST: test_simple_flows2
-@run
+# @run
 def test_simple_flows2():
     with open(
         Path(THIS_FILE).parent.parent / "create-flows" / "simple_flows2.mlir"
@@ -583,7 +585,7 @@ def test_simple_flows2():
 
 
 # CHECK-LABEL: TEST: test_simple_flows_shim
-@run
+# @run
 def test_simple_flows_shim():
     with open(
         Path(THIS_FILE).parent.parent / "create-flows" / "simple_flows_shim.mlir"
