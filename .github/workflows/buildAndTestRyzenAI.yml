@@ -50,6 +50,7 @@ jobs:
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address ${{ secrets.XILINX_MAC }}
+            -v /usr/lib/firmware/amdaie/1502:/usr/lib/firmware/amdaie/1502
           run: |
             ls -l /opt/Xilinx/Vitis/2023.2/
 
