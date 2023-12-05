@@ -49,9 +49,9 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DenseMap<TileOp, TileLockOps> tileToLocks;
 
     // Construct data structure storing locks by tile.
-    for (auto lockOp : device.getOps<LockOp>()) {
+    for (LockOp lockOp : device.getOps<LockOp>()) {
 
-      auto tileOp = lockOp.getTileOp();
+      TileOp tileOp = lockOp.getTileOp();
       bool isAssigned = lockOp.getLockID().has_value();
 
       if (isAssigned) {
@@ -93,7 +93,8 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
           ++nextID;
         }
         if (nextID == locksPerTile) {
-          auto diag = lockOp->emitOpError("not allocated a lock.");
+          mlir::InFlightDiagnostic diag =
+              lockOp->emitOpError("not allocated a lock.");
           diag.attachNote(tileOp.getLoc()) << "because only " << locksPerTile
                                            << " locks available in this tile.";
           return signalPassFailure();
