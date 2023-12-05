@@ -40,6 +40,7 @@ jobs:
       - name: Install Python packages
         run: |
           pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML requests
+          pip install -r python/requirements.txt
 
       - name: Get MLIR
         id: mlir-wheels
@@ -200,6 +201,7 @@ jobs:
       - name: Install Python and other packages
         run: |
           pip install cmake numpy psutil pybind11 rich lit
+          pip install -r python/requirements.txt
 
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build clang lld llvm

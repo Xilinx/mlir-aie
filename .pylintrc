@@ -56,4 +56,8 @@ check-str-concat-over-line-jumps=yes
 # C0114: Missing module docstring (missing-module-docstring)
 # E0402: Attempted relative import beyond top-level package (relative-beyond-top-level)
 # C0115: Missing class docstring (missing-class-docstring)
-disable=C0116,C0114,E0402,C0115
+# C0415: Import outside toplevel
+# R0913: Too many arguments
+# R0914: Too many local variables
+# W1514: Using open without explicitly specifying an encoding (unspecified-encoding)
+disable=C0116,C0114,E0402,C0115,C0415,R0913,R0914,W1514

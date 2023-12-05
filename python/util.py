@@ -61,7 +61,10 @@ def infer_mlir_type(
     """
     if isinstance(py_val, bool):
         return T.bool()
-    elif isinstance(py_val, int):
+
+    if isinstance(py_val, int):
+        # no clue why but black can't decide which it wants the **
+        # fmt: off
         if -(2 ** 31) <= py_val < 2 ** 31:
             return T.i32()
         elif 2 ** 31 <= py_val < 2 ** 32:
@@ -70,9 +73,10 @@ def infer_mlir_type(
             return T.i64()
         elif 2 ** 63 <= py_val < 2 ** 64:
             return T.ui64()
-        else:
-            raise RuntimeError(f"Nonrepresentable integer {py_val}.")
-    elif isinstance(py_val, float):
+        raise RuntimeError(f"Nonrepresentable integer {py_val}.")
+        # fmt: on
+
+    if isinstance(py_val, float):
         if (
             abs(py_val) == float("inf")
             or abs(py_val) == 0.0
@@ -80,15 +84,15 @@ def infer_mlir_type(
             or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
         ):
             return T.f32()
-        else:
-            return T.f64()
-    elif isinstance(py_val, np.ndarray):
+        return T.f64()
+
+    if isinstance(py_val, np.ndarray):
         dtype = np_dtype_to_mlir_type(py_val.dtype.type)
         return RankedTensorType.get(py_val.shape, dtype)
-    else:
-        raise NotImplementedError(
-            f"Unsupported Python value {py_val=} with type {type(py_val)}"
-        )
+
+    raise NotImplementedError(
+        f"Unsupported Python value {py_val=} with type {type(py_val)}"
+    )
 
 
 def mlir_type_to_np_dtype(mlir_type):
@@ -218,17 +222,17 @@ def route_using_cp(
 
             # what goes in must come out
             model.Add(
-                sum([flow_var[e] for e in DG.in_edges(nbunch=n)])
-                == sum([flow_var[e] for e in DG.out_edges(nbunch=n)])
+                sum(flow_var[e] for e in DG.in_edges(nbunch=n))
+                == sum(flow_var[e] for e in DG.out_edges(nbunch=n))
             )
 
             # flow must leave src, and must not enter src
-            model.Add(sum([flow_var[src, j] for j in DG.neighbors(src)]) == 1)
-            model.Add(sum([flow_var[i, src] for i in DG.neighbors(src)]) == 0)
+            model.Add(sum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
+            model.Add(sum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
 
             # flow must enter tgt, and must not leave tgt
-            model.Add(sum([flow_var[tgt, j] for j in DG.neighbors(tgt)]) == 0)
-            model.Add(sum([flow_var[i, tgt] for i in DG.neighbors(tgt)]) == 1)
+            model.Add(sum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
+            model.Add(sum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
 
     # Create demand variables
     total_demand = {
@@ -241,7 +245,7 @@ def route_using_cp(
 
     # Add demand/flow relationship
     for i, j, attrs in DG.edges(data=True):
-        model.Add(total_demand[i, j] == sum([f[i, j] for f in flat_flow_vars]))
+        model.Add(total_demand[i, j] == sum(f[i, j] for f in flat_flow_vars))
         model.Add(total_demand[i, j] <= attrs["capacity"])
 
         if min_edges:
@@ -268,15 +272,15 @@ def route_using_cp(
                 )
             )
 
-    obj = sum([total_demand[i, j] for i, j in DG.edges])
+    obj = sum(total_demand[i, j] for i, j in DG.edges)
     if min_edges:
-        obj += sum([used_edges[i, j] for i, j in DG.edges])
+        obj += sum(used_edges[i, j] for i, j in DG.edges)
     else:
-        obj += sum([overlapping_demands[i, j] for i, j in DG.edges])
+        obj += sum(overlapping_demands[i, j] for i, j in DG.edges)
     model.Minimize(obj)
 
     status = solver.Solve(model)
-    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
         flow_paths = {}
         for flow, flow_varss in flow_vars.items():
             flow_paths[flow] = [
@@ -461,7 +465,7 @@ def pythonize_bool(value):
             return True
         if value.lower() in ("", "0", "false", "off", "no"):
             return False
-    raise ValueError('"{}" is not a valid boolean'.format(value))
+    raise ValueError(f'"{value}" is not a valid boolean')
 
 
 class Router:

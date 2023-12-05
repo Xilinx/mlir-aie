@@ -52,6 +52,7 @@ jobs:
       - name: Install Python packages
         run: |
           pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
+          pip install -r python/requirements.txt
 
       - name: Install packages
         run: sudo apt-get install -y ninja-build clang lld
