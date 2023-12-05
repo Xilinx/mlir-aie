@@ -28,6 +28,18 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
+      # garbage collect old comments
+      - name: Delete old comments
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
+          echo $PULL_REQUEST_ID
+          
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}  python utils/git/delete_outdated_comments.py \
+          --repository "$GITHUB_REPOSITORY" \
+          --pull-number "$PULL_REQUEST_ID"
+
       - name: Install clang-tidy
         run: |
           sudo apt-get update
