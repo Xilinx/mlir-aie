@@ -517,7 +517,7 @@ all:
       cmd += ['-L%s' % xaiengine_lib_path]
       cmd += ['-L' + os.path.join(opts.aietools_path, "lib", "lnx64.o")]
       cmd += ['-I%s' % self.tmpdirname]
-      cmd += ['-fuse-ld=lld','-lm','-lxaiengine', '-lcdo_driver']
+      cmd += ['-fuse-ld=lld','-lm','-lxaiengine']
 
       cmd += self.aie_target_defines()
 
