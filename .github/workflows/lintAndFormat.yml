@@ -206,6 +206,14 @@ jobs:
           git fetch origin main
           # git clang-format returns an error if changes made?
           git clang-format origin/main || true
+          git diff > clang-format.diff
+          cat clang-format.diff
+
+      - name: Upload clang-format
+        uses: actions/upload-artifact@v3
+        with:
+          path: clang-format.diff
+          name: format_diffs
 
       - name: Check C/C++ format
         uses: reviewdog/action-suggester@v1
@@ -221,6 +229,14 @@ jobs:
         run: |
           black --exclude python/compiler/aiecc/main.py . || true
           # black -l 10000 python/compiler/aiecc/main.py || true
+          git diff > black-format.diff
+          cat black-format.diff
+
+      - name: Upload black-format
+        uses: actions/upload-artifact@v3
+        with:
+          path: black-format.diff
+          name: format_diffs
 
       - name: Check Python format
         if: success() || failure()
