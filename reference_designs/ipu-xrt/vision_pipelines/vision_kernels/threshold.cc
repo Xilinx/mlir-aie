@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-//#define __AIENGINE__ 1
+// #define __AIENGINE__ 1
 #define NOCPP
 
 #include <stdint.h>
@@ -27,7 +27,7 @@ enum _threshold_type {
   XF_THRESHOLD_TYPE_TOZERO_INV = 4,
 };
 
-//#define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
+// #define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
 
 #include <aie_api/aie.hpp>
 

@@ -27,16 +27,16 @@
 // #define IMAGE_WIDTH_IN 256
 // #define IMAGE_HEIGHT_IN 256
 
-//#define IMAGE_WIDTH_IN 128
-//#define IMAGE_HEIGHT_IN 64
+// #define IMAGE_WIDTH_IN 128
+// #define IMAGE_HEIGHT_IN 64
 constexpr int testImageWidth = COLORTHRESHOLD_WIDTH;
 constexpr int testImageHeight = COLORTHRESHOLD_HEIGHT;
 
-//#define IMAGE_WIDTH_OUT IMAGE_WIDTH_IN
-//#define IMAGE_HEIGHT_OUT IMAGE_HEIGHT_IN
+// #define IMAGE_WIDTH_OUT IMAGE_WIDTH_IN
+// #define IMAGE_HEIGHT_OUT IMAGE_HEIGHT_IN
 
-//#define IMAGE_AREA_IN (IMAGE_HEIGHT_IN * IMAGE_WIDTH_IN)
-//#define IMAGE_AREA_OUT (IMAGE_HEIGHT_OUT * IMAGE_WIDTH_OUT)
+// #define IMAGE_AREA_IN (IMAGE_HEIGHT_IN * IMAGE_WIDTH_IN)
+// #define IMAGE_AREA_OUT (IMAGE_HEIGHT_OUT * IMAGE_WIDTH_OUT)
 
 constexpr int imageAreaIn = testImageWidth * testImageHeight;
 constexpr int imageAreaOut = testImageWidth * testImageHeight;
@@ -167,11 +167,12 @@ int main(int argc, const char *argv[]) {
         if (errors < max_errors)
           std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
                     << " should be zero "
-                    << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
+                    << " : input " << std::dec << (uint8_t)srcVec[i]
+                    << std::endl;
         errors++;
       } else {
-        std::cout << "Below threshold:   " << (uint8_t) * (bufOut + i) << " at " << i
-                  << " is correct "
+        std::cout << "Below threshold:   " << (uint8_t) * (bufOut + i) << " at "
+                  << i << " is correct "
                   << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
       }
     } else {
@@ -179,11 +180,12 @@ int main(int argc, const char *argv[]) {
         if (errors < max_errors)
           std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
                     << " should be UINT8_MAX "
-                    << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
+                    << " : input " << std::dec << (uint8_t)srcVec[i]
+                    << std::endl;
         errors++;
       } else {
-        std::cout << "Above threshold:  " << (uint8_t) * (bufOut + i) << " at " << i
-                  << " is correct "
+        std::cout << "Above threshold:  " << (uint8_t) * (bufOut + i) << " at "
+                  << i << " is correct "
                   << " : input " << std::dec << (uint8_t)srcVec[i] << std::endl;
       }
     }

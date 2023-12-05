@@ -48,7 +48,7 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
                                              const int32_t height,
                                              const int32_t width) {
   //::aie::vector<int16_t, 16> WT(66, 129, 25, 128); //Y=0.299*R + 0.587*G +
-  //:0.114*B (BT.470) :aie::vector<int16_t, 16> WT(25, 129, 66, 128);
+  //: 0.114*B (BT.470) :aie::vector<int16_t, 16> WT(25, 129, 66, 128);
   //://Y=0.299*R + 0.587*G + 0.114*B (BT.470)
   ::aie::vector<int16_t, 16> WT(
       (int16_t)round(0.299 * (1 << SRS_SHIFT)),

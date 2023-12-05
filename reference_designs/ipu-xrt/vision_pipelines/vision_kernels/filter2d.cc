@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-//#define __AIENGINE__ 1
+// #define __AIENGINE__ 1
 #define NOCPP
 
 #include <stdint.h>
@@ -197,7 +197,7 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
 
 extern "C" {
 
-//#if BIT_WIDTH == 8
+// #if BIT_WIDTH == 8
 
 void filter2dLine(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
                   uint8_t *out, int32_t lineWidth, int16_t *filterKernel) {
