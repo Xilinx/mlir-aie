@@ -15,7 +15,7 @@
 namespace py = pybind11;
 
 namespace xilinx::AIE {
-typedef struct Flow {
+using Flow = struct Flow {
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
 
@@ -35,7 +35,7 @@ typedef struct Flow {
     return os;
   }
 
-} Flow;
+};
 
 void bindTypes(py::module_ &m);
 

@@ -363,16 +363,14 @@ def route_using_ilp(DG, flows):
 
 
 def rgb2hex(r, g, b, a):
-    return "#{:02x}{:02x}{:02x}".format(
-        int(r * 255), int(g * 255), int(b * 255), int(a * 255)
-    )
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}{int(a * 255):02x}"
 
 
 def plot_paths(DG, src, paths):
     pos = dict((n, (n.col, n.row)) for n in DG.nodes())
     labels = dict((n, f"{n.col},{n.row}") for n in DG.nodes())
 
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     nx.draw(
         DG,
         with_labels=True,
@@ -456,7 +454,7 @@ def get_routing_solution(DG, flow_paths):
 def pythonize_bool(value):
     if value is None:
         return False
-    if type(value) is bool:
+    if isinstance(value, bool):
         return value
     if isinstance(value, numbers.Number):
         return value != 0
@@ -483,7 +481,7 @@ class Router:
         self.flows = []
         self.fixed_connections = []
         self.use_gurobi = use_gurobi or pythonize_bool(
-            os.getenv("ROUTER_USE_GUROBI", False)
+            os.getenv("ROUTER_USE_GUROBI", "False")
         )
 
     def initialize(self, max_col, max_row, target_model):
