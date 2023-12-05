@@ -341,7 +341,8 @@ void AIEDialect::initialize() {
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.
-template <typename... TerminatorOpTypes> struct HasSomeTerminator {
+template <typename... TerminatorOpTypes>
+struct HasSomeTerminator {
   static LogicalResult verifyTrait(Operation *op) {
     for (auto &region : op->getRegions()) {
       for (auto &block : region) {
@@ -871,7 +872,7 @@ LogicalResult TileOp::verify() {
 
   auto users = getResult().getUsers();
   bool found = false;
-  for (auto user : users) {
+  for (auto *user : users) {
     if (llvm::isa<SwitchboxOp>(*user)) {
       if (found)
         return emitOpError("can only have one switchbox");
@@ -932,10 +933,12 @@ LogicalResult SwitchboxOp::verify() {
       sourceset.insert(source);
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
-      if (destset.count(dest))
+      if (destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
-               << " as another connect operation";
+               << to_string(dest) << " as another connect operation (from "
+               << to_string(source)
+               << ", tile: " << to_string(this->getTileOp().getTileID()) << ")";
+      }
       destset.insert(dest);
 
       if (connectOp.sourceIndex() < 0)
@@ -1422,7 +1425,8 @@ int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
 int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
-template <typename... ParentOpTypes> struct HasSomeParent {
+template <typename... ParentOpTypes>
+struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
     Operation *operation = op->getParentOp();
     while (operation) {

@@ -190,9 +190,9 @@ def route_using_cp(
     DG,
     flows,
     min_edges=False,
-    seed=10,
+    seed=42,
     num_workers=multiprocessing.cpu_count() // 2,
-    max_time_in_seconds=600,
+    timeout=600,
 ):
     from ortools.sat.python import cp_model
 
@@ -202,7 +202,7 @@ def route_using_cp(
     # For determinism
     solver.parameters.random_seed = seed
     solver.parameters.num_workers = num_workers
-    solver.parameters.max_time_in_seconds = max_time_in_seconds
+    solver.parameters.max_time_in_seconds = timeout
 
     # Create variable for each edge, for each path
     flow_vars = {}
@@ -287,7 +287,7 @@ def route_using_cp(
 
         return flow_paths
 
-    warnings.warn("Couldn't route.")
+    raise RuntimeError("Couldn't route.")
 
 
 def route_using_ilp(DG, flows):
@@ -467,6 +467,7 @@ def pythonize_bool(value):
 class Router:
     max_col: int
     max_row: int
+    timeout: int
     use_gurobi: bool = False
     # Don't use actual binding here to prevent a blow up since class bodies are executed
     # at module load time.
@@ -475,13 +476,14 @@ class Router:
     fixed_connections: List[Tuple["TileID", "Port"]]
     routing_solution: Dict["PathEndPoint", "SwitchSettings"]
 
-    def __init__(self, use_gurobi=False):
+    def __init__(self, use_gurobi=False, timeout=600):
         self.flows = []
         self.fixed_connections = []
         self.routing_solution = None
         self.use_gurobi = use_gurobi or pythonize_bool(
             os.getenv("ROUTER_USE_GUROBI", "False")
         )
+        self.timeout = timeout
 
     def initialize(self, max_col, max_row, target_model):
         self.max_col = max_col
@@ -500,7 +502,9 @@ class Router:
             if self.use_gurobi:
                 flow_paths = route_using_ilp(DG, self.flows)
             else:
-                flow_paths = route_using_cp(DG, self.flows, num_workers=10)
+                flow_paths = route_using_cp(
+                    DG, self.flows, num_workers=10, timeout=self.timeout
+                )
 
             self.routing_solution = get_routing_solution(DG, flow_paths)
         return self.routing_solution
