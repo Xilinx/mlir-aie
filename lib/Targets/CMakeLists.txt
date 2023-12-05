@@ -11,6 +11,7 @@ add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetCDO.cpp
   AIETargetIPU.cpp
+  AIETargetLdScript.cpp
   AIETargetXAIEV2.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp

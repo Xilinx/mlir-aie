@@ -31,5 +31,8 @@ mlir::LogicalResult AIETranslateToCDO(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
 std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp);
+mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
+                                           llvm::raw_ostream &output,
+                                           int tileCol, int tileRow);
 } // namespace AIE
 } // namespace xilinx
