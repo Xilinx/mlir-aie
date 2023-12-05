@@ -21,6 +21,7 @@
 #include <xaiengine.h>
 
 #include "aie_inc.cpp"
+#include "memory_allocator.h"
 
 int main(int argc, char *argv[]) {
   printf("Tutorial-5 test start.\n");
@@ -43,25 +44,18 @@ int main(int argc, char *argv[]) {
 
   // mlir_aie_release_ddr_test_buffer_lock(_xaie, 0, 0);
 
-  // Configure the number of DDR memory regions we plan to sync with design
-  mlir_aie_init_mems(_xaie, 2);
-
   // Allocate buffer and return virtual pointer to memory
-  int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, 0, 256);
-  int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 256);
+  ext_mem_model_t buf0, buf1;
+  int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, buf0, 256);
+  int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, buf1, 256);
 
   // Set virtual pointer used to configure
-#if defined(__AIESIM__)
-  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)((_xaie->buffers[0])->physicalAddr));
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)((_xaie->buffers[1])->physicalAddr));
-#else
-  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
-#endif
+  mlir_aie_external_set_addr_ddr_test_buffer_in(_xaie, (u64)mem_ptr_in);
+  mlir_aie_external_set_addr_ddr_test_buffer_out(_xaie, (u64)mem_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
   mem_ptr_in[3] = 14;
 
-  mlir_aie_sync_mem_dev(_xaie, 0);
+  mlir_aie_sync_mem_dev(buf0);
   mlir_aie_configure_shimdma_70(_xaie);
 
   int errors = 0;
@@ -97,7 +91,7 @@ int main(int argc, char *argv[]) {
   else
     printf("Timed out (1000) while trying to acquire ddr output lock (0).\n");
 
-  mlir_aie_sync_mem_cpu(_xaie, 1); // Sync output buffer back to DDR/cache
+  mlir_aie_sync_mem_cpu(buf1); // Sync output buffer back to DDR/cache
 
   // Check buffer at index 3 again for expected value of 14 for tile(3,4)
   printf("Checking buf[3] = 14.\n");
