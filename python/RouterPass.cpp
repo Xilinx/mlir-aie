@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "PybindTypes.h"
+#include "PythonPass.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -85,19 +86,6 @@ MlirPass mlircreatePythonRouterPass(py::object router) {
 
 void registerPythonRouterPassWithRouter(const py::object &router) {
   registerPass([router] { return createPythonRouterPass(router); });
-}
-
-#define MLIR_PYTHON_CAPSULE_PASS MAKE_MLIR_PYTHON_QUALNAME("ir.Pass._CAPIPtr")
-
-static PyObject *mlirPassToPythonCapsule(MlirPass pass) {
-  return PyCapsule_New(MLIR_PYTHON_GET_WRAPPED_POINTER(pass),
-                       MLIR_PYTHON_CAPSULE_PASS, nullptr);
-}
-
-static inline MlirPass mlirPythonCapsuleToPass(PyObject *capsule) {
-  void *ptr = PyCapsule_GetPointer(capsule, MLIR_PYTHON_CAPSULE_PASS);
-  MlirPass pass = {ptr};
-  return pass;
 }
 
 PYBIND11_MODULE(_aie_python_passes, m) {

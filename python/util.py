@@ -3,34 +3,15 @@ import numbers
 import os
 import warnings
 from collections import defaultdict
-from typing import Union, Optional, List, Tuple, Dict
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from typing import List, Tuple, Dict
+from typing import Optional
+from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
-
-from .dialects import arith
-from .dialects import complex
-from .dialects.linalg.opdsl.lang.emitter import (
-    _is_floating_point_type,
-    _is_complex_type,
-)
-from .ir import (
-    DenseElementsAttr,
-    FloatAttr,
-    IndexType,
-    InsertionPoint,
-    Location,
-    RankedTensorType,
-    Type,
-    Value,
-)
-from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
-from typing import Optional
-from typing import Union
-
 import numpy as np
 
 from .extras import types as T
@@ -66,7 +47,7 @@ def np_dtype_to_mlir_type(np_dtype):
 
 
 def infer_mlir_type(
-        py_val: Union[int, float, bool, np.ndarray]
+    py_val: Union[int, float, bool, np.ndarray]
 ) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
     """Infer MLIR type (`ir.Type`) from supported python values.
 
@@ -81,22 +62,22 @@ def infer_mlir_type(
     if isinstance(py_val, bool):
         return T.bool()
     elif isinstance(py_val, int):
-        if -(2**31) <= py_val < 2**31:
+        if -(2 ** 31) <= py_val < 2 ** 31:
             return T.i32()
-        elif 2**31 <= py_val < 2**32:
+        elif 2 ** 31 <= py_val < 2 ** 32:
             return T.ui32()
-        elif -(2**63) <= py_val < 2**63:
+        elif -(2 ** 63) <= py_val < 2 ** 63:
             return T.i64()
-        elif 2**63 <= py_val < 2**64:
+        elif 2 ** 63 <= py_val < 2 ** 64:
             return T.ui64()
         else:
             raise RuntimeError(f"Nonrepresentable integer {py_val}.")
     elif isinstance(py_val, float):
         if (
-                abs(py_val) == float("inf")
-                or abs(py_val) == 0.0
-                or py_val != py_val  # NaN
-                or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
+            abs(py_val) == float("inf")
+            or abs(py_val) == 0.0
+            or py_val != py_val  # NaN
+            or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
         ):
             return T.f32()
         else:
@@ -126,10 +107,10 @@ class MLIRContext:
 
 @contextmanager
 def mlir_mod_ctx(
-        src: Optional[str] = None,
-        context: Context = None,
-        location: Location = None,
-        allow_unregistered_dialects=False,
+    src: Optional[str] = None,
+    context: Context = None,
+    location: Location = None,
+    allow_unregistered_dialects=False,
 ) -> MLIRContext:
     if context is None:
         context = Context()
@@ -419,7 +400,6 @@ def plot_src_paths(DG, flow_paths):
 def get_routing_solution(DG, flow_paths):
     from ._mlir_libs._aie_python_passes import (
         SwitchSetting,
-        Switchbox,
         Port,
         get_connecting_bundle,
     )

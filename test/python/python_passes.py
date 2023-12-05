@@ -21,7 +21,6 @@ from aie.util import Router
 
 def run(f):
     with Context() as ctx, Location.unknown():
-        register_dialect(ctx)
         print("\nTEST:", f.__name__)
         f(ctx)
 
