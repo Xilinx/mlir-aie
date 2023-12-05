@@ -1279,12 +1279,14 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
   }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"getCascade", [HasParent<"CoreOp">]>, Results<(outs AnyI<384>)> {
+def AIE_GetCascadeOp: AIE_Op<"getCascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
+    The result type of this operation must have a size that matches the cascade size,
+    which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
   }];
-  let results = (outs AnyI<384>:$cascadeValue);
+  let hasVerifier = 1;
   let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascadeValue) }];
 }
 
@@ -1292,10 +1294,12 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
     An op to write to a cascading stream from a neighboring core.
+    The argument type of this operation must have a size that matches the cascade size,
+    which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
   }];
 
-  let arguments = (ins AnyI<384>:$cascadeValue);
-
+  let arguments = (ins AnyType:$cascadeValue);
+  let hasVerifier = 1;
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
