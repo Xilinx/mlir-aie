@@ -20,7 +20,7 @@ MLIR_AIE_SYSROOT ?= ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-l
 # The libstdc++ version that is installed in the sysroot given above. This is
 # used for include and library paths. If you built the sysroot with Vitis
 # 2022.2 and PetaLinux 2022.2, libstdc++ 11.2.0 will be installed. 
-LIBCXX_VERSION ?= 11.2.0
+LIBCXX_VERSION ?= 12.2.0
 
 # The following flags are passed to both AI core and host compilation for
 # aiecc.py invocations.
@@ -29,7 +29,21 @@ AIECC_FLAGS += --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu
 CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
-# The following additional flags are only applied for host code. We add the
+# The following additional flags are only applied for host code.
+AIECC_HOST_FLAGS += \
+    -I$(AIE_INSTALL)/test_lib/include \
+    -I${AIE_INSTALL}/xaiengine/include \
+    --gcc-toolchain=${MLIR_AIE_SYSROOT}/usr \
+    -L$(AIE_INSTALL)/test_lib/lib -ltest_lib 
+
+# Add the
 # necessary search paths for the sysroot so clang++ can find the aarch64
-# includes and libraries.
-AIECC_HOST_FLAGS += -I$(AIE_INSTALL)/test_lib/include -I${AIE_INSTALL}/xaiengine/include -I${MLIR_AIE_SYSROOT}/usr/include -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION} -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L$(AIE_INSTALL)/test_lib/lib -ltest_lib -B${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}
+# includes and libraries. Some of these shouldn't be necessary, except that
+# sysroot shipped with Vitis is slightly broken, so clang can't find things
+# automatically just using --gcc-toolchain
+AIECC_HOST_FLAGS += \
+    -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION} \
+    -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux \
+    -I${MLIR_AIE_SYSROOT}/usr/include \
+    -L${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} \
+    -B${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}
