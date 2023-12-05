@@ -65,11 +65,9 @@ jobs:
             mkdir /build
             cd /build
 
+            export PATH=/opt/xilinx/Vitis/2023.2/bin:/opt/xilinx/Vitis/2023.2/aietools/bin:$PATH
             cmake /mlir-aie -G Ninja \
               -DMLIR_DIR=/mlir/lib/cmake/mlir \
-              -DVITIS_ROOT=/opt/xilinx/Vitis/2023.2/ \
-              -DVitis_VERSION_MAJOR=2023 \
-              -DVitis_VERSION_MINOR=2 \
               -DCMAKE_MODULE_PATH=/mlir-aie/cmake/modulesXilinx \
               -DLLVM_EXTERNAL_LIT=$(which lit) \
               -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
@@ -85,4 +83,4 @@ jobs:
             cp /usr/lib/firmware/amdaie/1502/1x4.xclbin install/data/1x4.xclbin
 
             sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j12 --show-unsupported/g' /mlir-aie/test/CMakeLists.txt
-            PATH=/opt/xilinx/Vitis/2023.2/bin:/opt/xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
+            ninja check-aie
