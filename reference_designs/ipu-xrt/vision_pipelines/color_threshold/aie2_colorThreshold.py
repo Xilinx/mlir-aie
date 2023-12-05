@@ -174,9 +174,13 @@ def color_threshold():
                     ).acquired_elem()
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
-                    thresholdValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [0]))
-                    maxValue       = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [1]))
-                    thresholdType  = arith.trunci(T.i8(),  memref.load(rtpComputeTile3, [2]))
+                    thresholdValue = arith.trunci(
+                        T.i16(), memref.load(rtpComputeTile3, [0])
+                    )
+                    maxValue = arith.trunci(T.i16(), memref.load(rtpComputeTile3, [1]))
+                    thresholdType = arith.trunci(
+                        T.i8(), memref.load(rtpComputeTile3, [2])
+                    )
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
