@@ -16,8 +16,8 @@ from aie.dialects.aiex import *
 from aie.dialects.extras import memref, arith
 from aie.util import mlir_mod_ctx
 
-width = 512 #1920 // 8
-height = 9 #1080 // 8
+width = 512  # 1920 // 8
+height = 9  # 1080 // 8
 if len(sys.argv) == 3:
     width = int(sys.argv[1])
     height = int(sys.argv[2])
@@ -29,21 +29,23 @@ enableTrace = False
 traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
-def passThroughAIE2():
 
+def passThroughAIE2():
     with mlir_mod_ctx() as ctx:
-    
+
         @device(AIEDevice.ipu)
         def device_body():
             # define types
-            line_ty       = T.memref(lineWidthInBytes, T.ui8())
+            line_ty = T.memref(lineWidthInBytes, T.ui8())
             ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
 
             # AIE Core Function declarations
-            passThroughLine = external_func("passThroughLine", inputs = [line_ty, line_ty,T.i32()])
+            passThroughLine = external_func(
+                "passThroughLine", inputs=[line_ty, line_ty, T.i32()]
+            )
 
             # Tile declarations
-            ShimTile     = tile(0, 0)
+            ShimTile = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
             if enableTrace:
@@ -54,7 +56,7 @@ def passThroughAIE2():
             objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_line_ty, [], [])
 
             # Set up compute tiles
-            
+
             # Compute tile 2
             @core(ComputeTile2, "passThrough.cc.o")
             def core_body():
@@ -62,25 +64,23 @@ def passThroughAIE2():
                     for _ in for_(height):
                         elemOut = acquire(
                             ObjectFifoPort.Produce, "out", 1, line_ty
-                        ).acquired_elem()  
+                        ).acquired_elem()
                         elemIn = acquire(
                             ObjectFifoPort.Consume, "in", 1, line_ty
-                        ).acquired_elem() 
+                        ).acquired_elem()
                         Call(passThroughLine, [elemIn, elemOut, width])
-                        objectfifo_release(ObjectFifoPort.Consume,"in", 1)
-                        objectfifo_release(ObjectFifoPort.Produce,"out", 1)
+                        objectfifo_release(ObjectFifoPort.Consume, "in", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "out", 1)
                         yield_([])
                     yield_([])
 
             #    print(ctx.module.operation.verify())
 
-            tensorSize = width*height
+            tensorSize = width * height
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
- 
-            @FuncOp.from_py_func(
-                tensor_ty, tensor_ty, tensor_ty
-            )
+
+            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, notUsed, outTensor):
                 if enableTrace:
                     # Trace output
@@ -88,12 +88,12 @@ def passThroughAIE2():
                     # Trace_Event0, Trace_Event1: Select which events to trace.
                     # Note that the event buffers only appear to be transferred to DDR in
                     # bursts of 256 bytes. If less than 256 bytes are written, you may not
-                    # see trace output, or only see it on the next iteration of your 
+                    # see trace output, or only see it on the next iteration of your
                     # kernel invocation, as the buffer gets filled up. Note that, even
-                    # though events are encoded as 4 byte words, it may take more than 64 
+                    # though events are encoded as 4 byte words, it may take more than 64
                     # events to fill the buffer to 256 bytes and cause a flush, since
                     # multiple repeating events can be 'compressed' by the trace mechanism.
-                    # In order to always generate sufficient events, we add the "assert 
+                    # In order to always generate sufficient events, we add the "assert
                     # TRUE" event to one slot, which fires every cycle, and thus fills our
                     # buffer quickly.
 
@@ -108,7 +108,6 @@ def passThroughAIE2():
                     # INSTR_LOCK_RELEASE_REQ     (0x2D)  Core executes a lock release instruction
                     # EVENTS_CORE_PORT_RUNNING_1 (0x4F)
                     # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
-
 
                     # Trace_Event0  (4 slots)
                     IpuWrite32(0, 2, 0x340E0, 0x4B222125)
@@ -133,40 +132,51 @@ def passThroughAIE2():
                     IpuWrite32(0, 2, 0x340D0, 0x10000)
 
                     # Start trace copy out.
-                    IpuWriteBdShimTile(bd_id = 3,
-                                    buffer_length = traceSizeInBytes,
-                                    buffer_offset = tensorSize,
-                                    enable_packet = 0,
-                                    out_of_order_id = 0,
-                                    packet_id = 0,
-                                    packet_type = 0,
-                                    column = 0,
-                                    column_num = 1,
-                                    d0_stepsize = 0,
-                                    d0_wrap = 0,
-                                    d1_stepsize = 0,
-                                    d1_wrap = 0,
-                                    d2_stepsize = 0,
-                                    ddr_id = 2,
-                                    iteration_current = 0,
-                                    iteration_stepsize = 0,
-                                    iteration_wrap = 0,
-                                    lock_acq_enable = 0,
-                                    lock_acq_id = 0,
-                                    lock_acq_val = 0,
-                                    lock_rel_id = 0,
-                                    lock_rel_val = 0,
-                                    next_bd = 0,
-                                    use_next_bd = 0,
-                                    valid_bd = 1)
+                    IpuWriteBdShimTile(
+                        bd_id=3,
+                        buffer_length=traceSizeInBytes,
+                        buffer_offset=tensorSize,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        column=0,
+                        column_num=1,
+                        d0_stepsize=0,
+                        d0_wrap=0,
+                        d1_stepsize=0,
+                        d1_wrap=0,
+                        d2_stepsize=0,
+                        ddr_id=2,
+                        iteration_current=0,
+                        iteration_stepsize=0,
+                        iteration_wrap=0,
+                        lock_acq_enable=0,
+                        lock_acq_id=0,
+                        lock_acq_val=0,
+                        lock_rel_id=0,
+                        lock_rel_val=0,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
                     IpuWrite32(0, 0, 0x1D20C, 0x3)
 
-                
-                ipu_dma_memcpy_nd(metadata = "in", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, tensorSizeInInt32s]) 
-                ipu_dma_memcpy_nd(metadata = "out", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, tensorSizeInInt32s]) 
-                ipu_sync(column = 0, row = 0, direction = 0, channel = 0)
+                ipu_dma_memcpy_nd(
+                    metadata="in",
+                    bd_id=1,
+                    mem=inTensor,
+                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                )
+                ipu_dma_memcpy_nd(
+                    metadata="out",
+                    bd_id=0,
+                    mem=outTensor,
+                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                )
+                ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
-passThroughAIE2()
 
+passThroughAIE2()

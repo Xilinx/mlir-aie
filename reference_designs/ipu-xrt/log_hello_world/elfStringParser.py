@@ -11,7 +11,8 @@ import re
 import os
 from typing import Dict
 
-def call_unix_proc(cmd:str)->str:
+
+def call_unix_proc(cmd: str) -> str:
     cmdlist = cmd.split(" ")
     try:
         output = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT)
@@ -20,16 +21,18 @@ def call_unix_proc(cmd:str)->str:
         print(f"ERROR! {cmd} failed \n\n{e.output.decode()}")
         raise e
 
-def _get_ro_offset(ofile:str)->int:
+
+def _get_ro_offset(ofile: str) -> int:
     s = f"readelf -S {ofile}"
     out = call_unix_proc(s)
     pattern = r"\s*\[\s*[0-9]+\]\s*\.rodata\.DMb\.1\s*PROGBITS\s*([0-9a-z]+)"
     match = re.search(pattern, out)
     if match:
-        return int(match.group(1),16)
-    return int("70A00",16)
+        return int(match.group(1), 16)
+    return int("70A00", 16)
 
-def _gen_string_dict(stringsoutput:str, rooffset:int=0)->Dict[int,str]:
+
+def _gen_string_dict(stringsoutput: str, rooffset: int = 0) -> Dict[int, str]:
     lines = stringsoutput.split("\n")
     result = {}
     first = True
@@ -37,27 +40,34 @@ def _gen_string_dict(stringsoutput:str, rooffset:int=0)->Dict[int,str]:
     for line in lines:
         l = line.lstrip()
         try:
-            hex_num, text = l.split(' ',1)
+            hex_num, text = l.split(" ", 1)
             if first:
                 first_val = int(hex_num, 16)
                 result[rooffset] = text
-                first=False
+                first = False
             else:
-                result[(int(hex_num,16) - first_val) + rooffset] = text
+                result[(int(hex_num, 16) - first_val) + rooffset] = text
         except:
             pass
     return result
 
+
 def main():
-    parser = argparse.ArgumentParser(description="A utility to extract a json file of all the format strings and corresponding addresses/locations in an AIE design")
-    parser.add_argument("--input", required=True, help="Path to the directory where the project was constructed")
+    parser = argparse.ArgumentParser(
+        description="A utility to extract a json file of all the format strings and corresponding addresses/locations in an AIE design"
+    )
+    parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to the directory where the project was constructed",
+    )
     parser.add_argument("--output", default="elfstrings.csv")
     args = parser.parse_args()
-    
+
     # Collect all the elfs
     ofiles = []
     for filename in os.listdir(args.input):
-        if filename.endswith('.elf'):
+        if filename.endswith(".elf"):
             filepath = os.path.join(args.input, filename)
             ofiles.append(filepath)
     print(ofiles)
@@ -67,10 +77,10 @@ def main():
         strings_cmd = f"strings --radix x -a {ofile}"
         object_strings_str = call_unix_proc(strings_cmd)
         ro_offset = _get_ro_offset(ofile)
-        d = _gen_string_dict(object_strings_str, ro_offset) 
+        d = _gen_string_dict(object_strings_str, ro_offset)
         res = {**res, **d}
     with open(args.output, "w") as fp:
-        for addr,s in res.items():
+        for addr, s in res.items():
             fp.write(f"{addr},{s}\n")
 
 

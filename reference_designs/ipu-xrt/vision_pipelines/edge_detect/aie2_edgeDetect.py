@@ -21,75 +21,152 @@ if len(sys.argv) == 3:
     width = int(sys.argv[1])
     height = int(sys.argv[2])
 
-heightMinus1      = height-1
-lineWidth         = width
-lineWidthInBytes  = width*4
+heightMinus1 = height - 1
+lineWidth = width
+lineWidthInBytes = width * 4
 lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
 traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
-def edge_detect():
 
+def edge_detect():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
         def device_body():
-
             line_bytes_ty = T.memref(lineWidthInBytes, T.ui8())
-            line_ty       = T.memref(lineWidth, T.ui8())
+            line_ty = T.memref(lineWidth, T.ui8())
             memRef_3x3_ty = T.memref(3, 3, T.i16())
 
             ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
-            ofifo_line_ty       = TypeAttr.get(ObjectFifoType.get(line_ty))
+            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
 
             # AIE Core Function declarations
-            rgba2gray_line = external_func("rgba2grayLine", 
-                             inputs=[line_bytes_ty, line_ty, T.i32()])
-            filter2d_line  = external_func( "filter2dLine", 
-                             inputs=[line_ty, line_ty, line_ty, line_ty, T.i32(), memRef_3x3_ty])
-            threshold_line = external_func("thresholdLine", 
-                             inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()])
-            gray2rgba_line = external_func( "gray2rgbaLine", 
-                             inputs=[line_ty, line_bytes_ty, T.i32()])
-            add_weighted_line = external_func("addWeightedLine",
-                                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, 
-                                        T.i32(), T.i16(), T.i16(), T.i8()])
+            rgba2gray_line = external_func(
+                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i32()]
+            )
+            filter2d_line = external_func(
+                "filter2dLine",
+                inputs=[line_ty, line_ty, line_ty, line_ty, T.i32(), memRef_3x3_ty],
+            )
+            threshold_line = external_func(
+                "thresholdLine",
+                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
+            )
+            gray2rgba_line = external_func(
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
+            )
+            add_weighted_line = external_func(
+                "addWeightedLine",
+                inputs=[
+                    line_bytes_ty,
+                    line_bytes_ty,
+                    line_bytes_ty,
+                    T.i32(),
+                    T.i16(),
+                    T.i16(),
+                    T.i8(),
+                ],
+            )
 
             # Tile declarations
-            ShimTile     = tile(0, 0)
-            MemTile      = tile(0, 1)
+            ShimTile = tile(0, 0)
+            MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
             ComputeTile3 = tile(0, 3)
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
 
             # AIE-array data movement with object fifos
-            # Input 
-            objectfifo("inOF_L3L2", ShimTile, [MemTile], 2, ofifo_line_bytes_ty, [], [],)
-            objectfifo("inOF_L2L1", MemTile, [ComputeTile2, ComputeTile5], [2, 2, 7], 
-                       ofifo_line_bytes_ty, [], [],)
+            # Input
+            objectfifo(
+                "inOF_L3L2",
+                ShimTile,
+                [MemTile],
+                2,
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "inOF_L2L1",
+                MemTile,
+                [ComputeTile2, ComputeTile5],
+                [2, 2, 7],
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
             objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
-            # Output 
-            objectfifo("outOF_L2L3", MemTile, [ShimTile], 2, ofifo_line_bytes_ty, [], [],)
-            objectfifo("outOF_L1L2", ComputeTile5, [MemTile], 2, ofifo_line_bytes_ty, [], [],)
+            # Output
+            objectfifo(
+                "outOF_L2L3",
+                MemTile,
+                [ShimTile],
+                2,
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "outOF_L1L2",
+                ComputeTile5,
+                [MemTile],
+                2,
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
             objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
-            # Intermediate 
-            objectfifo("OF_2to3", ComputeTile2, [ComputeTile3], 4, ofifo_line_ty, [], [],)
-            objectfifo("OF_3to4", ComputeTile3, [ComputeTile4], 2, ofifo_line_ty, [], [],)
-            objectfifo("OF_4to5", ComputeTile4, [ComputeTile5], 2, ofifo_line_ty, [], [],)
-            objectfifo("OF_5to5", ComputeTile5, [ComputeTile5], 1, ofifo_line_bytes_ty, [], [],)
+            # Intermediate
+            objectfifo(
+                "OF_2to3",
+                ComputeTile2,
+                [ComputeTile3],
+                4,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_3to4",
+                ComputeTile3,
+                [ComputeTile4],
+                2,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_4to5",
+                ComputeTile4,
+                [ComputeTile5],
+                2,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_5to5",
+                ComputeTile5,
+                [ComputeTile5],
+                1,
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
 
             # Set up compute tiles
-            
+
             # Compute tile 2
             @core(ComputeTile2, "rgba2gray.cc.o")
             def core_body():
                 for _ in for_(4294967295):
-                # for _ in for_(36):
+                    # for _ in for_(36):
                     elem_in = acquire(
                         ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty
                     ).acquired_elem()
@@ -201,7 +278,14 @@ def edge_detect():
 
                     Call(
                         threshold_line,
-                        [elem_in, elem_out, arith.constant(lineWidth), v_thr, v_max, v_typ],
+                        [
+                            elem_in,
+                            elem_out,
+                            arith.constant(lineWidth),
+                            v_thr,
+                            v_max,
+                            v_typ,
+                        ],
                     )
 
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
@@ -256,17 +340,14 @@ def edge_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                     yield_([])
 
-
             # To/from AIE-array data movement
 
-            tensorSize = width*height*4 # 4 channels
+            tensorSize = width * height * 4  # 4 channels
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
             memRef_16x16_ty = T.memref(16, 16, T.i32())
 
-            @FuncOp.from_py_func(
-                tensor_ty, memRef_16x16_ty, tensor_ty
-            )
+            @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 ipu_dma_memcpy_nd(
                     metadata="outOF_L2L3",
@@ -282,7 +363,8 @@ def edge_detect():
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
-#    print(ctx.module.operation.verify())
+    #    print(ctx.module.operation.verify())
     print(ctx.module)
+
 
 edge_detect()

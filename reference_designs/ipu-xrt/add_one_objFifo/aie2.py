@@ -14,20 +14,20 @@ from aie.dialects.aiex import *
 from aie.dialects.extras import memref, arith
 from aie.util import mlir_mod_ctx
 
+
 def my_add_one_objFifo():
-	
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_16_ty       = T.memref(16, T.i32())
-            memRef_8_ty        = T.memref(8, T.i32())
+            memRef_16_ty = T.memref(16, T.i32())
+            memRef_8_ty = T.memref(8, T.i32())
             ofifo_memRef_16_ty = TypeAttr.get(ObjectFifoType.get(memRef_16_ty))
-            ofifo_memRef_8_ty  = TypeAttr.get(ObjectFifoType.get(memRef_8_ty))
+            ofifo_memRef_8_ty = TypeAttr.get(ObjectFifoType.get(memRef_8_ty))
 
             # Tile declarations
-            ShimTile     = tile(0, 0)
-            MemTile      = tile(0, 1)
+            ShimTile = tile(0, 0)
+            MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
@@ -42,7 +42,7 @@ def my_add_one_objFifo():
             objectfifo_link(["out1"], ["out0"])
 
             # Set up compute tiles
-    
+
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
@@ -63,15 +63,12 @@ def my_add_one_objFifo():
                     objectfifo_release(ObjectFifoPort.Produce, "out1", 1)
                     yield_([])
 
-
             # To/from AIE-array data movement
 
             memRef_64_ty = T.memref(64, T.i32())
             memRef_32_ty = T.memref(32, T.i32())
 
-            @FuncOp.from_py_func(
-                memRef_64_ty, memRef_32_ty, memRef_64_ty
-            )
+            @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
             def sequence(inTensor, notUsed, outTensor):
                 ipu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
@@ -80,6 +77,8 @@ def my_add_one_objFifo():
                     metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64]
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
+
     print(ctx.module)
+
 
 my_add_one_objFifo()
