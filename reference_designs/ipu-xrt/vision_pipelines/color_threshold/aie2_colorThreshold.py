@@ -304,9 +304,9 @@ def color_threshold():
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 0, value = 50)
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 1, value = 255)
-                IpuWriteRTPOp("rtpComputeTile2", col = 0, row = 2, index = 2, value = 0)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=0, value=50)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=1, value=255)
+                IpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=2, value=0)
 
                 IpuWriteRTPOp("rtpComputeTile3", col = 0, row = 3, index = 0, value = 50)
                 IpuWriteRTPOp("rtpComputeTile3", col = 0, row = 3, index = 1, value = 255)
