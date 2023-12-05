@@ -57,9 +57,10 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
       if (isAssigned) {
         auto lockID = lockOp.getLockID().value();
         auto iter = tileToLocks.find(tileOp);
-        if (iter == tileToLocks.end()) {
+
+        if (iter == tileToLocks.end())
           tileToLocks.insert({tileOp, {{lockID}, /* unassigned = */ {}}});
-        } else {
+        else {
           if (iter->second.assigned.find(lockID) !=
               iter->second.assigned.end()) {
             auto diag = lockOp->emitOpError("is assigned to the same lock (")
@@ -70,26 +71,23 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
           }
           iter->second.assigned.insert(lockID);
         }
-      }
-
-      else {
+      } else {
         auto iter = tileToLocks.find(tileOp);
-        if (iter == tileToLocks.end()) {
+        if (iter == tileToLocks.end())
           tileToLocks.insert({tileOp, {/* assigned = */ {}, {lockOp}}});
-        } else {
+        else
           iter->second.unassigned.push_back(lockOp);
-        }
       }
     }
 
     // IR mutation: assign locks to all unassigned lock ops.
-    for (auto &&[tileOp, locks] : tileToLocks) {
+    for (auto [tileOp, locks] : tileToLocks) {
 
       const auto locksPerTile =
           getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
 
       uint32_t nextID = 0;
-      for (auto &&lockOp : locks.unassigned) {
+      for (auto lockOp : locks.unassigned) {
         while (nextID < locksPerTile &&
                (locks.assigned.find(nextID) != locks.assigned.end())) {
           ++nextID;
