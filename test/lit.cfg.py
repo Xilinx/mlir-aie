@@ -62,12 +62,19 @@ else:
 
 config.enable_ryzen_ai_tests = True
 if config.enable_ryzen_ai_tests:
-    config.available_features.add('ryzen_ai')
-    config.substitutions.append(('%run_on_ipu', "flock /tmp/ipu.lock /opt/xilinx/run_on_ipu.sh"))
-    config.substitutions.append(('%xrt_flags', "-I/opt/xilinx/xrt/include -L/opt/xilinx/xrt/lib -luuid -lxrt_coreutil"))
+    config.available_features.add("ryzen_ai")
+    config.substitutions.append(
+        ("%run_on_ipu", "flock /tmp/ipu.lock /opt/xilinx/run_on_ipu.sh")
+    )
+    config.substitutions.append(
+        (
+            "%xrt_flags",
+            "-I/opt/xilinx/xrt/include -L/opt/xilinx/xrt/lib -luuid -lxrt_coreutil",
+        )
+    )
 else:
     config.substitutions.append(("%run_on_board", "echo"))
-    config.substitutions.append(('%xrt_flags', ""))
+    config.substitutions.append(("%xrt_flags", ""))
 
 VitisSysrootFlag = ""
 if config.aieHostTarget == "x86_64":
