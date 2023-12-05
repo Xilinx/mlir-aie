@@ -1,0 +1,59 @@
+[MAIN]
+
+py-version=3.9
+suggestion-mode=yes
+
+[BASIC]
+
+argument-naming-style=snake_case
+attr-naming-style=snake_case
+bad-names=foo,
+          bar,
+          baz,
+          toto,
+          tutu,
+          tata
+
+class-attribute-naming-style=snake_case
+class-const-naming-style=UPPER_CASE
+class-naming-style=PascalCase
+const-naming-style=UPPER_CASE
+docstring-min-length=-1
+function-naming-style=snake_case
+include-naming-hint=yes
+inlinevar-naming-style=snake_case
+method-naming-style=snake_case
+module-naming-style=snake_case
+variable-naming-style=snake_case
+
+[CLASSES]
+
+valid-classmethod-first-arg=cls
+valid-metaclass-classmethod-first-arg=mcs
+
+[IMPORTS]
+
+allow-wildcard-with-all=no
+
+[SIMILARITIES]
+
+# Minimum lines number of a similarity.
+min-similarity-lines=4
+
+[STRING]
+
+# This flag controls whether inconsistent-quotes generates a warning when the
+# character used as a quote delimiter is used inconsistently within a module.
+check-quote-consistency=yes
+
+# This flag controls whether the implicit-str-concat should generate a warning
+# on implicit string concatenation in sequences defined over several lines.
+check-str-concat-over-line-jumps=yes
+
+[MESSAGES CONTROL]
+
+# C0116: Missing function or method docstring (missing-function-docstring)
+# C0114: Missing module docstring (missing-module-docstring)
+# E0402: Attempted relative import beyond top-level package (relative-beyond-top-level)
+# C0115: Missing class docstring (missing-class-docstring)
+disable=C0116,C0114,E0402,C0115

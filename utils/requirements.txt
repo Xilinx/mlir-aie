@@ -3,3 +3,4 @@ rich
 pybind11
 numpy
 cmake
+pylint

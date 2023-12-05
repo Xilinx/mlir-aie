@@ -56,13 +56,14 @@ jobs:
         run: git clone --depth 1 https://github.com/Xilinx/cmakeModules.git
         shell: bash
 
-      - name: Get LLVM
-        id: clone-llvm
-        run: utils/clone-llvm.sh
-        shell: bash
-
-      - name: Rebuild and Install LLVM
-        run: utils/build-llvm.sh
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          pip install lit pkginfo
+          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
+          WHL=$(ls mlir-*.whl)
+          echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
+          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
       # Build the repo test target in release mode to build and test.
       - name: Build Docs
@@ -73,23 +74,22 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
+            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
+            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DAIE_INCLUDE_DOCS=ON \
-            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
+            -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd
           cp -r docs/* build_release/docs
           dot -Tpng docs/dialects.dot > build_release/docs/dialects.png
           dot -Tsvg docs/dialects.dot > build_release/docs/dialects.svg
 
-      - name: Save LLVM Version
+      - name: Save MLIR Version
         run: |
-          cd llvm; set VER=`git rev-parse HEAD`
-          echo "{" > ../build_release/docs/build_info.json
-          echo "llvm-version: \"$(VER)\"," >> ../build_release/docs/build_info.json
-          echo "}" > ../build_release/docs/build_info.json
+          echo "{" > build_release/docs/build_info.json
+          echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}\"," >> build_release/docs/build_info.json
+          echo "}" > build_release/docs/build_info.json
 
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
