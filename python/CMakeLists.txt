@@ -87,10 +87,16 @@ if (AIE_ENABLE_PYTHON_PASSES)
   # Missed one...
   get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
 
+  if(WIN32)
+    set(ROOT_DIR "")
+  else()
+    set(ROOT_DIR "/")
+  endif()
+
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR "/"
+    ROOT_DIR ${ROOT_DIR}
 
     SOURCES
 
