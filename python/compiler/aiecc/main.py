@@ -694,6 +694,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         if(opts.unified):
           self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
           await self.do_call(progress_bar.task, ['aie-opt', '--aie-localize-locks',
+                              '--aie-normalize-address-spaces',
                               '--aie-standard-lowering',
                               '--aiex-standard-lowering',
                               *aie_opt_passes,
