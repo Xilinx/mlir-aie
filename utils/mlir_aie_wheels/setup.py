@@ -95,7 +95,7 @@ class CMakeBuild(build_ext):
         cmake_args = [
             f"-G {cmake_generator}",
             "-DBUILD_SHARED_LIBS=OFF",
-            # windows isn't happy with root dir config in that branch of the cmake
+            # TODO(max): windows isn't happy with root dir config in that branch of the cmake
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             # get rid of that annoying af git on the end of .17git
             "-DLLVM_VERSION_SUFFIX=",
