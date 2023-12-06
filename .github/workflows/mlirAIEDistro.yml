@@ -163,7 +163,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
-        git apply --ignore-space-change --ignore-whitespace --directory mlir-aie win_root_dir.diff
+        cp ../../python/CMakeLists.txt mlir-aie/python/CMakeLists.txt
         
         APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
