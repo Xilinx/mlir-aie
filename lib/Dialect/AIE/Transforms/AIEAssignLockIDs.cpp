@@ -10,18 +10,17 @@
 
 // This pass aims to assign lockIDs to AIE.lock operations. The lockID is
 // numbered from the most recent AIE.lock within the same tile. If the lockID
-// exceeds 15 then the pass generates an error and terminates. AIE.lock
-// operations for different tiles are numbered independently. If there are
-// existing lock IDs, this pass is idempotent and only assign lock ids to locks
-// without an ID.
+// exceeds the number of locks on the tile, the pass generates an error and
+// terminates. AIE.lock operations for different tiles are numbered
+// independently. If there are existing lock IDs, this pass is idempotent
+// and only assigns lock IDs to locks without an ID.
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
-
-#include <set>
+#include "llvm/ADT/DenseMap.h"
 
 #define DEBUG_TYPE "aie-assign-lock-ids"
 
@@ -40,50 +39,68 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DeviceOp device = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
 
-    std::map<Operation *, std::pair<int, std::set<int>>> tileToLastID;
+    // All of the lock ops on a tile, separated into ops which have been
+    // assigned to a lock, and ops which have not.
+    struct TileLockOps {
+      DenseSet<int> assigned;
+      SmallVector<LockOp> unassigned;
+    };
 
-    // The first pass scans for and stores the existing lockIDs. This data is
-    // stored in a map with the lock’s tile operation as the key, while the
-    // value to the key is a pair with the current potential lockID and a set
-    // that stores the currently assigned lockIDs.
-    for (auto lock : device.getOps<LockOp>()) {
-      if (lock.getLockID().has_value()) {
-        Operation *lock_tile = lock.getTile().getDefiningOp();
-        tileToLastID[lock_tile].first = 0;
-        tileToLastID[lock_tile].second.insert(lock.getLockIDValue());
+    DenseMap<TileOp, TileLockOps> tileToLocks;
+
+    // Construct data structure storing locks by tile.
+    for (LockOp lockOp : device.getOps<LockOp>()) {
+
+      TileOp tileOp = lockOp.getTileOp();
+      bool isAssigned = lockOp.getLockID().has_value();
+
+      if (isAssigned) {
+        auto lockID = lockOp.getLockID().value();
+        auto iter = tileToLocks.find(tileOp);
+
+        if (iter == tileToLocks.end())
+          tileToLocks.insert({tileOp, {{lockID}, /* unassigned = */ {}}});
+        else {
+          if (iter->second.assigned.find(lockID) !=
+              iter->second.assigned.end()) {
+            auto diag = lockOp->emitOpError("is assigned to the same lock (")
+                        << lockID << ") as another op.";
+            diag.attachNote(tileOp.getLoc())
+                << "tile has lock ops assigned to same lock.";
+            return signalPassFailure();
+          }
+          iter->second.assigned.insert(lockID);
+        }
+      } else {
+        auto iter = tileToLocks.find(tileOp);
+        if (iter == tileToLocks.end())
+          tileToLocks.insert({tileOp, {/* assigned = */ {}, {lockOp}}});
+        else
+          iter->second.unassigned.push_back(lockOp);
       }
     }
 
-    // The second pass scans for locks with no lockIDs and assigns locks.
-    for (auto lock : device.getOps<LockOp>()) {
-      Operation *lock_tile = lock.getTile().getDefiningOp();
-      if (!lock.getLockID().has_value()) {
-        if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
-          // If the tile operation corresponding to the lock does not exist in
-          // the data structure, initialize the lockID with 0 with an empty set.
-          tileToLastID[lock_tile].first = 0;
-        } else if (tileToLastID[lock_tile].first < 15) {
-          // If the tile operation of the lock exists, the potential lockID is
-          // checked with the set containing occupied lockIDs until a lockID
-          // that is free is found.
-          int potential_ID = tileToLastID[lock_tile].first;
-          while (true) {
-            if (tileToLastID[lock_tile].second.find(potential_ID) !=
-                tileToLastID[lock_tile].second.end())
-              potential_ID++;
-            else
-              break;
-          }
-          tileToLastID[lock_tile].first = potential_ID;
-        } else {
-          lock->emitError() << "Exceeded the number of unique LockIDs";
-          return;
-        }
+    // IR mutation: assign locks to all unassigned lock ops.
+    for (auto [tileOp, locks] : tileToLocks) {
 
-        // The lockID is assigned and is stored in the set.
-        lock->setAttr("lockID", rewriter.getI32IntegerAttr(
-                                    tileToLastID[lock_tile].first));
-        tileToLastID[lock_tile].second.insert(tileToLastID[lock_tile].first);
+      const auto locksPerTile =
+          getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
+
+      uint32_t nextID = 0;
+      for (auto lockOp : locks.unassigned) {
+        while (nextID < locksPerTile &&
+               (locks.assigned.find(nextID) != locks.assigned.end())) {
+          ++nextID;
+        }
+        if (nextID == locksPerTile) {
+          mlir::InFlightDiagnostic diag =
+              lockOp->emitOpError("not allocated a lock.");
+          diag.attachNote(tileOp.getLoc()) << "because only " << locksPerTile
+                                           << " locks available in this tile.";
+          return signalPassFailure();
+        }
+        lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nextID));
+        ++nextID;
       }
     }
   }

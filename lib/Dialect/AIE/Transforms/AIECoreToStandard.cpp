@@ -86,13 +86,17 @@ static auto getAIE1Intrinsics(OpBuilder &builder) {
 
 static auto getAIE2Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
-  Type int512Type = IntegerType::get(builder.getContext(), 512);
+  Type accType = VectorType::get({16}, int32Type);
   IntrinsicDecls functions = {
       {"debug_i32", {int32Type}, {}},
       {"llvm.aie2.put.ms", {int32Type, int32Type}, {}}, //(%value, %tlast) -> ()
       {"llvm.aie2.get.ss", {}, {int32Type, int32Type}}, //() -> (%value, %tlast)
-      {"llvm.aie2.put.mcd", {int512Type}, {}},
-      {"llvm.aie2.get.scd", {}, {int512Type}},
+      {"llvm.aie2.mcd.write.vec",
+       {accType, int32Type},
+       {}}, // (%value, %enable) -> ()
+      {"llvm.aie2.scd.read.vec",
+       {int32Type},
+       {accType}}, // (%enable) -> (%value)
       {"llvm.aie2.acquire",
        {int32Type, int32Type},
        {}}, //(%lock_id, %lock_val) -> ()
@@ -275,13 +279,18 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.put.mcd";
     else
-      funcName = "llvm.aie2.put.mcd";
+      funcName = "llvm.aie2.mcd.write.vec";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
+    if (targetModel.getTargetArch() == AIEArch::AIE2)
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          rewriter.getI32IntegerAttr(1))); // enable
+
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -305,13 +314,19 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.get.scd";
     else
-      funcName = "llvm.aie2.get.scd";
+      funcName = "llvm.aie2.scd.read.vec";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!getSCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
+    SmallVector<Value, 2> args;
+    if (targetModel.getTargetArch() == AIEArch::AIE2)
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          rewriter.getI32IntegerAttr(1))); // enable
+
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                    getSCDFunc, ValueRange({}));
+                                                    getSCDFunc, args);
     rewriter.replaceOp(op, getSCDCall.getResult(0));
     return success();
   }
