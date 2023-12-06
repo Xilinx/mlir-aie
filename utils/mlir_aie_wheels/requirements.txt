@@ -1,0 +1,13 @@
+cmake>=3.12
+dataclasses
+importlib_metadata
+ninja
+numpy
+pip
+pybind11[global]>=2.10.4
+rich
+setuptools>=42
+wheel
+
+mlir-native-tools
+mlir
