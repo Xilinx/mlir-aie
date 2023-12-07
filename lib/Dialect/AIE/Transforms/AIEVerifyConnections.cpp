@@ -62,11 +62,14 @@ Current limitations:
 */
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+
 #include <map>
 #include <stack>
 #include <vector>
@@ -78,7 +81,8 @@ using namespace xilinx::AIE;
 //
 // Utilities
 //
-template <class opT> bool regionContains(mlir::Region &r) {
+template <class opT>
+bool regionContains(mlir::Region &r) {
   return r.template op_begin<opT>() != r.template op_end<opT>();
 }
 
@@ -92,17 +96,16 @@ private:
   struct endpoint {
     const TileID tile;
     const WireBundle bundle;
-    const uint32_t channel;
+    const int32_t channel;
     bool operator==(const endpoint &other) const {
-      return tile.first == other.tile.first &&
-             tile.second == other.tile.second && bundle == other.bundle &&
-             channel == other.channel;
+      return tile.col == other.tile.col && tile.row == other.tile.row &&
+             bundle == other.bundle && channel == other.channel;
     }
     bool operator<(const endpoint &other) const {
-      return (tile.first < other.tile.first ||
-              (tile.first == other.tile.first &&
-               (tile.second < other.tile.second ||
-                (tile.second == other.tile.second &&
+      return (tile.col < other.tile.col ||
+              (tile.col == other.tile.col &&
+               (tile.row < other.tile.row ||
+                (tile.row == other.tile.row &&
                  (bundle < other.bundle ||
                   (bundle == other.bundle && channel < other.channel))))));
     }
@@ -213,8 +216,8 @@ private:
   // end of a DMA, or Core is not uniquely defined (could be any of N, E, S, W)
   endpoint getOppositeEnd(const endpoint &src) {
     std::pair<short, short> dst_offset = getWireBundleTileOffset(src.bundle);
-    TileID dst_tile = std::make_pair(src.tile.first + dst_offset.first,
-                                     src.tile.second + dst_offset.second);
+    TileID dst_tile = {src.tile.col + dst_offset.first,
+                       src.tile.row + dst_offset.second};
     WireBundle dst_bundle = getMirroredWireBundle(src.bundle);
     const endpoint dst{dst_tile, dst_bundle, src.channel};
     return dst;
@@ -229,13 +232,13 @@ private:
       const endpoint &src = edge.first;
       link &link = edge.second;
       const endpoint dst = getOppositeEnd(src);
-      assert(0 <= dst.tile.first && 0 <= dst.tile.second);
+      assert(0 <= dst.tile.col && 0 <= dst.tile.row);
       if (src.tile == dst.tile) {
         // This is a tile-local connection to DMA or Core
         // TODO: Verify there is a DMA that uses this connection.
         continue;
       }
-      if (0 == src.tile.second || 0 == dst.tile.second) {
+      if (0 == src.tile.row || 0 == dst.tile.row) {
         // Connection in/into the shim row. For now we don't check those.
         // TODO: Check these.
         continue;
@@ -248,7 +251,7 @@ private:
             << ">"
                " in tile "
                "("
-            << dst.tile.first << ", " << dst.tile.second
+            << dst.tile.col << ", " << dst.tile.row
             << ")"
                " for this outgoing connection.";
         signalPassFailure();
@@ -261,11 +264,11 @@ private:
       const endpoint &src = edge.first;
       link &link = edge.second;
       const endpoint dst = getOppositeEnd(src);
-      assert(0 <= dst.tile.first && 0 <= dst.tile.second);
+      assert(0 <= dst.tile.col && 0 <= dst.tile.row);
       if (src.tile == dst.tile) {
         continue;
       }
-      if (0 == src.tile.second || 0 == dst.tile.second) {
+      if (0 == src.tile.row || 0 == dst.tile.row) {
         continue; // Shim row
       }
       if (outgoing_edges.count(dst) == 0) {
@@ -276,7 +279,7 @@ private:
             << ">"
                " in tile "
                "("
-            << dst.tile.first << ", " << dst.tile.second
+            << dst.tile.col << ", " << dst.tile.row
             << ")"
                " for this incoming connection.";
         signalPassFailure();
@@ -293,7 +296,7 @@ private:
     // correct).
     for (DMAStartOp dma : region.getOps<DMAStartOp>()) {
       DMAChannelDir dir = dma.getChannelDir();
-      uint32_t channel = dma.getChannelIndex();
+      int32_t channel = dma.getChannelIndex();
       endpoint dma_end{tile, WireBundle::DMA, channel};
       if (dir == DMAChannelDir::S2MM) {
         // There must be a connection going _into_ the DMA.
