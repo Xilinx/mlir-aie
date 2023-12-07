@@ -290,12 +290,17 @@ def route_using_cp(
     raise RuntimeError("Couldn't route.")
 
 
-def route_using_ilp(DG, flows):
+def route_using_ilp(
+    DG,
+    flows,
+    timeout=600,
+):
     import gurobipy as gp
     from gurobipy import GRB
 
     # Create model object
     m = gp.Model()
+    m.setParam("TimeLimit", timeout)
 
     # Create variable for each edge, for each path
     flow_vars = {}
@@ -500,7 +505,7 @@ class Router:
         if self.routing_solution is None:
             DG = build_graph(self.max_col, self.max_row, self.target_model)
             if self.use_gurobi:
-                flow_paths = route_using_ilp(DG, self.flows)
+                flow_paths = route_using_ilp(DG, self.flows, timeout=self.timeout)
             else:
                 flow_paths = route_using_cp(
                     DG, self.flows, num_workers=10, timeout=self.timeout
