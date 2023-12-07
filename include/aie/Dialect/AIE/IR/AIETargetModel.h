@@ -19,7 +19,7 @@
 
 namespace xilinx::AIE {
 
-typedef struct TileID {
+using TileID = struct TileID {
   // friend definition (will define the function as a non-member function in the
   // namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os, const TileID &s) {
@@ -50,7 +50,7 @@ typedef struct TileID {
   bool operator!=(const TileID &rhs) const { return !(*this == rhs); }
 
   int col, row;
-} TileID;
+};
 
 class AIETargetModel {
 public:
@@ -155,7 +155,7 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
-  /// Return the base address in the local address map of differnet memories.
+  /// Return the base address in the local address map of different memories.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
   virtual uint32_t getMemSouthBaseAddress() const = 0;
   virtual uint32_t getMemWestBaseAddress() const = 0;
@@ -321,7 +321,7 @@ public:
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {
+  llvm::SmallDenseSet<unsigned, 16> nocColumns = {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
@@ -332,11 +332,11 @@ public:
   int rows() const override { return 9; /* One Shim row and 8 Core rows. */ }
 
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && noc_columns.contains(col);
+    return row == 0 && nocColumns.contains(col);
   }
 
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !noc_columns.contains(col);
+    return row == 0 && !nocColumns.contains(col);
   }
 
   bool isShimNOCorPLTile(int col, int row) const override {
@@ -504,7 +504,8 @@ public:
 } // namespace xilinx::AIE
 
 namespace llvm {
-template <> struct DenseMapInfo<xilinx::AIE::TileID> {
+template <>
+struct DenseMapInfo<xilinx::AIE::TileID> {
   using FirstInfo = DenseMapInfo<int>;
   using SecondInfo = DenseMapInfo<int>;
 
@@ -528,7 +529,8 @@ template <> struct DenseMapInfo<xilinx::AIE::TileID> {
 };
 } // namespace llvm
 
-template <> struct std::hash<xilinx::AIE::TileID> {
+template <>
+struct std::hash<xilinx::AIE::TileID> {
   std::size_t operator()(const xilinx::AIE::TileID &s) const noexcept {
     std::size_t h1 = std::hash<int>{}(s.col);
     std::size_t h2 = std::hash<int>{}(s.row);

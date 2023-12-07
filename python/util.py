@@ -1,10 +1,10 @@
 import multiprocessing
 import numbers
 import os
-import warnings
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from pprint import pprint
 from typing import List, Tuple, Dict
 from typing import Optional
 from typing import Union
@@ -205,12 +205,10 @@ def route_using_cp(
     solver.parameters.max_time_in_seconds = timeout
 
     # Create variable for each edge, for each path
-    flow_vars = {}
-    flat_flow_vars = []
-    for flow in flows:
-        flow_var = {(i, j): model.NewIntVar(0, 1, "") for i, j in DG.edges}
-        flow_vars[flow] = flow_var
-        flat_flow_vars.append(flow_var)
+    flow_vars = {
+        flow: {(i, j): model.NewIntVar(0, 1, "") for i, j in DG.edges} for flow in flows
+    }
+    flat_flow_vars = list(flow_vars.values())
 
     # Add flow-balance constraints at all nodes (besides sources and targets)
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
@@ -303,12 +301,10 @@ def route_using_ilp(
     m.setParam("TimeLimit", timeout)
 
     # Create variable for each edge, for each path
-    flow_vars = {}
-    flat_flow_vars = []
-    for flow in flows:
-        flow_var = m.addVars(DG.edges, vtype=GRB.BINARY, name="flow")
-        flow_vars[flow] = flow_var
-        flat_flow_vars.append(flow_var)
+    flow_vars = {
+        flow: m.addVars(DG.edges, vtype=GRB.BINARY, name="flow") for flow in flows
+    }
+    flat_flow_vars = list(flow_vars.values())
 
     # Add flow-balance constraints at all nodes (besides sources and targets)
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
@@ -512,6 +508,11 @@ class Router:
                 )
 
             self.routing_solution = get_routing_solution(DG, flow_paths)
+
+        for pe, sws in self.routing_solution.items():
+            print(pe)
+            pprint(sws, indent=2)
+
         return self.routing_solution
 
     def is_legal(self):
