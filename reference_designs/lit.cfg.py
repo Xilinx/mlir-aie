@@ -60,7 +60,9 @@ run_on_ipu = "echo"
 xrt_flags = ""
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
-    xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(config.xrt_include_dir, config.xrt_lib_dir)
+    xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
+        config.xrt_include_dir, config.xrt_lib_dir
+    )
     try:
         xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
         result = subprocess.run(
