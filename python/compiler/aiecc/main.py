@@ -33,8 +33,7 @@ import aie.compiler.aiecc.configure
 import rich.progress as progress
 import re
 
-aie_opt_passes = ['--aie-normalize-address-spaces',
-                  '--canonicalize',
+aie_opt_passes = ['--canonicalize',
                   '--cse',
                   '--convert-vector-to-llvm',
                   '--expand-strided-metadata',
@@ -208,6 +207,7 @@ class flow_runner:
       if(not opts.unified):
         file_core = self.tmpcorefile(core, "mlir")
         await self.do_call(task, ['aie-opt', '--aie-localize-locks',
+                            '--aie-normalize-address-spaces',
                             '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2],
                             '--aiex-standard-lowering',
                             self.file_with_addresses, '-o', file_core])
@@ -694,6 +694,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         if(opts.unified):
           self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
           await self.do_call(progress_bar.task, ['aie-opt', '--aie-localize-locks',
+                              '--aie-normalize-address-spaces',
                               '--aie-standard-lowering',
                               '--aiex-standard-lowering',
                               *aie_opt_passes,
