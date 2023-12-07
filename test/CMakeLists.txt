@@ -59,6 +59,7 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
+find_package(XRT)
 
 cmake_dependent_option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ON "Vitis_FOUND" OFF)
 cmake_dependent_option(ENABLE_BOARD_TESTS "Enable board tests" ON "CMAKE_HOST_SYSTEM_PROCESSOR MATCHES aarch64" OFF)

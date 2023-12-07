@@ -5,17 +5,6 @@ on:
     branches:
       - test-ryzen-ai
   workflow_dispatch:
-    inputs:
-      AIE_COMMIT:
-        description: 'which aie commit to build'
-        type: string
-        required: false
-        default: ''
-      LIT_FILTER:
-        description: 'LIT_FILTER for tests (regex of paths in test/)'
-        type: string
-        required: false
-        default: 'dialect|Conversion|Targets|Integration|python'
 
 defaults:
   run:

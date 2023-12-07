@@ -60,21 +60,29 @@ if config.enable_board_tests:
 else:
     config.substitutions.append(("%run_on_board", "echo"))
 
-config.enable_ryzen_ai_tests = True
-if config.enable_ryzen_ai_tests:
-    config.available_features.add("ryzen_ai")
-    config.substitutions.append(
-        ("%run_on_ipu", "flock /tmp/ipu.lock /opt/xilinx/run_on_ipu.sh")
-    )
-    config.substitutions.append(
-        (
-            "%xrt_flags",
-            "-I/opt/xilinx/xrt/include -L/opt/xilinx/xrt/lib -luuid -lxrt_coreutil",
-        )
-    )
+run_on_ipu = "echo"
+xrt_flags = ""
+if config.xrt_lib_dir:
+    print("xrt found at", os.path.dirname(config.xrt_lib_dir))
+    xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(config.xrt_include_dir, config.xrt_lib_dir)
+    try:
+        xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
+        result = subprocess.run([xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = result.stdout.decode("utf-8").split('\n')
+        p = re.compile('\[.+:.+:.+\].+Phoenix.+Yes')
+        for l in result:
+            m = p.match(l)
+            if m:
+                print("Found Ryzen AI device:", m.group().split()[0])
+                config.available_features.add("ryzen_ai")
+                run_on_ipu = "flock /tmp/ipu.lock /opt/xilinx/run_on_ipu.sh"
+    except:
+        print("Failed to run xbutil")
+        pass
 else:
-    config.substitutions.append(("%run_on_board", "echo"))
-    config.substitutions.append(("%xrt_flags", ""))
+    print("xrt not found")
+config.substitutions.append(("%run_on_ipu", run_on_ipu))
+config.substitutions.append(("%xrt_flags", xrt_flags))
 
 VitisSysrootFlag = ""
 if config.aieHostTarget == "x86_64":

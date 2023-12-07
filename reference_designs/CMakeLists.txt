@@ -68,6 +68,7 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
+find_package(XRT)
 
 # Look for LibXAIE
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
