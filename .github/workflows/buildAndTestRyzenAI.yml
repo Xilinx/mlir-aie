@@ -49,6 +49,7 @@ jobs:
               -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DXRT_ROOT=/opt/xilinx/xrt \
               -DCMAKE_INSTALL_PREFIX=install
 
             ninja install
