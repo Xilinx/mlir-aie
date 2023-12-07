@@ -10,8 +10,6 @@ set(AIE_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
-# Upstream bindings emit due to `if (DerivedTy::getTypeIdFunction)`
-add_compile_options(-Wno-address)
 
 ################################################################################
 # Sources
