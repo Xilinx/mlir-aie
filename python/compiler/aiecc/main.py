@@ -263,6 +263,31 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
+  async def emit_mem_topology_json(self, output_filename):
+    mem_topology = {
+        "mem_topology": {
+            "m_count": "2",
+            "m_mem_data": [
+                {
+                    "m_type": "MEM_DRAM",
+                    "m_used": "1",
+                    "m_sizeKB": "0x10000",
+                    "m_tag": "HOST",
+                    "m_base_address": "0x4000000"
+                },
+                {
+                    "m_type": "MEM_DRAM",
+                    "m_used": "1",
+                    "m_sizeKB": "0xc000",
+                    "m_tag": "SRAM",
+                    "m_base_address": "0x4000000"
+                }
+            ]
+        }
+    }
+    with open(output_filename, 'w') as f:
+      f.write(json.dumps(mem_topology, indent=2))
+
   async def emit_design_partition_json(self, output_filename, kernel_id='0x901'):
 
     with Context() as ctx, Location.unknown():
@@ -448,6 +473,7 @@ all:
 
       await self.do_call(task, [os.path.join(self.tmpdirname, 'cdo_main.out'),
                                 '--work-dir-path', self.tmpdirname+"/"])
+      await self.emit_mem_topology_json(os.path.join(self.tmpdirname,'mem_topology.json'))
       await self.emit_design_partition_json(os.path.join(self.tmpdirname,'aie_partition.json'),
                                             opts.kernel_id)
       await self.emit_design_kernel_json(os.path.join(self.tmpdirname,'kernels.json'),
@@ -462,7 +488,8 @@ all:
                                 '-o', os.path.join(self.tmpdirname,'design.pdi'),
                                 '-w'])
       await self.do_call(task, ['xclbinutil',
-                                '--input' , os.path.join(data_path,'1x4.xclbin'),
+                                '--add-replace-section',
+                                'MEM_TOPOLOGY:JSON:'+os.path.join(self.tmpdirname,'mem_topology.json'),
                                 '--add-kernel', os.path.join(self.tmpdirname,'kernels.json'),
                                 '--add-replace-section',
                                 'AIE_PARTITION:JSON:'+os.path.join(self.tmpdirname,'aie_partition.json'),
