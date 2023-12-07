@@ -63,9 +63,11 @@ if config.xrt_lib_dir:
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(config.xrt_include_dir, config.xrt_lib_dir)
     try:
         xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
-        result = subprocess.run([xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        result = result.stdout.decode("utf-8").split('\n')
-        p = re.compile('\[.+:.+:.+\].+Phoenix.+Yes')
+        result = subprocess.run(
+            [xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        result = result.stdout.decode("utf-8").split("\n")
+        p = re.compile("\[.+:.+:.+\].+Phoenix.+Yes")
         for l in result:
             m = p.match(l)
             if m:
@@ -86,8 +88,8 @@ if config.opencv_include_dir and config.opencv_libs:
     opencv_flags = opencv_flags + " -I" + config.opencv_include_dir
     if config.opencv_lib_dir:
         opencv_flags = opencv_flags + " -L" + config.opencv_lib_dir
-    libs = config.opencv_libs.split(';')
-    opencv_flags = opencv_flags + " " + ' '.join(["-l"+l for l in libs])
+    libs = config.opencv_libs.split(";")
+    opencv_flags = opencv_flags + " " + " ".join(["-l" + l for l in libs])
 else:
     opencv_flags = ""
 config.substitutions.append(("%opencv_flags", opencv_flags))
