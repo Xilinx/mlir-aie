@@ -104,8 +104,7 @@ jobs:
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
-        sparse-checkout: |
-          .github/actions
+        sparse-checkout: .github/actions
 
     - uses: ./.github/actions/setup_base
       id: setup_base
@@ -162,8 +161,6 @@ jobs:
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        
-        cp ../../python/CMakeLists.txt mlir-aie/python/CMakeLists.txt
         
         export PIP_NO_BUILD_ISOLATION=false
         
@@ -270,7 +267,7 @@ jobs:
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
-    - name: build x86 python bindings
+    - name: build python bindings
       shell: bash
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -296,7 +293,6 @@ jobs:
         popd
 
     - name: Upload distro wheels
-      if: github.event_name == 'workflow_dispatch' && (success() || failure())
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
@@ -307,6 +303,8 @@ jobs:
     needs: build_distro_wheels
 
     continue-on-error: true
+
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} ${{ matrix.PY_VERSION }}
 
     runs-on: ${{ matrix.OS }}
 
@@ -327,7 +325,14 @@ jobs:
             ARCH: aarch64
             PY_VERSION: "cp312"
 
+
     steps:
+
+      - name: Checkout actions
+        uses: actions/checkout@v3
+        with:
+          sparse-checkout: .github/actions
+
       - uses: ./.github/actions/setup_base
         id: setup_base
         with:
@@ -349,9 +354,9 @@ jobs:
           ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
           
           if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
+            WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
           else
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
+            WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
           fi
           
           echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
@@ -373,9 +378,12 @@ jobs:
 
       - name: cibuildwheel python bindings aarch64
         shell: bash
-        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
         run: |
           
+          export PIP_NO_BUILD_ISOLATION=false
+          
+          cp requirements.txt python_bindings
           cp -R scripts python_bindings/scripts
           pushd python_bindings
           unzip -q ../wheelhouse/mlir_aie-*-linux_aarch64.whl
@@ -391,36 +399,13 @@ jobs:
           
           popd
 
-      - name: Download cache from container ubuntu
-        if: success() || failure()
-        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
-        shell: bash
-        run: |
-          
-          ccache -s
-          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-          rm -rf $HOST_CCACHE_DIR
-          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
-          ls -la $HOST_CCACHE_DIR
-          ccache -s
-
-      - name: Reset datetime ccache
-        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
-        shell: bash
-        run: |
-          
-          ccache -s
-          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-          find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
-          ccache -s
-
       # done
 
       - name: Upload wheels
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
-          path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/aie-*aarch64*.whl
           name: build_artifact
 
   smoke_test_wheels:
@@ -456,6 +441,7 @@ jobs:
       - name: test
         shell: bash
         run: |
+          pip install numpy PyYAML
           pip install aie -f dist --no-index
           python -c 'import aie.dialects.aie'
 

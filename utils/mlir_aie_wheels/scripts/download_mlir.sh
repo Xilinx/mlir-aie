@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -xe
 
+rm -rf mlir || true
 rm -rf mlir-18* || true
 
 SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
