@@ -17,6 +17,7 @@ on:
         required: false
         default: 'dialect|Conversion|Targets|Integration|python'
 
+pull_request:
 defaults:
   run:
     shell: bash
