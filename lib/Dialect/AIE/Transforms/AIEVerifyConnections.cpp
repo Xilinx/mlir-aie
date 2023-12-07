@@ -64,15 +64,8 @@ Current limitations:
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/DialectConversion.h"
-
 #include <map>
 #include <stack>
-#include <vector>
 
 using namespace mlir;
 using namespace xilinx;
@@ -82,26 +75,72 @@ using namespace xilinx::AIE;
 // Utilities
 //
 template <class opT>
-bool regionContains(mlir::Region &r) {
-  return r.template op_begin<opT>() != r.template op_end<opT>();
+bool regionContains(Region &r) {
+  return r.op_begin<opT>() != r.op_end<opT>();
+}
+
+std::pair<short, short> getWireBundleTileOffset(const WireBundle bundle) {
+  switch (bundle) {
+  case WireBundle::North: {
+    return std::make_pair(0, 1);
+  }
+  case WireBundle::East: {
+    return std::make_pair(1, 0);
+  }
+  case WireBundle::South: {
+    return std::make_pair(0, -1);
+  }
+  case WireBundle::West: {
+    return std::make_pair(-1, 0);
+  }
+  default: { // Tile-local connection to DMA or core
+    return std::make_pair(0, 0);
+  }
+  }
+}
+
+WireBundle getMirroredWireBundle(const WireBundle outgoing) {
+  // How to read the following:
+  // "If it goes out `outgoing` at the source, it must come in at
+  //  `return value` at the destination."
+  // (And vice versa.)
+  switch (outgoing) {
+  case WireBundle::North: {
+    return WireBundle::South;
+  }
+  case WireBundle::East: {
+    return WireBundle::West;
+  }
+  case WireBundle::South: {
+    return WireBundle::North;
+  }
+  case WireBundle::West: {
+    return WireBundle::East;
+  }
+  default: {
+    // This is not 100% accurate; it could also be DMA.
+    // This function is only really useful for N, E, S, W inputs.
+    return WireBundle::Core;
+  }
+  }
 }
 
 //
 // Verify BDs Connected Pass
 //
 struct AIEVerifyConnectionsPass
-    : public AIEVerifyConnectionsBase<AIEVerifyConnectionsPass> {
+    : AIEVerifyConnectionsBase<AIEVerifyConnectionsPass> {
 
 private:
-  struct endpoint {
+  struct Endpoint {
     const TileID tile;
     const WireBundle bundle;
     const int32_t channel;
-    bool operator==(const endpoint &other) const {
+    bool operator==(const Endpoint &other) const {
       return tile.col == other.tile.col && tile.row == other.tile.row &&
              bundle == other.bundle && channel == other.channel;
     }
-    bool operator<(const endpoint &other) const {
+    bool operator<(const Endpoint &other) const {
       return (tile.col < other.tile.col ||
               (tile.col == other.tile.col &&
                (tile.row < other.tile.row ||
@@ -111,17 +150,16 @@ private:
     }
   };
 
-  struct link {
-    endpoint src;
-    endpoint dest;
+  struct Link {
+    Endpoint src;
+    Endpoint dest;
     ConnectOp op;
   };
 
-  typedef std::multimap<const endpoint, link> graph;
+  using Graph = std::multimap<const Endpoint, Link>;
 
   // This analysis does not yet support packet-switched communications;
-  bool analysisIsSupported(DeviceOp &device, bool emitWarnings = true) {
-    bool ret = true; // Don't return early; make sure we generate all warnings.
+  bool analysisIsSupported(DeviceOp &device) {
     Region &region = device.getRegion();
     for (SwitchboxOp switchbox : region.getOps<SwitchboxOp>()) {
       Region &switchboxRegion = switchbox.getRegion();
@@ -133,9 +171,10 @@ private:
                                  << " currently does not "
                                     "support code containing packet-switched "
                                     "routing.";
-        ret = false;
+        return false;
       }
     }
+
     if (regionContains<FlowOp>(region) ||
         regionContains<ObjectFifoCreateOp>(region)) {
       device->emitWarning()
@@ -143,107 +182,60 @@ private:
           << " must be applied after "
              "lowering to switchboxes. Analysis does not work "
              "higher abstraction levels.";
-      ret = false;
+      return false;
     }
-    return ret;
+    return true;
   }
 
-  std::pair<short, short>
-  getWireBundleTileOffset(const WireBundle bundle) const {
-    switch (bundle) {
-    case WireBundle::North: {
-      return std::make_pair(0, 1);
-    }
-    case WireBundle::East: {
-      return std::make_pair(1, 0);
-    }
-    case WireBundle::South: {
-      return std::make_pair(0, -1);
-    }
-    case WireBundle::West: {
-      return std::make_pair(-1, 0);
-    }
-    default: { // Tile-local connection to DMA or core
-      return std::make_pair(0, 0);
-    }
-    }
-  }
-
-  WireBundle getMirroredWireBundle(const WireBundle outgoing) const {
-    // How to read the following:
-    // "If it goes out `outgoing` at the source, it must come in at
-    //  `return value` at the destination."
-    // (And vice versa.)
-    switch (outgoing) {
-    case WireBundle::North: {
-      return WireBundle::South;
-    }
-    case WireBundle::East: {
-      return WireBundle::West;
-    }
-    case WireBundle::South: {
-      return WireBundle::North;
-    }
-    case WireBundle::West: {
-      return WireBundle::East;
-    }
-    default: {
-      // This is not 100% accurate; it could also be DMA.
-      // This function is only really useful for N, E, S, W inputs.
-      return WireBundle::Core;
-    }
-    }
-  }
-
-  void buildConnectionGraph(Region &region, graph &outgoing_edges,
-                            graph &incoming_edges) {
+  void buildConnectionGraph(Region &region, Graph &outgoingEdges,
+                            Graph &incomingEdges) {
     for (SwitchboxOp switchbox : region.getOps<SwitchboxOp>()) {
       TileID tile = switchbox.getTileID();
-      Region &switchbox_region = switchbox.getRegion();
-      for (ConnectOp connect : switchbox_region.getOps<ConnectOp>()) {
-        endpoint src_endpoint{tile, connect.getSourceBundle(),
-                              connect.getSourceChannel()};
-        endpoint dst_endpoint{tile, connect.getDestBundle(),
-                              connect.getDestChannel()};
-        link l = {src_endpoint, dst_endpoint, connect}; // will be copied
-        incoming_edges.emplace(src_endpoint, l);
-        outgoing_edges.emplace(dst_endpoint, l);
+      Region &switchboxRegion = switchbox.getRegion();
+      for (ConnectOp connect : switchboxRegion.getOps<ConnectOp>()) {
+        Endpoint srcEndpoint{tile, connect.getSourceBundle(),
+                             connect.getSourceChannel()};
+        Endpoint dstEndpoint{tile, connect.getDestBundle(),
+                             connect.getDestChannel()};
+        Link l = {srcEndpoint, dstEndpoint, connect}; // will be copied
+        incomingEdges.emplace(srcEndpoint, l);
+        outgoingEdges.emplace(dstEndpoint, l);
       }
     }
   }
 
   // This only works for North, East, South, West endpoints, as the opposite
   // end of a DMA, or Core is not uniquely defined (could be any of N, E, S, W)
-  endpoint getOppositeEnd(const endpoint &src) {
-    std::pair<short, short> dst_offset = getWireBundleTileOffset(src.bundle);
-    TileID dst_tile = {src.tile.col + dst_offset.first,
-                       src.tile.row + dst_offset.second};
-    WireBundle dst_bundle = getMirroredWireBundle(src.bundle);
-    const endpoint dst{dst_tile, dst_bundle, src.channel};
+  Endpoint getOppositeEnd(const Endpoint &src) {
+    auto [offsetCol, offsetRow] = getWireBundleTileOffset(src.bundle);
+    TileID dstTile = {src.tile.col + offsetCol, src.tile.row + offsetRow};
+    WireBundle dstBundle = getMirroredWireBundle(src.bundle);
+    const Endpoint dst{dstTile, dstBundle, src.channel};
     return dst;
   }
 
-  void verifyAllConnectionsHaveMatchingEnds(graph &outgoing_edges,
-                                            graph &incoming_edges) {
-
+  void verifyAllConnectionsHaveMatchingEnds(Graph &outgoingEdges,
+                                            Graph &incomingEdges) {
     // Verify we find an incoming edge in all switchboxes for all outoging
     // connections.
-    for (auto &edge : outgoing_edges) {
-      const endpoint &src = edge.first;
-      link &link = edge.second;
-      const endpoint dst = getOppositeEnd(src);
-      assert(0 <= dst.tile.col && 0 <= dst.tile.row);
-      if (src.tile == dst.tile) {
+    for (auto &edge : outgoingEdges) {
+      const Endpoint &src = edge.first;
+      Link &link = edge.second;
+      const Endpoint dst = getOppositeEnd(src);
+      assert(0 <= dst.tile.col && 0 <= dst.tile.row &&
+             "0 <= dst.tile.col && 0 <= dst.tile.row");
+
+      if (src.tile == dst.tile)
         // This is a tile-local connection to DMA or Core
         // TODO: Verify there is a DMA that uses this connection.
         continue;
-      }
-      if (0 == src.tile.row || 0 == dst.tile.row) {
+
+      if (0 == src.tile.row || 0 == dst.tile.row)
         // Connection in/into the shim row. For now we don't check those.
         // TODO: Check these.
         continue;
-      }
-      if (incoming_edges.count(dst) == 0) {
+
+      if (incomingEdges.count(dst) == 0) {
         link.op.emitError()
             << "There is no matching incoming connection for "
                "<\""
@@ -260,18 +252,20 @@ private:
 
     // Opposite of above: Verify all incoming edges are matched by an outgoing
     // edge on the opposite end.
-    for (auto &edge : incoming_edges) {
-      const endpoint &src = edge.first;
-      link &link = edge.second;
-      const endpoint dst = getOppositeEnd(src);
-      assert(0 <= dst.tile.col && 0 <= dst.tile.row);
-      if (src.tile == dst.tile) {
+    for (auto &edge : incomingEdges) {
+      const Endpoint &src = edge.first;
+      Link &link = edge.second;
+      const Endpoint dst = getOppositeEnd(src);
+      assert(0 <= dst.tile.col && 0 <= dst.tile.row &&
+             "0 <= dst.tile.col && 0 <= dst.tile.row");
+
+      if (src.tile == dst.tile)
         continue;
-      }
-      if (0 == src.tile.row || 0 == dst.tile.row) {
+
+      if (0 == src.tile.row || 0 == dst.tile.row)
         continue; // Shim row
-      }
-      if (outgoing_edges.count(dst) == 0) {
+
+      if (outgoingEdges.count(dst) == 0) {
         link.op.emitError()
             << "There is no matching outgoing connection for "
                "<\""
@@ -287,8 +281,8 @@ private:
     }
   }
 
-  void verifyDMAsAreConnected(TileID tile, Region &region,
-                              graph &outgoing_edges, graph &incoming_edges) {
+  void verifyDMAsAreConnected(TileID tile, Region &region, Graph &outgoingEdges,
+                              Graph &incomingEdges) {
     // It really should not matter for this function whether we look at
     // the outgoing_edges or incoming_edges graph, since the edge will have to
     // be internal to the tile (e.g. North -> DMA) and thus is guaranteed
@@ -297,78 +291,76 @@ private:
     for (DMAStartOp dma : region.getOps<DMAStartOp>()) {
       DMAChannelDir dir = dma.getChannelDir();
       int32_t channel = dma.getChannelIndex();
-      endpoint dma_end{tile, WireBundle::DMA, channel};
+      Endpoint dmaEnd{tile, WireBundle::DMA, channel};
       if (dir == DMAChannelDir::S2MM) {
         // There must be a connection going _into_ the DMA.
-        if (outgoing_edges.find(dma_end) == outgoing_edges.end()) {
+        if (outgoingEdges.find(dmaEnd) == outgoingEdges.end()) {
           dma.emitError() << "S2MM DMA defined, but no incoming connections "
                              "to the DMA are defined.";
           signalPassFailure();
         }
-      } else { // MM2S
+      } else if (incomingEdges.find(dmaEnd) == incomingEdges.end()) { // MM2S
         // There must be a connection going _out of_ the DMA.
-        if (incoming_edges.find(dma_end) == incoming_edges.end()) {
-          dma.emitError() << "MM2S DMA defined, but no outgoing connections "
-                             "out of the DMA are defined.";
-          signalPassFailure();
-        }
+        dma.emitError() << "MM2S DMA defined, but no outgoing connections "
+                           "out of the DMA are defined.";
+        signalPassFailure();
       }
     }
   }
 
-  void verifyContainsNoCycles(graph &incoming_edges) {
+  void verifyContainsNoCycles(Graph &incomingEdges) {
     // We will start a depth-first traversal from each node in this set, unless
     // a prior traversal already visited the node. This is used to explore all
     // disconnected components.
-    std::set<std::pair<endpoint, ConnectOp &>> unexplored = {};
-    for (auto node : incoming_edges) {
+    std::set<std::pair<Endpoint, ConnectOp &>> unexplored = {};
+    for (auto node : incomingEdges)
       unexplored.emplace(node.first, node.second.op);
-    }
+
     // Perform a DFS for each of the components.
-    while (unexplored.size() > 0) {
+    while (!unexplored.empty()) {
       auto start = *unexplored.begin();
       unexplored.erase(start);
-      std::set<endpoint> visited = {};
-      std::stack<std::pair<endpoint, ConnectOp &>> todo = {};
+      std::set<Endpoint> visited = {};
+      std::stack<std::pair<Endpoint, ConnectOp &>> todo = {};
       todo.push(start);
-      while (todo.size() > 0) {
+      while (!todo.empty()) {
         auto current = todo.top();
-        endpoint current_endpoint = current.first;
-        ConnectOp &current_op = current.second;
+        Endpoint currentEndpoint = current.first;
+        ConnectOp &currentOp = current.second;
         todo.pop();
 
         if (visited.count(current.first) > 0) {
           // We've already been here -- cycle!
-          current_op.emitError() << "There is a cycle in the route containing "
-                                    "this connection.";
+          currentOp.emitError() << "There is a cycle in the route containing "
+                                   "this connection.";
           signalPassFailure();
           return;
         }
         unexplored.erase(current);
-        visited.insert(current_endpoint);
+        visited.insert(currentEndpoint);
 
         // Add all connected nodes to visit next. Conceptually we make two
         // "hops" here: (1) Within the tile, we hop from the incoming port to
         // the outgoing port (i.e. the connection that AIE.connect(src, dst))
         // describes, and (2) we hop across tiles, to the neighboring tile
         // according to the output port (e.g. X+1 if the output port is East).
-        auto children_range = incoming_edges.equal_range(current_endpoint);
-        for (auto child_edge = children_range.first;
-             child_edge != children_range.second; ++child_edge) {
-          endpoint hop_1_dst = child_edge->second.dest;
-          endpoint hop_2_dst = getOppositeEnd(hop_1_dst);
-          if (hop_1_dst.tile == hop_2_dst.tile) {
+        auto childrenRange = incomingEdges.equal_range(currentEndpoint);
+        for (auto childEdge = childrenRange.first;
+             childEdge != childrenRange.second; ++childEdge) {
+          Endpoint hop1Dst = childEdge->second.dest;
+          Endpoint hop2Dst = getOppositeEnd(hop1Dst);
+          if (hop1Dst.tile == hop2Dst.tile)
             // This is a local X -> DMA or X -> Core connection.
             continue;
-          }
-          if (incoming_edges.count(hop_2_dst) == 0) {
+
+          if (incomingEdges.count(hop2Dst) == 0)
             // Only add next hops if they contain further connections, otherwise
             // we can stop exploring early here. Note that the
             // verifyAllConnectionsHaveMatchingEnds pass should make sure this
             // case never happens.
             continue;
-          }
-          todo.emplace(hop_2_dst, child_edge->second.op);
+
+          todo.emplace(hop2Dst, childEdge->second.op);
         }
       }
     }
@@ -376,24 +368,22 @@ private:
 
 public:
   void runOnOperation() override {
-    graph outgoing_edges, // map of AIE.connect()s, indexed by the dest port
-        incoming_edges;   // map of AIE.connect()s, indexed by the src port
+    Graph outgoingEdges, // map of AIE.connect()s, indexed by the dest port
+        incomingEdges;   // map of AIE.connect()s, indexed by the src port
     DeviceOp device = getOperation();
     Region &region = device.getRegion();
-    if (!analysisIsSupported(device)) {
+    if (!analysisIsSupported(device))
       return;
-    }
     // First, iterate over child operations to build our connectivity graph.
-    buildConnectionGraph(region, outgoing_edges, incoming_edges);
-    verifyAllConnectionsHaveMatchingEnds(outgoing_edges, incoming_edges);
+    buildConnectionGraph(region, outgoingEdges, incomingEdges);
+    verifyAllConnectionsHaveMatchingEnds(outgoingEdges, incomingEdges);
     // Now, check if there are any BDs that are not connected to a source, and
     // check if there are BDs that are streaming with no one listening.
-    for (MemOp mem : region.getOps<MemOp>()) {
-      verifyDMAsAreConnected(mem.getTileID(), mem.getRegion(), outgoing_edges,
-                             incoming_edges);
-    }
+    for (MemOp mem : region.getOps<MemOp>())
+      verifyDMAsAreConnected(mem.getTileID(), mem.getRegion(), outgoingEdges,
+                             incomingEdges);
     // Lastly, check for cycles in the routes.
-    verifyContainsNoCycles(incoming_edges);
+    verifyContainsNoCycles(incomingEdges);
   }
 };
 
