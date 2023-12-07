@@ -28,15 +28,10 @@ on:
         type: string
         required: false
         default: ''
-      APPLY_PATCHES:
-        description: 'whether to apply patches to source'
-        type: string
-        required: false
-        default: 'true'
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-  pull_request:
+#  pull_request:
 
 jobs:
 
