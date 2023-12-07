@@ -65,7 +65,7 @@ jobs:
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
 
-  build:
+  build_wheels:
 
     needs: get_aie_project_commit
 
@@ -157,7 +157,7 @@ jobs:
 
     # build
 
-    - name: cibuildwheel
+    - name: build x86 distro wheels
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -165,7 +165,6 @@ jobs:
         
         cp ../../python/CMakeLists.txt mlir-aie/python/CMakeLists.txt
         
-        APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -266,20 +265,77 @@ jobs:
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
-    # done
+    - name: build x86 python bindings
+      shell: bash
+      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+        
+        cp requirements.txt python_bindings
+        cp -r wheelhouse python_bindings/wheelhouse
+        cp -r scripts python_bindings/scripts
+        
+        pushd python_bindings
+        
+        export PIP_FIND_LINKS="wheelhouse https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR="Ninja" \
+        HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
+        cibuildwheel --output-dir ../wheelhouse
+        
+        popd
 
-    - name: Upload wheels
+    - name: Upload distro wheels
       if: github.event_name == 'workflow_dispatch' && (success() || failure())
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
-  upload_distro_wheels:
+  smoke_test_wheels:
+
+    name: Smoke test on ${{ matrix.OS }} ${{ matrix.ARCH }}
+
+    needs: build_wheels
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+
+          - OS: windows-2019
+            ARCH: AMD64
+
+          - OS: macos-11
+            ARCH: x86_64
+
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: build_artifact
+          path: dist
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: test
+        shell: bash
+        run: |
+          pip install aie -f dist --no-index
+          python -c 'import aie.dialects.aie'
+
+  upload_wheels:
 
     if: github.event_name == 'workflow_dispatch'
 
-    needs: build
+    needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
 
