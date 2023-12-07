@@ -52,8 +52,6 @@ jobs:
               -DCMAKE_INSTALL_PREFIX=install
 
             ninja install
-            cp /usr/lib/firmware/amdaie/1502/1x4.xclbin data/1x4.xclbin
-            cp /usr/lib/firmware/amdaie/1502/1x4.xclbin install/data/1x4.xclbin
 
             sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j12 --show-unsupported/g' $PWD/../test/CMakeLists.txt
             ninja check-aie
