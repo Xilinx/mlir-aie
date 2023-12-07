@@ -1,0 +1,44 @@
+[tool.cibuildwheel]
+environment = { PIP_FIND_LINKS = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro", PIP_NO_BUILD_ISOLATION = "false" }
+build-verbosity = 3
+build = "cp310-* cp311-* cp312-*"
+manylinux-aarch64-image = "manylinux_2_28"
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.linux]
+skip = ["*-manylinux_i686", "*-musllinux*"]
+environment-pass = [
+    "CIBW_ARCHS",
+    "CMAKE_ARGS",
+    "CMAKE_GENERATOR",
+    "DATETIME",
+    "HOST_CCACHE_DIR",
+    "AIE_PROJECT_COMMIT",
+    "MATRIX_OS",
+    "PARALLEL_LEVEL",
+    "PIP_FIND_LINKS",
+    "PIP_NO_BUILD_ISOLATION",
+]
+before-build = [
+    "pip install -r requirements.txt",
+    "{project}/scripts/download_mlir.sh",
+]
+repair-wheel-command = [
+    "auditwheel repair -w {dest_dir} {wheel} --exclude libmlir_float16_utils.so"
+]
+
+[tool.cibuildwheel.macos]
+before-build = [
+    "pip install -r requirements.txt",
+    "{project}/scripts/download_mlir.sh",
+]
+repair-wheel-command = [
+    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+]
+
+[tool.cibuildwheel.windows]
+before-build = [
+    "pip install delvewheel",
+    "pip install -r requirements.txt",
+    "bash {project}\\scripts\\download_mlir.sh",
+]
