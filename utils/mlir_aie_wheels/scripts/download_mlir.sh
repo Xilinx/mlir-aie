@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -xe
 
+rm -rf mlir-18* || true
+
 SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
 
 pip install mlir-native-tools --force -U
@@ -11,8 +13,9 @@ if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then
   elif [ x"$MATRIX_OS" == x"ubuntu-20.04" ] && [ x"$CIBW_ARCHS" == x"aarch64" ]; then
     PLAT=linux_aarch64
   fi
-  pip install mlir --platform $PLAT --only-binary=:all: --target $SITE_PACKAGES --no-deps --force -U
+  pip -q download mlir --platform $PLAT --only-binary=:all:
 else
-  pip install mlir --force -U
+  pip -q download mlir
 fi
 
+unzip -q mlir-*whl

@@ -4,7 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
-from importlib.metadata import version
+from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
@@ -61,11 +61,9 @@ class CMakeBuild(build_ext):
         cfg = "Release"
 
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
-        import mlir_aie
-        import mlir
 
-        MLIR_AIE_INSTALL_ABS_PATH = Path(mlir_aie.__path__[0]).absolute()
-        MLIR_INSTALL_ABS_PATH = Path(mlir.__path__[0]).absolute()
+        MLIR_AIE_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir_aie").absolute()
+        MLIR_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir").absolute()
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
             if not Path("/tmp/a").exists():
@@ -77,12 +75,11 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-G {cmake_generator}",
-            "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
-            "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
             f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
             f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DPython3_EXECUTABLE={sys.executable}",
+            "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
             f"-DCMAKE_BUILD_TYPE={cfg}",
             # prevent symbol collision that leads to multiple pass registration and such
@@ -173,7 +170,7 @@ class CMakeBuild(build_ext):
 
 
 setup(
-    version=version("mlir-aie"),
+    version=os.environ.get("MLIR_AIE_WHEEL_VERSION", "0.0.1"),
     author="",
     name="aie",
     include_package_data=True,

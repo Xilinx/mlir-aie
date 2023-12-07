@@ -65,7 +65,7 @@ jobs:
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
 
-  build_wheels:
+  build_distro_wheels:
 
     needs: get_aie_project_commit
 
@@ -91,11 +91,11 @@ jobs:
           - OS: macos-11
             ARCH: x86_64
 
-# TODO(max): doesn't work because pip won't install the correct mlir-distro wheels
-#          - OS: macos-11
-#            ARCH: arm64
-#          - OS: ubuntu-20.04
-#            ARCH: aarch64
+          - OS: macos-11
+            ARCH: arm64
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
 
     steps:
 
@@ -157,13 +157,15 @@ jobs:
 
     # build
 
-    - name: build x86 distro wheels
+    - name: build distro wheels
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
         cp ../../python/CMakeLists.txt mlir-aie/python/CMakeLists.txt
+        
+        export PIP_NO_BUILD_ISOLATION=false
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -181,8 +183,11 @@ jobs:
       run: |
         
         export PIP_FIND_LINKS="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
+        pip install importlib-metadata
+        CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -240,7 +245,7 @@ jobs:
         ccache --print-stats
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         # Set the timestamp to the beginning of the current hour.
-        find $HOST_CCACHE_DIR -exec touch -a -m -t "${{ needs.get_aie.outputs.DATETIME }}00" {} \;
+        find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
     # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
@@ -271,17 +276,19 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
+        export PIP_NO_BUILD_ISOLATION=false
+        
         cp requirements.txt python_bindings
-        cp -r wheelhouse python_bindings/wheelhouse
+        cp wheelhouse/mlir_aie-*.whl python_bindings/
         cp -r scripts python_bindings/scripts
         
         pushd python_bindings
-        
-        export PIP_FIND_LINKS="wheelhouse https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        unzip -q mlir_aie-*.whl
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        MLIR_AIE_WHEEL_VERSION=${{ steps.get_wheel_version.outputs.MLIR_AIE_WHEEL_VERSION }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
@@ -295,11 +302,132 @@ jobs:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
+  build_linux_aarch64_pybindings_wheels:
+
+    needs: build_distro_wheels
+
+    continue-on-error: true
+
+    runs-on: ${{ matrix.OS }}
+
+    strategy:
+
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            PY_VERSION: "cp310"
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            PY_VERSION: "cp311"
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            PY_VERSION: "cp312"
+
+    steps:
+      - uses: ./.github/actions/setup_base
+        id: setup_base
+        with:
+          MATRIX_OS: ${{ matrix.OS }}
+          MATRIX_ARCH: ${{ matrix.ARCH }}
+
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ${{ matrix.OS }}
+          MATRIX_ARCH: ${{ matrix.ARCH }}
+
+      - name: Shift workspace root
+        id: workspace_root
+        shell: bash
+        working-directory: ${{ env.TEMP }}
+        run: |
+          
+          ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
+          
+          if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
+          else
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
+          fi
+          
+          echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v3
+        with:
+          # unpacks default artifact into dist/
+          # if `name: artifact` is omitted, the action will create extra parent dir
+          name: build_artifact
+          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse
+
+      - name: Set up QEMU
+        if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: ${{ matrix.ARCH }}
+
+      # build
+
+      - name: cibuildwheel python bindings aarch64
+        shell: bash
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        run: |
+          
+          cp -R scripts python_bindings/scripts
+          pushd python_bindings
+          unzip -q ../wheelhouse/mlir_aie-*-linux_aarch64.whl
+          
+          CIBW_ARCHS=${{ matrix.ARCH }} \
+          CIBW_BUILD=${{ matrix.PY_VERSION }}-manylinux_aarch64 \
+          CIBW_CONTAINER_ENGINE="docker; create_args: --platform=linux/aarch64" \
+          CMAKE_GENERATOR=Ninja \
+          HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+          MATRIX_OS=${{ matrix.OS }} \
+          MLIR_AIE_WHEEL_VERSION=${{ needs.build_distro_wheels.outputs.MLIR_AIE_WHEEL_VERSION }} \
+          cibuildwheel --output-dir ../wheelhouse
+          
+          popd
+
+      - name: Download cache from container ubuntu
+        if: success() || failure()
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          rm -rf $HOST_CCACHE_DIR
+          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+          ls -la $HOST_CCACHE_DIR
+          ccache -s
+
+      - name: Reset datetime ccache
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
+          ccache -s
+
+      # done
+
+      - name: Upload wheels
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+          name: build_artifact
+
   smoke_test_wheels:
 
     name: Smoke test on ${{ matrix.OS }} ${{ matrix.ARCH }}
 
-    needs: build_wheels
+    needs: [build_distro_wheels, build_linux_aarch64_pybindings_wheels]
 
     runs-on: ${{ matrix.OS }}
     strategy:

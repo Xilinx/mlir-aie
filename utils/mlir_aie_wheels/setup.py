@@ -1,14 +1,15 @@
-import shutil
-from datetime import datetime
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 from textwrap import dedent
 
+from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
@@ -25,11 +26,26 @@ def get_cross_cmake_args():
     def native_tools():
         nonlocal cmake_args
 
-        native_tools_dir = Path(sys.prefix).absolute() / "bin"
-        assert native_tools_dir is not None, "native_tools_dir missing"
-        assert os.path.exists(native_tools_dir), "native_tools_dir doesn't exist"
-        cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
-        cmake_args["LLVM_NATIVE_TOOL_DIR"] = str(native_tools_dir)
+        mlir_tblgen_host = next(
+            f.locate()
+            for f in files("mlir-native-tools")
+            if f.name.startswith("mlir-tblgen")
+        )
+        mlir_tblgen_target = next(
+            f.locate() for f in files("mlir") if f.name.startswith("mlir-tblgen")
+        )
+        os.remove(mlir_tblgen_target)
+        shutil.copy(mlir_tblgen_host, mlir_tblgen_target)
+        mlir_pdll_host = next(
+            f.locate()
+            for f in files("mlir-native-tools")
+            if f.name.startswith("mlir-pdll")
+        )
+        mlir_pdll_target = next(
+            f.locate() for f in files("mlir") if f.name.startswith("mlir-pdll")
+        )
+        os.remove(mlir_pdll_target)
+        shutil.copy(mlir_pdll_host, mlir_pdll_target)
 
     CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
@@ -44,25 +60,23 @@ def get_cross_cmake_args():
     if platform.system() == "Darwin":
         if ARCH == "AArch64":
             cmake_args["CMAKE_OSX_ARCHITECTURES"] = "arm64"
-            cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "arm64-apple-darwin21.6.0"
             cmake_args["LLVM_HOST_TRIPLE"] = "arm64-apple-darwin21.6.0"
+            native_tools()
         elif ARCH == "X86":
             cmake_args["CMAKE_OSX_ARCHITECTURES"] = "x86_64"
-            cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-apple-darwin"
             cmake_args["LLVM_HOST_TRIPLE"] = "x86_64-apple-darwin"
     elif platform.system() == "Linux":
         if ARCH == "AArch64":
-            cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "aarch64-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "aarch64-linux-gnu"
             cmake_args["CMAKE_C_COMPILER"] = "aarch64-linux-gnu-gcc"
             cmake_args["CMAKE_CXX_COMPILER"] = "aarch64-linux-gnu-g++"
             cmake_args["CMAKE_CXX_FLAGS"] = "-static-libgcc -static-libstdc++"
+            cmake_args["SysrootAarch64"] = "/usr/aarch64-linux-gnu"
+            cmake_args["AIE_RUNTIME_TARGETS"] = "aarch64"
             native_tools()
         elif ARCH == "X86":
-            cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "x86_64-unknown-linux-gnu"
-
-    cmake_args["LLVM_TARGET_ARCH"] = ARCH
+            cmake_args["AIE_RUNTIME_TARGETS"] = "x86_64"
 
     return cmake_args
 
@@ -79,14 +93,15 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / "mlir"
+        install_dir = extdir / "mlir_aie"
         cfg = "Release"
 
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
+        cmake_module_path = f"-DCMAKE_MODULE_PATH={Path(__file__).parent.absolute() / 'cmake' / 'modulesXilinx'}"
+        if platform.system() == "Windows":
+            cmake_module_path = cmake_module_path.replace("\\", "\\\\")
 
-        import mlir
-
-        MLIR_INSTALL_ABS_PATH = Path(mlir.__path__[0])
+        MLIR_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir").absolute()
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
             shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
@@ -94,6 +109,7 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-G {cmake_generator}",
+            cmake_module_path,
             "-DBUILD_SHARED_LIBS=OFF",
             # TODO(max): windows isn't happy with root dir config in that branch of the cmake
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
@@ -103,10 +119,14 @@ class CMakeBuild(build_ext):
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
             # causes pure duplication of various shlibs for Python wheels.
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
+            "-DLLVM_CCACHE_BUILD=ON",
+            "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
-            f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}{os.sep}",
+            f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
             f"-DPython3_EXECUTABLE={sys.executable}",
-            f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
+            "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
+            # not used on MSVC, but no harm
+            f"-DCMAKE_BUILD_TYPE={cfg}",
             # prevent symbol collision that leads to multiple pass registration and such
             "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
             "-DCMAKE_C_VISIBILITY_PRESET=hidden",
@@ -114,11 +134,15 @@ class CMakeBuild(build_ext):
         ]
         if platform.system() == "Windows":
             cmake_args += [
+                "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
+                "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
                 "-DCMAKE_C_FLAGS=/MT",
                 "-DCMAKE_CXX_FLAGS=/MT",
+                "-DLLVM_USE_CRT_MINSIZEREL=MT",
+                "-DLLVM_USE_CRT_RELEASE=MT",
             ]
 
         cmake_args_dict = get_cross_cmake_args()
@@ -187,7 +211,7 @@ class CMakeBuild(build_ext):
         )
 
 
-commit_hash = os.environ.get("AIE_COMMIT", "deadbeef")
+commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
 release_version = "0.0.1"
 now = datetime.now()
 datetime = os.environ.get(

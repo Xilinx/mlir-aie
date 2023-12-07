@@ -1,6 +1,6 @@
 cmake>=3.12
 dataclasses
-importlib_metadata
+importlib-metadata
 ninja
 numpy
 pip

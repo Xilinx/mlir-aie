@@ -245,7 +245,7 @@ jobs:
         ccache --print-stats
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         # Set the timestamp to the beginning of the current hour.
-        find $HOST_CCACHE_DIR -exec touch -a -m -t "${{ needs.get_llvm_project_commit.outputs.DATETIME }}00" {} \;
+        find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
     # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
