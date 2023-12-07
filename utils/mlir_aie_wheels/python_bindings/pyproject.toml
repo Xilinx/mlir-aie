@@ -13,7 +13,7 @@ environment-pass = [
     "CMAKE_GENERATOR",
     "DATETIME",
     "HOST_CCACHE_DIR",
-    "AIE_PROJECT_COMMIT",
+    "MLIR_AIE_WHEEL_VERSION",
     "MATRIX_OS",
     "PARALLEL_LEVEL",
     "PIP_FIND_LINKS",
