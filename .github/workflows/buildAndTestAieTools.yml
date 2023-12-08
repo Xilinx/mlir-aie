@@ -72,6 +72,8 @@ jobs:
               pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
             fi 
             
+            pip install -r python/requirements.txt
+            
             # don't delete the space in the sed
             cd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake
             
