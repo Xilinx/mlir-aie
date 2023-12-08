@@ -15,7 +15,7 @@ using namespace mlir::python::adaptors;
 
 PYBIND11_MODULE(_aie, m) {
 
-  ::aieRegisterAllPasses();
+  aieRegisterAllPasses();
 
   m.doc() = R"pbdoc(
     AIE MLIR Python bindings
@@ -30,12 +30,12 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "register_dialect",
       [](MlirDialectRegistry registry) {
-        MlirDialectHandle aie_handle = mlirGetDialectHandle__aie__();
-        MlirDialectHandle aiex_handle = mlirGetDialectHandle__aiex__();
-        MlirDialectHandle aievec_handle = mlirGetDialectHandle__aievec__();
-        mlirDialectHandleInsertDialect(aie_handle, registry);
-        mlirDialectHandleInsertDialect(aiex_handle, registry);
-        mlirDialectHandleInsertDialect(aievec_handle, registry);
+        MlirDialectHandle aieHandle = mlirGetDialectHandle__aie__();
+        MlirDialectHandle aiexHandle = mlirGetDialectHandle__aiex__();
+        MlirDialectHandle aievecHandle = mlirGetDialectHandle__aievec__();
+        mlirDialectHandleInsertDialect(aieHandle, registry);
+        mlirDialectHandleInsertDialect(aiexHandle, registry);
+        mlirDialectHandleInsertDialect(aievecHandle, registry);
       },
       py::arg("registry"));
 
@@ -43,7 +43,7 @@ PYBIND11_MODULE(_aie, m) {
   mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)
       .def_classmethod(
           "get",
-          [](py::object cls, MlirType type) {
+          [](const py::object &cls, const MlirType type) {
             return cls(aieObjectFifoTypeGet(type));
           },
           "Get an instance of ObjectFifoType with given element type.",
@@ -52,7 +52,7 @@ PYBIND11_MODULE(_aie, m) {
   mlir_type_subclass(m, "ObjectFifoSubviewType", aieTypeIsObjectFifoSubviewType)
       .def_classmethod(
           "get",
-          [](py::object cls, MlirType type) {
+          [](const py::object &cls, const MlirType type) {
             return cls(aieObjectFifoSubviewTypeGet(type));
           },
           "Get an instance of ObjectFifoSubviewType with given element type.",

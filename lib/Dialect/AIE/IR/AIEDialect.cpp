@@ -90,7 +90,7 @@ const AIETargetModel &getTargetModel(Operation *op) {
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
 static TileElement getParentTileElement(Operation *op) {
-  auto parent = op->getParentOp();
+  auto *parent = op->getParentOp();
   while (!llvm::isa_and_nonnull<DeviceOp, ModuleOp>(parent)) {
     if (auto element = llvm::dyn_cast<TileElement>(parent))
       return element;
@@ -105,7 +105,7 @@ struct UsesAreAccessable {
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
-    for (auto user : users) {
+    for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
       if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
@@ -341,7 +341,8 @@ void AIEDialect::initialize() {
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.
-template <typename... TerminatorOpTypes> struct HasSomeTerminator {
+template <typename... TerminatorOpTypes>
+struct HasSomeTerminator {
   static LogicalResult verifyTrait(Operation *op) {
     for (auto &region : op->getRegions()) {
       for (auto &block : region) {
@@ -659,8 +660,8 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -704,8 +705,8 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -749,8 +750,8 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -794,8 +795,8 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -871,7 +872,7 @@ LogicalResult TileOp::verify() {
 
   auto users = getResult().getUsers();
   bool found = false;
-  for (auto user : users) {
+  for (auto *user : users) {
     if (llvm::isa<SwitchboxOp>(*user)) {
       if (found)
         return emitOpError("can only have one switchbox");
@@ -932,10 +933,17 @@ LogicalResult SwitchboxOp::verify() {
       sourceset.insert(source);
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
-      if (destset.count(dest))
-        return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
-               << " as another connect operation";
+      if (destset.count(dest)) {
+        return connectOp.emitOpError()
+               << "; connecting " << to_string(source) << " to "
+               << to_string(dest) << " on "
+               << to_string(this->getTileOp().getTileID())
+               << " targets same dst as another connect op; existing "
+                  "destinations: "
+               << llvm::join(llvm::map_range(
+                                 destset, [](auto &p) { return to_string(p); }),
+                             ", ");
+      }
       destset.insert(dest);
 
       if (connectOp.sourceIndex() < 0)
@@ -1005,7 +1013,7 @@ LogicalResult SwitchboxOp::verify() {
     } else if (auto amselOp = dyn_cast<AMSelOp>(ops)) {
       std::vector<MasterSetOp> mstrs;
       std::vector<PacketRulesOp> slvs;
-      for (auto user : amselOp.getResult().getUsers()) {
+      for (auto *user : amselOp.getResult().getUsers()) {
         if (auto s = dyn_cast<PacketRuleOp>(user)) {
           auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
           slvs.push_back(pktRules);
@@ -1288,7 +1296,7 @@ LogicalResult MemTileDMAOp::verify() {
           if (block->empty())
             continue;
           auto successors = block->getTerminator()->getSuccessors();
-          for (auto i : successors) {
+          for (auto *i : successors) {
             if (!reachable.contains(i)) {
               reachable.insert(i);
               worklist.push_back(i);
@@ -1422,7 +1430,8 @@ int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
 int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
-template <typename... ParentOpTypes> struct HasSomeParent {
+template <typename... ParentOpTypes>
+struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
     Operation *operation = op->getParentOp();
     while (operation) {
@@ -1459,7 +1468,7 @@ LogicalResult LockOp::verify() {
 
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
-    auto block = op->getBlock();
+    auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
       if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
@@ -1475,7 +1484,7 @@ struct UsesOneLockInDMABlock {
 
 struct AcquireReleaseOneStateInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
-    auto block = op->getBlock();
+    auto *block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<UseLockOp>()) {
       if (op.acquire() || op.acquireGE()) {

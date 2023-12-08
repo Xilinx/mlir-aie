@@ -85,6 +85,8 @@ if (AIE_ENABLE_PYTHON_PASSES)
   # Missed one...
   get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
 
+  set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
+
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
@@ -93,7 +95,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
     SOURCES
 
     ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PybindTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PythonPass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RouterPass.cpp
 
     ${_mlir_python_cpp_sources}
     ${RegisterEverythingSources}
@@ -106,6 +110,10 @@ if (AIE_ENABLE_PYTHON_PASSES)
     ${MLIR_EXTENSION_LIBS}
     ${MLIR_TRANSLATION_LIBS}
     ${MLIR_UPSTREAM_CAPI_LIBS}
+  )
+  target_include_directories(
+    AIEPythonExtensions.MLIR
+    INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
   )
 
   # Kill all of the dependencies (mlir_python_DEPENDS) on cpp sources in the dialect build targets

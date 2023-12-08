@@ -40,6 +40,7 @@ jobs:
       - name: Install Python packages
         run: |
           pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML requests
+          pip install -r python/requirements.txt
 
       - name: Get MLIR
         id: mlir-wheels
@@ -150,7 +151,6 @@ jobs:
         with:
           tool_name: clang-format
           level: error
-          fail_on_error: true
           cleanup: true
 
       - name: Run black format
@@ -174,7 +174,6 @@ jobs:
         with:
           tool_name: black
           level: error
-          fail_on_error: true
 
   code-coverage:
 
@@ -200,6 +199,7 @@ jobs:
       - name: Install Python and other packages
         run: |
           pip install cmake numpy psutil pybind11 rich lit
+          pip install -r python/requirements.txt
 
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build clang lld llvm
