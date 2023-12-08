@@ -6,21 +6,38 @@
 //===----------------------------------------------------------------------===//
 
 #include "PybindTypes.h"
+#include "IRModule.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/CAPI/IR.h"
 
 #include <pybind11/operators.h>
 
 using namespace mlir;
+using namespace mlir::python;
 using namespace mlir::python::adaptors;
 using namespace xilinx::AIE;
 
 namespace py = pybind11;
 
 PYBIND11_MAKE_OPAQUE(std::set<Port>);
+
+PyConnectOp &PyConnectOp::forOperation(ConnectOp connectOp) {
+  return static_cast<PyConnectOp &>(
+      PyOperation::forOperation(DefaultingPyMlirContext::resolve().getRef(),
+                                wrap(connectOp))
+          ->getOperation());
+}
+
+PySwitchboxOp &PySwitchboxOp::forOperation(SwitchboxOp switchboxOp) {
+  return static_cast<PySwitchboxOp &>(
+      PyOperation::forOperation(DefaultingPyMlirContext::resolve().getRef(),
+                                wrap(switchboxOp.getOperation()))
+          ->getOperation());
+}
 
 void xilinx::AIE::bindTypes(py::module_ &m) {
   // By default, stl containers aren't passed by reference but passed by value,
@@ -79,6 +96,7 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
 
   py::class_<Switchbox, TileID>(m, "Switchbox")
       .def(py::init<Switchbox &>())
+      .def(py::init<TileID &>())
       .def(py::init<int, int>())
       // Implements __hash__ (magic?)
       .def(py::hash(py::self))
@@ -128,4 +146,26 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       .def("get_num_dest_switchbox_connections",
            &AIETargetModel::getNumDestSwitchboxConnections,
            py::return_value_policy::reference);
+
+  py::class_<PySwitchboxOp, PyOperation>(m, "SwitchboxOp")
+      .def("get_tileid", [](const PySwitchboxOp &p) {
+        return static_cast<SwitchboxOp>(unwrap(p.get())).getTileID();
+      });
+
+  py::class_<PyConnectOp, PyOperation>(m, "ConnectOp")
+      .def("get_src_port",
+           [](const PyConnectOp &p) {
+             auto op = static_cast<ConnectOp>(unwrap(p.get()));
+             return Port{op.getSourceBundle(), op.getSourceChannel()};
+           })
+      .def("get_dst_port",
+           [](const PyConnectOp &p) {
+             auto op = static_cast<ConnectOp>(unwrap(p.get()));
+             return Port{op.getDestBundle(), op.getDestChannel()};
+           })
+      .def("get_switchbox", [](const PyConnectOp &p) {
+        SwitchboxOp switchboxOp = static_cast<SwitchboxOp>(unwrap(p.get()))
+                                      ->getParentOfType<SwitchboxOp>();
+        return PySwitchboxOp::forOperation(switchboxOp);
+      });
 }

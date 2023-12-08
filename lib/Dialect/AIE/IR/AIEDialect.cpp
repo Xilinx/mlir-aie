@@ -90,7 +90,7 @@ const AIETargetModel &getTargetModel(Operation *op) {
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
 static TileElement getParentTileElement(Operation *op) {
-  auto parent = op->getParentOp();
+  auto *parent = op->getParentOp();
   while (!llvm::isa_and_nonnull<DeviceOp, ModuleOp>(parent)) {
     if (auto element = llvm::dyn_cast<TileElement>(parent))
       return element;
@@ -105,7 +105,7 @@ struct UsesAreAccessable {
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
-    for (auto user : users) {
+    for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
       if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
@@ -660,8 +660,8 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -705,8 +705,8 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -750,8 +750,8 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -795,8 +795,8 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          st && isa<ObjectFifoCreateOp>(st))
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
@@ -934,10 +934,15 @@ LogicalResult SwitchboxOp::verify() {
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest)) {
-        return connectOp.emitOpError("targets same destination ")
-               << to_string(dest) << " as another connect operation (from "
-               << to_string(source)
-               << ", tile: " << to_string(this->getTileOp().getTileID()) << ")";
+        return connectOp.emitOpError()
+               << "; connecting " << to_string(source) << " to "
+               << to_string(dest) << " on "
+               << to_string(this->getTileOp().getTileID())
+               << " targets same dst as another connect op; existing "
+                  "destinations: "
+               << llvm::join(llvm::map_range(
+                                 destset, [](auto &p) { return to_string(p); }),
+                             ", ");
       }
       destset.insert(dest);
 
@@ -1008,7 +1013,7 @@ LogicalResult SwitchboxOp::verify() {
     } else if (auto amselOp = dyn_cast<AMSelOp>(ops)) {
       std::vector<MasterSetOp> mstrs;
       std::vector<PacketRulesOp> slvs;
-      for (auto user : amselOp.getResult().getUsers()) {
+      for (auto *user : amselOp.getResult().getUsers()) {
         if (auto s = dyn_cast<PacketRuleOp>(user)) {
           auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
           slvs.push_back(pktRules);
@@ -1291,7 +1296,7 @@ LogicalResult MemTileDMAOp::verify() {
           if (block->empty())
             continue;
           auto successors = block->getTerminator()->getSuccessors();
-          for (auto i : successors) {
+          for (auto *i : successors) {
             if (!reachable.contains(i)) {
               reachable.insert(i);
               worklist.push_back(i);
@@ -1463,7 +1468,7 @@ LogicalResult LockOp::verify() {
 
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
-    auto block = op->getBlock();
+    auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
       if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
@@ -1479,7 +1484,7 @@ struct UsesOneLockInDMABlock {
 
 struct AcquireReleaseOneStateInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
-    auto block = op->getBlock();
+    auto *block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<UseLockOp>()) {
       if (op.acquire() || op.acquireGE()) {

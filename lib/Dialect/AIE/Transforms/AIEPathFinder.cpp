@@ -176,33 +176,39 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::South)) {
-          edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
-                             maxCapacity);
-          (void)graph.connect(southernNeighbor, thisNode, edges.back());
-        }
+        // get the number of outgoing connections on the south side - outgoing
+        // because these correspond to rhs of a connect op
         if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::South)) {
           edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
                              maxCapacity);
           (void)graph.connect(thisNode, southernNeighbor, edges.back());
         }
+        // get the number of incoming connections on the south side - incoming
+        // because they correspond to connections on the southside that are then
+        // routed using internal connect ops through the switchbox (i.e., lhs of
+        // connect ops)
+        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
+                col, row, WireBundle::South)) {
+          edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
+                             maxCapacity);
+          (void)graph.connect(southernNeighbor, thisNode, edges.back());
+        }
       }
 
       if (col > 0) { // if not in col 0 add channel to East/West
         SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::West)) {
-          edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
-                             maxCapacity);
-          (void)graph.connect(westernNeighbor, thisNode, edges.back());
-        }
         if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::West)) {
           edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
                              maxCapacity);
           (void)graph.connect(thisNode, westernNeighbor, edges.back());
+        }
+        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
+                col, row, WireBundle::West)) {
+          edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
+                             maxCapacity);
+          (void)graph.connect(westernNeighbor, thisNode, edges.back());
         }
       }
     }
@@ -221,7 +227,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                                       existingSrc->row == srcCoords.row &&
                                       existingPort == srcPort) {
       // find the vertex corresponding to the destination
-      auto matchingSb = std::find_if(
+      auto *matchingSb = std::find_if(
           graph.begin(), graph.end(), [&](const SwitchboxNode *sb) {
             return sb->col == dstCoords.col && sb->row == dstCoords.row;
           });
@@ -232,12 +238,12 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   }
 
   // If no existing flow was found with this source, create a new flow.
-  auto matchingSrcSb =
+  auto *matchingSrcSb =
       std::find_if(graph.begin(), graph.end(), [&](const SwitchboxNode *sb) {
         return sb->col == srcCoords.col && sb->row == srcCoords.row;
       });
   assert(matchingSrcSb != graph.end() && "didn't find flow source");
-  auto matchingDstSb =
+  auto *matchingDstSb =
       std::find_if(graph.begin(), graph.end(), [&](const SwitchboxNode *sb) {
         return sb->col == dstCoords.col && sb->row == dstCoords.row;
       });
@@ -434,10 +440,11 @@ Pathfinder::findPaths(const int maxIterations) {
           // find the edge from the pred to curr by searching incident edges
           SmallVector<ChannelEdge *, 10> channels;
           graph.findIncomingEdgesToNode(*curr, channels);
-          auto matchingCh = std::find_if(
+          auto *matchingCh = std::find_if(
               channels.begin(), channels.end(),
               [&](ChannelEdge *ch) { return ch->src == *preds[curr]; });
           assert(matchingCh != channels.end() && "couldn't find ch");
+          // incoming edge
           ChannelEdge *ch = *matchingCh;
 
           // don't use fixed channels

@@ -13,11 +13,11 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/Bindings/Python/PybindAdaptors.h"
-#include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Pass.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
+using namespace mlir::python;
 using namespace mlir::python::adaptors;
 using namespace xilinx::AIE;
 
@@ -51,11 +51,8 @@ public:
   }
 
   bool addFixedConnection(ConnectOp connectOp) override {
-    auto sb = connectOp->getParentOfType<SwitchboxOp>();
-    if (sb.getTileOp().isShimNOCTile())
-      return true;
-
-    return router.attr("add_fixed_connection")(wrap(connectOp)).cast<bool>();
+    auto pyConnectOp = PyConnectOp::forOperation(connectOp);
+    return router.attr("add_fixed_connection")(pyConnectOp).cast<bool>();
   }
 
   std::optional<std::map<PathEndPoint, SwitchSettings>>

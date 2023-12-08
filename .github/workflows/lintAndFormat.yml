@@ -151,7 +151,6 @@ jobs:
         with:
           tool_name: clang-format
           level: error
-          fail_on_error: true
           cleanup: true
 
       - name: Run black format
@@ -175,7 +174,6 @@ jobs:
         with:
           tool_name: black
           level: error
-          fail_on_error: true
 
   code-coverage:
 

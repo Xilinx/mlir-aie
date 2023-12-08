@@ -4,8 +4,7 @@ import os
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from pprint import pprint
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set
 from typing import Optional
 from typing import Union
 
@@ -144,15 +143,8 @@ def build_graph(max_cols, max_rows, target_model):
             DG.add_node(this_switchbox)
             if r > 0:
                 southern_neighbor = Switchbox(c, r - 1)
-                if max_capacity := target_model.get_num_source_switchbox_connections(
-                    c, r, WireBundle.South
-                ):
-                    DG.add_edge(
-                        southern_neighbor,
-                        this_switchbox,
-                        bundle=WireBundle.North,
-                        capacity=max_capacity,
-                    )
+                # Get the number of outgoing connections on the south side - outgoing
+                # because these correspond to rhs of a connect op.
                 if max_capacity := target_model.get_num_dest_switchbox_connections(
                     c, r, WireBundle.South
                 ):
@@ -160,6 +152,19 @@ def build_graph(max_cols, max_rows, target_model):
                         this_switchbox,
                         southern_neighbor,
                         bundle=WireBundle.South,
+                        capacity=max_capacity,
+                    )
+                # Get the number of incoming connections on the south side - incoming
+                # because they correspond to connections on the southside that are then
+                # routed using internal connect ops through the switchbox (i.e., lhs of
+                # connect ops).
+                if max_capacity := target_model.get_num_source_switchbox_connections(
+                    c, r, WireBundle.South
+                ):
+                    DG.add_edge(
+                        southern_neighbor,
+                        this_switchbox,
+                        bundle=WireBundle.North,
                         capacity=max_capacity,
                     )
             if c > 0:
@@ -214,6 +219,14 @@ def route_using_cp(
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
         src, tgt = src.sb, tgt.sb
 
+        # flow must leave src, and must not enter src
+        model.Add(sum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
+        model.Add(sum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
+
+        # flow must enter tgt, and must not leave tgt
+        model.Add(sum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
+        model.Add(sum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
+
         for n in DG.nodes:
             if n in {src, tgt}:
                 continue
@@ -224,15 +237,6 @@ def route_using_cp(
                 == sum(flow_var[e] for e in DG.out_edges(nbunch=n))
             )
 
-            # flow must leave src, and must not enter src
-            model.Add(sum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
-            model.Add(sum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
-
-            # flow must enter tgt, and must not leave tgt
-            model.Add(sum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
-            model.Add(sum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
-
-    # Create demand variables
     total_demand = {
         (i, j): model.NewIntVar(0, len(flat_flow_vars), "") for i, j in DG.edges
     }
@@ -241,17 +245,22 @@ def route_using_cp(
     }
     used_edges = {(i, j): model.NewIntVar(0, 1, "") for i, j in DG.edges}
 
-    # Add demand/flow relationship
     for i, j, attrs in DG.edges(data=True):
         model.Add(total_demand[i, j] == sum(f[i, j] for f in flat_flow_vars))
         model.Add(total_demand[i, j] <= attrs["capacity"])
 
         if min_edges:
+            # counts whether an edge is used by any flow
             model.AddMaxEquality(used_edges[i, j], [f[i, j] for f in flat_flow_vars])
         else:
+            # counts the number of overlapping flows
             overlapping_flows = {}
             for k, f1 in enumerate(flat_flow_vars):
                 for l, f2 in enumerate(flat_flow_vars[k + 1 :], start=k + 1):
+                    # for each pair of flows k, l (at edge i,j)
+                    # overlapping_flows[k, l] is 1 if both flows use edge i,j
+                    # note this could also by a MinEquality i.e.,
+                    # model.AddMinEquality(overlapping_flows[k, l], [f1[i, j], f2[i, j]])
                     overlapping_flows[k, l] = model.NewIntVar(
                         0, len(flat_flow_vars), ""
                     )
@@ -259,6 +268,9 @@ def route_using_cp(
                         overlapping_flows[k, l], [f1[i, j], f2[i, j]]
                     )
 
+            # overlapping demands counts up all overlapping flows on the edge i,j
+            # by summing across all overlapping_flows[k, j], which as written above, count whether flows k, j
+            # overlap on edge i,j
             model.Add(
                 overlapping_demands[i, j]
                 == sum(
@@ -280,7 +292,10 @@ def route_using_cp(
         flow_paths = {}
         for flow, flow_varss in flow_vars.items():
             flow_paths[flow] = [
-                (i, j) for i, j in DG.edges if solver.Value(flow_varss[i, j]) > 0.5
+                # solver.Value > 0.5 means the edge is used
+                (i, j)
+                for i, j in DG.edges
+                if solver.Value(flow_varss[i, j]) > 0.5
             ]
 
         return flow_paths
@@ -296,19 +311,24 @@ def route_using_ilp(
     import gurobipy as gp
     from gurobipy import GRB
 
-    # Create model object
     m = gp.Model()
     m.setParam("TimeLimit", timeout)
 
-    # Create variable for each edge, for each path
     flow_vars = {
         flow: m.addVars(DG.edges, vtype=GRB.BINARY, name="flow") for flow in flows
     }
     flat_flow_vars = list(flow_vars.values())
 
-    # Add flow-balance constraints at all nodes (besides sources and targets)
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
         src, tgt = src.sb, tgt.sb
+        # flow must leave src, and must not enter src
+        m.addConstr(gp.quicksum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
+        m.addConstr(gp.quicksum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
+
+        # flow must enter tgt, and must not leave tgt
+        m.addConstr(gp.quicksum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
+        m.addConstr(gp.quicksum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
+
         for n in DG.nodes:
             if n in {src, tgt}:
                 continue
@@ -319,14 +339,6 @@ def route_using_ilp(
                 == gp.quicksum(flow_var[e] for e in DG.out_edges(nbunch=n))
             )
 
-            # flow must leave src, and must not enter src
-            m.addConstr(gp.quicksum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
-            m.addConstr(gp.quicksum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
-
-            # flow must enter tgt, and must not leave tgt
-            m.addConstr(gp.quicksum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
-            m.addConstr(gp.quicksum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
-
     # Create demand variables
     total_demand = m.addVars(DG.edges)
     overlapping_demands = m.addVars(DG.edges)
@@ -335,6 +347,7 @@ def route_using_ilp(
     for i, j, attrs in DG.edges(data=True):
         m.addConstr(total_demand[i, j] == gp.quicksum(f[i, j] for f in flat_flow_vars))
         m.addConstr(total_demand[i, j] <= attrs["capacity"])
+        # See above for this counts up overlapping demands (gurobi just has a nicer API).
         m.addConstr(
             overlapping_demands[i, j]
             == gp.quicksum(
@@ -354,8 +367,12 @@ def route_using_ilp(
     # Solve
     m.optimize()
 
+    if m.Status == GRB.INFEASIBLE:
+        raise RuntimeError("Couldn't route.")
+
     flow_paths = {}
     for flow, flow_varss in flow_vars.items():
+        # x > 0.5 means the edge is used
         flow_paths[flow] = [(i, j) for i, j in DG.edges if flow_varss[i, j].x > 0.5]
 
     return flow_paths
@@ -398,54 +415,69 @@ def plot_src_paths(DG, flow_paths):
         plot_paths(DG, src, paths)
 
 
-def get_routing_solution(DG, flow_paths):
+MAX_NUM_CHANNELS = 12
+
+
+def get_routing_solution(DG, flow_paths, used_channels):
     from ._mlir_libs._aie_python_passes import (
         SwitchSetting,
         Port,
         get_connecting_bundle,
     )
 
+    def get_pred(path, curr_sb):
+        path_subgraph = DG.edge_subgraph(path)
+        pred_sb = list(path_subgraph.predecessors(curr_sb))
+        assert len(pred_sb) == 1
+        pred_sb = pred_sb[0]
+        incoming_edge = pred_sb, curr_sb
+        # outgoing bundle of pred, corresponding to rhs of connect op
+        outgoing_bundle = path_subgraph.get_edge_data(*incoming_edge)["bundle"]
+        return pred_sb, outgoing_bundle
+
     flow_dsts = defaultdict(list)
     for flow, path in flow_paths.items():
         src, tgt = flow
         flow_dsts[src].append((tgt, path))
+        # endpoints function as "fixed connections" i.e., already
+        # assigned channels on some bundle
+        used_channels[tgt.sb, tgt.port.bundle].add(tgt.port.channel)
 
-    # I don't know what's going on here but AIECreatePathFindFlows has some assumptions
-    # hard-coded about matching channels on both the source and target port of a connection.
-    # So keep track on a "per-edge" basis and use the same channel for both port.
-    used_channel = defaultdict(lambda: 0)
+    def get_next_avail_channel(sb, bundle):
+        i = 0
+        while i in used_channels[sb, bundle]:
+            i += 1
+        used_channels[sb, bundle].add(i)
+        return i
 
     routing_solution = {}
     for src, dsts in flow_dsts.items():
         switch_settings = defaultdict(SwitchSetting)
-        switch_settings[src.sb].src = src.port
         processed = {src.sb}
 
         # Trace backwards until a vertex already processed is reached
         for end_point, path in dsts:
-            path_subgraph = DG.edge_subgraph(path)
             curr_sb = end_point.sb
+            pred_sb, _ = get_pred(path, curr_sb)
             switch_settings[curr_sb].dsts.add(end_point.port)
 
             while curr_sb not in processed:
-                pred_sb = list(path_subgraph.predecessors(curr_sb))
-                assert len(pred_sb) == 1
-                pred_sb = pred_sb[0]
-                edge = pred_sb, curr_sb
-                bundle = path_subgraph.get_edge_data(*edge)["bundle"]
+                pred_sb, outgoing_bundle = get_pred(path, curr_sb)
+                # connecting bundle on curr, lhs of connect op
+                incoming_bundle = get_connecting_bundle(outgoing_bundle)
+                # next avail channel on outgoing side on pred
+                matching_channel = get_next_avail_channel(pred_sb, outgoing_bundle)
 
-                # add the entrance port for this Switchbox
-                switch_settings[curr_sb].src = Port(
-                    get_connecting_bundle(bundle), used_channel[edge]
+                switch_settings[curr_sb].src = Port(incoming_bundle, matching_channel)
+                switch_settings[pred_sb].dsts.add(
+                    Port(outgoing_bundle, matching_channel)
                 )
-                # add the current Switchbox to the map of the predecessor
-                switch_settings[pred_sb].dsts.add(Port(bundle, used_channel[edge]))
-                used_channel[edge] += 1
 
                 processed.add(curr_sb)
                 curr_sb = pred_sb
 
-        routing_solution[src] = dict(switch_settings)
+        switch_settings[src.sb].src = src.port
+        routing_solution[src] = list(reversed(switch_settings.items()))
 
     return routing_solution
 
@@ -474,46 +506,83 @@ class Router:
     # at module load time.
     target_model: "AIETargetModel"
     flows: List[Tuple["PathEndPoint", "PathEndPoint"]]
-    fixed_connections: List[Tuple["TileID", "Port"]]
+    used_channels: Dict[Tuple["Switchbox", "Switchbox"], Set[int]]
     routing_solution: Dict["PathEndPoint", "SwitchSettings"]
 
     def __init__(self, use_gurobi=False, timeout=600):
         self.flows = []
-        self.fixed_connections = []
         self.routing_solution = None
         self.use_gurobi = use_gurobi or pythonize_bool(
             os.getenv("ROUTER_USE_GUROBI", "False")
         )
         self.timeout = timeout
+        self.used_channels = defaultdict(set)
 
     def initialize(self, max_col, max_row, target_model):
         self.max_col = max_col
         self.max_row = max_row
         self.target_model = target_model
+        self.DG = build_graph(self.max_col, self.max_row, self.target_model)
 
     def add_flow(self, src: "PathEndPoint", tgt: "PathEndPoint"):
         self.flows.append((src, tgt))
 
     def add_fixed_connection(self, connect_op):
-        raise NotImplementedError("adding fixed connections not implemented yet.")
+        from ._mlir_libs._aie_python_passes import get_connecting_bundle
+
+        tileid = connect_op.get_switchbox().get_tileid()
+        lhs_port = connect_op.get_src_port()
+        rhs_port = connect_op.get_dst_port()
+
+        # find the correct Channel and indicate the fixed direction
+
+        # outgoing connection
+        matching_outgoing_edges = [
+            (u, v, e)
+            for u, v, e in self.DG.edges(data=True)
+            if e["bundle"] == rhs_port.bundle
+            and u == tileid  # i.e., this tile is the source
+        ]
+        if len(matching_outgoing_edges):
+            assert len(matching_outgoing_edges) == 1
+            u, v, e = matching_outgoing_edges[0]
+            e["capacity"] -= 1
+            self.used_channels[u, rhs_port.bundle].add(rhs_port.channel)
+            return True
+
+        # incoming connection
+        matching_incoming_edges = [
+            (u, v, e)
+            for u, v, e in self.DG.edges(data=True)
+            if e["bundle"] == get_connecting_bundle(lhs_port.bundle)
+            and v == tileid  # i.e., this tile is the target
+        ]
+        if len(matching_incoming_edges):
+            assert len(matching_incoming_edges) == 1
+            u, v, e = matching_incoming_edges[0]
+            e["capacity"] -= 1
+            # this is where the assumption that connection ports across
+            # tiles use the same channel comes in
+            assert e["bundle"] == get_connecting_bundle(lhs_port.bundle)
+            self.used_channels[u, e["bundle"]].add(lhs_port.channel)
+            return True
+
+        return False
 
     def find_paths(self):
         if self.routing_solution is None:
-            DG = build_graph(self.max_col, self.max_row, self.target_model)
             if self.use_gurobi:
-                flow_paths = route_using_ilp(DG, self.flows, timeout=self.timeout)
+                flow_paths = route_using_ilp(self.DG, self.flows, timeout=self.timeout)
             else:
                 flow_paths = route_using_cp(
-                    DG, self.flows, num_workers=10, timeout=self.timeout
+                    self.DG, self.flows, num_workers=10, timeout=self.timeout
                 )
 
-            self.routing_solution = get_routing_solution(DG, flow_paths)
+            self.routing_solution = get_routing_solution(
+                self.DG, flow_paths, self.used_channels
+            )
 
-        for pe, sws in self.routing_solution.items():
-            print(pe)
-            pprint(sws, indent=2)
-
-        return self.routing_solution
+        return {k: dict(v) for k, v in self.routing_solution.items()}
 
     def is_legal(self):
         return True

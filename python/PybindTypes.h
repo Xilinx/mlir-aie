@@ -10,6 +10,9 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
+#include "IRModule.h"
+#include "mlir/CAPI/IR.h"
+
 #include <pybind11/pybind11.h>
 
 namespace py = pybind11;
@@ -37,6 +40,23 @@ using Flow = struct Flow {
 };
 
 void bindTypes(py::module_ &m);
+
+struct PyConnectOp : mlir::python::PyOperation {
+  ~PyConnectOp() override {
+    // this prevents pyoperation destrutor from being called
+    // which doesn't work anyway because the pointer doesn't get cast back
+    // correctly to Operation*.
+    setInvalid();
+  }
+  using PyOperation::PyOperation;
+  static PyConnectOp &forOperation(ConnectOp connectOp);
+};
+
+struct PySwitchboxOp : mlir::python::PyOperation {
+  ~PySwitchboxOp() override { setInvalid(); }
+  using PyOperation::PyOperation;
+  static PySwitchboxOp &forOperation(SwitchboxOp switchboxOp);
+};
 
 } // namespace xilinx::AIE
 
