@@ -12,6 +12,26 @@
 module {
   AIE.device(ipu) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+
+      // look for the prolog.
+      // CHECK:      00000011
+      // CHECK-NEXT: 01000405
+      // CHECK-NEXT: 01000100
+      // CHECK-NEXT: 0B590100
+      // CHECK-NEXT: 000055FF
+      // CHECK-NEXT: 00000001
+      // CHECK-NEXT: 00000010
+      // CHECK-NEXT: 314E5A5F
+      // CHECK-NEXT: 635F5F31
+      // CHECK-NEXT: 676E696C
+      // CHECK-NEXT: 39354E5F
+      // CHECK-NEXT: 6E693131
+      // CHECK-NEXT: 5F727473
+      // CHECK-NEXT: 64726F77
+      // CHECK-NEXT: 00004573
+      // CHECK-NEXT: 07BD9630
+      // CHECK-NEXT: 000055FF
+
       %c16_i64 = arith.constant 16 : i64
       %c1_i64 = arith.constant 1 : i64
       %c0_i64 = arith.constant 0 : i64
@@ -65,4 +85,3 @@ module {
     }
   }
 }
-

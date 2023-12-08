@@ -15,39 +15,45 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
+#include <vector>
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-static void emitProlog(llvm::raw_ostream &os) {
-  os << "00000011\n";
-  os << "01000405\n";
-  os << "01000100\n";
-  os << "0B590100\n";
-  os << "000055FF\n";
-  os << "00000001\n";
-  os << "00000010\n";
-  os << "314E5A5F\n";
-  os << "635F5F31\n";
-  os << "676E696C\n";
-  os << "39354E5F\n";
-  os << "6E693131\n";
-  os << "5F727473\n";
-  os << "64726F77\n";
-  os << "00004573\n";
-  os << "07BD9630\n";
-  os << "000055FF\n";
+namespace {
+
+std::vector<uint32_t> getProlog() {
+  return {0x00000011, 0x01000405, 0x01000100, 0x0B590100, 0x000055FF,
+          0x00000001, 0x00000010, 0x314E5A5F, 0x635F5F31, 0x676E696C,
+          0x39354E5F, 0x6E693131, 0x5F727473, 0x64726F77, 0x00004573,
+          0x07BD9630, 0x000055FF};
 }
 
-static void emitSync(raw_ostream &output, IpuSyncOp op) {
-  std::vector<uint32_t> words(2, 0);
+// Example:
+// - instructions = {3,4,5}
+// - tailSize = 2
+// instructions becomes {3,4,5,0,0} and
+// a mutable reference to the tail {0,0} is returned.
+llvm::MutableArrayRef<uint32_t>
+reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
+  auto oldSize = instructions.size();
+  auto newSize = oldSize + tailSize;
+  instructions.resize(newSize, 0);
+  return llvm::MutableArrayRef<uint32_t>(instructions.data() + oldSize,
+                                         tailSize);
+}
 
-  uint32_t op_code = 3;
-  words[0] |= (op_code & 0xff) << 24;
+void appendSync(std::vector<uint32_t> &instructions, IpuSyncOp op) {
+
+  auto words = reserveAndGetTail(instructions, 2);
+
+  uint32_t opCode = 3;
+  words[0] |= (opCode & 0xff) << 24;
   words[0] |= (op.getColumn() & 0xff) << 16;
   words[0] |= (op.getRow() & 0xff) << 8;
   words[0] |= op.getDirection() & 0x1;
@@ -55,31 +61,29 @@ static void emitSync(raw_ostream &output, IpuSyncOp op) {
   words[1] |= (op.getChannel() & 0xff) << 24;
   words[1] |= (op.getColumnNum() & 0xff) << 16;
   words[1] |= (op.getRowNum() & 0xff) << 8;
-
-  for (auto w : words)
-    output << llvm::format("%08X\n", w);
 }
 
-static void emitWrite32(raw_ostream &output, IpuWrite32Op op) {
-  std::vector<uint32_t> words(3, 0);
+void appendWrite32(std::vector<uint32_t> &instructions, IpuWrite32Op op) {
 
-  uint32_t op_code = 2;
-  words[0] |= (op_code & 0xff) << 24;
+  auto words = reserveAndGetTail(instructions, 3);
+
+  uint32_t opCode = 2;
+  words[0] |= (opCode & 0xff) << 24;
   words[0] |= (op.getColumn() & 0xff) << 16;
   words[0] |= (op.getRow() & 0xff) << 8;
-  words[1] = op.getAddress();
-  words[2] = op.getValue();
 
-  for (auto w : words)
-    output << llvm::format("%08X\n", w);
+  words[1] = op.getAddress();
+
+  words[2] = op.getValue();
 }
 
-static void emitWriteBdShimTile(raw_ostream &output,
-                                IpuWriteBdExShimTileOp op) {
-  std::vector<uint32_t> words(10, 0);
+void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
+                           IpuWriteBdExShimTileOp op) {
 
-  uint32_t op_code = 6;
-  words[0] |= (op_code & 0xff) << 24;
+  auto words = reserveAndGetTail(instructions, 10);
+
+  uint32_t opCode = 6;
+  words[0] |= (opCode & 0xff) << 24;
   words[0] |= (op.getColumn() & 0xff) << 16;
   words[0] |= (op.getColumnNum() & 0xff) << 8;
   words[0] |= (op.getDdrId() & 0xf) << 4;
@@ -121,14 +125,13 @@ static void emitWriteBdShimTile(raw_ostream &output,
   words[9] |= (op.getLockAcqEnable() & 0x1) << 12;
   words[9] |= (op.getLockAcqVal() & 0xef) << 5;
   words[9] |= op.getLockAcqId() & 0xf;
-
-  for (auto w : words)
-    output << llvm::format("%08X\n", w);
 }
 
-LogicalResult xilinx::AIE::AIETranslateToIPU(ModuleOp module,
-                                             raw_ostream &output) {
-  emitProlog(output);
+} // namespace
+
+std::vector<uint32_t> xilinx::AIE::AIETranslateToIPU(ModuleOp module) {
+
+  std::vector<uint32_t> instructions = getProlog();
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   auto funcOps = deviceOp.getOps<func::FuncOp>();
@@ -138,11 +141,20 @@ LogicalResult xilinx::AIE::AIETranslateToIPU(ModuleOp module,
     Block &entry = f.getRegion().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
-          .Case<IpuSyncOp>([&](auto op) { emitSync(output, op); })
-          .Case<IpuWrite32Op>([&](auto op) { emitWrite32(output, op); })
+          .Case<IpuSyncOp>([&](auto op) { appendSync(instructions, op); })
+          .Case<IpuWrite32Op>([&](auto op) { appendWrite32(instructions, op); })
           .Case<IpuWriteBdExShimTileOp>(
-              [&](auto op) { emitWriteBdShimTile(output, op); });
+              [&](auto op) { appendWriteBdShimTile(instructions, op); });
     }
   }
+
+  return instructions;
+}
+
+LogicalResult xilinx::AIE::AIETranslateToIPU(ModuleOp module,
+                                             raw_ostream &output) {
+  auto instructions = AIETranslateToIPU(module);
+  for (auto w : instructions)
+    output << llvm::format("%08X\n", w);
   return success();
 }
