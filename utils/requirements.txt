@@ -4,3 +4,6 @@ pybind11
 numpy
 cmake
 pylint
+PyYaml
+matplotlib
+networkx
