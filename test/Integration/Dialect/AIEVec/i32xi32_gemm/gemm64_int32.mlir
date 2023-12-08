@@ -1,6 +1,6 @@
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-loop-unroll=unroll-factor=8 -affine-scalrep -canonicalize -affine-super-vectorize=virtual-vector-size=8 -convert-vector-to-aievec -lower-affine -canonicalize | aie-translate -aievec-to-cpp -o gen_aie.cc
-// RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/testbench.cc %S/kernel.cc
+// RUN: time xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/testbench.cc %S/kernel.cc
 // RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../profiling.tcl ./work/a.out" | FileCheck %s
 
 func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {
