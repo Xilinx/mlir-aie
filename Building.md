@@ -96,21 +96,18 @@ the tools are largely board and device independent and can be adapted to other e
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or 
-    `utils/build-mlir-aie-ryzen-ai.sh` for Ryzen AI with the path to the `llvm/build`
-    directory. The Vitis environment will have to be set up for this to succeed.
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or Ryzen AI 
+    with the path to the `llvm/build` directory. The Vitis environment will have to be 
+    set up for this to succeed.
 
     ```
     source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
     ```
-    or
-    ```
-    ./utils/build-mlir-aie-ryzen-ai.sh <llvm dir>/<build dir>
-    ```
+
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
-    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
+    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors.
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
