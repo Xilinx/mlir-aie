@@ -65,6 +65,8 @@ jobs:
             
             cd /
             git clone --recursive https://github.com/Xilinx/mlir-aie.git
+            pushd mlir-aie && git checkout ${{ github.head_ref }} && popd
+            
             pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
             
             cd /mlir-aie
