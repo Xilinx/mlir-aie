@@ -66,6 +66,8 @@ jobs:
             
             cd /
             git clone --recursive https://github.com/Xilinx/mlir-aie.git
+            pushd mlir-aie && git checkout ${{ github.head_ref }} && popd
+            
             pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
             
             cd /mlir-aie
@@ -104,5 +106,6 @@ jobs:
               LIT_FILTER="${{ inputs.LIT_FILTER }}"
             fi
             
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j1/g' ../test/CMakeLists.txt
-            LIT_FILTER="dialect|Conversion|Targets|Integration|python" PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
+            sed -i.bak 's/-sv --timeout 600/-a --timeout 600 -j1/g' ../test/CMakeLists.txt
+            
+            LIT_FILTER="Integration|test/unit_tests/aievec_tests" PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
