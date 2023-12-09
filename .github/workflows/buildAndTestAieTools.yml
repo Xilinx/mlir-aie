@@ -103,6 +103,5 @@ jobs:
             else
               LIT_FILTER="${{ inputs.LIT_FILTER }}"
             fi
-            
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j1/g' ../test/CMakeLists.txt
-            LIT_FILTER="$LIT_FILTER" PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
+
+            LIT_FILTER="dialect|Conversion|Targets|Integration|python" PATH=/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH ninja check-aie
