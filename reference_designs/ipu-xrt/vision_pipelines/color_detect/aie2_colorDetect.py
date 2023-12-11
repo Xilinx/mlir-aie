@@ -41,7 +41,7 @@ def color_detect():
 
             # AIE Core Function declarations
             rgba2hueLine = external_func(
-                "rgba2grayLine", inputs = [line_bytes_ty, line_ty, T.i132()]
+                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i132()]
             )
             thresholdLine = external_func(
                 "thresholdLine", inputs = [line_ty, line_ty, T.i132(), T.i16(), T.i16(), T.i8()]
