@@ -17,7 +17,7 @@ The pipeline is mapped onto a single column of the ipu device, with one Shim til
 <p align="center">
   <img
     src="./color_threshold_pipeline.png"
-    width="850">
+    width="750">
 </p>
 
 The data movement of this pipeline is described using the OrderedObjectBuffer (OOB) primitive. The input image is brought into the array via Shim tile (0, 0) and first sent to Mem tile (0, 1). There it is split into smaller blocks of data and each block is distributed to one of the 4 AIE tiles (0, 2) to (0, 5). One OOB is used to express data movement from the Shim tile to the Mem tile. Four different OOBs express the one-to-one data movements between the Mem tile and each of the compute tiles. The input OOB is linked to the other four OOBs to express that data from the input OOB should be copied implicitly to the other OOBs via the DMA. Currently, the ordering of the four OOBs in the Link operation expresses what piece of input data should go to each compute tile.
