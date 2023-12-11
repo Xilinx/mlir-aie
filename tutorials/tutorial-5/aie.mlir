@@ -51,12 +51,12 @@ module @tutorial_5 {
             // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
             // This core acquires objects both as a Consumer of one object FIFO and as a Producer of another: 
             // this impacts the acquire values of the locks that are generated through the object FIFO lowering
-            %inputSubview = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubivew<memref<256xi32>>
-            %outputSubview = AIE.objectfifo.acquire @of_out (Produce, 1) : !AIE.objectfifosubivew<memref<256xi32>>
+            %inputSubview = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<256xi32>>
+            %outputSubview = AIE.objectfifo.acquire @of_out (Produce, 1) : !AIE.objectfifosubview<memref<256xi32>>
             
             // Access the first, and only, element of each subview.
-            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
-            %output = AIE.objectfifo.subview.access %outputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+            %output = AIE.objectfifo.subview.access %outputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %input[%idx1] : memref<256xi32>
