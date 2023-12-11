@@ -51,6 +51,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DXRT_ROOT=/opt/xilinx/xrt \
+              -DAIE_ENABLE_PYTHON_PASSES=OFF \
               -DCMAKE_INSTALL_PREFIX=install
 
             ninja install
