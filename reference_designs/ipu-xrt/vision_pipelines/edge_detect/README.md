@@ -17,7 +17,7 @@ The pipeline is mapped onto a single column of the ipu device, with one Shim til
 <p align="center">
   <img
     src="./edge_detect_pipeline.png"
-    width="900">
+    width="1050">
 </p>
 
 The data movement of this pipeline is described using the OrderedObjectBuffer (OOB) primitive. Input data is brought into the array via the Shim tile. The data then needs to be broadcasted both to AIE tile (0, 2) and AIE tile (0, 5). However, tile (0, 5) has to wait for additional data from the other kernels before it can proceed with its execution, so in order to avoid any stalls in the broadcast, data for tile (0, 5) is instead buffered in the Mem tile. Because of the size of the data, the buffering couldn't directly be done in the smaller L1 memory module of tile (0, 5). This is described using two OOBs, one for the broadcast to tile (0, 2) and the Mem tile, and one for the data movement between the Mem tile and tile (0, 5). The two OOBs are linked to express that data from the first OOB should be copied to the second OOB implicitly through the Mem tile's DMA.
