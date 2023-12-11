@@ -238,7 +238,6 @@ def color_detect():
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to3", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to5", 1)
 
-
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
             def coreBody():
