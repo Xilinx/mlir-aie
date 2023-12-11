@@ -12,6 +12,7 @@ from aie.dialects.func import *
 from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.extras.context import mlir_mod_ctx
 
 width = 64
 height = 36
