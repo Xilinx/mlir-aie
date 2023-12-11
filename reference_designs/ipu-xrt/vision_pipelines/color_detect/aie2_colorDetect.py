@@ -42,19 +42,24 @@ def color_detect():
 
             # AIE Core Function declarations
             rgba2hueLine = external_func(
-                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i132()]
+                "rgba2grayLine",
+                inputs=[line_bytes_ty, line_ty, T.i132()]
             )
             thresholdLine = external_func(
-                "thresholdLine", inputs=[line_ty, line_ty, T.i132(), T.i16(), T.i16(), T.i8()]
+                "thresholdLine",
+                inputs=[line_ty, line_ty, T.i132(), T.i16(), T.i16(), T.i8()]
             )
             bitwiseORLine = external_func(
-                "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, T.i132()]
+                "bitwiseORLine",
+                inputs=[line_ty, line_ty, line_ty, T.i132()]
             )
             gray2rgbaLine = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i132()]
+                "gray2rgbaLine",
+                inputs=[line_ty, line_bytes_ty, T.i132()]
             )
             bitwiseANDLine = external_func(
-                "bitwiseORLine", inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i132()]
+                "bitwiseORLine",
+                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i132()]
             )
         
             # Tile declarations
@@ -326,20 +331,15 @@ def color_detect():
                     ).acquiredElem()
                     Call(
                         bitwiseANDLine,
-                        [
-                            elemInTmpB1,
-                            elemInTmpB2,
-                            elemOut,
-                            lineWidthInBytes
-                        ]
+                        [elemInTmpB1, elemInTmpB2, elemOut, lineWidthInBytes]
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
 
             # To/from AIE-array data movement
-            
-            tensorSize = width * height * 4 # 4 channels
+
+            tensorSize = width * height * 4  # 4 channels
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty =  MemRefType.get((tensorSizeInInt32s,), T.i132())
             memRef_16x16_ty = MemRefType.get((16,16,), T.i132())
