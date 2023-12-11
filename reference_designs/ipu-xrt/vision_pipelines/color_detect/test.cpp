@@ -53,8 +53,6 @@ void colorDetect(cv::Mat &inImage, cv::Mat &outImage) {
   cv::cvtColor(imageThreshold, imageThresholdBGR, cv::COLOR_GRAY2BGR);
 
   cv::bitwise_and(inImage, imageThresholdBGR, outImage);
-
-  return;
 }
 
 int main(int argc, const char *argv[]) {
@@ -172,44 +170,44 @@ int main(int argc, const char *argv[]) {
    * Set up the buffer objects
    ****************************************************************************
    */
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+  auto boInstr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, inImageRGBA.total() * inImageRGBA.elemSize(),
+  auto boInA = xrt::bo(device, inImageRGBA.total() * inImageRGBA.elemSize(),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out =
+  auto boInB = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto boOut =
       xrt::bo(device, (outImageTest.total() * outImageTest.elemSize()),
               XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  uint8_t *bufInA = bo_inA.map<uint8_t *>();
+  uint8_t *bufInA = boInA.map<uint8_t *>();
 
   // Copy cv::Mat input image to xrt buffer object
   memcpy(bufInA, inImageRGBA.data,
          (inImageRGBA.total() * inImageRGBA.elemSize()));
 
   // Copy instruction stream to xrt buffer object
-  void *bufInstr = bo_instr.map<void *>();
+  void *bufInstr = boInstr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   // Sync host to device memories
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  boInA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  boInB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Execute the kernel and wait to finish
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(boInstr, instr_v.size(), boInA, boInB, boOut);
   run.wait();
 
   // Sync device to host memories
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  boOut.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   // Store result in cv::Mat
-  uint8_t *bufOut = bo_out.map<uint8_t *>();
+  uint8_t *bufOut = boOut.map<uint8_t *>();
   memcpy(outImageTest.data, bufOut,
          (outImageTest.total() * outImageTest.elemSize()));
 
@@ -279,26 +277,26 @@ int main(int argc, const char *argv[]) {
              (inImageRGBA.total() * inImageRGBA.elemSize()));
 
       // Copy instruction stream to xrt buffer object
-      void *bufInstr = bo_instr.map<void *>();
+      void *bufInstr = boInstr.map<void *>();
       memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
       // Sync host to device memories
-      bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-      bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-      bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      boInA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      boInB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
       // Execute the kernel and wait to finish
       if (verbosity >= 1)
         std::cout << "Running Kernel.\n";
 
-      auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+      auto run = kernel(boInstr, instr_v.size(), boInA, boInB, boOut);
       run.wait();
 
       // Sync device to host memories
-      bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+      boOut.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
       // Store result in cv::Mat
-      uint8_t *bufOut = bo_out.map<uint8_t *>();
+      uint8_t *bufOut = boOut.map<uint8_t *>();
       memcpy(outImageTest.data, bufOut,
              (outImageTest.total() * outImageTest.elemSize()));
 
