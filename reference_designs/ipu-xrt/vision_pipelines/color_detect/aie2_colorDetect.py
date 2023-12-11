@@ -27,7 +27,7 @@ enableTrace = False
 traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
-@constructAndPrintInModule
+
 def color_detect():
     with mlir_mod_ctx() as ctx:
         
