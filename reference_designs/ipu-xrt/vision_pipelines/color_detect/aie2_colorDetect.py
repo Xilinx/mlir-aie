@@ -19,8 +19,8 @@ if len(sys.argv) == 3:
     width = int(sys.argv[1])
     height = int(sys.argv[2])
 
-lineWidth         = width
-lineWidthInBytes  = width*4
+lineWidth = width
+lineWidthInBytes = width * 4
 lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
