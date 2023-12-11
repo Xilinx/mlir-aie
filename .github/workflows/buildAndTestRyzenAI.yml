@@ -1,0 +1,61 @@
+name: Build and Test with AIE tools on Ryzen AI
+
+on:
+  push:
+    branches:
+      - main
+      - test-ryzen-ai
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+
+jobs:
+  build-repo:
+    name: Build and Test
+
+    runs-on: amd7940hs
+
+    steps:
+
+      - uses: actions/checkout@v3
+        with:
+          submodules: "true"
+
+      - name: Run commands
+        run: |
+
+            python -m venv aie-venv
+            source aie-venv/bin/activate
+            pip install -r utils/requirements.txt
+            pip install lit
+
+            pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
+
+            mkdir build
+            cd build
+
+            export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+            cmake .. -G Ninja \
+              -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+              -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+              -DLLVM_EXTERNAL_LIT=$(which lit) \
+              -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+              -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DXRT_ROOT=/opt/xilinx/xrt \
+              -DAIE_ENABLE_PYTHON_PASSES=OFF \
+              -DCMAKE_INSTALL_PREFIX=install
+
+            ninja install
+
+            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j12 --show-unsupported/g' $PWD/../test/CMakeLists.txt
+            ninja check-aie

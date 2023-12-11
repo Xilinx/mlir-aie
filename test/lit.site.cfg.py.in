@@ -38,6 +38,9 @@ config.host_ldflags = '@HOST_LDFLAGS@'
 config.llvm_use_sanitizer = "@LLVM_USE_SANITIZER@"
 config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
+config.xrt_bin_dir = "@XRT_BIN_DIR@"
+config.xrt_lib_dir = "@XRT_LIB_DIR@"
+config.xrt_include_dir = "@XRT_INCLUDE_DIR@"
 
 config.aie_src_root = "@AIE_SOURCE_DIR@"
 config.aie_obj_root = "@AIE_BINARY_DIR@"
