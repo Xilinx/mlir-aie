@@ -31,7 +31,8 @@ jobs:
 
             python -m venv aie-venv
             source aie-venv/bin/activate
-            pip install cmake numpy psutil pybind11 rich pkginfo lit PyYAML
+            pip install -r utils/requirements.txt
+            pip install lit
 
             pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
 
