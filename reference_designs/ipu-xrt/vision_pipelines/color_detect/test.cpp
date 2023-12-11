@@ -171,12 +171,12 @@ int main(int argc, const char *argv[]) {
    ****************************************************************************
    */
   auto boInstr = xrt::bo(device, instr_v.size() * sizeof(int),
-                        XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                         XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto boInA = xrt::bo(device, inImageRGBA.total() * inImageRGBA.elemSize(),
-                      XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto boInB = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto boOut = xrt::bo(device, (outImageTest.total() * outImageTest.elemSize()),
-                      XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
