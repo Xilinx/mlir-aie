@@ -1589,7 +1589,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectfifo.acquire @of1 (Consume, 2) : !AIE.objectfifosubivew<memref<16xi32>>
+      %subview = AIE.objectfifo.acquire @of1 (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
     port and returns a subview of the acquired objects.
@@ -1656,8 +1656,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
 
     Example:
     ```
-      %subview = AIE.objectfifo.acquire @of1 (Produce, 3) : !AIE.objectfifosubivew<memref<16xi32>>
-      %elem = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubivew<memref<16xi32>> -> memref<16xi32>
+      %subview = AIE.objectfifo.acquire @of1 (Produce, 3) : !AIE.objectfifosubview<memref<16xi32>>
+      %elem = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
     ```
     In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
     the `objectFifo` if other acquire operations took place beforehand.
@@ -1699,7 +1699,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
       %length = arith.constant 10 : index
       %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
-      func @producer_work(%input : !AIE.objectfifosubivew<memref<16xi32>>) -> () { ... }
+      func @producer_work(%input : !AIE.objectfifosubview<memref<16xi32>>) -> () { ... }
 
       AIE.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```

@@ -45,10 +45,10 @@ module @tutorial_7 {
             // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
             // This core acquires objects as a Producer: this impacts the acquire value of the lock 
             // that is generated through the object FIFO lowering.
-            %inputSubview = AIE.objectfifo.acquire @of (Produce, 1) : !AIE.objectfifosubivew<memref<256xi32>>
+            %inputSubview = AIE.objectfifo.acquire @of (Produce, 1) : !AIE.objectfifosubview<memref<256xi32>>
             
             // Access the first, and only, element of the subview.
-            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
             %val = arith.constant 14 : i32 
             %idx = arith.constant 3 : index 
@@ -68,8 +68,8 @@ module @tutorial_7 {
             // This acquire succeeds when the core is enabled
             AIE.useLock(%lock34_8, "Acquire", 0)
 
-            %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubivew<memref<256xi32>>
-            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
+            %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubview<memref<256xi32>>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %input[%idx1] : memref<256xi32>
@@ -91,8 +91,8 @@ module @tutorial_7 {
             // This acquire succeeds when the core is enabled
             AIE.useLock(%lock35_8, "Acquire", 0)
 
-            %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubivew<memref<256xi32>>
-            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubivew<memref<256xi32>> -> memref<256xi32>
+            %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubview<memref<256xi32>>
+            %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %input[%idx1] : memref<256xi32>
