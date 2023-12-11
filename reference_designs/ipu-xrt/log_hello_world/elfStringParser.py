@@ -6,9 +6,9 @@
 # (c) Copyright 2023 AMD Inc.
 
 import argparse
-import subprocess
-import re
 import os
+import re
+import subprocess
 from typing import Dict
 
 

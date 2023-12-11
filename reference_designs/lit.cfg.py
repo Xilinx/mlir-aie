@@ -7,19 +7,14 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
 import os
-import platform
 import re
 import shutil
 import subprocess
-import tempfile
 
 import lit.formats
 import lit.util
 
 from lit.llvm import llvm_config
-from lit.llvm.subst import ToolSubst
-from lit.llvm.subst import FindTool
-
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.

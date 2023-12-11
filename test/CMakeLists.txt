@@ -91,8 +91,6 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
-cmake_dependent_option(ENABLE_PYTHON_TESTS "Enable Python tests" ON "AIE_ENABLE_BINDINGS_PYTHON" OFF)
-
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
@@ -102,7 +100,7 @@ configure_lit_site_cfg(
 
 set(TEST_DEPENDS
   FileCheck count not
-  aiecc.py
+  AIEPythonModules
   aie-opt
   aie-translate
 )

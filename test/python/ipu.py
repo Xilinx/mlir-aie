@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
-from aie.dialects.extras import memref, arith
+from aie.extras.dialects import memref, arith
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_

@@ -21,9 +21,9 @@ from aie.dialects.aie import (
     objectfifo_subview_access,
     tile,
 )
-from aie.extras import types as T
 from aie.ir import InsertionPoint, Block, TypeAttr
-from aie.util import mlir_mod_ctx
+from aie.extras.util import mlir_mod_ctx
+from aie.extras import types as T
 
 from util import construct_and_print_module
 

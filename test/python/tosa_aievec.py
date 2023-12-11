@@ -1,49 +1,75 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import inspect
+from pathlib import Path
+from textwrap import dedent
+
+from aie.extras.dialects import arith
+from aie.extras.dialects.func import func
+from aie.extras.util import mlir_mod_ctx
+from aie.ir import ShapedType
+from util import construct_and_print_module
+from inspect import currentframe, getframeinfo
 
 # RUN: %python %s | FileCheck %s
 
-import aie.extras.types as T
-from aie.dialects.aie import (
-    AIEDevice,
-    tile,
-    Device,
-    Core,
-    end,
-    Buffer,
-)
-from aie.dialects.extras import memref, arith
-from aie.ir import InsertionPoint, Block
+S = ShapedType.get_dynamic_size()
 
-from util import construct_and_print_module
+THIS_DIR = Path(__file__).parent.absolute()
 
-# CHECK:  module {
-# CHECK:    AIE.device(xcve2802) {
-# CHECK:      %tile_1_4 = AIE.tile(1, 4)
-# CHECK:      %buffer_1_4 = AIE.buffer(%tile_1_4) : memref<256xi32>
-# CHECK:      %core_1_4 = AIE.core(%tile_1_4) {
-# CHECK:        %c3 = arith.constant 3 : index
-# CHECK:        %0 = memref.load %buffer_1_4[%c3] : memref<256xi32>
-# CHECK:        %c4_i32 = arith.constant 4 : i32
-# CHECK:        %1 = arith.addi %0, %c4_i32 : i32
-# CHECK:        %c3_0 = arith.constant 3 : index
-# CHECK:        memref.store %1, %buffer_1_4[%c3_0] : memref<256xi32>
-# CHECK:        AIE.end
-# CHECK:      }
-# CHECK:    }
-# CHECK:  }
+
+def get_asm(operation):
+    return operation.get_asm(enable_debug_info=True, pretty_debug_info=True).replace(
+        str(THIS_DIR), "THIS_DIR"
+    )
+
+
+# CHECK-LABEL: TEST: test_emit
+# CHECK: module {
+# CHECK:   func.func @demo_fun1() -> i32 {
+# CHECK:     %c1_i32 = arith.constant 1 : i32
+# CHECK:     return %c1_i32 : i32
+# CHECK:   }
+# CHECK: }
 @construct_and_print_module
-def simple_with_bindings_example():
-    dev = Device(AIEDevice.xcve2802)
-    dev_block = Block.create_at_start(dev.bodyRegion)
-    with InsertionPoint(dev_block):
-        tile_a = tile(1, 4)
-        buff = Buffer(tile=tile_a, size=(256,), datatype=T.i32())
+def test_emit():
+    @func
+    def demo_fun1():
+        one = arith.constant(1)
+        return one
 
-        C = Core(tile_a)
-        bb = Block.create_at_start(C.body)
-        with InsertionPoint(bb):
-            val = memref.load(buff, [3])
-            add = arith.addi(val, arith.constant(4))
-            memref.store(add, buff, [3])
-            end()
+    assert hasattr(demo_fun1, "emit")
+    assert inspect.ismethod(demo_fun1.emit)
+    demo_fun1.emit()
+
+
+def test_location_tracking():
+    with mlir_mod_ctx() as ctx:
+
+        frameinfo = getframeinfo(currentframe())
+
+        @func
+        def demo_fun1():
+            one = arith.constant(1)
+            return one
+
+        demo_fun1.emit()
+
+    asm = get_asm(ctx.module.operation)
+    correct = dedent(
+        f"""\
+    module {{
+      func.func @demo_fun1() -> i32 {{
+        %c1_i32 = arith.constant 1 : i32 THIS_DIR/tosa_aievec.py:{frameinfo.lineno + 4}:18
+        return %c1_i32 : i32 [unknown]
+      }} THIS_DIR/tosa_aievec.py:{frameinfo.lineno + 2}:9
+    }} [unknown]
+    #loc = [unknown]
+    #loc1 = THIS_DIR/tosa_aievec.py:{frameinfo.lineno + 2}:9
+    #loc2 = THIS_DIR/tosa_aievec.py:{frameinfo.lineno + 4}:18
+    """
+    )
+    assert asm == correct
+
+
+test_location_tracking()
