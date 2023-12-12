@@ -55,8 +55,8 @@ declare_mlir_dialect_python_bindings(
 )
 
 configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
-add_custom_target(aiecc_configure
-  ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
 )
 
 # Note that compiler/ is not globbed but compiler/aiecc/
@@ -67,7 +67,6 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
   SOURCES_GLOB
     compiler/aiecc/*.py
 )
-add_dependencies(AIEPythonSources.Compiler aiecc_configure)
 
 ################################################################################
 # Extensions
