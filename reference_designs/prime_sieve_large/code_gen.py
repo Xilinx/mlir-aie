@@ -5,11 +5,6 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-import sys
-import re
-import math
-import random
-
 # The number of cores to use.  Will generate a 2D chain of cores of the given size.
 arrayrows = 8
 arraycols = 50  # must be even
@@ -173,7 +168,7 @@ def main():
     # unchanged part
     tilecode = (
         """  
-  %core"""
+          %core"""
         + str(startcol)
         + """_1 = AIE.core(%tile"""
         + str(startcol)

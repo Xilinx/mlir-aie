@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-add_subdirectory(aiecc)
 add_subdirectory(aie-opt)
 if(NOT WIN32)
   add_subdirectory(aie-reset)

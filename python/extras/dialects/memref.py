@@ -2,8 +2,8 @@ import re
 from typing import Union, Optional, Sequence
 
 from .arith import constant
-from .. import memref
-from .._ods_common import get_op_result_or_op_results
+from ...dialects import memref
+from ...dialects._ods_common import get_op_result_or_op_results
 from ...extras import types as T
 from ...ir import MLIRError, ShapedType, Type, Value
 

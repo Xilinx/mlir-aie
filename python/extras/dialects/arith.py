@@ -1,9 +1,11 @@
-import numpy as np
-from typing import Union, Optional
+from typing import Optional
 
-from ..arith import *
-from .. import complex
-from ..linalg.opdsl.lang.emitter import (
+from ..meta import get_user_code_loc
+from ..util import infer_mlir_type, mlir_type_to_np_dtype
+from ...dialects import arith as arith_dialect
+from ...dialects import complex as complex_dialect
+from ...dialects.arith import *
+from ...dialects.linalg.opdsl.lang.emitter import (
     _is_floating_point_type,
     _is_complex_type,
 )
@@ -17,7 +19,6 @@ from ...ir import (
     Type,
     Value,
 )
-from ...util import infer_mlir_type
 
 
 def constant(
@@ -42,6 +43,8 @@ def constant(
     Returns:
       ir.OpView instance that corresponds to instantiated arith.constant op.
     """
+    if loc is None:
+        loc = get_user_code_loc()
     if index is not None and index:
         type = IndexType.get()
     if type is None:
@@ -51,7 +54,7 @@ def constant(
 
     if _is_complex_type(type):
         value = complex(value)
-        return complex.ConstantOp(
+        return complex_dialect.constant(
             type,
             list(
                 map(
@@ -80,4 +83,4 @@ def constant(
             type=type,
         )
 
-    return ConstantOp(type, value, loc=loc, ip=ip)
+    return arith_dialect.ConstantOp(type, value, loc=loc, ip=ip).result

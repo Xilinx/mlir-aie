@@ -17,15 +17,15 @@ import lit.formats
 import lit.util
 
 from lit.llvm import llvm_config
-from lit.llvm.subst import ToolSubst
-from lit.llvm.subst import FindTool
-
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
 config.name = 'AIE_TUTORIALS'
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.environment["PYTHONPATH"] = "{}".format(
+    os.path.join(config.aie_obj_root, "python")
+)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.mlir']

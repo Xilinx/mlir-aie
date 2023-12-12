@@ -127,7 +127,7 @@ configure_lit_site_cfg(
 
 set(TEST_DEPENDS
   FileCheck count not
-  aiecc.py
+  AIEPythonModules
   aie-opt
   aie-translate
   )

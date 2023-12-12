@@ -16,7 +16,7 @@ from aie._mlir_libs._aie_python_passes import (
 
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
-from aie.util import Router
+from aie.extras.util import Router
 
 TIMEOUT = 10
 

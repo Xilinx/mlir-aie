@@ -8,7 +8,7 @@ from functools import wraps
 
 from ._AIE_enum_gen import *
 from ._AIE_ops_gen import *
-from .extras.arith import constant
+from ..extras.dialects.arith import constant
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
