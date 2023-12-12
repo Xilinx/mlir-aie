@@ -6,6 +6,10 @@ include(AddMLIRPython)
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
+if(NOT AIE_PYTHON_INSTALL_DIR)
+  set(AIE_PYTHON_INSTALL_DIR "python")
+endif()
+
 ################################################################################
 # Sources
 ################################################################################
@@ -57,6 +61,11 @@ declare_mlir_dialect_python_bindings(
 configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+)
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+  ${CMAKE_CURRENT_IN}
+  DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc
 )
 
 # Note that compiler/ is not globbed but compiler/aiecc/
@@ -146,7 +155,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
-    INSTALL_PREFIX "python/aie"
+    INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
     DECLARED_SOURCES
       ${mlir_python_sources_deps}
       MLIRPythonSources.Core.Python
@@ -172,7 +181,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     _mlirSparseTensorPasses
   )
 
-  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/python/aie/_mlir_libs")
+  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs")
 
   # This is the trick that makes multiple Python C extension modules packaged into one shared library work;
   # Python importlib machinery looks for PyInit__your_module based on the filename _your_module.so.
@@ -185,7 +194,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
         "_aie${PYTHON_MODULE_EXTENSION}"
         "${ext}${PYTHON_MODULE_EXTENSION}"
       DEPENDS AIEPythonExtensions
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/python/aie/_mlir_libs"
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
     )
     add_dependencies(AIEPythonModules "symlink_${ext}")
     # Install time/directory creation.
@@ -193,7 +202,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
       COMMAND ${CMAKE_COMMAND} -E create_symlink
               _aie${PYTHON_MODULE_EXTENSION}
               ${ext}${PYTHON_MODULE_EXTENSION}
-              WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/python/aie/_mlir_libs
+              WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
       )"
     )
   endforeach()
@@ -217,7 +226,7 @@ else ()
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
-    INSTALL_DESTINATION python/aie/_mlir_libs
+    INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
     OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
     RELATIVE_INSTALL_ROOT "../../../.."
     DECLARED_SOURCES
@@ -231,7 +240,7 @@ else ()
 
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
-    INSTALL_PREFIX "python/aie"
+    INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
     DECLARED_SOURCES
       AIEPythonSources
       MLIRPythonSources
@@ -273,7 +282,7 @@ foreach(r ${_runtimes})
   install(IMPORTED_RUNTIME_ARTIFACTS
     ${r}
     COMPONENT aie-python
-    LIBRARY DESTINATION "python/aie/_mlir_libs"
+    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()
 
