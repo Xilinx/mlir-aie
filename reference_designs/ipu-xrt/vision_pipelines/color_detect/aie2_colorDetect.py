@@ -7,11 +7,9 @@
 
 import sys
 
-from aie.ir import *
-from aie.dialects.func import *
-from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.extras.dialects.ext import arith
 from aie.extras.context import mlir_mod_ctx
 
 width = 64
@@ -42,30 +40,30 @@ def color_detect():
 
             # AIE Core Function declarations
             rgba2hueLine = external_func(
-                "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i132()]
+                "rgba2hueLine", inputs=[line_bytes_ty, line_ty, T.i32()]
             )
             thresholdLine = external_func(
                 "thresholdLine",
-                inputs=[line_ty, line_ty, T.i132(), T.i16(), T.i16(), T.i8()],
+                inputs=[line_ty, line_ty, T.i32(), T.i16(), T.i16(), T.i8()],
             )
             bitwiseORLine = external_func(
-                "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, T.i132()]
+                "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, T.i32()]
             )
             gray2rgbaLine = external_func(
-                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i132()]
+                "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
             )
             bitwiseANDLine = external_func(
                 "bitwiseORLine",
-                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i132()],
+                inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i32()],
             )
         
             # Tile declarations
-            ShimTile = Tile(0, 0)
-            MemTile = Tile(0, 1)
-            ComputeTile2 = Tile(0, 2)
-            ComputeTile3 = Tile(0, 3)
-            ComputeTile4 = Tile(0, 4)
-            ComputeTile5 = Tile(0, 5)
+            ShimTile = tile(0, 0)
+            MemTile = tile(0, 1)
+            ComputeTile2 = tile(0, 2)
+            ComputeTile3 = tile(0, 3)
+            ComputeTile4 = tile(0, 4)
+            ComputeTile5 = tile(0, 5)
 
             # AIE-array data movement with object fifos
 
@@ -94,7 +92,7 @@ def color_detect():
             objectfifo(
                 "outOF_L2L3",
                 MemTile,
-                ShimTile,
+                [ShimTile],
                 2,
                 ofifo_line_bytes_ty,
                 [],
@@ -103,7 +101,7 @@ def color_detect():
             objectfifo(
                 "outOF_L1L2",
                 ComputeTile5,
-                MemTile,
+                [MemTile],
                 2,
                 ofifo_line_bytes_ty,
                 [],
@@ -124,7 +122,7 @@ def color_detect():
             objectfifo(
                 "OF_3to3",
                 ComputeTile3,
-                ComputeTile3,
+                [ComputeTile3],
                 1,
                 ofifo_line_ty,
                 [],
@@ -133,7 +131,7 @@ def color_detect():
             objectfifo(
                 "OF_3to5",
                 ComputeTile3,
-                ComputeTile5,
+                [ComputeTile5],
                 2,
                 ofifo_line_ty,
                 [],
@@ -142,7 +140,7 @@ def color_detect():
             objectfifo(
                 "OF_4to4",
                 ComputeTile4,
-                ComputeTile4,
+                [ComputeTile4],
                 1,
                 ofifo_line_ty,
                 [],
@@ -151,7 +149,7 @@ def color_detect():
             objectfifo(
                 "OF_4to5",
                 ComputeTile4,
-                ComputeTile5,
+                [ComputeTile5],
                 2,
                 ofifo_line_ty,
                 [],
@@ -160,7 +158,7 @@ def color_detect():
             objectfifo(
                 "OF_5to5a",
                 ComputeTile5,
-                ComputeTile5,
+                [ComputeTile5],
                 1,
                 ofifo_line_ty,
                 [],
@@ -169,7 +167,7 @@ def color_detect():
             objectfifo(
                 "OF_5to5b",
                 ComputeTile5,
-                ComputeTile5,
+                [ComputeTile5],
                 1,
                 ofifo_line_ty,
                 [],
@@ -184,11 +182,11 @@ def color_detect():
                 for _ in for_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOut = acquire(
                         ObjectFifoPort.Produce, "OF_2to34", 1, line_ty
-                    ).acquiredElem()
-                    Call(rgba2hueLine, [elemIn, elemOut, lineWidth])
+                    ).acquired_elem()
+                    Call(rgba2hueLine, [elemIn, elemOut, arith.constant(lineWidth)])
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_2to34", 1)
 
@@ -203,16 +201,16 @@ def color_detect():
                 for _ in for_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOutTmp = acquire(
                         ObjectFifoPort.Produce, "OF_3to3", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     Call(
                         thresholdLine,
                         [
                             elemIn,
                             elemOutTmp,
-                            lineWidth,
+                            arith.constant(lineWidth),
                             thresholdValueUpper1,
                             thresholdMaxvalue,
                             thresholdModeToZeroInv
@@ -222,16 +220,16 @@ def color_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to3", 1)
                     elemInTmp = acquire(
                         ObjectFifoPort.Consume, "OF_3to3", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOut = acquire(
                         ObjectFifoPort.Produce, "OF_3to5", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     Call(
                         thresholdLine,
                         [
                             elemInTmp,
                             elemOut,
-                            lineWidth,
+                            arith.constant(lineWidth),
                             thresholdValueLower1,
                             thresholdMaxvalue,
                             thresholdModeBinary
@@ -251,16 +249,16 @@ def color_detect():
                 for _ in for_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOutTmp = acquire(
                         ObjectFifoPort.Produce, "OF_4to4", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     Call(
                         thresholdLine,
                         [
                             elemIn,
                             elemOutTmp,
-                            lineWidth,
+                            arith.constant(lineWidth),
                             thresholdValueUpper1,
                             thresholdMaxvalue,
                             thresholdModeToZeroInv
@@ -270,16 +268,16 @@ def color_detect():
                     objectfifo_release(ObjectFifoPort.Produce, "OF_4to4", 1)
                     elemInTmp = acquire(
                         ObjectFifoPort.Consume, "OF_4to4", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOut = acquire(
                         ObjectFifoPort.Produce, "OF_4to5", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     Call(
                         thresholdLine,
                         [
                             elemInTmp,
                             elemOut,
-                            lineWidth,
+                            arith.constant(lineWidth),
                             thresholdValueLower1,
                             thresholdMaxvalue,
                             thresholdModeBinary
@@ -295,40 +293,40 @@ def color_detect():
                     # bitwise OR
                     elemIn1 = acquire(
                         ObjectFifoPort.Consume, "OF_3to5", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemIn2 = acquire(
                         ObjectFifoPort.Consume, "OF_4to5", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOutTmpA = acquire(
                         ObjectFifoPort.Produce, "OF_5to5a", 1, line_ty
-                    ).acquiredElem()
-                    Call(bitwiseORLine, [elemIn1, elemIn2, elemOutTmpA, lineWidth])
+                    ).acquired_elem()
+                    Call(bitwiseORLine, [elemIn1, elemIn2, elemOutTmpA, arith.constant(lineWidth)])
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to5", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_5to5a", 1)
                     # gray2rgba
                     elemInTmpA = acquire(
                         ObjectFifoPort.Consume, "OF_5to5a", 1, line_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOutTmpB = acquire(
                         ObjectFifoPort.Produce, "OF_5to5b", 1, line_bytes_ty
-                    ).acquiredElem()
-                    Call(gray2rgbaLine, [elemInTmpA, elemOutTmpB, lineWidth])
+                    ).acquired_elem()
+                    Call(gray2rgbaLine, [elemInTmpA, elemOutTmpB, arith.constant(lineWidth)])
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5a", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_5to5b", 1)
                     # bitwise AND
                     elemInTmpB1 = acquire(
                         ObjectFifoPort.Consume, "OF_5to5b", 1, line_bytes_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemInTmpB2 = acquire(
                         ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     elemOut = acquire(
                         ObjectFifoPort.Produce, "outOF_L1L2", 1, line_bytes_ty
-                    ).acquiredElem()
+                    ).acquired_elem()
                     Call(
                         bitwiseANDLine,
-                        [elemInTmpB1, elemInTmpB2, elemOut, lineWidthInBytes],
+                        [elemInTmpB1, elemInTmpB2, elemOut, arith.constant(lineWidthInBytes)],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
@@ -338,8 +336,8 @@ def color_detect():
 
             tensorSize = width * height * 4  # 4 channels
             tensorSizeInInt32s = tensorSize // 4
-            tensor_ty =  MemRefType.get((tensorSizeInInt32s,), T.i132())
-            memRef_16x16_ty = MemRefType.get((16,16,), T.i132())
+            tensor_ty =  MemRefType.get((tensorSizeInInt32s,), T.i32())
+            memRef_16x16_ty = MemRefType.get((16,16,), T.i32())
 
             @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
