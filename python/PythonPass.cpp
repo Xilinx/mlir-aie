@@ -6,6 +6,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "PythonPass.h"
+#include "PybindTypes.h"
+#include "RouterPass.h"
+
+#include "aie/Targets/TranslateAIEVecToCpp.h"
+
+using namespace mlir;
+using namespace mlir::python;
+using namespace mlir::python::adaptors;
+using namespace xilinx::AIE;
 
 PyObject *mlirPassToPythonCapsule(MlirPass pass) {
   return PyCapsule_New(MLIR_PYTHON_GET_WRAPPED_POINTER(pass),
@@ -16,4 +25,37 @@ MlirPass mlirPythonCapsuleToPass(PyObject *capsule) {
   void *ptr = PyCapsule_GetPointer(capsule, MLIR_PYTHON_CAPSULE_PASS);
   MlirPass pass = {ptr};
   return pass;
+}
+
+PYBIND11_MODULE(_aie_python_passes, m) {
+
+  bindTypes(m);
+
+  m.def("create_python_router_pass", [](const py::object &router) {
+    MlirPass pass = mlircreatePythonRouterPass(router);
+    auto capsule =
+        py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
+    return capsule;
+  });
+
+  m.def("pass_manager_add_owned_pass",
+        [](MlirPassManager passManager, py::handle passHandle) {
+          py::object passCapsule = mlirApiObjectToCapsule(passHandle);
+          MlirPass pass = mlirPythonCapsuleToPass(passCapsule.ptr());
+          mlirPassManagerAddOwnedPass(passManager, pass);
+        });
+
+  m.def("get_connecting_bundle", &getConnectingBundle);
+
+  m.def(
+      "translate_aie_vec_to_cpp",
+      [](MlirOperation op, bool aieml) {
+        std::string cpp;
+        llvm::raw_string_ostream os(cpp);
+        mlir::Operation *op_ = unwrap(op);
+        if (failed(xilinx::aievec::translateAIEVecToCpp(op_, aieml, os)))
+          throw std::runtime_error("couldn't translate");
+        return cpp;
+      },
+      "module"_a, "aieml"_a = false);
 }

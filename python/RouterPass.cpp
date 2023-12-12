@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "RouterPass.h"
 #include "PybindTypes.h"
-#include "PythonPass.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -79,29 +79,4 @@ createPythonRouterPass(py::object router) {
 
 MlirPass mlircreatePythonRouterPass(py::object router) {
   return wrap(createPythonRouterPass(std::move(router)).release());
-}
-
-void registerPythonRouterPassWithRouter(const py::object &router) {
-  registerPass([router] { return createPythonRouterPass(router); });
-}
-
-PYBIND11_MODULE(_aie_python_passes, m) {
-
-  bindTypes(m);
-
-  m.def("create_python_router_pass", [](const py::object &router) {
-    MlirPass pass = mlircreatePythonRouterPass(router);
-    auto capsule =
-        py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
-    return capsule;
-  });
-
-  m.def("pass_manager_add_owned_pass",
-        [](MlirPassManager passManager, py::handle passHandle) {
-          py::object passCapsule = mlirApiObjectToCapsule(passHandle);
-          MlirPass pass = mlirPythonCapsuleToPass(passCapsule.ptr());
-          mlirPassManagerAddOwnedPass(passManager, pass);
-        });
-
-  m.def("get_connecting_bundle", &getConnectingBundle);
 }

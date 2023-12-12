@@ -20,7 +20,7 @@ namespace xilinx {
 namespace aievec {
 
 /// Translates the AIE vector dialect MLIR to C++ code.
-mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op,
+mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aieml,
                                          mlir::raw_ostream &os);
 
 } // namespace aievec

@@ -17,16 +17,6 @@ PYBIND11_MODULE(_aie, m) {
 
   aieRegisterAllPasses();
 
-  m.doc() = R"pbdoc(
-    AIE MLIR Python bindings
-    --------------------------
-
-    .. currentmodule:: _aie
-
-    .. autosummary::
-        :toctree: _generate
-  )pbdoc";
-
   m.def(
       "register_dialect",
       [](MlirDialectRegistry registry) {
@@ -57,6 +47,4 @@ PYBIND11_MODULE(_aie, m) {
           },
           "Get an instance of ObjectFifoSubviewType with given element type.",
           py::arg("self"), py::arg("type") = py::none());
-
-  m.attr("__version__") = "dev";
 }

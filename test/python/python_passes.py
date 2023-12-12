@@ -9,14 +9,10 @@ from textwrap import dedent
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
-from aie._mlir_libs._aie_python_passes import (
-    create_python_router_pass,
-    pass_manager_add_owned_pass,
-)
-
+from aie.dialects.aie import create_python_router_pass, pass_manager_add_owned_pass
+from aie.extras.util import Router
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
-from aie.extras.util import Router
 
 TIMEOUT = 10
 
@@ -28,6 +24,7 @@ def run(f):
 
 
 THIS_FILE = __file__
+
 
 # CHECK-LABEL: TEST: test_broadcast
 @run
