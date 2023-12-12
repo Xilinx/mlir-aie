@@ -1,5 +1,8 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %python %s | FileCheck %s
+
 import inspect
 from pathlib import Path
 
@@ -8,9 +11,10 @@ import aie.dialects.aie
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aievec
-from aie.dialects import affine
 from aie.dialects import vector, aievec, scf
 from aie.dialects.aie import translate_aie_vec_to_cpp
+from aie.dialects import affine
+from aie.dialects import tosa
 from aie.extras import types as T
 from aie.extras.dialects import arith
 from aie.extras.dialects.func import func
@@ -176,97 +180,178 @@ def test_gemm64_int16():
         )
         print(mod)
 
-    cpp = translate_aie_vec_to_cpp(mod.operation)
-    # CHECK: void matmul(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
-    # CHECK:   size_t v4 = 15;
-    # CHECK:   size_t v5 = 14;
-    # CHECK:   size_t v6 = 13;
-    # CHECK:   size_t v7 = 12;
-    # CHECK:   size_t v8 = 11;
-    # CHECK:   size_t v9 = 10;
-    # CHECK:   size_t v10 = 9;
-    # CHECK:   size_t v11 = 8;
-    # CHECK:   size_t v12 = 7;
-    # CHECK:   size_t v13 = 6;
-    # CHECK:   size_t v14 = 5;
-    # CHECK:   size_t v15 = 4;
-    # CHECK:   size_t v16 = 3;
-    # CHECK:   size_t v17 = 2;
-    # CHECK:   size_t v18 = 16;
-    # CHECK:   int32_t v19 = 0;
-    # CHECK:   size_t v20 = 0;
-    # CHECK:   size_t v21 = 64;
-    # CHECK:   size_t v22 = 1;
-    # CHECK:   for (size_t v23 = v20; v23 < v21; v23 += v22)
-    # CHECK:   chess_prepare_for_pipelining
-    # CHECK:   chess_loop_range(64, 64)
-    # CHECK:   {
-    # CHECK:     for (size_t v24 = v20; v24 < v21; v24 += v18)
-    # CHECK:     chess_prepare_for_pipelining
-    # CHECK:     chess_loop_range(4, 4)
-    # CHECK:     {
-    # CHECK:       v16int16 v25 = *(v16int16 *)(v3 + 64*v23+v24);
-    # CHECK:       v16acc48 v26 = ups(v25, 0);
-    # CHECK:       for (size_t v27 = v20; v27 < v21; v27 += v18)
-    # CHECK:       chess_prepare_for_pipelining
-    # CHECK:       chess_loop_range(4, 4)
-    # CHECK:       {
-    # CHECK:         v16int16 v28 = *(v16int16 *)(v1 + 64*v23+v27);
-    # CHECK:         v16int16 v29 = *(v16int16 *)(v2 + 64*v27+v24);
-    # CHECK:         size_t v30 = v27 + v22;
-    # CHECK:         v16int16 v31 = *(v16int16 *)(v2 + 64*v30+v24);
-    # CHECK:         v32int16 v32 = concat(v29, v31);
-    # CHECK:         v26 = mac16(v26, v32, 0, 0x73727170, 0x77767574, 0x3120, v28, 0, 0, 0, 1);
-    # CHECK:         size_t v33 = v27 + v17;
-    # CHECK:         v16int16 v34 = *(v16int16 *)(v2 + 64*v33+v24);
-    # CHECK:         size_t v35 = v27 + v16;
-    # CHECK:         v16int16 v36 = *(v16int16 *)(v2 + 64*v35+v24);
-    # CHECK:         v32int16 v37 = concat(v34, v36);
-    # CHECK:         v26 = mac16(v26, v37, 0, 0x73727170, 0x77767574, 0x3120, v28, 2, 0, 0, 1);
-    # CHECK:         size_t v38 = v27 + v15;
-    # CHECK:         v16int16 v39 = *(v16int16 *)(v2 + 64*v38+v24);
-    # CHECK:         size_t v40 = v27 + v14;
-    # CHECK:         v16int16 v41 = *(v16int16 *)(v2 + 64*v40+v24);
-    # CHECK:         v32int16 v42 = concat(v39, v41);
-    # CHECK:         v26 = mac16(v26, v42, 0, 0x73727170, 0x77767574, 0x3120, v28, 4, 0, 0, 1);
-    # CHECK:         size_t v43 = v27 + v13;
-    # CHECK:         v16int16 v44 = *(v16int16 *)(v2 + 64*v43+v24);
-    # CHECK:         size_t v45 = v27 + v12;
-    # CHECK:         v16int16 v46 = *(v16int16 *)(v2 + 64*v45+v24);
-    # CHECK:         v32int16 v47 = concat(v44, v46);
-    # CHECK:         v26 = mac16(v26, v47, 0, 0x73727170, 0x77767574, 0x3120, v28, 6, 0, 0, 1);
-    # CHECK:         size_t v48 = v27 + v11;
-    # CHECK:         v16int16 v49 = *(v16int16 *)(v2 + 64*v48+v24);
-    # CHECK:         size_t v50 = v27 + v10;
-    # CHECK:         v16int16 v51 = *(v16int16 *)(v2 + 64*v50+v24);
-    # CHECK:         v32int16 v52 = concat(v49, v51);
-    # CHECK:         v26 = mac16(v26, v52, 0, 0x73727170, 0x77767574, 0x3120, v28, 8, 0, 0, 1);
-    # CHECK:         size_t v53 = v27 + v9;
-    # CHECK:         v16int16 v54 = *(v16int16 *)(v2 + 64*v53+v24);
-    # CHECK:         size_t v55 = v27 + v8;
-    # CHECK:         v16int16 v56 = *(v16int16 *)(v2 + 64*v55+v24);
-    # CHECK:         v32int16 v57 = concat(v54, v56);
-    # CHECK:         v26 = mac16(v26, v57, 0, 0x73727170, 0x77767574, 0x3120, v28, 10, 0, 0, 1);
-    # CHECK:         size_t v58 = v27 + v7;
-    # CHECK:         v16int16 v59 = *(v16int16 *)(v2 + 64*v58+v24);
-    # CHECK:         size_t v60 = v27 + v6;
-    # CHECK:         v16int16 v61 = *(v16int16 *)(v2 + 64*v60+v24);
-    # CHECK:         v32int16 v62 = concat(v59, v61);
-    # CHECK:         v26 = mac16(v26, v62, 0, 0x73727170, 0x77767574, 0x3120, v28, 12, 0, 0, 1);
-    # CHECK:         size_t v63 = v27 + v5;
-    # CHECK:         v16int16 v64 = *(v16int16 *)(v2 + 64*v63+v24);
-    # CHECK:         size_t v65 = v27 + v4;
-    # CHECK:         v16int16 v66 = *(v16int16 *)(v2 + 64*v65+v24);
-    # CHECK:         v32int16 v67 = concat(v64, v66);
-    # CHECK:         v26 = mac16(v26, v67, 0, 0x73727170, 0x77767574, 0x3120, v28, 14, 0, 0, 1);
-    # CHECK:         v16int16 v68 = srs(v26, v19);
-    # CHECK:         *(v16int16 *)(v3 + 64*v23+v24) = v68;
-    # CHECK:       }
-    # CHECK:     }
-    # CHECK:   }
-    # CHECK:   return;
-    # CHECK: }
-    print(cpp)
+        cpp = translate_aie_vec_to_cpp(mod.operation)
+        # CHECK: void matmul(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
+        # CHECK:   size_t v4 = 15;
+        # CHECK:   size_t v5 = 14;
+        # CHECK:   size_t v6 = 13;
+        # CHECK:   size_t v7 = 12;
+        # CHECK:   size_t v8 = 11;
+        # CHECK:   size_t v9 = 10;
+        # CHECK:   size_t v10 = 9;
+        # CHECK:   size_t v11 = 8;
+        # CHECK:   size_t v12 = 7;
+        # CHECK:   size_t v13 = 6;
+        # CHECK:   size_t v14 = 5;
+        # CHECK:   size_t v15 = 4;
+        # CHECK:   size_t v16 = 3;
+        # CHECK:   size_t v17 = 2;
+        # CHECK:   size_t v18 = 16;
+        # CHECK:   int32_t v19 = 0;
+        # CHECK:   size_t v20 = 0;
+        # CHECK:   size_t v21 = 64;
+        # CHECK:   size_t v22 = 1;
+        # CHECK:   for (size_t v23 = v20; v23 < v21; v23 += v22)
+        # CHECK:   chess_prepare_for_pipelining
+        # CHECK:   chess_loop_range(64, 64)
+        # CHECK:   {
+        # CHECK:     for (size_t v24 = v20; v24 < v21; v24 += v18)
+        # CHECK:     chess_prepare_for_pipelining
+        # CHECK:     chess_loop_range(4, 4)
+        # CHECK:     {
+        # CHECK:       v16int16 v25 = *(v16int16 *)(v3 + 64*v23+v24);
+        # CHECK:       v16acc48 v26 = ups(v25, 0);
+        # CHECK:       for (size_t v27 = v20; v27 < v21; v27 += v18)
+        # CHECK:       chess_prepare_for_pipelining
+        # CHECK:       chess_loop_range(4, 4)
+        # CHECK:       {
+        # CHECK:         v16int16 v28 = *(v16int16 *)(v1 + 64*v23+v27);
+        # CHECK:         v16int16 v29 = *(v16int16 *)(v2 + 64*v27+v24);
+        # CHECK:         size_t v30 = v27 + v22;
+        # CHECK:         v16int16 v31 = *(v16int16 *)(v2 + 64*v30+v24);
+        # CHECK:         v32int16 v32 = concat(v29, v31);
+        # CHECK:         v26 = mac16(v26, v32, 0, 0x73727170, 0x77767574, 0x3120, v28, 0, 0, 0, 1);
+        # CHECK:         size_t v33 = v27 + v17;
+        # CHECK:         v16int16 v34 = *(v16int16 *)(v2 + 64*v33+v24);
+        # CHECK:         size_t v35 = v27 + v16;
+        # CHECK:         v16int16 v36 = *(v16int16 *)(v2 + 64*v35+v24);
+        # CHECK:         v32int16 v37 = concat(v34, v36);
+        # CHECK:         v26 = mac16(v26, v37, 0, 0x73727170, 0x77767574, 0x3120, v28, 2, 0, 0, 1);
+        # CHECK:         size_t v38 = v27 + v15;
+        # CHECK:         v16int16 v39 = *(v16int16 *)(v2 + 64*v38+v24);
+        # CHECK:         size_t v40 = v27 + v14;
+        # CHECK:         v16int16 v41 = *(v16int16 *)(v2 + 64*v40+v24);
+        # CHECK:         v32int16 v42 = concat(v39, v41);
+        # CHECK:         v26 = mac16(v26, v42, 0, 0x73727170, 0x77767574, 0x3120, v28, 4, 0, 0, 1);
+        # CHECK:         size_t v43 = v27 + v13;
+        # CHECK:         v16int16 v44 = *(v16int16 *)(v2 + 64*v43+v24);
+        # CHECK:         size_t v45 = v27 + v12;
+        # CHECK:         v16int16 v46 = *(v16int16 *)(v2 + 64*v45+v24);
+        # CHECK:         v32int16 v47 = concat(v44, v46);
+        # CHECK:         v26 = mac16(v26, v47, 0, 0x73727170, 0x77767574, 0x3120, v28, 6, 0, 0, 1);
+        # CHECK:         size_t v48 = v27 + v11;
+        # CHECK:         v16int16 v49 = *(v16int16 *)(v2 + 64*v48+v24);
+        # CHECK:         size_t v50 = v27 + v10;
+        # CHECK:         v16int16 v51 = *(v16int16 *)(v2 + 64*v50+v24);
+        # CHECK:         v32int16 v52 = concat(v49, v51);
+        # CHECK:         v26 = mac16(v26, v52, 0, 0x73727170, 0x77767574, 0x3120, v28, 8, 0, 0, 1);
+        # CHECK:         size_t v53 = v27 + v9;
+        # CHECK:         v16int16 v54 = *(v16int16 *)(v2 + 64*v53+v24);
+        # CHECK:         size_t v55 = v27 + v8;
+        # CHECK:         v16int16 v56 = *(v16int16 *)(v2 + 64*v55+v24);
+        # CHECK:         v32int16 v57 = concat(v54, v56);
+        # CHECK:         v26 = mac16(v26, v57, 0, 0x73727170, 0x77767574, 0x3120, v28, 10, 0, 0, 1);
+        # CHECK:         size_t v58 = v27 + v7;
+        # CHECK:         v16int16 v59 = *(v16int16 *)(v2 + 64*v58+v24);
+        # CHECK:         size_t v60 = v27 + v6;
+        # CHECK:         v16int16 v61 = *(v16int16 *)(v2 + 64*v60+v24);
+        # CHECK:         v32int16 v62 = concat(v59, v61);
+        # CHECK:         v26 = mac16(v26, v62, 0, 0x73727170, 0x77767574, 0x3120, v28, 12, 0, 0, 1);
+        # CHECK:         size_t v63 = v27 + v5;
+        # CHECK:         v16int16 v64 = *(v16int16 *)(v2 + 64*v63+v24);
+        # CHECK:         size_t v65 = v27 + v4;
+        # CHECK:         v16int16 v66 = *(v16int16 *)(v2 + 64*v65+v24);
+        # CHECK:         v32int16 v67 = concat(v64, v66);
+        # CHECK:         v26 = mac16(v26, v67, 0, 0x73727170, 0x77767574, 0x3120, v28, 14, 0, 0, 1);
+        # CHECK:         v16int16 v68 = srs(v26, v19);
+        # CHECK:         *(v16int16 *)(v3 + 64*v23+v24) = v68;
+        # CHECK:       }
+        # CHECK:     }
+        # CHECK:   }
+        # CHECK:   return;
+        # CHECK: }
+        print(cpp)
+
+        # mod = run_pipeline(mod, p().add_pass("convert-aievec-to-llvm"))
+        # print(mod)
 
 
 test_gemm64_int16()
+
+
+def test_i8xi8_add_elem():
+    with mlir_mod_ctx() as ctx:
+
+        @func
+        def dut(A: T.tensor(1024, T.i8()), B: T.tensor(1024, T.i8())):
+            v1 = tosa.add(T.tensor(1024, T.i8()), A, B)
+            return v1
+
+        dut.emit()
+
+        pipe = (
+            p()
+            .Func(
+                p()
+                .add_pass("tosa-to-linalg-named")
+                .add_pass("tosa-to-linalg")
+                .tosa_to_tensor()
+                .add_pass("dynamic-size-no-implicit-broadcast")
+                .linalg_fuse_elementwise_ops()
+                .linalg_fold_unit_extent_dims()
+                .eliminate_empty_tensors()
+                .empty_tensor_to_alloc_tensor()
+            )
+            .one_shot_bufferize(
+                # allow_return_allocs=True,
+                allow_unknown_ops=True,
+                bufferize_function_boundaries=True,
+                function_boundary_type_conversion="identity-layout-map",
+                unknown_type_conversion="identity-layout-map",
+            )
+            .drop_equivalent_buffer_results()
+            .buffer_results_to_out_params()
+            .Func(p().buffer_deallocation())
+            .canonicalize()
+            .cse()
+            .convert_linalg_to_affine_loops()
+            .Func(p().affine_super_vectorize(virtual_vector_size=[64]))
+            .add_pass("convert-vector-to-aievec", aie_target="aieml")
+            .lower_affine()
+        )
+
+        mod = run_pipeline(ctx.module, pipe)
+        # CHECK: func.func @dut(%arg0: memref<1024xi8>, %arg1: memref<1024xi8>, %arg2: memref<1024xi8>) {
+        # CHECK:   %c0 = arith.constant 0 : index
+        # CHECK:   %c1024 = arith.constant 1024 : index
+        # CHECK:   %c64 = arith.constant 64 : index
+        # CHECK:   scf.for %arg3 = %c0 to %c1024 step %c64 {
+        # CHECK:     %0 = aievec.upd %arg0[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<1024xi8>, vector<64xi8>
+        # CHECK:     %1 = aievec.upd %arg1[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<1024xi8>, vector<64xi8>
+        # CHECK:     %2 = aievec.add_elem %0, %1 : vector<64xi8>
+        # CHECK:     vector.transfer_write %2, %arg2[%arg3] {in_bounds = [true]} : vector<64xi8>, memref<1024xi8>
+        # CHECK:   }
+        # CHECK:   return
+        # CHECK: }
+        print(mod)
+
+        cpp = translate_aie_vec_to_cpp(mod.operation, aieml=True)
+        # CHECK: void dut(int8_t * restrict v1, int8_t * restrict v2, int8_t * restrict v3) {
+        # CHECK:   size_t v4 = 0;
+        # CHECK:   size_t v5 = 1024;
+        # CHECK:   size_t v6 = 64;
+        # CHECK:   for (size_t v7 = v4; v7 < v5; v7 += v6)
+        # CHECK:   chess_prepare_for_pipelining
+        # CHECK:   chess_loop_range(16, 16)
+        # CHECK:   {
+        # CHECK:     v64int8 v8 = *(v64int8 *)(v1 + v7);
+        # CHECK:     v64int8 v9 = *(v64int8 *)(v2 + v7);
+        # CHECK:     v64int8 v10 = add(v8, v9);
+        # CHECK:     *(v64int8 *)(v3 + v7) = v10;
+        # CHECK:   }
+        # CHECK:   return;
+        # CHECK: }
+        print(cpp)
+
+
+test_i8xi8_add_elem()
