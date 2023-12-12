@@ -7,14 +7,11 @@
 
 import sys
 
-import aie
-from aie.ir import *
-from aie.dialects.func import *
-from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.extras import memref, arith
-from aie.util import mlir_mod_ctx
+from aie.dialects.scf import *
+from aie.extras.dialects import memref, arith
+from aie.extras.util import mlir_mod_ctx
 
 N = 4096
 N_in_bytes = N * 4

@@ -88,6 +88,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
+set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in
@@ -139,12 +140,26 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
-
 cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
   "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
 
 cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." ON "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
+
+cmake_dependent_option(AIECC_COMPILE
+  "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
+
+cmake_dependent_option(AIECC_LINK
+  "Set aiecc to link." ON "NOT AIE_LINKER STREQUAL NONE" OFF)
+
+cmake_dependent_option(AIECC_HOST_COMPILE
+  "Set aiecc to host compile." ON "NOT HOST_COMPILER STREQUAL NONE" OFF)
+
+cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
+  "Set aiecc to compile with chess." ON "AIECC_COMPILE;AIE_COMPILER STREQUAL XCHESSCC" OFF)
+
+cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
+  "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
@@ -198,11 +213,7 @@ if(AIE_ENABLE_BINDINGS_PYTHON)
   mlir_configure_python_dev_packages()
 
   if(NOT AIE_PYTHON_PACKAGES_DIR)
-    set(AIE_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python")
-  endif()
-
-  if(NOT AIE_PYTHON_INSTALL_DIR)
-    set(AIE_PYTHON_INSTALL_DIR "python")
+    set(AIE_PYTHON_PACKAGES_DIR "${AIE_BINARY_DIR}/python")
   endif()
 endif()
 

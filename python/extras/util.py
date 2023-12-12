@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
-from .extras import types as T
-from .ir import (
+from . import types as T
+from ..ir import (
     F32Type,
     F64Type,
     IntegerType,
@@ -134,7 +134,7 @@ def mlir_mod_ctx(
 
 
 def build_graph(max_cols, max_rows, target_model):
-    from ._mlir_libs._aie_python_passes import WireBundle, Switchbox
+    from .._mlir_libs._aie_python_passes import WireBundle, Switchbox
 
     DG = nx.DiGraph()
     for c in range(max_cols + 1):
@@ -419,7 +419,7 @@ MAX_NUM_CHANNELS = 12
 
 
 def get_routing_solution(DG, flow_paths, used_channels):
-    from ._mlir_libs._aie_python_passes import (
+    from .._mlir_libs._aie_python_passes import (
         SwitchSetting,
         Port,
         get_connecting_bundle,
@@ -528,7 +528,7 @@ class Router:
         self.flows.append((src, tgt))
 
     def add_fixed_connection(self, connect_op):
-        from ._mlir_libs._aie_python_passes import get_connecting_bundle
+        from .._mlir_libs._aie_python_passes import get_connecting_bundle
 
         tileid = connect_op.get_switchbox().get_tileid()
         lhs_port = connect_op.get_src_port()

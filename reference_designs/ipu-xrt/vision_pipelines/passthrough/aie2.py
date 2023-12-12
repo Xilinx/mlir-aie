@@ -7,14 +7,10 @@
 
 import sys
 
-import aie
-from aie.ir import *
-from aie.dialects.func import *
-from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.extras import memref, arith
-from aie.util import mlir_mod_ctx
+from aie.dialects.scf import *
+from aie.extras.util import mlir_mod_ctx
 
 width = 512  # 1920 // 8
 height = 9  # 1080 // 8

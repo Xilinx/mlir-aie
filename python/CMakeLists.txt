@@ -3,11 +3,6 @@
 
 include(AddMLIRPython)
 
-# The directory at which the Python import tree begins.
-# See documentation for `declare_mlir_python_sources`'s ROOT_DIR
-# argument.
-set(AIE_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
@@ -16,7 +11,7 @@ add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 ################################################################################
 
 declare_mlir_python_sources(AIEPythonSources
-  ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 declare_mlir_python_sources(AIEPythonExtensions)
@@ -27,27 +22,52 @@ declare_mlir_python_sources(AIEPythonSources.Dialects
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT AIEPythonSources.Dialects
-  ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
   TD_FILE dialects/AIEBinding.td
   SOURCES
     dialects/aie.py
-    dialects/extras/__init__.py
-    dialects/extras/arith.py
-    dialects/extras/memref.py
-    util.py
   DIALECT_NAME AIE
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
 )
 
+declare_mlir_python_sources(AIEPythonSources.Extras
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    extras/meta.py
+    extras/util.py
+)
+
+declare_mlir_python_sources(AIEPythonSources.DialectExtras
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    extras/dialects/*.py
+    extras/dialects/**/*.py
+)
+
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT AIEPythonSources.Dialects
-  ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
   TD_FILE dialects/AIEXBinding.td
   SOURCES
     dialects/aiex.py
   DIALECT_NAME AIEX
 )
+
+configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
+add_custom_target(aiecc_configure
+  ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+)
+
+# Note that compiler/ is not globbed but compiler/aiecc/
+# this is so that compiler/aiecc.py does not get distributed
+# through this dir but actually through bin (see all the way at the bottom of this file)
+declare_mlir_python_sources(AIEPythonSources.Compiler
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    compiler/aiecc/*.py
+)
+add_dependencies(AIEPythonSources.Compiler aiecc_configure)
 
 ################################################################################
 # Extensions
@@ -258,5 +278,13 @@ foreach(r ${_runtimes})
   )
 endforeach()
 
-add_subdirectory(compiler)
-add_dependencies(AIEPythonModules AIECompilerPythonModules)
+# during build
+add_custom_command(
+  TARGET AIEPythonModules PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
+  ${CMAKE_BINARY_DIR}/bin
+)
+# during install
+install(PROGRAMS compiler/aiecc.py DESTINATION bin)
+

@@ -129,16 +129,16 @@ configure_lit_site_cfg(
 
 set(TEST_DEPENDS
   FileCheck count not
-  aiecc.py
+  AIEPythonModules
   aie-opt
   aie-translate
-  )
+)
 
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
   ARGS "-sv --timeout 300 --time-tests"
-  )
+)
 set_target_properties(check-reference-designs PROPERTIES FOLDER "Tutorials")
 
 add_lit_testsuites(REFERENCE_DESIGNS ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-sv --timeout 300 --time-tests")

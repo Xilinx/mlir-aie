@@ -16,7 +16,7 @@ from aie.dialects.aie import (
     Core,
     end,
 )
-from aie.dialects.extras import memref, arith
+from aie.extras.dialects import memref, arith
 from aie.ir import InsertionPoint, TypeAttr, Block
 
 from util import construct_and_print_module

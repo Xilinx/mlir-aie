@@ -7,12 +7,14 @@
 
 import os
 
-aie_link_with_xchesscc = @CONFIG_LINK_WITH_XCHESSCC@
-aie_compile_with_xchesscc = @CONFIG_COMPILE_WITH_XCHESSCC@
-aie_disable_link = @CONFIG_DISABLE_LINK@
-aie_disable_compile = @CONFIG_DISABLE_COMPILE@
+from aie.extras.util import pythonize_bool
+
+aie_link_with_xchesscc = pythonize_bool("@AIECC_LINK_WITH_XCHESSCC@")
+aie_compile_with_xchesscc = pythonize_bool("@AIECC_COMPILE_WITH_XCHESSCC@")
+aie_disable_link = not pythonize_bool("@AIECC_LINK@")
+aie_disable_compile = not pythonize_bool("@AIECC_COMPILE@")
 aie_unified_compile = True
-host_disable_compile = @CONFIG_DISABLE_HOST_COMPILE@
+host_disable_compile = not pythonize_bool("@AIECC_HOST_COMPILE@")
 host_architecture = "@LLVM_HOST_TRIPLE@"
 
 def install_path():
