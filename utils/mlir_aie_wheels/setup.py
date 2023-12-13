@@ -15,7 +15,7 @@ from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
-    return os.environ.get(build, default) in {"1", "true", "True", "ON", "YES"}
+    return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
 class CMakeExtension(Extension):
@@ -213,21 +213,15 @@ class CMakeBuild(build_ext):
             build_temp.mkdir(parents=True)
 
         print("ENV", pprint(os.environ), file=sys.stderr)
-        print("CMAKE_ARGS", cmake_args, file=sys.stderr)
+        print("cmake", " ".join(cmake_args), file=sys.stderr)
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args],
-            cwd=build_temp,
-            check=True,
-            stdout=sys.stderr,
-            stderr=sys.stderr
+            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
         )
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
             check=True,
-            stdout=sys.stderr,
-            stderr=sys.stderr
         )
 
         # cibuildwheel containers are in the future? and this messes with ninja which checks timestamps
@@ -270,5 +264,5 @@ setup(
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir="mlir-aie")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 )

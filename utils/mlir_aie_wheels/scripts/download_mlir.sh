@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -xe
 
-rm -rf mlir* || true
+rm -rf mlir || true
 
 pip install mlir-native-tools --force -U
 
 if [ x"$ENABLE_RTTI" == x"OFF" ]; then
-  NO_RTTI="_no_rtti"
+  NO_RTTI="-no-rtti"
 fi
 
 if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then
@@ -20,4 +20,8 @@ else
   pip -q download mlir$NO_RTTI
 fi
 
-unzip -q mlir*whl
+# overwrite files WITHOUT prompting
+unzip -o -q mlir*whl
+
+echo $PWD
+ls -l mlir*

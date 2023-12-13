@@ -89,8 +89,10 @@ add_mlir_python_common_capi_library(AIEAggregateCAPI
 # Custom targets.
 # ##############################################################################
 
-_flatten_mlir_python_targets(aie_python_sources_deps AIEPythonSources
-                             AIECompilerPythonSources)
+_flatten_mlir_python_targets(aie_python_sources_deps
+  AIEPythonSources
+  AIEPythonSources.Compiler
+)
 add_custom_target("aie-python-sources" DEPENDS ${aie_python_sources_deps})
 if(NOT LLVM_ENABLE_IDE)
   add_llvm_install_targets(install-aie-python-sources DEPENDS
@@ -122,21 +124,4 @@ add_mlir_python_modules(AIEPythonModules
     AIEPythonSources
   COMMON_CAPI_LINK_LIBS
     AIEAggregateCAPI
-)
-
-configure_file(
-  ${AIE_DIR}/../../../python/aie/compiler/aiecc/configure.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/configure.py
-)
-
-declare_mlir_python_sources(AIECompilerPythonSources.Configure
-  ADD_TO_PARENT AIECompilerPythonSources
-  SOURCES aiecc/configure.py
-)
-
-add_mlir_python_modules(AIECompilerPythonModules
-  ROOT_PREFIX ${CMAKE_BINARY_DIR}/aie/compiler
-  INSTALL_PREFIX aie/compiler
-  DECLARED_SOURCES
-    AIECompilerPythonSources
 )

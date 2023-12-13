@@ -6,17 +6,18 @@ import subprocess
 import sys
 from pathlib import Path
 from pprint import pprint
+from typing import Union
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
-    return os.environ.get(build, default) in {"1", "true", "True", "ON", "YES"}
+    return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
 class CMakeExtension(Extension):
-    def __init__(self, name: str, sourcedir: str = "") -> None:
+    def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
         self.sourcedir = os.fspath(Path(sourcedir).resolve())
 
@@ -80,7 +81,7 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-G {cmake_generator}",
-            f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir' if check_env('ENABLE_RTTI') else 'mlir_no_rtti'}",
+            f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
             f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DPython3_EXECUTABLE={sys.executable}",
@@ -153,28 +154,15 @@ class CMakeBuild(build_ext):
             build_temp.mkdir(parents=True)
 
         print("ENV", pprint(os.environ), file=sys.stderr)
-        print("CMAKE_ARGS", cmake_args, file=sys.stderr)
+        print("cmake", " ".join(cmake_args), file=sys.stderr)
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args],
-            cwd=build_temp,
-            check=True,
-            capture_output=True,
+            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
         )
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
             check=True,
-            capture_output=True,
-        )
-        shutil.copy(
-            MLIR_AIE_INSTALL_ABS_PATH
-            / "python"
-            / "aie"
-            / "compiler"
-            / "aiecc"
-            / "configure.py",
-            install_dir / "aie" / "compiler" / "aiecc" / "configure.py",
         )
 
 
@@ -184,7 +172,7 @@ setup(
     name="aie",
     include_package_data=True,
     long_description_content_type="text/markdown",
-    ext_modules=[CMakeExtension("_aie", sourcedir=".")],
+    ext_modules=[CMakeExtension("_aie", sourcedir=Path(__file__).parent.absolute())],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.10",

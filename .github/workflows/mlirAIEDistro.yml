@@ -33,12 +33,14 @@ on:
   # comment it out when you're not working on these yamls
   pull_request:
 
-concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-mlir-aie-distro-${{ github.event.number || github.sha }}
-  cancel-in-progress: true
+  # conversely you want to comment this out so that you can have multiple runs going concurrently
+  # which is useful here for flushing all bugs out
+#concurrency:
+#  # A PR number if a pull request and otherwise the commit hash. This cancels
+#  # queued and in-progress runs for the same PR (presubmit) or commit
+#  # (postsubmit).
+#  group: ci-build-mlir-aie-distro-${{ github.event.number || github.sha }}
+#  cancel-in-progress: true
 
 jobs:
 
@@ -71,7 +73,7 @@ jobs:
 
     needs: get_aie_project_commit
 
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
     continue-on-error: true
 
@@ -86,18 +88,24 @@ jobs:
         include:
           - OS: ubuntu-20.04
             ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: windows-2019
             ARCH: AMD64
+            ENABLE_RTTI: ON
 
+# Can't figure it out but cmake segfault when building on mac on the runners
           - OS: macos-11
             ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: macos-11
             ARCH: arm64
+            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: aarch64
+            ENABLE_RTTI: ON
 
     steps:
 
@@ -125,7 +133,7 @@ jobs:
       with:
         MATRIX_OS: ${{ matrix.OS }}
         MATRIX_ARCH: ${{ matrix.ARCH }}
-        EXTRA_KEY: mlir-aie-distro
+        EXTRA_KEY: mlir-aie-distro-rtti-${{ matrix.ENABLE_RTTI }}
 
     - name: Shift workspace root
       id: workspace_root
@@ -216,7 +224,7 @@ jobs:
       shell: bash
       run: |
         pip install pkginfo
-        WHL=$(ls wheelhouse/mlir_aie_*whl)
+        WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
@@ -248,26 +256,24 @@ jobs:
 
     # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.11)
+    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
     - name: rename non-windows
       if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie_*whl
-        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir_aie_*whl
+        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie*whl
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir_aie_*whl
+          rename 's/x86_64/aarch64/' wheelhouse/mlir_aie*whl
         fi
 
     - name: rename windows
       if: ${{ matrix.OS == 'windows-2019' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        ls wheelhouse/mlir_aie_*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
-        ls wheelhouse/mlir_aie_*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
+        ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
 
     - name: build python bindings
       shell: bash
@@ -278,11 +284,12 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         cp requirements.txt python_bindings
-        cp wheelhouse/mlir-aie-*.whl python_bindings/
+        cp wheelhouse/mlir_aie*.whl python_bindings/
         cp -r scripts python_bindings/scripts
         
         pushd python_bindings
-        unzip -q mlir-aie-*.whl
+        unzip -q mlir_aie*.whl
+        rm -rf mlir_aie*.whl
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
@@ -388,7 +395,7 @@ jobs:
           cp requirements.txt python_bindings
           cp -R scripts python_bindings/scripts
           pushd python_bindings
-          unzip -q ../wheelhouse/mlir-aie-*-linux_aarch64.whl
+          unzip -q ../wheelhouse/mlir_aie*-linux_aarch64.whl
           
           CIBW_ARCHS=${{ matrix.ARCH }} \
           CIBW_BUILD=${{ matrix.PY_VERSION }}-manylinux_aarch64 \
@@ -431,6 +438,11 @@ jobs:
             ARCH: x86_64
 
     steps:
+      - name: Checkout reqs
+        uses: actions/checkout@v3
+        with:
+          sparse-checkout: python/requirements.txt
+
       - uses: actions/download-artifact@v3
         with:
           name: build_artifact
@@ -438,12 +450,12 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: test
         shell: bash
         run: |
-          pip install numpy PyYAML
+          pip install -r python/requirements.txt
           pip install aie -f dist --no-index
           python -c 'import aie.dialects.aie'
 

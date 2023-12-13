@@ -1,4 +1,4 @@
-cmake>=3.12
+cmake==3.27.9
 dataclasses
 importlib-metadata
 ninja
