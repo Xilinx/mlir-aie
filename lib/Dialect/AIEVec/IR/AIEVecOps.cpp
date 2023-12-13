@@ -575,11 +575,14 @@ ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
 // some specializations to print those fields specifically for FMA op.
 
 // Print the accumulator
-template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
-template <> inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
+template <typename T>
+void printAccumulator(OpAsmPrinter &p, T op);
+template <>
+inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
   p << ", " << op.getAcc();
 }
-template <> inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
+template <>
+inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
 
 // Mark fmsub indicator as elided if the FMA op is not fmsub
 template <typename T>
@@ -595,7 +598,8 @@ inline void elideFMSubAttr(aievec::MulOp,
                            SmallVector<StringRef, 10> &elidedAttrs) {}
 
 // Print out Mul and FMA op.
-template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
+template <typename T>
+static void printMulFMAOp(OpAsmPrinter &p, T op) {
   // Print the left operand
   p << " " << op.getLhs();
   // Print the right operand
@@ -632,7 +636,8 @@ void aievec::FMAOp::print(OpAsmPrinter &p) {
 }
 
 // Verify Mul and FMA op.
-template <typename T> LogicalResult verifyMulFMAOp(T op) {
+template <typename T>
+LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
   auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
   auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
@@ -776,7 +781,8 @@ ParseResult FMAOp::parse(OpAsmParser &parser, OperationState &result) {
 // FMAElemOp and MULElemOp.
 
 // Print the accumulator
-template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
+template <typename T>
+void printAccumulator(OpAsmPrinter &p, T op);
 template <>
 inline void printAccumulator(OpAsmPrinter &p, aievec::FMAElemOp op) {
   p << ", " << op.getAcc();
@@ -799,7 +805,8 @@ inline void elideFMSubAttr(aievec::MulElemOp op,
                            SmallVector<StringRef, 4> &elidedAttrs) {}
 
 // Print out MulElem and FMAElem op.
-template <typename T> static void printMulFMAElemOp(OpAsmPrinter &p, T op) {
+template <typename T>
+static void printMulFMAElemOp(OpAsmPrinter &p, T op) {
   // Print the left operand
   p << " " << op.getLhs();
   // Print the right operand
@@ -828,7 +835,8 @@ void aievec::FMAElemOp::print(OpAsmPrinter &p) {
 }
 
 // Verify MulElem and FMAElem op.
-template <typename T> LogicalResult verifyMulFMAElemOp(T op) {
+template <typename T>
+LogicalResult verifyMulFMAElemOp(T op) {
   // Verify the types
   auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
   auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
@@ -957,7 +965,8 @@ ParseResult FMAElemOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 // Print out Add and Sub op.
-template <typename T> void printAddSubOp(OpAsmPrinter &p, T op) {
+template <typename T>
+void printAddSubOp(OpAsmPrinter &p, T op) {
   // Print the lhs operand
   p << " " << op.getLhs();
   // Print the rhs operand
@@ -991,7 +1000,8 @@ void aievec::SubOp::print(OpAsmPrinter &p) {
 }
 
 // Verify Add and Sub op.
-template <typename T> LogicalResult verifyAddSubOp(T op) {
+template <typename T>
+LogicalResult verifyAddSubOp(T op) {
   // Verify the types
   auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
   auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
@@ -1151,6 +1161,25 @@ ParseResult ConcatOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
+}
+
+LogicalResult
+ConcatOp::inferReturnTypes(MLIRContext *, std::optional<Location>,
+                           ConcatOp::Adaptor adaptor,
+                           SmallVectorImpl<Type> &inferredReturnTypes) {
+  SmallVector<Value, 8> srcs(adaptor.getSources().begin(),
+                             adaptor.getSources().end());
+  unsigned totalLength = 0;
+  for (auto source : srcs) {
+    VectorType type = llvm::dyn_cast<VectorType>(source.getType());
+    assert(type.getRank() == 1 &&
+           "only rank 1 vectors currently supported by concat");
+    totalLength += type.getDimSize(0);
+  }
+  inferredReturnTypes.push_back(VectorType::get(
+      {totalLength},
+      srcs[0].getType().dyn_cast<VectorType>().getElementType()));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1356,7 +1385,8 @@ ParseResult SelectOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 // Print out Pack and Unpack op.
-template <typename T> static void printPackUnpackOp(OpAsmPrinter &p, T op) {
+template <typename T>
+static void printPackUnpackOp(OpAsmPrinter &p, T op) {
   // Print the source vector
   p << " " << op.getSource();
 
@@ -1372,7 +1402,8 @@ void PackOp::print(OpAsmPrinter &p) { printPackUnpackOp<PackOp>(p, *this); }
 void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 
 // Verify Pack and Unpack op.
-template <typename T> LogicalResult verifyPackUnpackOp(T op) {
+template <typename T>
+LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
   auto sourceType = op.getSource().getType().template dyn_cast<VectorType>();
   auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
@@ -1626,7 +1657,8 @@ ParseResult ShuffleOp::parse(OpAsmParser &parser, OperationState &result) {
 // FMAConvOp and MULConvOp.
 
 // Print the accumulator
-template <typename T> void printAccumulator(OpAsmPrinter &p, T op);
+template <typename T>
+void printAccumulator(OpAsmPrinter &p, T op);
 template <>
 inline void printAccumulator(OpAsmPrinter &p, aievec::FMAConvOp op) {
   p << ", " << op.getAcc();
@@ -1649,7 +1681,8 @@ inline void elideFMSubAttr(MulConvOp op,
                            SmallVector<StringRef, 4> &elidedAttrs) {}
 
 // Print out MulConv and FMAConv op.
-template <typename T> static void printMulFMAConvOp(OpAsmPrinter &p, T op) {
+template <typename T>
+static void printMulFMAConvOp(OpAsmPrinter &p, T op) {
   // Print the left operand
   p << " " << op.getLhs();
   // Print the right operand
@@ -1678,7 +1711,8 @@ void aievec::FMAConvOp::print(OpAsmPrinter &p) {
 }
 
 // Verify MulConv and FMAConv op.
-template <typename T> LogicalResult verifyMulFMAConvOp(T op) {
+template <typename T>
+LogicalResult verifyMulFMAConvOp(T op) {
   // Verify the types
   auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
   auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
