@@ -14,6 +14,10 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
+def check_env(build, default=0):
+    return os.environ.get(build, default) in {"1", "true", "True", "ON", "YES"}
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
         super().__init__(name, sources=[])
@@ -32,7 +36,9 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-tblgen")
         )
         mlir_tblgen_target = next(
-            f.locate() for f in files("mlir") if f.name.startswith("mlir-tblgen")
+            f.locate()
+            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+            if f.name.startswith("mlir-tblgen")
         )
         os.remove(mlir_tblgen_target)
         shutil.copy(mlir_tblgen_host, mlir_tblgen_target)
@@ -42,7 +48,9 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-pdll")
         )
         mlir_pdll_target = next(
-            f.locate() for f in files("mlir") if f.name.startswith("mlir-pdll")
+            f.locate()
+            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+            if f.name.startswith("mlir-pdll")
         )
         os.remove(mlir_pdll_target)
         shutil.copy(mlir_pdll_host, mlir_pdll_target)
@@ -93,7 +101,9 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / "mlir_aie"
+        install_dir = extdir / (
+            "mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti"
+        )
         cfg = "Release"
 
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
@@ -101,7 +111,10 @@ class CMakeBuild(build_ext):
         if platform.system() == "Windows":
             cmake_module_path = cmake_module_path.replace("\\", "\\\\")
 
-        MLIR_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir").absolute()
+        MLIR_INSTALL_ABS_PATH = (
+            Path(__file__).parent
+            / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+        ).absolute()
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
             shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
@@ -120,6 +133,7 @@ class CMakeBuild(build_ext):
             # causes pure duplication of various shlibs for Python wheels.
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
             "-DLLVM_CCACHE_BUILD=ON",
+            f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
@@ -202,13 +216,27 @@ class CMakeBuild(build_ext):
         print("CMAKE_ARGS", cmake_args, file=sys.stderr)
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
+            ["cmake", ext.sourcedir, *cmake_args],
+            cwd=build_temp,
+            check=True,
+            stdout=sys.stderr,
+            stderr=sys.stderr
         )
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
             check=True,
+            stdout=sys.stderr,
+            stderr=sys.stderr
         )
+
+        # cibuildwheel containers are in the future? and this messes with ninja which checks timestamps
+        # when configuring cmake
+        for root, dirs, files in os.walk(install_dir):
+            for name in files:
+                os.utime(
+                    os.path.join(root, name), (1602179630, 1602179630)
+                )  # just some random timestamp in the past
 
 
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
@@ -222,7 +250,7 @@ version = f"{release_version}.{datetime}+{commit_hash}"
 setup(
     version=version,
     author="",
-    name="mlir-aie",
+    name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(

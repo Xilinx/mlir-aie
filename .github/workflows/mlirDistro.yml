@@ -36,11 +36,19 @@ on:
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-#  pull_request:
+  # TODO(max): remove
+  pull_request:
 
   schedule:
-    # At minute 0 past every 6th hour. (see https://crontab.guru)
-    - cron: '0 */6 * * *'
+    # At minute 0 past every 4th hour. (see https://crontab.guru)
+    - cron: '0 */4 * * *'
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-mlir-distro-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
 
@@ -73,14 +81,11 @@ jobs:
 
     needs: get_llvm_project_commit
 
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
     continue-on-error: true
 
     runs-on: ${{ matrix.OS }}
-
-    outputs:
-      MLIR_WHEEL_VERSION: ${{ steps.get_wheel_version.outputs.MLIR_WHEEL_VERSION }}
 
     strategy:
       fail-fast: false
@@ -88,18 +93,43 @@ jobs:
         include:
           - OS: ubuntu-20.04
             ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: aarch64
+            ENABLE_RTTI: ON
 
           - OS: windows-2019
             ARCH: AMD64
+            ENABLE_RTTI: ON
 
           - OS: macos-11
             ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: macos-11
             ARCH: arm64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2019
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: arm64
+            ENABLE_RTTI: OFF
 
     steps:
 
@@ -108,8 +138,7 @@ jobs:
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
-        sparse-checkout: |
-          .github/actions
+        sparse-checkout: .github/actions
 
     - uses: ./.github/actions/setup_base
       id: setup_base
@@ -128,7 +157,7 @@ jobs:
       with:
         MATRIX_OS: ${{ matrix.OS }}
         MATRIX_ARCH: ${{ matrix.ARCH }}
-        EXTRA_KEY: mlir-distro
+        EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
     # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
     # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
@@ -169,6 +198,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
+        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -188,6 +218,7 @@ jobs:
         export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
         ./scripts/apply_patches.sh
         
+        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
@@ -217,7 +248,7 @@ jobs:
       shell: bash
       run: |
         pip install pkginfo
-        WHL=$(ls wheelhouse/mlir-*whl)
+        WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
@@ -256,19 +287,19 @@ jobs:
       shell: bash
       run: |
         
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir-*whl
-        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir-*whl
+        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir*whl
+        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir*whl
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir-*whl
+          rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
         fi
 
     - name: rename windows
       if: ${{ matrix.OS == 'windows-2019' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
-        ls wheelhouse/mlir-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
+        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
+        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
     # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
     # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
@@ -276,6 +307,7 @@ jobs:
     # instead of asking/expecting someone to download the entire distro just for tblgen.
     - name: Build native_tools wheel
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      if: matrix.ENABLE_RTTI == 'ON'
       shell: bash
       id: build_native_tools_wheel
       run: |
@@ -284,7 +316,7 @@ jobs:
           if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
             TOOL="$TOOL.exe"
           fi
-          unzip -j wheelhouse/mlir-*whl "mlir/bin/$TOOL" -d native_tools/
+          unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ]; then
@@ -306,17 +338,71 @@ jobs:
     # done
 
     - name: Upload wheels
-      if: github.event_name == 'workflow_dispatch' && (success() || failure())
+#      TODO(max): remove
+#      if: github.event_name == 'workflow_dispatch' && (success() || failure())
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
+  smoke_test_wheels:
+
+    name: Smoketest ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.NO_RTTI }}
+
+    needs: [build]
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            NO_RTTI: ''
+
+          - OS: windows-2019
+            ARCH: AMD64
+            NO_RTTI: ''
+
+          - OS: macos-11
+            ARCH: x86_64
+            NO_RTTI: ''
+
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            NO_RTTI: '_no_rtti'
+
+          - OS: windows-2019
+            ARCH: AMD64
+            NO_RTTI: '_no_rtti'
+
+          - OS: macos-11
+            ARCH: x86_64
+            NO_RTTI: '_no_rtti'
+
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: build_artifact
+          path: dist
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: test
+        shell: bash
+        run: |
+          pip install numpy PyYAML
+          unzip mlir${{ matrix.NO_RTTI }}*.whl 
+          
+          PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir${{ matrix.NO_RTTI }}.ir'
+
   upload_distro_wheels:
 
     if: github.event_name == 'workflow_dispatch'
 
-    needs: build
+    needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
 
@@ -343,3 +429,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
+          body: "`pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip mlir*.whl`"

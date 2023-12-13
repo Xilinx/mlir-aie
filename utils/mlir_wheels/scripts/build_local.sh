@@ -43,7 +43,7 @@ ccache --show-config
 export HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
 cibuildwheel "$HERE"/.. --platform "$machine"
 
-rename 's/cp311-cp311/py3-none/' "$HERE/../wheelhouse/"mlir-*whl
+rename 's/cp311-cp311/py3-none/' "$HERE/../wheelhouse/"mlir*whl
 
 if [ -d "$HERE/../wheelhouse/.ccache" ]; then
   cp -R "$HERE/../wheelhouse/.ccache/"* "$HOST_CCACHE_DIR/"
@@ -53,7 +53,7 @@ for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "
   if [ x"$MATRIX_OS" == x"windows-2019" ]; then
     TOOL="$TOOL.exe"
   fi
-  unzip -j "$HERE/../wheelhouse/"mlir-*whl "mlir/bin/$TOOL" -d "$HERE/../native_tools/"
+  unzip -j "$HERE/../wheelhouse/"mlir*whl "mlir/bin/$TOOL" -d "$HERE/../native_tools/"
 done
 
 if [ x"$MATRIX_OS" == x"ubuntu-20.04" ]; then

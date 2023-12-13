@@ -31,7 +31,14 @@ on:
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-#  pull_request:
+  pull_request:
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-mlir-aie-distro-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
 
@@ -209,7 +216,7 @@ jobs:
       shell: bash
       run: |
         pip install pkginfo
-        WHL=$(ls wheelhouse/mlir_aie-*whl)
+        WHL=$(ls wheelhouse/mlir_aie_*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
@@ -248,19 +255,19 @@ jobs:
       shell: bash
       run: |
         
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie-*whl
-        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir_aie-*whl
+        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie_*whl
+        rename 's/cp311-cp311/py3-none/' wheelhouse/mlir_aie_*whl
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir_aie-*whl
+          rename 's/x86_64/aarch64/' wheelhouse/mlir_aie_*whl
         fi
 
     - name: rename windows
       if: ${{ matrix.OS == 'windows-2019' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
-        ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
+        ls wheelhouse/mlir_aie_*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
+        ls wheelhouse/mlir_aie_*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
     - name: build python bindings
       shell: bash
@@ -271,11 +278,11 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
         
         cp requirements.txt python_bindings
-        cp wheelhouse/mlir_aie-*.whl python_bindings/
+        cp wheelhouse/mlir-aie-*.whl python_bindings/
         cp -r scripts python_bindings/scripts
         
         pushd python_bindings
-        unzip -q mlir_aie-*.whl
+        unzip -q mlir-aie-*.whl
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
@@ -381,7 +388,7 @@ jobs:
           cp requirements.txt python_bindings
           cp -R scripts python_bindings/scripts
           pushd python_bindings
-          unzip -q ../wheelhouse/mlir_aie-*-linux_aarch64.whl
+          unzip -q ../wheelhouse/mlir-aie-*-linux_aarch64.whl
           
           CIBW_ARCHS=${{ matrix.ARCH }} \
           CIBW_BUILD=${{ matrix.PY_VERSION }}-manylinux_aarch64 \
@@ -471,3 +478,4 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
+          body: "`pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels && unzip mlir_aie*.whl`"

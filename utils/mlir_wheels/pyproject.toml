@@ -36,6 +36,7 @@ environment-pass = [
     "PARALLEL_LEVEL",
     "PIP_FIND_LINKS",
     "PIP_NO_BUILD_ISOLATION",
+    "ENABLE_RTTI",
 ]
 
 [tool.cibuildwheel.macos]

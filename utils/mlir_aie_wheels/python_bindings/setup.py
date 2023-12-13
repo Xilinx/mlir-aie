@@ -4,7 +4,6 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
@@ -12,8 +11,8 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
-def check_env(build):
-    return os.environ.get(build, 0) in {"1", "true", "True", "ON", "YES"}
+def check_env(build, default=0):
+    return os.environ.get(build, default) in {"1", "true", "True", "ON", "YES"}
 
 
 class CMakeExtension(Extension):
@@ -62,8 +61,14 @@ class CMakeBuild(build_ext):
 
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
 
-        MLIR_AIE_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir_aie").absolute()
-        MLIR_INSTALL_ABS_PATH = (Path(__file__).parent / "mlir").absolute()
+        MLIR_AIE_INSTALL_ABS_PATH = (
+            Path(__file__).parent
+            / ("mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti")
+        ).absolute()
+        MLIR_INSTALL_ABS_PATH = (
+            Path(__file__).parent
+            / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+        ).absolute()
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
             if not Path("/tmp/a").exists():
@@ -75,7 +80,7 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-G {cmake_generator}",
-            f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
+            f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir' if check_env('ENABLE_RTTI') else 'mlir_no_rtti'}",
             f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DPython3_EXECUTABLE={sys.executable}",
@@ -151,12 +156,16 @@ class CMakeBuild(build_ext):
         print("CMAKE_ARGS", cmake_args, file=sys.stderr)
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
+            ["cmake", ext.sourcedir, *cmake_args],
+            cwd=build_temp,
+            check=True,
+            capture_output=True,
         )
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
             check=True,
+            capture_output=True,
         )
         shutil.copy(
             MLIR_AIE_INSTALL_ABS_PATH

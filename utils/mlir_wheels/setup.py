@@ -11,6 +11,10 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
+def check_env(build, default=0):
+    return os.environ.get(build, default) in {"1", "true", "True", "ON", "YES"}
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
         super().__init__(name, sources=[])
@@ -77,7 +81,9 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / "mlir"
+        install_dir = extdir / (
+            "mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"
+        )
         cfg = "Release"
 
         cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
@@ -89,11 +95,10 @@ class CMakeBuild(build_ext):
             "-DLLVM_BUILD_EXAMPLES=OFF",
             "-DLLVM_BUILD_RUNTIMES=OFF",
             "-DLLVM_BUILD_TESTS=OFF",
-            "-DLLVM_BUILD_TOOLS=ON",
             "-DLLVM_BUILD_UTILS=ON",
             "-DLLVM_CCACHE_BUILD=ON",
             "-DLLVM_ENABLE_ASSERTIONS=ON",
-            "-DLLVM_ENABLE_RTTI=ON",
+            f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             "-DLLVM_ENABLE_ZSTD=OFF",
             "-DLLVM_INCLUDE_BENCHMARKS=OFF",
             "-DLLVM_INCLUDE_EXAMPLES=OFF",
@@ -194,17 +199,28 @@ class CMakeBuild(build_ext):
         print("CMAKE_ARGS", cmake_args, file=sys.stderr)
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
+            ["cmake", ext.sourcedir, *cmake_args],
+            cwd=build_temp,
+            check=True,
+            # cibuildwheel swallows stdout
+            stdout=sys.stderr,
+            stderr=sys.stderr
         )
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
             check=True,
+            stdout=sys.stderr,
+            stderr=sys.stderr
         )
 
-
-def check_env(build):
-    return os.environ.get(build, 0) in {"1", "true", "True", "ON", "YES"}
+        # cibuildwheel containers are in the future? and this messes with ninja which checks timestamps
+        # when configuring cmake
+        for root, dirs, files in os.walk(install_dir):
+            for name in files:
+                os.utime(
+                    os.path.join(root, name), (1602179630, 1602179630)
+                )  # just some random timestamp in the past
 
 
 cmake_txt = open("llvm-project/llvm/CMakeLists.txt").read()
@@ -226,7 +242,7 @@ version += commit_hash
 
 llvm_url = f"https://github.com/llvm/llvm-project/commit/{commit_hash}"
 setup(
-    name="mlir",
+    name="mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti",
     version=version,
     author="Maksim Levental",
     author_email="maksim.levental@gmail.com",
