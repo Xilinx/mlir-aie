@@ -58,6 +58,15 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME AIEX
 )
 
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT AIEPythonSources.Dialects
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
+  TD_FILE dialects/AIEVecBinding.td
+  SOURCES
+    dialects/aievec.py
+  DIALECT_NAME aievec
+)
+
 configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"

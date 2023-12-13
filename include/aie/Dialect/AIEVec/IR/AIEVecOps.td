@@ -16,6 +16,8 @@
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
+
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
@@ -448,7 +450,7 @@ def AIEVec_UPDOp:
 
 def AIEVec_ConcatOp:
   AIEVec_Op<"concat", [
-    Pure
+    Pure, InferTypeOpAdaptor,
   ]>, 
   Arguments<(ins Variadic<AnyVector>:$sources)>, 
   Results<(outs AnyVector:$result)> {
