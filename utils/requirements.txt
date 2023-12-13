@@ -2,7 +2,7 @@ psutil
 rich
 pybind11
 numpy
-cmake
+cmake==3.27.9
 pylint
 PyYaml
 matplotlib
