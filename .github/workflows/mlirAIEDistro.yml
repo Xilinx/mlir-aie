@@ -128,7 +128,7 @@ jobs:
 
     steps:
 
-    - name: set PIP_FIND_LINKS
+    - name: set ENV
       shell: bash
       run: |
         
@@ -137,6 +137,7 @@ jobs:
           PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
         fi
         echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+        echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
       uses: actions/checkout@v3
@@ -203,7 +204,6 @@ jobs:
         
         export PIP_NO_BUILD_ISOLATION=false
         
-        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -225,7 +225,6 @@ jobs:
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
-        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -367,7 +366,7 @@ jobs:
 
     steps:
 
-      - name: set PIP_FIND_LINKS
+      - name: set ENV
         shell: bash
         run: |
           
@@ -376,6 +375,7 @@ jobs:
             PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
           fi
           echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+          echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
       - name: Checkout actions
         uses: actions/checkout@v3
@@ -594,4 +594,3 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
-          body: "`pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels && unzip mlir_aie*.whl`"

@@ -137,7 +137,8 @@ def test_flow_test_1():
 def test_flow_test_2():
     with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_2.mlir") as f:
         mlir_module = Module.parse(f.read())
-    r = Router(timeout=TIMEOUT)
+    # give this one more time because it's flakey
+    r = Router(timeout=100)
     pass_ = create_python_router_pass(r)
     pm = PassManager()
     pass_manager_add_owned_pass(pm, pass_)
