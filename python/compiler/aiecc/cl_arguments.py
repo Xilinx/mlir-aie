@@ -181,7 +181,7 @@ def parse_args(args=None):
             help='Kernel name in xclbin file')
     parser.add_argument('--xclbin-instance-name',
             dest="instance_name",
-            default="MLIRAIEV1",
+            default="MLIRAIE",
             help='Instance name in xclbin metadata')
     parser.add_argument('--xclbin-kernel-id',
             dest="kernel_id",

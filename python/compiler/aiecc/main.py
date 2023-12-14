@@ -334,7 +334,7 @@ class flow_runner:
 
   async def emit_design_kernel_json(self, output_filename,
                                     kernel_name='MLIR_AIE', kernel_id='0x901',
-                                    instance_name='MLIRAIEV1', buffer_args=None):
+                                    instance_name='MLIRAIE', buffer_args=None):
 
     if buffer_args is None:
       buffer_args = ['in', 'tmp', 'out']
