@@ -135,6 +135,16 @@ jobs:
 
     steps:
 
+    - name: set PIP_FIND_LINKS
+      shell: bash
+      run: |
+        
+        PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        if [ x"${{ github.event_name }}" == x"pull_request" ]; then
+          PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
+        fi
+        echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+
     - name: Checkout actions
       uses: actions/checkout@v3
       with:
@@ -227,7 +237,6 @@ jobs:
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        PIP_FIND_LINKS="https://makslevental.github.io/wheels" \
         pip wheel . -v -w wheelhouse
 
     - name: Clean llvm-project
@@ -466,8 +475,8 @@ jobs:
         with:
           artifacts: "dist/*.whl,dist/*.tar.xz"
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: "mlir-distro"
-          name: ${{ github.event_name == 'workflow_dispatch' && "mlir-distro" || "dev-wheels" }}
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

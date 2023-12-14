@@ -20,7 +20,7 @@ manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.linux]
-environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
+environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH" }
 before-build = [
     "{project}/scripts/docker_prepare_ccache.sh",
     "{project}/scripts/apply_patches.sh",
@@ -41,7 +41,7 @@ environment-pass = [
 ]
 
 [tool.cibuildwheel.macos]
-environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
+environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH" }
 before-build = [
     "{project}/scripts/apply_patches.sh",
 ]
@@ -50,7 +50,6 @@ repair-wheel-command = [
 ]
 
 [tool.cibuildwheel.windows]
-environment = { PIP_FIND_LINKS = "https://makslevental.github.io/wheels" }
 before-build = [
     "pip install delvewheel",
     "bash {project}\\scripts\\apply_patches.sh",
