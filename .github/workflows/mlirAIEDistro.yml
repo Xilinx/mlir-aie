@@ -128,6 +128,16 @@ jobs:
 
     steps:
 
+    - name: set PIP_FIND_LINKS
+      shell: bash
+      run: |
+        
+        PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        if [ x"${{ github.event_name }}" == x"pull_request" ]; then
+          PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
+        fi
+        echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+
     - name: Checkout actions
       uses: actions/checkout@v3
       with:
@@ -209,7 +219,6 @@ jobs:
       shell: bash
       run: |
         
-        export PIP_FIND_LINKS="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
         export PIP_NO_BUILD_ISOLATION=false
         
         pip install -r requirements.txt
@@ -358,6 +367,16 @@ jobs:
 
     steps:
 
+      - name: set PIP_FIND_LINKS
+        shell: bash
+        run: |
+          
+          PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+          if [ x"${{ github.event_name }}" == x"pull_request" ]; then
+            PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
+          fi
+          echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+
       - name: Checkout actions
         uses: actions/checkout@v3
         with:
@@ -493,9 +512,14 @@ jobs:
         run: |
           pip install -r python/requirements.txt
           unzip -o -q dist/mlir_aie\*.whl
-          ls -l mlir_aie*
           
-          PYTHONPATH=$(find . -name python) python -c 'import aie.ir'
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
+            export PYTHONPATH=mlir_aie/python
+          else
+            export PYTHONPATH=mlir_aie_no_rtti/python
+          fi
+          
+          python -c 'import aie.ir'
 
   upload_wheels:
 
@@ -564,8 +588,8 @@ jobs:
         with:
           artifacts: "dist/*.whl,dist/*.tar.xz"
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: "latest-wheels"
-          name: ${{ github.event_name == 'workflow_dispatch' && "mlir-distro" || "dev-wheels" }}
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
