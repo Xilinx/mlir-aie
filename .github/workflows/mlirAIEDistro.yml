@@ -94,7 +94,6 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-# Can't figure it out but cmake segfault when building on mac on the runners
           - OS: macos-11
             ARCH: x86_64
             ENABLE_RTTI: ON
@@ -106,6 +105,26 @@ jobs:
           - OS: ubuntu-20.04
             ARCH: aarch64
             ENABLE_RTTI: ON
+
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2019
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: arm64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
 
     steps:
 
@@ -174,6 +193,7 @@ jobs:
         
         export PIP_NO_BUILD_ISOLATION=false
         
+        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -196,6 +216,7 @@ jobs:
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
         
+        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -216,6 +237,7 @@ jobs:
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
+        
         docker system prune -a -f
 
     - name: Get wheel version
@@ -254,7 +276,7 @@ jobs:
         # Set the timestamp to the beginning of the current hour.
         find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
-    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
+    # The important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
     - name: rename non-windows
@@ -277,7 +299,7 @@ jobs:
 
     - name: build python bindings
       shell: bash
-      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      if: (matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64') && matrix.ENABLE_RTTI == 'ON'
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
@@ -305,7 +327,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
-        name: build_artifact
+        name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
 
   build_linux_aarch64_pybindings_wheels:
 
@@ -333,7 +355,6 @@ jobs:
           - OS: ubuntu-20.04
             ARCH: aarch64
             PY_VERSION: "cp312"
-
 
     steps:
 
@@ -374,7 +395,7 @@ jobs:
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
-          name: build_artifact
+          name: build_artifact_ubuntu-20.04_aarch64_rtti_ON
           path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse
 
       - name: Set up QEMU
@@ -419,9 +440,9 @@ jobs:
 
   smoke_test_wheels:
 
-    name: Smoke test on ${{ matrix.OS }} ${{ matrix.ARCH }}
+    name: test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    needs: [build_distro_wheels, build_linux_aarch64_pybindings_wheels]
+    needs: build_distro_wheels
 
     runs-on: ${{ matrix.OS }}
     strategy:
@@ -430,12 +451,27 @@ jobs:
         include:
           - OS: ubuntu-20.04
             ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: windows-2019
             ARCH: AMD64
+            ENABLE_RTTI: ON
 
           - OS: macos-11
             ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2019
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -445,7 +481,7 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
-          name: build_artifact
+          name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
       - uses: actions/setup-python@v4
@@ -456,12 +492,12 @@ jobs:
         shell: bash
         run: |
           pip install -r python/requirements.txt
-          pip install aie -f dist --no-index
-          python -c 'import aie.dialects.aie'
+          unzip -o -q dist/mlir_aie\*.whl
+          ls -l mlir_aie*
+          
+          PYTHONPATH=$(find . -name python) python -c 'import aie.ir'
 
   upload_wheels:
-
-    if: github.event_name == 'workflow_dispatch'
 
     needs: smoke_test_wheels
 
@@ -471,12 +507,56 @@ jobs:
       id-token: write
       contents: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            ENABLE_RTTI: ON
+
+          - OS: windows-2019
+            ARCH: AMD64
+            ENABLE_RTTI: ON
+
+          - OS: macos-11
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: macos-11
+            ARCH: arm64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2019
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-11
+            ARCH: arm64
+            ENABLE_RTTI: OFF
+
     steps:
       - uses: actions/download-artifact@v3
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
-          name: build_artifact
+          name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
       - name: Release current commit
@@ -485,7 +565,7 @@ jobs:
           artifacts: "dist/*.whl,dist/*.tar.xz"
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: "latest-wheels"
-          name: "latest-wheels"
+          name: ${{ github.event_name == 'workflow_dispatch' && "mlir-distro" || "dev-wheels" }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
