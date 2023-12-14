@@ -207,14 +207,6 @@ class CMakeBuild(build_ext):
             check=True,
         )
 
-        # cibuildwheel containers are in the future? and this messes with ninja which checks timestamps
-        # when configuring cmake
-        for root, dirs, files in os.walk(install_dir):
-            for name in files:
-                os.utime(
-                    os.path.join(root, name), (1602179630, 1602179630)
-                )  # just some random timestamp in the past
-
 
 cmake_txt = open("llvm-project/llvm/CMakeLists.txt").read()
 llvm_version = []
