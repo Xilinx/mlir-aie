@@ -135,7 +135,7 @@ jobs:
 
     steps:
 
-    - name: set PIP_FIND_LINKS
+    - name: set ENV
       shell: bash
       run: |
         
@@ -210,7 +210,6 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         
-        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -230,7 +229,6 @@ jobs:
         export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
         ./scripts/apply_patches.sh
         
-        ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
@@ -481,4 +479,3 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
-          body: "`pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip mlir*.whl`"
