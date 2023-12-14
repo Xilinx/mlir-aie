@@ -242,6 +242,7 @@ jobs:
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
+        
         docker system prune -a -f
 
     - name: Get wheel version
@@ -400,8 +401,6 @@ jobs:
 
     name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    if: github.event_name == 'workflow_dispatch'
-
     needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
@@ -468,7 +467,7 @@ jobs:
           artifacts: "dist/*.whl,dist/*.tar.xz"
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: "mlir-distro"
-          name: "mlir-distro"
+          name: ${{ github.event_name == 'workflow_dispatch' && "mlir-distro" || "dev-wheels" }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

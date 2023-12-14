@@ -74,3 +74,5 @@ Why Mac? Because some people do dev on a Mac.
 
 1. In many places you will see `PIP_NO_BUILD_ISOLATION=false` - this means the opposite of what it says i.e., this actually turns off build isolation (i.e., equivalent to passing `--no-build-isolation` to `pip wheel`). [Don't ask me why](https://github.com/pypa/pip/issues/5229#issuecomment-387301397).
 2. As of today (12/13/23), CMake will segfault during `Detecting CXX compiler ABI info` on mac for `cmake>3.27.9` inside of cibuildwheel.
+3. `caution filename not matched` during `unzip` is due to a glob that matches multiple files; escape the glob like `mlir_aie\*.whl`.
+4. Files creating in a cibuildwheel container (i.e., on Linux) have timestamps in the future. This will lead to `ninja` looping forever during a `cmake .. -G Ninja ...` configure step. Hence there's something like `find mlir -exec touch -a -m -t 201108231405.14 {} \;` in various places (where `201108231405.14` is just an arbitrary timestamp in the past).
