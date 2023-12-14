@@ -300,7 +300,10 @@ def color_detect():
                     elemOutTmpA = acquire(
                         ObjectFifoPort.Produce, "OF_5to5a", 1, line_ty
                     ).acquired_elem()
-                    Call(bitwiseORLine, [elemIn1, elemIn2, elemOutTmpA, arith.constant(lineWidth)])
+                    Call(
+                        bitwiseORLine,
+                        [elemIn1, elemIn2, elemOutTmpA, arith.constant(lineWidth)],
+                    )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to5", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_5to5a", 1)
@@ -311,7 +314,10 @@ def color_detect():
                     elemOutTmpB = acquire(
                         ObjectFifoPort.Produce, "OF_5to5b", 1, line_bytes_ty
                     ).acquired_elem()
-                    Call(gray2rgbaLine, [elemInTmpA, elemOutTmpB, arith.constant(lineWidth)])
+                    Call(
+                        gray2rgbaLine,
+                        [elemInTmpA, elemOutTmpB, arith.constant(lineWidth)],
+                    )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5a", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_5to5b", 1)
                     # bitwise AND
@@ -326,7 +332,12 @@ def color_detect():
                     ).acquired_elem()
                     Call(
                         bitwiseANDLine,
-                        [elemInTmpB1, elemInTmpB2, elemOut, arith.constant(lineWidthInBytes)],
+                        [
+                            elemInTmpB1,
+                            elemInTmpB2,
+                            elemOut,
+                            arith.constant(lineWidthInBytes)
+                        ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
