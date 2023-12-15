@@ -59,15 +59,13 @@ jobs:
         id: mlir-wheels
         run: |
           
-          pip install lit pkginfo
-
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
           unzip -q mlir-*.whl
 
           WHL=$(ls mlir-*.whl)
-          echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
+          echo "MLIR_WHEEL_VERSION=$VERSION" | tee -a $GITHUB_OUTPUT
           echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
       # Build the repo test target in release mode to build and test.

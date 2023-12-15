@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   build-repo:
-    name: ${{ matrix.OS }} ${{ matrix.COMPILER }}
+    name: ${{ matrix.OS }} ${{ matrix.COMPILER }} assert=${{ matrix.ENABLE_ASSERTIONS }} rtti=${{ matrix.ENABLE_RTTI }}
 
     runs-on: ${{ matrix.OS }}
 
@@ -40,16 +40,28 @@ jobs:
 
         OS: [ ubuntu-20.04, ubuntu-22.04, macos-11 ]
         COMPILER: [ llvm, gcc ]
+        ENABLE_ASSERTIONS: [ ON, OFF ]
+        ENABLE_RTTI: [ ON ]
 
         include:
           - OS: windows-2019
             COMPILER: msvc
-          - OS: ubuntu-20.04
-            COMPILER: gcc-9
+            ENABLE_ASSERTIONS: ON
+            ENABLE_RTTI: ON
+#          - OS: windows-2019
+#            COMPILER: msvc
+#            ENABLE_ASSERTIONS: ON
+#            ENABLE_RTTI: OFF
+          - OS: windows-2019
+            COMPILER: msvc
+            ENABLE_ASSERTIONS: OFF
+            ENABLE_RTTI: ON
+#          - OS: windows-2019
+#            COMPILER: msvc
+#            ENABLE_ASSERTIONS: OFF
+#            ENABLE_RTTI: OFF
         exclude:
           - OS: macos-11
-            COMPILER: gcc
-          - OS: ubuntu-20.04
             COMPILER: gcc
 
     steps:
@@ -83,14 +95,19 @@ jobs:
         with:
           MATRIX_OS: ${{ matrix.OS }}
           MATRIX_ARCH: x86
-          EXTRA_KEY: build-and-test
+          EXTRA_KEY: compile-and-test-assert=${{ matrix.ENABLE_ASSERTIONS }}-rtti=${{ matrix.ENABLE_RTTI }}
 
       - name: Get MLIR
         id: mlir-wheels
         run: |
           
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF"]; then
+            WHEEL=mlir_no_rtti
+          else
+            WHEEL=mlir
+          fi
+          pip -q download $WHEEL==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
           unzip -q mlir-*.whl
 
@@ -119,14 +136,16 @@ jobs:
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DHOST_COMPILER=NONE \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DLLVM_ENABLE_RTTI=ON \
+            -DLLVM_ENABLE_ASSERTIONS=${{ matrix.ENABLE_ASSERTIONS }} \
+            -DLLVM_ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
           
           ninja
-          # ninja check-aie
-          # ninja check-tutorials
-          # ninja check-reference-designs
+          if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
+            ninja check-aie
+            ninja check-tutorials
+            ninja check-reference-designs
+          fi

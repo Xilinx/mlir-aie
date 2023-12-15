@@ -57,14 +57,33 @@ jobs:
         run: |
           sudo apt-get install -y ninja-build clang lld
 
+      - name: Upgrade gcc
+        if: matrix.ubuntu_version == '20.04'
+        run: |
+          sudo apt-get install -y ninja-build clang lld
+
+          sudo apt install build-essential manpages-dev software-properties-common
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+          GCC_VERSION=11
+          sudo apt update && sudo apt install gcc-$GCC_VERSION g++-$GCC_VERSION
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+            --slave /usr/bin/gcov gcov /usr/bin/gcov-9 \
+            --slave /usr/bin/gcc-ar gcc-ar /usr/bin/gcc-ar-9 \
+            --slave /usr/bin/gcc-ranlib gcc-ranlib /usr/bin/gcc-ranlib-9
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-$GCC_VERSION 110 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-$GCC_VERSION \
+            --slave /usr/bin/gcov gcov /usr/bin/gcov-$GCC_VERSION \
+            --slave /usr/bin/gcc-ar gcc-ar /usr/bin/gcc-ar-$GCC_VERSION \
+            --slave /usr/bin/gcc-ranlib gcc-ranlib /usr/bin/gcc-ranlib-$GCC_VERSION
+
       - name: Get MLIR
         id: mlir-wheels
         run: |
           
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          # TODO(max): mlir-distro
           pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation

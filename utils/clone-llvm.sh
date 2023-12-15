@@ -17,7 +17,7 @@
 # this commit later.
 commithash=d36b483
 # this is for CI (safely ignored if you're actually running this script)
-wheel_version=18.0.0.2023121513+$commithash
+wheel_version=18.0.0.2023121201+$commithash
 
 here=$PWD
 
