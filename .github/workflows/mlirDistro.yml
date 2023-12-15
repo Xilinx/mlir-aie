@@ -49,7 +49,7 @@ concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
-  group: ci-build-mlir-distro-${{ github.event.number || github.sha }}
+  group: ci-build-mlir-distro-${{ github.event.name }}-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -405,6 +405,8 @@ jobs:
           PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
 
   upload_distro_wheels:
+
+    if: github.event_name != 'schedule'
 
     name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
