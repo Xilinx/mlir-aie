@@ -336,7 +336,7 @@ def color_detect():
                             elemInTmpB1,
                             elemInTmpB2,
                             elemOut,
-                            arith.constant(lineWidthInBytes)
+                            arith.constant(lineWidthInBytes),
                         ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
