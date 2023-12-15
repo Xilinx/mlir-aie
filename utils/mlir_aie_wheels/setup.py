@@ -124,8 +124,6 @@ class CMakeBuild(build_ext):
             f"-G {cmake_generator}",
             cmake_module_path,
             "-DBUILD_SHARED_LIBS=OFF",
-            # TODO(max): windows isn't happy with root dir config in that branch of the cmake
-            "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             # get rid of that annoying af git on the end of .17git
             "-DLLVM_VERSION_SUFFIX=",
             f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
@@ -135,6 +133,7 @@ class CMakeBuild(build_ext):
             "-DLLVM_CCACHE_BUILD=ON",
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
+            "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
             f"-DPython3_EXECUTABLE={sys.executable}",

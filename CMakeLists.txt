@@ -144,7 +144,7 @@ cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
   "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
 
 cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
-  "Enables building of passes that connect to python." ON "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
+  "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)

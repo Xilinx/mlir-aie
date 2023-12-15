@@ -51,6 +51,7 @@ CMAKE_CONFIGS="\
     -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake \
     -DSysroot=${SYSROOT_DIR} \
     -DArch=arm64 \
+    -DAIE_ENABLE_PYTHON_PASSES=OFF \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \

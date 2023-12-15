@@ -90,6 +90,7 @@ jobs:
               -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
               -DLLVM_EXTERNAL_LIT=$(which lit) \
               -DAIE_INCLUDE_INTEGRATION_TESTS=ON \
+              -DAIE_ENABLE_PYTHON_PASSES=OFF \
               -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \

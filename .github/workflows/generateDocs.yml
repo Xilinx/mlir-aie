@@ -78,6 +78,7 @@ jobs:
             -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DAIE_INCLUDE_DOCS=ON \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd

@@ -5,11 +5,18 @@ on:
     branches:
       - main
       - test-ryzen-ai
+  pull_request:
   workflow_dispatch:
 
 defaults:
   run:
     shell: bash
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-${{ github.event.number || github.sha }}
 
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -46,6 +53,7 @@ jobs:
               -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
               -DLLVM_EXTERNAL_LIT=$(which lit) \
               -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+              -DAIE_ENABLE_PYTHON_PASSES=OFF \
               -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
