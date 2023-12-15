@@ -171,10 +171,12 @@ int main(int argc, const char *argv[]) {
                     << std::endl;
         errors++;
       } else {
-//        std::cout << "Below threshold:   " << (uint32_t)(uint8_t) * (bufOut + i)
-//                  << " at " << i << " is correct "
-//                  << " : input " << std::dec << (uint32_t)(uint8_t)srcVec[i]
- //                 << std::endl;
+        //        std::cout << "Below threshold:   " << (uint32_t)(uint8_t) *
+        //        (bufOut + i)
+        //                  << " at " << i << " is correct "
+        //                  << " : input " << std::dec <<
+        //                  (uint32_t)(uint8_t)srcVec[i]
+        //                 << std::endl;
       }
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
