@@ -15,11 +15,16 @@
 # The LLVM commit to use.
 # TODO: create a branch or a tag instead, to avoid fetching main and
 # this commit later.
-commithash=295415e7
+commithash=d36b483
 # this is for CI (safely ignored if you're actually running this script)
-wheel_version=18.0.0.2023121508+295415e7
+wheel_version=18.0.0.2023121513+$commithash
 
 here=$PWD
+
+if [ x"$1" == x--get-wheel-version ]; then
+  echo $wheel_version
+  exit 0
+fi
 
 # Use --worktree <directory-of-local-LLVM-repo> to reuse some existing
 # local LLVM git repository

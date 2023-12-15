@@ -80,7 +80,7 @@ jobs:
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi 
             
-            VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \
               -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
             unzip -q mlir-*.whl

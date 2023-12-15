@@ -61,8 +61,7 @@ jobs:
         id: mlir-wheels
         run: |
           
-          # https://stackoverflow.com/a/58379307
-          VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           # TODO(max): mlir-distro
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels
