@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+#  pull_request:
   workflow_dispatch:
     inputs:
       AIE_COMMIT:
@@ -20,6 +21,13 @@ on:
 defaults:
   run:
     shell: bash
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-aie-tools-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
 
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -65,25 +73,27 @@ jobs:
             
             cd /
             git clone --recursive https://github.com/Xilinx/mlir-aie.git
-            pushd mlir-aie && git checkout ${{ github.head_ref }} && popd
-            
-            pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
-            
             cd /mlir-aie
+            
+            git checkout ${{ github.head_ref }}
             if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
-              pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
+              git reset --hard ${{ inputs.AIE_COMMIT }}
             fi 
+            
+            VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
             
             pip install -r python/requirements.txt
             
             # don't delete the space in the sed
-            cd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake
+            pushd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake && popd
             
-            mkdir -p /mlir-aie/build
-            cd /mlir-aie/build
+            mkdir build && cd build
             
             cmake .. -G Ninja \
-              -DMLIR_DIR=/mlir/lib/cmake/mlir \
+              -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
               -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2/ \
               -DVitis_VERSION_MAJOR=2023 \
               -DVitis_VERSION_MINOR=2 \

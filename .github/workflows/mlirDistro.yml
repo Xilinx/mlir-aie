@@ -398,8 +398,6 @@ jobs:
 
   upload_distro_wheels:
 
-    if: github.event_name != 'schedule'
-
     name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
     needs: smoke_test_wheels

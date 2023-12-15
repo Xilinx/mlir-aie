@@ -7,3 +7,6 @@ ortools
 gurobipy
 matplotlib
 ortools
+psutil
+rich
+lit

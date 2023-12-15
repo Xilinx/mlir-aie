@@ -39,10 +39,14 @@ jobs:
 
             python -m venv aie-venv
             source aie-venv/bin/activate
+          
             pip install -r utils/requirements.txt
             pip install lit
 
-            pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
+            VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
 
             mkdir build
             cd build

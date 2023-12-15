@@ -24,8 +24,7 @@ jobs:
   build-repo:
     name: Build and Test
 
-    # By latest GitHub means actually latest LTS only
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-${{ matrix.ubuntu_version }}
 
     strategy:
       # Run all the test even if there are some which fail
@@ -51,34 +50,39 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install cmake==3.27.9 numpy psutil pybind11 rich pkginfo lit PyYAML
+          
           pip install -r python/requirements.txt
 
       - name: Install packages
-        run: sudo apt-get install -y ninja-build clang lld
+        run: |
+          sudo apt-get install -y ninja-build clang lld
 
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
-          WHL=$(ls mlir-*.whl)
-          echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
-          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+          
+          # https://stackoverflow.com/a/58379307
+          VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition
-          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}
+          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}
           max-size: 1G
 
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'
         run: |
+          
           mkdir build_assert
           cd build_assert
+          
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -94,9 +98,9 @@ jobs:
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
-            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -110,10 +114,12 @@ jobs:
       - name: Build and test (Release)
         if: matrix.build_type == 'Release'
         run: |
+          
           mkdir build_release
           cd build_release
+          
           cmake .. \
-            -GNinja \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
@@ -127,9 +133,9 @@ jobs:
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
-            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit)
           
