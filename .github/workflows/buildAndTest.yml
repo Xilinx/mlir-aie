@@ -63,8 +63,9 @@ jobs:
           
           # https://stackoverflow.com/a/58379307
           VERSION=$(sed -nr 's/wheel_version=(.*)/\1/p' utils/clone-llvm.sh)
+          # TODO(max): mlir-distro
           pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation

@@ -15,9 +15,9 @@
 # The LLVM commit to use.
 # TODO: create a branch or a tag instead, to avoid fetching main and
 # this commit later.
-commithash=d36b483
+commithash=295415e7
 # this is for CI (safely ignored if you're actually running this script)
-wheel_version=18.0.0.2023121201+d36b483
+wheel_version=18.0.0.2023121508+295415e7
 
 here=$PWD
 
