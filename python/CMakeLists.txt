@@ -39,6 +39,7 @@ declare_mlir_python_sources(AIEPythonSources.Extras
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     extras/meta.py
+    extras/passes.py
     extras/util.py
 )
 

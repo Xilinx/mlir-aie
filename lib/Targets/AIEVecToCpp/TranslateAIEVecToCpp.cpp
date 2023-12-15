@@ -11,7 +11,7 @@
 // This file defines helpers to emit C++ code for AIE vector dialect.
 //===----------------------------------------------------------------------===//
 
-#include "TranslateAIEVecToCpp.h"
+#include "aie/Targets/TranslateAIEVecToCpp.h"
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -44,9 +44,6 @@
 #include <stack>
 
 #define DEBUG_TYPE "aievec-to-cpp"
-
-static llvm::cl::opt<bool> AIEML("aieml", llvm::cl::desc("AI Engine-ML"),
-                                 llvm::cl::init(false));
 
 using namespace mlir;
 using namespace xilinx;
@@ -89,7 +86,7 @@ LogicalResult interleaveCommaWithError(const Container &c, raw_ostream &os,
 namespace {
 /// Emitter that uses dialect specific emitters to emit C++ code.
 struct CppEmitter {
-  explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop);
+  explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aieml);
 
   /// Emits attribute or returns failure.
   LogicalResult emitAttribute(Location loc, Attribute attr);
@@ -202,6 +199,8 @@ struct CppEmitter {
   /// be declared at the beginning of a function.
   bool shouldDeclareVariablesAtTop() { return declareVariablesAtTop; }
 
+  bool aieml() { return aieml_; }
+
 private:
   using ValueMapper = llvm::ScopedHashTable<Value, std::string>;
   using BlockMapper = llvm::ScopedHashTable<Block *, std::string>;
@@ -229,6 +228,8 @@ private:
   std::stack<int64_t> labelInScopeCount;
 
   llvm::SmallSet<StringRef, 16> includeNames;
+
+  bool aieml_;
 };
 } // namespace
 
@@ -257,7 +258,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             // If the underlying element types are float, then we do not really
             // need an srs op if source of srsOp has only one use.
             Value source = srsOp.getSource();
-            if (!AIEML && eltType.isa<FloatType>() &&
+            if (!emitter.aieml() && eltType.isa<FloatType>() &&
                 source.getDefiningOp()->hasOneUse()) {
               StringRef srcName = emitter.getOrCreateName(source);
               emitter.setName(srsOp->getResult(0), srcName);
@@ -273,7 +274,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             // If the underlying element types are float, then we do not really
             // need a ups op if the source accumulator has only one use.
             Value source = upsOp.getSource();
-            if (!AIEML && eltType.isa<FloatType>() &&
+            if (!emitter.aieml() && eltType.isa<FloatType>() &&
                 source.getDefiningOp()->hasOneUse()) {
               StringRef srcName = emitter.getOrCreateName(source);
               emitter.setName(upsOp->getResult(0), srcName);
@@ -459,7 +460,8 @@ static std::pair<bool, int64_t> getStep(scf::ForOp forOp) {
 }
 
 // Return the operator string of the SCF dialect binary operator
-template <typename T> static StringRef getOperator(T binOp) {
+template <typename T>
+static StringRef getOperator(T binOp) {
   if (isa<arith::AddIOp, arith::AddFOp>(binOp))
     return " + ";
   if (isa<arith::MulIOp, arith::MulFOp>(binOp))
@@ -525,7 +527,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
   // If the vector size to be loaded is less than or equal to 256, we
   // can just do a direct memory copy. If the translation is for AIEML,
   // this number should be doubled
-  if (vecSizeInBits <= (AIEML ? 1024 : 256)) {
+  if (vecSizeInBits <= (emitter.aieml() ? 1024 : 256)) {
     // Print the lhs
     if (failed(emitter.emitAssignPrefix(*updOp)))
       return failure();
@@ -625,7 +627,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
 
   // If the underlying element types are float, then we do not really need a
   // ups op. We can simply generate an assignment
-  if (!AIEML && eltType.isa<FloatType>()) {
+  if (!emitter.aieml() && eltType.isa<FloatType>()) {
     os << emitter.getOrCreateName(source);
     return success();
   }
@@ -638,9 +640,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
       os << "l";
   }
 
-  if (iType && AIEML) {
+  if (iType && emitter.aieml()) {
     os << "ups_to_v" << lanes << "acc" << iType.getWidth();
-  } else if (fType && AIEML) {
+  } else if (fType && emitter.aieml()) {
     os << "ups_to_v16accfloat";
   } else {
     os << "ups";
@@ -648,7 +650,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
 
   os << "(";
   os << emitter.getOrCreateName(source);
-  if (!(fType && AIEML)) {
+  if (!(fType && emitter.aieml())) {
     os << ", ";
     os << std::to_string(shift);
   }
@@ -660,7 +662,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
 // Generate the cast intrinsic for AIE-ML
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::CastOp castOp) {
-  if (!AIEML) {
+  if (!emitter.aieml()) {
     return failure();
   }
 
@@ -752,7 +754,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   // If the underlying element types are float, then we do not really need an
   // srs op. We can simply generate an assignment
   if (eltType.isa<FloatType>()) {
-    if (AIEML) {
+    if (emitter.aieml()) {
       if (unsigned width = getElementSizeInBits(resType); width == 32)
         os << "srs";
       else if (width == 16)
@@ -781,7 +783,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   else if (srcWidth == 48 && resultWidth == 8)
     os << "b";
 
-  if (AIEML)
+  if (emitter.aieml())
     os << "srs_to_v" << std::to_string(lanes) << "int"
        << std::to_string(resWidth);
   else
@@ -872,7 +874,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   unsigned resWidth = getElementSizeInBits(resType);
 
   // Print the version of ext for aie-ml
-  if (AIEML) {
+  if (emitter.aieml()) {
     os << "extract_v" << std::to_string(lanes);
     if (eltType.isa<IntegerType>())
       os << "int" << std::to_string(resWidth);
@@ -1881,7 +1883,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
 // Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE-ML
 static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
-  if (!AIEML)
+  if (!emitter.aieml())
     return failure();
 
   // The lhs and rhs should have already been emitted
@@ -1941,7 +1943,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
 
 // Generate the sel intrinsic for AIE-ML
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
-  if (!AIEML)
+  if (!emitter.aieml())
     return failure();
 
   // The lhs, rhs and sel should have already been emitted
@@ -2662,8 +2664,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop)
-    : os(os), declareVariablesAtTop(declareVariablesAtTop) {
+CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aieml)
+    : os(os), declareVariablesAtTop(declareVariablesAtTop), aieml_(aieml) {
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
@@ -2824,7 +2826,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   if (auto dense = llvm::dyn_cast<DenseFPElementsAttr>(attr)) {
-    if (AIEML && dense.isSplat()) {
+    if (aieml() && dense.isSplat()) {
       if (auto vType = llvm::dyn_cast<VectorType>(dense.getType()))
         if (auto fType = llvm::dyn_cast<FloatType>(vType.getElementType())) {
           unsigned width = fType.getWidth();
@@ -2911,7 +2913,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
       if (auto iType = llvm::dyn_cast<IntegerType>(vType.getElementType())) {
         unsigned width = iType.getWidth();
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
-          if (AIEML) {
+          if (aieml()) {
             if (width * getVectorLaneSize(vType) == 1024) {
               os << "concat(broadcast_zero_s" << width << "(), broadcast_zero_s"
                  << width << "())";
@@ -2928,7 +2930,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           return success();
         }
 
-        if (AIEML && dense.isSplat()) {
+        if (aieml() && dense.isSplat()) {
           std::string splatValue;
           if (width == 32)
             splatValue = getSplatValueOfIntDense<int32_t>(dense);
@@ -3244,7 +3246,7 @@ CppEmitter::genCppTypeName(Type type, bool stdintType, bool isAcc) {
     auto iElTy = dyn_cast<IntegerType>(eltType);
     if (iElTy)
       iElTyBitWidth = iElTy.getWidth();
-    if (AIEML && (isAcc || iElTyBitWidth == 64)) {
+    if (aieml() && (isAcc || iElTyBitWidth == 64)) {
       if (iElTy) {
         // AIE-ML has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
         // intrinsics
@@ -3301,7 +3303,8 @@ LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
   return success();
 }
 
-LogicalResult aievec::translateAIEVecToCpp(Operation *op, raw_ostream &os) {
-  CppEmitter emitter(os, false);
+LogicalResult aievec::translateAIEVecToCpp(Operation *op, bool aieml,
+                                           raw_ostream &os) {
+  CppEmitter emitter(os, false, aieml);
   return emitter.emitOperation(*op, /*trailingSemicolon=*/false);
 }

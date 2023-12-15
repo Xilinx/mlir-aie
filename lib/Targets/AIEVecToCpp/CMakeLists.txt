@@ -9,8 +9,11 @@ add_mlir_translation_library(MLIRTargetAIEVecCpp
   TranslateRegistration.cpp
   TranslateAIEVecToCpp.cpp
 
+  ADDITIONAL_HEADER_DIRS
+  $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Targets
+
   LINK_LIBS PUBLIC
   MLIRAIEVec
   MLIRIR
   MLIRSupport
-  )
+)

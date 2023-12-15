@@ -33,7 +33,7 @@ void registerTestTransformDialectInterpreterPass();
 
 namespace test {
 void registerTestTransformDialectExtension(DialectRegistry &);
-}
+} // namespace test
 
 int main(int argc, char **argv) {
 

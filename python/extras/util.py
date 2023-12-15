@@ -133,6 +133,29 @@ def mlir_mod_ctx(
         yield MLIRContext(context, module)
 
 
+@contextmanager
+def enable_multithreading(context=None):
+    from ..ir import Context
+
+    if context is None:
+        context = Context.current
+    context.enable_multithreading(True)
+    yield
+    context.enable_multithreading(False)
+
+
+@contextmanager
+def disable_multithreading(context=None):
+    from ..ir import Context
+
+    if context is None:
+        context = Context.current
+
+    context.enable_multithreading(False)
+    yield
+    context.enable_multithreading(True)
+
+
 def build_graph(max_cols, max_rows, target_model):
     from .._mlir_libs._aie_python_passes import WireBundle, Switchbox
 
