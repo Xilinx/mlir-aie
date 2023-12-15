@@ -33,15 +33,6 @@ on:
   # comment it out when you're not working on these yamls
 #  pull_request:
 
-  # conversely you want to comment this out so that you can have multiple runs going concurrently
-  # which is useful here for flushing all bugs out
-concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-mlir-aie-distro-${{ github.event.number || github.sha }}
-  cancel-in-progress: true
-
 jobs:
 
   get_aie_project_commit:
