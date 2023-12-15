@@ -13,13 +13,6 @@ from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from .._mlir_libs._aie import ObjectFifoType
 
-# noinspection PyUnresolvedReferences
-from .._mlir_libs._aie_python_passes import (
-    create_python_router_pass,
-    pass_manager_add_owned_pass,
-    get_connecting_bundle,
-    translate_aie_vec_to_cpp,
-)
 from ..extras import types as T
 from ..extras.dialects.arith import constant
 from ..ir import (

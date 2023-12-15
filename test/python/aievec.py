@@ -2,26 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
+# REQUIRES: python_passes
 
 import inspect
-from pathlib import Path
+
+from aie._mlir_libs._aie_python_passes import translate_aie_vec_to_cpp
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aievec
-from aie.dialects import vector, aievec, scf
-from aie.dialects.aie import translate_aie_vec_to_cpp
 from aie.dialects import affine
 from aie.dialects import tosa
+from aie.dialects import vector, aievec, scf
 from aie.extras import types as T
 from aie.extras.dialects import arith
 from aie.extras.dialects.func import func
 from aie.extras.passes import Pipeline as p, run_pipeline
 from aie.extras.util import mlir_mod_ctx
-from aie.ir import ShapedType, AffineMap
-
+from aie.ir import AffineMap
 from util import construct_and_print_module
 
 
