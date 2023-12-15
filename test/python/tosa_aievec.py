@@ -24,18 +24,6 @@ from aie.ir import ShapedType, AffineMap
 
 from util import construct_and_print_module
 
-# RUN: %python %s | FileCheck %s
-
-S = ShapedType.get_dynamic_size()
-
-THIS_DIR = Path(__file__).parent.absolute()
-
-
-def get_asm(operation):
-    return operation.get_asm(enable_debug_info=True, pretty_debug_info=True).replace(
-        str(THIS_DIR), "THIS_DIR"
-    )
-
 
 # CHECK-LABEL: TEST: test_emit
 # CHECK: module {
