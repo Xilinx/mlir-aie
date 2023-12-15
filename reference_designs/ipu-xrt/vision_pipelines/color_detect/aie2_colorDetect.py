@@ -29,7 +29,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 
 def color_detect():
     with mlir_mod_ctx() as ctx:
-        
+
         @device(AIEDevice.ipu)
         def deviceBody():
             line_bytes_ty = MemRefType.get((lineWidthInBytes,), T.ui8())
@@ -56,7 +56,7 @@ def color_detect():
                 "bitwiseORLine",
                 inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i32()],
             )
-        
+
             # Tile declarations
             ShimTile = tile(0, 0)
             MemTile = tile(0, 1)
@@ -175,7 +175,7 @@ def color_detect():
             )
 
             # Set up compute tiles
-            
+
             # Compute tile 2
             @core(ComputeTile2, "rgba2hue.cc.o")
             def coreBody():
@@ -213,8 +213,8 @@ def color_detect():
                             arith.constant(lineWidth),
                             thresholdValueUpper1,
                             thresholdMaxvalue,
-                            thresholdModeToZeroInv
-                        ]
+                            thresholdModeToZeroInv,
+                        ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_2to34", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to3", 1)
@@ -232,8 +232,8 @@ def color_detect():
                             arith.constant(lineWidth),
                             thresholdValueLower1,
                             thresholdMaxvalue,
-                            thresholdModeBinary
-                        ]
+                            thresholdModeBinary,
+                        ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to3", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to5", 1)
@@ -261,8 +261,8 @@ def color_detect():
                             arith.constant(lineWidth),
                             thresholdValueUpper1,
                             thresholdMaxvalue,
-                            thresholdModeToZeroInv
-                        ]
+                            thresholdModeToZeroInv,
+                        ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_2to34", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_4to4", 1)
@@ -280,8 +280,8 @@ def color_detect():
                             arith.constant(lineWidth),
                             thresholdValueLower1,
                             thresholdMaxvalue,
-                            thresholdModeBinary
-                        ]
+                            thresholdModeBinary,
+                        ],
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_4to4", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
@@ -347,8 +347,14 @@ def color_detect():
 
             tensorSize = width * height * 4  # 4 channels
             tensorSizeInInt32s = tensorSize // 4
-            tensor_ty =  MemRefType.get((tensorSizeInInt32s,), T.i32())
-            memRef_16x16_ty = MemRefType.get((16,16,), T.i32())
+            tensor_ty = MemRefType.get((tensorSizeInInt32s,), T.i32())
+            memRef_16x16_ty = MemRefType.get(
+                (
+                    16,
+                    16,
+                ),
+                T.i32(),
+            )
 
             @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
