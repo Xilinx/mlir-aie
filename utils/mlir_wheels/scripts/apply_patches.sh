@@ -3,6 +3,7 @@ set -uxo pipefail
 
 # note that space before slash is important
 PATCHES="\
+glibcxx_assertions \
 mscv \
 register_test_pass \
 "
