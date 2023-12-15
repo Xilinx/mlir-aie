@@ -260,9 +260,6 @@ def test_gemm64_int16():
         # CHECK: }
         print(cpp)
 
-        # mod = run_pipeline(mod, p().add_pass("convert-aievec-to-llvm"))
-        # print(mod)
-
 
 test_gemm64_int16()
 
