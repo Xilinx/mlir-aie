@@ -7,9 +7,13 @@
 from pathlib import Path
 from textwrap import dedent
 
+from aie._mlir_libs._aie_python_passes import (
+    create_python_router_pass,
+    pass_manager_add_owned_pass,
+)
+
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
-from aie.dialects.aie import create_python_router_pass, pass_manager_add_owned_pass
 from aie.extras.util import Router
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager

@@ -13,6 +13,7 @@ add_mlir_public_c_api_library(
   MLIRAIEVec
   AIETransforms
   MLIRAIEVecTransforms
+  MLIRAIEVecToLLVM
   MLIRAIEVecUtils
   AIEXTransforms
   AIEXUtils)
