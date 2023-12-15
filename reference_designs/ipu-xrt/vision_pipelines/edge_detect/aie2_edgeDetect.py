@@ -82,8 +82,8 @@ def edge_detect():
             objectfifo(
                 "inOF_L3L2",
                 ShimTile,
-                [MemTile],
-                2,
+                [ComputeTile2, MemTile],
+                [2, 2, 7],
                 ofifo_line_bytes_ty,
                 [],
                 [],
@@ -91,8 +91,8 @@ def edge_detect():
             objectfifo(
                 "inOF_L2L1",
                 MemTile,
-                [ComputeTile2, ComputeTile5],
-                [2, 2, 7],
+                [ComputeTile5],
+                7,
                 ofifo_line_bytes_ty,
                 [],
                 [],
@@ -166,7 +166,7 @@ def edge_detect():
                 for _ in for_(4294967295):
                     # for _ in for_(36):
                     elem_in = acquire(
-                        ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty
+                        ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty
                     ).acquired_elem()
                     elem_out = acquire(
                         ObjectFifoPort.Produce, "OF_2to3", 1, line_ty
@@ -174,7 +174,7 @@ def edge_detect():
 
                     Call(rgba2gray_line, [elem_in, elem_out, arith.constant(lineWidth)])
 
-                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
                     yield_([])
 
@@ -195,69 +195,71 @@ def edge_detect():
                 memref.store(v1, kernel, [2, 1])
                 memref.store(v0, kernel, [2, 2])
 
-                # Preamble : Top Border
-                elems_in_pre = acquire(
-                    ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
-                ).acquired_elem()
-                elem_pre_out = acquire(
-                    ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
-                ).acquired_elem()
-                Call(
-                    filter2d_line,
-                    [
-                        elems_in_pre[0],
-                        elems_in_pre[0],
-                        elems_in_pre[1],
-                        elem_pre_out,
-                        arith.constant(lineWidth),
-                        kernel,
-                    ],
-                )
-                objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
-
-                # Steady State : Middle
-                for _ in for_(1, heightMinus1):
-                    elems_in = acquire(
-                        ObjectFifoPort.Consume, "OF_2to3", 3, line_ty
+                for _ in for_(4294967295):
+                    # Preamble : Top Border
+                    elems_in_pre = acquire(
+                        ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
                     ).acquired_elem()
-                    elem_out = acquire(
+                    elem_pre_out = acquire(
                         ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
                     ).acquired_elem()
                     Call(
                         filter2d_line,
                         [
-                            elems_in[0],
-                            elems_in[1],
-                            elems_in[2],
-                            elem_out,
+                            elems_in_pre[0],
+                            elems_in_pre[0],
+                            elems_in_pre[1],
+                            elem_pre_out,
                             arith.constant(lineWidth),
                             kernel,
                         ],
                     )
-                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+
+                    # Steady State : Middle
+                    for _ in for_(1, heightMinus1):
+                        elems_in = acquire(
+                            ObjectFifoPort.Consume, "OF_2to3", 3, line_ty
+                        ).acquired_elem()
+                        elem_out = acquire(
+                            ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
+                        ).acquired_elem()
+                        Call(
+                            filter2d_line,
+                            [
+                                elems_in[0],
+                                elems_in[1],
+                                elems_in[2],
+                                elem_out,
+                                arith.constant(lineWidth),
+                                kernel,
+                            ],
+                        )
+                        objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                        yield_([])
+
+                    # Postamble : Bottom Border
+                    elems_in_post = acquire(
+                        ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
+                    ).acquired_elem()
+                    elem_post_out = acquire(
+                        ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
+                    ).acquired_elem()
+                    Call(
+                        filter2d_line,
+                        [
+                            elems_in_post[0],
+                            elems_in_post[1],
+                            elems_in_post[1],
+                            elem_post_out,
+                            arith.constant(lineWidth),
+                            kernel,
+                        ],
+                    )
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
                     yield_([])
-
-                # Postamble : Bottom Border
-                elems_in_post = acquire(
-                    ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
-                ).acquired_elem()
-                elem_post_out = acquire(
-                    ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
-                ).acquired_elem()
-                Call(
-                    filter2d_line,
-                    [
-                        elems_in_post[0],
-                        elems_in_post[1],
-                        elems_in_post[1],
-                        elem_post_out,
-                        arith.constant(lineWidth),
-                        kernel,
-                    ],
-                )
-                objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
-                objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
@@ -266,7 +268,7 @@ def edge_detect():
                 v_max = arith.constant(255, T.i16())
                 v_typ = arith.constant(0, T.i8())
 
-                for _ in for_(36):
+                for _ in for_(4294967295):
                     elem_in = acquire(
                         ObjectFifoPort.Consume, "OF_3to4", 1, line_ty
                     ).acquired_elem()
@@ -293,7 +295,7 @@ def edge_detect():
             # Compute tile 5
             @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
             def core_body():
-                for _ in for_(36):
+                for _ in for_(4294967295):
                     elem_in = acquire(
                         ObjectFifoPort.Consume, "OF_4to5", 1, line_ty
                     ).acquired_elem()
