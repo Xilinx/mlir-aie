@@ -1,0 +1,13 @@
+diff --git a/llvm/cmake/modules/HandleLLVMOptions.cmake b/llvm/cmake/modules/HandleLLVMOptions.cmake
+index 0699a8586fcc..ea8ac624d5f4 100644
+--- a/llvm/cmake/modules/HandleLLVMOptions.cmake
++++ b/llvm/cmake/modules/HandleLLVMOptions.cmake
+@@ -110,7 +110,7 @@ if( LLVM_ENABLE_ASSERTIONS )
+     endif()
+   endif()
+   # Enable assertions in libstdc++.
+-  add_compile_definitions(_GLIBCXX_ASSERTIONS)
++#  add_compile_definitions(_GLIBCXX_ASSERTIONS)
+   # Cautiously enable the extensive hardening mode in libc++.
+   if((DEFINED LIBCXX_HARDENING_MODE) AND
+      (NOT LIBCXX_HARDENING_MODE STREQUAL "extensive"))
