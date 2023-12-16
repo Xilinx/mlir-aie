@@ -1,0 +1,151 @@
+name: Compile across platforms
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+  workflow_dispatch:
+
+defaults:
+  run:
+    # force bash for windows
+    shell: bash
+
+env:
+  # Run apt package manager in the CI in non-interactive mode.
+  # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
+  DEBIAN_FRONTEND: noninteractive
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-multi-cpp-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build-repo:
+    name: ${{ matrix.OS }} ${{ matrix.COMPILER }} assert=${{ matrix.ENABLE_ASSERTIONS }} rtti=${{ matrix.ENABLE_RTTI }}
+
+    runs-on: ${{ matrix.OS }}
+
+    strategy:
+      # Run all the test even if there are some which fail
+      fail-fast: false
+
+      # Run the tests on the Cartesian product of the following
+      matrix:
+
+        OS: [ ubuntu-20.04, ubuntu-22.04, macos-11 ]
+        COMPILER: [ llvm, gcc ]
+        ENABLE_ASSERTIONS: [ ON, OFF ]
+        ENABLE_RTTI: [ ON, OFF ]
+
+        include:
+          - OS: windows-2019
+            COMPILER: msvc
+            ENABLE_ASSERTIONS: ON
+            ENABLE_RTTI: ON
+          - OS: windows-2019
+            COMPILER: msvc
+            ENABLE_ASSERTIONS: ON
+            ENABLE_RTTI: OFF
+          - OS: windows-2019
+            COMPILER: msvc
+            ENABLE_ASSERTIONS: OFF
+            ENABLE_RTTI: ON
+          - OS: windows-2019
+            COMPILER: msvc
+            ENABLE_ASSERTIONS: OFF
+            ENABLE_RTTI: OFF
+        exclude:
+          - OS: macos-11
+            COMPILER: gcc
+
+    steps:
+      # Clone the repo and its submodules. Do shallow clone to save clone
+      # time.
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python packages
+        run: |
+          
+          pip install -r python/requirements.txt
+
+      - name: Setup Cpp
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.COMPILER }}
+          vcvarsall: ${{ contains(matrix.OS, 'windows') }}
+          cmake: true
+          ninja: true
+
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ${{ matrix.OS }}
+          MATRIX_ARCH: x86
+          EXTRA_KEY: compile-and-test-assert=${{ matrix.ENABLE_ASSERTIONS }}-rtti=${{ matrix.ENABLE_RTTI }}
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+          
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF"]; then
+            WHEEL=mlir_no_rtti
+          else
+            WHEEL=mlir
+          fi
+          pip -q download $WHEEL==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+
+      # Build the repo test target in release mode to build and test.
+      - name: Build and test
+        run: |
+          
+          mkdir build_release
+          cd build_release
+          
+          if [ x"${{ contains(matrix.OS, 'windows') }}" == x"true" ]; then
+            LLVM_EXTERNAL_LIT="$(where lit)"
+          else
+            LLVM_EXTERNAL_LIT="$(which lit)"
+          fi
+          
+          cmake .. \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=${{ matrix.ENABLE_ASSERTIONS }} \
+            -DLLVM_ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
+          
+          ninja
+          if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
+            ninja check-aie
+            ninja check-tutorials
+            ninja check-reference-designs
+          fi

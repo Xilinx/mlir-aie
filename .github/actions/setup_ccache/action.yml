@@ -29,7 +29,7 @@ runs:
         verbose: 2
 
     - name: Configure ccache dir on host ubuntu
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' }}
+      if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       id: configure_ccache_dir_on_host
       run: |
@@ -39,11 +39,11 @@ runs:
         echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
 
     - name: Configure ccache
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      if: contains(inputs.MATRIX_OS, 'ubuntu') || contains(inputs.MATRIX_OS, 'macos')
       shell: bash
       run: |
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-11" ]; then
+        if [ x"${{ contains(inputs.MATRIX_OS, 'macos') }}" == x"true" ]; then
           echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
         else
           echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH

@@ -39,19 +39,25 @@ jobs:
 
       - name: Install Python packages
         run: |
+          
           pip install cmake==3.27.9 numpy psutil pybind11 rich pkginfo lit PyYAML requests
           pip install -r python/requirements.txt
 
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
-          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+          
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
 
       - name: Prepare compile_commands.json
         run: |
+          
           mkdir build
           pushd build
+          
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -68,8 +74,8 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
-            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           
@@ -218,8 +224,11 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          pip -q download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro && unzip -q mlir-*.whl
-          echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
+          
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
@@ -235,8 +244,10 @@ jobs:
       - name: Build and generate coverage (Release)
         if: steps.changed-files.outputs.changed-files != ''
         run: |
+          
           mkdir build_release
           cd build_release
+          
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -250,9 +261,9 @@ jobs:
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
-            -DMLIR_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/mlir \
-            -DLLVM_DIR=${{ steps.mlir-wheels.outputs.MLIR_DIR }}/lib/cmake/llvm \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             \

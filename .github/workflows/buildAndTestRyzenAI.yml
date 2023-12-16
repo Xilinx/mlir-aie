@@ -39,11 +39,19 @@ jobs:
 
             python -m venv aie-venv
             source aie-venv/bin/activate
+          
             pip install -r utils/requirements.txt
             pip install lit
 
-            pip -q download mlir -f https://makslevental.github.io/wheels && unzip -q mlir-18*.whl
-
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
+            # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+            # That means wheels have file with time stamps in the future which makes ninja loop
+            # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+            
             mkdir build
             cd build
 

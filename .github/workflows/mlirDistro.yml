@@ -338,12 +338,15 @@ jobs:
     # done
 
     - name: Upload wheels
+      if: github.event_name != 'schedule'
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
 
   smoke_test_wheels:
+
+    if: github.event_name != 'schedule'
 
     name: test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
