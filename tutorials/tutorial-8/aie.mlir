@@ -40,14 +40,14 @@ module @tutorial_8 {
     // buf[3] = 13
     %core13 = AIE.core(%tile13) {
         // Locks init value is Release 0, so this will always succeed first
-        // AIE.useLock(%lock13_1, "Acquire", 0)
+        // AIE.use_lock(%lock13_1, "Acquire", 0)
 
 		// %val = arith.constant 14 : i384 
         // AIE.putCascade(%val : i384)
 
         func.call @extern_kernel1() : () -> ()
 
-        // AIE.useLock(%lock13_1, "Release", 1)
+        // AIE.use_lock(%lock13_1, "Release", 1)
         AIE.end
     } { link_with="kernel1.o" }
 
@@ -55,12 +55,12 @@ module @tutorial_8 {
     // buf[5] = buf[3] + 100
     %core23 = AIE.core(%tile23) {
         // This acquire succeeds when the core is enabled
-        AIE.useLock(%lock13_2, "Acquire", 0)
+        AIE.use_lock(%lock13_2, "Acquire", 0)
 
         // This acquire will stall since locks are initialized to Release, 0
-        // AIE.useLock(%lock13_1, "Acquire", 1)
+        // AIE.use_lock(%lock13_1, "Acquire", 1)
 
-        // %cas1 = AIE.getCascade() : i384
+        // %cas1 = AIE.get_cascade() : i384
         // %d1   = arith.trunci %cas1 : i384 to i32
         // %c1   = arith.constant 100 : i32 
         // %d2   = arith.addi %d1, %c1 : i32
@@ -69,10 +69,10 @@ module @tutorial_8 {
 
         func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
 
-        // AIE.useLock(%lock13_1, "Release", 0)
+        // AIE.use_lock(%lock13_1, "Release", 0)
 
         // This release means our 2nd core is done
-        AIE.useLock(%lock13_2, "Release", 1)
+        AIE.use_lock(%lock13_2, "Release", 1)
         AIE.end
     } { link_with="kernel2.o" }
 

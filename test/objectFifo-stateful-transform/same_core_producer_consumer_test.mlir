@@ -24,18 +24,18 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_7:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:             AIE.useLock(%[[VAL_4]], AcquireGreaterEqual, 2)
+// CHECK:             AIE.use_lock(%[[VAL_4]], AcquireGreaterEqual, 2)
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_5]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
-// CHECK:             AIE.useLock(%[[VAL_4]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_5]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             AIE.useLock(%[[VAL_4]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:         }

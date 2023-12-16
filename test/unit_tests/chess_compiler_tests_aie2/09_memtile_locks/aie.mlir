@@ -54,41 +54,41 @@ module @test_chess_08_tile_locks {
     %lock_d2 = AIE.lock(%t71, 3) { sym_name = "done_lock_2" }
 
     AIE.flow(%t71, "DMA" : 0, %t71, "DMA" : 0)
-    AIE.memTileDMA(%t81) {
-         %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+    AIE.memtile_dma(%t81) {
+         %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        AIE.useLock(%lock_d2, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_e : memref<256xi32>, 0, 2>, 0)
-        AIE.useLock(%lock_s2, Release, 1)
-        AIE.nextBd ^end
+        AIE.use_lock(%lock_d2, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_e : memref<256xi32>, 0, 2>, 0)
+        AIE.use_lock(%lock_s2, Release, 1)
+        AIE.next_bd ^end
       ^end:
         AIE.end
     }
     // Tile DMA
-    %m71 = AIE.memTileDMA(%t71) {
-        %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    %m71 = AIE.memtile_dma(%t71) {
+        %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
       ^dma1:
-        %dstDma = AIE.dmaStart("S2MM", 0, ^bd2, ^end)
+        %dstDma = AIE.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
-        AIE.useLock(%lock_s1, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_w : memref<256xi32>, 0, 2>, 0)
-        AIE.useLock(%lock_d1, Release, 1)
-        AIE.nextBd ^bd1
+        AIE.use_lock(%lock_s1, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_w : memref<256xi32>, 0, 2>, 0)
+        AIE.use_lock(%lock_d1, Release, 1)
+        AIE.next_bd ^bd1
       ^bd1:
-        AIE.useLock(%lock_s1, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_w : memref<256xi32>, 4, 2>, 0)
-        AIE.useLock(%lock_d1, Release, 1)
-        AIE.nextBd ^end
+        AIE.use_lock(%lock_s1, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_w : memref<256xi32>, 4, 2>, 0)
+        AIE.use_lock(%lock_d1, Release, 1)
+        AIE.next_bd ^end
       ^bd2:
-        AIE.useLock(%lock_s2, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_e : memref<256xi32>, 8, 2>, 0)
-        AIE.useLock(%lock_d2, Release, 1)
-        AIE.nextBd ^bd3
+        AIE.use_lock(%lock_s2, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_e : memref<256xi32>, 8, 2>, 0)
+        AIE.use_lock(%lock_d2, Release, 1)
+        AIE.next_bd ^bd3
       ^bd3:
-        AIE.useLock(%lock_s2, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_e : memref<256xi32>, 12, 2>, 0)
-        AIE.useLock(%lock_d2, Release, 1)
-        AIE.nextBd ^end
+        AIE.use_lock(%lock_s2, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_e : memref<256xi32>, 12, 2>, 0)
+        AIE.use_lock(%lock_d2, Release, 1)
+        AIE.next_bd ^end
       ^end:
         AIE.end
     }

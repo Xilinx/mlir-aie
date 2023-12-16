@@ -34,20 +34,20 @@ module {
   %core13 = AIE.core(%tile13) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
+    AIE.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
     %val = memref.load %buf13[%idx0] : memref<256xi32>
-    AIE.putStream(%0 : i32, %val : i32)
-    AIE.useLock(%lock13_3, "Release", 0) // release for write
+    AIE.put_stream(%0 : i32, %val : i32)
+    AIE.use_lock(%lock13_3, "Release", 0) // release for write
     AIE.end
   }
 
   %core23 = AIE.core(%tile23) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    AIE.useLock(%lock23_7, "Acquire", 0) // acquire for write
-    %val = AIE.getStream(%0 : i32) : i32
+    AIE.use_lock(%lock23_7, "Acquire", 0) // acquire for write
+    %val = AIE.get_stream(%0 : i32) : i32
     memref.store %val, %buf23[%idx0] : memref<256xi32>
-    AIE.useLock(%lock23_7, "Release", 1) // release for read
+    AIE.use_lock(%lock23_7, "Release", 1) // release for read
     AIE.end
   }
 

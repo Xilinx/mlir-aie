@@ -38,8 +38,8 @@ module @test04_shared_memory {
     %lock23_8 = AIE.lock(%tile23, 8) { sym_name = "output_read_lock" } // output buffer lock
 
     %core13 = AIE.core(%tile13) {
-      AIE.useLock(%lock13_4, AcquireGreaterEqual, 1) // acquire input for read(e.g. input ping)
-      AIE.useLock(%lock13_5, AcquireGreaterEqual, 1) // acquire input for write
+      AIE.use_lock(%lock13_4, AcquireGreaterEqual, 1) // acquire input for read(e.g. input ping)
+      AIE.use_lock(%lock13_5, AcquireGreaterEqual, 1) // acquire input for write
       %idx1 = arith.constant 3 : index
       %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
       %2    = arith.addi %val1, %val1 : i32
@@ -48,14 +48,14 @@ module @test04_shared_memory {
       %5 = arith.addi %4, %val1 : i32
       %idx2 = arith.constant 5 : index
       memref.store %5, %buf13_1[%idx2] : memref<256xi32>
-      AIE.useLock(%lock13_3, Release, 1) // release input for write
-      AIE.useLock(%lock13_6, Release, 1) // release output for read
+      AIE.use_lock(%lock13_3, Release, 1) // release input for write
+      AIE.use_lock(%lock13_6, Release, 1) // release output for read
       AIE.end
     }
 
     %core23 = AIE.core(%tile23) {
-      AIE.useLock(%lock13_6, AcquireGreaterEqual, 1) // acquire input for read(e.g. input ping)
-      AIE.useLock(%lock23_7, AcquireGreaterEqual, 1) // acquire output for write
+      AIE.use_lock(%lock13_6, AcquireGreaterEqual, 1) // acquire input for read(e.g. input ping)
+      AIE.use_lock(%lock23_7, AcquireGreaterEqual, 1) // acquire output for write
       %idx1 = arith.constant 5 : index
       %val1 = memref.load %buf13_1[%idx1] : memref<256xi32>
       %2    = arith.addi %val1, %val1 : i32
@@ -64,8 +64,8 @@ module @test04_shared_memory {
       %5 = arith.addi %4, %val1 : i32
       %idx2 = arith.constant 5 : index
       memref.store %5, %buf23_0[%idx2] : memref<256xi32>
-      AIE.useLock(%lock13_5, Release, 1) // release input for write
-      AIE.useLock(%lock23_8, Release, 1) // release output for read
+      AIE.use_lock(%lock13_5, Release, 1) // release input for write
+      AIE.use_lock(%lock23_8, Release, 1) // release output for read
       AIE.end
     }
   }

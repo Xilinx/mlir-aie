@@ -45,9 +45,9 @@ module @test {
     %sum = scf.for %iv = %lb to %ub step %step
       iter_args(%Im = %MinIm) -> (f32) {
       %Im_next = arith.addf %Im, %StepIm : f32
-      AIE.useLock(%lock13_3, "Acquire", 1) // acquire
+      AIE.use_lock(%lock13_3, "Acquire", 1) // acquire
       func.call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
-      AIE.useLock(%lock13_3, "Release", 0) // release for write
+      AIE.use_lock(%lock13_3, "Release", 0) // release for write
       scf.yield %Im_next : f32
     }
     AIE.end

@@ -36,7 +36,7 @@ module @hdiff_multi_AIE{
     %lb = arith.constant 0 : index
     %ub = arith.constant 2: index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock71_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock71_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire @obj_in (Consume, 5) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -87,7 +87,7 @@ func.func private @hdiff_flux(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  m
       AIE.objectfifo.release @obj_out_flux (Produce, 1)
       AIE.objectfifo.release @obj_in (Consume, 1)
     }
-    AIE.useLock(%lock72_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock72_14, "Acquire", 0) // stop the timer
     AIE.objectfifo.release @obj_in (Consume, 4)
 
     AIE.end

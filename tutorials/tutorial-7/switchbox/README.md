@@ -12,7 +12,7 @@
 
 At the switchbox level much like we did in the [Tutorial-4 - switchbox](../../tutorial-4/switchbox), for circuit switch broadcast communication, we can simply replace `AIE.flow` with `AIE.switchbox`. Where we actually more control over the switchbox behavior is in the packet switch case.
 
-We already introduced the `AIE.switchbox` operator where circuit switch connections between ports can be made with the `AIE.connect` operator. For packet switch however, we use `AIE.amsel`, `AIE.masterset` and `AIE.packetrules/ AIE.rule` to specify the packet switch behavior.
+We already introduced the `AIE.switchbox` operator where circuit switch connections between ports can be made with the `AIE.connect` operator. For packet switch however, we use `AIE.amsel`, `AIE.masterset` and `AIE.packet_rules/ AIE.rule` to specify the packet switch behavior.
 
 A sample conversion from the [flow](../flow) section which looked like this:
 ```
@@ -29,7 +29,7 @@ would be lowered to something like this:
 %1 = AIE.switchbox(%0) {
   %20 = AIE.amsel<0> (0)
   %21 = AIE.masterset(East : 0, %20)
-  AIE.packetrules(DMA : 0) {
+  AIE.packet_rules(DMA : 0) {
     AIE.rule(31, 13, %20)
   }
 }
@@ -37,7 +37,7 @@ would be lowered to something like this:
 %19 = AIE.switchbox(%18) {
   %20 = AIE.amsel<0> (0)
   %21 = AIE.masterset(East : 0, %20)
-  AIE.packetrules(West : 0) {
+  AIE.packet_rules(West : 0) {
     AIE.rule(31, 13, %20)
   }
 }
@@ -46,7 +46,7 @@ would be lowered to something like this:
   %20 = AIE.amsel<0> (0)
   %21 = AIE.masterset(DMA : 1, %20)
   %22 = AIE.masterset(North : 0, %20)
-  AIE.packetrules(West : 0) {
+  AIE.packet_rules(West : 0) {
     AIE.rule(31, 13, %20)
   }
 }
@@ -54,7 +54,7 @@ would be lowered to something like this:
 %5 = AIE.switchbox(%4) {
   %20 = AIE.amsel<0> (0)
   %21 = AIE.masterset(DMA : 1, %20)
-  AIE.packetrules(South : 0) {
+  AIE.packet_rules(South : 0) {
     AIE.rule(31, 13, %20)
   }
 }

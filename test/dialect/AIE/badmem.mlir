@@ -15,7 +15,7 @@ module @test {
   %t1 = AIE.tile(1, 1)
 
   %mem13 = AIE.mem(%t1) {
-    %dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+    %dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
       cf.br ^end
     ^end:

@@ -31,12 +31,12 @@ module @test12_stream_delay {
 
 
   %mem13 = AIE.mem(%tile13) {
-    %dma0 = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    %dma0 = AIE.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock13_5, "Acquire", 1)
-      AIE.dmaBd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
-      AIE.useLock(%lock13_5, "Release", 0)
-      AIE.nextBd ^end
+      AIE.use_lock(%lock13_5, "Acquire", 1)
+      AIE.dma_bd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
+      AIE.use_lock(%lock13_5, "Release", 0)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -49,12 +49,12 @@ module @test12_stream_delay {
   %mem43 = AIE.mem(%tile43) {
 
 
-     %dma0 = AIE.dmaStart(S2MM, 1, ^bd0, ^end)
+     %dma0 = AIE.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock43_6, "Acquire", 0)
-      AIE.dmaBd(<%buf43_0: memref<512xi32>, 0, 512>, 0)
-      AIE.useLock(%lock43_6, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%lock43_6, "Acquire", 0)
+      AIE.dma_bd(<%buf43_0: memref<512xi32>, 0, 512>, 0)
+      AIE.use_lock(%lock43_6, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }

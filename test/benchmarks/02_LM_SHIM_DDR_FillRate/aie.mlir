@@ -23,26 +23,26 @@ module @benchmark_02_LM2DDR {
   %buffer_out = AIE.external_buffer {sym_name = "buffer" } : memref<7168xi32>
 
   %m71 = AIE.mem(%t71) {
-      %srcDma = AIE.dmaStart(MM2S, 1, ^bd0, ^end)
+      %srcDma = AIE.dma_start(MM2S, 1, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock_a_ping, "Acquire", 0)
-      AIE.dmaBd(<%buf71_0 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock_a_ping, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%lock_a_ping, "Acquire", 0)
+      AIE.dma_bd(<%buf71_0 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock_a_ping, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
-  %dma = AIE.shimDMA(%t70) {
+  %dma = AIE.shim_dma(%t70) {
     %lock1 = AIE.lock(%t70, 2)
 
-    AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    AIE.dma_start(S2MM, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -55,7 +55,7 @@ module @benchmark_02_LM2DDR {
   %sw1  = AIE.switchbox(%t70) {
     AIE.connect<"North" : 2, "South" : 2>
   }
-  %mux1 = AIE.shimmux  (%t70) {
+  %mux1 = AIE.shim_mux  (%t70) {
     AIE.connect<"North" : 2, "DMA" : 0>
   }
 

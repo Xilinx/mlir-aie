@@ -37,9 +37,9 @@
 
 module @alloc {
   AIE.device(xcve2302) {
-    AIE.shimDMAAllocation @of_out_1(S2MM, 1, 2)
-    AIE.shimDMAAllocation @of_in_1(MM2S, 1, 2)
-    AIE.shimDMAAllocation @of_out_0(S2MM, 0, 2)
-    AIE.shimDMAAllocation @of_in_0(MM2S, 0, 2)
+    AIE.shim_dma_allocation @of_out_1(S2MM, 1, 2)
+    AIE.shim_dma_allocation @of_in_1(MM2S, 1, 2)
+    AIE.shim_dma_allocation @of_out_0(S2MM, 0, 2)
+    AIE.shim_dma_allocation @of_in_0(MM2S, 0, 2)
   }
 }

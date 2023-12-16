@@ -9,15 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
-// CHECK: 'AIE.shimDMA' op failed to verify that op exists in a shim tile with NOC connection
+// CHECK: 'AIE.shim_dma' op failed to verify that op exists in a shim tile with NOC connection
 
 module @test {
   %t1 = AIE.tile(1, 0)
 
-  %mem13 = AIE.shimDMA(%t1) {
-    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+  %mem13 = AIE.shim_dma(%t1) {
+    AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
-    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^bd0:
       AIE.end
   }

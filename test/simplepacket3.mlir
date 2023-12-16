@@ -24,7 +24,7 @@ module {
     // AIE.connect<South : 0, East : 0>
     %a1_0 = AIE.amsel<1>(0)
     %m1 = AIE.masterset(East : 0, %a1_0 )
-    AIE.packetrules(South : 0) {
+    AIE.packet_rules(South : 0) {
       AIE.rule(0x1F, 0x10, %a1_0)
     }
   }
@@ -34,13 +34,13 @@ module {
   %7 = AIE.switchbox(%1) {
     %a1_0 = AIE.amsel<1>(0)
     %m1 = AIE.masterset(South : 0, %a1_0 )
-    AIE.packetrules(West : 0) {
+    AIE.packet_rules(West : 0) {
       AIE.rule(0x10, 0x0, %a1_0)
     }
   }
-  %8 = AIE.shimswitchbox(0) {
+  %8 = AIE.shim_switchbox(0) {
   }
-  %9 = AIE.shimswitchbox(1) {
+  %9 = AIE.shim_switchbox(1) {
   }
   %10 = AIE.plio(0)
   %11 = AIE.plio(1)

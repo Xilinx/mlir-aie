@@ -48,28 +48,28 @@ module @tutorial_6 {
         // buf[3] = 14
         %core14 = AIE.core(%tile14) {
             // Locks init value is Release 0, so this will always succeed first
-            AIE.useLock(%lock14_6, "Acquire", 0)
+            AIE.use_lock(%lock14_6, "Acquire", 0)
 
             %val = arith.constant 14 : i32 
             %idx = arith.constant 3 : index 
             memref.store %val, %buf14[%idx] : memref<256xi32> 
 
             // Release lock to 1 so tile(2,4) can acquire and begin processing
-            AIE.useLock(%lock14_6, "Release", 1)
+            AIE.use_lock(%lock14_6, "Release", 1)
             AIE.end
         }
 
         %mem14 = AIE.mem(%tile14) {
-            AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+            AIE.dma_start("MM2S", 0, ^bd0, ^end)
             ^bd0:
-                AIE.useLock(%lock14_6, Acquire, 1)
+                AIE.use_lock(%lock14_6, Acquire, 1)
                 // Insert header for packet routing
                 // 0x4 - packet type, arbitary value
                 // 0xD - packet ID, arbitary value but used for routing
-                AIE.dmaBdPacket(0x4, 0xD) 
-                AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
-                AIE.useLock(%lock14_6, Release, 0)
-                AIE.nextBd ^end
+                AIE.dma_bd_packet(0x4, 0xD)
+                AIE.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, 0)
+                AIE.use_lock(%lock14_6, Release, 0)
+                AIE.next_bd ^end
             ^end:
                 AIE.end
         }    
@@ -78,9 +78,9 @@ module @tutorial_6 {
         // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
         // buf[5] = buf[3] + 100
         %core34 = AIE.core(%tile34) {
-            AIE.useLock(%lock34_8, "Acquire", 0)
+            AIE.use_lock(%lock34_8, "Acquire", 0)
             // This acquire will stall since locks are initialized to Release, 0
-            AIE.useLock(%lock34_7, "Acquire", 1)
+            AIE.use_lock(%lock34_7, "Acquire", 1)
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %buf34[%idx1] : memref<256xi32>
@@ -89,20 +89,20 @@ module @tutorial_6 {
             %idx2 = arith.constant 5 : index
             memref.store %d2, %buf34[%idx2] : memref<256xi32> 
 
-            AIE.useLock(%lock34_7, "Release", 0)
-            AIE.useLock(%lock34_8, "Release", 1)
+            AIE.use_lock(%lock34_7, "Release", 0)
+            AIE.use_lock(%lock34_8, "Release", 1)
             AIE.end
         }
 
         // Define local tile memory behavior (i.e. tileDMA)
         %mem34 = AIE.mem(%tile34) {
-            AIE.dmaStart("S2MM", 1, ^bd0, ^end) 
+            AIE.dma_start("S2MM", 1, ^bd0, ^end)
             ^bd0:
-                AIE.useLock(%lock34_7, Acquire, 0)
+                AIE.use_lock(%lock34_7, Acquire, 0)
                 // Packets headers are dropped so no need to define packet behavior here
-                AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-                AIE.useLock(%lock34_7, Release, 1)
-                AIE.nextBd ^end
+                AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+                AIE.use_lock(%lock34_7, Release, 1)
+                AIE.next_bd ^end
             ^end:
                 AIE.end
         }    

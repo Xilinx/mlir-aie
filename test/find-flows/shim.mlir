@@ -12,7 +12,7 @@
 
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 1)
 // CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 0)
-// CHECK:           %[[VAL_6:.*]] = AIE.shimDMA(%[[VAL_1]])
+// CHECK:           %[[VAL_6:.*]] = AIE.shim_dma(%[[VAL_1]])
 // CHECK:           AIE.flow(%[[VAL_0]], Core : 0, %[[VAL_6]], DMA : 0)
 module {
   AIE.device(xcvc1902) {
@@ -27,10 +27,10 @@ module {
     %s20 = AIE.switchbox(%t20)  {
       AIE.connect<North : 0, South : 2>
     }
-    %mux = AIE.shimmux(%t20)  {
+    %mux = AIE.shim_mux(%t20)  {
       AIE.connect<North : 2, DMA : 0>
     }
-    %dma = AIE.shimDMA(%t20)  {
+    %dma = AIE.shim_dma(%t20)  {
       AIE.end
     }
     AIE.wire(%s21 : South, %s20 : North)
@@ -55,19 +55,19 @@ module {
 // CHECK:  %switchbox_2_0 = AIE.switchbox(%tile_2_0) {
 // CHECK:    AIE.connect<North : 0, South : 2>
 // CHECK:  }
-// CHECK:  %shimmux_2_0 = AIE.shimmux(%tile_2_0) {
+// CHECK:  %shim_mux_2_0 = AIE.shim_mux(%tile_2_0) {
 // CHECK:    AIE.connect<North : 2, DMA : 0>
 // CHECK:  }
-// CHECK:  %shimDMA_2_0 = AIE.shimDMA(%tile_2_0) {
+// CHECK:  %shim_dma_2_0 = AIE.shim_dma(%tile_2_0) {
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  AIE.wire(%switchbox_2_1 : South, %switchbox_2_0 : North)
-// CHECK:  AIE.wire(%switchbox_2_0 : South, %shimmux_2_0 : North)
-// CHECK:  AIE.wire(%shimmux_2_0 : DMA, %shimDMA_2_0 : DMA)
-// CHECK:  AIE.wire(%shimmux_2_0 : South, %tile_2_0 : DMA)
+// CHECK:  AIE.wire(%switchbox_2_0 : South, %shim_mux_2_0 : North)
+// CHECK:  AIE.wire(%shim_mux_2_0 : DMA, %shim_dma_2_0 : DMA)
+// CHECK:  AIE.wire(%shim_mux_2_0 : South, %tile_2_0 : DMA)
 // CHECK:  AIE.wire(%switchbox_2_1 : Core, %core_2_1 : Core)
 // CHECK:  AIE.wire(%switchbox_2_1 : Core, %tile_2_1 : Core)
-// CHECK:  AIE.flow(%tile_2_1, Core : 0, %shimDMA_2_0, DMA : 0)
+// CHECK:  AIE.flow(%tile_2_1, Core : 0, %shim_dma_2_0, DMA : 0)
 
 module {
   AIE.device(xcvc1902) {
@@ -82,10 +82,10 @@ module {
     %s20 = AIE.switchbox(%t20)  {
       AIE.connect<North : 0, South : 2>
     }
-    %mux = AIE.shimmux(%t20)  {
+    %mux = AIE.shim_mux(%t20)  {
       AIE.connect<North : 2, DMA : 0>
     }
-    %dma = AIE.shimDMA(%t20)  {
+    %dma = AIE.shim_dma(%t20)  {
       AIE.end
     }
     AIE.wire(%s21 : South, %s20 : North)

@@ -95,16 +95,16 @@ Each tile has 16 locks and each lock is in one of two states (acquired, released
 
 The 16 locks in a tile are accessible by its same 3 cardinal neighbors that can access the tile's local memory. This is to ensure all neighbors that can access the local memory can also access the locks. 
 
-To use the lock, we call the `useLock` operation either inside a `core` operation or `mem`/`shimDMA` operation. 
+To use the lock, we call the `use_lock` operation either inside a `core` operation or `mem`/`shim_dma` operation. 
 ```
-AIE.useLock(%lockName, "Acquire|Release", 0|1)
+AIE.use_lock(%lockName, "Acquire|Release", 0|1)
 ```
 That code would look something like:
 ```
 %core14 = AIE.core(%tile14) {
-    AIE.useLock(%lock14_7, "Acquire", 0)
+    AIE.use_lock(%lock14_7, "Acquire", 0)
     ... core ops ...
-    AIE.useLock(%lock14_7, "Release", 1)
+    AIE.use_lock(%lock14_7, "Release", 1)
 }
 ```
 Notice the familiar design pattern of:

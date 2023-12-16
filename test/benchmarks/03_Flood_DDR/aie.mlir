@@ -20,7 +20,7 @@ module @benchmark03_Flood_DDR {
   %sw2 = AIE.switchbox(%t20) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux2 = AIE.shimmux(%t20) {
+  %mux2 = AIE.shim_mux(%t20) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -32,27 +32,27 @@ module @benchmark03_Flood_DDR {
   %l21_0 = AIE.lock(%t21, 0)
 
   %m21 = AIE.mem(%t21) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l21_0, "Acquire", 0)
-      AIE.dmaBd(<%buf21_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l21_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l21_0, "Acquire", 0)
+      AIE.dma_bd(<%buf21_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l21_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_20 = AIE.external_buffer {sym_name = "buffer_out_20" } : memref<7168xi32>
   %l20 = AIE.lock(%t20, 1)
-  %dma20 = AIE.shimDMA(%t20) {
+  %dma20 = AIE.shim_dma(%t20) {
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%l20, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_20 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l20, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l20, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_20 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l20, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -63,7 +63,7 @@ module @benchmark03_Flood_DDR {
   %sw3 = AIE.switchbox(%t30) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux3 = AIE.shimmux(%t30) {
+  %mux3 = AIE.shim_mux(%t30) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -75,28 +75,28 @@ module @benchmark03_Flood_DDR {
   %l31_0 = AIE.lock(%t31, 0)
 
   %m31 = AIE.mem(%t31) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l31_0, "Acquire", 0)
-      AIE.dmaBd(<%buf31_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l31_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l31_0, "Acquire", 0)
+      AIE.dma_bd(<%buf31_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l31_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
 
   %buffer_out_30 = AIE.external_buffer {sym_name = "buffer_out_30" } : memref<7168xi32>
-  %dma30 = AIE.shimDMA(%t30) {
+  %dma30 = AIE.shim_dma(%t30) {
     %lock1 = AIE.lock(%t30, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_30 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_30 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -107,7 +107,7 @@ module @benchmark03_Flood_DDR {
   %sw6 = AIE.switchbox(%t60) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux6 = AIE.shimmux(%t60) {
+  %mux6 = AIE.shim_mux(%t60) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -119,27 +119,27 @@ module @benchmark03_Flood_DDR {
   %l61_0 = AIE.lock(%t61, 0)
 
   %m61 = AIE.mem(%t61) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l61_0, "Acquire", 0)
-      AIE.dmaBd(<%buf61_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l61_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l61_0, "Acquire", 0)
+      AIE.dma_bd(<%buf61_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l61_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_60 = AIE.external_buffer {sym_name = "buffer_out_60" } : memref<7168xi32>
-  %dma60 = AIE.shimDMA(%t60) {
+  %dma60 = AIE.shim_dma(%t60) {
     %lock1 = AIE.lock(%t60, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_60 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_60 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -151,7 +151,7 @@ module @benchmark03_Flood_DDR {
   %sw = AIE.switchbox(%t70) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux = AIE.shimmux(%t70) {
+  %mux = AIE.shim_mux(%t70) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -165,28 +165,28 @@ module @benchmark03_Flood_DDR {
   %l71_0 = AIE.lock(%t71, 0)
 
   %m71 = AIE.mem(%t71) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l71_0, "Acquire", 0)
-      AIE.dmaBd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l71_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l71_0, "Acquire", 0)
+      AIE.dma_bd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l71_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
 
   %buffer_out_70 = AIE.external_buffer {sym_name = "buffer_out_70" } : memref<7168xi32>
-  %dma70 = AIE.shimDMA(%t70) {
+  %dma70 = AIE.shim_dma(%t70) {
     %lock1 = AIE.lock(%t70, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_70 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_70 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -198,7 +198,7 @@ module @benchmark03_Flood_DDR {
   %sw10 = AIE.switchbox(%t100) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux10 = AIE.shimmux(%t100) {
+  %mux10 = AIE.shim_mux(%t100) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -212,27 +212,27 @@ module @benchmark03_Flood_DDR {
   %l101_0 = AIE.lock(%t101, 0)
 
   %m101 = AIE.mem(%t101) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l101_0, "Acquire", 0)
-      AIE.dmaBd(<%buf101_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l101_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l101_0, "Acquire", 0)
+      AIE.dma_bd(<%buf101_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l101_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_100 = AIE.external_buffer {sym_name = "buffer_out_100" } : memref<7168xi32>
-  %dma100 = AIE.shimDMA(%t100) {
+  %dma100 = AIE.shim_dma(%t100) {
     %lock1 = AIE.lock(%t100, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_100 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_100 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -243,7 +243,7 @@ module @benchmark03_Flood_DDR {
   %sw11 = AIE.switchbox(%t110) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux11 = AIE.shimmux(%t110) {
+  %mux11 = AIE.shim_mux(%t110) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -255,27 +255,27 @@ module @benchmark03_Flood_DDR {
   %l111_0 = AIE.lock(%t111, 0)
 
   %m111 = AIE.mem(%t111) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l111_0, "Acquire", 0)
-      AIE.dmaBd(<%buf111_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l111_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l111_0, "Acquire", 0)
+      AIE.dma_bd(<%buf111_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l111_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_110 = AIE.external_buffer {sym_name = "buffer_out_110" } : memref<7168xi32>
-  %dma110 = AIE.shimDMA(%t110) {
+  %dma110 = AIE.shim_dma(%t110) {
     %lock1 = AIE.lock(%t110, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_110 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_110 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -286,7 +286,7 @@ module @benchmark03_Flood_DDR {
   %sw18 = AIE.switchbox(%t180) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux18 = AIE.shimmux(%t180) {
+  %mux18 = AIE.shim_mux(%t180) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -298,28 +298,28 @@ module @benchmark03_Flood_DDR {
   %l181_0 = AIE.lock(%t181, 0)
 
   %m181 = AIE.mem(%t181) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l181_0, "Acquire", 0)
-      AIE.dmaBd(<%buf181_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l181_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l181_0, "Acquire", 0)
+      AIE.dma_bd(<%buf181_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l181_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
 
   %buffer_out_180 = AIE.external_buffer {sym_name = "buffer_out_180" } : memref<7168xi32>
-  %dma180 = AIE.shimDMA(%t180) {
+  %dma180 = AIE.shim_dma(%t180) {
     %lock1 = AIE.lock(%t180, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_180 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_180 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -331,7 +331,7 @@ module @benchmark03_Flood_DDR {
   %sw19 = AIE.switchbox(%t190) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux19 = AIE.shimmux(%t190) {
+  %mux19 = AIE.shim_mux(%t190) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -343,27 +343,27 @@ module @benchmark03_Flood_DDR {
   %l191_0 = AIE.lock(%t191, 0)
 
   %m191 = AIE.mem(%t191) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l191_0, "Acquire", 0)
-      AIE.dmaBd(<%buf191_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l191_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l191_0, "Acquire", 0)
+      AIE.dma_bd(<%buf191_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l191_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_190 = AIE.external_buffer {sym_name = "buffer_out_190" } : memref<7168xi32>
-  %dma190 = AIE.shimDMA(%t190) {
+  %dma190 = AIE.shim_dma(%t190) {
     %lock1 = AIE.lock(%t190, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_190 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_190 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -374,7 +374,7 @@ module @benchmark03_Flood_DDR {
   %sw26 = AIE.switchbox(%t260) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux26 = AIE.shimmux(%t260) {
+  %mux26 = AIE.shim_mux(%t260) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -386,28 +386,28 @@ module @benchmark03_Flood_DDR {
   %l261_0 = AIE.lock(%t261, 0)
 
   %m261 = AIE.mem(%t261) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l261_0, "Acquire", 0)
-      AIE.dmaBd(<%buf261_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l261_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l261_0, "Acquire", 0)
+      AIE.dma_bd(<%buf261_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l261_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
 
   %buffer_out_260 = AIE.external_buffer {sym_name = "buffer_out_260" } : memref<7168xi32>
-  %dma260 = AIE.shimDMA(%t260) {
+  %dma260 = AIE.shim_dma(%t260) {
     %lock1 = AIE.lock(%t260, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_260 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_260 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -419,7 +419,7 @@ module @benchmark03_Flood_DDR {
   %sw27 = AIE.switchbox(%t270) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux27 = AIE.shimmux(%t270) {
+  %mux27 = AIE.shim_mux(%t270) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -431,28 +431,28 @@ module @benchmark03_Flood_DDR {
   %l271_0 = AIE.lock(%t271, 0)
 
   %m271 = AIE.mem(%t271) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l271_0, "Acquire", 0)
-      AIE.dmaBd(<%buf271_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l271_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l271_0, "Acquire", 0)
+      AIE.dma_bd(<%buf271_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l271_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
 
   %buffer_out_270 = AIE.external_buffer {sym_name = "buffer_out_270" } : memref<7168xi32>
-  %dma270 = AIE.shimDMA(%t270) {
+  %dma270 = AIE.shim_dma(%t270) {
     %lock1 = AIE.lock(%t270, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_270 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_270 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -463,7 +463,7 @@ module @benchmark03_Flood_DDR {
   %sw34 = AIE.switchbox(%t340) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux34 = AIE.shimmux(%t340) {
+  %mux34 = AIE.shim_mux(%t340) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -475,27 +475,27 @@ module @benchmark03_Flood_DDR {
   %l341_0 = AIE.lock(%t341, 0)
 
   %m341 = AIE.mem(%t341) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l341_0, "Acquire", 0)
-      AIE.dmaBd(<%buf341_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l341_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l341_0, "Acquire", 0)
+      AIE.dma_bd(<%buf341_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l341_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_340 = AIE.external_buffer {sym_name = "buffer_out_340" } : memref<7168xi32>
-  %dma340 = AIE.shimDMA(%t340) {
+  %dma340 = AIE.shim_dma(%t340) {
     %lock1 = AIE.lock(%t340, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_340 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_340 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -506,7 +506,7 @@ module @benchmark03_Flood_DDR {
   %sw35 = AIE.switchbox(%t350) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux35 = AIE.shimmux(%t350) {
+  %mux35 = AIE.shim_mux(%t350) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -518,27 +518,27 @@ module @benchmark03_Flood_DDR {
   %l351_0 = AIE.lock(%t351, 0)
 
   %m351 = AIE.mem(%t351) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l351_0, "Acquire", 0)
-      AIE.dmaBd(<%buf351_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l351_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l351_0, "Acquire", 0)
+      AIE.dma_bd(<%buf351_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l351_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_350 = AIE.external_buffer {sym_name = "buffer_out_350" } : memref<7168xi32>
-  %dma350 = AIE.shimDMA(%t350) {
+  %dma350 = AIE.shim_dma(%t350) {
     %lock1 = AIE.lock(%t350, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_350 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_350 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -554,12 +554,12 @@ module @benchmark03_Flood_DDR {
   %buf421_0 = AIE.buffer(%t421) {sym_name = "buf421_0" } : memref<7168xi32>
   %l421 = AIE.lock(%t421, 1)
   %m421 = AIE.mem(%t421) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l421, "Acquire", 0)
-      AIE.dmaBd(<%buf421_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l421, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l421, "Acquire", 0)
+      AIE.dma_bd(<%buf421_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l421, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -567,15 +567,15 @@ module @benchmark03_Flood_DDR {
 
   %buffer_out_420 = AIE.external_buffer {sym_name = "buffer_out_420" } : memref<7168xi32>
   %lock1 = AIE.lock(%t420, 1)
-  %dma420 = AIE.shimDMA(%t420) {
+  %dma420 = AIE.shim_dma(%t420) {
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_420 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_420 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -586,7 +586,7 @@ module @benchmark03_Flood_DDR {
   %sw43 = AIE.switchbox(%t430) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux43 = AIE.shimmux(%t430) {
+  %mux43 = AIE.shim_mux(%t430) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -598,12 +598,12 @@ module @benchmark03_Flood_DDR {
   %l431_0 = AIE.lock(%t431, 0)
 
   %m431 = AIE.mem(%t431) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l431_0, "Acquire", 0)
-      AIE.dmaBd(<%buf431_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l431_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l431_0, "Acquire", 0)
+      AIE.dma_bd(<%buf431_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l431_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -611,15 +611,15 @@ module @benchmark03_Flood_DDR {
 
   %buffer_out_430 = AIE.external_buffer {sym_name = "buffer_out_430" } : memref<7168xi32>
   %l430 = AIE.lock(%t430, 1)
-  %dma430 = AIE.shimDMA(%t430) {
+  %dma430 = AIE.shim_dma(%t430) {
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%l430, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_430 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l430, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l430, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_430 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l430, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -631,7 +631,7 @@ module @benchmark03_Flood_DDR {
   %sw46 = AIE.switchbox(%t460) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux46 = AIE.shimmux(%t460) {
+  %mux46 = AIE.shim_mux(%t460) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -643,27 +643,27 @@ module @benchmark03_Flood_DDR {
   %l461_0 = AIE.lock(%t461, 0)
 
   %m461 = AIE.mem(%t461) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l461_0, "Acquire", 0)
-      AIE.dmaBd(<%buf461_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l461_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l461_0, "Acquire", 0)
+      AIE.dma_bd(<%buf461_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l461_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %buffer_out_460 = AIE.external_buffer {sym_name = "buffer_out_460" } : memref<7168xi32>
   %l460 = AIE.lock(%t460, 1)
-  %dma460 = AIE.shimDMA(%t460) {
+  %dma460 = AIE.shim_dma(%t460) {
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%l460, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_460 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l460, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l460, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_460 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l460, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -675,7 +675,7 @@ module @benchmark03_Flood_DDR {
   %sw47 = AIE.switchbox(%t470) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux47 = AIE.shimmux(%t470) {
+  %mux47 = AIE.shim_mux(%t470) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -687,12 +687,12 @@ module @benchmark03_Flood_DDR {
   %l471_0 = AIE.lock(%t471, 0)
 
   %m471 = AIE.mem(%t471) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
-      AIE.useLock(%l471_0, "Acquire", 0)
-      AIE.dmaBd(<%buf471_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l471_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l471_0, "Acquire", 0)
+      AIE.dma_bd(<%buf471_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l471_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -700,15 +700,15 @@ module @benchmark03_Flood_DDR {
 
   %buffer_out_470 = AIE.external_buffer {sym_name = "buffer_out_470" } : memref<7168xi32>
   %l470 = AIE.lock(%t470, 1)
-  %dma470 = AIE.shimDMA(%t470) {
+  %dma470 = AIE.shim_dma(%t470) {
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%l470, Acquire, 1)
-      AIE.dmaBd(<%buffer_out_470 : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l470, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l470, Acquire, 1)
+      AIE.dma_bd(<%buffer_out_470 : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l470, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }

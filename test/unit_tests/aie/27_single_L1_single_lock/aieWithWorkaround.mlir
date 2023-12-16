@@ -26,41 +26,41 @@ module @test27_simple_shim_dma_single_lock {
     %constant43 = arith.constant 43 : i32
     %constant47 = arith.constant 47 : i32
 
-    AIE.useLock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
     memref.store %constant7, %buf73_0[%c0] : memref<16xi32>
-    AIE.useLock(%lockCore, "Release", 1)
+    AIE.use_lock(%lockCore, "Release", 1)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
-    AIE.useLock(%lockCore, "Release", 1)
-    // AIE.useLock(%dummyLock, "Acquire", 0)
-    // AIE.useLock(%dummyLock, "Release", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Release", 1)
+    // AIE.use_lock(%dummyLock, "Acquire", 0)
+    // AIE.use_lock(%dummyLock, "Release", 0)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
     memref.store %constant13, %buf73_0[%c0] : memref<16xi32>
-    AIE.useLock(%lockCore, "Release", 1)
+    AIE.use_lock(%lockCore, "Release", 1)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
-    AIE.useLock(%lockCore, "Release", 1)
-    // AIE.useLock(%dummyLock, "Acquire", 0)
-    // AIE.useLock(%dummyLock, "Release", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Release", 1)
+    // AIE.use_lock(%dummyLock, "Acquire", 0)
+    // AIE.use_lock(%dummyLock, "Release", 0)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
     memref.store %constant43, %buf73_0[%c0] : memref<16xi32>
-    AIE.useLock(%lockCore, "Release", 1)
+    AIE.use_lock(%lockCore, "Release", 1)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
-    AIE.useLock(%lockCore, "Release", 1)
-    // AIE.useLock(%dummyLock, "Acquire", 0)
-    // AIE.useLock(%dummyLock, "Release", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Release", 1)
+    // AIE.use_lock(%dummyLock, "Acquire", 0)
+    // AIE.use_lock(%dummyLock, "Release", 0)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
     memref.store %constant47, %buf73_0[%c0] : memref<16xi32>
-    AIE.useLock(%lockCore, "Release", 1)
+    AIE.use_lock(%lockCore, "Release", 1)
 
-    AIE.useLock(%lockCore, "Acquire", 0)
-    AIE.useLock(%lockCore, "Release", 1)
-    // AIE.useLock(%dummyLock, "Acquire", 0)
-    // AIE.useLock(%dummyLock, "Release", 0)
+    AIE.use_lock(%lockCore, "Acquire", 0)
+    AIE.use_lock(%lockCore, "Release", 1)
+    // AIE.use_lock(%dummyLock, "Acquire", 0)
+    // AIE.use_lock(%dummyLock, "Release", 0)
 
     AIE.end
   }

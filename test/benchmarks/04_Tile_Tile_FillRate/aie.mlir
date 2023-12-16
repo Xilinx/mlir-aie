@@ -26,12 +26,12 @@ module @test04_tile_tiledma {
 
 
   %mem13 = AIE.mem(%tile13) {
-    %dma0 = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    %dma0 = AIE.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock13_5, "Acquire", 1)
-      AIE.dmaBd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
-      AIE.useLock(%lock13_5, "Release", 0)
-      AIE.nextBd ^end // point to the next BD, or termination
+      AIE.use_lock(%lock13_5, "Acquire", 1)
+      AIE.dma_bd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
+      AIE.use_lock(%lock13_5, "Release", 0)
+      AIE.next_bd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }
@@ -42,12 +42,12 @@ module @test04_tile_tiledma {
   %buf14_1 = AIE.buffer(%tile14) { sym_name = "b14" } : memref<256xi32>
 
   %mem14 = AIE.mem(%tile14) {
-    %dma0 = AIE.dmaStart(S2MM, 1, ^bd0, ^end)
+    %dma0 = AIE.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock14_6, "Acquire", 0)
-      AIE.dmaBd(<%buf14_0: memref<512xi32>, 0, 512>, 0)
-      AIE.useLock(%lock14_6, "Release", 1)
-      AIE.nextBd ^end // point to the next BD, or termination
+      AIE.use_lock(%lock14_6, "Acquire", 0)
+      AIE.dma_bd(<%buf14_0: memref<512xi32>, 0, 512>, 0)
+      AIE.use_lock(%lock14_6, "Release", 1)
+      AIE.next_bd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }

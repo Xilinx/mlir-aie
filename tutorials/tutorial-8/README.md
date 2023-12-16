@@ -20,8 +20,8 @@ Cascade is a specialized data transfer between horizontally adjacent tiles in a 
 As far as  `mlir-aie` syntax support for cascade connections, we support cascade functionality by simply placing tiles directly horizontally adjacent to one another. No additional operators are needed in `mlir-aie`. There are `core` ops that push and pull data from the cascade ports
 
 ```
-AIE.getCascade()
-AIE.putCascade($cascadeValue : type($cascadeValue))
+AIE.get_cascade()
+AIE.put_cascade($cascadeValue : type($cascadeValue))
 ```
 
 This allows us to push and pull data off the cascade ports.

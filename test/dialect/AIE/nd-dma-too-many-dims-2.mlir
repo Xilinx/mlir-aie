@@ -18,11 +18,11 @@ module @tutorial_2b {
         %buf33 = AIE.buffer(%tile33) { sym_name = "buf33" } : memref<128xi32>
 
         %mem33 = AIE.mem(%tile33) {
-          %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+          %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             //expected-error@+1 {{Cannot give more than 3 dimensions}}
-            AIE.dmaBd(<%buf33 : memref<128xi32>, 0, 128>, 0, [<1, 1>, <1, 1>, <1, 1>, <1, 1>])
-            AIE.nextBd ^end
+            AIE.dma_bd(<%buf33 : memref<128xi32>, 0, 128>, 0, [<1, 1>, <1, 1>, <1, 1>, <1, 1>])
+            AIE.next_bd ^end
           ^end: 
             AIE.end
         }

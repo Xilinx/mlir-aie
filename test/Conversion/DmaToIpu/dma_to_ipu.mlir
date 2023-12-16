@@ -30,7 +30,7 @@ AIE.device(ipu) {
     AIEX.ipu.dma_memcpy_nd(%c0_i32, %c1_i32, %arg1[%c0_i32, %c0_i32, %c0_i32, %c16_i32][%c1_i32, %c1_i32, %c16_i32, %c16_i32][%c0_i32, %c0_i32, %c64_i32]) { metadata = @fromMem, id = 0 : i32 } : (i32, i32, memref<16xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
     return
   }
-  AIE.shimDMAAllocation @fromMem (MM2S, 0, 0)
-  AIE.shimDMAAllocation @toMem (S2MM, 0, 0)
+  AIE.shim_dma_allocation @fromMem (MM2S, 0, 0)
+  AIE.shim_dma_allocation @toMem (S2MM, 0, 0)
 }
 }

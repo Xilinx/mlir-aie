@@ -1,4 +1,4 @@
-//===- memTileDMA.mlir ------------------------------------------*- MLIR -*-===//
+//===- memtile_dma.mlir ------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -50,20 +50,20 @@ module @aie_module  {
   %lock_l = AIE.lock(%t01, 0)
   %lock_e = AIE.lock(%t02, 0)
 
-  %m01 = AIE.memTileDMA(%t01) {
-      %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+  %m01 = AIE.memtile_dma(%t01) {
+      %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.dmaBd(<%buf_w : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%lock_w, "Release", 1)
-      AIE.nextBd ^bd1
+      AIE.dma_bd(<%buf_w : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%lock_w, "Release", 1)
+      AIE.next_bd ^bd1
     ^bd1:
-      AIE.dmaBd(<%buf_l : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%lock_l, "Release", 1)
-      AIE.nextBd ^bd2
+      AIE.dma_bd(<%buf_l : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%lock_l, "Release", 1)
+      AIE.next_bd ^bd2
     ^bd2:
-      AIE.dmaBd(<%buf_e : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%lock_e, "Release", 1)
-      AIE.nextBd ^end
+      AIE.dma_bd(<%buf_e : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%lock_e, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }

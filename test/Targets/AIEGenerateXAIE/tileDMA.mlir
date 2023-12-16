@@ -31,21 +31,21 @@ module @aie_module  {
   %26 = AIE.buffer(%0) {address = 4352 : i32, sym_name = "buf7"} : memref<64xi32, 2>
   %27 = AIE.lock(%0, 1)
   %28 = AIE.mem(%0)  {
-    %38 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+    %38 = AIE.dma_start(S2MM, 0, ^bb1, ^bb3)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.useLock(%25, Acquire, 0)
-    AIE.dmaBd(<%24 : memref<64xi32, 2>, 0, 64>, 0)
-    AIE.useLock(%25, Release, 1)
-    AIE.nextBd ^bb1
+    AIE.use_lock(%25, Acquire, 0)
+    AIE.dma_bd(<%24 : memref<64xi32, 2>, 0, 64>, 0)
+    AIE.use_lock(%25, Release, 1)
+    AIE.next_bd ^bb1
   ^bb2:  // pred: ^bb3
     AIE.end
   ^bb3:  // pred: ^bb0
-    %39 = AIE.dmaStart(MM2S, 0, ^bb4, ^bb2)
+    %39 = AIE.dma_start(MM2S, 0, ^bb4, ^bb2)
   ^bb4:  // 2 preds: ^bb3, ^bb4
-    AIE.useLock(%27, Acquire, 1)
-    AIE.dmaBd(<%26 : memref<64xi32, 2>, 0, 64>, 0)
-    AIE.useLock(%27, Release, 0)
-    AIE.nextBd ^bb4
+    AIE.use_lock(%27, Acquire, 1)
+    AIE.dma_bd(<%26 : memref<64xi32, 2>, 0, 64>, 0)
+    AIE.use_lock(%27, Release, 0)
+    AIE.next_bd ^bb4
   }
  }
 }

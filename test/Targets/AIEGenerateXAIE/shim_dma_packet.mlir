@@ -31,14 +31,14 @@ module {
   %tile70 = AIE.tile(7, 0)
   %lock70 = AIE.lock(%tile70, 0)
 
-  %shimdma70 = AIE.shimDMA(%tile70)  {
-    AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+  %shimdma70 = AIE.shim_dma(%tile70)  {
+    AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.useLock(%lock70, Acquire, 1)
-    AIE.dmaBdPacket(0, 2)
-    AIE.dmaBd(<%buf : memref<32x32xi32>, 0, 1024>, 0)
-    AIE.useLock(%lock70, Release, 0)
-    AIE.nextBd ^bb1
+    AIE.use_lock(%lock70, Acquire, 1)
+    AIE.dma_bd_packet(0, 2)
+    AIE.dma_bd(<%buf : memref<32x32xi32>, 0, 1024>, 0)
+    AIE.use_lock(%lock70, Release, 0)
+    AIE.next_bd ^bb1
   ^bb2:  // pred: ^bb0
     AIE.end
   }

@@ -16,7 +16,7 @@ module {
   AIE.device(xcve2802) {
     %20 = AIE.tile(2, 0) // shim-noc tile
     AIE.switchbox(%20) {
-      AIE.connect<DMA: 0, South: 0> // No dma in shimtile.. Go through shimmux
+      AIE.connect<DMA: 0, South: 0> // No dma in shimtile.. Go through shim_mux
     }
   }
 }

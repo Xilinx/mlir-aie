@@ -11,7 +11,7 @@
 //
 // This tests the lowering from AIE.switchbox ops to configuration register
 // writes for LibXAIEV1. This test targets NoC shim tiles that must configure
-// stream switches, and for some PLIOs the shimmux, to connect AIE array
+// stream switches, and for some PLIOs the shim_mux, to connect AIE array
 // streams to PL.
 //
 
@@ -38,7 +38,7 @@ module {
   %5 = AIE.switchbox(%t21)  {
     AIE.connect<North : 0, South : 0>
   }
-  %6 = AIE.shimmux(%t20)  {
+  %6 = AIE.shim_mux(%t20)  {
     AIE.connect<North : 2, PLIO : 2>
   }
  }

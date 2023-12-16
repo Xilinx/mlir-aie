@@ -23,7 +23,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %sw = AIE.switchbox(%t70) {
     AIE.connect<"South" : 3, "North" : 3>
   }
-  %mux = AIE.shimmux(%t70) {
+  %mux = AIE.shim_mux(%t70) {
     AIE.connect<"DMA" : 0, "North": 3>
   }
 
@@ -31,16 +31,16 @@ module @benchmark01_DDR_SHIM_fill_rate {
     AIE.connect<"South" : 3, "DMA" : 0>
   }
 
-  %dma = AIE.shimDMA(%t70) {
+  %dma = AIE.shim_dma(%t70) {
     %lock1 = AIE.lock(%t70, 1)
 
-    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer : memref<7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer : memref<7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -51,12 +51,12 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %l71_1 = AIE.lock(%t71, 1)
 
   %m71 = AIE.mem(%t71) {
-    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+    %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l71_0, "Acquire", 0)
-      AIE.dmaBd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
-      AIE.useLock(%l71_0, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l71_0, "Acquire", 0)
+      AIE.dma_bd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
+      AIE.use_lock(%l71_0, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
    }

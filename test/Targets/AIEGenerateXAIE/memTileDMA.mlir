@@ -1,4 +1,4 @@
-//===- memTileDMA.mlir ------------------------------------------*- MLIR -*-===//
+//===- memtile_dma.mlir ------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -48,34 +48,34 @@ module @aie_module  {
   %l01_2 = AIE.lock(%t01, 2) { init = 1 : i32 }
   %l01_3 = AIE.lock(%t01, 3)
 
-  %m01 = AIE.memTileDMA(%t01) {
-      %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^dma0)
+  %m01 = AIE.memtile_dma(%t01) {
+      %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      %memSrcDma = AIE.dmaStart(MM2S, 1, ^bd1, ^dma1)
+      %memSrcDma = AIE.dma_start(MM2S, 1, ^bd1, ^dma1)
     ^dma1:
-      %memDstDma = AIE.dmaStart(S2MM, 1, ^bd2, ^dma2)
+      %memDstDma = AIE.dma_start(S2MM, 1, ^bd2, ^dma2)
     ^dma2:
-      %dstDma = AIE.dmaStart(MM2S, 0, ^bd3, ^end)
+      %dstDma = AIE.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
-      AIE.useLock(%l01_0, "AcquireGreaterEqual", 1)
-      AIE.dmaBd(<%buf01_0 : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%l01_1, "Release", 1)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l01_0, "AcquireGreaterEqual", 1)
+      AIE.dma_bd(<%buf01_0 : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%l01_1, "Release", 1)
+      AIE.next_bd ^bd0
     ^bd1:
-      AIE.useLock(%l01_1, "AcquireGreaterEqual", 1)
-      AIE.dmaBd(<%buf01_0 : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%l01_0, "Release", 1)
-      AIE.nextBd ^bd1
+      AIE.use_lock(%l01_1, "AcquireGreaterEqual", 1)
+      AIE.dma_bd(<%buf01_0 : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%l01_0, "Release", 1)
+      AIE.next_bd ^bd1
     ^bd2:
-      AIE.useLock(%l01_2, "AcquireGreaterEqual", 1)
-      AIE.dmaBd(<%buf01_1 : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%l01_3, "Release", 1)
-      AIE.nextBd ^bd2
+      AIE.use_lock(%l01_2, "AcquireGreaterEqual", 1)
+      AIE.dma_bd(<%buf01_1 : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%l01_3, "Release", 1)
+      AIE.next_bd ^bd2
     ^bd3:
-      AIE.useLock(%l01_3, "AcquireGreaterEqual", 1)
-      AIE.dmaBd(<%buf01_1 : memref<16xi32>, 0, 16>, 0)
-      AIE.useLock(%l01_2, "Release", 1)
-      AIE.nextBd ^bd3
+      AIE.use_lock(%l01_3, "AcquireGreaterEqual", 1)
+      AIE.dma_bd(<%buf01_1 : memref<16xi32>, 0, 16>, 0)
+      AIE.use_lock(%l01_2, "Release", 1)
+      AIE.next_bd ^bd3
     ^end:
       AIE.end
   }

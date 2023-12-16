@@ -14,7 +14,7 @@ module @test {
   AIE.device(xcve2802) {
     %t33 = AIE.tile(3, 3)
     %c33 = AIE.core(%t33) {
-      %val2 = AIE.getCascade() : vector<16xi32>
+      %val2 = AIE.get_cascade() : vector<16xi32>
       AIE.putCascade(%val2: vector<16xi32>)
       AIE.end
  

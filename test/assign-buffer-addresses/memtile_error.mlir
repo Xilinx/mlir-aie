@@ -15,7 +15,7 @@ module @test {
  AIE.device(xcve2302) {
   %0 = AIE.tile(3, 1)
   %b1 = AIE.buffer(%0) { sym_name = "a" } : memref<132000xi32>
-  AIE.memTileDMA(%0) {
+  AIE.memtile_dma(%0) {
     AIE.end
   }
  }

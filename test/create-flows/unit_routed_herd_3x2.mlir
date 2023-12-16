@@ -323,7 +323,7 @@
 // CHECK:           %[[VAL_201:.*]] = AIE.switchbox(%[[VAL_3]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_202:.*]] = AIE.shimmux(%[[VAL_3]]) {
+// CHECK:           %[[VAL_202:.*]] = AIE.shim_mux(%[[VAL_3]]) {
 // CHECK:             AIE.connect<DMA : 0, North : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_203:.*]] = AIE.switchbox(%[[VAL_50]]) {
@@ -336,19 +336,19 @@
 // CHECK:           %[[VAL_205:.*]] = AIE.switchbox(%[[VAL_6]]) {
 // CHECK:             AIE.connect<West : 0, South : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_206:.*]] = AIE.shimmux(%[[VAL_6]]) {
+// CHECK:           %[[VAL_206:.*]] = AIE.shim_mux(%[[VAL_6]]) {
 // CHECK:             AIE.connect<North : 2, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_207:.*]] = AIE.switchbox(%[[VAL_10]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_208:.*]] = AIE.shimmux(%[[VAL_10]]) {
+// CHECK:           %[[VAL_208:.*]] = AIE.shim_mux(%[[VAL_10]]) {
 // CHECK:             AIE.connect<DMA : 0, North : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_209:.*]] = AIE.switchbox(%[[VAL_2]]) {
 // CHECK:             AIE.connect<North : 0, South : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_210:.*]] = AIE.shimmux(%[[VAL_2]]) {
+// CHECK:           %[[VAL_210:.*]] = AIE.shim_mux(%[[VAL_2]]) {
 // CHECK:             AIE.connect<North : 2, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_211:.*]] = AIE.switchbox(%[[VAL_51]]) {
@@ -357,7 +357,7 @@
 // CHECK:           %[[VAL_212:.*]] = AIE.switchbox(%[[VAL_11]]) {
 // CHECK:             AIE.connect<South : 3, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_213:.*]] = AIE.shimmux(%[[VAL_11]]) {
+// CHECK:           %[[VAL_213:.*]] = AIE.shim_mux(%[[VAL_11]]) {
 // CHECK:             AIE.connect<DMA : 0, North : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_214:.*]] = AIE.tile(12, 0)
@@ -402,7 +402,7 @@
 // CHECK:           %[[VAL_231:.*]] = AIE.switchbox(%[[VAL_12]]) {
 // CHECK:             AIE.connect<West : 0, South : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_232:.*]] = AIE.shimmux(%[[VAL_12]]) {
+// CHECK:           %[[VAL_232:.*]] = AIE.shim_mux(%[[VAL_12]]) {
 // CHECK:             AIE.connect<North : 2, DMA : 0>
 // CHECK:           }
 // CHECK:           AIE.wire(%[[VAL_14]] : Core, %[[VAL_233:.*]] : Core)

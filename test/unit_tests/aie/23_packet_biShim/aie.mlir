@@ -23,38 +23,38 @@ module @aie_module  {
   %buf_o = AIE.external_buffer {sym_name = "output"} : memref<257xi32>
 
   %12 = AIE.mem(%t72)  {
-    %srcDma = AIE.dmaStart("S2MM", 0, ^bb2, ^dma0)
+    %srcDma = AIE.dma_start("S2MM", 0, ^bb2, ^dma0)
   ^dma0:
-    %dstDma = AIE.dmaStart("MM2S", 0, ^bb3, ^end)
+    %dstDma = AIE.dma_start("MM2S", 0, ^bb3, ^end)
   ^bb2:
-    AIE.useLock(%10, Acquire, 0)
-    AIE.dmaBd(<%11 : memref<256xi32>, 0, 256>, 0)
-    AIE.useLock(%10, Release, 1)
-    AIE.nextBd ^bb2
+    AIE.use_lock(%10, Acquire, 0)
+    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, 0)
+    AIE.use_lock(%10, Release, 1)
+    AIE.next_bd ^bb2
   ^bb3:
-    AIE.useLock(%10, Acquire, 1)
-    AIE.dmaBdPacket(0x6, 10)
-    AIE.dmaBd(<%11 : memref<256xi32>, 0, 256>, 0)
-    AIE.nextBd ^bb3
+    AIE.use_lock(%10, Acquire, 1)
+    AIE.dma_bd_packet(0x6, 10)
+    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, 0)
+    AIE.next_bd ^bb3
   ^end:
     AIE.end
   }
 
-  %dma = AIE.shimDMA(%t70)  {
-    AIE.dmaStart("MM2S", 0, ^bb0, ^dma0)
+  %dma = AIE.shim_dma(%t70)  {
+    AIE.dma_start("MM2S", 0, ^bb0, ^dma0)
   ^dma0:
-    AIE.dmaStart("S2MM", 0, ^bb1, ^end)
+    AIE.dma_start("S2MM", 0, ^bb1, ^end)
   ^bb0:
-    AIE.useLock(%lock1, Acquire, 1)
-    AIE.dmaBdPacket(0x2, 3)
-    AIE.dmaBd(<%buf_i : memref<256xi32>, 0, 256>, 0)
-    AIE.useLock(%lock1, Release, 0)
-    AIE.nextBd ^bb0
+    AIE.use_lock(%lock1, Acquire, 1)
+    AIE.dma_bd_packet(0x2, 3)
+    AIE.dma_bd(<%buf_i : memref<256xi32>, 0, 256>, 0)
+    AIE.use_lock(%lock1, Release, 0)
+    AIE.next_bd ^bb0
   ^bb1:
-    AIE.useLock(%lock2, Acquire, 0)
-    AIE.dmaBd(<%buf_o : memref<257xi32>, 0, 257>, 0)
-    AIE.useLock(%lock2, Release, 1)
-    AIE.nextBd ^bb1
+    AIE.use_lock(%lock2, Acquire, 0)
+    AIE.dma_bd(<%buf_o : memref<257xi32>, 0, 257>, 0)
+    AIE.use_lock(%lock2, Release, 1)
+    AIE.next_bd ^bb1
   ^end:
     AIE.end
   }

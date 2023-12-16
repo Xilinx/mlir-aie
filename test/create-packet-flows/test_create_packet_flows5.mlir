@@ -13,10 +13,10 @@
 // CHECK:           %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0]]) {
 // CHECK:             %[[VAL_2:.*]] = AIE.amsel<0> (0)
 // CHECK:             %[[VAL_3:.*]] = AIE.masterset(Core : 0, %[[VAL_2]])
-// CHECK:             AIE.packetrules(West : 1) {
+// CHECK:             AIE.packet_rules(West : 1) {
 // CHECK:               AIE.rule(31, 2, %[[VAL_2]])
 // CHECK:             }
-// CHECK:             AIE.packetrules(West : 0) {
+// CHECK:             AIE.packet_rules(West : 0) {
 // CHECK:               AIE.rule(30, 0, %[[VAL_2]])
 // CHECK:             }
 // CHECK:           }

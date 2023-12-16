@@ -20,23 +20,23 @@
 // CHECK:     %[[PL:.*]] = AIE.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
 // CHECK:     %[[CL:.*]] = AIE.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
 // CHECK:     %[[c0:.*]] = AIE.core(%[[t0]]) {
-// CHECK:       AIE.useLock(%[[PL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[CL]], Release, 1)
-// CHECK:       AIE.useLock(%[[PL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[CL]], Release, 1)
-// CHECK:       AIE.useLock(%[[PL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[CL]], Release, 1)
-// CHECK:       AIE.useLock(%[[PL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[CL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[PL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[CL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[PL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[CL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[PL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[CL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[PL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[CL]], Release, 1)
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:     %[[c1:.*]] = AIE.core(%[[t1]]) {
-// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[PL]], Release, 1)
-// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
-// CHECK:       AIE.useLock(%[[PL]], Release, 2)
-// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[PL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[CL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[PL]], Release, 1)
+// CHECK:       AIE.use_lock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:       AIE.use_lock(%[[PL]], Release, 2)
+// CHECK:       AIE.use_lock(%[[CL]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.use_lock(%[[PL]], Release, 1)
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }

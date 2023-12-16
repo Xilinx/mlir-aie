@@ -259,7 +259,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
       %lock1 = AIE.lock(%t70, 1)
 
       %dma = AIE.shim_dma(%t70) {
-          AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+          AIE.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock1, Acquire, 1)
           AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
@@ -767,7 +767,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     AIE-ML devices can apply data layout transformations at the buffer
     descriptor level. These transformation are described by strides (also called
     stepsizes) and wraps (also called lengths) in up to three dimensions (four
-    dimensions on memtiles). Strides and wraps can be supplied to the `dma_bdOp`
+    dimensions on memtiles). Strides and wraps can be supplied to the `dma_bd`
     through an optional argument, an array of tuples `<wrap, stride>`.
 
     The first element of this array gives the _highest-dimension_ stride and

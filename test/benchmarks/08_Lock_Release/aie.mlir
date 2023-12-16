@@ -17,7 +17,7 @@ module @benchmark06_lock_release {
   %l13_0 = AIE.lock(%tile13, 0)
 
 AIE.core(%tile13) {
-    AIE.useLock(%l13_0, "Release", 0)
+    AIE.use_lock(%l13_0, "Release", 0)
     AIE.end
   }
 }

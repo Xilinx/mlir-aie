@@ -27,41 +27,41 @@
 // CHECK:  AIEX.token(0) {sym_name = "token0"}
 // CHECK:  AIEX.token(0) {sym_name = "token1"}
 // CHECK:  %10 = AIE.mem(%4) {
-// CHECK:    AIE.useLock({{.*}}, Acquire, 1)
-// CHECK:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock({{.*}}, Release, 0)
-// CHECK:    AIE.useLock({{.*}}, Acquire, 1)
-// CHECK:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock({{.*}}, Release, 0)
+// CHECK:    AIE.use_lock({{.*}}, Acquire, 1)
+// CHECK:    AIE.dma_bd(<%7 : memref<256xi32>, 0, 256>, 0)
+// CHECK:    AIE.use_lock({{.*}}, Release, 0)
+// CHECK:    AIE.use_lock({{.*}}, Acquire, 1)
+// CHECK:    AIE.dma_bd(<%7 : memref<256xi32>, 0, 256>, 0)
+// CHECK:    AIE.use_lock({{.*}}, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %11 = AIE.mem(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 0)
-// CHECK:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%3, Release, 1)
+// CHECK:    AIE.use_lock(%3, Acquire, 0)
+// CHECK:    AIE.dma_bd(<%8 : memref<256xi32>, 0, 256>, 0)
+// CHECK:    AIE.use_lock(%3, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %12 = AIE.mem(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 0)
-// CHECK:    AIE.dmaBd(<%9 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%1, Release, 1)
+// CHECK:    AIE.use_lock(%1, Acquire, 0)
+// CHECK:    AIE.dma_bd(<%9 : memref<256xi32>, 0, 256>, 0)
+// CHECK:    AIE.use_lock(%1, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %13 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%[[Lock1:.*]], Acquire, 0)
-// CHECK:    AIE.useLock(%[[Lock2:.*]], Acquire, 0)
-// CHECK:    AIE.useLock(%[[Lock1]], Release, 1)
-// CHECK:    AIE.useLock(%[[Lock2]], Release, 1)
+// CHECK:    AIE.use_lock(%[[Lock1:.*]], Acquire, 0)
+// CHECK:    AIE.use_lock(%[[Lock2:.*]], Acquire, 0)
+// CHECK:    AIE.use_lock(%[[Lock1]], Release, 1)
+// CHECK:    AIE.use_lock(%[[Lock2]], Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %14 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 1)
-// CHECK:    AIE.useLock(%3, Release, 0)
+// CHECK:    AIE.use_lock(%3, Acquire, 1)
+// CHECK:    AIE.use_lock(%3, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %15 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 1)
-// CHECK:    AIE.useLock(%1, Release, 0)
+// CHECK:    AIE.use_lock(%1, Acquire, 1)
+// CHECK:    AIE.use_lock(%1, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  AIE.flow(%4, DMA : 0, %2, DMA : 0)
@@ -87,41 +87,41 @@ module @test_lock5 {
   AIEX.token(0) {sym_name = "token1"}
 
   %m33 = AIE.mem(%t33) {
-      %dmaSt0 = AIE.dmaStart(MM2S0, ^bd0, ^dma0)
+      %dmaSt0 = AIE.dma_start(MM2S0, ^bd0, ^dma0)
     ^dma0:
-      %dmaSt1 = AIE.dmaStart("MM2S1", ^bd1, ^end)
+      %dmaSt1 = AIE.dma_start("MM2S1", ^bd1, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIEX.useToken @token0(Release, 2)
-      AIE.nextBd ^end
+      AIE.next_bd ^end
     ^bd1:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIEX.useToken @token0(Release, 2)
-      AIE.nextBd ^end
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m44 = AIE.mem(%t44) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(S2MM0, ^bd0, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIEX.useToken @token0(Release, 2)
-      AIE.nextBd ^end
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m55 = AIE.mem(%t55) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(S2MM0, ^bd0, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dmaBd(<%buf55 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf55 : memref<256xi32>, 0, 256>, 0)
       AIEX.useToken @token0(Release, 2)
-      AIE.nextBd ^end
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }

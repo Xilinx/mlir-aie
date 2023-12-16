@@ -190,7 +190,7 @@ module @hdiff_bundle_2 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock02_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock02_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_0_buf_in_shim_2: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -288,7 +288,7 @@ module @hdiff_bundle_2 {
       AIE.objectfifo.release<Consume>(%block_0_buf_row_4_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_0_buf_out_shim_2:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock22_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock22_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -545,7 +545,7 @@ module @hdiff_bundle_2 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock06_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock06_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_1_buf_in_shim_2: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -643,7 +643,7 @@ module @hdiff_bundle_2 {
       AIE.objectfifo.release<Consume>(%block_1_buf_row_8_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_1_buf_out_shim_2:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock26_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock26_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 

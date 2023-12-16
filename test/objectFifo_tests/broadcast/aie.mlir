@@ -79,7 +79,7 @@ module @broadcast {
             %c1 = arith.constant 1 : index
             %height = arith.constant 4 : index
 
-            AIE.useLock(%lock_out_12, "Acquire", 0)
+            AIE.use_lock(%lock_out_12, "Acquire", 0)
 
             scf.for %indexInLine = %c0 to %height step %c1 {
                 %subview0 = AIE.objectfifo.acquire @objfifo (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
@@ -88,7 +88,7 @@ module @broadcast {
                 AIE.objectfifo.release @objfifo (Consume, 1)
             }
 
-            AIE.useLock(%lock_out_12, "Release", 1)
+            AIE.use_lock(%lock_out_12, "Release", 1)
             
             AIE.end
         }
@@ -99,7 +99,7 @@ module @broadcast {
             %c2 = arith.constant 2 : index
             %height = arith.constant 4 : index
 
-            AIE.useLock(%lock_out_14, "Acquire", 0)
+            AIE.use_lock(%lock_out_14, "Acquire", 0)
             
             scf.for %indexInLine = %c0 to %height step %c2 {
                 %subview = AIE.objectfifo.acquire  @objfifo (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
@@ -111,7 +111,7 @@ module @broadcast {
                 AIE.objectfifo.release @objfifo (Consume, 2)
             }
                 
-            AIE.useLock(%lock_out_14, "Release", 1)
+            AIE.use_lock(%lock_out_14, "Release", 1)
             
             AIE.end
         }
@@ -136,7 +136,7 @@ module @broadcast {
             %c3 = arith.constant 3 : index
             %height = arith.constant 3 : index
 
-            AIE.useLock(%lock_out_33, "Acquire", 0)
+            AIE.use_lock(%lock_out_33, "Acquire", 0)
 
             scf.for %indexInLine = %c0 to %height step %c1 {
                 %subview = AIE.objectfifo.acquire @objfifo (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
@@ -151,7 +151,7 @@ module @broadcast {
             func.call @storeLineScalar(%elem0, %c3, %buff_out_33) : (memref<16xi32>, index, memref<4x16xi32>) -> ()
             AIE.objectfifo.release @objfifo (Consume, 1)
 
-            AIE.useLock(%lock_out_33, "Release", 1)
+            AIE.use_lock(%lock_out_33, "Release", 1)
             
             AIE.end
         }

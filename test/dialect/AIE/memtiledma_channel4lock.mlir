@@ -21,18 +21,18 @@ AIE.device(xcve2802) {
   %buf1 = AIE.buffer(%t1) : memref<256xi32>
   %lock1 = AIE.lock(%t1, 3) { sym_name = "lock1" }
   %lock2 = AIE.lock(%t2, 3) { sym_name = "lock2" }
-  %mem = AIE.memTileDMA(%t1) {
-    AIE.dmaStart("MM2S", 4, ^bd0, ^dma1)
+  %mem = AIE.memtile_dma(%t1) {
+    AIE.dma_start("MM2S", 4, ^bd0, ^dma1)
     ^dma1:
-    AIE.dmaStart("MM2S", 1, ^bd1, ^dma1)
+    AIE.dma_start("MM2S", 1, ^bd1, ^dma1)
     ^bd0:
-      AIE.useLock(%lock1, "Acquire", 1)
-      AIE.dmaBd(<%buf1 : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd2
+      AIE.use_lock(%lock1, "Acquire", 1)
+      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd2
     ^bd1:
-      AIE.useLock(%lock2, "Acquire", 1)
-      AIE.dmaBd(<%buf1 : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd2
+      AIE.use_lock(%lock2, "Acquire", 1)
+      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd2
     ^bd2:
       AIE.end
   }

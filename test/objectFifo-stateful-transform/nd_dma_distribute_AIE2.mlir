@@ -39,73 +39,73 @@
 // CHECK:     AIE.flow(%[[tile_1_0:.*]], DMA : 0, %[[tile_1_1:.*]], DMA : 0)
 // CHECK:     AIE.flow(%[[tile_1_1:.*]], DMA : 0, %[[tile_2_2:.*]], DMA : 0)
 // CHECK:     AIE.flow(%[[tile_1_1:.*]], DMA : 1, %[[tile_2_3:.*]], DMA : 0)
-// CHECK:     AIE.shimDMAAllocation @of0(MM2S, 0, 1)
-// CHECK:     %18 = AIE.memTileDMA(%[[tile_1_1:.*]]) {
-// CHECK:       %21 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     AIE.shim_dma_allocation @of0(MM2S, 0, 1)
+// CHECK:     %18 = AIE.memtile_dma(%[[tile_1_1:.*]]) {
+// CHECK:       %21 = AIE.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], AcquireGreaterEqual, 2)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 256>, 0)
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], Release, 2)
-// CHECK:       AIE.nextBd ^bb2
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], AcquireGreaterEqual, 2)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], Release, 2)
+// CHECK:       AIE.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], AcquireGreaterEqual, 2)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 256>, 0)
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], Release, 2)
-// CHECK:       AIE.nextBd ^bb1
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], AcquireGreaterEqual, 2)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], Release, 2)
+// CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %22 = AIE.dmaStart(MM2S, 0, ^bb4, ^bb6)
+// CHECK:       %22 = AIE.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb5
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb4
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3
-// CHECK:       %23 = AIE.dmaStart(MM2S, 1, ^bb7, ^bb9)
+// CHECK:       %23 = AIE.dma_start(MM2S, 1, ^bb7, ^bb9)
 // CHECK:     ^bb7:  // 2 preds: ^bb6, ^bb8
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb8
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb8
 // CHECK:     ^bb8:  // pred: ^bb7
-// CHECK:       AIE.useLock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
-// CHECK:       AIE.useLock(%[[of0_cons_prod_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb7
+// CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128>, 0, [<4, 64>, <2, 4>, <8, 8>, <4, 1>])
+// CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb7
 // CHECK:     ^bb9:  // pred: ^bb6
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:     %19 = AIE.mem(%[[tile_2_2:.*]]) {
-// CHECK:       %21 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:       %21 = AIE.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       AIE.useLock(%[[of1_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of1_cons_buf_0:.*]] : memref<128xi32>, 0, 128>, 0)
-// CHECK:       AIE.useLock(%[[of1_cons_cons_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb2
+// CHECK:       AIE.use_lock(%[[of1_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of1_cons_buf_0:.*]] : memref<128xi32>, 0, 128>, 0)
+// CHECK:       AIE.use_lock(%[[of1_cons_cons_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       AIE.useLock(%[[of1_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of1_cons_buf_1:.*]] : memref<128xi32>, 0, 128>, 0)
-// CHECK:       AIE.useLock(%[[of1_cons_cons_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb1
+// CHECK:       AIE.use_lock(%[[of1_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of1_cons_buf_1:.*]] : memref<128xi32>, 0, 128>, 0)
+// CHECK:       AIE.use_lock(%[[of1_cons_cons_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:     %20 = AIE.mem(%[[tile_2_3:.*]]) {
-// CHECK:       %21 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:       %21 = AIE.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       AIE.useLock(%[[of2_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of2_cons_buf_0:.*]] : memref<128xi32>, 0, 128>, 0)
-// CHECK:       AIE.useLock(%[[of2_cons_cons_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb2
+// CHECK:       AIE.use_lock(%[[of2_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of2_cons_buf_0:.*]] : memref<128xi32>, 0, 128>, 0)
+// CHECK:       AIE.use_lock(%[[of2_cons_cons_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       AIE.useLock(%[[of2_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of2_cons_buf_1:.*]] : memref<128xi32>, 0, 128>, 0)
-// CHECK:       AIE.useLock(%[[of2_cons_cons_lock:.*]], Release, 1)
-// CHECK:       AIE.nextBd ^bb1
+// CHECK:       AIE.use_lock(%[[of2_cons_prod_lock:.*]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[of2_cons_buf_1:.*]] : memref<128xi32>, 0, 128>, 0)
+// CHECK:       AIE.use_lock(%[[of2_cons_cons_lock:.*]], Release, 1)
+// CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }

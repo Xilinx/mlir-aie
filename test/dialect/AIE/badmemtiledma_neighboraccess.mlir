@@ -20,24 +20,24 @@ AIE.device(xcve2802) {
   %buf = AIE.buffer(%t1) : memref<256xi32>
   %buf2 = AIE.buffer(%t2) : memref<256xi32>
   %buf0 = AIE.buffer(%t0) : memref<256xi32>
-  %mem = AIE.memTileDMA(%t1) {
-    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+  %mem = AIE.memtile_dma(%t1) {
+    AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
-    AIE.dmaStart("MM2S", 1, ^bd15, ^dma1)
+    AIE.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
-      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd1
+      AIE.dma_bd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd1
     ^bd1:
-      AIE.dmaBd(<%buf0 : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd2
+      AIE.dma_bd(<%buf0 : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd2
     ^bd2:
-      AIE.dmaBd(<%buf2 : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd15
+      AIE.dma_bd(<%buf2 : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd15
     ^bd15:
-      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
-      AIE.nextBd ^bd16
+      AIE.dma_bd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.next_bd ^bd16
     ^bd16:
-      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf : memref<256xi32>, 0, 256>, 0)
       AIE.end
   }
 }

@@ -16,7 +16,7 @@ module @test {
   %lock = AIE.lock(%t2, 3) { sym_name = "lock1" }
 
   func.func @task3() -> () {
-    AIE.useLock(%lock, "Acquire", 1)
+    AIE.use_lock(%lock, "Acquire", 1)
     return
   }
 }

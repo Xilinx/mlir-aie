@@ -41,7 +41,7 @@ module @tutorial_8 {
     // buf[3] = 13
     %core14 = AIE.core(%tile14) {
         // Locks init value is Release 0, so this will always succeed first
-        AIE.useLock(%lock14_1, "Acquire", 0)
+        AIE.use_lock(%lock14_1, "Acquire", 0)
 
 		// %val = arith.constant 13 : i384 
 		// //%idx = arith.constant 3 : index 
@@ -50,7 +50,7 @@ module @tutorial_8 {
 
         func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
 
-        // AIE.useLock(%lock23_1, "Release", 1)
+        // AIE.use_lock(%lock23_1, "Release", 1)
         AIE.end
     } { link_with="kernel2.o" }
 
@@ -58,11 +58,11 @@ module @tutorial_8 {
     // buf[5] = buf[3] + 100
     %core24 = AIE.core(%tile24) {
         // This acquire will stall since locks are initialized to Release, 0
-        // AIE.useLock(%lock23_1, "Acquire", 1)
+        // AIE.use_lock(%lock23_1, "Acquire", 1)
 
         //%idx1 = arith.constant 3 : index
         //%d1   = memref.load %buf[%idx1] : memref<256xi32>
-        // %cas1 = AIE.getCascade() : i384
+        // %cas1 = AIE.get_cascade() : i384
         // %d1   = arith.trunci %cas1 : i384 to i32
         // %c1   = arith.constant 100 : i32 
         // %d2   = arith.addi %d1, %c1 : i32
@@ -71,7 +71,7 @@ module @tutorial_8 {
 
         func.call @extern_kernel1() : () -> ()
 
-        // AIE.useLock(%lock24_1, "Release", 0)
+        // AIE.use_lock(%lock24_1, "Release", 0)
         AIE.end
     } { link_with="kernel1.o" }
 

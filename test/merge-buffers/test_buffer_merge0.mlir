@@ -23,19 +23,19 @@
 //CHECK: %[[BUF34:.*]] = AIE.buffer(%[[TILE34]]) : memref<256xi32>
 //CHECK: %[[BUF32:.*]] = AIE.buffer(%[[TILE32]]) : memref<256xi32>
 //CHECK: %11 = AIE.core(%2) {
-//CHECK:   AIE.useLock(%1, Acquire, 0)
+//CHECK:   AIE.use_lock(%1, Acquire, 0)
 //CHECK:   %c16 = arith.constant 16 : index
 //CHECK:   %c1_i32 = arith.constant 1 : i32
 //CHECK:   store %c1_i32, %6[%c16] : memref<256xi32>
-//CHECK:   AIE.useLock(%1, Release, 1)
+//CHECK:   AIE.use_lock(%1, Release, 1)
 //CHECK:   AIE.end
 //CHECK: }
 //CHECK: %12 = AIE.core(%3) {
-//CHECK:   AIE.useLock(%1, Acquire, 1)
+//CHECK:   AIE.use_lock(%1, Acquire, 1)
 //CHECK:   %c16 = arith.constant 16 : index
 //CHECK:   %c1_i32 = arith.constant 1 : i32
 //CHECK:   %16 = memref.load %6[%c16] : memref<256xi32>
-//CHECK:   AIE.useLock(%1, Release, 0)
+//CHECK:   AIE.use_lock(%1, Release, 0)
 //CHECK:   AIE.end
 //CHECK: }
 //CHECK: %13 = AIE.switchbox(%2) {
@@ -75,42 +75,42 @@ module @test_buffer_merge0 {
   %buf32_0 = AIE.buffer(%t32) : memref<256xi32>
 
   %m34 = AIE.mem(%t34) {
-      %dmaSt = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l34_0, Acquire, 1)
-      AIE.dmaBd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l34_0, Release, 0)
-      AIE.nextBd ^end
+      AIE.use_lock(%l34_0, Acquire, 1)
+      AIE.dma_bd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l34_0, Release, 0)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m32 = AIE.mem(%t32) {
-      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l32_0, Acquire, 0)
-      AIE.dmaBd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l32_0, Release, 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l32_0, Acquire, 0)
+      AIE.dma_bd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l32_0, Release, 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %c34 = AIE.core(%t34) {
-    AIE.useLock(%l34_0, Acquire, 0)
+    AIE.use_lock(%l34_0, Acquire, 0)
     %i = arith.constant 16 : index
     %0 = arith.constant 1 : i32
     store %0, %buf34_0[%i] : memref<256xi32>
-    AIE.useLock(%l34_0, Release, 1)
+    AIE.use_lock(%l34_0, Release, 1)
     AIE.end
   }
 
   %c32 = AIE.core(%t32) {
-    AIE.useLock(%l32_0, Acquire, 1)
+    AIE.use_lock(%l32_0, Acquire, 1)
     %i = arith.constant 16 : index
     %0 = arith.constant 1 : i32
     %1 = memref.load %buf32_0[%i] : memref<256xi32>
-    AIE.useLock(%l32_0, Release, 0)
+    AIE.use_lock(%l32_0, Release, 0)
     AIE.end
   }
 

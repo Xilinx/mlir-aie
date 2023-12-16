@@ -45,8 +45,8 @@ module @test_core_llvm0 {
     %1 = arith.constant 1 : i32
     %val0 = arith.constant 16 : i32
     %val1 = arith.constant 32 : i128
-    AIE.putStream(%0 : i32, %val0 : i32)
-    AIE.putStream(%1 : i32, %val1 : i128)
+    AIE.put_stream(%0 : i32, %val0 : i32)
+    AIE.put_stream(%1 : i32, %val1 : i128)
     %val2 = arith.constant 64 : i384
     AIE.putCascade(%val2 : i384)
     AIE.end
@@ -55,11 +55,11 @@ module @test_core_llvm0 {
   %core21 = AIE.core(%tile21) {
     %0 = arith.constant 0 : i32
     %1 = arith.constant 1 : i32
-    //%val0 = AIE.getStream(0) : i32
-    %val0 = AIE.getStream(%0 : i32) : i32
-    %val1 = AIE.getStream(%1 : i32) : i32
+    //%val0 = AIE.get_stream(0) : i32
+    %val0 = AIE.get_stream(%0 : i32) : i32
+    %val1 = AIE.get_stream(%1 : i32) : i32
     %2 = arith.addi %val0, %val1 : i32
-    %3 = AIE.getCascade() : i384
+    %3 = AIE.get_cascade() : i384
     AIE.end
   }
 

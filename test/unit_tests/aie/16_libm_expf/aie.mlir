@@ -22,13 +22,13 @@ module @test {
   func.func private @func(%A: memref<256xf32>, %B: memref<256xf32>) -> ()
 
   %core13 = AIE.core(%tile13) {
-    AIE.useLock(%lock13_3, "Acquire", 1) // acquire
+    AIE.use_lock(%lock13_3, "Acquire", 1) // acquire
     affine.for %arg0 = 0 to 256 {
       %val1 = affine.load %buf_a[%arg0] : memref<256xf32>
       %val2 = math.exp %val1 : f32
       affine.store %val2, %buf_b[%arg0] : memref<256xf32>
     }
-    AIE.useLock(%lock13_3, "Release", 0) // release for write
+    AIE.use_lock(%lock13_3, "Release", 0) // release for write
     AIE.end
   }
 }

@@ -36,13 +36,13 @@
 module @aie_module {
   AIE.device(xcvc1902) {
     %0 = AIE.tile(7, 0)
-    %1 = AIE.shimmux(%0) {
+    %1 = AIE.shim_mux(%0) {
       AIE.connect<DMA : 0, North : 3>
     }
     %2 = AIE.switchbox(%0) {
       %10 = AIE.amsel<0> (0)
       %11 = AIE.masterset(North : 0, %10)
-      AIE.packetrules(South : 3) {
+      AIE.packet_rules(South : 3) {
         AIE.rule(31, 10, %10)
       }
     }
@@ -50,7 +50,7 @@ module @aie_module {
     %4 = AIE.switchbox(%3) {
       %10 = AIE.amsel<0> (0)
       %11 = AIE.masterset(DMA : 0, %10)
-      AIE.packetrules(South : 0) {
+      AIE.packet_rules(South : 0) {
         AIE.rule(31, 10, %10)
       }
     }
@@ -58,24 +58,24 @@ module @aie_module {
     %6 = AIE.buffer(%3) {address = 3072 : i32, sym_name = "buf1"} : memref<32xi32, 2>
     %7 = AIE.external_buffer {sym_name = "buf"} : memref<32xi32>
     %8 = AIE.mem(%3) {
-      %10 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
+      %10 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%5, Acquire, 0)
-      AIE.dmaBd(<%6 : memref<32xi32, 2>, 0, 32>, 0)
-      AIE.useLock(%5, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%5, Acquire, 0)
+      AIE.dma_bd(<%6 : memref<32xi32, 2>, 0, 32>, 0)
+      AIE.use_lock(%5, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb0
       AIE.end
     }
-    %9 = AIE.shimDMA(%0) {
+    %9 = AIE.shim_dma(%0) {
       %10 = AIE.lock(%0, 1)
-      %11 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+      %11 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%10, Acquire, 1)
-      AIE.dmaBdPacket(6, 10)
-      AIE.dmaBd(<%7 : memref<32xi32>, 0, 32>, 0)
-      AIE.useLock(%10, Release, 0)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%10, Acquire, 1)
+      AIE.dma_bd_packet(6, 10)
+      AIE.dma_bd(<%7 : memref<32xi32>, 0, 32>, 0)
+      AIE.use_lock(%10, Release, 0)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb0
       AIE.end
     }

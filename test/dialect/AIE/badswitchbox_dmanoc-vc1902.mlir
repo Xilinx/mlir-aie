@@ -16,7 +16,7 @@
 module {
   AIE.device(xcvc1902) {
     %30 = AIE.tile(3, 0) // Shim-NOC
-    AIE.shimmux(%30) {
+    AIE.shim_mux(%30) {
       // Can't connect DMA and NOC in same tile.
       AIE.connect<DMA: 0, North: 3>
       AIE.connect<NOC: 1, North: 6>

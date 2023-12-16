@@ -35,13 +35,13 @@ module @tutorial_3 {
     // buf[3] = 14
     %core24 = AIE.core(%tile24) {
         // Locks init value is Release 0, so this will always succeed first
-        AIE.useLock(%lock24_1, "Acquire", 0)
+        AIE.use_lock(%lock24_1, "Acquire", 0)
 
 		%val = arith.constant 14 : i32 
 		%idx = arith.constant 3 : index 
 		memref.store %val, %buf[%idx] : memref<256xi32> 
 
-        AIE.useLock(%lock24_1, "Release", 1)
+        AIE.use_lock(%lock24_1, "Release", 1)
         AIE.end
     } 
 
@@ -49,9 +49,9 @@ module @tutorial_3 {
     // buf[5] = buf[3] + 100
     %core14 = AIE.core(%tile14) {
         // This acquire succeeds when the core is enabled
-        AIE.useLock(%lock24_2, "Acquire", 0)
+        AIE.use_lock(%lock24_2, "Acquire", 0)
         // This acquire will stall since locks are initialized to Release, 0
-        AIE.useLock(%lock24_1, "Acquire", 1)
+        AIE.use_lock(%lock24_1, "Acquire", 1)
 
         %idx1 = arith.constant 3 : index
         %d1   = memref.load %buf[%idx1] : memref<256xi32>
@@ -61,7 +61,7 @@ module @tutorial_3 {
 		memref.store %d2, %buf[%idx2] : memref<256xi32> 
 
         // This release means our 2nd core is done
-        AIE.useLock(%lock24_2, "Release", 1)
+        AIE.use_lock(%lock24_2, "Release", 1)
         AIE.end
     }
 

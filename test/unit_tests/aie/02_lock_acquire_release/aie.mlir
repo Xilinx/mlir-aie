@@ -20,9 +20,9 @@ module @test02_lock_acquire_release {
   %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "lock2" }
 
   %core13 = AIE.core(%tile13) {
-    AIE.useLock(%lock13_3, "Acquire", 0) // acquire for write (e.g. input ping)
-    AIE.useLock(%lock13_5, "Acquire", 0) // acquire for write (e.g. input ping)
-    AIE.useLock(%lock13_5, "Release", 1) // release for read
+    AIE.use_lock(%lock13_3, "Acquire", 0) // acquire for write (e.g. input ping)
+    AIE.use_lock(%lock13_5, "Acquire", 0) // acquire for write (e.g. input ping)
+    AIE.use_lock(%lock13_5, "Release", 1) // release for read
     AIE.end
   }
 
