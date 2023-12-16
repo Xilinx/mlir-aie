@@ -12,6 +12,7 @@ psutil
 pybind11>=2.9.0, <=2.10.3
 pylint
 rich
+wheel
 
 # this is actually the aie branch of mlir-python-extras (see https://github.com/makslevental/mlir-python-extras/pull/33)
 aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/a731660c5ae4409bdf99abfabdf4e11b7ca35e52.zip

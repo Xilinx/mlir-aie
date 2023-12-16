@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %PYTHON %s | FileCheck %s
-# REQUIRES: python_passes
 
 from pathlib import Path
 from textwrap import dedent
@@ -15,25 +14,22 @@ from aie._mlir_libs._aie_python_passes import (
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
 from aie.util import Router
-from aie.ir import Context, Location, Module
+from aie.ir import Module
 from aie.passmanager import PassManager
+from util import construct_and_print_module
 
 TIMEOUT = 10
-
-
-def run(f):
-    with Context(), Location.unknown():
-        print("\nTEST:", f.__name__)
-        f()
 
 
 THIS_FILE = __file__
 
 
 # CHECK-LABEL: TEST: test_broadcast
-@run
-def test_broadcast():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "broadcast.mlir") as f:
+@construct_and_print_module
+def test_broadcast(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "broadcast.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -75,9 +71,11 @@ def test_broadcast():
 
 
 # CHECK-LABEL: TEST: test_flow_test_1
-@run
-def test_flow_test_1():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_1.mlir") as f:
+@construct_and_print_module
+def test_flow_test_1(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "flow_test_1.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -134,9 +132,11 @@ def test_flow_test_1():
 
 
 # CHECK-LABEL: TEST: test_flow_test_2
-@run
-def test_flow_test_2():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_2.mlir") as f:
+@construct_and_print_module
+def test_flow_test_2(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "flow_test_2.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     # give this one more time because it's flakey
     r = Router(timeout=100)
@@ -193,9 +193,11 @@ def test_flow_test_2():
 
 
 # CHECK-LABEL: TEST: test_flow_test_3
-@run
-def test_flow_test_3():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "flow_test_3.mlir") as f:
+@construct_and_print_module
+def test_flow_test_3(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "flow_test_3.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -254,9 +256,11 @@ def test_flow_test_3():
 
 
 # CHECK-LABEL: TEST: test_many_flows
-@run
-def test_many_flows():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows.mlir") as f:
+@construct_and_print_module
+def test_many_flows(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "many_flows.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -296,9 +300,11 @@ def test_many_flows():
 
 
 # CHECK-LABEL: TEST: test_many_flows2
-@run
-def test_many_flows2():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "many_flows2.mlir") as f:
+@construct_and_print_module
+def test_many_flows2(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "many_flows2.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -339,9 +345,11 @@ def test_many_flows2():
 
 
 # CHECK-LABEL: TEST: test_memtile
-@run
-def test_memtile():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "memtile.mlir") as f:
+@construct_and_print_module
+def test_memtile(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "memtile.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -372,10 +380,10 @@ def test_memtile():
 
 
 # CHECK-LABEL: TEST: test_memtile_routing_constraints
-@run
-def test_memtile_routing_constraints():
+@construct_and_print_module
+def test_memtile_routing_constraints(module):
     with open(
-        Path(THIS_FILE).parent.parent
+        Path(THIS_FILE).parent.parent.parent
         / "create-flows"
         / "memtile_routing_constraints.mlir"
     ) as f:
@@ -400,9 +408,11 @@ def test_memtile_routing_constraints():
 
 
 # CHECK-LABEL: TEST: test_mmult
-@run
-def test_mmult():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "mmult.mlir") as f:
+@construct_and_print_module
+def test_mmult(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "mmult.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -438,10 +448,10 @@ def test_mmult():
 
 
 # CHECK-LABEL: TEST: test_more_flows_shim
-@run
-def test_more_flows_shim():
+@construct_and_print_module
+def test_more_flows_shim(module):
     with open(
-        Path(THIS_FILE).parent.parent / "create-flows" / "more_flows_shim.mlir"
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "more_flows_shim.mlir"
     ) as f:
         for mlir_module in f.read().split("// -----"):
             mlir_module = Module.parse(mlir_module)
@@ -509,9 +519,11 @@ def test_more_flows_shim():
 
 
 # CHECK-LABEL: TEST: test_over_flows
-@run
-def test_over_flows():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "over_flows.mlir") as f:
+@construct_and_print_module
+def test_over_flows(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "over_flows.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -553,8 +565,8 @@ def test_over_flows():
 
 # this test just tests that there's no error for multiple connections to a single target bundle/channel
 # CHECK-LABEL: TEST: test_overlap
-@run
-def test_overlap():
+@construct_and_print_module
+def test_overlap(module):
     src = dedent(
         """\
         module @aie.herd_0 {
@@ -591,8 +603,8 @@ def test_overlap():
 
 
 # CHECK-LABEL: TEST: test_routed_herd_3x1_mine_1
-@run
-def test_routed_herd_3x1_mine_1():
+@construct_and_print_module
+def test_routed_herd_3x1_mine_1(module):
     src = dedent(
         """\
         module {
@@ -804,8 +816,8 @@ def test_routed_herd_3x1_mine_1():
 
 
 # CHECK-LABEL: TEST: test_routed_herd_3x1_mine_2
-@run
-def test_routed_herd_3x1_mine_2():
+@construct_and_print_module
+def test_routed_herd_3x1_mine_2(module):
     src = dedent(
         """\
         module {
@@ -1059,8 +1071,8 @@ def test_routed_herd_3x1_mine_2():
 
 
 # CHECK-LABEL: TEST: test_routed_herd_3x2_mine_1
-@run
-def test_routed_herd_3x2_mine_1():
+@construct_and_print_module
+def test_routed_herd_3x2_mine_1(module):
     src = dedent(
         """\
         module {
@@ -1392,9 +1404,11 @@ def test_routed_herd_3x2_mine_1():
 
 
 # CHECK-LABEL: TEST: test_simple
-@run
-def test_simple():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "simple.mlir") as f:
+@construct_and_print_module
+def test_simple(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "simple.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -1412,9 +1426,11 @@ def test_simple():
 
 
 # CHECK-LABEL: TEST: test_simple2
-@run
-def test_simple2():
-    with open(Path(THIS_FILE).parent.parent / "create-flows" / "simple2.mlir") as f:
+@construct_and_print_module
+def test_simple2(module):
+    with open(
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "simple2.mlir"
+    ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -1432,10 +1448,10 @@ def test_simple2():
 
 
 # CHECK-LABEL: TEST: test_simple_flows2
-@run
-def test_simple_flows2():
+@construct_and_print_module
+def test_simple_flows2(module):
     with open(
-        Path(THIS_FILE).parent.parent / "create-flows" / "simple_flows2.mlir"
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "simple_flows2.mlir"
     ) as f:
         mlir_module = Module.parse(f.read())
     r = Router(timeout=TIMEOUT)
@@ -1456,10 +1472,10 @@ def test_simple_flows2():
 
 
 # CHECK-LABEL: TEST: test_simple_flows_shim
-@run
-def test_simple_flows_shim():
+@construct_and_print_module
+def test_simple_flows_shim(module):
     with open(
-        Path(THIS_FILE).parent.parent / "create-flows" / "simple_flows_shim.mlir"
+        Path(THIS_FILE).parent.parent.parent / "create-flows" / "simple_flows_shim.mlir"
     ) as f:
         for mlir_module in f.read().split("// -----"):
             mlir_module = Module.parse(mlir_module)
