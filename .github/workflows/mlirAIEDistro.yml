@@ -446,7 +446,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/aie-*aarch64*.whl
-          name: build_artifact
+          name: build_artifact_ubuntu-20.04_aarch64_rtti_ON
 
   smoke_test_wheels:
 
@@ -514,7 +514,7 @@ jobs:
 
   upload_wheels:
 
-    needs: smoke_test_wheels
+    needs: [smoke_test_wheels, build_linux_aarch64_pybindings_wheels]
 
     runs-on: ubuntu-latest
 
