@@ -78,7 +78,6 @@ jobs:
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
