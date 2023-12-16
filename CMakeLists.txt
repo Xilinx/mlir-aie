@@ -47,7 +47,7 @@ endif()
 
 project(AIE LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
