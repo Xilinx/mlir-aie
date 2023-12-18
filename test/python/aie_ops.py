@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.ir import InsertionPoint, Block, TypeAttr
-from aie.extras.util import mlir_mod_ctx
+from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
 
 from util import construct_and_print_module

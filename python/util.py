@@ -2,162 +2,15 @@ import multiprocessing
 import numbers
 import os
 from collections import defaultdict
-from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
 from typing import List, Tuple, Dict, Set
-from typing import Optional
-from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
-
-from . import types as T
-from ..ir import (
-    F32Type,
-    F64Type,
-    IntegerType,
-    RankedTensorType,
-    Context,
-    Module,
-    Location,
-    InsertionPoint,
-)
-
-_np_dtype_to_mlir_type_ctor = {
-    np.int8: T.i8,
-    np.int16: T.i16,
-    np.int32: T.i32,  # windows
-    np.intc: T.i32,
-    np.int64: T.i64,  # is technically wrong i guess but numpy by default casts python scalars to this
-    # so to support passing lists of ints we map to index type
-    np.longlong: T.index,
-    np.uintp: T.index,
-    np.float16: T.f16,
-    np.float32: T.f32,
-    np.float64: T.f64,
-}
-
-
-def np_dtype_to_mlir_type(np_dtype):
-    if typ := _np_dtype_to_mlir_type_ctor.get(np_dtype):
-        return typ()
-
-
-def infer_mlir_type(
-    py_val: Union[int, float, bool, np.ndarray]
-) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
-    """Infer MLIR type (`ir.Type`) from supported python values.
-
-    Note ints and floats are mapped to 64-bit types.
-
-    Args:
-      py_val: Python value that's either a numerical value or numpy array.
-
-    Returns:
-      MLIR type corresponding to py_val.
-    """
-    if isinstance(py_val, bool):
-        return T.bool()
-
-    if isinstance(py_val, int):
-        # no clue why but black can't decide which it wants the **
-        # fmt: off
-        if -(2 ** 31) <= py_val < 2 ** 31:
-            return T.i32()
-        elif 2 ** 31 <= py_val < 2 ** 32:
-            return T.ui32()
-        elif -(2 ** 63) <= py_val < 2 ** 63:
-            return T.i64()
-        elif 2 ** 63 <= py_val < 2 ** 64:
-            return T.ui64()
-        raise RuntimeError(f"Nonrepresentable integer {py_val}.")
-        # fmt: on
-
-    if isinstance(py_val, float):
-        if (
-            abs(py_val) == float("inf")
-            or abs(py_val) == 0.0
-            or py_val != py_val  # NaN
-            or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
-        ):
-            return T.f32()
-        return T.f64()
-
-    if isinstance(py_val, np.ndarray):
-        dtype = np_dtype_to_mlir_type(py_val.dtype.type)
-        return RankedTensorType.get(py_val.shape, dtype)
-
-    raise NotImplementedError(
-        f"Unsupported Python value {py_val=} with type {type(py_val)}"
-    )
-
-
-def mlir_type_to_np_dtype(mlir_type):
-    _mlir_type_to_np_dtype = {v(): k for k, v in _np_dtype_to_mlir_type_ctor.items()}
-    return _mlir_type_to_np_dtype.get(mlir_type)
-
-
-@dataclass
-class MLIRContext:
-    context: Context
-    module: Module
-
-    def __str__(self):
-        return str(self.module)
-
-
-@contextmanager
-def mlir_mod_ctx(
-    src: Optional[str] = None,
-    context: Context = None,
-    location: Location = None,
-    allow_unregistered_dialects=False,
-) -> MLIRContext:
-    if context is None:
-        context = Context()
-    if allow_unregistered_dialects:
-        context.allow_unregistered_dialects = True
-    with ExitStack() as stack:
-        stack.enter_context(context)
-        if location is None:
-            location = Location.unknown()
-        stack.enter_context(location)
-        if src is not None:
-            module = Module.parse(src)
-        else:
-            module = Module.create()
-        ip = InsertionPoint(module.body)
-        stack.enter_context(ip)
-        yield MLIRContext(context, module)
-
-
-@contextmanager
-def enable_multithreading(context=None):
-    from ..ir import Context
-
-    if context is None:
-        context = Context.current
-    context.enable_multithreading(True)
-    yield
-    context.enable_multithreading(False)
-
-
-@contextmanager
-def disable_multithreading(context=None):
-    from ..ir import Context
-
-    if context is None:
-        context = Context.current
-
-    context.enable_multithreading(False)
-    yield
-    context.enable_multithreading(True)
 
 
 def build_graph(max_cols, max_rows, target_model):
-    from .._mlir_libs._aie_python_passes import WireBundle, Switchbox
+    from ._mlir_libs._aie_python_passes import WireBundle, Switchbox
 
     DG = nx.DiGraph()
     for c in range(max_cols + 1):
@@ -442,7 +295,7 @@ MAX_NUM_CHANNELS = 12
 
 
 def get_routing_solution(DG, flow_paths, used_channels):
-    from .._mlir_libs._aie_python_passes import (
+    from ._mlir_libs._aie_python_passes import (
         SwitchSetting,
         Port,
         get_connecting_bundle,
@@ -551,7 +404,7 @@ class Router:
         self.flows.append((src, tgt))
 
     def add_fixed_connection(self, connect_op):
-        from .._mlir_libs._aie_python_passes import get_connecting_bundle
+        from ._mlir_libs._aie_python_passes import get_connecting_bundle
 
         tileid = connect_op.get_switchbox().get_tileid()
         lhs_port = connect_op.get_src_port()
