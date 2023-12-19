@@ -132,7 +132,7 @@ void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x4x4I16I16(const int16 *__restrict pA,
+void matmulVectorized4x4x4i16i16(const int16 *__restrict pA,
                                  const int16 *__restrict pB,
                                  int16 *__restrict pC) {
   // matmulVectorized operates on two 4x4 input blocks of A, and two 4x4 input
@@ -149,7 +149,7 @@ void matmulVectorized4x4x4I16I16(const int16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x8x4Bf16Bf16(const bfloat16 *__restrict pA,
+void matmulVectorized4x8x4bf16bf16(const bfloat16 *__restrict pA,
                                    const bfloat16 *__restrict pB,
                                    bfloat16 *__restrict pC) {
   constexpr int r = 4;
@@ -163,7 +163,7 @@ void matmulVectorized4x8x4Bf16Bf16(const bfloat16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x8x4Bf16F32(const bfloat16 *__restrict pA,
+void matmulVectorized4x8x4bf16f32(const bfloat16 *__restrict pA,
                                   const bfloat16 *__restrict pB,
                                   float *__restrict pC) {
   constexpr int r = 4;
@@ -185,29 +185,29 @@ extern "C" {
 
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
-  void matmul_##mlir_type_in##_##mlir_type_out(                                \
-      (ctype_in) * a_in, (ctype_in) * b_in, (ctype_out) * c_out) {             \
-    matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
-        64, 32, 64>(a_in, b_in, c_out);                                        \
+  void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
+                                               ctype_out *c_out) {             \
+    matmulVectorized##r##x##s##x##t##mlir_type_in##mlir_type_out<64, 32, 64>(  \
+        a_in, b_in, c_out);                                                    \
   }
 
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
-      (ctype_in) * a_in, (ctype_in) * b_in, (ctype_out) * c_out) {             \
+      ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
     matmulScalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);          \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
-  void zero_##mlir_type_out((ctype_out) * c_out) {                             \
-    zero_vectorized<ctype_out, 64, 64, 32>(c_out);                             \
+  void zero_##mlir_type_out(ctype_out *c_out) {                                \
+    zeroVectorized<ctype_out, 64, 64, 32>(c_out);                              \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            r, s, t)                                            \
-  void zero_scalar_##mlir_type_out((ctype_out) * c_out) {                      \
-    zero_scalar<ctype_out, 64, 64>(c_out);                                     \
+  void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
+    zeroScalar<ctype_out, 64, 64>(c_out);                                      \
   }
 
 combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)
