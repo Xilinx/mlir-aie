@@ -53,7 +53,7 @@ def my_matmul():
     # Output Matrix C: MxN
     n_in_i32s_out = n * word_size_out // 4
     N_in_i32s_out = N * word_size_out // 4
-    m_x_n_cores_x_N_in_i32s_out = m * n_cores * N * word_size_out // 4
+    m_x_n_cores_x_N_in_i32s_out = m * n_cores * N_in_i32s_out
 
     vectorized = True
 
