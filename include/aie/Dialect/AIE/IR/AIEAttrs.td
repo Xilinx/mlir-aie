@@ -60,8 +60,8 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [
     I32EnumAttrCase<"Acquire", 0>,
-    I32EnumAttrCase<"Release", 1>,
     I32EnumAttrCase<"AcquireGreaterEqual", 2>,
+    I32EnumAttrCase<"Release", 1>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -115,21 +115,6 @@ def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
-  let mnemonic = "DimTuple";
-  let summary = [{
-    Tuple encoding the stride and wrap of one dimension in an AIE2 n-dimensional
-    buffer descriptor;
-  }];
-
-  let parameters = (ins
-    "uint32_t" : $stepsize,
-    "uint16_t" : $wrap
-  );
-
-  let assemblyFormat = "`<` $wrap `,` $stepsize `>`";
-}
-
 def DMABDBuffer: I32EnumAttr<"DMABDBuffer",
   "DMA Block descriptor buffer type.",
   [
@@ -139,18 +124,33 @@ def DMABDBuffer: I32EnumAttr<"DMABDBuffer",
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIE_DimTupleArrayAttr : ArrayOfAttr<
+def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
+  let mnemonic = "bd_dim_layout";
+  let summary = [{
+    Tuple encoding the stride and wrap of one dimension in an AIE2 n-dimensional
+    buffer descriptor;
+  }];
+
+  let parameters = (ins
+    "uint16_t" : $wrap,
+    "uint32_t" : $step
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def BDDimLayoutArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
-    /*attrName*/"DimTupleArray",
-    /*attrMnemonic*/"DimTupleArray",
-    /*eltName*/AIE_DimTupleAttr.cppClassName
+    /*attrName*/"BDDimLayoutArray",
+    /*attrMnemonic*/"bd_dim_layout_arr",
+    /*eltName*/BDDimLayoutAttr.cppClassName
 >;
 
-def AIE_DimTupleArrayArrayAttr : ArrayOfAttr<
+def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
-    /*attrName*/"DimTupleArrayArray",
-    /*attrMnemonic*/"DimTupleArrayArray",
-    /*eltName*/AIE_DimTupleArrayAttr.cppClassName
+    /*attrName*/"BDDimLayoutArrayArray",
+    /*attrMnemonic*/"bd_dim_layout_arr_arr",
+    /*eltName*/BDDimLayoutArrayAttr.cppClassName
 >;
 
 #endif // AIE_ATTRS

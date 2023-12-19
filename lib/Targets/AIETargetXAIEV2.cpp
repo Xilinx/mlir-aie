@@ -97,7 +97,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasA = false;
     bool hasB = false;
     int ndims = 0;
-    ArrayRef<DimTupleAttr> dims;
+    ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block.template getOps<DMABDOp>()) {
       foundBd = true;

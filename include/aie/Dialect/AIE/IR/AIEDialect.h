@@ -212,7 +212,7 @@ const AIETargetModel &getTargetModel(mlir::Operation *op);
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
-                            DimTupleArrayAttr &dimensions);
+                            BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value tile,
@@ -221,7 +221,7 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
     llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
-    DimTupleArrayArrayAttr &dimensions);
+    BDDimLayoutArrayArrayAttr &dimensions);
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,

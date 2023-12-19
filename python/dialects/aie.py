@@ -59,26 +59,29 @@ class Call(CallOp):
             )
 
 
-from typing import List
+from typing import List, Union, Tuple
 
 
-def dim_tuple_attr_builder(wrap, stepsize):
-    return Attribute.parse(f"#AIE.DimTuple<{wrap}, {stepsize}>")
+def bd_dim_layout(wrap, step):
+    return Attribute.parse(f"#AIE.bd_dim_layout<{wrap=}, {step=}>")
 
 
-@register_attribute_builder("AIE_DimTupleArrayAttr")
-def dim_tuple_array_attr_builder(tups: List[tuple], context=None):
-    tups = list(map(lambda t: dim_tuple_attr_builder(*t), tups))
+@register_attribute_builder("BDDimLayoutArrayAttr")
+def bd_dim_layout_array_attr_builder(
+    tups: List[Union[Attribute, Tuple[int]]], context=None
+):
+    if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
+        tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
-        f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
+        f'#AIE<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
     )
 
 
-@register_attribute_builder("AIE_DimTupleArrayArrayAttr")
-def dim_tuple_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
-    tup_arrs = list(map(dim_tuple_array_attr_builder, tup_arrs))
+@register_attribute_builder("BDDimLayoutArrayArrayAttr")
+def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
+    tup_arrs = list(map(bd_dim_layout_array_attr_builder, tup_arrs))
     return Attribute.parse(
-        f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
+        f'#AIE<bd_dim_layout_arr_arr[{", ".join(map(str, tup_arrs))}]>', context=context
     )
 
 
