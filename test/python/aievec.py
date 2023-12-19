@@ -17,8 +17,8 @@ from aie.dialects import affine
 from aie.dialects import tosa
 from aie.dialects import vector, aievec, scf
 from aie.extras import types as T
-from aie.extras.dialects import arith
-from aie.extras.dialects.func import func
+from aie.extras.dialects.ext import arith
+from aie.extras.dialects.ext.func import func
 from aie.extras.passes import Pipeline as p, run_pipeline
 from aie.extras.util import mlir_mod_ctx
 from aie.ir import AffineMap

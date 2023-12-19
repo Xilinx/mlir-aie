@@ -12,7 +12,7 @@ from aie.dialects.aie import (
     end,
     Buffer,
 )
-from aie.extras.dialects import memref, arith
+from aie.extras.dialects.ext import memref, arith
 from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module

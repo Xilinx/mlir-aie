@@ -3,8 +3,6 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-import inspect
-from functools import wraps
 
 from ._AIE_enum_gen import *
 from ._AIE_ops_gen import *
@@ -14,7 +12,8 @@ from .._mlir_libs._aie import *
 from .._mlir_libs._aie import ObjectFifoType
 
 from ..extras import types as T
-from ..extras.dialects.arith import constant
+from ..extras.dialects.ext.arith import constant
+from ..extras.meta import region_op
 from ..ir import (
     Attribute,
     FlatSymbolRefAttr,
@@ -58,55 +57,6 @@ class Call(CallOp):
                 argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
                 arguments=attrInputs,
             )
-
-
-def op_region_builder(op, op_region, terminator=None):
-    def builder_wrapper(body_builder):
-        # add a block with block args having types ...
-        if len(op_region.blocks) == 0:
-            sig = inspect.signature(body_builder)
-            types = [p.annotation for p in sig.parameters.values()]
-            if not (
-                len(types) == len(sig.parameters)
-                and all(isinstance(t, Type) for t in types)
-            ):
-                raise ValueError(
-                    f"for {body_builder=} either missing a type annotation or type annotation isn't a mlir type: {sig}"
-                )
-            op_region.blocks.append(*types)
-        with InsertionPoint(op_region.blocks[0]):
-            results = body_builder()
-            if terminator is not None:
-                res = []
-                if isinstance(results, (tuple, list)):
-                    res.extend(results)
-                elif results is not None:
-                    res.append(results)
-                terminator(res)
-
-        return op
-
-    return builder_wrapper
-
-
-def region_op(op_constructor, terminator=None):
-    # the decorator itself
-    def op_decorator(*args, **kwargs):
-        op = op_constructor(*args, **kwargs)
-        op_region = op.regions[0]
-
-        return op_region_builder(op, op_region, terminator)
-
-    # this is like make_maybe_no_args_decorator but a little different because the decorators here
-    # are already wrapped (or something like that)
-    @wraps(op_decorator)
-    def maybe_no_args(*args, **kwargs):
-        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-            return op_decorator()(args[0])
-        else:
-            return op_decorator(*args, **kwargs)
-
-    return maybe_no_args
 
 
 from typing import List

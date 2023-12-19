@@ -14,7 +14,7 @@ from aie._mlir_libs._aie_python_passes import (
 
 # noinspection PyUnresolvedReferences
 import aie.dialects.aie
-from aie.extras.util import Router
+from aie.util import Router
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 

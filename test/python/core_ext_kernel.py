@@ -19,7 +19,7 @@ from aie.dialects.aie import (
     objectfifo_release,
     tile,
 )
-from aie.extras.dialects import arith
+from aie.extras.dialects.ext import arith
 from aie.dialects.scf import for_, yield_
 from aie.ir import TypeAttr, Block, InsertionPoint
 

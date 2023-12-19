@@ -3,6 +3,16 @@
 
 include(AddMLIRPython)
 
+execute_process(
+  COMMAND ${Python3_EXECUTABLE} -m
+    pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
+  RESULT_VARIABLE CMD_ERROR
+  OUTPUT_FILE CMD_OUTPUT
+)
+if(NOT CMD_ERROR EQUAL "0")
+  message(FATAL_ERROR "pip install requirements.txt failed:" ${CMD_OUTPUT})
+endif()
+
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
@@ -24,6 +34,12 @@ declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
 )
 
+declare_mlir_python_sources(AIEPythonSources.Util
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    util.py
+)
+
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT AIEPythonSources.Dialects
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -33,21 +49,6 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME AIE
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
-)
-
-declare_mlir_python_sources(AIEPythonSources.Extras
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES
-    extras/meta.py
-    extras/passes.py
-    extras/util.py
-)
-
-declare_mlir_python_sources(AIEPythonSources.DialectExtras
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES_GLOB
-    extras/dialects/*.py
-    extras/dialects/**/*.py
 )
 
 declare_mlir_dialect_python_bindings(
