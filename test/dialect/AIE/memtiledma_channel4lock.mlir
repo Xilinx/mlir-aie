@@ -27,11 +27,11 @@ AIE.device(xcve2802) {
     AIE.dma_start("MM2S", 1, ^bd1, ^dma1)
     ^bd0:
       AIE.use_lock(%lock1, "Acquire", 1)
-      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, A)
       AIE.next_bd ^bd2
     ^bd1:
       AIE.use_lock(%lock2, "Acquire", 1)
-      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, A)
       AIE.next_bd ^bd2
     ^bd2:
       AIE.end

@@ -21,7 +21,7 @@ module @tutorial_2b {
           %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             //expected-error@+1 {{Cannot give more than 4 dimensions}}
-            AIE.dma_bd(<%buf31 : memref<128xi32>, 0, 128>, 0, [<1, 1>, <1, 1>, <1, 1>, <1, 1>, <1, 1>])
+            AIE.dma_bd(<%buf31 : memref<128xi32>, 0, 128>, A, [<1, 1>, <1, 1>, <1, 1>, <1, 1>, <1, 1>])
             AIE.next_bd ^end
           ^end: 
             AIE.end

@@ -808,8 +808,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
-        // TODO(max): this should be an enum
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB, // 0: A, 1: B
+        DMABDBuffer:$AB,
         OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
   );
 
@@ -823,18 +822,18 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     BufferOp getBufferOp();
     int getOffsetValue() { return getOffset(); }
     int getLenValue() { return getLen(); }
-    bool isA() { return (getAB() == 0); }
-    bool isB() { return (getAB() == 1); }
+    bool isA() { return (getAB() == DMABDBuffer::A); }
+    bool isB() { return (getAB() == DMABDBuffer::B); }
   }];
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "DMABDBuffer":$AB), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
-      odsState.addAttribute(getABAttrName(odsState.name), $_builder.getI32IntegerAttr(AB));
-      }]>
+      odsState.addAttribute(getABAttrName(odsState.name), DMABDBufferAttr::get($_builder.getContext(), AB));
+    }]>
   ];
 }
 
@@ -878,8 +877,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let extraClassDeclaration = [{
-    bool isSend() { return (static_cast<int32_t>(getChannelDir()) == 1); }
-    bool isRecv() { return (static_cast<int32_t>(getChannelDir()) == 0); }
+    bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
+    bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
   }];
 }
 

@@ -64,12 +64,12 @@ module {
       AIE.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
       AIE.use_lock(%lock0, Acquire, 0)
-      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, A)
       AIE.use_lock(%lock0, Release, 1)
       AIE.next_bd ^bd0
     ^bd1:
       // AIE.use_lock(%lock1, Acquire, 1)
-      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 4>, 0)
+      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 4>, A)
       // AIE.use_lock(%lock1, Release, 0)
       AIE.next_bd ^bd1
     ^end:
