@@ -48,8 +48,8 @@ void checkArgFileExists(po::variables_map &vmIn, std::string name) {
   std::ifstream test(vmIn[name].as<std::string>());
   if (!test) {
     throw std::runtime_error("The " + name + " file " +
-                              vmIn[name].as<std::string>() +
-                              " does not exist.\n");
+                             vmIn[name].as<std::string>() +
+                             " does not exist.\n");
   }
 }
 
@@ -165,13 +165,10 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto boInstr = xrt::bo(device, instrV.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto boA =
-      xrt::bo(device, aSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto boB =
-      xrt::bo(device, bSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto boC =
-      xrt::bo(device, cSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                         XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+  auto boA = xrt::bo(device, aSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto boB = xrt::bo(device, bSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto boC = xrt::bo(device, cSize, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";

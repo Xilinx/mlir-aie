@@ -92,10 +92,9 @@ def my_matmul():
             ComputeTile3 = tile(0, 3)
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
-    
             cores = [ComputeTile2, ComputeTile3, ComputeTile4, ComputeTile5]
-            inA_fifos = ["memA0",  "memA1",  "memA2",  "memA3" ]
-            inB_fifos = ["memB" ]
+            inA_fifos = ["memA0", "memA1", "memA2", "memA3"]
+            inB_fifos = ["memB"]
             outC_fifos = ["memC0", "memC1", "memC2", "memC3"]
 
             # AIE-array data movement with object fifos
@@ -137,7 +136,7 @@ def my_matmul():
             objectfifo_link(["inB"], [inB_fifos[0]])
 
             # Output C
-            for i in range(n_cores) :
+            for i in range(n_cores):
                 objectfifo(
                     outC_fifos[i], cores[i], [MemTile], 2, ofifo_memRef_C_ty, [], []
                 )
@@ -205,7 +204,8 @@ def my_matmul():
                     C_row_offset_in_i32s = (
                         tile_row_block
                         * rows_per_block
-                        * m * n_cores
+                        * m
+                        * n_cores
                         * N
                         * word_size_out
                         // 4
