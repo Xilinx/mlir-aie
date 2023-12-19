@@ -63,7 +63,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 acquireTknVal, LockAction::Acquire);
     rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len,
-                             0); // A type for now
+                             DMABDBuffer::A); // A type for now
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 releaseTknVal, LockAction::Release);
     rewriter.create<NextBDOp>(rewriter.getUnknownLoc(), &endBlock);
@@ -72,7 +72,6 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   LogicalResult
   matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
     Value srcBuf = op.getSrcBuf();
     Value dstBuf = op.getDstBuf();
 
@@ -94,7 +93,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
                           dstBuf, dstOffset, dstLen, DMAChannelDir::S2MM, 0,
                           rewriter);
 
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };

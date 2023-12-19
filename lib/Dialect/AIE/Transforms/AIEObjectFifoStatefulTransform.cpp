@@ -421,12 +421,13 @@ struct AIEObjectFifoStatefulTransformPass
                 DimTupleArrayAttr dims) {
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqMode,
                               acqLockAction);
-    if (!dims.getValue().empty()) {
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0,
-                              dims);
-    } else {
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0);
-    }
+    if (!dims.getValue().empty())
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len,
+                              DMABDBuffer::A, dims);
+    else
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len,
+                              DMABDBuffer::A);
+
     builder.create<UseLockOp>(builder.getUnknownLoc(), relLock, relMode,
                               LockAction::Release);
     builder.create<NextBDOp>(builder.getUnknownLoc(), succ);

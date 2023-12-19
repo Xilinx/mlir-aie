@@ -28,13 +28,13 @@ module @aie_module  {
     %dstDma = AIE.dma_start("MM2S", 0, ^bb3, ^end)
   ^bb2:
     AIE.use_lock(%10, Acquire, 0)
-    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, 0)
+    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, A)
     AIE.use_lock(%10, Release, 1)
     AIE.next_bd ^bb2
   ^bb3:
     AIE.use_lock(%10, Acquire, 1)
     AIE.dma_bd_packet(0x6, 10)
-    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, 0)
+    AIE.dma_bd(<%11 : memref<256xi32>, 0, 256>, A)
     AIE.next_bd ^bb3
   ^end:
     AIE.end
@@ -47,12 +47,12 @@ module @aie_module  {
   ^bb0:
     AIE.use_lock(%lock1, Acquire, 1)
     AIE.dma_bd_packet(0x2, 3)
-    AIE.dma_bd(<%buf_i : memref<256xi32>, 0, 256>, 0)
+    AIE.dma_bd(<%buf_i : memref<256xi32>, 0, 256>, A)
     AIE.use_lock(%lock1, Release, 0)
     AIE.next_bd ^bb0
   ^bb1:
     AIE.use_lock(%lock2, Acquire, 0)
-    AIE.dma_bd(<%buf_o : memref<257xi32>, 0, 257>, 0)
+    AIE.dma_bd(<%buf_o : memref<257xi32>, 0, 257>, A)
     AIE.use_lock(%lock2, Release, 1)
     AIE.next_bd ^bb1
   ^end:

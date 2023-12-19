@@ -75,7 +75,7 @@ module @tutorial_2b {
           %dstDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
             AIE.use_lock(%lock34_wait, "AcquireGreaterEqual", 1)
-            AIE.dma_bd(<%buf34 : memref<128xi32>, 0, 128>, 0)
+            AIE.dma_bd(<%buf34 : memref<128xi32>, 0, 128>, A)
             AIE.use_lock(%lock34_recv, "Release", 1)
             AIE.next_bd ^end
           ^end:

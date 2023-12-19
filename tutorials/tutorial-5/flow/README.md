@@ -31,7 +31,7 @@ The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rath
     AIE.dma_start("MM2S", 0, ^bd1, ^end)
     ^bd1:
         AIE.use_lock(%lock70_in, "Acquire", 1)
-        AIE.dma_bd(%external_buf : memref<256xi32>, 0, 256>, 0)
+        AIE.dma_bd(%external_buf : memref<256xi32>, 0, 256>, A)
         AIE.use_lock(%lock70_in, "Release", 0)
         cf.br ^end
     ^end:

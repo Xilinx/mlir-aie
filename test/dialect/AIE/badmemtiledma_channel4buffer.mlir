@@ -26,10 +26,10 @@ AIE.device(xcve2802) {
     ^dma1:
     AIE.dma_start("MM2S", 4, ^bd1, ^dma1)
     ^bd0:
-      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf1 : memref<256xi32>, 0, 256>, A)
       AIE.next_bd ^bd2
     ^bd1:
-      AIE.dma_bd(<%buf2 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(<%buf2 : memref<256xi32>, 0, 256>, A)
       AIE.next_bd ^bd2
     ^bd2:
       AIE.end
