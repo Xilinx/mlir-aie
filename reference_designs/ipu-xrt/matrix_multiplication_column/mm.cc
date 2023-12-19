@@ -25,15 +25,15 @@
 #include "zero.cc"
 
 template <typename T_in, typename T_out, int M, int K, int N>
-void matmul_scalar(T_in *a, T_in *b, T_out *c) {
+void matmulScalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      T_out running_sum = 0;
+      T_out runningSum = 0;
       for (int i = 0; i < K; i++) {
-        running_sum += a[row * K + i] * b[i * N + col];
+        runningSum += a[row * K + i] * b[i * N + col];
       }
-      c[row * N + col] += running_sum;
+      c[row * N + col] += runningSum;
     }
   }
   event1();
@@ -41,7 +41,7 @@ void matmul_scalar(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
+void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
                        T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
@@ -132,10 +132,10 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
+void matmulVectorized4x4x4I16I16(const int16 *__restrict pA,
                                      const int16 *__restrict pB,
                                      int16 *__restrict pC) {
-  // matmul_vectorized operates on two 4x4 input blocks of A, and two 4x4 input
+  // matmulVectorized operates on two 4x4 input blocks of A, and two 4x4 input
   // blocks of B in each iteration. Make sure we have at least 2 blocks in each
   // dimension, and that our input matrix is evenly divisible.
   constexpr int r = 4;
@@ -144,12 +144,12 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+  return matmulVectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
                                                                        pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
+void matmulVectorized4x8x4Bf16Bf16(const bfloat16 *__restrict pA,
                                        const bfloat16 *__restrict pB,
                                        bfloat16 *__restrict pC) {
   constexpr int r = 4;
@@ -158,12 +158,12 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
+  return matmulVectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
       pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+void matmulVectorized4x8x4Bf16F32(const bfloat16 *__restrict pA,
                                       const bfloat16 *__restrict pB,
                                       float *__restrict pC) {
   constexpr int r = 4;
@@ -172,7 +172,7 @@ void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<bfloat16, float, m / r, k / s, n / t, r, s, t>(
+  return matmulVectorized<bfloat16, float, m / r, k / s, n / t, r, s, t>(
       pA, pB, pC);
 }
 
@@ -185,8 +185,8 @@ extern "C" {
 
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
-  void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
-                                               ctype_out *c_out) {             \
+  void matmul_##mlir_type_in##_##mlir_type_out((ctype_in) *a_in, (ctype_in) *b_in, \
+                                               (ctype_out) *c_out) {             \
     matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
         64, 32, 64>(a_in, b_in, c_out);                                        \
   }
@@ -194,19 +194,19 @@ extern "C" {
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
-      ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matmul_scalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);         \
+      (ctype_in) *a_in, (ctype_in) *b_in, (ctype_out) *c_out) {                      \
+    matmulScalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);         \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
-  void zero_##mlir_type_out(ctype_out *c_out) {                                \
+  void zero_##mlir_type_out((ctype_out) *c_out) {                                \
     zero_vectorized<ctype_out, 64, 64, 32>(c_out);                             \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            r, s, t)                                            \
-  void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
+  void zero_scalar_##mlir_type_out((ctype_out) *c_out) {                         \
     zero_scalar<ctype_out, 64, 64>(c_out);                                     \
   }
 

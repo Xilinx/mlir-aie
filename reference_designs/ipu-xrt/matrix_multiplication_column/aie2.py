@@ -49,9 +49,6 @@ def my_matmul():
     # Matrix B: KxN, submatrices b: kxn
     n_in_i32s = n * word_size_in // 4
     N_in_i32s = N * word_size_in // 4
-    k_x_N_in_i32s = k * N * word_size_in // 4
-    N_div_n_div_n_cores  = N // n // n_cores
-    n_x_n_cores_in_i32s  = n * n_cores * word_size_in // 4
 
     # Output Matrix C: MxN
     n_in_i32s_out = n * word_size_out // 4
@@ -96,15 +93,15 @@ def my_matmul():
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
     
-            cores      = [ComputeTile2, ComputeTile3, ComputeTile4, ComputeTile5]
-            inA_fifos  = ["memA0",  "memA1",  "memA2",  "memA3" ]
-            inB_fifos  = ["memB" ]
+            cores = [ComputeTile2, ComputeTile3, ComputeTile4, ComputeTile5]
+            inA_fifos = ["memA0",  "memA1",  "memA2",  "memA3" ]
+            inB_fifos = ["memB" ]
             outC_fifos = ["memC0", "memC1", "memC2", "memC3"]
 
             # AIE-array data movement with object fifos
             # Input A
             objectfifo("inA", ShimTile, [MemTile], 2, ofifo_memRef_inA_ty, [], [])
-            for i in range(n_cores) :
+            for i in range(n_cores):
                 objectfifo(
                     inA_fifos[i],
                     MemTile,
@@ -141,7 +138,9 @@ def my_matmul():
 
             # Output C
             for i in range(n_cores) :
-                objectfifo(outC_fifos[i], cores[i], [MemTile], 2, ofifo_memRef_C_ty, [], [])
+                objectfifo(
+                    outC_fifos[i], cores[i], [MemTile], 2, ofifo_memRef_C_ty, [], []
+                )
             objectfifo(
                 "outC",
                 MemTile,
@@ -159,7 +158,7 @@ def my_matmul():
             objectfifo_link(outC_fifos[0:n_cores], ["outC"])
 
             # Set up compute tiles
-            for i in range(n_cores) :
+            for i in range(n_cores):
                 # Compute tile i
                 @core(cores[i], "mm.o")
                 def core_body():
@@ -178,8 +177,12 @@ def my_matmul():
                                     ObjectFifoPort.Consume, inB_fifos[0], 1, memRef_B_ty
                                 ).acquired_elem()
                                 Call(matmul, [elem_in_a, elem_in_b, elem_out])
-                                objectfifo_release(ObjectFifoPort.Consume, inA_fifos[i], 1)
-                                objectfifo_release(ObjectFifoPort.Consume, inB_fifos[0], 1)
+                                objectfifo_release(
+                                    ObjectFifoPort.Consume, inA_fifos[i], 1
+                                )
+                                objectfifo_release(
+                                    ObjectFifoPort.Consume, inB_fifos[0], 1
+                                )
                                 yield_([])
 
                             objectfifo_release(ObjectFifoPort.Produce, outC_fifos[i], 1)
@@ -200,10 +203,18 @@ def my_matmul():
                     (M_div_m_div_n_cores + rows_per_block - 1) // rows_per_block
                 ):
                     C_row_offset_in_i32s = (
-                        tile_row_block * rows_per_block * m * n_cores * N * word_size_out // 4
+                        tile_row_block
+                        * rows_per_block
+                        * m * n_cores
+                        * N
+                        * word_size_out
+                        // 4
                     )
                     num_tile_rows = min(
-                        [rows_per_block, M_div_m_div_n_cores - tile_row_block * rows_per_block]
+                        [
+                            rows_per_block,
+                            M_div_m_div_n_cores - tile_row_block * rows_per_block,
+                        ]
                     )
                     ipu_dma_memcpy_nd(
                         metadata="outC",
@@ -211,7 +222,11 @@ def my_matmul():
                         mem=C,
                         offsets=[0, 0, 0, C_row_offset_in_i32s],
                         lengths=[num_tile_rows, N_div_n, m_x_n_cores, n_in_i32s_out],
-                        strides=[m_x_n_cores_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                        strides=[
+                            m_x_n_cores_x_N_in_i32s_out,
+                            n_in_i32s_out,
+                            N_in_i32s_out,
+                        ],
                     )
                     for tile_row in range(num_tile_rows):
                         A_row_offset_in_i32s = (

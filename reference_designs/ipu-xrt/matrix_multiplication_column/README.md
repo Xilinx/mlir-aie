@@ -12,7 +12,7 @@
 
 Multiple tiles in a single column perform a `matrix * matrix` multiply on int16 data type where `MxKxN` is `256x128x128`. The kernel itself computes `64x32x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
 
-To compile desing in Windows:
+To compile design in Windows:
 ```
 make
 make matrixMultiplication.exe
