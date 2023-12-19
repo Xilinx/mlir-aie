@@ -43,7 +43,7 @@ Instantiating the above as code block would look something like:
 
   mlir_aie_clear_tile_memory(_xaie, 1, 4); // clear local data memory for tile(1,4)
 ```
-Following this code block, the only components that are not yet configured are the shim DMAs because they require some parameters obtained at runtime. In the case of our example vck190 platform, to configure the shimDMA using the libxaiengine drivers, we pass in a virtual address to a block of memory in DDR . The general step order that we call our host config APIs for shim DMA configuration are:
+Following this code block, the only components that are not yet configured are the shim DMAs because they require some parameters obtained at runtime. In the case of our example vck190 platform, to configure the shim_dma using the libxaiengine drivers, we pass in a virtual address to a block of memory in DDR . The general step order that we call our host config APIs for shim DMA configuration are:
 1. Allocate buffers
 2. Configure shim DMAs
 3. Synchronize DDR cache (virtual address) with DDR physical memory as needed
@@ -55,7 +55,7 @@ The dynamic buffer allocation and shim DMA config function calls would look like
   int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, buf0, 256);
   int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, buf1, 256);
 
-  // Set virtual pointer used to configure shimDMA
+  // Set virtual pointer used to configure shim_dma
   mlir_aie_external_set_addr_ddr_test_buffer_in(_xaie, (u64)mem_ptr_in);
   mlir_aie_external_set_addr_ddr_test_buffer_out(_xaie, (u64)mem_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie); // configures 2 DMAs in shim DMA tile
@@ -68,9 +68,9 @@ The dynamic buffer allocation and shim DMA config function calls would look like
 |----------|-------------|
 | mlir_aie_mem_alloc (_xaie, ext_mem_model_t buf, int size) | Dynamic allocation of memory buffer associated with buffer handle (buf) and a size.  Size is defined in words (4 bytes). |
 | mlir_aie_external_set_addr_< symbol name > (u64 addr) | Set the address (addr) for an MLIR-AIE external buffer used in configuring the shim DMA. This address is usually the virtual address when working with the backend linux kernel drivers. |
-| mlir_aie_configure_shimdma_< location > (_xaie) | Complete shim DMA configuration given the virtual address value set by mlir_aie_external_set_addr_ for all DMAs belonging to this shimDMA tile (up to 4). |
-| mlir_aie_sync_mem_dev (ext_mem_model_t buf)| Synchronize between DDR cache (virtual address) and DDR physical memory accessed by NOC/ shimDMA, i.e, flush the DDR cache. In simulation, we explicitly copy from host memory to the memory region accessed by shim DMA model. We call this after we update DDR data and want the shim DMA to see the new data. |
-| mlir_aie_sync_mem_cpu (ext_mem_model_t buf)| Synchronize between DDR physical memory accessed by NOC/ shimDMA and DDR cache (virtual address), i.e., invalidate the DDR cache. In simulation, we explicitly copy from shim DMA model accessible memory to host memory. We call this before we read DDR data to make sure shim DMA written data is updated before being read by the host program. |
+| mlir_aie_configure_shimdma_< location > (_xaie) | Complete shim DMA configuration given the virtual address value set by mlir_aie_external_set_addr_ for all DMAs belonging to this shim_dma tile (up to 4). |
+| mlir_aie_sync_mem_dev (ext_mem_model_t buf)| Synchronize between DDR cache (virtual address) and DDR physical memory accessed by NOC/ shim_dma, i.e, flush the DDR cache. In simulation, we explicitly copy from host memory to the memory region accessed by shim DMA model. We call this after we update DDR data and want the shim DMA to see the new data. |
+| mlir_aie_sync_mem_cpu (ext_mem_model_t buf)| Synchronize between DDR physical memory accessed by NOC/ shim_dma and DDR cache (virtual address), i.e., invalidate the DDR cache. In simulation, we explicitly copy from shim DMA model accessible memory to host memory. We call this before we read DDR data to make sure shim DMA written data is updated before being read by the host program. |
 
 > **More information about "syncing" memory**: In a system with caches, the data in the cache can be out of date with the data in global memory.  If an accelerator has coherent access to the caches, then this inconsistency isn't a problem because the accelerator will be able to access data in the cache directly and the cache will do the right thing.  This is called "shared virtual memory".  However, in a system where the accelerator only sees global memory and does not have cache-coherent view of data in the caches, we need to make sure that the accelerator 'sees' the data in the cache, when it can only access global memory.  The solution to this is to explicitly flush or invalidate data in the caches.  Normally this would be taken care of in the operating system, but this is a high-latency operation.  In this case, we do it in userspace:  `mlir_aie_sync_mem_dev` is essentially "flush the processor caches so that the device can see data" and `mlir_aie_sync_mem_cpu` is essentially "invalidate the processor caches so that the processor will reread data from global memory".
 

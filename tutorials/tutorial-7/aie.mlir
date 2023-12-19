@@ -66,7 +66,7 @@ module @tutorial_7 {
         // buf[5] = buf[3] + 100
         %core34 = AIE.core(%tile34) {
             // This acquire succeeds when the core is enabled
-            AIE.useLock(%lock34_8, "Acquire", 0)
+            AIE.use_lock(%lock34_8, "Acquire", 0)
 
             %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubview<memref<256xi32>>
             %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -81,7 +81,7 @@ module @tutorial_7 {
             AIE.objectfifo.release @of (Consume, 1)
 
             // This release means our 2nd core is done
-            AIE.useLock(%lock34_8, "Release", 1)
+            AIE.use_lock(%lock34_8, "Release", 1)
             AIE.end
         }
 
@@ -89,7 +89,7 @@ module @tutorial_7 {
         // buf[5] = buf[3] + 100
         %core35 = AIE.core(%tile35) {
             // This acquire succeeds when the core is enabled
-            AIE.useLock(%lock35_8, "Acquire", 0)
+            AIE.use_lock(%lock35_8, "Acquire", 0)
 
             %inputSubview = AIE.objectfifo.acquire @of (Consume, 1) : !AIE.objectfifosubview<memref<256xi32>>
             %input = AIE.objectfifo.subview.access %inputSubview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -104,7 +104,7 @@ module @tutorial_7 {
             AIE.objectfifo.release @of (Consume, 1)
 
             // This release means our 2nd core is done
-            AIE.useLock(%lock35_8, "Release", 1)
+            AIE.use_lock(%lock35_8, "Release", 1)
             AIE.end
         }
     }

@@ -60,7 +60,7 @@
 // have the value change from iteration to iteration).
 
 // This is what currently is being generated:
-//              AIE.useLock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+//              AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // Instead:
 //   Initialize the number of objects held, which is always zero at the
 //   beginning before any acquires:
@@ -122,7 +122,7 @@
 
 // Release inside loop:
 //   The release will always release, but additionally to 
-// CHECK:         AIE.useLock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:         AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
 // CHECK:         %[[lock0_num4:.*]] = arith.subi %[[lock0_num3]], 1 : i32
 
 // At the very end of the loop, we need to yield how many objects are being held
@@ -134,22 +134,22 @@
 
 // The DMAs should remain all the same and will be configured statically:
 // CHECK:     %[[ssa9:.*]] = AIE.mem(%[[tile23]]) {
-// CHECK:       %11 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+// CHECK:       %11 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[fifo_buff_0]] : memref<i64>, 0, 1>, 0)
-// CHECK:       AIE.useLock(%[[fifo_prod_lock]], Release, 1)
-// CHECK:       AIE.nextBd ^bb1
+// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[fifo_buff_0]] : memref<i64>, 0, 1>, 0)
+// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], Release, 1)
+// CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:     %10 = AIE.mem(%[[tile43]]) {
-// CHECK:       %11 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
+// CHECK:       %11 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       AIE.useLock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[fifo_cons_buff_0]] : memref<i64>, 0, 1>, 0)
-// CHECK:       AIE.useLock(%[[fifo_cons_cons_lock]], Release, 1)
-// CHECK:       AIE.nextBd ^bb1
+// CHECK:       AIE.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.dma_bd(<%[[fifo_cons_buff_0]] : memref<i64>, 0, 1>, 0)
+// CHECK:       AIE.use_lock(%[[fifo_cons_cons_lock]], Release, 1)
+// CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }

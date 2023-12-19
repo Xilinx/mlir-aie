@@ -106,26 +106,26 @@ module @vecmul_4x4  {
     %9 = AIE.lock(%4, 0)
     %10 = AIE.buffer(%4) {sym_name = "buf45"} : memref<64xi32, 2>
     %11 = AIE.mem(%4)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%9, Acquire, 0)
-      AIE.dmaBd(<%10 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%9, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%9, Acquire, 0)
+      AIE.dma_bd(<%10 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%9, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%7, Acquire, 0)
-      AIE.dmaBd(<%8 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%7, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%7, Acquire, 0)
+      AIE.dma_bd(<%8 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%7, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%5, Acquire, 1)
-      AIE.dmaBd(<%6 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%5, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%5, Acquire, 1)
+      AIE.dma_bd(<%6 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%5, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -134,18 +134,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%9, Acquire, 1)
-      AIE.useLock(%7, Acquire, 1)
-      AIE.useLock(%5, Acquire, 0)
+      AIE.use_lock(%9, Acquire, 1)
+      AIE.use_lock(%7, Acquire, 1)
+      AIE.use_lock(%5, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %10[%arg0] : memref<64xi32, 2>
         %201 = affine.load %8[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %6[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%5, Release, 1)
-      AIE.useLock(%7, Release, 0)
-      AIE.useLock(%9, Release, 0)
+      AIE.use_lock(%5, Release, 1)
+      AIE.use_lock(%7, Release, 0)
+      AIE.use_lock(%9, Release, 0)
       cf.br ^bb1
     }
     %13 = AIE.tile(46, 2)
@@ -160,26 +160,26 @@ module @vecmul_4x4  {
     %22 = AIE.lock(%17, 0)
     %23 = AIE.buffer(%17) {sym_name = "buf42"} : memref<64xi32, 2>
     %24 = AIE.mem(%17)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%22, Acquire, 0)
-      AIE.dmaBd(<%23 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%22, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%22, Acquire, 0)
+      AIE.dma_bd(<%23 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%22, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%20, Acquire, 0)
-      AIE.dmaBd(<%21 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%20, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%20, Acquire, 0)
+      AIE.dma_bd(<%21 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%20, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%18, Acquire, 1)
-      AIE.dmaBd(<%19 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%18, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%18, Acquire, 1)
+      AIE.dma_bd(<%19 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%18, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -188,18 +188,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%22, Acquire, 1)
-      AIE.useLock(%20, Acquire, 1)
-      AIE.useLock(%18, Acquire, 0)
+      AIE.use_lock(%22, Acquire, 1)
+      AIE.use_lock(%20, Acquire, 1)
+      AIE.use_lock(%18, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %23[%arg0] : memref<64xi32, 2>
         %201 = affine.load %21[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %19[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%18, Release, 1)
-      AIE.useLock(%20, Release, 0)
-      AIE.useLock(%22, Release, 0)
+      AIE.use_lock(%18, Release, 1)
+      AIE.use_lock(%20, Release, 0)
+      AIE.use_lock(%22, Release, 0)
       cf.br ^bb1
     }
     %26 = AIE.tile(43, 2)
@@ -214,26 +214,26 @@ module @vecmul_4x4  {
     %35 = AIE.lock(%30, 0)
     %36 = AIE.buffer(%30) {sym_name = "buf39"} : memref<64xi32, 2>
     %37 = AIE.mem(%30)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%35, Acquire, 0)
-      AIE.dmaBd(<%36 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%35, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%35, Acquire, 0)
+      AIE.dma_bd(<%36 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%35, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%33, Acquire, 0)
-      AIE.dmaBd(<%34 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%33, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%33, Acquire, 0)
+      AIE.dma_bd(<%34 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%33, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%31, Acquire, 1)
-      AIE.dmaBd(<%32 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%31, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%31, Acquire, 1)
+      AIE.dma_bd(<%32 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%31, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -242,18 +242,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%35, Acquire, 1)
-      AIE.useLock(%33, Acquire, 1)
-      AIE.useLock(%31, Acquire, 0)
+      AIE.use_lock(%35, Acquire, 1)
+      AIE.use_lock(%33, Acquire, 1)
+      AIE.use_lock(%31, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %36[%arg0] : memref<64xi32, 2>
         %201 = affine.load %34[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %32[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%31, Release, 1)
-      AIE.useLock(%33, Release, 0)
-      AIE.useLock(%35, Release, 0)
+      AIE.use_lock(%31, Release, 1)
+      AIE.use_lock(%33, Release, 0)
+      AIE.use_lock(%35, Release, 0)
       cf.br ^bb1
     }
     %39 = AIE.tile(42, 2)
@@ -268,26 +268,26 @@ module @vecmul_4x4  {
     %48 = AIE.lock(%43, 0)
     %49 = AIE.buffer(%43) {sym_name = "buf36"} : memref<64xi32, 2>
     %50 = AIE.mem(%43)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%48, Acquire, 0)
-      AIE.dmaBd(<%49 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%48, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%48, Acquire, 0)
+      AIE.dma_bd(<%49 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%48, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%46, Acquire, 0)
-      AIE.dmaBd(<%47 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%46, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%46, Acquire, 0)
+      AIE.dma_bd(<%47 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%46, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%44, Acquire, 1)
-      AIE.dmaBd(<%45 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%44, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%44, Acquire, 1)
+      AIE.dma_bd(<%45 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%44, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -296,18 +296,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%48, Acquire, 1)
-      AIE.useLock(%46, Acquire, 1)
-      AIE.useLock(%44, Acquire, 0)
+      AIE.use_lock(%48, Acquire, 1)
+      AIE.use_lock(%46, Acquire, 1)
+      AIE.use_lock(%44, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %49[%arg0] : memref<64xi32, 2>
         %201 = affine.load %47[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %45[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%44, Release, 1)
-      AIE.useLock(%46, Release, 0)
-      AIE.useLock(%48, Release, 0)
+      AIE.use_lock(%44, Release, 1)
+      AIE.use_lock(%46, Release, 0)
+      AIE.use_lock(%48, Release, 0)
       cf.br ^bb1
     }
     %52 = AIE.tile(35, 2)
@@ -321,26 +321,26 @@ module @vecmul_4x4  {
     %60 = AIE.lock(%55, 0)
     %61 = AIE.buffer(%55) {sym_name = "buf33"} : memref<64xi32, 2>
     %62 = AIE.mem(%55)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%60, Acquire, 0)
-      AIE.dmaBd(<%61 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%60, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%60, Acquire, 0)
+      AIE.dma_bd(<%61 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%60, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%58, Acquire, 0)
-      AIE.dmaBd(<%59 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%58, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%58, Acquire, 0)
+      AIE.dma_bd(<%59 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%58, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%56, Acquire, 1)
-      AIE.dmaBd(<%57 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%56, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%56, Acquire, 1)
+      AIE.dma_bd(<%57 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%56, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -349,18 +349,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%60, Acquire, 1)
-      AIE.useLock(%58, Acquire, 1)
-      AIE.useLock(%56, Acquire, 0)
+      AIE.use_lock(%60, Acquire, 1)
+      AIE.use_lock(%58, Acquire, 1)
+      AIE.use_lock(%56, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %61[%arg0] : memref<64xi32, 2>
         %201 = affine.load %59[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %57[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%56, Release, 1)
-      AIE.useLock(%58, Release, 0)
-      AIE.useLock(%60, Release, 0)
+      AIE.use_lock(%56, Release, 1)
+      AIE.use_lock(%58, Release, 0)
+      AIE.use_lock(%60, Release, 0)
       cf.br ^bb1
     }
     %64 = AIE.tile(34, 2)
@@ -374,26 +374,26 @@ module @vecmul_4x4  {
     %72 = AIE.lock(%67, 0)
     %73 = AIE.buffer(%67) {sym_name = "buf30"} : memref<64xi32, 2>
     %74 = AIE.mem(%67)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%72, Acquire, 0)
-      AIE.dmaBd(<%73 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%72, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%72, Acquire, 0)
+      AIE.dma_bd(<%73 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%72, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%70, Acquire, 0)
-      AIE.dmaBd(<%71 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%70, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%70, Acquire, 0)
+      AIE.dma_bd(<%71 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%70, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%68, Acquire, 1)
-      AIE.dmaBd(<%69 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%68, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%68, Acquire, 1)
+      AIE.dma_bd(<%69 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%68, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -402,18 +402,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%72, Acquire, 1)
-      AIE.useLock(%70, Acquire, 1)
-      AIE.useLock(%68, Acquire, 0)
+      AIE.use_lock(%72, Acquire, 1)
+      AIE.use_lock(%70, Acquire, 1)
+      AIE.use_lock(%68, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %73[%arg0] : memref<64xi32, 2>
         %201 = affine.load %71[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %69[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%68, Release, 1)
-      AIE.useLock(%70, Release, 0)
-      AIE.useLock(%72, Release, 0)
+      AIE.use_lock(%68, Release, 1)
+      AIE.use_lock(%70, Release, 0)
+      AIE.use_lock(%72, Release, 0)
       cf.br ^bb1
     }
     %76 = AIE.tile(27, 2)
@@ -428,26 +428,26 @@ module @vecmul_4x4  {
     %85 = AIE.lock(%80, 0)
     %86 = AIE.buffer(%80) {sym_name = "buf27"} : memref<64xi32, 2>
     %87 = AIE.mem(%80)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%85, Acquire, 0)
-      AIE.dmaBd(<%86 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%85, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%85, Acquire, 0)
+      AIE.dma_bd(<%86 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%85, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%83, Acquire, 0)
-      AIE.dmaBd(<%84 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%83, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%83, Acquire, 0)
+      AIE.dma_bd(<%84 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%83, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%81, Acquire, 1)
-      AIE.dmaBd(<%82 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%81, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%81, Acquire, 1)
+      AIE.dma_bd(<%82 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%81, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -456,18 +456,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%85, Acquire, 1)
-      AIE.useLock(%83, Acquire, 1)
-      AIE.useLock(%81, Acquire, 0)
+      AIE.use_lock(%85, Acquire, 1)
+      AIE.use_lock(%83, Acquire, 1)
+      AIE.use_lock(%81, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %86[%arg0] : memref<64xi32, 2>
         %201 = affine.load %84[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %82[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%81, Release, 1)
-      AIE.useLock(%83, Release, 0)
-      AIE.useLock(%85, Release, 0)
+      AIE.use_lock(%81, Release, 1)
+      AIE.use_lock(%83, Release, 0)
+      AIE.use_lock(%85, Release, 0)
       cf.br ^bb1
     }
     %89 = AIE.tile(26, 2)
@@ -482,26 +482,26 @@ module @vecmul_4x4  {
     %98 = AIE.lock(%93, 0)
     %99 = AIE.buffer(%93) {sym_name = "buf24"} : memref<64xi32, 2>
     %100 = AIE.mem(%93)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%98, Acquire, 0)
-      AIE.dmaBd(<%99 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%98, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%98, Acquire, 0)
+      AIE.dma_bd(<%99 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%98, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%96, Acquire, 0)
-      AIE.dmaBd(<%97 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%96, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%96, Acquire, 0)
+      AIE.dma_bd(<%97 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%96, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%94, Acquire, 1)
-      AIE.dmaBd(<%95 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%94, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%94, Acquire, 1)
+      AIE.dma_bd(<%95 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%94, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -510,18 +510,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%98, Acquire, 1)
-      AIE.useLock(%96, Acquire, 1)
-      AIE.useLock(%94, Acquire, 0)
+      AIE.use_lock(%98, Acquire, 1)
+      AIE.use_lock(%96, Acquire, 1)
+      AIE.use_lock(%94, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %99[%arg0] : memref<64xi32, 2>
         %201 = affine.load %97[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %95[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%94, Release, 1)
-      AIE.useLock(%96, Release, 0)
-      AIE.useLock(%98, Release, 0)
+      AIE.use_lock(%94, Release, 1)
+      AIE.use_lock(%96, Release, 0)
+      AIE.use_lock(%98, Release, 0)
       cf.br ^bb1
     }
     %102 = AIE.tile(19, 2)
@@ -535,26 +535,26 @@ module @vecmul_4x4  {
     %110 = AIE.lock(%105, 0)
     %111 = AIE.buffer(%105) {sym_name = "buf21"} : memref<64xi32, 2>
     %112 = AIE.mem(%105)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%110, Acquire, 0)
-      AIE.dmaBd(<%111 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%110, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%110, Acquire, 0)
+      AIE.dma_bd(<%111 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%110, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%108, Acquire, 0)
-      AIE.dmaBd(<%109 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%108, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%108, Acquire, 0)
+      AIE.dma_bd(<%109 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%108, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%106, Acquire, 1)
-      AIE.dmaBd(<%107 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%106, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%106, Acquire, 1)
+      AIE.dma_bd(<%107 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%106, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -563,18 +563,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%110, Acquire, 1)
-      AIE.useLock(%108, Acquire, 1)
-      AIE.useLock(%106, Acquire, 0)
+      AIE.use_lock(%110, Acquire, 1)
+      AIE.use_lock(%108, Acquire, 1)
+      AIE.use_lock(%106, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %111[%arg0] : memref<64xi32, 2>
         %201 = affine.load %109[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %107[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%106, Release, 1)
-      AIE.useLock(%108, Release, 0)
-      AIE.useLock(%110, Release, 0)
+      AIE.use_lock(%106, Release, 1)
+      AIE.use_lock(%108, Release, 0)
+      AIE.use_lock(%110, Release, 0)
       cf.br ^bb1
     }
     %114 = AIE.tile(18, 2)
@@ -588,26 +588,26 @@ module @vecmul_4x4  {
     %122 = AIE.lock(%117, 0)
     %123 = AIE.buffer(%117) {sym_name = "buf18"} : memref<64xi32, 2>
     %124 = AIE.mem(%117)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%122, Acquire, 0)
-      AIE.dmaBd(<%123 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%122, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%122, Acquire, 0)
+      AIE.dma_bd(<%123 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%122, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%120, Acquire, 0)
-      AIE.dmaBd(<%121 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%120, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%120, Acquire, 0)
+      AIE.dma_bd(<%121 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%120, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%118, Acquire, 1)
-      AIE.dmaBd(<%119 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%118, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%118, Acquire, 1)
+      AIE.dma_bd(<%119 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%118, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -616,18 +616,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%122, Acquire, 1)
-      AIE.useLock(%120, Acquire, 1)
-      AIE.useLock(%118, Acquire, 0)
+      AIE.use_lock(%122, Acquire, 1)
+      AIE.use_lock(%120, Acquire, 1)
+      AIE.use_lock(%118, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %123[%arg0] : memref<64xi32, 2>
         %201 = affine.load %121[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %119[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%118, Release, 1)
-      AIE.useLock(%120, Release, 0)
-      AIE.useLock(%122, Release, 0)
+      AIE.use_lock(%118, Release, 1)
+      AIE.use_lock(%120, Release, 0)
+      AIE.use_lock(%122, Release, 0)
       cf.br ^bb1
     }
     %126 = AIE.tile(11, 2)
@@ -642,26 +642,26 @@ module @vecmul_4x4  {
     %135 = AIE.lock(%130, 0)
     %136 = AIE.buffer(%130) {sym_name = "buf15"} : memref<64xi32, 2>
     %137 = AIE.mem(%130)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%135, Acquire, 0)
-      AIE.dmaBd(<%136 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%135, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%135, Acquire, 0)
+      AIE.dma_bd(<%136 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%135, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%133, Acquire, 0)
-      AIE.dmaBd(<%134 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%133, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%133, Acquire, 0)
+      AIE.dma_bd(<%134 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%133, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%131, Acquire, 1)
-      AIE.dmaBd(<%132 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%131, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%131, Acquire, 1)
+      AIE.dma_bd(<%132 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%131, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -670,18 +670,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%135, Acquire, 1)
-      AIE.useLock(%133, Acquire, 1)
-      AIE.useLock(%131, Acquire, 0)
+      AIE.use_lock(%135, Acquire, 1)
+      AIE.use_lock(%133, Acquire, 1)
+      AIE.use_lock(%131, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %136[%arg0] : memref<64xi32, 2>
         %201 = affine.load %134[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %132[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%131, Release, 1)
-      AIE.useLock(%133, Release, 0)
-      AIE.useLock(%135, Release, 0)
+      AIE.use_lock(%131, Release, 1)
+      AIE.use_lock(%133, Release, 0)
+      AIE.use_lock(%135, Release, 0)
       cf.br ^bb1
     }
     %139 = AIE.tile(10, 1)
@@ -695,26 +695,26 @@ module @vecmul_4x4  {
     %147 = AIE.lock(%142, 0)
     %148 = AIE.buffer(%142) {sym_name = "buf12"} : memref<64xi32, 2>
     %149 = AIE.mem(%142)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%147, Acquire, 0)
-      AIE.dmaBd(<%148 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%147, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%147, Acquire, 0)
+      AIE.dma_bd(<%148 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%147, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%145, Acquire, 0)
-      AIE.dmaBd(<%146 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%145, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%145, Acquire, 0)
+      AIE.dma_bd(<%146 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%145, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%143, Acquire, 1)
-      AIE.dmaBd(<%144 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%143, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%143, Acquire, 1)
+      AIE.dma_bd(<%144 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%143, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -723,18 +723,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%147, Acquire, 1)
-      AIE.useLock(%145, Acquire, 1)
-      AIE.useLock(%143, Acquire, 0)
+      AIE.use_lock(%147, Acquire, 1)
+      AIE.use_lock(%145, Acquire, 1)
+      AIE.use_lock(%143, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %148[%arg0] : memref<64xi32, 2>
         %201 = affine.load %146[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %144[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%143, Release, 1)
-      AIE.useLock(%145, Release, 0)
-      AIE.useLock(%147, Release, 0)
+      AIE.use_lock(%143, Release, 1)
+      AIE.use_lock(%145, Release, 0)
+      AIE.use_lock(%147, Release, 0)
       cf.br ^bb1
     }
     %151 = AIE.tile(7, 1)
@@ -747,26 +747,26 @@ module @vecmul_4x4  {
     %158 = AIE.lock(%153, 0)
     %159 = AIE.buffer(%153) {sym_name = "buf9"} : memref<64xi32, 2>
     %160 = AIE.mem(%153)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%158, Acquire, 0)
-      AIE.dmaBd(<%159 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%158, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%158, Acquire, 0)
+      AIE.dma_bd(<%159 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%158, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%156, Acquire, 0)
-      AIE.dmaBd(<%157 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%156, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%156, Acquire, 0)
+      AIE.dma_bd(<%157 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%156, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%154, Acquire, 1)
-      AIE.dmaBd(<%155 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%154, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%154, Acquire, 1)
+      AIE.dma_bd(<%155 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%154, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -775,18 +775,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%158, Acquire, 1)
-      AIE.useLock(%156, Acquire, 1)
-      AIE.useLock(%154, Acquire, 0)
+      AIE.use_lock(%158, Acquire, 1)
+      AIE.use_lock(%156, Acquire, 1)
+      AIE.use_lock(%154, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %159[%arg0] : memref<64xi32, 2>
         %201 = affine.load %157[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %155[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%154, Release, 1)
-      AIE.useLock(%156, Release, 0)
-      AIE.useLock(%158, Release, 0)
+      AIE.use_lock(%154, Release, 1)
+      AIE.use_lock(%156, Release, 0)
+      AIE.use_lock(%158, Release, 0)
       cf.br ^bb1
     }
     %162 = AIE.tile(6, 2)
@@ -800,26 +800,26 @@ module @vecmul_4x4  {
     %170 = AIE.lock(%165, 0)
     %171 = AIE.buffer(%165) {sym_name = "buf6"} : memref<64xi32, 2>
     %172 = AIE.mem(%165)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%170, Acquire, 0)
-      AIE.dmaBd(<%171 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%170, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%170, Acquire, 0)
+      AIE.dma_bd(<%171 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%170, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%168, Acquire, 0)
-      AIE.dmaBd(<%169 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%168, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%168, Acquire, 0)
+      AIE.dma_bd(<%169 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%168, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%166, Acquire, 1)
-      AIE.dmaBd(<%167 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%166, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%166, Acquire, 1)
+      AIE.dma_bd(<%167 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%166, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -828,18 +828,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%170, Acquire, 1)
-      AIE.useLock(%168, Acquire, 1)
-      AIE.useLock(%166, Acquire, 0)
+      AIE.use_lock(%170, Acquire, 1)
+      AIE.use_lock(%168, Acquire, 1)
+      AIE.use_lock(%166, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %171[%arg0] : memref<64xi32, 2>
         %201 = affine.load %169[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %167[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%166, Release, 1)
-      AIE.useLock(%168, Release, 0)
-      AIE.useLock(%170, Release, 0)
+      AIE.use_lock(%166, Release, 1)
+      AIE.use_lock(%168, Release, 0)
+      AIE.use_lock(%170, Release, 0)
       cf.br ^bb1
     }
     %174 = AIE.tile(3, 2)
@@ -854,26 +854,26 @@ module @vecmul_4x4  {
     %183 = AIE.lock(%178, 0)
     %184 = AIE.buffer(%178) {sym_name = "buf3"} : memref<64xi32, 2>
     %185 = AIE.mem(%178)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%183, Acquire, 0)
-      AIE.dmaBd(<%184 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%183, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%183, Acquire, 0)
+      AIE.dma_bd(<%184 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%183, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%181, Acquire, 0)
-      AIE.dmaBd(<%182 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%181, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%181, Acquire, 0)
+      AIE.dma_bd(<%182 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%181, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%179, Acquire, 1)
-      AIE.dmaBd(<%180 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%179, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%179, Acquire, 1)
+      AIE.dma_bd(<%180 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%179, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -882,18 +882,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%183, Acquire, 1)
-      AIE.useLock(%181, Acquire, 1)
-      AIE.useLock(%179, Acquire, 0)
+      AIE.use_lock(%183, Acquire, 1)
+      AIE.use_lock(%181, Acquire, 1)
+      AIE.use_lock(%179, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %184[%arg0] : memref<64xi32, 2>
         %201 = affine.load %182[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %180[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%179, Release, 1)
-      AIE.useLock(%181, Release, 0)
-      AIE.useLock(%183, Release, 0)
+      AIE.use_lock(%179, Release, 1)
+      AIE.use_lock(%181, Release, 0)
+      AIE.use_lock(%183, Release, 0)
       cf.br ^bb1
     }
     %187 = AIE.tile(2, 2)
@@ -908,26 +908,26 @@ module @vecmul_4x4  {
     %196 = AIE.lock(%191, 0)
     %197 = AIE.buffer(%191) {sym_name = "buf0"} : memref<64xi32, 2>
     %198 = AIE.mem(%191)  {
-      %200 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+      %200 = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      AIE.useLock(%196, Acquire, 0)
-      AIE.dmaBd(<%197 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%196, Release, 1)
-      AIE.nextBd ^bb1
+      AIE.use_lock(%196, Acquire, 0)
+      AIE.dma_bd(<%197 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%196, Release, 1)
+      AIE.next_bd ^bb1
     ^bb2:  // pred: ^bb4
-      %201 = AIE.dmaStart(S2MM, 1, ^bb3, ^bb6)
+      %201 = AIE.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
-      AIE.useLock(%194, Acquire, 0)
-      AIE.dmaBd(<%195 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%194, Release, 1)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%194, Acquire, 0)
+      AIE.dma_bd(<%195 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%194, Release, 1)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb0
-      %202 = AIE.dmaStart(MM2S, 0, ^bb5, ^bb2)
+      %202 = AIE.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
-      AIE.useLock(%192, Acquire, 1)
-      AIE.dmaBd(<%193 : memref<64xi32, 2>, 0, 64>, 0)
-      AIE.useLock(%192, Release, 0)
-      AIE.nextBd ^bb5
+      AIE.use_lock(%192, Acquire, 1)
+      AIE.dma_bd(<%193 : memref<64xi32, 2>, 0, 64>, 0)
+      AIE.use_lock(%192, Release, 0)
+      AIE.next_bd ^bb5
     ^bb6:  // pred: ^bb2
       AIE.end
     }
@@ -936,18 +936,18 @@ module @vecmul_4x4  {
     ^bb1:  // 2 preds: ^bb0, ^bb2
       cf.br ^bb2
     ^bb2:  // pred: ^bb1
-      AIE.useLock(%196, Acquire, 1)
-      AIE.useLock(%194, Acquire, 1)
-      AIE.useLock(%192, Acquire, 0)
+      AIE.use_lock(%196, Acquire, 1)
+      AIE.use_lock(%194, Acquire, 1)
+      AIE.use_lock(%192, Acquire, 0)
       affine.for %arg0 = 0 to 64 {
         %200 = affine.load %197[%arg0] : memref<64xi32, 2>
         %201 = affine.load %195[%arg0] : memref<64xi32, 2>
         %202 = arith.muli %200, %201 : i32
         affine.store %202, %193[%arg0] : memref<64xi32, 2>
       }
-      AIE.useLock(%192, Release, 1)
-      AIE.useLock(%194, Release, 0)
-      AIE.useLock(%196, Release, 0)
+      AIE.use_lock(%192, Release, 1)
+      AIE.use_lock(%194, Release, 0)
+      AIE.use_lock(%196, Release, 0)
       cf.br ^bb1
     }
     AIE.flow(%189, DMA : 0, %191, DMA : 0)

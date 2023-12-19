@@ -26,8 +26,8 @@ module @local_locks {
   %3 = AIE.tile(3, 3)
   %11 = AIE.core(%3)  {
     %c56 = arith.constant 56 : index
-    AIE.useLock(%c56, Acquire, 0)
-    AIE.useLock(%c56, Release, 1)
+    AIE.use_lock(%c56, Acquire, 0)
+    AIE.use_lock(%c56, Release, 1)
     AIE.end
   }
  }

@@ -442,7 +442,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock02_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock02_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_0_buf_in_shim_2: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -540,7 +540,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_0_buf_row_4_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_0_buf_out_shim_2:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock22_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock22_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -797,7 +797,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock06_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock06_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_1_buf_in_shim_2: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -895,7 +895,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_1_buf_row_8_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_1_buf_out_shim_2:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock26_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock26_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -1152,7 +1152,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock32_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock32_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_2_buf_in_shim_3: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -1250,7 +1250,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_2_buf_row_4_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_2_buf_out_shim_3:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock52_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock52_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -1507,7 +1507,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock36_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock36_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_3_buf_in_shim_3: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -1605,7 +1605,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_3_buf_row_8_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_3_buf_out_shim_3:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock56_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock56_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -1862,7 +1862,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock62_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock62_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_4_buf_in_shim_6: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -1960,7 +1960,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_4_buf_row_4_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_4_buf_out_shim_6:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock82_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock82_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -2217,7 +2217,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock66_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock66_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_5_buf_in_shim_6: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -2315,7 +2315,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_5_buf_row_8_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_5_buf_out_shim_6:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock86_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock86_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -2572,7 +2572,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock92_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock92_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_6_buf_in_shim_7: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -2670,7 +2670,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_6_buf_row_4_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_6_buf_out_shim_7:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock112_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock112_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 
@@ -2927,7 +2927,7 @@ module @hdiff_bundle_8 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock96_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock96_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_7_buf_in_shim_7: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[1] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -3025,7 +3025,7 @@ module @hdiff_bundle_8 {
       AIE.objectfifo.release<Consume>(%block_7_buf_row_8_out_flx2:!AIE.objectfifo<memref<256xi32>>, 1)
       AIE.objectfifo.release<Produce>(%block_7_buf_out_shim_7:!AIE.objectfifo<memref<256xi32>>, 4)
     }
-    AIE.useLock(%lock116_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock116_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 

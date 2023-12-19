@@ -18,15 +18,15 @@ module @test18_simple_shim_dma_routed {
   %buffer = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
   %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
 
-  %dma = AIE.shimDMA(%t70) {
+  %dma = AIE.shim_dma(%t70) {
 
-      AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+      AIE.dma_start(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer : memref<512 x i32>, 0, 512>, 0)
-      AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer : memref<512 x i32>, 0, 512>, 0)
+      AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }
@@ -40,17 +40,17 @@ module @test18_simple_shim_dma_routed {
   %l72_1 = AIE.lock(%t72, 1)
 
   %m72 = AIE.mem(%t72) {
-      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+      %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l72_0, "Acquire", 0)
-      AIE.dmaBd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l72_0, "Release", 1)
-      AIE.nextBd ^bd1
+      AIE.use_lock(%l72_0, "Acquire", 0)
+      AIE.dma_bd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l72_0, "Release", 1)
+      AIE.next_bd ^bd1
     ^bd1:
-      AIE.useLock(%l72_1, "Acquire", 0)
-      AIE.dmaBd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l72_1, "Release", 1)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%l72_1, "Acquire", 0)
+      AIE.dma_bd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l72_1, "Release", 1)
+      AIE.next_bd ^bd0
     ^end:
       AIE.end
   }

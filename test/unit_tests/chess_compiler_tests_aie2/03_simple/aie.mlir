@@ -29,7 +29,7 @@ module @test04_shared_memory {
     %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "output_lock" } // output buffer lock
 
     %core13 = AIE.core(%tile13) {
-      AIE.useLock(%lock13_3, AcquireGreaterEqual, 1)
+      AIE.use_lock(%lock13_3, AcquireGreaterEqual, 1)
       %idx1 = arith.constant 3 : index
       %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
       %2    = arith.addi %val1, %val1 : i32
@@ -38,7 +38,7 @@ module @test04_shared_memory {
       %5 = arith.addi %4, %val1 : i32
       %idx2 = arith.constant 5 : index
       memref.store %5, %buf13_1[%idx2] : memref<256xi32>
-      AIE.useLock(%lock13_5, Release, 1)
+      AIE.use_lock(%lock13_5, Release, 1)
       AIE.end
     }
   }

@@ -25,7 +25,7 @@ module {
     }
 
     %30 = AIE.tile(3, 0) // Shim-NOC
-    AIE.shimmux(%30) {
+    AIE.shim_mux(%30) {
       AIE.connect<DMA: 0, North: 3>
       AIE.connect<DMA: 1, North: 7>
       AIE.connect<North: 0, PLIO: 0>
@@ -49,7 +49,7 @@ module {
     }
 
     %60 = AIE.tile(6, 0) // Shim-NOC
-    AIE.shimmux(%60) {
+    AIE.shim_mux(%60) {
       AIE.connect<PLIO: 0, North: 0>
       AIE.connect<PLIO: 1, North: 1>
       AIE.connect<PLIO: 2, North: 2>
@@ -65,7 +65,7 @@ module {
       AIE.connect<North: 4, PLIO: 4>
       AIE.connect<North: 5, PLIO: 5>
     }
-    AIE.shimmux(%60) {
+    AIE.shim_mux(%60) {
       AIE.connect<NOC: 0, North: 7>
       AIE.connect<NOC: 1, North: 6>
       AIE.connect<NOC: 2, North: 3>

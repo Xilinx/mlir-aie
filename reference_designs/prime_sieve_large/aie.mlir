@@ -1237,7 +1237,7 @@ module @test16_prime_sieve_large {
       memref.store %sum_iter, %buf0_1[%arg0] : memref<3072xi32>
       scf.yield %sum_next : i32
     }
-    AIE.useLock(%lock0_1, "Release", 1)
+    AIE.use_lock(%lock0_1, "Release", 1)
     AIE.end
   }
   func.func @do_sieve(%bufin: memref<3072xi32>, %bufout:memref<3072xi32>) -> () {
@@ -1300,3593 +1300,3593 @@ module @test16_prime_sieve_large {
   }
   
   %core0_2 = AIE.core(%tile0_2) {
-    AIE.useLock(%lock0_1, "Acquire", 1)
-    AIE.useLock(%lock0_2, "Acquire", 0)
+    AIE.use_lock(%lock0_1, "Acquire", 1)
+    AIE.use_lock(%lock0_2, "Acquire", 0)
     func.call @do_sieve(%buf0_1, %buf0_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_1, "Release", 0)
-    AIE.useLock(%lock0_2, "Release", 1)
+    AIE.use_lock(%lock0_1, "Release", 0)
+    AIE.use_lock(%lock0_2, "Release", 1)
     AIE.end
   }
 
   %core0_3 = AIE.core(%tile0_3) {
-    AIE.useLock(%lock0_2, "Acquire", 1)
-    AIE.useLock(%lock0_3, "Acquire", 0)
+    AIE.use_lock(%lock0_2, "Acquire", 1)
+    AIE.use_lock(%lock0_3, "Acquire", 0)
     func.call @do_sieve(%buf0_2, %buf0_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_2, "Release", 0)
-    AIE.useLock(%lock0_3, "Release", 1)
+    AIE.use_lock(%lock0_2, "Release", 0)
+    AIE.use_lock(%lock0_3, "Release", 1)
     AIE.end
   }
 
   %core0_4 = AIE.core(%tile0_4) {
-    AIE.useLock(%lock0_3, "Acquire", 1)
-    AIE.useLock(%lock0_4, "Acquire", 0)
+    AIE.use_lock(%lock0_3, "Acquire", 1)
+    AIE.use_lock(%lock0_4, "Acquire", 0)
     func.call @do_sieve(%buf0_3, %buf0_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_3, "Release", 0)
-    AIE.useLock(%lock0_4, "Release", 1)
+    AIE.use_lock(%lock0_3, "Release", 0)
+    AIE.use_lock(%lock0_4, "Release", 1)
     AIE.end
   }
 
   %core0_5 = AIE.core(%tile0_5) {
-    AIE.useLock(%lock0_4, "Acquire", 1)
-    AIE.useLock(%lock0_5, "Acquire", 0)
+    AIE.use_lock(%lock0_4, "Acquire", 1)
+    AIE.use_lock(%lock0_5, "Acquire", 0)
     func.call @do_sieve(%buf0_4, %buf0_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_4, "Release", 0)
-    AIE.useLock(%lock0_5, "Release", 1)
+    AIE.use_lock(%lock0_4, "Release", 0)
+    AIE.use_lock(%lock0_5, "Release", 1)
     AIE.end
   }
 
   %core0_6 = AIE.core(%tile0_6) {
-    AIE.useLock(%lock0_5, "Acquire", 1)
-    AIE.useLock(%lock0_6, "Acquire", 0)
+    AIE.use_lock(%lock0_5, "Acquire", 1)
+    AIE.use_lock(%lock0_6, "Acquire", 0)
     func.call @do_sieve(%buf0_5, %buf0_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_5, "Release", 0)
-    AIE.useLock(%lock0_6, "Release", 1)
+    AIE.use_lock(%lock0_5, "Release", 0)
+    AIE.use_lock(%lock0_6, "Release", 1)
     AIE.end
   }
 
   %core0_7 = AIE.core(%tile0_7) {
-    AIE.useLock(%lock0_6, "Acquire", 1)
-    AIE.useLock(%lock0_7, "Acquire", 0)
+    AIE.use_lock(%lock0_6, "Acquire", 1)
+    AIE.use_lock(%lock0_7, "Acquire", 0)
     func.call @do_sieve(%buf0_6, %buf0_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_6, "Release", 0)
-    AIE.useLock(%lock0_7, "Release", 1)
+    AIE.use_lock(%lock0_6, "Release", 0)
+    AIE.use_lock(%lock0_7, "Release", 1)
     AIE.end
   }
 
   %core0_8 = AIE.core(%tile0_8) {
-    AIE.useLock(%lock0_7, "Acquire", 1)
-    AIE.useLock(%lock0_8, "Acquire", 0)
+    AIE.use_lock(%lock0_7, "Acquire", 1)
+    AIE.use_lock(%lock0_8, "Acquire", 0)
     func.call @do_sieve(%buf0_7, %buf0_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_7, "Release", 0)
-    AIE.useLock(%lock0_8, "Release", 1)
+    AIE.use_lock(%lock0_7, "Release", 0)
+    AIE.use_lock(%lock0_8, "Release", 1)
     AIE.end
   }
 
   %core1_8 = AIE.core(%tile1_8) {
-    AIE.useLock(%lock0_8, "Acquire", 1)
-    AIE.useLock(%lock1_8, "Acquire", 0)
+    AIE.use_lock(%lock0_8, "Acquire", 1)
+    AIE.use_lock(%lock1_8, "Acquire", 0)
     func.call @do_sieve(%buf0_8, %buf1_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock0_8, "Release", 0)
-    AIE.useLock(%lock1_8, "Release", 1)
+    AIE.use_lock(%lock0_8, "Release", 0)
+    AIE.use_lock(%lock1_8, "Release", 1)
     AIE.end
   }
 
   %core1_7 = AIE.core(%tile1_7) {
-    AIE.useLock(%lock1_8, "Acquire", 1)
-    AIE.useLock(%lock1_7, "Acquire", 0)
+    AIE.use_lock(%lock1_8, "Acquire", 1)
+    AIE.use_lock(%lock1_7, "Acquire", 0)
     func.call @do_sieve(%buf1_8, %buf1_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_8, "Release", 0)
-    AIE.useLock(%lock1_7, "Release", 1)
+    AIE.use_lock(%lock1_8, "Release", 0)
+    AIE.use_lock(%lock1_7, "Release", 1)
     AIE.end
   }
 
   %core1_6 = AIE.core(%tile1_6) {
-    AIE.useLock(%lock1_7, "Acquire", 1)
-    AIE.useLock(%lock1_6, "Acquire", 0)
+    AIE.use_lock(%lock1_7, "Acquire", 1)
+    AIE.use_lock(%lock1_6, "Acquire", 0)
     func.call @do_sieve(%buf1_7, %buf1_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_7, "Release", 0)
-    AIE.useLock(%lock1_6, "Release", 1)
+    AIE.use_lock(%lock1_7, "Release", 0)
+    AIE.use_lock(%lock1_6, "Release", 1)
     AIE.end
   }
 
   %core1_5 = AIE.core(%tile1_5) {
-    AIE.useLock(%lock1_6, "Acquire", 1)
-    AIE.useLock(%lock1_5, "Acquire", 0)
+    AIE.use_lock(%lock1_6, "Acquire", 1)
+    AIE.use_lock(%lock1_5, "Acquire", 0)
     func.call @do_sieve(%buf1_6, %buf1_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_6, "Release", 0)
-    AIE.useLock(%lock1_5, "Release", 1)
+    AIE.use_lock(%lock1_6, "Release", 0)
+    AIE.use_lock(%lock1_5, "Release", 1)
     AIE.end
   }
 
   %core1_4 = AIE.core(%tile1_4) {
-    AIE.useLock(%lock1_5, "Acquire", 1)
-    AIE.useLock(%lock1_4, "Acquire", 0)
+    AIE.use_lock(%lock1_5, "Acquire", 1)
+    AIE.use_lock(%lock1_4, "Acquire", 0)
     func.call @do_sieve(%buf1_5, %buf1_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_5, "Release", 0)
-    AIE.useLock(%lock1_4, "Release", 1)
+    AIE.use_lock(%lock1_5, "Release", 0)
+    AIE.use_lock(%lock1_4, "Release", 1)
     AIE.end
   }
 
   %core1_3 = AIE.core(%tile1_3) {
-    AIE.useLock(%lock1_4, "Acquire", 1)
-    AIE.useLock(%lock1_3, "Acquire", 0)
+    AIE.use_lock(%lock1_4, "Acquire", 1)
+    AIE.use_lock(%lock1_3, "Acquire", 0)
     func.call @do_sieve(%buf1_4, %buf1_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_4, "Release", 0)
-    AIE.useLock(%lock1_3, "Release", 1)
+    AIE.use_lock(%lock1_4, "Release", 0)
+    AIE.use_lock(%lock1_3, "Release", 1)
     AIE.end
   }
 
   %core1_2 = AIE.core(%tile1_2) {
-    AIE.useLock(%lock1_3, "Acquire", 1)
-    AIE.useLock(%lock1_2, "Acquire", 0)
+    AIE.use_lock(%lock1_3, "Acquire", 1)
+    AIE.use_lock(%lock1_2, "Acquire", 0)
     func.call @do_sieve(%buf1_3, %buf1_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_3, "Release", 0)
-    AIE.useLock(%lock1_2, "Release", 1)
+    AIE.use_lock(%lock1_3, "Release", 0)
+    AIE.use_lock(%lock1_2, "Release", 1)
     AIE.end
   }
 
   %core1_1 = AIE.core(%tile1_1) {
-    AIE.useLock(%lock1_2, "Acquire", 1)
-    AIE.useLock(%lock1_1, "Acquire", 0)
+    AIE.use_lock(%lock1_2, "Acquire", 1)
+    AIE.use_lock(%lock1_1, "Acquire", 0)
     func.call @do_sieve(%buf1_2, %buf1_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_2, "Release", 0)
-    AIE.useLock(%lock1_1, "Release", 1)
+    AIE.use_lock(%lock1_2, "Release", 0)
+    AIE.use_lock(%lock1_1, "Release", 1)
     AIE.end
   }
 
   %core2_1 = AIE.core(%tile2_1) {
-    AIE.useLock(%lock1_1, "Acquire", 1)
-    AIE.useLock(%lock2_1, "Acquire", 0)
+    AIE.use_lock(%lock1_1, "Acquire", 1)
+    AIE.use_lock(%lock2_1, "Acquire", 0)
     func.call @do_sieve(%buf1_1, %buf2_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock1_1, "Release", 0)
-    AIE.useLock(%lock2_1, "Release", 1)
+    AIE.use_lock(%lock1_1, "Release", 0)
+    AIE.use_lock(%lock2_1, "Release", 1)
     AIE.end
   }
 
   %core2_2 = AIE.core(%tile2_2) {
-    AIE.useLock(%lock2_1, "Acquire", 1)
-    AIE.useLock(%lock2_2, "Acquire", 0)
+    AIE.use_lock(%lock2_1, "Acquire", 1)
+    AIE.use_lock(%lock2_2, "Acquire", 0)
     func.call @do_sieve(%buf2_1, %buf2_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_1, "Release", 0)
-    AIE.useLock(%lock2_2, "Release", 1)
+    AIE.use_lock(%lock2_1, "Release", 0)
+    AIE.use_lock(%lock2_2, "Release", 1)
     AIE.end
   }
 
   %core2_3 = AIE.core(%tile2_3) {
-    AIE.useLock(%lock2_2, "Acquire", 1)
-    AIE.useLock(%lock2_3, "Acquire", 0)
+    AIE.use_lock(%lock2_2, "Acquire", 1)
+    AIE.use_lock(%lock2_3, "Acquire", 0)
     func.call @do_sieve(%buf2_2, %buf2_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_2, "Release", 0)
-    AIE.useLock(%lock2_3, "Release", 1)
+    AIE.use_lock(%lock2_2, "Release", 0)
+    AIE.use_lock(%lock2_3, "Release", 1)
     AIE.end
   }
 
   %core2_4 = AIE.core(%tile2_4) {
-    AIE.useLock(%lock2_3, "Acquire", 1)
-    AIE.useLock(%lock2_4, "Acquire", 0)
+    AIE.use_lock(%lock2_3, "Acquire", 1)
+    AIE.use_lock(%lock2_4, "Acquire", 0)
     func.call @do_sieve(%buf2_3, %buf2_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_3, "Release", 0)
-    AIE.useLock(%lock2_4, "Release", 1)
+    AIE.use_lock(%lock2_3, "Release", 0)
+    AIE.use_lock(%lock2_4, "Release", 1)
     AIE.end
   }
 
   %core2_5 = AIE.core(%tile2_5) {
-    AIE.useLock(%lock2_4, "Acquire", 1)
-    AIE.useLock(%lock2_5, "Acquire", 0)
+    AIE.use_lock(%lock2_4, "Acquire", 1)
+    AIE.use_lock(%lock2_5, "Acquire", 0)
     func.call @do_sieve(%buf2_4, %buf2_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_4, "Release", 0)
-    AIE.useLock(%lock2_5, "Release", 1)
+    AIE.use_lock(%lock2_4, "Release", 0)
+    AIE.use_lock(%lock2_5, "Release", 1)
     AIE.end
   }
 
   %core2_6 = AIE.core(%tile2_6) {
-    AIE.useLock(%lock2_5, "Acquire", 1)
-    AIE.useLock(%lock2_6, "Acquire", 0)
+    AIE.use_lock(%lock2_5, "Acquire", 1)
+    AIE.use_lock(%lock2_6, "Acquire", 0)
     func.call @do_sieve(%buf2_5, %buf2_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_5, "Release", 0)
-    AIE.useLock(%lock2_6, "Release", 1)
+    AIE.use_lock(%lock2_5, "Release", 0)
+    AIE.use_lock(%lock2_6, "Release", 1)
     AIE.end
   }
 
   %core2_7 = AIE.core(%tile2_7) {
-    AIE.useLock(%lock2_6, "Acquire", 1)
-    AIE.useLock(%lock2_7, "Acquire", 0)
+    AIE.use_lock(%lock2_6, "Acquire", 1)
+    AIE.use_lock(%lock2_7, "Acquire", 0)
     func.call @do_sieve(%buf2_6, %buf2_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_6, "Release", 0)
-    AIE.useLock(%lock2_7, "Release", 1)
+    AIE.use_lock(%lock2_6, "Release", 0)
+    AIE.use_lock(%lock2_7, "Release", 1)
     AIE.end
   }
 
   %core2_8 = AIE.core(%tile2_8) {
-    AIE.useLock(%lock2_7, "Acquire", 1)
-    AIE.useLock(%lock2_8, "Acquire", 0)
+    AIE.use_lock(%lock2_7, "Acquire", 1)
+    AIE.use_lock(%lock2_8, "Acquire", 0)
     func.call @do_sieve(%buf2_7, %buf2_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_7, "Release", 0)
-    AIE.useLock(%lock2_8, "Release", 1)
+    AIE.use_lock(%lock2_7, "Release", 0)
+    AIE.use_lock(%lock2_8, "Release", 1)
     AIE.end
   }
 
   %core3_8 = AIE.core(%tile3_8) {
-    AIE.useLock(%lock2_8, "Acquire", 1)
-    AIE.useLock(%lock3_8, "Acquire", 0)
+    AIE.use_lock(%lock2_8, "Acquire", 1)
+    AIE.use_lock(%lock3_8, "Acquire", 0)
     func.call @do_sieve(%buf2_8, %buf3_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock2_8, "Release", 0)
-    AIE.useLock(%lock3_8, "Release", 1)
+    AIE.use_lock(%lock2_8, "Release", 0)
+    AIE.use_lock(%lock3_8, "Release", 1)
     AIE.end
   }
 
   %core3_7 = AIE.core(%tile3_7) {
-    AIE.useLock(%lock3_8, "Acquire", 1)
-    AIE.useLock(%lock3_7, "Acquire", 0)
+    AIE.use_lock(%lock3_8, "Acquire", 1)
+    AIE.use_lock(%lock3_7, "Acquire", 0)
     func.call @do_sieve(%buf3_8, %buf3_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_8, "Release", 0)
-    AIE.useLock(%lock3_7, "Release", 1)
+    AIE.use_lock(%lock3_8, "Release", 0)
+    AIE.use_lock(%lock3_7, "Release", 1)
     AIE.end
   }
 
   %core3_6 = AIE.core(%tile3_6) {
-    AIE.useLock(%lock3_7, "Acquire", 1)
-    AIE.useLock(%lock3_6, "Acquire", 0)
+    AIE.use_lock(%lock3_7, "Acquire", 1)
+    AIE.use_lock(%lock3_6, "Acquire", 0)
     func.call @do_sieve(%buf3_7, %buf3_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_7, "Release", 0)
-    AIE.useLock(%lock3_6, "Release", 1)
+    AIE.use_lock(%lock3_7, "Release", 0)
+    AIE.use_lock(%lock3_6, "Release", 1)
     AIE.end
   }
 
   %core3_5 = AIE.core(%tile3_5) {
-    AIE.useLock(%lock3_6, "Acquire", 1)
-    AIE.useLock(%lock3_5, "Acquire", 0)
+    AIE.use_lock(%lock3_6, "Acquire", 1)
+    AIE.use_lock(%lock3_5, "Acquire", 0)
     func.call @do_sieve(%buf3_6, %buf3_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_6, "Release", 0)
-    AIE.useLock(%lock3_5, "Release", 1)
+    AIE.use_lock(%lock3_6, "Release", 0)
+    AIE.use_lock(%lock3_5, "Release", 1)
     AIE.end
   }
 
   %core3_4 = AIE.core(%tile3_4) {
-    AIE.useLock(%lock3_5, "Acquire", 1)
-    AIE.useLock(%lock3_4, "Acquire", 0)
+    AIE.use_lock(%lock3_5, "Acquire", 1)
+    AIE.use_lock(%lock3_4, "Acquire", 0)
     func.call @do_sieve(%buf3_5, %buf3_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_5, "Release", 0)
-    AIE.useLock(%lock3_4, "Release", 1)
+    AIE.use_lock(%lock3_5, "Release", 0)
+    AIE.use_lock(%lock3_4, "Release", 1)
     AIE.end
   }
 
   %core3_3 = AIE.core(%tile3_3) {
-    AIE.useLock(%lock3_4, "Acquire", 1)
-    AIE.useLock(%lock3_3, "Acquire", 0)
+    AIE.use_lock(%lock3_4, "Acquire", 1)
+    AIE.use_lock(%lock3_3, "Acquire", 0)
     func.call @do_sieve(%buf3_4, %buf3_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_4, "Release", 0)
-    AIE.useLock(%lock3_3, "Release", 1)
+    AIE.use_lock(%lock3_4, "Release", 0)
+    AIE.use_lock(%lock3_3, "Release", 1)
     AIE.end
   }
 
   %core3_2 = AIE.core(%tile3_2) {
-    AIE.useLock(%lock3_3, "Acquire", 1)
-    AIE.useLock(%lock3_2, "Acquire", 0)
+    AIE.use_lock(%lock3_3, "Acquire", 1)
+    AIE.use_lock(%lock3_2, "Acquire", 0)
     func.call @do_sieve(%buf3_3, %buf3_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_3, "Release", 0)
-    AIE.useLock(%lock3_2, "Release", 1)
+    AIE.use_lock(%lock3_3, "Release", 0)
+    AIE.use_lock(%lock3_2, "Release", 1)
     AIE.end
   }
 
   %core3_1 = AIE.core(%tile3_1) {
-    AIE.useLock(%lock3_2, "Acquire", 1)
-    AIE.useLock(%lock3_1, "Acquire", 0)
+    AIE.use_lock(%lock3_2, "Acquire", 1)
+    AIE.use_lock(%lock3_1, "Acquire", 0)
     func.call @do_sieve(%buf3_2, %buf3_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_2, "Release", 0)
-    AIE.useLock(%lock3_1, "Release", 1)
+    AIE.use_lock(%lock3_2, "Release", 0)
+    AIE.use_lock(%lock3_1, "Release", 1)
     AIE.end
   }
 
   %core4_1 = AIE.core(%tile4_1) {
-    AIE.useLock(%lock3_1, "Acquire", 1)
-    AIE.useLock(%lock4_1, "Acquire", 0)
+    AIE.use_lock(%lock3_1, "Acquire", 1)
+    AIE.use_lock(%lock4_1, "Acquire", 0)
     func.call @do_sieve(%buf3_1, %buf4_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock3_1, "Release", 0)
-    AIE.useLock(%lock4_1, "Release", 1)
+    AIE.use_lock(%lock3_1, "Release", 0)
+    AIE.use_lock(%lock4_1, "Release", 1)
     AIE.end
   }
 
   %core4_2 = AIE.core(%tile4_2) {
-    AIE.useLock(%lock4_1, "Acquire", 1)
-    AIE.useLock(%lock4_2, "Acquire", 0)
+    AIE.use_lock(%lock4_1, "Acquire", 1)
+    AIE.use_lock(%lock4_2, "Acquire", 0)
     func.call @do_sieve(%buf4_1, %buf4_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_1, "Release", 0)
-    AIE.useLock(%lock4_2, "Release", 1)
+    AIE.use_lock(%lock4_1, "Release", 0)
+    AIE.use_lock(%lock4_2, "Release", 1)
     AIE.end
   }
 
   %core4_3 = AIE.core(%tile4_3) {
-    AIE.useLock(%lock4_2, "Acquire", 1)
-    AIE.useLock(%lock4_3, "Acquire", 0)
+    AIE.use_lock(%lock4_2, "Acquire", 1)
+    AIE.use_lock(%lock4_3, "Acquire", 0)
     func.call @do_sieve(%buf4_2, %buf4_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_2, "Release", 0)
-    AIE.useLock(%lock4_3, "Release", 1)
+    AIE.use_lock(%lock4_2, "Release", 0)
+    AIE.use_lock(%lock4_3, "Release", 1)
     AIE.end
   }
 
   %core4_4 = AIE.core(%tile4_4) {
-    AIE.useLock(%lock4_3, "Acquire", 1)
-    AIE.useLock(%lock4_4, "Acquire", 0)
+    AIE.use_lock(%lock4_3, "Acquire", 1)
+    AIE.use_lock(%lock4_4, "Acquire", 0)
     func.call @do_sieve(%buf4_3, %buf4_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_3, "Release", 0)
-    AIE.useLock(%lock4_4, "Release", 1)
+    AIE.use_lock(%lock4_3, "Release", 0)
+    AIE.use_lock(%lock4_4, "Release", 1)
     AIE.end
   }
 
   %core4_5 = AIE.core(%tile4_5) {
-    AIE.useLock(%lock4_4, "Acquire", 1)
-    AIE.useLock(%lock4_5, "Acquire", 0)
+    AIE.use_lock(%lock4_4, "Acquire", 1)
+    AIE.use_lock(%lock4_5, "Acquire", 0)
     func.call @do_sieve(%buf4_4, %buf4_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_4, "Release", 0)
-    AIE.useLock(%lock4_5, "Release", 1)
+    AIE.use_lock(%lock4_4, "Release", 0)
+    AIE.use_lock(%lock4_5, "Release", 1)
     AIE.end
   }
 
   %core4_6 = AIE.core(%tile4_6) {
-    AIE.useLock(%lock4_5, "Acquire", 1)
-    AIE.useLock(%lock4_6, "Acquire", 0)
+    AIE.use_lock(%lock4_5, "Acquire", 1)
+    AIE.use_lock(%lock4_6, "Acquire", 0)
     func.call @do_sieve(%buf4_5, %buf4_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_5, "Release", 0)
-    AIE.useLock(%lock4_6, "Release", 1)
+    AIE.use_lock(%lock4_5, "Release", 0)
+    AIE.use_lock(%lock4_6, "Release", 1)
     AIE.end
   }
 
   %core4_7 = AIE.core(%tile4_7) {
-    AIE.useLock(%lock4_6, "Acquire", 1)
-    AIE.useLock(%lock4_7, "Acquire", 0)
+    AIE.use_lock(%lock4_6, "Acquire", 1)
+    AIE.use_lock(%lock4_7, "Acquire", 0)
     func.call @do_sieve(%buf4_6, %buf4_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_6, "Release", 0)
-    AIE.useLock(%lock4_7, "Release", 1)
+    AIE.use_lock(%lock4_6, "Release", 0)
+    AIE.use_lock(%lock4_7, "Release", 1)
     AIE.end
   }
 
   %core4_8 = AIE.core(%tile4_8) {
-    AIE.useLock(%lock4_7, "Acquire", 1)
-    AIE.useLock(%lock4_8, "Acquire", 0)
+    AIE.use_lock(%lock4_7, "Acquire", 1)
+    AIE.use_lock(%lock4_8, "Acquire", 0)
     func.call @do_sieve(%buf4_7, %buf4_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_7, "Release", 0)
-    AIE.useLock(%lock4_8, "Release", 1)
+    AIE.use_lock(%lock4_7, "Release", 0)
+    AIE.use_lock(%lock4_8, "Release", 1)
     AIE.end
   }
 
   %core5_8 = AIE.core(%tile5_8) {
-    AIE.useLock(%lock4_8, "Acquire", 1)
-    AIE.useLock(%lock5_8, "Acquire", 0)
+    AIE.use_lock(%lock4_8, "Acquire", 1)
+    AIE.use_lock(%lock5_8, "Acquire", 0)
     func.call @do_sieve(%buf4_8, %buf5_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock4_8, "Release", 0)
-    AIE.useLock(%lock5_8, "Release", 1)
+    AIE.use_lock(%lock4_8, "Release", 0)
+    AIE.use_lock(%lock5_8, "Release", 1)
     AIE.end
   }
 
   %core5_7 = AIE.core(%tile5_7) {
-    AIE.useLock(%lock5_8, "Acquire", 1)
-    AIE.useLock(%lock5_7, "Acquire", 0)
+    AIE.use_lock(%lock5_8, "Acquire", 1)
+    AIE.use_lock(%lock5_7, "Acquire", 0)
     func.call @do_sieve(%buf5_8, %buf5_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_8, "Release", 0)
-    AIE.useLock(%lock5_7, "Release", 1)
+    AIE.use_lock(%lock5_8, "Release", 0)
+    AIE.use_lock(%lock5_7, "Release", 1)
     AIE.end
   }
 
   %core5_6 = AIE.core(%tile5_6) {
-    AIE.useLock(%lock5_7, "Acquire", 1)
-    AIE.useLock(%lock5_6, "Acquire", 0)
+    AIE.use_lock(%lock5_7, "Acquire", 1)
+    AIE.use_lock(%lock5_6, "Acquire", 0)
     func.call @do_sieve(%buf5_7, %buf5_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_7, "Release", 0)
-    AIE.useLock(%lock5_6, "Release", 1)
+    AIE.use_lock(%lock5_7, "Release", 0)
+    AIE.use_lock(%lock5_6, "Release", 1)
     AIE.end
   }
 
   %core5_5 = AIE.core(%tile5_5) {
-    AIE.useLock(%lock5_6, "Acquire", 1)
-    AIE.useLock(%lock5_5, "Acquire", 0)
+    AIE.use_lock(%lock5_6, "Acquire", 1)
+    AIE.use_lock(%lock5_5, "Acquire", 0)
     func.call @do_sieve(%buf5_6, %buf5_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_6, "Release", 0)
-    AIE.useLock(%lock5_5, "Release", 1)
+    AIE.use_lock(%lock5_6, "Release", 0)
+    AIE.use_lock(%lock5_5, "Release", 1)
     AIE.end
   }
 
   %core5_4 = AIE.core(%tile5_4) {
-    AIE.useLock(%lock5_5, "Acquire", 1)
-    AIE.useLock(%lock5_4, "Acquire", 0)
+    AIE.use_lock(%lock5_5, "Acquire", 1)
+    AIE.use_lock(%lock5_4, "Acquire", 0)
     func.call @do_sieve(%buf5_5, %buf5_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_5, "Release", 0)
-    AIE.useLock(%lock5_4, "Release", 1)
+    AIE.use_lock(%lock5_5, "Release", 0)
+    AIE.use_lock(%lock5_4, "Release", 1)
     AIE.end
   }
 
   %core5_3 = AIE.core(%tile5_3) {
-    AIE.useLock(%lock5_4, "Acquire", 1)
-    AIE.useLock(%lock5_3, "Acquire", 0)
+    AIE.use_lock(%lock5_4, "Acquire", 1)
+    AIE.use_lock(%lock5_3, "Acquire", 0)
     func.call @do_sieve(%buf5_4, %buf5_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_4, "Release", 0)
-    AIE.useLock(%lock5_3, "Release", 1)
+    AIE.use_lock(%lock5_4, "Release", 0)
+    AIE.use_lock(%lock5_3, "Release", 1)
     AIE.end
   }
 
   %core5_2 = AIE.core(%tile5_2) {
-    AIE.useLock(%lock5_3, "Acquire", 1)
-    AIE.useLock(%lock5_2, "Acquire", 0)
+    AIE.use_lock(%lock5_3, "Acquire", 1)
+    AIE.use_lock(%lock5_2, "Acquire", 0)
     func.call @do_sieve(%buf5_3, %buf5_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_3, "Release", 0)
-    AIE.useLock(%lock5_2, "Release", 1)
+    AIE.use_lock(%lock5_3, "Release", 0)
+    AIE.use_lock(%lock5_2, "Release", 1)
     AIE.end
   }
 
   %core5_1 = AIE.core(%tile5_1) {
-    AIE.useLock(%lock5_2, "Acquire", 1)
-    AIE.useLock(%lock5_1, "Acquire", 0)
+    AIE.use_lock(%lock5_2, "Acquire", 1)
+    AIE.use_lock(%lock5_1, "Acquire", 0)
     func.call @do_sieve(%buf5_2, %buf5_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_2, "Release", 0)
-    AIE.useLock(%lock5_1, "Release", 1)
+    AIE.use_lock(%lock5_2, "Release", 0)
+    AIE.use_lock(%lock5_1, "Release", 1)
     AIE.end
   }
 
   %core6_1 = AIE.core(%tile6_1) {
-    AIE.useLock(%lock5_1, "Acquire", 1)
-    AIE.useLock(%lock6_1, "Acquire", 0)
+    AIE.use_lock(%lock5_1, "Acquire", 1)
+    AIE.use_lock(%lock6_1, "Acquire", 0)
     func.call @do_sieve(%buf5_1, %buf6_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock5_1, "Release", 0)
-    AIE.useLock(%lock6_1, "Release", 1)
+    AIE.use_lock(%lock5_1, "Release", 0)
+    AIE.use_lock(%lock6_1, "Release", 1)
     AIE.end
   }
 
   %core6_2 = AIE.core(%tile6_2) {
-    AIE.useLock(%lock6_1, "Acquire", 1)
-    AIE.useLock(%lock6_2, "Acquire", 0)
+    AIE.use_lock(%lock6_1, "Acquire", 1)
+    AIE.use_lock(%lock6_2, "Acquire", 0)
     func.call @do_sieve(%buf6_1, %buf6_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_1, "Release", 0)
-    AIE.useLock(%lock6_2, "Release", 1)
+    AIE.use_lock(%lock6_1, "Release", 0)
+    AIE.use_lock(%lock6_2, "Release", 1)
     AIE.end
   }
 
   %core6_3 = AIE.core(%tile6_3) {
-    AIE.useLock(%lock6_2, "Acquire", 1)
-    AIE.useLock(%lock6_3, "Acquire", 0)
+    AIE.use_lock(%lock6_2, "Acquire", 1)
+    AIE.use_lock(%lock6_3, "Acquire", 0)
     func.call @do_sieve(%buf6_2, %buf6_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_2, "Release", 0)
-    AIE.useLock(%lock6_3, "Release", 1)
+    AIE.use_lock(%lock6_2, "Release", 0)
+    AIE.use_lock(%lock6_3, "Release", 1)
     AIE.end
   }
 
   %core6_4 = AIE.core(%tile6_4) {
-    AIE.useLock(%lock6_3, "Acquire", 1)
-    AIE.useLock(%lock6_4, "Acquire", 0)
+    AIE.use_lock(%lock6_3, "Acquire", 1)
+    AIE.use_lock(%lock6_4, "Acquire", 0)
     func.call @do_sieve(%buf6_3, %buf6_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_3, "Release", 0)
-    AIE.useLock(%lock6_4, "Release", 1)
+    AIE.use_lock(%lock6_3, "Release", 0)
+    AIE.use_lock(%lock6_4, "Release", 1)
     AIE.end
   }
 
   %core6_5 = AIE.core(%tile6_5) {
-    AIE.useLock(%lock6_4, "Acquire", 1)
-    AIE.useLock(%lock6_5, "Acquire", 0)
+    AIE.use_lock(%lock6_4, "Acquire", 1)
+    AIE.use_lock(%lock6_5, "Acquire", 0)
     func.call @do_sieve(%buf6_4, %buf6_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_4, "Release", 0)
-    AIE.useLock(%lock6_5, "Release", 1)
+    AIE.use_lock(%lock6_4, "Release", 0)
+    AIE.use_lock(%lock6_5, "Release", 1)
     AIE.end
   }
 
   %core6_6 = AIE.core(%tile6_6) {
-    AIE.useLock(%lock6_5, "Acquire", 1)
-    AIE.useLock(%lock6_6, "Acquire", 0)
+    AIE.use_lock(%lock6_5, "Acquire", 1)
+    AIE.use_lock(%lock6_6, "Acquire", 0)
     func.call @do_sieve(%buf6_5, %buf6_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_5, "Release", 0)
-    AIE.useLock(%lock6_6, "Release", 1)
+    AIE.use_lock(%lock6_5, "Release", 0)
+    AIE.use_lock(%lock6_6, "Release", 1)
     AIE.end
   }
 
   %core6_7 = AIE.core(%tile6_7) {
-    AIE.useLock(%lock6_6, "Acquire", 1)
-    AIE.useLock(%lock6_7, "Acquire", 0)
+    AIE.use_lock(%lock6_6, "Acquire", 1)
+    AIE.use_lock(%lock6_7, "Acquire", 0)
     func.call @do_sieve(%buf6_6, %buf6_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_6, "Release", 0)
-    AIE.useLock(%lock6_7, "Release", 1)
+    AIE.use_lock(%lock6_6, "Release", 0)
+    AIE.use_lock(%lock6_7, "Release", 1)
     AIE.end
   }
 
   %core6_8 = AIE.core(%tile6_8) {
-    AIE.useLock(%lock6_7, "Acquire", 1)
-    AIE.useLock(%lock6_8, "Acquire", 0)
+    AIE.use_lock(%lock6_7, "Acquire", 1)
+    AIE.use_lock(%lock6_8, "Acquire", 0)
     func.call @do_sieve(%buf6_7, %buf6_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_7, "Release", 0)
-    AIE.useLock(%lock6_8, "Release", 1)
+    AIE.use_lock(%lock6_7, "Release", 0)
+    AIE.use_lock(%lock6_8, "Release", 1)
     AIE.end
   }
 
   %core7_8 = AIE.core(%tile7_8) {
-    AIE.useLock(%lock6_8, "Acquire", 1)
-    AIE.useLock(%lock7_8, "Acquire", 0)
+    AIE.use_lock(%lock6_8, "Acquire", 1)
+    AIE.use_lock(%lock7_8, "Acquire", 0)
     func.call @do_sieve(%buf6_8, %buf7_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock6_8, "Release", 0)
-    AIE.useLock(%lock7_8, "Release", 1)
+    AIE.use_lock(%lock6_8, "Release", 0)
+    AIE.use_lock(%lock7_8, "Release", 1)
     AIE.end
   }
 
   %core7_7 = AIE.core(%tile7_7) {
-    AIE.useLock(%lock7_8, "Acquire", 1)
-    AIE.useLock(%lock7_7, "Acquire", 0)
+    AIE.use_lock(%lock7_8, "Acquire", 1)
+    AIE.use_lock(%lock7_7, "Acquire", 0)
     func.call @do_sieve(%buf7_8, %buf7_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_8, "Release", 0)
-    AIE.useLock(%lock7_7, "Release", 1)
+    AIE.use_lock(%lock7_8, "Release", 0)
+    AIE.use_lock(%lock7_7, "Release", 1)
     AIE.end
   }
 
   %core7_6 = AIE.core(%tile7_6) {
-    AIE.useLock(%lock7_7, "Acquire", 1)
-    AIE.useLock(%lock7_6, "Acquire", 0)
+    AIE.use_lock(%lock7_7, "Acquire", 1)
+    AIE.use_lock(%lock7_6, "Acquire", 0)
     func.call @do_sieve(%buf7_7, %buf7_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_7, "Release", 0)
-    AIE.useLock(%lock7_6, "Release", 1)
+    AIE.use_lock(%lock7_7, "Release", 0)
+    AIE.use_lock(%lock7_6, "Release", 1)
     AIE.end
   }
 
   %core7_5 = AIE.core(%tile7_5) {
-    AIE.useLock(%lock7_6, "Acquire", 1)
-    AIE.useLock(%lock7_5, "Acquire", 0)
+    AIE.use_lock(%lock7_6, "Acquire", 1)
+    AIE.use_lock(%lock7_5, "Acquire", 0)
     func.call @do_sieve(%buf7_6, %buf7_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_6, "Release", 0)
-    AIE.useLock(%lock7_5, "Release", 1)
+    AIE.use_lock(%lock7_6, "Release", 0)
+    AIE.use_lock(%lock7_5, "Release", 1)
     AIE.end
   }
 
   %core7_4 = AIE.core(%tile7_4) {
-    AIE.useLock(%lock7_5, "Acquire", 1)
-    AIE.useLock(%lock7_4, "Acquire", 0)
+    AIE.use_lock(%lock7_5, "Acquire", 1)
+    AIE.use_lock(%lock7_4, "Acquire", 0)
     func.call @do_sieve(%buf7_5, %buf7_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_5, "Release", 0)
-    AIE.useLock(%lock7_4, "Release", 1)
+    AIE.use_lock(%lock7_5, "Release", 0)
+    AIE.use_lock(%lock7_4, "Release", 1)
     AIE.end
   }
 
   %core7_3 = AIE.core(%tile7_3) {
-    AIE.useLock(%lock7_4, "Acquire", 1)
-    AIE.useLock(%lock7_3, "Acquire", 0)
+    AIE.use_lock(%lock7_4, "Acquire", 1)
+    AIE.use_lock(%lock7_3, "Acquire", 0)
     func.call @do_sieve(%buf7_4, %buf7_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_4, "Release", 0)
-    AIE.useLock(%lock7_3, "Release", 1)
+    AIE.use_lock(%lock7_4, "Release", 0)
+    AIE.use_lock(%lock7_3, "Release", 1)
     AIE.end
   }
 
   %core7_2 = AIE.core(%tile7_2) {
-    AIE.useLock(%lock7_3, "Acquire", 1)
-    AIE.useLock(%lock7_2, "Acquire", 0)
+    AIE.use_lock(%lock7_3, "Acquire", 1)
+    AIE.use_lock(%lock7_2, "Acquire", 0)
     func.call @do_sieve(%buf7_3, %buf7_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_3, "Release", 0)
-    AIE.useLock(%lock7_2, "Release", 1)
+    AIE.use_lock(%lock7_3, "Release", 0)
+    AIE.use_lock(%lock7_2, "Release", 1)
     AIE.end
   }
 
   %core7_1 = AIE.core(%tile7_1) {
-    AIE.useLock(%lock7_2, "Acquire", 1)
-    AIE.useLock(%lock7_1, "Acquire", 0)
+    AIE.use_lock(%lock7_2, "Acquire", 1)
+    AIE.use_lock(%lock7_1, "Acquire", 0)
     func.call @do_sieve(%buf7_2, %buf7_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_2, "Release", 0)
-    AIE.useLock(%lock7_1, "Release", 1)
+    AIE.use_lock(%lock7_2, "Release", 0)
+    AIE.use_lock(%lock7_1, "Release", 1)
     AIE.end
   }
 
   %core8_1 = AIE.core(%tile8_1) {
-    AIE.useLock(%lock7_1, "Acquire", 1)
-    AIE.useLock(%lock8_1, "Acquire", 0)
+    AIE.use_lock(%lock7_1, "Acquire", 1)
+    AIE.use_lock(%lock8_1, "Acquire", 0)
     func.call @do_sieve(%buf7_1, %buf8_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock7_1, "Release", 0)
-    AIE.useLock(%lock8_1, "Release", 1)
+    AIE.use_lock(%lock7_1, "Release", 0)
+    AIE.use_lock(%lock8_1, "Release", 1)
     AIE.end
   }
 
   %core8_2 = AIE.core(%tile8_2) {
-    AIE.useLock(%lock8_1, "Acquire", 1)
-    AIE.useLock(%lock8_2, "Acquire", 0)
+    AIE.use_lock(%lock8_1, "Acquire", 1)
+    AIE.use_lock(%lock8_2, "Acquire", 0)
     func.call @do_sieve(%buf8_1, %buf8_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_1, "Release", 0)
-    AIE.useLock(%lock8_2, "Release", 1)
+    AIE.use_lock(%lock8_1, "Release", 0)
+    AIE.use_lock(%lock8_2, "Release", 1)
     AIE.end
   }
 
   %core8_3 = AIE.core(%tile8_3) {
-    AIE.useLock(%lock8_2, "Acquire", 1)
-    AIE.useLock(%lock8_3, "Acquire", 0)
+    AIE.use_lock(%lock8_2, "Acquire", 1)
+    AIE.use_lock(%lock8_3, "Acquire", 0)
     func.call @do_sieve(%buf8_2, %buf8_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_2, "Release", 0)
-    AIE.useLock(%lock8_3, "Release", 1)
+    AIE.use_lock(%lock8_2, "Release", 0)
+    AIE.use_lock(%lock8_3, "Release", 1)
     AIE.end
   }
 
   %core8_4 = AIE.core(%tile8_4) {
-    AIE.useLock(%lock8_3, "Acquire", 1)
-    AIE.useLock(%lock8_4, "Acquire", 0)
+    AIE.use_lock(%lock8_3, "Acquire", 1)
+    AIE.use_lock(%lock8_4, "Acquire", 0)
     func.call @do_sieve(%buf8_3, %buf8_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_3, "Release", 0)
-    AIE.useLock(%lock8_4, "Release", 1)
+    AIE.use_lock(%lock8_3, "Release", 0)
+    AIE.use_lock(%lock8_4, "Release", 1)
     AIE.end
   }
 
   %core8_5 = AIE.core(%tile8_5) {
-    AIE.useLock(%lock8_4, "Acquire", 1)
-    AIE.useLock(%lock8_5, "Acquire", 0)
+    AIE.use_lock(%lock8_4, "Acquire", 1)
+    AIE.use_lock(%lock8_5, "Acquire", 0)
     func.call @do_sieve(%buf8_4, %buf8_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_4, "Release", 0)
-    AIE.useLock(%lock8_5, "Release", 1)
+    AIE.use_lock(%lock8_4, "Release", 0)
+    AIE.use_lock(%lock8_5, "Release", 1)
     AIE.end
   }
 
   %core8_6 = AIE.core(%tile8_6) {
-    AIE.useLock(%lock8_5, "Acquire", 1)
-    AIE.useLock(%lock8_6, "Acquire", 0)
+    AIE.use_lock(%lock8_5, "Acquire", 1)
+    AIE.use_lock(%lock8_6, "Acquire", 0)
     func.call @do_sieve(%buf8_5, %buf8_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_5, "Release", 0)
-    AIE.useLock(%lock8_6, "Release", 1)
+    AIE.use_lock(%lock8_5, "Release", 0)
+    AIE.use_lock(%lock8_6, "Release", 1)
     AIE.end
   }
 
   %core8_7 = AIE.core(%tile8_7) {
-    AIE.useLock(%lock8_6, "Acquire", 1)
-    AIE.useLock(%lock8_7, "Acquire", 0)
+    AIE.use_lock(%lock8_6, "Acquire", 1)
+    AIE.use_lock(%lock8_7, "Acquire", 0)
     func.call @do_sieve(%buf8_6, %buf8_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_6, "Release", 0)
-    AIE.useLock(%lock8_7, "Release", 1)
+    AIE.use_lock(%lock8_6, "Release", 0)
+    AIE.use_lock(%lock8_7, "Release", 1)
     AIE.end
   }
 
   %core8_8 = AIE.core(%tile8_8) {
-    AIE.useLock(%lock8_7, "Acquire", 1)
-    AIE.useLock(%lock8_8, "Acquire", 0)
+    AIE.use_lock(%lock8_7, "Acquire", 1)
+    AIE.use_lock(%lock8_8, "Acquire", 0)
     func.call @do_sieve(%buf8_7, %buf8_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_7, "Release", 0)
-    AIE.useLock(%lock8_8, "Release", 1)
+    AIE.use_lock(%lock8_7, "Release", 0)
+    AIE.use_lock(%lock8_8, "Release", 1)
     AIE.end
   }
 
   %core9_8 = AIE.core(%tile9_8) {
-    AIE.useLock(%lock8_8, "Acquire", 1)
-    AIE.useLock(%lock9_8, "Acquire", 0)
+    AIE.use_lock(%lock8_8, "Acquire", 1)
+    AIE.use_lock(%lock9_8, "Acquire", 0)
     func.call @do_sieve(%buf8_8, %buf9_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock8_8, "Release", 0)
-    AIE.useLock(%lock9_8, "Release", 1)
+    AIE.use_lock(%lock8_8, "Release", 0)
+    AIE.use_lock(%lock9_8, "Release", 1)
     AIE.end
   }
 
   %core9_7 = AIE.core(%tile9_7) {
-    AIE.useLock(%lock9_8, "Acquire", 1)
-    AIE.useLock(%lock9_7, "Acquire", 0)
+    AIE.use_lock(%lock9_8, "Acquire", 1)
+    AIE.use_lock(%lock9_7, "Acquire", 0)
     func.call @do_sieve(%buf9_8, %buf9_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_8, "Release", 0)
-    AIE.useLock(%lock9_7, "Release", 1)
+    AIE.use_lock(%lock9_8, "Release", 0)
+    AIE.use_lock(%lock9_7, "Release", 1)
     AIE.end
   }
 
   %core9_6 = AIE.core(%tile9_6) {
-    AIE.useLock(%lock9_7, "Acquire", 1)
-    AIE.useLock(%lock9_6, "Acquire", 0)
+    AIE.use_lock(%lock9_7, "Acquire", 1)
+    AIE.use_lock(%lock9_6, "Acquire", 0)
     func.call @do_sieve(%buf9_7, %buf9_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_7, "Release", 0)
-    AIE.useLock(%lock9_6, "Release", 1)
+    AIE.use_lock(%lock9_7, "Release", 0)
+    AIE.use_lock(%lock9_6, "Release", 1)
     AIE.end
   }
 
   %core9_5 = AIE.core(%tile9_5) {
-    AIE.useLock(%lock9_6, "Acquire", 1)
-    AIE.useLock(%lock9_5, "Acquire", 0)
+    AIE.use_lock(%lock9_6, "Acquire", 1)
+    AIE.use_lock(%lock9_5, "Acquire", 0)
     func.call @do_sieve(%buf9_6, %buf9_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_6, "Release", 0)
-    AIE.useLock(%lock9_5, "Release", 1)
+    AIE.use_lock(%lock9_6, "Release", 0)
+    AIE.use_lock(%lock9_5, "Release", 1)
     AIE.end
   }
 
   %core9_4 = AIE.core(%tile9_4) {
-    AIE.useLock(%lock9_5, "Acquire", 1)
-    AIE.useLock(%lock9_4, "Acquire", 0)
+    AIE.use_lock(%lock9_5, "Acquire", 1)
+    AIE.use_lock(%lock9_4, "Acquire", 0)
     func.call @do_sieve(%buf9_5, %buf9_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_5, "Release", 0)
-    AIE.useLock(%lock9_4, "Release", 1)
+    AIE.use_lock(%lock9_5, "Release", 0)
+    AIE.use_lock(%lock9_4, "Release", 1)
     AIE.end
   }
 
   %core9_3 = AIE.core(%tile9_3) {
-    AIE.useLock(%lock9_4, "Acquire", 1)
-    AIE.useLock(%lock9_3, "Acquire", 0)
+    AIE.use_lock(%lock9_4, "Acquire", 1)
+    AIE.use_lock(%lock9_3, "Acquire", 0)
     func.call @do_sieve(%buf9_4, %buf9_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_4, "Release", 0)
-    AIE.useLock(%lock9_3, "Release", 1)
+    AIE.use_lock(%lock9_4, "Release", 0)
+    AIE.use_lock(%lock9_3, "Release", 1)
     AIE.end
   }
 
   %core9_2 = AIE.core(%tile9_2) {
-    AIE.useLock(%lock9_3, "Acquire", 1)
-    AIE.useLock(%lock9_2, "Acquire", 0)
+    AIE.use_lock(%lock9_3, "Acquire", 1)
+    AIE.use_lock(%lock9_2, "Acquire", 0)
     func.call @do_sieve(%buf9_3, %buf9_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_3, "Release", 0)
-    AIE.useLock(%lock9_2, "Release", 1)
+    AIE.use_lock(%lock9_3, "Release", 0)
+    AIE.use_lock(%lock9_2, "Release", 1)
     AIE.end
   }
 
   %core9_1 = AIE.core(%tile9_1) {
-    AIE.useLock(%lock9_2, "Acquire", 1)
-    AIE.useLock(%lock9_1, "Acquire", 0)
+    AIE.use_lock(%lock9_2, "Acquire", 1)
+    AIE.use_lock(%lock9_1, "Acquire", 0)
     func.call @do_sieve(%buf9_2, %buf9_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_2, "Release", 0)
-    AIE.useLock(%lock9_1, "Release", 1)
+    AIE.use_lock(%lock9_2, "Release", 0)
+    AIE.use_lock(%lock9_1, "Release", 1)
     AIE.end
   }
 
   %core10_1 = AIE.core(%tile10_1) {
-    AIE.useLock(%lock9_1, "Acquire", 1)
-    AIE.useLock(%lock10_1, "Acquire", 0)
+    AIE.use_lock(%lock9_1, "Acquire", 1)
+    AIE.use_lock(%lock10_1, "Acquire", 0)
     func.call @do_sieve(%buf9_1, %buf10_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock9_1, "Release", 0)
-    AIE.useLock(%lock10_1, "Release", 1)
+    AIE.use_lock(%lock9_1, "Release", 0)
+    AIE.use_lock(%lock10_1, "Release", 1)
     AIE.end
   }
 
   %core10_2 = AIE.core(%tile10_2) {
-    AIE.useLock(%lock10_1, "Acquire", 1)
-    AIE.useLock(%lock10_2, "Acquire", 0)
+    AIE.use_lock(%lock10_1, "Acquire", 1)
+    AIE.use_lock(%lock10_2, "Acquire", 0)
     func.call @do_sieve(%buf10_1, %buf10_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_1, "Release", 0)
-    AIE.useLock(%lock10_2, "Release", 1)
+    AIE.use_lock(%lock10_1, "Release", 0)
+    AIE.use_lock(%lock10_2, "Release", 1)
     AIE.end
   }
 
   %core10_3 = AIE.core(%tile10_3) {
-    AIE.useLock(%lock10_2, "Acquire", 1)
-    AIE.useLock(%lock10_3, "Acquire", 0)
+    AIE.use_lock(%lock10_2, "Acquire", 1)
+    AIE.use_lock(%lock10_3, "Acquire", 0)
     func.call @do_sieve(%buf10_2, %buf10_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_2, "Release", 0)
-    AIE.useLock(%lock10_3, "Release", 1)
+    AIE.use_lock(%lock10_2, "Release", 0)
+    AIE.use_lock(%lock10_3, "Release", 1)
     AIE.end
   }
 
   %core10_4 = AIE.core(%tile10_4) {
-    AIE.useLock(%lock10_3, "Acquire", 1)
-    AIE.useLock(%lock10_4, "Acquire", 0)
+    AIE.use_lock(%lock10_3, "Acquire", 1)
+    AIE.use_lock(%lock10_4, "Acquire", 0)
     func.call @do_sieve(%buf10_3, %buf10_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_3, "Release", 0)
-    AIE.useLock(%lock10_4, "Release", 1)
+    AIE.use_lock(%lock10_3, "Release", 0)
+    AIE.use_lock(%lock10_4, "Release", 1)
     AIE.end
   }
 
   %core10_5 = AIE.core(%tile10_5) {
-    AIE.useLock(%lock10_4, "Acquire", 1)
-    AIE.useLock(%lock10_5, "Acquire", 0)
+    AIE.use_lock(%lock10_4, "Acquire", 1)
+    AIE.use_lock(%lock10_5, "Acquire", 0)
     func.call @do_sieve(%buf10_4, %buf10_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_4, "Release", 0)
-    AIE.useLock(%lock10_5, "Release", 1)
+    AIE.use_lock(%lock10_4, "Release", 0)
+    AIE.use_lock(%lock10_5, "Release", 1)
     AIE.end
   }
 
   %core10_6 = AIE.core(%tile10_6) {
-    AIE.useLock(%lock10_5, "Acquire", 1)
-    AIE.useLock(%lock10_6, "Acquire", 0)
+    AIE.use_lock(%lock10_5, "Acquire", 1)
+    AIE.use_lock(%lock10_6, "Acquire", 0)
     func.call @do_sieve(%buf10_5, %buf10_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_5, "Release", 0)
-    AIE.useLock(%lock10_6, "Release", 1)
+    AIE.use_lock(%lock10_5, "Release", 0)
+    AIE.use_lock(%lock10_6, "Release", 1)
     AIE.end
   }
 
   %core10_7 = AIE.core(%tile10_7) {
-    AIE.useLock(%lock10_6, "Acquire", 1)
-    AIE.useLock(%lock10_7, "Acquire", 0)
+    AIE.use_lock(%lock10_6, "Acquire", 1)
+    AIE.use_lock(%lock10_7, "Acquire", 0)
     func.call @do_sieve(%buf10_6, %buf10_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_6, "Release", 0)
-    AIE.useLock(%lock10_7, "Release", 1)
+    AIE.use_lock(%lock10_6, "Release", 0)
+    AIE.use_lock(%lock10_7, "Release", 1)
     AIE.end
   }
 
   %core10_8 = AIE.core(%tile10_8) {
-    AIE.useLock(%lock10_7, "Acquire", 1)
-    AIE.useLock(%lock10_8, "Acquire", 0)
+    AIE.use_lock(%lock10_7, "Acquire", 1)
+    AIE.use_lock(%lock10_8, "Acquire", 0)
     func.call @do_sieve(%buf10_7, %buf10_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_7, "Release", 0)
-    AIE.useLock(%lock10_8, "Release", 1)
+    AIE.use_lock(%lock10_7, "Release", 0)
+    AIE.use_lock(%lock10_8, "Release", 1)
     AIE.end
   }
 
   %core11_8 = AIE.core(%tile11_8) {
-    AIE.useLock(%lock10_8, "Acquire", 1)
-    AIE.useLock(%lock11_8, "Acquire", 0)
+    AIE.use_lock(%lock10_8, "Acquire", 1)
+    AIE.use_lock(%lock11_8, "Acquire", 0)
     func.call @do_sieve(%buf10_8, %buf11_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock10_8, "Release", 0)
-    AIE.useLock(%lock11_8, "Release", 1)
+    AIE.use_lock(%lock10_8, "Release", 0)
+    AIE.use_lock(%lock11_8, "Release", 1)
     AIE.end
   }
 
   %core11_7 = AIE.core(%tile11_7) {
-    AIE.useLock(%lock11_8, "Acquire", 1)
-    AIE.useLock(%lock11_7, "Acquire", 0)
+    AIE.use_lock(%lock11_8, "Acquire", 1)
+    AIE.use_lock(%lock11_7, "Acquire", 0)
     func.call @do_sieve(%buf11_8, %buf11_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_8, "Release", 0)
-    AIE.useLock(%lock11_7, "Release", 1)
+    AIE.use_lock(%lock11_8, "Release", 0)
+    AIE.use_lock(%lock11_7, "Release", 1)
     AIE.end
   }
 
   %core11_6 = AIE.core(%tile11_6) {
-    AIE.useLock(%lock11_7, "Acquire", 1)
-    AIE.useLock(%lock11_6, "Acquire", 0)
+    AIE.use_lock(%lock11_7, "Acquire", 1)
+    AIE.use_lock(%lock11_6, "Acquire", 0)
     func.call @do_sieve(%buf11_7, %buf11_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_7, "Release", 0)
-    AIE.useLock(%lock11_6, "Release", 1)
+    AIE.use_lock(%lock11_7, "Release", 0)
+    AIE.use_lock(%lock11_6, "Release", 1)
     AIE.end
   }
 
   %core11_5 = AIE.core(%tile11_5) {
-    AIE.useLock(%lock11_6, "Acquire", 1)
-    AIE.useLock(%lock11_5, "Acquire", 0)
+    AIE.use_lock(%lock11_6, "Acquire", 1)
+    AIE.use_lock(%lock11_5, "Acquire", 0)
     func.call @do_sieve(%buf11_6, %buf11_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_6, "Release", 0)
-    AIE.useLock(%lock11_5, "Release", 1)
+    AIE.use_lock(%lock11_6, "Release", 0)
+    AIE.use_lock(%lock11_5, "Release", 1)
     AIE.end
   }
 
   %core11_4 = AIE.core(%tile11_4) {
-    AIE.useLock(%lock11_5, "Acquire", 1)
-    AIE.useLock(%lock11_4, "Acquire", 0)
+    AIE.use_lock(%lock11_5, "Acquire", 1)
+    AIE.use_lock(%lock11_4, "Acquire", 0)
     func.call @do_sieve(%buf11_5, %buf11_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_5, "Release", 0)
-    AIE.useLock(%lock11_4, "Release", 1)
+    AIE.use_lock(%lock11_5, "Release", 0)
+    AIE.use_lock(%lock11_4, "Release", 1)
     AIE.end
   }
 
   %core11_3 = AIE.core(%tile11_3) {
-    AIE.useLock(%lock11_4, "Acquire", 1)
-    AIE.useLock(%lock11_3, "Acquire", 0)
+    AIE.use_lock(%lock11_4, "Acquire", 1)
+    AIE.use_lock(%lock11_3, "Acquire", 0)
     func.call @do_sieve(%buf11_4, %buf11_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_4, "Release", 0)
-    AIE.useLock(%lock11_3, "Release", 1)
+    AIE.use_lock(%lock11_4, "Release", 0)
+    AIE.use_lock(%lock11_3, "Release", 1)
     AIE.end
   }
 
   %core11_2 = AIE.core(%tile11_2) {
-    AIE.useLock(%lock11_3, "Acquire", 1)
-    AIE.useLock(%lock11_2, "Acquire", 0)
+    AIE.use_lock(%lock11_3, "Acquire", 1)
+    AIE.use_lock(%lock11_2, "Acquire", 0)
     func.call @do_sieve(%buf11_3, %buf11_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_3, "Release", 0)
-    AIE.useLock(%lock11_2, "Release", 1)
+    AIE.use_lock(%lock11_3, "Release", 0)
+    AIE.use_lock(%lock11_2, "Release", 1)
     AIE.end
   }
 
   %core11_1 = AIE.core(%tile11_1) {
-    AIE.useLock(%lock11_2, "Acquire", 1)
-    AIE.useLock(%lock11_1, "Acquire", 0)
+    AIE.use_lock(%lock11_2, "Acquire", 1)
+    AIE.use_lock(%lock11_1, "Acquire", 0)
     func.call @do_sieve(%buf11_2, %buf11_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_2, "Release", 0)
-    AIE.useLock(%lock11_1, "Release", 1)
+    AIE.use_lock(%lock11_2, "Release", 0)
+    AIE.use_lock(%lock11_1, "Release", 1)
     AIE.end
   }
 
   %core12_1 = AIE.core(%tile12_1) {
-    AIE.useLock(%lock11_1, "Acquire", 1)
-    AIE.useLock(%lock12_1, "Acquire", 0)
+    AIE.use_lock(%lock11_1, "Acquire", 1)
+    AIE.use_lock(%lock12_1, "Acquire", 0)
     func.call @do_sieve(%buf11_1, %buf12_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock11_1, "Release", 0)
-    AIE.useLock(%lock12_1, "Release", 1)
+    AIE.use_lock(%lock11_1, "Release", 0)
+    AIE.use_lock(%lock12_1, "Release", 1)
     AIE.end
   }
 
   %core12_2 = AIE.core(%tile12_2) {
-    AIE.useLock(%lock12_1, "Acquire", 1)
-    AIE.useLock(%lock12_2, "Acquire", 0)
+    AIE.use_lock(%lock12_1, "Acquire", 1)
+    AIE.use_lock(%lock12_2, "Acquire", 0)
     func.call @do_sieve(%buf12_1, %buf12_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_1, "Release", 0)
-    AIE.useLock(%lock12_2, "Release", 1)
+    AIE.use_lock(%lock12_1, "Release", 0)
+    AIE.use_lock(%lock12_2, "Release", 1)
     AIE.end
   }
 
   %core12_3 = AIE.core(%tile12_3) {
-    AIE.useLock(%lock12_2, "Acquire", 1)
-    AIE.useLock(%lock12_3, "Acquire", 0)
+    AIE.use_lock(%lock12_2, "Acquire", 1)
+    AIE.use_lock(%lock12_3, "Acquire", 0)
     func.call @do_sieve(%buf12_2, %buf12_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_2, "Release", 0)
-    AIE.useLock(%lock12_3, "Release", 1)
+    AIE.use_lock(%lock12_2, "Release", 0)
+    AIE.use_lock(%lock12_3, "Release", 1)
     AIE.end
   }
 
   %core12_4 = AIE.core(%tile12_4) {
-    AIE.useLock(%lock12_3, "Acquire", 1)
-    AIE.useLock(%lock12_4, "Acquire", 0)
+    AIE.use_lock(%lock12_3, "Acquire", 1)
+    AIE.use_lock(%lock12_4, "Acquire", 0)
     func.call @do_sieve(%buf12_3, %buf12_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_3, "Release", 0)
-    AIE.useLock(%lock12_4, "Release", 1)
+    AIE.use_lock(%lock12_3, "Release", 0)
+    AIE.use_lock(%lock12_4, "Release", 1)
     AIE.end
   }
 
   %core12_5 = AIE.core(%tile12_5) {
-    AIE.useLock(%lock12_4, "Acquire", 1)
-    AIE.useLock(%lock12_5, "Acquire", 0)
+    AIE.use_lock(%lock12_4, "Acquire", 1)
+    AIE.use_lock(%lock12_5, "Acquire", 0)
     func.call @do_sieve(%buf12_4, %buf12_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_4, "Release", 0)
-    AIE.useLock(%lock12_5, "Release", 1)
+    AIE.use_lock(%lock12_4, "Release", 0)
+    AIE.use_lock(%lock12_5, "Release", 1)
     AIE.end
   }
 
   %core12_6 = AIE.core(%tile12_6) {
-    AIE.useLock(%lock12_5, "Acquire", 1)
-    AIE.useLock(%lock12_6, "Acquire", 0)
+    AIE.use_lock(%lock12_5, "Acquire", 1)
+    AIE.use_lock(%lock12_6, "Acquire", 0)
     func.call @do_sieve(%buf12_5, %buf12_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_5, "Release", 0)
-    AIE.useLock(%lock12_6, "Release", 1)
+    AIE.use_lock(%lock12_5, "Release", 0)
+    AIE.use_lock(%lock12_6, "Release", 1)
     AIE.end
   }
 
   %core12_7 = AIE.core(%tile12_7) {
-    AIE.useLock(%lock12_6, "Acquire", 1)
-    AIE.useLock(%lock12_7, "Acquire", 0)
+    AIE.use_lock(%lock12_6, "Acquire", 1)
+    AIE.use_lock(%lock12_7, "Acquire", 0)
     func.call @do_sieve(%buf12_6, %buf12_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_6, "Release", 0)
-    AIE.useLock(%lock12_7, "Release", 1)
+    AIE.use_lock(%lock12_6, "Release", 0)
+    AIE.use_lock(%lock12_7, "Release", 1)
     AIE.end
   }
 
   %core12_8 = AIE.core(%tile12_8) {
-    AIE.useLock(%lock12_7, "Acquire", 1)
-    AIE.useLock(%lock12_8, "Acquire", 0)
+    AIE.use_lock(%lock12_7, "Acquire", 1)
+    AIE.use_lock(%lock12_8, "Acquire", 0)
     func.call @do_sieve(%buf12_7, %buf12_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_7, "Release", 0)
-    AIE.useLock(%lock12_8, "Release", 1)
+    AIE.use_lock(%lock12_7, "Release", 0)
+    AIE.use_lock(%lock12_8, "Release", 1)
     AIE.end
   }
 
   %core13_8 = AIE.core(%tile13_8) {
-    AIE.useLock(%lock12_8, "Acquire", 1)
-    AIE.useLock(%lock13_8, "Acquire", 0)
+    AIE.use_lock(%lock12_8, "Acquire", 1)
+    AIE.use_lock(%lock13_8, "Acquire", 0)
     func.call @do_sieve(%buf12_8, %buf13_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock12_8, "Release", 0)
-    AIE.useLock(%lock13_8, "Release", 1)
+    AIE.use_lock(%lock12_8, "Release", 0)
+    AIE.use_lock(%lock13_8, "Release", 1)
     AIE.end
   }
 
   %core13_7 = AIE.core(%tile13_7) {
-    AIE.useLock(%lock13_8, "Acquire", 1)
-    AIE.useLock(%lock13_7, "Acquire", 0)
+    AIE.use_lock(%lock13_8, "Acquire", 1)
+    AIE.use_lock(%lock13_7, "Acquire", 0)
     func.call @do_sieve(%buf13_8, %buf13_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_8, "Release", 0)
-    AIE.useLock(%lock13_7, "Release", 1)
+    AIE.use_lock(%lock13_8, "Release", 0)
+    AIE.use_lock(%lock13_7, "Release", 1)
     AIE.end
   }
 
   %core13_6 = AIE.core(%tile13_6) {
-    AIE.useLock(%lock13_7, "Acquire", 1)
-    AIE.useLock(%lock13_6, "Acquire", 0)
+    AIE.use_lock(%lock13_7, "Acquire", 1)
+    AIE.use_lock(%lock13_6, "Acquire", 0)
     func.call @do_sieve(%buf13_7, %buf13_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_7, "Release", 0)
-    AIE.useLock(%lock13_6, "Release", 1)
+    AIE.use_lock(%lock13_7, "Release", 0)
+    AIE.use_lock(%lock13_6, "Release", 1)
     AIE.end
   }
 
   %core13_5 = AIE.core(%tile13_5) {
-    AIE.useLock(%lock13_6, "Acquire", 1)
-    AIE.useLock(%lock13_5, "Acquire", 0)
+    AIE.use_lock(%lock13_6, "Acquire", 1)
+    AIE.use_lock(%lock13_5, "Acquire", 0)
     func.call @do_sieve(%buf13_6, %buf13_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_6, "Release", 0)
-    AIE.useLock(%lock13_5, "Release", 1)
+    AIE.use_lock(%lock13_6, "Release", 0)
+    AIE.use_lock(%lock13_5, "Release", 1)
     AIE.end
   }
 
   %core13_4 = AIE.core(%tile13_4) {
-    AIE.useLock(%lock13_5, "Acquire", 1)
-    AIE.useLock(%lock13_4, "Acquire", 0)
+    AIE.use_lock(%lock13_5, "Acquire", 1)
+    AIE.use_lock(%lock13_4, "Acquire", 0)
     func.call @do_sieve(%buf13_5, %buf13_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_5, "Release", 0)
-    AIE.useLock(%lock13_4, "Release", 1)
+    AIE.use_lock(%lock13_5, "Release", 0)
+    AIE.use_lock(%lock13_4, "Release", 1)
     AIE.end
   }
 
   %core13_3 = AIE.core(%tile13_3) {
-    AIE.useLock(%lock13_4, "Acquire", 1)
-    AIE.useLock(%lock13_3, "Acquire", 0)
+    AIE.use_lock(%lock13_4, "Acquire", 1)
+    AIE.use_lock(%lock13_3, "Acquire", 0)
     func.call @do_sieve(%buf13_4, %buf13_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_4, "Release", 0)
-    AIE.useLock(%lock13_3, "Release", 1)
+    AIE.use_lock(%lock13_4, "Release", 0)
+    AIE.use_lock(%lock13_3, "Release", 1)
     AIE.end
   }
 
   %core13_2 = AIE.core(%tile13_2) {
-    AIE.useLock(%lock13_3, "Acquire", 1)
-    AIE.useLock(%lock13_2, "Acquire", 0)
+    AIE.use_lock(%lock13_3, "Acquire", 1)
+    AIE.use_lock(%lock13_2, "Acquire", 0)
     func.call @do_sieve(%buf13_3, %buf13_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_3, "Release", 0)
-    AIE.useLock(%lock13_2, "Release", 1)
+    AIE.use_lock(%lock13_3, "Release", 0)
+    AIE.use_lock(%lock13_2, "Release", 1)
     AIE.end
   }
 
   %core13_1 = AIE.core(%tile13_1) {
-    AIE.useLock(%lock13_2, "Acquire", 1)
-    AIE.useLock(%lock13_1, "Acquire", 0)
+    AIE.use_lock(%lock13_2, "Acquire", 1)
+    AIE.use_lock(%lock13_1, "Acquire", 0)
     func.call @do_sieve(%buf13_2, %buf13_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_2, "Release", 0)
-    AIE.useLock(%lock13_1, "Release", 1)
+    AIE.use_lock(%lock13_2, "Release", 0)
+    AIE.use_lock(%lock13_1, "Release", 1)
     AIE.end
   }
 
   %core14_1 = AIE.core(%tile14_1) {
-    AIE.useLock(%lock13_1, "Acquire", 1)
-    AIE.useLock(%lock14_1, "Acquire", 0)
+    AIE.use_lock(%lock13_1, "Acquire", 1)
+    AIE.use_lock(%lock14_1, "Acquire", 0)
     func.call @do_sieve(%buf13_1, %buf14_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock13_1, "Release", 0)
-    AIE.useLock(%lock14_1, "Release", 1)
+    AIE.use_lock(%lock13_1, "Release", 0)
+    AIE.use_lock(%lock14_1, "Release", 1)
     AIE.end
   }
 
   %core14_2 = AIE.core(%tile14_2) {
-    AIE.useLock(%lock14_1, "Acquire", 1)
-    AIE.useLock(%lock14_2, "Acquire", 0)
+    AIE.use_lock(%lock14_1, "Acquire", 1)
+    AIE.use_lock(%lock14_2, "Acquire", 0)
     func.call @do_sieve(%buf14_1, %buf14_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_1, "Release", 0)
-    AIE.useLock(%lock14_2, "Release", 1)
+    AIE.use_lock(%lock14_1, "Release", 0)
+    AIE.use_lock(%lock14_2, "Release", 1)
     AIE.end
   }
 
   %core14_3 = AIE.core(%tile14_3) {
-    AIE.useLock(%lock14_2, "Acquire", 1)
-    AIE.useLock(%lock14_3, "Acquire", 0)
+    AIE.use_lock(%lock14_2, "Acquire", 1)
+    AIE.use_lock(%lock14_3, "Acquire", 0)
     func.call @do_sieve(%buf14_2, %buf14_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_2, "Release", 0)
-    AIE.useLock(%lock14_3, "Release", 1)
+    AIE.use_lock(%lock14_2, "Release", 0)
+    AIE.use_lock(%lock14_3, "Release", 1)
     AIE.end
   }
 
   %core14_4 = AIE.core(%tile14_4) {
-    AIE.useLock(%lock14_3, "Acquire", 1)
-    AIE.useLock(%lock14_4, "Acquire", 0)
+    AIE.use_lock(%lock14_3, "Acquire", 1)
+    AIE.use_lock(%lock14_4, "Acquire", 0)
     func.call @do_sieve(%buf14_3, %buf14_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_3, "Release", 0)
-    AIE.useLock(%lock14_4, "Release", 1)
+    AIE.use_lock(%lock14_3, "Release", 0)
+    AIE.use_lock(%lock14_4, "Release", 1)
     AIE.end
   }
 
   %core14_5 = AIE.core(%tile14_5) {
-    AIE.useLock(%lock14_4, "Acquire", 1)
-    AIE.useLock(%lock14_5, "Acquire", 0)
+    AIE.use_lock(%lock14_4, "Acquire", 1)
+    AIE.use_lock(%lock14_5, "Acquire", 0)
     func.call @do_sieve(%buf14_4, %buf14_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_4, "Release", 0)
-    AIE.useLock(%lock14_5, "Release", 1)
+    AIE.use_lock(%lock14_4, "Release", 0)
+    AIE.use_lock(%lock14_5, "Release", 1)
     AIE.end
   }
 
   %core14_6 = AIE.core(%tile14_6) {
-    AIE.useLock(%lock14_5, "Acquire", 1)
-    AIE.useLock(%lock14_6, "Acquire", 0)
+    AIE.use_lock(%lock14_5, "Acquire", 1)
+    AIE.use_lock(%lock14_6, "Acquire", 0)
     func.call @do_sieve(%buf14_5, %buf14_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_5, "Release", 0)
-    AIE.useLock(%lock14_6, "Release", 1)
+    AIE.use_lock(%lock14_5, "Release", 0)
+    AIE.use_lock(%lock14_6, "Release", 1)
     AIE.end
   }
 
   %core14_7 = AIE.core(%tile14_7) {
-    AIE.useLock(%lock14_6, "Acquire", 1)
-    AIE.useLock(%lock14_7, "Acquire", 0)
+    AIE.use_lock(%lock14_6, "Acquire", 1)
+    AIE.use_lock(%lock14_7, "Acquire", 0)
     func.call @do_sieve(%buf14_6, %buf14_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_6, "Release", 0)
-    AIE.useLock(%lock14_7, "Release", 1)
+    AIE.use_lock(%lock14_6, "Release", 0)
+    AIE.use_lock(%lock14_7, "Release", 1)
     AIE.end
   }
 
   %core14_8 = AIE.core(%tile14_8) {
-    AIE.useLock(%lock14_7, "Acquire", 1)
-    AIE.useLock(%lock14_8, "Acquire", 0)
+    AIE.use_lock(%lock14_7, "Acquire", 1)
+    AIE.use_lock(%lock14_8, "Acquire", 0)
     func.call @do_sieve(%buf14_7, %buf14_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_7, "Release", 0)
-    AIE.useLock(%lock14_8, "Release", 1)
+    AIE.use_lock(%lock14_7, "Release", 0)
+    AIE.use_lock(%lock14_8, "Release", 1)
     AIE.end
   }
 
   %core15_8 = AIE.core(%tile15_8) {
-    AIE.useLock(%lock14_8, "Acquire", 1)
-    AIE.useLock(%lock15_8, "Acquire", 0)
+    AIE.use_lock(%lock14_8, "Acquire", 1)
+    AIE.use_lock(%lock15_8, "Acquire", 0)
     func.call @do_sieve(%buf14_8, %buf15_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock14_8, "Release", 0)
-    AIE.useLock(%lock15_8, "Release", 1)
+    AIE.use_lock(%lock14_8, "Release", 0)
+    AIE.use_lock(%lock15_8, "Release", 1)
     AIE.end
   }
 
   %core15_7 = AIE.core(%tile15_7) {
-    AIE.useLock(%lock15_8, "Acquire", 1)
-    AIE.useLock(%lock15_7, "Acquire", 0)
+    AIE.use_lock(%lock15_8, "Acquire", 1)
+    AIE.use_lock(%lock15_7, "Acquire", 0)
     func.call @do_sieve(%buf15_8, %buf15_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_8, "Release", 0)
-    AIE.useLock(%lock15_7, "Release", 1)
+    AIE.use_lock(%lock15_8, "Release", 0)
+    AIE.use_lock(%lock15_7, "Release", 1)
     AIE.end
   }
 
   %core15_6 = AIE.core(%tile15_6) {
-    AIE.useLock(%lock15_7, "Acquire", 1)
-    AIE.useLock(%lock15_6, "Acquire", 0)
+    AIE.use_lock(%lock15_7, "Acquire", 1)
+    AIE.use_lock(%lock15_6, "Acquire", 0)
     func.call @do_sieve(%buf15_7, %buf15_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_7, "Release", 0)
-    AIE.useLock(%lock15_6, "Release", 1)
+    AIE.use_lock(%lock15_7, "Release", 0)
+    AIE.use_lock(%lock15_6, "Release", 1)
     AIE.end
   }
 
   %core15_5 = AIE.core(%tile15_5) {
-    AIE.useLock(%lock15_6, "Acquire", 1)
-    AIE.useLock(%lock15_5, "Acquire", 0)
+    AIE.use_lock(%lock15_6, "Acquire", 1)
+    AIE.use_lock(%lock15_5, "Acquire", 0)
     func.call @do_sieve(%buf15_6, %buf15_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_6, "Release", 0)
-    AIE.useLock(%lock15_5, "Release", 1)
+    AIE.use_lock(%lock15_6, "Release", 0)
+    AIE.use_lock(%lock15_5, "Release", 1)
     AIE.end
   }
 
   %core15_4 = AIE.core(%tile15_4) {
-    AIE.useLock(%lock15_5, "Acquire", 1)
-    AIE.useLock(%lock15_4, "Acquire", 0)
+    AIE.use_lock(%lock15_5, "Acquire", 1)
+    AIE.use_lock(%lock15_4, "Acquire", 0)
     func.call @do_sieve(%buf15_5, %buf15_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_5, "Release", 0)
-    AIE.useLock(%lock15_4, "Release", 1)
+    AIE.use_lock(%lock15_5, "Release", 0)
+    AIE.use_lock(%lock15_4, "Release", 1)
     AIE.end
   }
 
   %core15_3 = AIE.core(%tile15_3) {
-    AIE.useLock(%lock15_4, "Acquire", 1)
-    AIE.useLock(%lock15_3, "Acquire", 0)
+    AIE.use_lock(%lock15_4, "Acquire", 1)
+    AIE.use_lock(%lock15_3, "Acquire", 0)
     func.call @do_sieve(%buf15_4, %buf15_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_4, "Release", 0)
-    AIE.useLock(%lock15_3, "Release", 1)
+    AIE.use_lock(%lock15_4, "Release", 0)
+    AIE.use_lock(%lock15_3, "Release", 1)
     AIE.end
   }
 
   %core15_2 = AIE.core(%tile15_2) {
-    AIE.useLock(%lock15_3, "Acquire", 1)
-    AIE.useLock(%lock15_2, "Acquire", 0)
+    AIE.use_lock(%lock15_3, "Acquire", 1)
+    AIE.use_lock(%lock15_2, "Acquire", 0)
     func.call @do_sieve(%buf15_3, %buf15_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_3, "Release", 0)
-    AIE.useLock(%lock15_2, "Release", 1)
+    AIE.use_lock(%lock15_3, "Release", 0)
+    AIE.use_lock(%lock15_2, "Release", 1)
     AIE.end
   }
 
   %core15_1 = AIE.core(%tile15_1) {
-    AIE.useLock(%lock15_2, "Acquire", 1)
-    AIE.useLock(%lock15_1, "Acquire", 0)
+    AIE.use_lock(%lock15_2, "Acquire", 1)
+    AIE.use_lock(%lock15_1, "Acquire", 0)
     func.call @do_sieve(%buf15_2, %buf15_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_2, "Release", 0)
-    AIE.useLock(%lock15_1, "Release", 1)
+    AIE.use_lock(%lock15_2, "Release", 0)
+    AIE.use_lock(%lock15_1, "Release", 1)
     AIE.end
   }
 
   %core16_1 = AIE.core(%tile16_1) {
-    AIE.useLock(%lock15_1, "Acquire", 1)
-    AIE.useLock(%lock16_1, "Acquire", 0)
+    AIE.use_lock(%lock15_1, "Acquire", 1)
+    AIE.use_lock(%lock16_1, "Acquire", 0)
     func.call @do_sieve(%buf15_1, %buf16_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock15_1, "Release", 0)
-    AIE.useLock(%lock16_1, "Release", 1)
+    AIE.use_lock(%lock15_1, "Release", 0)
+    AIE.use_lock(%lock16_1, "Release", 1)
     AIE.end
   }
 
   %core16_2 = AIE.core(%tile16_2) {
-    AIE.useLock(%lock16_1, "Acquire", 1)
-    AIE.useLock(%lock16_2, "Acquire", 0)
+    AIE.use_lock(%lock16_1, "Acquire", 1)
+    AIE.use_lock(%lock16_2, "Acquire", 0)
     func.call @do_sieve(%buf16_1, %buf16_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_1, "Release", 0)
-    AIE.useLock(%lock16_2, "Release", 1)
+    AIE.use_lock(%lock16_1, "Release", 0)
+    AIE.use_lock(%lock16_2, "Release", 1)
     AIE.end
   }
 
   %core16_3 = AIE.core(%tile16_3) {
-    AIE.useLock(%lock16_2, "Acquire", 1)
-    AIE.useLock(%lock16_3, "Acquire", 0)
+    AIE.use_lock(%lock16_2, "Acquire", 1)
+    AIE.use_lock(%lock16_3, "Acquire", 0)
     func.call @do_sieve(%buf16_2, %buf16_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_2, "Release", 0)
-    AIE.useLock(%lock16_3, "Release", 1)
+    AIE.use_lock(%lock16_2, "Release", 0)
+    AIE.use_lock(%lock16_3, "Release", 1)
     AIE.end
   }
 
   %core16_4 = AIE.core(%tile16_4) {
-    AIE.useLock(%lock16_3, "Acquire", 1)
-    AIE.useLock(%lock16_4, "Acquire", 0)
+    AIE.use_lock(%lock16_3, "Acquire", 1)
+    AIE.use_lock(%lock16_4, "Acquire", 0)
     func.call @do_sieve(%buf16_3, %buf16_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_3, "Release", 0)
-    AIE.useLock(%lock16_4, "Release", 1)
+    AIE.use_lock(%lock16_3, "Release", 0)
+    AIE.use_lock(%lock16_4, "Release", 1)
     AIE.end
   }
 
   %core16_5 = AIE.core(%tile16_5) {
-    AIE.useLock(%lock16_4, "Acquire", 1)
-    AIE.useLock(%lock16_5, "Acquire", 0)
+    AIE.use_lock(%lock16_4, "Acquire", 1)
+    AIE.use_lock(%lock16_5, "Acquire", 0)
     func.call @do_sieve(%buf16_4, %buf16_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_4, "Release", 0)
-    AIE.useLock(%lock16_5, "Release", 1)
+    AIE.use_lock(%lock16_4, "Release", 0)
+    AIE.use_lock(%lock16_5, "Release", 1)
     AIE.end
   }
 
   %core16_6 = AIE.core(%tile16_6) {
-    AIE.useLock(%lock16_5, "Acquire", 1)
-    AIE.useLock(%lock16_6, "Acquire", 0)
+    AIE.use_lock(%lock16_5, "Acquire", 1)
+    AIE.use_lock(%lock16_6, "Acquire", 0)
     func.call @do_sieve(%buf16_5, %buf16_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_5, "Release", 0)
-    AIE.useLock(%lock16_6, "Release", 1)
+    AIE.use_lock(%lock16_5, "Release", 0)
+    AIE.use_lock(%lock16_6, "Release", 1)
     AIE.end
   }
 
   %core16_7 = AIE.core(%tile16_7) {
-    AIE.useLock(%lock16_6, "Acquire", 1)
-    AIE.useLock(%lock16_7, "Acquire", 0)
+    AIE.use_lock(%lock16_6, "Acquire", 1)
+    AIE.use_lock(%lock16_7, "Acquire", 0)
     func.call @do_sieve(%buf16_6, %buf16_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_6, "Release", 0)
-    AIE.useLock(%lock16_7, "Release", 1)
+    AIE.use_lock(%lock16_6, "Release", 0)
+    AIE.use_lock(%lock16_7, "Release", 1)
     AIE.end
   }
 
   %core16_8 = AIE.core(%tile16_8) {
-    AIE.useLock(%lock16_7, "Acquire", 1)
-    AIE.useLock(%lock16_8, "Acquire", 0)
+    AIE.use_lock(%lock16_7, "Acquire", 1)
+    AIE.use_lock(%lock16_8, "Acquire", 0)
     func.call @do_sieve(%buf16_7, %buf16_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_7, "Release", 0)
-    AIE.useLock(%lock16_8, "Release", 1)
+    AIE.use_lock(%lock16_7, "Release", 0)
+    AIE.use_lock(%lock16_8, "Release", 1)
     AIE.end
   }
 
   %core17_8 = AIE.core(%tile17_8) {
-    AIE.useLock(%lock16_8, "Acquire", 1)
-    AIE.useLock(%lock17_8, "Acquire", 0)
+    AIE.use_lock(%lock16_8, "Acquire", 1)
+    AIE.use_lock(%lock17_8, "Acquire", 0)
     func.call @do_sieve(%buf16_8, %buf17_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock16_8, "Release", 0)
-    AIE.useLock(%lock17_8, "Release", 1)
+    AIE.use_lock(%lock16_8, "Release", 0)
+    AIE.use_lock(%lock17_8, "Release", 1)
     AIE.end
   }
 
   %core17_7 = AIE.core(%tile17_7) {
-    AIE.useLock(%lock17_8, "Acquire", 1)
-    AIE.useLock(%lock17_7, "Acquire", 0)
+    AIE.use_lock(%lock17_8, "Acquire", 1)
+    AIE.use_lock(%lock17_7, "Acquire", 0)
     func.call @do_sieve(%buf17_8, %buf17_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_8, "Release", 0)
-    AIE.useLock(%lock17_7, "Release", 1)
+    AIE.use_lock(%lock17_8, "Release", 0)
+    AIE.use_lock(%lock17_7, "Release", 1)
     AIE.end
   }
 
   %core17_6 = AIE.core(%tile17_6) {
-    AIE.useLock(%lock17_7, "Acquire", 1)
-    AIE.useLock(%lock17_6, "Acquire", 0)
+    AIE.use_lock(%lock17_7, "Acquire", 1)
+    AIE.use_lock(%lock17_6, "Acquire", 0)
     func.call @do_sieve(%buf17_7, %buf17_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_7, "Release", 0)
-    AIE.useLock(%lock17_6, "Release", 1)
+    AIE.use_lock(%lock17_7, "Release", 0)
+    AIE.use_lock(%lock17_6, "Release", 1)
     AIE.end
   }
 
   %core17_5 = AIE.core(%tile17_5) {
-    AIE.useLock(%lock17_6, "Acquire", 1)
-    AIE.useLock(%lock17_5, "Acquire", 0)
+    AIE.use_lock(%lock17_6, "Acquire", 1)
+    AIE.use_lock(%lock17_5, "Acquire", 0)
     func.call @do_sieve(%buf17_6, %buf17_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_6, "Release", 0)
-    AIE.useLock(%lock17_5, "Release", 1)
+    AIE.use_lock(%lock17_6, "Release", 0)
+    AIE.use_lock(%lock17_5, "Release", 1)
     AIE.end
   }
 
   %core17_4 = AIE.core(%tile17_4) {
-    AIE.useLock(%lock17_5, "Acquire", 1)
-    AIE.useLock(%lock17_4, "Acquire", 0)
+    AIE.use_lock(%lock17_5, "Acquire", 1)
+    AIE.use_lock(%lock17_4, "Acquire", 0)
     func.call @do_sieve(%buf17_5, %buf17_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_5, "Release", 0)
-    AIE.useLock(%lock17_4, "Release", 1)
+    AIE.use_lock(%lock17_5, "Release", 0)
+    AIE.use_lock(%lock17_4, "Release", 1)
     AIE.end
   }
 
   %core17_3 = AIE.core(%tile17_3) {
-    AIE.useLock(%lock17_4, "Acquire", 1)
-    AIE.useLock(%lock17_3, "Acquire", 0)
+    AIE.use_lock(%lock17_4, "Acquire", 1)
+    AIE.use_lock(%lock17_3, "Acquire", 0)
     func.call @do_sieve(%buf17_4, %buf17_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_4, "Release", 0)
-    AIE.useLock(%lock17_3, "Release", 1)
+    AIE.use_lock(%lock17_4, "Release", 0)
+    AIE.use_lock(%lock17_3, "Release", 1)
     AIE.end
   }
 
   %core17_2 = AIE.core(%tile17_2) {
-    AIE.useLock(%lock17_3, "Acquire", 1)
-    AIE.useLock(%lock17_2, "Acquire", 0)
+    AIE.use_lock(%lock17_3, "Acquire", 1)
+    AIE.use_lock(%lock17_2, "Acquire", 0)
     func.call @do_sieve(%buf17_3, %buf17_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_3, "Release", 0)
-    AIE.useLock(%lock17_2, "Release", 1)
+    AIE.use_lock(%lock17_3, "Release", 0)
+    AIE.use_lock(%lock17_2, "Release", 1)
     AIE.end
   }
 
   %core17_1 = AIE.core(%tile17_1) {
-    AIE.useLock(%lock17_2, "Acquire", 1)
-    AIE.useLock(%lock17_1, "Acquire", 0)
+    AIE.use_lock(%lock17_2, "Acquire", 1)
+    AIE.use_lock(%lock17_1, "Acquire", 0)
     func.call @do_sieve(%buf17_2, %buf17_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_2, "Release", 0)
-    AIE.useLock(%lock17_1, "Release", 1)
+    AIE.use_lock(%lock17_2, "Release", 0)
+    AIE.use_lock(%lock17_1, "Release", 1)
     AIE.end
   }
 
   %core18_1 = AIE.core(%tile18_1) {
-    AIE.useLock(%lock17_1, "Acquire", 1)
-    AIE.useLock(%lock18_1, "Acquire", 0)
+    AIE.use_lock(%lock17_1, "Acquire", 1)
+    AIE.use_lock(%lock18_1, "Acquire", 0)
     func.call @do_sieve(%buf17_1, %buf18_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock17_1, "Release", 0)
-    AIE.useLock(%lock18_1, "Release", 1)
+    AIE.use_lock(%lock17_1, "Release", 0)
+    AIE.use_lock(%lock18_1, "Release", 1)
     AIE.end
   }
 
   %core18_2 = AIE.core(%tile18_2) {
-    AIE.useLock(%lock18_1, "Acquire", 1)
-    AIE.useLock(%lock18_2, "Acquire", 0)
+    AIE.use_lock(%lock18_1, "Acquire", 1)
+    AIE.use_lock(%lock18_2, "Acquire", 0)
     func.call @do_sieve(%buf18_1, %buf18_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_1, "Release", 0)
-    AIE.useLock(%lock18_2, "Release", 1)
+    AIE.use_lock(%lock18_1, "Release", 0)
+    AIE.use_lock(%lock18_2, "Release", 1)
     AIE.end
   }
 
   %core18_3 = AIE.core(%tile18_3) {
-    AIE.useLock(%lock18_2, "Acquire", 1)
-    AIE.useLock(%lock18_3, "Acquire", 0)
+    AIE.use_lock(%lock18_2, "Acquire", 1)
+    AIE.use_lock(%lock18_3, "Acquire", 0)
     func.call @do_sieve(%buf18_2, %buf18_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_2, "Release", 0)
-    AIE.useLock(%lock18_3, "Release", 1)
+    AIE.use_lock(%lock18_2, "Release", 0)
+    AIE.use_lock(%lock18_3, "Release", 1)
     AIE.end
   }
 
   %core18_4 = AIE.core(%tile18_4) {
-    AIE.useLock(%lock18_3, "Acquire", 1)
-    AIE.useLock(%lock18_4, "Acquire", 0)
+    AIE.use_lock(%lock18_3, "Acquire", 1)
+    AIE.use_lock(%lock18_4, "Acquire", 0)
     func.call @do_sieve(%buf18_3, %buf18_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_3, "Release", 0)
-    AIE.useLock(%lock18_4, "Release", 1)
+    AIE.use_lock(%lock18_3, "Release", 0)
+    AIE.use_lock(%lock18_4, "Release", 1)
     AIE.end
   }
 
   %core18_5 = AIE.core(%tile18_5) {
-    AIE.useLock(%lock18_4, "Acquire", 1)
-    AIE.useLock(%lock18_5, "Acquire", 0)
+    AIE.use_lock(%lock18_4, "Acquire", 1)
+    AIE.use_lock(%lock18_5, "Acquire", 0)
     func.call @do_sieve(%buf18_4, %buf18_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_4, "Release", 0)
-    AIE.useLock(%lock18_5, "Release", 1)
+    AIE.use_lock(%lock18_4, "Release", 0)
+    AIE.use_lock(%lock18_5, "Release", 1)
     AIE.end
   }
 
   %core18_6 = AIE.core(%tile18_6) {
-    AIE.useLock(%lock18_5, "Acquire", 1)
-    AIE.useLock(%lock18_6, "Acquire", 0)
+    AIE.use_lock(%lock18_5, "Acquire", 1)
+    AIE.use_lock(%lock18_6, "Acquire", 0)
     func.call @do_sieve(%buf18_5, %buf18_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_5, "Release", 0)
-    AIE.useLock(%lock18_6, "Release", 1)
+    AIE.use_lock(%lock18_5, "Release", 0)
+    AIE.use_lock(%lock18_6, "Release", 1)
     AIE.end
   }
 
   %core18_7 = AIE.core(%tile18_7) {
-    AIE.useLock(%lock18_6, "Acquire", 1)
-    AIE.useLock(%lock18_7, "Acquire", 0)
+    AIE.use_lock(%lock18_6, "Acquire", 1)
+    AIE.use_lock(%lock18_7, "Acquire", 0)
     func.call @do_sieve(%buf18_6, %buf18_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_6, "Release", 0)
-    AIE.useLock(%lock18_7, "Release", 1)
+    AIE.use_lock(%lock18_6, "Release", 0)
+    AIE.use_lock(%lock18_7, "Release", 1)
     AIE.end
   }
 
   %core18_8 = AIE.core(%tile18_8) {
-    AIE.useLock(%lock18_7, "Acquire", 1)
-    AIE.useLock(%lock18_8, "Acquire", 0)
+    AIE.use_lock(%lock18_7, "Acquire", 1)
+    AIE.use_lock(%lock18_8, "Acquire", 0)
     func.call @do_sieve(%buf18_7, %buf18_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_7, "Release", 0)
-    AIE.useLock(%lock18_8, "Release", 1)
+    AIE.use_lock(%lock18_7, "Release", 0)
+    AIE.use_lock(%lock18_8, "Release", 1)
     AIE.end
   }
 
   %core19_8 = AIE.core(%tile19_8) {
-    AIE.useLock(%lock18_8, "Acquire", 1)
-    AIE.useLock(%lock19_8, "Acquire", 0)
+    AIE.use_lock(%lock18_8, "Acquire", 1)
+    AIE.use_lock(%lock19_8, "Acquire", 0)
     func.call @do_sieve(%buf18_8, %buf19_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock18_8, "Release", 0)
-    AIE.useLock(%lock19_8, "Release", 1)
+    AIE.use_lock(%lock18_8, "Release", 0)
+    AIE.use_lock(%lock19_8, "Release", 1)
     AIE.end
   }
 
   %core19_7 = AIE.core(%tile19_7) {
-    AIE.useLock(%lock19_8, "Acquire", 1)
-    AIE.useLock(%lock19_7, "Acquire", 0)
+    AIE.use_lock(%lock19_8, "Acquire", 1)
+    AIE.use_lock(%lock19_7, "Acquire", 0)
     func.call @do_sieve(%buf19_8, %buf19_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_8, "Release", 0)
-    AIE.useLock(%lock19_7, "Release", 1)
+    AIE.use_lock(%lock19_8, "Release", 0)
+    AIE.use_lock(%lock19_7, "Release", 1)
     AIE.end
   }
 
   %core19_6 = AIE.core(%tile19_6) {
-    AIE.useLock(%lock19_7, "Acquire", 1)
-    AIE.useLock(%lock19_6, "Acquire", 0)
+    AIE.use_lock(%lock19_7, "Acquire", 1)
+    AIE.use_lock(%lock19_6, "Acquire", 0)
     func.call @do_sieve(%buf19_7, %buf19_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_7, "Release", 0)
-    AIE.useLock(%lock19_6, "Release", 1)
+    AIE.use_lock(%lock19_7, "Release", 0)
+    AIE.use_lock(%lock19_6, "Release", 1)
     AIE.end
   }
 
   %core19_5 = AIE.core(%tile19_5) {
-    AIE.useLock(%lock19_6, "Acquire", 1)
-    AIE.useLock(%lock19_5, "Acquire", 0)
+    AIE.use_lock(%lock19_6, "Acquire", 1)
+    AIE.use_lock(%lock19_5, "Acquire", 0)
     func.call @do_sieve(%buf19_6, %buf19_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_6, "Release", 0)
-    AIE.useLock(%lock19_5, "Release", 1)
+    AIE.use_lock(%lock19_6, "Release", 0)
+    AIE.use_lock(%lock19_5, "Release", 1)
     AIE.end
   }
 
   %core19_4 = AIE.core(%tile19_4) {
-    AIE.useLock(%lock19_5, "Acquire", 1)
-    AIE.useLock(%lock19_4, "Acquire", 0)
+    AIE.use_lock(%lock19_5, "Acquire", 1)
+    AIE.use_lock(%lock19_4, "Acquire", 0)
     func.call @do_sieve(%buf19_5, %buf19_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_5, "Release", 0)
-    AIE.useLock(%lock19_4, "Release", 1)
+    AIE.use_lock(%lock19_5, "Release", 0)
+    AIE.use_lock(%lock19_4, "Release", 1)
     AIE.end
   }
 
   %core19_3 = AIE.core(%tile19_3) {
-    AIE.useLock(%lock19_4, "Acquire", 1)
-    AIE.useLock(%lock19_3, "Acquire", 0)
+    AIE.use_lock(%lock19_4, "Acquire", 1)
+    AIE.use_lock(%lock19_3, "Acquire", 0)
     func.call @do_sieve(%buf19_4, %buf19_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_4, "Release", 0)
-    AIE.useLock(%lock19_3, "Release", 1)
+    AIE.use_lock(%lock19_4, "Release", 0)
+    AIE.use_lock(%lock19_3, "Release", 1)
     AIE.end
   }
 
   %core19_2 = AIE.core(%tile19_2) {
-    AIE.useLock(%lock19_3, "Acquire", 1)
-    AIE.useLock(%lock19_2, "Acquire", 0)
+    AIE.use_lock(%lock19_3, "Acquire", 1)
+    AIE.use_lock(%lock19_2, "Acquire", 0)
     func.call @do_sieve(%buf19_3, %buf19_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_3, "Release", 0)
-    AIE.useLock(%lock19_2, "Release", 1)
+    AIE.use_lock(%lock19_3, "Release", 0)
+    AIE.use_lock(%lock19_2, "Release", 1)
     AIE.end
   }
 
   %core19_1 = AIE.core(%tile19_1) {
-    AIE.useLock(%lock19_2, "Acquire", 1)
-    AIE.useLock(%lock19_1, "Acquire", 0)
+    AIE.use_lock(%lock19_2, "Acquire", 1)
+    AIE.use_lock(%lock19_1, "Acquire", 0)
     func.call @do_sieve(%buf19_2, %buf19_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_2, "Release", 0)
-    AIE.useLock(%lock19_1, "Release", 1)
+    AIE.use_lock(%lock19_2, "Release", 0)
+    AIE.use_lock(%lock19_1, "Release", 1)
     AIE.end
   }
 
   %core20_1 = AIE.core(%tile20_1) {
-    AIE.useLock(%lock19_1, "Acquire", 1)
-    AIE.useLock(%lock20_1, "Acquire", 0)
+    AIE.use_lock(%lock19_1, "Acquire", 1)
+    AIE.use_lock(%lock20_1, "Acquire", 0)
     func.call @do_sieve(%buf19_1, %buf20_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock19_1, "Release", 0)
-    AIE.useLock(%lock20_1, "Release", 1)
+    AIE.use_lock(%lock19_1, "Release", 0)
+    AIE.use_lock(%lock20_1, "Release", 1)
     AIE.end
   }
 
   %core20_2 = AIE.core(%tile20_2) {
-    AIE.useLock(%lock20_1, "Acquire", 1)
-    AIE.useLock(%lock20_2, "Acquire", 0)
+    AIE.use_lock(%lock20_1, "Acquire", 1)
+    AIE.use_lock(%lock20_2, "Acquire", 0)
     func.call @do_sieve(%buf20_1, %buf20_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_1, "Release", 0)
-    AIE.useLock(%lock20_2, "Release", 1)
+    AIE.use_lock(%lock20_1, "Release", 0)
+    AIE.use_lock(%lock20_2, "Release", 1)
     AIE.end
   }
 
   %core20_3 = AIE.core(%tile20_3) {
-    AIE.useLock(%lock20_2, "Acquire", 1)
-    AIE.useLock(%lock20_3, "Acquire", 0)
+    AIE.use_lock(%lock20_2, "Acquire", 1)
+    AIE.use_lock(%lock20_3, "Acquire", 0)
     func.call @do_sieve(%buf20_2, %buf20_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_2, "Release", 0)
-    AIE.useLock(%lock20_3, "Release", 1)
+    AIE.use_lock(%lock20_2, "Release", 0)
+    AIE.use_lock(%lock20_3, "Release", 1)
     AIE.end
   }
 
   %core20_4 = AIE.core(%tile20_4) {
-    AIE.useLock(%lock20_3, "Acquire", 1)
-    AIE.useLock(%lock20_4, "Acquire", 0)
+    AIE.use_lock(%lock20_3, "Acquire", 1)
+    AIE.use_lock(%lock20_4, "Acquire", 0)
     func.call @do_sieve(%buf20_3, %buf20_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_3, "Release", 0)
-    AIE.useLock(%lock20_4, "Release", 1)
+    AIE.use_lock(%lock20_3, "Release", 0)
+    AIE.use_lock(%lock20_4, "Release", 1)
     AIE.end
   }
 
   %core20_5 = AIE.core(%tile20_5) {
-    AIE.useLock(%lock20_4, "Acquire", 1)
-    AIE.useLock(%lock20_5, "Acquire", 0)
+    AIE.use_lock(%lock20_4, "Acquire", 1)
+    AIE.use_lock(%lock20_5, "Acquire", 0)
     func.call @do_sieve(%buf20_4, %buf20_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_4, "Release", 0)
-    AIE.useLock(%lock20_5, "Release", 1)
+    AIE.use_lock(%lock20_4, "Release", 0)
+    AIE.use_lock(%lock20_5, "Release", 1)
     AIE.end
   }
 
   %core20_6 = AIE.core(%tile20_6) {
-    AIE.useLock(%lock20_5, "Acquire", 1)
-    AIE.useLock(%lock20_6, "Acquire", 0)
+    AIE.use_lock(%lock20_5, "Acquire", 1)
+    AIE.use_lock(%lock20_6, "Acquire", 0)
     func.call @do_sieve(%buf20_5, %buf20_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_5, "Release", 0)
-    AIE.useLock(%lock20_6, "Release", 1)
+    AIE.use_lock(%lock20_5, "Release", 0)
+    AIE.use_lock(%lock20_6, "Release", 1)
     AIE.end
   }
 
   %core20_7 = AIE.core(%tile20_7) {
-    AIE.useLock(%lock20_6, "Acquire", 1)
-    AIE.useLock(%lock20_7, "Acquire", 0)
+    AIE.use_lock(%lock20_6, "Acquire", 1)
+    AIE.use_lock(%lock20_7, "Acquire", 0)
     func.call @do_sieve(%buf20_6, %buf20_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_6, "Release", 0)
-    AIE.useLock(%lock20_7, "Release", 1)
+    AIE.use_lock(%lock20_6, "Release", 0)
+    AIE.use_lock(%lock20_7, "Release", 1)
     AIE.end
   }
 
   %core20_8 = AIE.core(%tile20_8) {
-    AIE.useLock(%lock20_7, "Acquire", 1)
-    AIE.useLock(%lock20_8, "Acquire", 0)
+    AIE.use_lock(%lock20_7, "Acquire", 1)
+    AIE.use_lock(%lock20_8, "Acquire", 0)
     func.call @do_sieve(%buf20_7, %buf20_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_7, "Release", 0)
-    AIE.useLock(%lock20_8, "Release", 1)
+    AIE.use_lock(%lock20_7, "Release", 0)
+    AIE.use_lock(%lock20_8, "Release", 1)
     AIE.end
   }
 
   %core21_8 = AIE.core(%tile21_8) {
-    AIE.useLock(%lock20_8, "Acquire", 1)
-    AIE.useLock(%lock21_8, "Acquire", 0)
+    AIE.use_lock(%lock20_8, "Acquire", 1)
+    AIE.use_lock(%lock21_8, "Acquire", 0)
     func.call @do_sieve(%buf20_8, %buf21_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock20_8, "Release", 0)
-    AIE.useLock(%lock21_8, "Release", 1)
+    AIE.use_lock(%lock20_8, "Release", 0)
+    AIE.use_lock(%lock21_8, "Release", 1)
     AIE.end
   }
 
   %core21_7 = AIE.core(%tile21_7) {
-    AIE.useLock(%lock21_8, "Acquire", 1)
-    AIE.useLock(%lock21_7, "Acquire", 0)
+    AIE.use_lock(%lock21_8, "Acquire", 1)
+    AIE.use_lock(%lock21_7, "Acquire", 0)
     func.call @do_sieve(%buf21_8, %buf21_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_8, "Release", 0)
-    AIE.useLock(%lock21_7, "Release", 1)
+    AIE.use_lock(%lock21_8, "Release", 0)
+    AIE.use_lock(%lock21_7, "Release", 1)
     AIE.end
   }
 
   %core21_6 = AIE.core(%tile21_6) {
-    AIE.useLock(%lock21_7, "Acquire", 1)
-    AIE.useLock(%lock21_6, "Acquire", 0)
+    AIE.use_lock(%lock21_7, "Acquire", 1)
+    AIE.use_lock(%lock21_6, "Acquire", 0)
     func.call @do_sieve(%buf21_7, %buf21_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_7, "Release", 0)
-    AIE.useLock(%lock21_6, "Release", 1)
+    AIE.use_lock(%lock21_7, "Release", 0)
+    AIE.use_lock(%lock21_6, "Release", 1)
     AIE.end
   }
 
   %core21_5 = AIE.core(%tile21_5) {
-    AIE.useLock(%lock21_6, "Acquire", 1)
-    AIE.useLock(%lock21_5, "Acquire", 0)
+    AIE.use_lock(%lock21_6, "Acquire", 1)
+    AIE.use_lock(%lock21_5, "Acquire", 0)
     func.call @do_sieve(%buf21_6, %buf21_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_6, "Release", 0)
-    AIE.useLock(%lock21_5, "Release", 1)
+    AIE.use_lock(%lock21_6, "Release", 0)
+    AIE.use_lock(%lock21_5, "Release", 1)
     AIE.end
   }
 
   %core21_4 = AIE.core(%tile21_4) {
-    AIE.useLock(%lock21_5, "Acquire", 1)
-    AIE.useLock(%lock21_4, "Acquire", 0)
+    AIE.use_lock(%lock21_5, "Acquire", 1)
+    AIE.use_lock(%lock21_4, "Acquire", 0)
     func.call @do_sieve(%buf21_5, %buf21_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_5, "Release", 0)
-    AIE.useLock(%lock21_4, "Release", 1)
+    AIE.use_lock(%lock21_5, "Release", 0)
+    AIE.use_lock(%lock21_4, "Release", 1)
     AIE.end
   }
 
   %core21_3 = AIE.core(%tile21_3) {
-    AIE.useLock(%lock21_4, "Acquire", 1)
-    AIE.useLock(%lock21_3, "Acquire", 0)
+    AIE.use_lock(%lock21_4, "Acquire", 1)
+    AIE.use_lock(%lock21_3, "Acquire", 0)
     func.call @do_sieve(%buf21_4, %buf21_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_4, "Release", 0)
-    AIE.useLock(%lock21_3, "Release", 1)
+    AIE.use_lock(%lock21_4, "Release", 0)
+    AIE.use_lock(%lock21_3, "Release", 1)
     AIE.end
   }
 
   %core21_2 = AIE.core(%tile21_2) {
-    AIE.useLock(%lock21_3, "Acquire", 1)
-    AIE.useLock(%lock21_2, "Acquire", 0)
+    AIE.use_lock(%lock21_3, "Acquire", 1)
+    AIE.use_lock(%lock21_2, "Acquire", 0)
     func.call @do_sieve(%buf21_3, %buf21_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_3, "Release", 0)
-    AIE.useLock(%lock21_2, "Release", 1)
+    AIE.use_lock(%lock21_3, "Release", 0)
+    AIE.use_lock(%lock21_2, "Release", 1)
     AIE.end
   }
 
   %core21_1 = AIE.core(%tile21_1) {
-    AIE.useLock(%lock21_2, "Acquire", 1)
-    AIE.useLock(%lock21_1, "Acquire", 0)
+    AIE.use_lock(%lock21_2, "Acquire", 1)
+    AIE.use_lock(%lock21_1, "Acquire", 0)
     func.call @do_sieve(%buf21_2, %buf21_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_2, "Release", 0)
-    AIE.useLock(%lock21_1, "Release", 1)
+    AIE.use_lock(%lock21_2, "Release", 0)
+    AIE.use_lock(%lock21_1, "Release", 1)
     AIE.end
   }
 
   %core22_1 = AIE.core(%tile22_1) {
-    AIE.useLock(%lock21_1, "Acquire", 1)
-    AIE.useLock(%lock22_1, "Acquire", 0)
+    AIE.use_lock(%lock21_1, "Acquire", 1)
+    AIE.use_lock(%lock22_1, "Acquire", 0)
     func.call @do_sieve(%buf21_1, %buf22_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock21_1, "Release", 0)
-    AIE.useLock(%lock22_1, "Release", 1)
+    AIE.use_lock(%lock21_1, "Release", 0)
+    AIE.use_lock(%lock22_1, "Release", 1)
     AIE.end
   }
 
   %core22_2 = AIE.core(%tile22_2) {
-    AIE.useLock(%lock22_1, "Acquire", 1)
-    AIE.useLock(%lock22_2, "Acquire", 0)
+    AIE.use_lock(%lock22_1, "Acquire", 1)
+    AIE.use_lock(%lock22_2, "Acquire", 0)
     func.call @do_sieve(%buf22_1, %buf22_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_1, "Release", 0)
-    AIE.useLock(%lock22_2, "Release", 1)
+    AIE.use_lock(%lock22_1, "Release", 0)
+    AIE.use_lock(%lock22_2, "Release", 1)
     AIE.end
   }
 
   %core22_3 = AIE.core(%tile22_3) {
-    AIE.useLock(%lock22_2, "Acquire", 1)
-    AIE.useLock(%lock22_3, "Acquire", 0)
+    AIE.use_lock(%lock22_2, "Acquire", 1)
+    AIE.use_lock(%lock22_3, "Acquire", 0)
     func.call @do_sieve(%buf22_2, %buf22_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_2, "Release", 0)
-    AIE.useLock(%lock22_3, "Release", 1)
+    AIE.use_lock(%lock22_2, "Release", 0)
+    AIE.use_lock(%lock22_3, "Release", 1)
     AIE.end
   }
 
   %core22_4 = AIE.core(%tile22_4) {
-    AIE.useLock(%lock22_3, "Acquire", 1)
-    AIE.useLock(%lock22_4, "Acquire", 0)
+    AIE.use_lock(%lock22_3, "Acquire", 1)
+    AIE.use_lock(%lock22_4, "Acquire", 0)
     func.call @do_sieve(%buf22_3, %buf22_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_3, "Release", 0)
-    AIE.useLock(%lock22_4, "Release", 1)
+    AIE.use_lock(%lock22_3, "Release", 0)
+    AIE.use_lock(%lock22_4, "Release", 1)
     AIE.end
   }
 
   %core22_5 = AIE.core(%tile22_5) {
-    AIE.useLock(%lock22_4, "Acquire", 1)
-    AIE.useLock(%lock22_5, "Acquire", 0)
+    AIE.use_lock(%lock22_4, "Acquire", 1)
+    AIE.use_lock(%lock22_5, "Acquire", 0)
     func.call @do_sieve(%buf22_4, %buf22_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_4, "Release", 0)
-    AIE.useLock(%lock22_5, "Release", 1)
+    AIE.use_lock(%lock22_4, "Release", 0)
+    AIE.use_lock(%lock22_5, "Release", 1)
     AIE.end
   }
 
   %core22_6 = AIE.core(%tile22_6) {
-    AIE.useLock(%lock22_5, "Acquire", 1)
-    AIE.useLock(%lock22_6, "Acquire", 0)
+    AIE.use_lock(%lock22_5, "Acquire", 1)
+    AIE.use_lock(%lock22_6, "Acquire", 0)
     func.call @do_sieve(%buf22_5, %buf22_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_5, "Release", 0)
-    AIE.useLock(%lock22_6, "Release", 1)
+    AIE.use_lock(%lock22_5, "Release", 0)
+    AIE.use_lock(%lock22_6, "Release", 1)
     AIE.end
   }
 
   %core22_7 = AIE.core(%tile22_7) {
-    AIE.useLock(%lock22_6, "Acquire", 1)
-    AIE.useLock(%lock22_7, "Acquire", 0)
+    AIE.use_lock(%lock22_6, "Acquire", 1)
+    AIE.use_lock(%lock22_7, "Acquire", 0)
     func.call @do_sieve(%buf22_6, %buf22_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_6, "Release", 0)
-    AIE.useLock(%lock22_7, "Release", 1)
+    AIE.use_lock(%lock22_6, "Release", 0)
+    AIE.use_lock(%lock22_7, "Release", 1)
     AIE.end
   }
 
   %core22_8 = AIE.core(%tile22_8) {
-    AIE.useLock(%lock22_7, "Acquire", 1)
-    AIE.useLock(%lock22_8, "Acquire", 0)
+    AIE.use_lock(%lock22_7, "Acquire", 1)
+    AIE.use_lock(%lock22_8, "Acquire", 0)
     func.call @do_sieve(%buf22_7, %buf22_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_7, "Release", 0)
-    AIE.useLock(%lock22_8, "Release", 1)
+    AIE.use_lock(%lock22_7, "Release", 0)
+    AIE.use_lock(%lock22_8, "Release", 1)
     AIE.end
   }
 
   %core23_8 = AIE.core(%tile23_8) {
-    AIE.useLock(%lock22_8, "Acquire", 1)
-    AIE.useLock(%lock23_8, "Acquire", 0)
+    AIE.use_lock(%lock22_8, "Acquire", 1)
+    AIE.use_lock(%lock23_8, "Acquire", 0)
     func.call @do_sieve(%buf22_8, %buf23_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock22_8, "Release", 0)
-    AIE.useLock(%lock23_8, "Release", 1)
+    AIE.use_lock(%lock22_8, "Release", 0)
+    AIE.use_lock(%lock23_8, "Release", 1)
     AIE.end
   }
 
   %core23_7 = AIE.core(%tile23_7) {
-    AIE.useLock(%lock23_8, "Acquire", 1)
-    AIE.useLock(%lock23_7, "Acquire", 0)
+    AIE.use_lock(%lock23_8, "Acquire", 1)
+    AIE.use_lock(%lock23_7, "Acquire", 0)
     func.call @do_sieve(%buf23_8, %buf23_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_8, "Release", 0)
-    AIE.useLock(%lock23_7, "Release", 1)
+    AIE.use_lock(%lock23_8, "Release", 0)
+    AIE.use_lock(%lock23_7, "Release", 1)
     AIE.end
   }
 
   %core23_6 = AIE.core(%tile23_6) {
-    AIE.useLock(%lock23_7, "Acquire", 1)
-    AIE.useLock(%lock23_6, "Acquire", 0)
+    AIE.use_lock(%lock23_7, "Acquire", 1)
+    AIE.use_lock(%lock23_6, "Acquire", 0)
     func.call @do_sieve(%buf23_7, %buf23_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_7, "Release", 0)
-    AIE.useLock(%lock23_6, "Release", 1)
+    AIE.use_lock(%lock23_7, "Release", 0)
+    AIE.use_lock(%lock23_6, "Release", 1)
     AIE.end
   }
 
   %core23_5 = AIE.core(%tile23_5) {
-    AIE.useLock(%lock23_6, "Acquire", 1)
-    AIE.useLock(%lock23_5, "Acquire", 0)
+    AIE.use_lock(%lock23_6, "Acquire", 1)
+    AIE.use_lock(%lock23_5, "Acquire", 0)
     func.call @do_sieve(%buf23_6, %buf23_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_6, "Release", 0)
-    AIE.useLock(%lock23_5, "Release", 1)
+    AIE.use_lock(%lock23_6, "Release", 0)
+    AIE.use_lock(%lock23_5, "Release", 1)
     AIE.end
   }
 
   %core23_4 = AIE.core(%tile23_4) {
-    AIE.useLock(%lock23_5, "Acquire", 1)
-    AIE.useLock(%lock23_4, "Acquire", 0)
+    AIE.use_lock(%lock23_5, "Acquire", 1)
+    AIE.use_lock(%lock23_4, "Acquire", 0)
     func.call @do_sieve(%buf23_5, %buf23_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_5, "Release", 0)
-    AIE.useLock(%lock23_4, "Release", 1)
+    AIE.use_lock(%lock23_5, "Release", 0)
+    AIE.use_lock(%lock23_4, "Release", 1)
     AIE.end
   }
 
   %core23_3 = AIE.core(%tile23_3) {
-    AIE.useLock(%lock23_4, "Acquire", 1)
-    AIE.useLock(%lock23_3, "Acquire", 0)
+    AIE.use_lock(%lock23_4, "Acquire", 1)
+    AIE.use_lock(%lock23_3, "Acquire", 0)
     func.call @do_sieve(%buf23_4, %buf23_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_4, "Release", 0)
-    AIE.useLock(%lock23_3, "Release", 1)
+    AIE.use_lock(%lock23_4, "Release", 0)
+    AIE.use_lock(%lock23_3, "Release", 1)
     AIE.end
   }
 
   %core23_2 = AIE.core(%tile23_2) {
-    AIE.useLock(%lock23_3, "Acquire", 1)
-    AIE.useLock(%lock23_2, "Acquire", 0)
+    AIE.use_lock(%lock23_3, "Acquire", 1)
+    AIE.use_lock(%lock23_2, "Acquire", 0)
     func.call @do_sieve(%buf23_3, %buf23_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_3, "Release", 0)
-    AIE.useLock(%lock23_2, "Release", 1)
+    AIE.use_lock(%lock23_3, "Release", 0)
+    AIE.use_lock(%lock23_2, "Release", 1)
     AIE.end
   }
 
   %core23_1 = AIE.core(%tile23_1) {
-    AIE.useLock(%lock23_2, "Acquire", 1)
-    AIE.useLock(%lock23_1, "Acquire", 0)
+    AIE.use_lock(%lock23_2, "Acquire", 1)
+    AIE.use_lock(%lock23_1, "Acquire", 0)
     func.call @do_sieve(%buf23_2, %buf23_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_2, "Release", 0)
-    AIE.useLock(%lock23_1, "Release", 1)
+    AIE.use_lock(%lock23_2, "Release", 0)
+    AIE.use_lock(%lock23_1, "Release", 1)
     AIE.end
   }
 
   %core24_1 = AIE.core(%tile24_1) {
-    AIE.useLock(%lock23_1, "Acquire", 1)
-    AIE.useLock(%lock24_1, "Acquire", 0)
+    AIE.use_lock(%lock23_1, "Acquire", 1)
+    AIE.use_lock(%lock24_1, "Acquire", 0)
     func.call @do_sieve(%buf23_1, %buf24_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock23_1, "Release", 0)
-    AIE.useLock(%lock24_1, "Release", 1)
+    AIE.use_lock(%lock23_1, "Release", 0)
+    AIE.use_lock(%lock24_1, "Release", 1)
     AIE.end
   }
 
   %core24_2 = AIE.core(%tile24_2) {
-    AIE.useLock(%lock24_1, "Acquire", 1)
-    AIE.useLock(%lock24_2, "Acquire", 0)
+    AIE.use_lock(%lock24_1, "Acquire", 1)
+    AIE.use_lock(%lock24_2, "Acquire", 0)
     func.call @do_sieve(%buf24_1, %buf24_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_1, "Release", 0)
-    AIE.useLock(%lock24_2, "Release", 1)
+    AIE.use_lock(%lock24_1, "Release", 0)
+    AIE.use_lock(%lock24_2, "Release", 1)
     AIE.end
   }
 
   %core24_3 = AIE.core(%tile24_3) {
-    AIE.useLock(%lock24_2, "Acquire", 1)
-    AIE.useLock(%lock24_3, "Acquire", 0)
+    AIE.use_lock(%lock24_2, "Acquire", 1)
+    AIE.use_lock(%lock24_3, "Acquire", 0)
     func.call @do_sieve(%buf24_2, %buf24_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_2, "Release", 0)
-    AIE.useLock(%lock24_3, "Release", 1)
+    AIE.use_lock(%lock24_2, "Release", 0)
+    AIE.use_lock(%lock24_3, "Release", 1)
     AIE.end
   }
 
   %core24_4 = AIE.core(%tile24_4) {
-    AIE.useLock(%lock24_3, "Acquire", 1)
-    AIE.useLock(%lock24_4, "Acquire", 0)
+    AIE.use_lock(%lock24_3, "Acquire", 1)
+    AIE.use_lock(%lock24_4, "Acquire", 0)
     func.call @do_sieve(%buf24_3, %buf24_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_3, "Release", 0)
-    AIE.useLock(%lock24_4, "Release", 1)
+    AIE.use_lock(%lock24_3, "Release", 0)
+    AIE.use_lock(%lock24_4, "Release", 1)
     AIE.end
   }
 
   %core24_5 = AIE.core(%tile24_5) {
-    AIE.useLock(%lock24_4, "Acquire", 1)
-    AIE.useLock(%lock24_5, "Acquire", 0)
+    AIE.use_lock(%lock24_4, "Acquire", 1)
+    AIE.use_lock(%lock24_5, "Acquire", 0)
     func.call @do_sieve(%buf24_4, %buf24_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_4, "Release", 0)
-    AIE.useLock(%lock24_5, "Release", 1)
+    AIE.use_lock(%lock24_4, "Release", 0)
+    AIE.use_lock(%lock24_5, "Release", 1)
     AIE.end
   }
 
   %core24_6 = AIE.core(%tile24_6) {
-    AIE.useLock(%lock24_5, "Acquire", 1)
-    AIE.useLock(%lock24_6, "Acquire", 0)
+    AIE.use_lock(%lock24_5, "Acquire", 1)
+    AIE.use_lock(%lock24_6, "Acquire", 0)
     func.call @do_sieve(%buf24_5, %buf24_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_5, "Release", 0)
-    AIE.useLock(%lock24_6, "Release", 1)
+    AIE.use_lock(%lock24_5, "Release", 0)
+    AIE.use_lock(%lock24_6, "Release", 1)
     AIE.end
   }
 
   %core24_7 = AIE.core(%tile24_7) {
-    AIE.useLock(%lock24_6, "Acquire", 1)
-    AIE.useLock(%lock24_7, "Acquire", 0)
+    AIE.use_lock(%lock24_6, "Acquire", 1)
+    AIE.use_lock(%lock24_7, "Acquire", 0)
     func.call @do_sieve(%buf24_6, %buf24_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_6, "Release", 0)
-    AIE.useLock(%lock24_7, "Release", 1)
+    AIE.use_lock(%lock24_6, "Release", 0)
+    AIE.use_lock(%lock24_7, "Release", 1)
     AIE.end
   }
 
   %core24_8 = AIE.core(%tile24_8) {
-    AIE.useLock(%lock24_7, "Acquire", 1)
-    AIE.useLock(%lock24_8, "Acquire", 0)
+    AIE.use_lock(%lock24_7, "Acquire", 1)
+    AIE.use_lock(%lock24_8, "Acquire", 0)
     func.call @do_sieve(%buf24_7, %buf24_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_7, "Release", 0)
-    AIE.useLock(%lock24_8, "Release", 1)
+    AIE.use_lock(%lock24_7, "Release", 0)
+    AIE.use_lock(%lock24_8, "Release", 1)
     AIE.end
   }
 
   %core25_8 = AIE.core(%tile25_8) {
-    AIE.useLock(%lock24_8, "Acquire", 1)
-    AIE.useLock(%lock25_8, "Acquire", 0)
+    AIE.use_lock(%lock24_8, "Acquire", 1)
+    AIE.use_lock(%lock25_8, "Acquire", 0)
     func.call @do_sieve(%buf24_8, %buf25_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock24_8, "Release", 0)
-    AIE.useLock(%lock25_8, "Release", 1)
+    AIE.use_lock(%lock24_8, "Release", 0)
+    AIE.use_lock(%lock25_8, "Release", 1)
     AIE.end
   }
 
   %core25_7 = AIE.core(%tile25_7) {
-    AIE.useLock(%lock25_8, "Acquire", 1)
-    AIE.useLock(%lock25_7, "Acquire", 0)
+    AIE.use_lock(%lock25_8, "Acquire", 1)
+    AIE.use_lock(%lock25_7, "Acquire", 0)
     func.call @do_sieve(%buf25_8, %buf25_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_8, "Release", 0)
-    AIE.useLock(%lock25_7, "Release", 1)
+    AIE.use_lock(%lock25_8, "Release", 0)
+    AIE.use_lock(%lock25_7, "Release", 1)
     AIE.end
   }
 
   %core25_6 = AIE.core(%tile25_6) {
-    AIE.useLock(%lock25_7, "Acquire", 1)
-    AIE.useLock(%lock25_6, "Acquire", 0)
+    AIE.use_lock(%lock25_7, "Acquire", 1)
+    AIE.use_lock(%lock25_6, "Acquire", 0)
     func.call @do_sieve(%buf25_7, %buf25_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_7, "Release", 0)
-    AIE.useLock(%lock25_6, "Release", 1)
+    AIE.use_lock(%lock25_7, "Release", 0)
+    AIE.use_lock(%lock25_6, "Release", 1)
     AIE.end
   }
 
   %core25_5 = AIE.core(%tile25_5) {
-    AIE.useLock(%lock25_6, "Acquire", 1)
-    AIE.useLock(%lock25_5, "Acquire", 0)
+    AIE.use_lock(%lock25_6, "Acquire", 1)
+    AIE.use_lock(%lock25_5, "Acquire", 0)
     func.call @do_sieve(%buf25_6, %buf25_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_6, "Release", 0)
-    AIE.useLock(%lock25_5, "Release", 1)
+    AIE.use_lock(%lock25_6, "Release", 0)
+    AIE.use_lock(%lock25_5, "Release", 1)
     AIE.end
   }
 
   %core25_4 = AIE.core(%tile25_4) {
-    AIE.useLock(%lock25_5, "Acquire", 1)
-    AIE.useLock(%lock25_4, "Acquire", 0)
+    AIE.use_lock(%lock25_5, "Acquire", 1)
+    AIE.use_lock(%lock25_4, "Acquire", 0)
     func.call @do_sieve(%buf25_5, %buf25_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_5, "Release", 0)
-    AIE.useLock(%lock25_4, "Release", 1)
+    AIE.use_lock(%lock25_5, "Release", 0)
+    AIE.use_lock(%lock25_4, "Release", 1)
     AIE.end
   }
 
   %core25_3 = AIE.core(%tile25_3) {
-    AIE.useLock(%lock25_4, "Acquire", 1)
-    AIE.useLock(%lock25_3, "Acquire", 0)
+    AIE.use_lock(%lock25_4, "Acquire", 1)
+    AIE.use_lock(%lock25_3, "Acquire", 0)
     func.call @do_sieve(%buf25_4, %buf25_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_4, "Release", 0)
-    AIE.useLock(%lock25_3, "Release", 1)
+    AIE.use_lock(%lock25_4, "Release", 0)
+    AIE.use_lock(%lock25_3, "Release", 1)
     AIE.end
   }
 
   %core25_2 = AIE.core(%tile25_2) {
-    AIE.useLock(%lock25_3, "Acquire", 1)
-    AIE.useLock(%lock25_2, "Acquire", 0)
+    AIE.use_lock(%lock25_3, "Acquire", 1)
+    AIE.use_lock(%lock25_2, "Acquire", 0)
     func.call @do_sieve(%buf25_3, %buf25_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_3, "Release", 0)
-    AIE.useLock(%lock25_2, "Release", 1)
+    AIE.use_lock(%lock25_3, "Release", 0)
+    AIE.use_lock(%lock25_2, "Release", 1)
     AIE.end
   }
 
   %core25_1 = AIE.core(%tile25_1) {
-    AIE.useLock(%lock25_2, "Acquire", 1)
-    AIE.useLock(%lock25_1, "Acquire", 0)
+    AIE.use_lock(%lock25_2, "Acquire", 1)
+    AIE.use_lock(%lock25_1, "Acquire", 0)
     func.call @do_sieve(%buf25_2, %buf25_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_2, "Release", 0)
-    AIE.useLock(%lock25_1, "Release", 1)
+    AIE.use_lock(%lock25_2, "Release", 0)
+    AIE.use_lock(%lock25_1, "Release", 1)
     AIE.end
   }
 
   %core26_1 = AIE.core(%tile26_1) {
-    AIE.useLock(%lock25_1, "Acquire", 1)
-    AIE.useLock(%lock26_1, "Acquire", 0)
+    AIE.use_lock(%lock25_1, "Acquire", 1)
+    AIE.use_lock(%lock26_1, "Acquire", 0)
     func.call @do_sieve(%buf25_1, %buf26_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock25_1, "Release", 0)
-    AIE.useLock(%lock26_1, "Release", 1)
+    AIE.use_lock(%lock25_1, "Release", 0)
+    AIE.use_lock(%lock26_1, "Release", 1)
     AIE.end
   }
 
   %core26_2 = AIE.core(%tile26_2) {
-    AIE.useLock(%lock26_1, "Acquire", 1)
-    AIE.useLock(%lock26_2, "Acquire", 0)
+    AIE.use_lock(%lock26_1, "Acquire", 1)
+    AIE.use_lock(%lock26_2, "Acquire", 0)
     func.call @do_sieve(%buf26_1, %buf26_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_1, "Release", 0)
-    AIE.useLock(%lock26_2, "Release", 1)
+    AIE.use_lock(%lock26_1, "Release", 0)
+    AIE.use_lock(%lock26_2, "Release", 1)
     AIE.end
   }
 
   %core26_3 = AIE.core(%tile26_3) {
-    AIE.useLock(%lock26_2, "Acquire", 1)
-    AIE.useLock(%lock26_3, "Acquire", 0)
+    AIE.use_lock(%lock26_2, "Acquire", 1)
+    AIE.use_lock(%lock26_3, "Acquire", 0)
     func.call @do_sieve(%buf26_2, %buf26_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_2, "Release", 0)
-    AIE.useLock(%lock26_3, "Release", 1)
+    AIE.use_lock(%lock26_2, "Release", 0)
+    AIE.use_lock(%lock26_3, "Release", 1)
     AIE.end
   }
 
   %core26_4 = AIE.core(%tile26_4) {
-    AIE.useLock(%lock26_3, "Acquire", 1)
-    AIE.useLock(%lock26_4, "Acquire", 0)
+    AIE.use_lock(%lock26_3, "Acquire", 1)
+    AIE.use_lock(%lock26_4, "Acquire", 0)
     func.call @do_sieve(%buf26_3, %buf26_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_3, "Release", 0)
-    AIE.useLock(%lock26_4, "Release", 1)
+    AIE.use_lock(%lock26_3, "Release", 0)
+    AIE.use_lock(%lock26_4, "Release", 1)
     AIE.end
   }
 
   %core26_5 = AIE.core(%tile26_5) {
-    AIE.useLock(%lock26_4, "Acquire", 1)
-    AIE.useLock(%lock26_5, "Acquire", 0)
+    AIE.use_lock(%lock26_4, "Acquire", 1)
+    AIE.use_lock(%lock26_5, "Acquire", 0)
     func.call @do_sieve(%buf26_4, %buf26_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_4, "Release", 0)
-    AIE.useLock(%lock26_5, "Release", 1)
+    AIE.use_lock(%lock26_4, "Release", 0)
+    AIE.use_lock(%lock26_5, "Release", 1)
     AIE.end
   }
 
   %core26_6 = AIE.core(%tile26_6) {
-    AIE.useLock(%lock26_5, "Acquire", 1)
-    AIE.useLock(%lock26_6, "Acquire", 0)
+    AIE.use_lock(%lock26_5, "Acquire", 1)
+    AIE.use_lock(%lock26_6, "Acquire", 0)
     func.call @do_sieve(%buf26_5, %buf26_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_5, "Release", 0)
-    AIE.useLock(%lock26_6, "Release", 1)
+    AIE.use_lock(%lock26_5, "Release", 0)
+    AIE.use_lock(%lock26_6, "Release", 1)
     AIE.end
   }
 
   %core26_7 = AIE.core(%tile26_7) {
-    AIE.useLock(%lock26_6, "Acquire", 1)
-    AIE.useLock(%lock26_7, "Acquire", 0)
+    AIE.use_lock(%lock26_6, "Acquire", 1)
+    AIE.use_lock(%lock26_7, "Acquire", 0)
     func.call @do_sieve(%buf26_6, %buf26_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_6, "Release", 0)
-    AIE.useLock(%lock26_7, "Release", 1)
+    AIE.use_lock(%lock26_6, "Release", 0)
+    AIE.use_lock(%lock26_7, "Release", 1)
     AIE.end
   }
 
   %core26_8 = AIE.core(%tile26_8) {
-    AIE.useLock(%lock26_7, "Acquire", 1)
-    AIE.useLock(%lock26_8, "Acquire", 0)
+    AIE.use_lock(%lock26_7, "Acquire", 1)
+    AIE.use_lock(%lock26_8, "Acquire", 0)
     func.call @do_sieve(%buf26_7, %buf26_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_7, "Release", 0)
-    AIE.useLock(%lock26_8, "Release", 1)
+    AIE.use_lock(%lock26_7, "Release", 0)
+    AIE.use_lock(%lock26_8, "Release", 1)
     AIE.end
   }
 
   %core27_8 = AIE.core(%tile27_8) {
-    AIE.useLock(%lock26_8, "Acquire", 1)
-    AIE.useLock(%lock27_8, "Acquire", 0)
+    AIE.use_lock(%lock26_8, "Acquire", 1)
+    AIE.use_lock(%lock27_8, "Acquire", 0)
     func.call @do_sieve(%buf26_8, %buf27_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock26_8, "Release", 0)
-    AIE.useLock(%lock27_8, "Release", 1)
+    AIE.use_lock(%lock26_8, "Release", 0)
+    AIE.use_lock(%lock27_8, "Release", 1)
     AIE.end
   }
 
   %core27_7 = AIE.core(%tile27_7) {
-    AIE.useLock(%lock27_8, "Acquire", 1)
-    AIE.useLock(%lock27_7, "Acquire", 0)
+    AIE.use_lock(%lock27_8, "Acquire", 1)
+    AIE.use_lock(%lock27_7, "Acquire", 0)
     func.call @do_sieve(%buf27_8, %buf27_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_8, "Release", 0)
-    AIE.useLock(%lock27_7, "Release", 1)
+    AIE.use_lock(%lock27_8, "Release", 0)
+    AIE.use_lock(%lock27_7, "Release", 1)
     AIE.end
   }
 
   %core27_6 = AIE.core(%tile27_6) {
-    AIE.useLock(%lock27_7, "Acquire", 1)
-    AIE.useLock(%lock27_6, "Acquire", 0)
+    AIE.use_lock(%lock27_7, "Acquire", 1)
+    AIE.use_lock(%lock27_6, "Acquire", 0)
     func.call @do_sieve(%buf27_7, %buf27_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_7, "Release", 0)
-    AIE.useLock(%lock27_6, "Release", 1)
+    AIE.use_lock(%lock27_7, "Release", 0)
+    AIE.use_lock(%lock27_6, "Release", 1)
     AIE.end
   }
 
   %core27_5 = AIE.core(%tile27_5) {
-    AIE.useLock(%lock27_6, "Acquire", 1)
-    AIE.useLock(%lock27_5, "Acquire", 0)
+    AIE.use_lock(%lock27_6, "Acquire", 1)
+    AIE.use_lock(%lock27_5, "Acquire", 0)
     func.call @do_sieve(%buf27_6, %buf27_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_6, "Release", 0)
-    AIE.useLock(%lock27_5, "Release", 1)
+    AIE.use_lock(%lock27_6, "Release", 0)
+    AIE.use_lock(%lock27_5, "Release", 1)
     AIE.end
   }
 
   %core27_4 = AIE.core(%tile27_4) {
-    AIE.useLock(%lock27_5, "Acquire", 1)
-    AIE.useLock(%lock27_4, "Acquire", 0)
+    AIE.use_lock(%lock27_5, "Acquire", 1)
+    AIE.use_lock(%lock27_4, "Acquire", 0)
     func.call @do_sieve(%buf27_5, %buf27_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_5, "Release", 0)
-    AIE.useLock(%lock27_4, "Release", 1)
+    AIE.use_lock(%lock27_5, "Release", 0)
+    AIE.use_lock(%lock27_4, "Release", 1)
     AIE.end
   }
 
   %core27_3 = AIE.core(%tile27_3) {
-    AIE.useLock(%lock27_4, "Acquire", 1)
-    AIE.useLock(%lock27_3, "Acquire", 0)
+    AIE.use_lock(%lock27_4, "Acquire", 1)
+    AIE.use_lock(%lock27_3, "Acquire", 0)
     func.call @do_sieve(%buf27_4, %buf27_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_4, "Release", 0)
-    AIE.useLock(%lock27_3, "Release", 1)
+    AIE.use_lock(%lock27_4, "Release", 0)
+    AIE.use_lock(%lock27_3, "Release", 1)
     AIE.end
   }
 
   %core27_2 = AIE.core(%tile27_2) {
-    AIE.useLock(%lock27_3, "Acquire", 1)
-    AIE.useLock(%lock27_2, "Acquire", 0)
+    AIE.use_lock(%lock27_3, "Acquire", 1)
+    AIE.use_lock(%lock27_2, "Acquire", 0)
     func.call @do_sieve(%buf27_3, %buf27_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_3, "Release", 0)
-    AIE.useLock(%lock27_2, "Release", 1)
+    AIE.use_lock(%lock27_3, "Release", 0)
+    AIE.use_lock(%lock27_2, "Release", 1)
     AIE.end
   }
 
   %core27_1 = AIE.core(%tile27_1) {
-    AIE.useLock(%lock27_2, "Acquire", 1)
-    AIE.useLock(%lock27_1, "Acquire", 0)
+    AIE.use_lock(%lock27_2, "Acquire", 1)
+    AIE.use_lock(%lock27_1, "Acquire", 0)
     func.call @do_sieve(%buf27_2, %buf27_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_2, "Release", 0)
-    AIE.useLock(%lock27_1, "Release", 1)
+    AIE.use_lock(%lock27_2, "Release", 0)
+    AIE.use_lock(%lock27_1, "Release", 1)
     AIE.end
   }
 
   %core28_1 = AIE.core(%tile28_1) {
-    AIE.useLock(%lock27_1, "Acquire", 1)
-    AIE.useLock(%lock28_1, "Acquire", 0)
+    AIE.use_lock(%lock27_1, "Acquire", 1)
+    AIE.use_lock(%lock28_1, "Acquire", 0)
     func.call @do_sieve(%buf27_1, %buf28_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock27_1, "Release", 0)
-    AIE.useLock(%lock28_1, "Release", 1)
+    AIE.use_lock(%lock27_1, "Release", 0)
+    AIE.use_lock(%lock28_1, "Release", 1)
     AIE.end
   }
 
   %core28_2 = AIE.core(%tile28_2) {
-    AIE.useLock(%lock28_1, "Acquire", 1)
-    AIE.useLock(%lock28_2, "Acquire", 0)
+    AIE.use_lock(%lock28_1, "Acquire", 1)
+    AIE.use_lock(%lock28_2, "Acquire", 0)
     func.call @do_sieve(%buf28_1, %buf28_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_1, "Release", 0)
-    AIE.useLock(%lock28_2, "Release", 1)
+    AIE.use_lock(%lock28_1, "Release", 0)
+    AIE.use_lock(%lock28_2, "Release", 1)
     AIE.end
   }
 
   %core28_3 = AIE.core(%tile28_3) {
-    AIE.useLock(%lock28_2, "Acquire", 1)
-    AIE.useLock(%lock28_3, "Acquire", 0)
+    AIE.use_lock(%lock28_2, "Acquire", 1)
+    AIE.use_lock(%lock28_3, "Acquire", 0)
     func.call @do_sieve(%buf28_2, %buf28_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_2, "Release", 0)
-    AIE.useLock(%lock28_3, "Release", 1)
+    AIE.use_lock(%lock28_2, "Release", 0)
+    AIE.use_lock(%lock28_3, "Release", 1)
     AIE.end
   }
 
   %core28_4 = AIE.core(%tile28_4) {
-    AIE.useLock(%lock28_3, "Acquire", 1)
-    AIE.useLock(%lock28_4, "Acquire", 0)
+    AIE.use_lock(%lock28_3, "Acquire", 1)
+    AIE.use_lock(%lock28_4, "Acquire", 0)
     func.call @do_sieve(%buf28_3, %buf28_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_3, "Release", 0)
-    AIE.useLock(%lock28_4, "Release", 1)
+    AIE.use_lock(%lock28_3, "Release", 0)
+    AIE.use_lock(%lock28_4, "Release", 1)
     AIE.end
   }
 
   %core28_5 = AIE.core(%tile28_5) {
-    AIE.useLock(%lock28_4, "Acquire", 1)
-    AIE.useLock(%lock28_5, "Acquire", 0)
+    AIE.use_lock(%lock28_4, "Acquire", 1)
+    AIE.use_lock(%lock28_5, "Acquire", 0)
     func.call @do_sieve(%buf28_4, %buf28_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_4, "Release", 0)
-    AIE.useLock(%lock28_5, "Release", 1)
+    AIE.use_lock(%lock28_4, "Release", 0)
+    AIE.use_lock(%lock28_5, "Release", 1)
     AIE.end
   }
 
   %core28_6 = AIE.core(%tile28_6) {
-    AIE.useLock(%lock28_5, "Acquire", 1)
-    AIE.useLock(%lock28_6, "Acquire", 0)
+    AIE.use_lock(%lock28_5, "Acquire", 1)
+    AIE.use_lock(%lock28_6, "Acquire", 0)
     func.call @do_sieve(%buf28_5, %buf28_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_5, "Release", 0)
-    AIE.useLock(%lock28_6, "Release", 1)
+    AIE.use_lock(%lock28_5, "Release", 0)
+    AIE.use_lock(%lock28_6, "Release", 1)
     AIE.end
   }
 
   %core28_7 = AIE.core(%tile28_7) {
-    AIE.useLock(%lock28_6, "Acquire", 1)
-    AIE.useLock(%lock28_7, "Acquire", 0)
+    AIE.use_lock(%lock28_6, "Acquire", 1)
+    AIE.use_lock(%lock28_7, "Acquire", 0)
     func.call @do_sieve(%buf28_6, %buf28_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_6, "Release", 0)
-    AIE.useLock(%lock28_7, "Release", 1)
+    AIE.use_lock(%lock28_6, "Release", 0)
+    AIE.use_lock(%lock28_7, "Release", 1)
     AIE.end
   }
 
   %core28_8 = AIE.core(%tile28_8) {
-    AIE.useLock(%lock28_7, "Acquire", 1)
-    AIE.useLock(%lock28_8, "Acquire", 0)
+    AIE.use_lock(%lock28_7, "Acquire", 1)
+    AIE.use_lock(%lock28_8, "Acquire", 0)
     func.call @do_sieve(%buf28_7, %buf28_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_7, "Release", 0)
-    AIE.useLock(%lock28_8, "Release", 1)
+    AIE.use_lock(%lock28_7, "Release", 0)
+    AIE.use_lock(%lock28_8, "Release", 1)
     AIE.end
   }
 
   %core29_8 = AIE.core(%tile29_8) {
-    AIE.useLock(%lock28_8, "Acquire", 1)
-    AIE.useLock(%lock29_8, "Acquire", 0)
+    AIE.use_lock(%lock28_8, "Acquire", 1)
+    AIE.use_lock(%lock29_8, "Acquire", 0)
     func.call @do_sieve(%buf28_8, %buf29_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock28_8, "Release", 0)
-    AIE.useLock(%lock29_8, "Release", 1)
+    AIE.use_lock(%lock28_8, "Release", 0)
+    AIE.use_lock(%lock29_8, "Release", 1)
     AIE.end
   }
 
   %core29_7 = AIE.core(%tile29_7) {
-    AIE.useLock(%lock29_8, "Acquire", 1)
-    AIE.useLock(%lock29_7, "Acquire", 0)
+    AIE.use_lock(%lock29_8, "Acquire", 1)
+    AIE.use_lock(%lock29_7, "Acquire", 0)
     func.call @do_sieve(%buf29_8, %buf29_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_8, "Release", 0)
-    AIE.useLock(%lock29_7, "Release", 1)
+    AIE.use_lock(%lock29_8, "Release", 0)
+    AIE.use_lock(%lock29_7, "Release", 1)
     AIE.end
   }
 
   %core29_6 = AIE.core(%tile29_6) {
-    AIE.useLock(%lock29_7, "Acquire", 1)
-    AIE.useLock(%lock29_6, "Acquire", 0)
+    AIE.use_lock(%lock29_7, "Acquire", 1)
+    AIE.use_lock(%lock29_6, "Acquire", 0)
     func.call @do_sieve(%buf29_7, %buf29_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_7, "Release", 0)
-    AIE.useLock(%lock29_6, "Release", 1)
+    AIE.use_lock(%lock29_7, "Release", 0)
+    AIE.use_lock(%lock29_6, "Release", 1)
     AIE.end
   }
 
   %core29_5 = AIE.core(%tile29_5) {
-    AIE.useLock(%lock29_6, "Acquire", 1)
-    AIE.useLock(%lock29_5, "Acquire", 0)
+    AIE.use_lock(%lock29_6, "Acquire", 1)
+    AIE.use_lock(%lock29_5, "Acquire", 0)
     func.call @do_sieve(%buf29_6, %buf29_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_6, "Release", 0)
-    AIE.useLock(%lock29_5, "Release", 1)
+    AIE.use_lock(%lock29_6, "Release", 0)
+    AIE.use_lock(%lock29_5, "Release", 1)
     AIE.end
   }
 
   %core29_4 = AIE.core(%tile29_4) {
-    AIE.useLock(%lock29_5, "Acquire", 1)
-    AIE.useLock(%lock29_4, "Acquire", 0)
+    AIE.use_lock(%lock29_5, "Acquire", 1)
+    AIE.use_lock(%lock29_4, "Acquire", 0)
     func.call @do_sieve(%buf29_5, %buf29_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_5, "Release", 0)
-    AIE.useLock(%lock29_4, "Release", 1)
+    AIE.use_lock(%lock29_5, "Release", 0)
+    AIE.use_lock(%lock29_4, "Release", 1)
     AIE.end
   }
 
   %core29_3 = AIE.core(%tile29_3) {
-    AIE.useLock(%lock29_4, "Acquire", 1)
-    AIE.useLock(%lock29_3, "Acquire", 0)
+    AIE.use_lock(%lock29_4, "Acquire", 1)
+    AIE.use_lock(%lock29_3, "Acquire", 0)
     func.call @do_sieve(%buf29_4, %buf29_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_4, "Release", 0)
-    AIE.useLock(%lock29_3, "Release", 1)
+    AIE.use_lock(%lock29_4, "Release", 0)
+    AIE.use_lock(%lock29_3, "Release", 1)
     AIE.end
   }
 
   %core29_2 = AIE.core(%tile29_2) {
-    AIE.useLock(%lock29_3, "Acquire", 1)
-    AIE.useLock(%lock29_2, "Acquire", 0)
+    AIE.use_lock(%lock29_3, "Acquire", 1)
+    AIE.use_lock(%lock29_2, "Acquire", 0)
     func.call @do_sieve(%buf29_3, %buf29_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_3, "Release", 0)
-    AIE.useLock(%lock29_2, "Release", 1)
+    AIE.use_lock(%lock29_3, "Release", 0)
+    AIE.use_lock(%lock29_2, "Release", 1)
     AIE.end
   }
 
   %core29_1 = AIE.core(%tile29_1) {
-    AIE.useLock(%lock29_2, "Acquire", 1)
-    AIE.useLock(%lock29_1, "Acquire", 0)
+    AIE.use_lock(%lock29_2, "Acquire", 1)
+    AIE.use_lock(%lock29_1, "Acquire", 0)
     func.call @do_sieve(%buf29_2, %buf29_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_2, "Release", 0)
-    AIE.useLock(%lock29_1, "Release", 1)
+    AIE.use_lock(%lock29_2, "Release", 0)
+    AIE.use_lock(%lock29_1, "Release", 1)
     AIE.end
   }
 
   %core30_1 = AIE.core(%tile30_1) {
-    AIE.useLock(%lock29_1, "Acquire", 1)
-    AIE.useLock(%lock30_1, "Acquire", 0)
+    AIE.use_lock(%lock29_1, "Acquire", 1)
+    AIE.use_lock(%lock30_1, "Acquire", 0)
     func.call @do_sieve(%buf29_1, %buf30_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock29_1, "Release", 0)
-    AIE.useLock(%lock30_1, "Release", 1)
+    AIE.use_lock(%lock29_1, "Release", 0)
+    AIE.use_lock(%lock30_1, "Release", 1)
     AIE.end
   }
 
   %core30_2 = AIE.core(%tile30_2) {
-    AIE.useLock(%lock30_1, "Acquire", 1)
-    AIE.useLock(%lock30_2, "Acquire", 0)
+    AIE.use_lock(%lock30_1, "Acquire", 1)
+    AIE.use_lock(%lock30_2, "Acquire", 0)
     func.call @do_sieve(%buf30_1, %buf30_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_1, "Release", 0)
-    AIE.useLock(%lock30_2, "Release", 1)
+    AIE.use_lock(%lock30_1, "Release", 0)
+    AIE.use_lock(%lock30_2, "Release", 1)
     AIE.end
   }
 
   %core30_3 = AIE.core(%tile30_3) {
-    AIE.useLock(%lock30_2, "Acquire", 1)
-    AIE.useLock(%lock30_3, "Acquire", 0)
+    AIE.use_lock(%lock30_2, "Acquire", 1)
+    AIE.use_lock(%lock30_3, "Acquire", 0)
     func.call @do_sieve(%buf30_2, %buf30_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_2, "Release", 0)
-    AIE.useLock(%lock30_3, "Release", 1)
+    AIE.use_lock(%lock30_2, "Release", 0)
+    AIE.use_lock(%lock30_3, "Release", 1)
     AIE.end
   }
 
   %core30_4 = AIE.core(%tile30_4) {
-    AIE.useLock(%lock30_3, "Acquire", 1)
-    AIE.useLock(%lock30_4, "Acquire", 0)
+    AIE.use_lock(%lock30_3, "Acquire", 1)
+    AIE.use_lock(%lock30_4, "Acquire", 0)
     func.call @do_sieve(%buf30_3, %buf30_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_3, "Release", 0)
-    AIE.useLock(%lock30_4, "Release", 1)
+    AIE.use_lock(%lock30_3, "Release", 0)
+    AIE.use_lock(%lock30_4, "Release", 1)
     AIE.end
   }
 
   %core30_5 = AIE.core(%tile30_5) {
-    AIE.useLock(%lock30_4, "Acquire", 1)
-    AIE.useLock(%lock30_5, "Acquire", 0)
+    AIE.use_lock(%lock30_4, "Acquire", 1)
+    AIE.use_lock(%lock30_5, "Acquire", 0)
     func.call @do_sieve(%buf30_4, %buf30_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_4, "Release", 0)
-    AIE.useLock(%lock30_5, "Release", 1)
+    AIE.use_lock(%lock30_4, "Release", 0)
+    AIE.use_lock(%lock30_5, "Release", 1)
     AIE.end
   }
 
   %core30_6 = AIE.core(%tile30_6) {
-    AIE.useLock(%lock30_5, "Acquire", 1)
-    AIE.useLock(%lock30_6, "Acquire", 0)
+    AIE.use_lock(%lock30_5, "Acquire", 1)
+    AIE.use_lock(%lock30_6, "Acquire", 0)
     func.call @do_sieve(%buf30_5, %buf30_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_5, "Release", 0)
-    AIE.useLock(%lock30_6, "Release", 1)
+    AIE.use_lock(%lock30_5, "Release", 0)
+    AIE.use_lock(%lock30_6, "Release", 1)
     AIE.end
   }
 
   %core30_7 = AIE.core(%tile30_7) {
-    AIE.useLock(%lock30_6, "Acquire", 1)
-    AIE.useLock(%lock30_7, "Acquire", 0)
+    AIE.use_lock(%lock30_6, "Acquire", 1)
+    AIE.use_lock(%lock30_7, "Acquire", 0)
     func.call @do_sieve(%buf30_6, %buf30_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_6, "Release", 0)
-    AIE.useLock(%lock30_7, "Release", 1)
+    AIE.use_lock(%lock30_6, "Release", 0)
+    AIE.use_lock(%lock30_7, "Release", 1)
     AIE.end
   }
 
   %core30_8 = AIE.core(%tile30_8) {
-    AIE.useLock(%lock30_7, "Acquire", 1)
-    AIE.useLock(%lock30_8, "Acquire", 0)
+    AIE.use_lock(%lock30_7, "Acquire", 1)
+    AIE.use_lock(%lock30_8, "Acquire", 0)
     func.call @do_sieve(%buf30_7, %buf30_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_7, "Release", 0)
-    AIE.useLock(%lock30_8, "Release", 1)
+    AIE.use_lock(%lock30_7, "Release", 0)
+    AIE.use_lock(%lock30_8, "Release", 1)
     AIE.end
   }
 
   %core31_8 = AIE.core(%tile31_8) {
-    AIE.useLock(%lock30_8, "Acquire", 1)
-    AIE.useLock(%lock31_8, "Acquire", 0)
+    AIE.use_lock(%lock30_8, "Acquire", 1)
+    AIE.use_lock(%lock31_8, "Acquire", 0)
     func.call @do_sieve(%buf30_8, %buf31_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock30_8, "Release", 0)
-    AIE.useLock(%lock31_8, "Release", 1)
+    AIE.use_lock(%lock30_8, "Release", 0)
+    AIE.use_lock(%lock31_8, "Release", 1)
     AIE.end
   }
 
   %core31_7 = AIE.core(%tile31_7) {
-    AIE.useLock(%lock31_8, "Acquire", 1)
-    AIE.useLock(%lock31_7, "Acquire", 0)
+    AIE.use_lock(%lock31_8, "Acquire", 1)
+    AIE.use_lock(%lock31_7, "Acquire", 0)
     func.call @do_sieve(%buf31_8, %buf31_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_8, "Release", 0)
-    AIE.useLock(%lock31_7, "Release", 1)
+    AIE.use_lock(%lock31_8, "Release", 0)
+    AIE.use_lock(%lock31_7, "Release", 1)
     AIE.end
   }
 
   %core31_6 = AIE.core(%tile31_6) {
-    AIE.useLock(%lock31_7, "Acquire", 1)
-    AIE.useLock(%lock31_6, "Acquire", 0)
+    AIE.use_lock(%lock31_7, "Acquire", 1)
+    AIE.use_lock(%lock31_6, "Acquire", 0)
     func.call @do_sieve(%buf31_7, %buf31_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_7, "Release", 0)
-    AIE.useLock(%lock31_6, "Release", 1)
+    AIE.use_lock(%lock31_7, "Release", 0)
+    AIE.use_lock(%lock31_6, "Release", 1)
     AIE.end
   }
 
   %core31_5 = AIE.core(%tile31_5) {
-    AIE.useLock(%lock31_6, "Acquire", 1)
-    AIE.useLock(%lock31_5, "Acquire", 0)
+    AIE.use_lock(%lock31_6, "Acquire", 1)
+    AIE.use_lock(%lock31_5, "Acquire", 0)
     func.call @do_sieve(%buf31_6, %buf31_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_6, "Release", 0)
-    AIE.useLock(%lock31_5, "Release", 1)
+    AIE.use_lock(%lock31_6, "Release", 0)
+    AIE.use_lock(%lock31_5, "Release", 1)
     AIE.end
   }
 
   %core31_4 = AIE.core(%tile31_4) {
-    AIE.useLock(%lock31_5, "Acquire", 1)
-    AIE.useLock(%lock31_4, "Acquire", 0)
+    AIE.use_lock(%lock31_5, "Acquire", 1)
+    AIE.use_lock(%lock31_4, "Acquire", 0)
     func.call @do_sieve(%buf31_5, %buf31_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_5, "Release", 0)
-    AIE.useLock(%lock31_4, "Release", 1)
+    AIE.use_lock(%lock31_5, "Release", 0)
+    AIE.use_lock(%lock31_4, "Release", 1)
     AIE.end
   }
 
   %core31_3 = AIE.core(%tile31_3) {
-    AIE.useLock(%lock31_4, "Acquire", 1)
-    AIE.useLock(%lock31_3, "Acquire", 0)
+    AIE.use_lock(%lock31_4, "Acquire", 1)
+    AIE.use_lock(%lock31_3, "Acquire", 0)
     func.call @do_sieve(%buf31_4, %buf31_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_4, "Release", 0)
-    AIE.useLock(%lock31_3, "Release", 1)
+    AIE.use_lock(%lock31_4, "Release", 0)
+    AIE.use_lock(%lock31_3, "Release", 1)
     AIE.end
   }
 
   %core31_2 = AIE.core(%tile31_2) {
-    AIE.useLock(%lock31_3, "Acquire", 1)
-    AIE.useLock(%lock31_2, "Acquire", 0)
+    AIE.use_lock(%lock31_3, "Acquire", 1)
+    AIE.use_lock(%lock31_2, "Acquire", 0)
     func.call @do_sieve(%buf31_3, %buf31_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_3, "Release", 0)
-    AIE.useLock(%lock31_2, "Release", 1)
+    AIE.use_lock(%lock31_3, "Release", 0)
+    AIE.use_lock(%lock31_2, "Release", 1)
     AIE.end
   }
 
   %core31_1 = AIE.core(%tile31_1) {
-    AIE.useLock(%lock31_2, "Acquire", 1)
-    AIE.useLock(%lock31_1, "Acquire", 0)
+    AIE.use_lock(%lock31_2, "Acquire", 1)
+    AIE.use_lock(%lock31_1, "Acquire", 0)
     func.call @do_sieve(%buf31_2, %buf31_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_2, "Release", 0)
-    AIE.useLock(%lock31_1, "Release", 1)
+    AIE.use_lock(%lock31_2, "Release", 0)
+    AIE.use_lock(%lock31_1, "Release", 1)
     AIE.end
   }
 
   %core32_1 = AIE.core(%tile32_1) {
-    AIE.useLock(%lock31_1, "Acquire", 1)
-    AIE.useLock(%lock32_1, "Acquire", 0)
+    AIE.use_lock(%lock31_1, "Acquire", 1)
+    AIE.use_lock(%lock32_1, "Acquire", 0)
     func.call @do_sieve(%buf31_1, %buf32_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock31_1, "Release", 0)
-    AIE.useLock(%lock32_1, "Release", 1)
+    AIE.use_lock(%lock31_1, "Release", 0)
+    AIE.use_lock(%lock32_1, "Release", 1)
     AIE.end
   }
 
   %core32_2 = AIE.core(%tile32_2) {
-    AIE.useLock(%lock32_1, "Acquire", 1)
-    AIE.useLock(%lock32_2, "Acquire", 0)
+    AIE.use_lock(%lock32_1, "Acquire", 1)
+    AIE.use_lock(%lock32_2, "Acquire", 0)
     func.call @do_sieve(%buf32_1, %buf32_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_1, "Release", 0)
-    AIE.useLock(%lock32_2, "Release", 1)
+    AIE.use_lock(%lock32_1, "Release", 0)
+    AIE.use_lock(%lock32_2, "Release", 1)
     AIE.end
   }
 
   %core32_3 = AIE.core(%tile32_3) {
-    AIE.useLock(%lock32_2, "Acquire", 1)
-    AIE.useLock(%lock32_3, "Acquire", 0)
+    AIE.use_lock(%lock32_2, "Acquire", 1)
+    AIE.use_lock(%lock32_3, "Acquire", 0)
     func.call @do_sieve(%buf32_2, %buf32_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_2, "Release", 0)
-    AIE.useLock(%lock32_3, "Release", 1)
+    AIE.use_lock(%lock32_2, "Release", 0)
+    AIE.use_lock(%lock32_3, "Release", 1)
     AIE.end
   }
 
   %core32_4 = AIE.core(%tile32_4) {
-    AIE.useLock(%lock32_3, "Acquire", 1)
-    AIE.useLock(%lock32_4, "Acquire", 0)
+    AIE.use_lock(%lock32_3, "Acquire", 1)
+    AIE.use_lock(%lock32_4, "Acquire", 0)
     func.call @do_sieve(%buf32_3, %buf32_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_3, "Release", 0)
-    AIE.useLock(%lock32_4, "Release", 1)
+    AIE.use_lock(%lock32_3, "Release", 0)
+    AIE.use_lock(%lock32_4, "Release", 1)
     AIE.end
   }
 
   %core32_5 = AIE.core(%tile32_5) {
-    AIE.useLock(%lock32_4, "Acquire", 1)
-    AIE.useLock(%lock32_5, "Acquire", 0)
+    AIE.use_lock(%lock32_4, "Acquire", 1)
+    AIE.use_lock(%lock32_5, "Acquire", 0)
     func.call @do_sieve(%buf32_4, %buf32_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_4, "Release", 0)
-    AIE.useLock(%lock32_5, "Release", 1)
+    AIE.use_lock(%lock32_4, "Release", 0)
+    AIE.use_lock(%lock32_5, "Release", 1)
     AIE.end
   }
 
   %core32_6 = AIE.core(%tile32_6) {
-    AIE.useLock(%lock32_5, "Acquire", 1)
-    AIE.useLock(%lock32_6, "Acquire", 0)
+    AIE.use_lock(%lock32_5, "Acquire", 1)
+    AIE.use_lock(%lock32_6, "Acquire", 0)
     func.call @do_sieve(%buf32_5, %buf32_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_5, "Release", 0)
-    AIE.useLock(%lock32_6, "Release", 1)
+    AIE.use_lock(%lock32_5, "Release", 0)
+    AIE.use_lock(%lock32_6, "Release", 1)
     AIE.end
   }
 
   %core32_7 = AIE.core(%tile32_7) {
-    AIE.useLock(%lock32_6, "Acquire", 1)
-    AIE.useLock(%lock32_7, "Acquire", 0)
+    AIE.use_lock(%lock32_6, "Acquire", 1)
+    AIE.use_lock(%lock32_7, "Acquire", 0)
     func.call @do_sieve(%buf32_6, %buf32_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_6, "Release", 0)
-    AIE.useLock(%lock32_7, "Release", 1)
+    AIE.use_lock(%lock32_6, "Release", 0)
+    AIE.use_lock(%lock32_7, "Release", 1)
     AIE.end
   }
 
   %core32_8 = AIE.core(%tile32_8) {
-    AIE.useLock(%lock32_7, "Acquire", 1)
-    AIE.useLock(%lock32_8, "Acquire", 0)
+    AIE.use_lock(%lock32_7, "Acquire", 1)
+    AIE.use_lock(%lock32_8, "Acquire", 0)
     func.call @do_sieve(%buf32_7, %buf32_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_7, "Release", 0)
-    AIE.useLock(%lock32_8, "Release", 1)
+    AIE.use_lock(%lock32_7, "Release", 0)
+    AIE.use_lock(%lock32_8, "Release", 1)
     AIE.end
   }
 
   %core33_8 = AIE.core(%tile33_8) {
-    AIE.useLock(%lock32_8, "Acquire", 1)
-    AIE.useLock(%lock33_8, "Acquire", 0)
+    AIE.use_lock(%lock32_8, "Acquire", 1)
+    AIE.use_lock(%lock33_8, "Acquire", 0)
     func.call @do_sieve(%buf32_8, %buf33_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock32_8, "Release", 0)
-    AIE.useLock(%lock33_8, "Release", 1)
+    AIE.use_lock(%lock32_8, "Release", 0)
+    AIE.use_lock(%lock33_8, "Release", 1)
     AIE.end
   }
 
   %core33_7 = AIE.core(%tile33_7) {
-    AIE.useLock(%lock33_8, "Acquire", 1)
-    AIE.useLock(%lock33_7, "Acquire", 0)
+    AIE.use_lock(%lock33_8, "Acquire", 1)
+    AIE.use_lock(%lock33_7, "Acquire", 0)
     func.call @do_sieve(%buf33_8, %buf33_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_8, "Release", 0)
-    AIE.useLock(%lock33_7, "Release", 1)
+    AIE.use_lock(%lock33_8, "Release", 0)
+    AIE.use_lock(%lock33_7, "Release", 1)
     AIE.end
   }
 
   %core33_6 = AIE.core(%tile33_6) {
-    AIE.useLock(%lock33_7, "Acquire", 1)
-    AIE.useLock(%lock33_6, "Acquire", 0)
+    AIE.use_lock(%lock33_7, "Acquire", 1)
+    AIE.use_lock(%lock33_6, "Acquire", 0)
     func.call @do_sieve(%buf33_7, %buf33_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_7, "Release", 0)
-    AIE.useLock(%lock33_6, "Release", 1)
+    AIE.use_lock(%lock33_7, "Release", 0)
+    AIE.use_lock(%lock33_6, "Release", 1)
     AIE.end
   }
 
   %core33_5 = AIE.core(%tile33_5) {
-    AIE.useLock(%lock33_6, "Acquire", 1)
-    AIE.useLock(%lock33_5, "Acquire", 0)
+    AIE.use_lock(%lock33_6, "Acquire", 1)
+    AIE.use_lock(%lock33_5, "Acquire", 0)
     func.call @do_sieve(%buf33_6, %buf33_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_6, "Release", 0)
-    AIE.useLock(%lock33_5, "Release", 1)
+    AIE.use_lock(%lock33_6, "Release", 0)
+    AIE.use_lock(%lock33_5, "Release", 1)
     AIE.end
   }
 
   %core33_4 = AIE.core(%tile33_4) {
-    AIE.useLock(%lock33_5, "Acquire", 1)
-    AIE.useLock(%lock33_4, "Acquire", 0)
+    AIE.use_lock(%lock33_5, "Acquire", 1)
+    AIE.use_lock(%lock33_4, "Acquire", 0)
     func.call @do_sieve(%buf33_5, %buf33_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_5, "Release", 0)
-    AIE.useLock(%lock33_4, "Release", 1)
+    AIE.use_lock(%lock33_5, "Release", 0)
+    AIE.use_lock(%lock33_4, "Release", 1)
     AIE.end
   }
 
   %core33_3 = AIE.core(%tile33_3) {
-    AIE.useLock(%lock33_4, "Acquire", 1)
-    AIE.useLock(%lock33_3, "Acquire", 0)
+    AIE.use_lock(%lock33_4, "Acquire", 1)
+    AIE.use_lock(%lock33_3, "Acquire", 0)
     func.call @do_sieve(%buf33_4, %buf33_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_4, "Release", 0)
-    AIE.useLock(%lock33_3, "Release", 1)
+    AIE.use_lock(%lock33_4, "Release", 0)
+    AIE.use_lock(%lock33_3, "Release", 1)
     AIE.end
   }
 
   %core33_2 = AIE.core(%tile33_2) {
-    AIE.useLock(%lock33_3, "Acquire", 1)
-    AIE.useLock(%lock33_2, "Acquire", 0)
+    AIE.use_lock(%lock33_3, "Acquire", 1)
+    AIE.use_lock(%lock33_2, "Acquire", 0)
     func.call @do_sieve(%buf33_3, %buf33_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_3, "Release", 0)
-    AIE.useLock(%lock33_2, "Release", 1)
+    AIE.use_lock(%lock33_3, "Release", 0)
+    AIE.use_lock(%lock33_2, "Release", 1)
     AIE.end
   }
 
   %core33_1 = AIE.core(%tile33_1) {
-    AIE.useLock(%lock33_2, "Acquire", 1)
-    AIE.useLock(%lock33_1, "Acquire", 0)
+    AIE.use_lock(%lock33_2, "Acquire", 1)
+    AIE.use_lock(%lock33_1, "Acquire", 0)
     func.call @do_sieve(%buf33_2, %buf33_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_2, "Release", 0)
-    AIE.useLock(%lock33_1, "Release", 1)
+    AIE.use_lock(%lock33_2, "Release", 0)
+    AIE.use_lock(%lock33_1, "Release", 1)
     AIE.end
   }
 
   %core34_1 = AIE.core(%tile34_1) {
-    AIE.useLock(%lock33_1, "Acquire", 1)
-    AIE.useLock(%lock34_1, "Acquire", 0)
+    AIE.use_lock(%lock33_1, "Acquire", 1)
+    AIE.use_lock(%lock34_1, "Acquire", 0)
     func.call @do_sieve(%buf33_1, %buf34_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock33_1, "Release", 0)
-    AIE.useLock(%lock34_1, "Release", 1)
+    AIE.use_lock(%lock33_1, "Release", 0)
+    AIE.use_lock(%lock34_1, "Release", 1)
     AIE.end
   }
 
   %core34_2 = AIE.core(%tile34_2) {
-    AIE.useLock(%lock34_1, "Acquire", 1)
-    AIE.useLock(%lock34_2, "Acquire", 0)
+    AIE.use_lock(%lock34_1, "Acquire", 1)
+    AIE.use_lock(%lock34_2, "Acquire", 0)
     func.call @do_sieve(%buf34_1, %buf34_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_1, "Release", 0)
-    AIE.useLock(%lock34_2, "Release", 1)
+    AIE.use_lock(%lock34_1, "Release", 0)
+    AIE.use_lock(%lock34_2, "Release", 1)
     AIE.end
   }
 
   %core34_3 = AIE.core(%tile34_3) {
-    AIE.useLock(%lock34_2, "Acquire", 1)
-    AIE.useLock(%lock34_3, "Acquire", 0)
+    AIE.use_lock(%lock34_2, "Acquire", 1)
+    AIE.use_lock(%lock34_3, "Acquire", 0)
     func.call @do_sieve(%buf34_2, %buf34_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_2, "Release", 0)
-    AIE.useLock(%lock34_3, "Release", 1)
+    AIE.use_lock(%lock34_2, "Release", 0)
+    AIE.use_lock(%lock34_3, "Release", 1)
     AIE.end
   }
 
   %core34_4 = AIE.core(%tile34_4) {
-    AIE.useLock(%lock34_3, "Acquire", 1)
-    AIE.useLock(%lock34_4, "Acquire", 0)
+    AIE.use_lock(%lock34_3, "Acquire", 1)
+    AIE.use_lock(%lock34_4, "Acquire", 0)
     func.call @do_sieve(%buf34_3, %buf34_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_3, "Release", 0)
-    AIE.useLock(%lock34_4, "Release", 1)
+    AIE.use_lock(%lock34_3, "Release", 0)
+    AIE.use_lock(%lock34_4, "Release", 1)
     AIE.end
   }
 
   %core34_5 = AIE.core(%tile34_5) {
-    AIE.useLock(%lock34_4, "Acquire", 1)
-    AIE.useLock(%lock34_5, "Acquire", 0)
+    AIE.use_lock(%lock34_4, "Acquire", 1)
+    AIE.use_lock(%lock34_5, "Acquire", 0)
     func.call @do_sieve(%buf34_4, %buf34_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_4, "Release", 0)
-    AIE.useLock(%lock34_5, "Release", 1)
+    AIE.use_lock(%lock34_4, "Release", 0)
+    AIE.use_lock(%lock34_5, "Release", 1)
     AIE.end
   }
 
   %core34_6 = AIE.core(%tile34_6) {
-    AIE.useLock(%lock34_5, "Acquire", 1)
-    AIE.useLock(%lock34_6, "Acquire", 0)
+    AIE.use_lock(%lock34_5, "Acquire", 1)
+    AIE.use_lock(%lock34_6, "Acquire", 0)
     func.call @do_sieve(%buf34_5, %buf34_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_5, "Release", 0)
-    AIE.useLock(%lock34_6, "Release", 1)
+    AIE.use_lock(%lock34_5, "Release", 0)
+    AIE.use_lock(%lock34_6, "Release", 1)
     AIE.end
   }
 
   %core34_7 = AIE.core(%tile34_7) {
-    AIE.useLock(%lock34_6, "Acquire", 1)
-    AIE.useLock(%lock34_7, "Acquire", 0)
+    AIE.use_lock(%lock34_6, "Acquire", 1)
+    AIE.use_lock(%lock34_7, "Acquire", 0)
     func.call @do_sieve(%buf34_6, %buf34_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_6, "Release", 0)
-    AIE.useLock(%lock34_7, "Release", 1)
+    AIE.use_lock(%lock34_6, "Release", 0)
+    AIE.use_lock(%lock34_7, "Release", 1)
     AIE.end
   }
 
   %core34_8 = AIE.core(%tile34_8) {
-    AIE.useLock(%lock34_7, "Acquire", 1)
-    AIE.useLock(%lock34_8, "Acquire", 0)
+    AIE.use_lock(%lock34_7, "Acquire", 1)
+    AIE.use_lock(%lock34_8, "Acquire", 0)
     func.call @do_sieve(%buf34_7, %buf34_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_7, "Release", 0)
-    AIE.useLock(%lock34_8, "Release", 1)
+    AIE.use_lock(%lock34_7, "Release", 0)
+    AIE.use_lock(%lock34_8, "Release", 1)
     AIE.end
   }
 
   %core35_8 = AIE.core(%tile35_8) {
-    AIE.useLock(%lock34_8, "Acquire", 1)
-    AIE.useLock(%lock35_8, "Acquire", 0)
+    AIE.use_lock(%lock34_8, "Acquire", 1)
+    AIE.use_lock(%lock35_8, "Acquire", 0)
     func.call @do_sieve(%buf34_8, %buf35_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock34_8, "Release", 0)
-    AIE.useLock(%lock35_8, "Release", 1)
+    AIE.use_lock(%lock34_8, "Release", 0)
+    AIE.use_lock(%lock35_8, "Release", 1)
     AIE.end
   }
 
   %core35_7 = AIE.core(%tile35_7) {
-    AIE.useLock(%lock35_8, "Acquire", 1)
-    AIE.useLock(%lock35_7, "Acquire", 0)
+    AIE.use_lock(%lock35_8, "Acquire", 1)
+    AIE.use_lock(%lock35_7, "Acquire", 0)
     func.call @do_sieve(%buf35_8, %buf35_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_8, "Release", 0)
-    AIE.useLock(%lock35_7, "Release", 1)
+    AIE.use_lock(%lock35_8, "Release", 0)
+    AIE.use_lock(%lock35_7, "Release", 1)
     AIE.end
   }
 
   %core35_6 = AIE.core(%tile35_6) {
-    AIE.useLock(%lock35_7, "Acquire", 1)
-    AIE.useLock(%lock35_6, "Acquire", 0)
+    AIE.use_lock(%lock35_7, "Acquire", 1)
+    AIE.use_lock(%lock35_6, "Acquire", 0)
     func.call @do_sieve(%buf35_7, %buf35_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_7, "Release", 0)
-    AIE.useLock(%lock35_6, "Release", 1)
+    AIE.use_lock(%lock35_7, "Release", 0)
+    AIE.use_lock(%lock35_6, "Release", 1)
     AIE.end
   }
 
   %core35_5 = AIE.core(%tile35_5) {
-    AIE.useLock(%lock35_6, "Acquire", 1)
-    AIE.useLock(%lock35_5, "Acquire", 0)
+    AIE.use_lock(%lock35_6, "Acquire", 1)
+    AIE.use_lock(%lock35_5, "Acquire", 0)
     func.call @do_sieve(%buf35_6, %buf35_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_6, "Release", 0)
-    AIE.useLock(%lock35_5, "Release", 1)
+    AIE.use_lock(%lock35_6, "Release", 0)
+    AIE.use_lock(%lock35_5, "Release", 1)
     AIE.end
   }
 
   %core35_4 = AIE.core(%tile35_4) {
-    AIE.useLock(%lock35_5, "Acquire", 1)
-    AIE.useLock(%lock35_4, "Acquire", 0)
+    AIE.use_lock(%lock35_5, "Acquire", 1)
+    AIE.use_lock(%lock35_4, "Acquire", 0)
     func.call @do_sieve(%buf35_5, %buf35_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_5, "Release", 0)
-    AIE.useLock(%lock35_4, "Release", 1)
+    AIE.use_lock(%lock35_5, "Release", 0)
+    AIE.use_lock(%lock35_4, "Release", 1)
     AIE.end
   }
 
   %core35_3 = AIE.core(%tile35_3) {
-    AIE.useLock(%lock35_4, "Acquire", 1)
-    AIE.useLock(%lock35_3, "Acquire", 0)
+    AIE.use_lock(%lock35_4, "Acquire", 1)
+    AIE.use_lock(%lock35_3, "Acquire", 0)
     func.call @do_sieve(%buf35_4, %buf35_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_4, "Release", 0)
-    AIE.useLock(%lock35_3, "Release", 1)
+    AIE.use_lock(%lock35_4, "Release", 0)
+    AIE.use_lock(%lock35_3, "Release", 1)
     AIE.end
   }
 
   %core35_2 = AIE.core(%tile35_2) {
-    AIE.useLock(%lock35_3, "Acquire", 1)
-    AIE.useLock(%lock35_2, "Acquire", 0)
+    AIE.use_lock(%lock35_3, "Acquire", 1)
+    AIE.use_lock(%lock35_2, "Acquire", 0)
     func.call @do_sieve(%buf35_3, %buf35_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_3, "Release", 0)
-    AIE.useLock(%lock35_2, "Release", 1)
+    AIE.use_lock(%lock35_3, "Release", 0)
+    AIE.use_lock(%lock35_2, "Release", 1)
     AIE.end
   }
 
   %core35_1 = AIE.core(%tile35_1) {
-    AIE.useLock(%lock35_2, "Acquire", 1)
-    AIE.useLock(%lock35_1, "Acquire", 0)
+    AIE.use_lock(%lock35_2, "Acquire", 1)
+    AIE.use_lock(%lock35_1, "Acquire", 0)
     func.call @do_sieve(%buf35_2, %buf35_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_2, "Release", 0)
-    AIE.useLock(%lock35_1, "Release", 1)
+    AIE.use_lock(%lock35_2, "Release", 0)
+    AIE.use_lock(%lock35_1, "Release", 1)
     AIE.end
   }
 
   %core36_1 = AIE.core(%tile36_1) {
-    AIE.useLock(%lock35_1, "Acquire", 1)
-    AIE.useLock(%lock36_1, "Acquire", 0)
+    AIE.use_lock(%lock35_1, "Acquire", 1)
+    AIE.use_lock(%lock36_1, "Acquire", 0)
     func.call @do_sieve(%buf35_1, %buf36_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock35_1, "Release", 0)
-    AIE.useLock(%lock36_1, "Release", 1)
+    AIE.use_lock(%lock35_1, "Release", 0)
+    AIE.use_lock(%lock36_1, "Release", 1)
     AIE.end
   }
 
   %core36_2 = AIE.core(%tile36_2) {
-    AIE.useLock(%lock36_1, "Acquire", 1)
-    AIE.useLock(%lock36_2, "Acquire", 0)
+    AIE.use_lock(%lock36_1, "Acquire", 1)
+    AIE.use_lock(%lock36_2, "Acquire", 0)
     func.call @do_sieve(%buf36_1, %buf36_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_1, "Release", 0)
-    AIE.useLock(%lock36_2, "Release", 1)
+    AIE.use_lock(%lock36_1, "Release", 0)
+    AIE.use_lock(%lock36_2, "Release", 1)
     AIE.end
   }
 
   %core36_3 = AIE.core(%tile36_3) {
-    AIE.useLock(%lock36_2, "Acquire", 1)
-    AIE.useLock(%lock36_3, "Acquire", 0)
+    AIE.use_lock(%lock36_2, "Acquire", 1)
+    AIE.use_lock(%lock36_3, "Acquire", 0)
     func.call @do_sieve(%buf36_2, %buf36_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_2, "Release", 0)
-    AIE.useLock(%lock36_3, "Release", 1)
+    AIE.use_lock(%lock36_2, "Release", 0)
+    AIE.use_lock(%lock36_3, "Release", 1)
     AIE.end
   }
 
   %core36_4 = AIE.core(%tile36_4) {
-    AIE.useLock(%lock36_3, "Acquire", 1)
-    AIE.useLock(%lock36_4, "Acquire", 0)
+    AIE.use_lock(%lock36_3, "Acquire", 1)
+    AIE.use_lock(%lock36_4, "Acquire", 0)
     func.call @do_sieve(%buf36_3, %buf36_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_3, "Release", 0)
-    AIE.useLock(%lock36_4, "Release", 1)
+    AIE.use_lock(%lock36_3, "Release", 0)
+    AIE.use_lock(%lock36_4, "Release", 1)
     AIE.end
   }
 
   %core36_5 = AIE.core(%tile36_5) {
-    AIE.useLock(%lock36_4, "Acquire", 1)
-    AIE.useLock(%lock36_5, "Acquire", 0)
+    AIE.use_lock(%lock36_4, "Acquire", 1)
+    AIE.use_lock(%lock36_5, "Acquire", 0)
     func.call @do_sieve(%buf36_4, %buf36_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_4, "Release", 0)
-    AIE.useLock(%lock36_5, "Release", 1)
+    AIE.use_lock(%lock36_4, "Release", 0)
+    AIE.use_lock(%lock36_5, "Release", 1)
     AIE.end
   }
 
   %core36_6 = AIE.core(%tile36_6) {
-    AIE.useLock(%lock36_5, "Acquire", 1)
-    AIE.useLock(%lock36_6, "Acquire", 0)
+    AIE.use_lock(%lock36_5, "Acquire", 1)
+    AIE.use_lock(%lock36_6, "Acquire", 0)
     func.call @do_sieve(%buf36_5, %buf36_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_5, "Release", 0)
-    AIE.useLock(%lock36_6, "Release", 1)
+    AIE.use_lock(%lock36_5, "Release", 0)
+    AIE.use_lock(%lock36_6, "Release", 1)
     AIE.end
   }
 
   %core36_7 = AIE.core(%tile36_7) {
-    AIE.useLock(%lock36_6, "Acquire", 1)
-    AIE.useLock(%lock36_7, "Acquire", 0)
+    AIE.use_lock(%lock36_6, "Acquire", 1)
+    AIE.use_lock(%lock36_7, "Acquire", 0)
     func.call @do_sieve(%buf36_6, %buf36_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_6, "Release", 0)
-    AIE.useLock(%lock36_7, "Release", 1)
+    AIE.use_lock(%lock36_6, "Release", 0)
+    AIE.use_lock(%lock36_7, "Release", 1)
     AIE.end
   }
 
   %core36_8 = AIE.core(%tile36_8) {
-    AIE.useLock(%lock36_7, "Acquire", 1)
-    AIE.useLock(%lock36_8, "Acquire", 0)
+    AIE.use_lock(%lock36_7, "Acquire", 1)
+    AIE.use_lock(%lock36_8, "Acquire", 0)
     func.call @do_sieve(%buf36_7, %buf36_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_7, "Release", 0)
-    AIE.useLock(%lock36_8, "Release", 1)
+    AIE.use_lock(%lock36_7, "Release", 0)
+    AIE.use_lock(%lock36_8, "Release", 1)
     AIE.end
   }
 
   %core37_8 = AIE.core(%tile37_8) {
-    AIE.useLock(%lock36_8, "Acquire", 1)
-    AIE.useLock(%lock37_8, "Acquire", 0)
+    AIE.use_lock(%lock36_8, "Acquire", 1)
+    AIE.use_lock(%lock37_8, "Acquire", 0)
     func.call @do_sieve(%buf36_8, %buf37_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock36_8, "Release", 0)
-    AIE.useLock(%lock37_8, "Release", 1)
+    AIE.use_lock(%lock36_8, "Release", 0)
+    AIE.use_lock(%lock37_8, "Release", 1)
     AIE.end
   }
 
   %core37_7 = AIE.core(%tile37_7) {
-    AIE.useLock(%lock37_8, "Acquire", 1)
-    AIE.useLock(%lock37_7, "Acquire", 0)
+    AIE.use_lock(%lock37_8, "Acquire", 1)
+    AIE.use_lock(%lock37_7, "Acquire", 0)
     func.call @do_sieve(%buf37_8, %buf37_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_8, "Release", 0)
-    AIE.useLock(%lock37_7, "Release", 1)
+    AIE.use_lock(%lock37_8, "Release", 0)
+    AIE.use_lock(%lock37_7, "Release", 1)
     AIE.end
   }
 
   %core37_6 = AIE.core(%tile37_6) {
-    AIE.useLock(%lock37_7, "Acquire", 1)
-    AIE.useLock(%lock37_6, "Acquire", 0)
+    AIE.use_lock(%lock37_7, "Acquire", 1)
+    AIE.use_lock(%lock37_6, "Acquire", 0)
     func.call @do_sieve(%buf37_7, %buf37_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_7, "Release", 0)
-    AIE.useLock(%lock37_6, "Release", 1)
+    AIE.use_lock(%lock37_7, "Release", 0)
+    AIE.use_lock(%lock37_6, "Release", 1)
     AIE.end
   }
 
   %core37_5 = AIE.core(%tile37_5) {
-    AIE.useLock(%lock37_6, "Acquire", 1)
-    AIE.useLock(%lock37_5, "Acquire", 0)
+    AIE.use_lock(%lock37_6, "Acquire", 1)
+    AIE.use_lock(%lock37_5, "Acquire", 0)
     func.call @do_sieve(%buf37_6, %buf37_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_6, "Release", 0)
-    AIE.useLock(%lock37_5, "Release", 1)
+    AIE.use_lock(%lock37_6, "Release", 0)
+    AIE.use_lock(%lock37_5, "Release", 1)
     AIE.end
   }
 
   %core37_4 = AIE.core(%tile37_4) {
-    AIE.useLock(%lock37_5, "Acquire", 1)
-    AIE.useLock(%lock37_4, "Acquire", 0)
+    AIE.use_lock(%lock37_5, "Acquire", 1)
+    AIE.use_lock(%lock37_4, "Acquire", 0)
     func.call @do_sieve(%buf37_5, %buf37_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_5, "Release", 0)
-    AIE.useLock(%lock37_4, "Release", 1)
+    AIE.use_lock(%lock37_5, "Release", 0)
+    AIE.use_lock(%lock37_4, "Release", 1)
     AIE.end
   }
 
   %core37_3 = AIE.core(%tile37_3) {
-    AIE.useLock(%lock37_4, "Acquire", 1)
-    AIE.useLock(%lock37_3, "Acquire", 0)
+    AIE.use_lock(%lock37_4, "Acquire", 1)
+    AIE.use_lock(%lock37_3, "Acquire", 0)
     func.call @do_sieve(%buf37_4, %buf37_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_4, "Release", 0)
-    AIE.useLock(%lock37_3, "Release", 1)
+    AIE.use_lock(%lock37_4, "Release", 0)
+    AIE.use_lock(%lock37_3, "Release", 1)
     AIE.end
   }
 
   %core37_2 = AIE.core(%tile37_2) {
-    AIE.useLock(%lock37_3, "Acquire", 1)
-    AIE.useLock(%lock37_2, "Acquire", 0)
+    AIE.use_lock(%lock37_3, "Acquire", 1)
+    AIE.use_lock(%lock37_2, "Acquire", 0)
     func.call @do_sieve(%buf37_3, %buf37_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_3, "Release", 0)
-    AIE.useLock(%lock37_2, "Release", 1)
+    AIE.use_lock(%lock37_3, "Release", 0)
+    AIE.use_lock(%lock37_2, "Release", 1)
     AIE.end
   }
 
   %core37_1 = AIE.core(%tile37_1) {
-    AIE.useLock(%lock37_2, "Acquire", 1)
-    AIE.useLock(%lock37_1, "Acquire", 0)
+    AIE.use_lock(%lock37_2, "Acquire", 1)
+    AIE.use_lock(%lock37_1, "Acquire", 0)
     func.call @do_sieve(%buf37_2, %buf37_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_2, "Release", 0)
-    AIE.useLock(%lock37_1, "Release", 1)
+    AIE.use_lock(%lock37_2, "Release", 0)
+    AIE.use_lock(%lock37_1, "Release", 1)
     AIE.end
   }
 
   %core38_1 = AIE.core(%tile38_1) {
-    AIE.useLock(%lock37_1, "Acquire", 1)
-    AIE.useLock(%lock38_1, "Acquire", 0)
+    AIE.use_lock(%lock37_1, "Acquire", 1)
+    AIE.use_lock(%lock38_1, "Acquire", 0)
     func.call @do_sieve(%buf37_1, %buf38_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock37_1, "Release", 0)
-    AIE.useLock(%lock38_1, "Release", 1)
+    AIE.use_lock(%lock37_1, "Release", 0)
+    AIE.use_lock(%lock38_1, "Release", 1)
     AIE.end
   }
 
   %core38_2 = AIE.core(%tile38_2) {
-    AIE.useLock(%lock38_1, "Acquire", 1)
-    AIE.useLock(%lock38_2, "Acquire", 0)
+    AIE.use_lock(%lock38_1, "Acquire", 1)
+    AIE.use_lock(%lock38_2, "Acquire", 0)
     func.call @do_sieve(%buf38_1, %buf38_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_1, "Release", 0)
-    AIE.useLock(%lock38_2, "Release", 1)
+    AIE.use_lock(%lock38_1, "Release", 0)
+    AIE.use_lock(%lock38_2, "Release", 1)
     AIE.end
   }
 
   %core38_3 = AIE.core(%tile38_3) {
-    AIE.useLock(%lock38_2, "Acquire", 1)
-    AIE.useLock(%lock38_3, "Acquire", 0)
+    AIE.use_lock(%lock38_2, "Acquire", 1)
+    AIE.use_lock(%lock38_3, "Acquire", 0)
     func.call @do_sieve(%buf38_2, %buf38_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_2, "Release", 0)
-    AIE.useLock(%lock38_3, "Release", 1)
+    AIE.use_lock(%lock38_2, "Release", 0)
+    AIE.use_lock(%lock38_3, "Release", 1)
     AIE.end
   }
 
   %core38_4 = AIE.core(%tile38_4) {
-    AIE.useLock(%lock38_3, "Acquire", 1)
-    AIE.useLock(%lock38_4, "Acquire", 0)
+    AIE.use_lock(%lock38_3, "Acquire", 1)
+    AIE.use_lock(%lock38_4, "Acquire", 0)
     func.call @do_sieve(%buf38_3, %buf38_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_3, "Release", 0)
-    AIE.useLock(%lock38_4, "Release", 1)
+    AIE.use_lock(%lock38_3, "Release", 0)
+    AIE.use_lock(%lock38_4, "Release", 1)
     AIE.end
   }
 
   %core38_5 = AIE.core(%tile38_5) {
-    AIE.useLock(%lock38_4, "Acquire", 1)
-    AIE.useLock(%lock38_5, "Acquire", 0)
+    AIE.use_lock(%lock38_4, "Acquire", 1)
+    AIE.use_lock(%lock38_5, "Acquire", 0)
     func.call @do_sieve(%buf38_4, %buf38_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_4, "Release", 0)
-    AIE.useLock(%lock38_5, "Release", 1)
+    AIE.use_lock(%lock38_4, "Release", 0)
+    AIE.use_lock(%lock38_5, "Release", 1)
     AIE.end
   }
 
   %core38_6 = AIE.core(%tile38_6) {
-    AIE.useLock(%lock38_5, "Acquire", 1)
-    AIE.useLock(%lock38_6, "Acquire", 0)
+    AIE.use_lock(%lock38_5, "Acquire", 1)
+    AIE.use_lock(%lock38_6, "Acquire", 0)
     func.call @do_sieve(%buf38_5, %buf38_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_5, "Release", 0)
-    AIE.useLock(%lock38_6, "Release", 1)
+    AIE.use_lock(%lock38_5, "Release", 0)
+    AIE.use_lock(%lock38_6, "Release", 1)
     AIE.end
   }
 
   %core38_7 = AIE.core(%tile38_7) {
-    AIE.useLock(%lock38_6, "Acquire", 1)
-    AIE.useLock(%lock38_7, "Acquire", 0)
+    AIE.use_lock(%lock38_6, "Acquire", 1)
+    AIE.use_lock(%lock38_7, "Acquire", 0)
     func.call @do_sieve(%buf38_6, %buf38_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_6, "Release", 0)
-    AIE.useLock(%lock38_7, "Release", 1)
+    AIE.use_lock(%lock38_6, "Release", 0)
+    AIE.use_lock(%lock38_7, "Release", 1)
     AIE.end
   }
 
   %core38_8 = AIE.core(%tile38_8) {
-    AIE.useLock(%lock38_7, "Acquire", 1)
-    AIE.useLock(%lock38_8, "Acquire", 0)
+    AIE.use_lock(%lock38_7, "Acquire", 1)
+    AIE.use_lock(%lock38_8, "Acquire", 0)
     func.call @do_sieve(%buf38_7, %buf38_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_7, "Release", 0)
-    AIE.useLock(%lock38_8, "Release", 1)
+    AIE.use_lock(%lock38_7, "Release", 0)
+    AIE.use_lock(%lock38_8, "Release", 1)
     AIE.end
   }
 
   %core39_8 = AIE.core(%tile39_8) {
-    AIE.useLock(%lock38_8, "Acquire", 1)
-    AIE.useLock(%lock39_8, "Acquire", 0)
+    AIE.use_lock(%lock38_8, "Acquire", 1)
+    AIE.use_lock(%lock39_8, "Acquire", 0)
     func.call @do_sieve(%buf38_8, %buf39_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock38_8, "Release", 0)
-    AIE.useLock(%lock39_8, "Release", 1)
+    AIE.use_lock(%lock38_8, "Release", 0)
+    AIE.use_lock(%lock39_8, "Release", 1)
     AIE.end
   }
 
   %core39_7 = AIE.core(%tile39_7) {
-    AIE.useLock(%lock39_8, "Acquire", 1)
-    AIE.useLock(%lock39_7, "Acquire", 0)
+    AIE.use_lock(%lock39_8, "Acquire", 1)
+    AIE.use_lock(%lock39_7, "Acquire", 0)
     func.call @do_sieve(%buf39_8, %buf39_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_8, "Release", 0)
-    AIE.useLock(%lock39_7, "Release", 1)
+    AIE.use_lock(%lock39_8, "Release", 0)
+    AIE.use_lock(%lock39_7, "Release", 1)
     AIE.end
   }
 
   %core39_6 = AIE.core(%tile39_6) {
-    AIE.useLock(%lock39_7, "Acquire", 1)
-    AIE.useLock(%lock39_6, "Acquire", 0)
+    AIE.use_lock(%lock39_7, "Acquire", 1)
+    AIE.use_lock(%lock39_6, "Acquire", 0)
     func.call @do_sieve(%buf39_7, %buf39_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_7, "Release", 0)
-    AIE.useLock(%lock39_6, "Release", 1)
+    AIE.use_lock(%lock39_7, "Release", 0)
+    AIE.use_lock(%lock39_6, "Release", 1)
     AIE.end
   }
 
   %core39_5 = AIE.core(%tile39_5) {
-    AIE.useLock(%lock39_6, "Acquire", 1)
-    AIE.useLock(%lock39_5, "Acquire", 0)
+    AIE.use_lock(%lock39_6, "Acquire", 1)
+    AIE.use_lock(%lock39_5, "Acquire", 0)
     func.call @do_sieve(%buf39_6, %buf39_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_6, "Release", 0)
-    AIE.useLock(%lock39_5, "Release", 1)
+    AIE.use_lock(%lock39_6, "Release", 0)
+    AIE.use_lock(%lock39_5, "Release", 1)
     AIE.end
   }
 
   %core39_4 = AIE.core(%tile39_4) {
-    AIE.useLock(%lock39_5, "Acquire", 1)
-    AIE.useLock(%lock39_4, "Acquire", 0)
+    AIE.use_lock(%lock39_5, "Acquire", 1)
+    AIE.use_lock(%lock39_4, "Acquire", 0)
     func.call @do_sieve(%buf39_5, %buf39_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_5, "Release", 0)
-    AIE.useLock(%lock39_4, "Release", 1)
+    AIE.use_lock(%lock39_5, "Release", 0)
+    AIE.use_lock(%lock39_4, "Release", 1)
     AIE.end
   }
 
   %core39_3 = AIE.core(%tile39_3) {
-    AIE.useLock(%lock39_4, "Acquire", 1)
-    AIE.useLock(%lock39_3, "Acquire", 0)
+    AIE.use_lock(%lock39_4, "Acquire", 1)
+    AIE.use_lock(%lock39_3, "Acquire", 0)
     func.call @do_sieve(%buf39_4, %buf39_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_4, "Release", 0)
-    AIE.useLock(%lock39_3, "Release", 1)
+    AIE.use_lock(%lock39_4, "Release", 0)
+    AIE.use_lock(%lock39_3, "Release", 1)
     AIE.end
   }
 
   %core39_2 = AIE.core(%tile39_2) {
-    AIE.useLock(%lock39_3, "Acquire", 1)
-    AIE.useLock(%lock39_2, "Acquire", 0)
+    AIE.use_lock(%lock39_3, "Acquire", 1)
+    AIE.use_lock(%lock39_2, "Acquire", 0)
     func.call @do_sieve(%buf39_3, %buf39_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_3, "Release", 0)
-    AIE.useLock(%lock39_2, "Release", 1)
+    AIE.use_lock(%lock39_3, "Release", 0)
+    AIE.use_lock(%lock39_2, "Release", 1)
     AIE.end
   }
 
   %core39_1 = AIE.core(%tile39_1) {
-    AIE.useLock(%lock39_2, "Acquire", 1)
-    AIE.useLock(%lock39_1, "Acquire", 0)
+    AIE.use_lock(%lock39_2, "Acquire", 1)
+    AIE.use_lock(%lock39_1, "Acquire", 0)
     func.call @do_sieve(%buf39_2, %buf39_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_2, "Release", 0)
-    AIE.useLock(%lock39_1, "Release", 1)
+    AIE.use_lock(%lock39_2, "Release", 0)
+    AIE.use_lock(%lock39_1, "Release", 1)
     AIE.end
   }
 
   %core40_1 = AIE.core(%tile40_1) {
-    AIE.useLock(%lock39_1, "Acquire", 1)
-    AIE.useLock(%lock40_1, "Acquire", 0)
+    AIE.use_lock(%lock39_1, "Acquire", 1)
+    AIE.use_lock(%lock40_1, "Acquire", 0)
     func.call @do_sieve(%buf39_1, %buf40_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock39_1, "Release", 0)
-    AIE.useLock(%lock40_1, "Release", 1)
+    AIE.use_lock(%lock39_1, "Release", 0)
+    AIE.use_lock(%lock40_1, "Release", 1)
     AIE.end
   }
 
   %core40_2 = AIE.core(%tile40_2) {
-    AIE.useLock(%lock40_1, "Acquire", 1)
-    AIE.useLock(%lock40_2, "Acquire", 0)
+    AIE.use_lock(%lock40_1, "Acquire", 1)
+    AIE.use_lock(%lock40_2, "Acquire", 0)
     func.call @do_sieve(%buf40_1, %buf40_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_1, "Release", 0)
-    AIE.useLock(%lock40_2, "Release", 1)
+    AIE.use_lock(%lock40_1, "Release", 0)
+    AIE.use_lock(%lock40_2, "Release", 1)
     AIE.end
   }
 
   %core40_3 = AIE.core(%tile40_3) {
-    AIE.useLock(%lock40_2, "Acquire", 1)
-    AIE.useLock(%lock40_3, "Acquire", 0)
+    AIE.use_lock(%lock40_2, "Acquire", 1)
+    AIE.use_lock(%lock40_3, "Acquire", 0)
     func.call @do_sieve(%buf40_2, %buf40_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_2, "Release", 0)
-    AIE.useLock(%lock40_3, "Release", 1)
+    AIE.use_lock(%lock40_2, "Release", 0)
+    AIE.use_lock(%lock40_3, "Release", 1)
     AIE.end
   }
 
   %core40_4 = AIE.core(%tile40_4) {
-    AIE.useLock(%lock40_3, "Acquire", 1)
-    AIE.useLock(%lock40_4, "Acquire", 0)
+    AIE.use_lock(%lock40_3, "Acquire", 1)
+    AIE.use_lock(%lock40_4, "Acquire", 0)
     func.call @do_sieve(%buf40_3, %buf40_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_3, "Release", 0)
-    AIE.useLock(%lock40_4, "Release", 1)
+    AIE.use_lock(%lock40_3, "Release", 0)
+    AIE.use_lock(%lock40_4, "Release", 1)
     AIE.end
   }
 
   %core40_5 = AIE.core(%tile40_5) {
-    AIE.useLock(%lock40_4, "Acquire", 1)
-    AIE.useLock(%lock40_5, "Acquire", 0)
+    AIE.use_lock(%lock40_4, "Acquire", 1)
+    AIE.use_lock(%lock40_5, "Acquire", 0)
     func.call @do_sieve(%buf40_4, %buf40_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_4, "Release", 0)
-    AIE.useLock(%lock40_5, "Release", 1)
+    AIE.use_lock(%lock40_4, "Release", 0)
+    AIE.use_lock(%lock40_5, "Release", 1)
     AIE.end
   }
 
   %core40_6 = AIE.core(%tile40_6) {
-    AIE.useLock(%lock40_5, "Acquire", 1)
-    AIE.useLock(%lock40_6, "Acquire", 0)
+    AIE.use_lock(%lock40_5, "Acquire", 1)
+    AIE.use_lock(%lock40_6, "Acquire", 0)
     func.call @do_sieve(%buf40_5, %buf40_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_5, "Release", 0)
-    AIE.useLock(%lock40_6, "Release", 1)
+    AIE.use_lock(%lock40_5, "Release", 0)
+    AIE.use_lock(%lock40_6, "Release", 1)
     AIE.end
   }
 
   %core40_7 = AIE.core(%tile40_7) {
-    AIE.useLock(%lock40_6, "Acquire", 1)
-    AIE.useLock(%lock40_7, "Acquire", 0)
+    AIE.use_lock(%lock40_6, "Acquire", 1)
+    AIE.use_lock(%lock40_7, "Acquire", 0)
     func.call @do_sieve(%buf40_6, %buf40_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_6, "Release", 0)
-    AIE.useLock(%lock40_7, "Release", 1)
+    AIE.use_lock(%lock40_6, "Release", 0)
+    AIE.use_lock(%lock40_7, "Release", 1)
     AIE.end
   }
 
   %core40_8 = AIE.core(%tile40_8) {
-    AIE.useLock(%lock40_7, "Acquire", 1)
-    AIE.useLock(%lock40_8, "Acquire", 0)
+    AIE.use_lock(%lock40_7, "Acquire", 1)
+    AIE.use_lock(%lock40_8, "Acquire", 0)
     func.call @do_sieve(%buf40_7, %buf40_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_7, "Release", 0)
-    AIE.useLock(%lock40_8, "Release", 1)
+    AIE.use_lock(%lock40_7, "Release", 0)
+    AIE.use_lock(%lock40_8, "Release", 1)
     AIE.end
   }
 
   %core41_8 = AIE.core(%tile41_8) {
-    AIE.useLock(%lock40_8, "Acquire", 1)
-    AIE.useLock(%lock41_8, "Acquire", 0)
+    AIE.use_lock(%lock40_8, "Acquire", 1)
+    AIE.use_lock(%lock41_8, "Acquire", 0)
     func.call @do_sieve(%buf40_8, %buf41_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock40_8, "Release", 0)
-    AIE.useLock(%lock41_8, "Release", 1)
+    AIE.use_lock(%lock40_8, "Release", 0)
+    AIE.use_lock(%lock41_8, "Release", 1)
     AIE.end
   }
 
   %core41_7 = AIE.core(%tile41_7) {
-    AIE.useLock(%lock41_8, "Acquire", 1)
-    AIE.useLock(%lock41_7, "Acquire", 0)
+    AIE.use_lock(%lock41_8, "Acquire", 1)
+    AIE.use_lock(%lock41_7, "Acquire", 0)
     func.call @do_sieve(%buf41_8, %buf41_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_8, "Release", 0)
-    AIE.useLock(%lock41_7, "Release", 1)
+    AIE.use_lock(%lock41_8, "Release", 0)
+    AIE.use_lock(%lock41_7, "Release", 1)
     AIE.end
   }
 
   %core41_6 = AIE.core(%tile41_6) {
-    AIE.useLock(%lock41_7, "Acquire", 1)
-    AIE.useLock(%lock41_6, "Acquire", 0)
+    AIE.use_lock(%lock41_7, "Acquire", 1)
+    AIE.use_lock(%lock41_6, "Acquire", 0)
     func.call @do_sieve(%buf41_7, %buf41_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_7, "Release", 0)
-    AIE.useLock(%lock41_6, "Release", 1)
+    AIE.use_lock(%lock41_7, "Release", 0)
+    AIE.use_lock(%lock41_6, "Release", 1)
     AIE.end
   }
 
   %core41_5 = AIE.core(%tile41_5) {
-    AIE.useLock(%lock41_6, "Acquire", 1)
-    AIE.useLock(%lock41_5, "Acquire", 0)
+    AIE.use_lock(%lock41_6, "Acquire", 1)
+    AIE.use_lock(%lock41_5, "Acquire", 0)
     func.call @do_sieve(%buf41_6, %buf41_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_6, "Release", 0)
-    AIE.useLock(%lock41_5, "Release", 1)
+    AIE.use_lock(%lock41_6, "Release", 0)
+    AIE.use_lock(%lock41_5, "Release", 1)
     AIE.end
   }
 
   %core41_4 = AIE.core(%tile41_4) {
-    AIE.useLock(%lock41_5, "Acquire", 1)
-    AIE.useLock(%lock41_4, "Acquire", 0)
+    AIE.use_lock(%lock41_5, "Acquire", 1)
+    AIE.use_lock(%lock41_4, "Acquire", 0)
     func.call @do_sieve(%buf41_5, %buf41_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_5, "Release", 0)
-    AIE.useLock(%lock41_4, "Release", 1)
+    AIE.use_lock(%lock41_5, "Release", 0)
+    AIE.use_lock(%lock41_4, "Release", 1)
     AIE.end
   }
 
   %core41_3 = AIE.core(%tile41_3) {
-    AIE.useLock(%lock41_4, "Acquire", 1)
-    AIE.useLock(%lock41_3, "Acquire", 0)
+    AIE.use_lock(%lock41_4, "Acquire", 1)
+    AIE.use_lock(%lock41_3, "Acquire", 0)
     func.call @do_sieve(%buf41_4, %buf41_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_4, "Release", 0)
-    AIE.useLock(%lock41_3, "Release", 1)
+    AIE.use_lock(%lock41_4, "Release", 0)
+    AIE.use_lock(%lock41_3, "Release", 1)
     AIE.end
   }
 
   %core41_2 = AIE.core(%tile41_2) {
-    AIE.useLock(%lock41_3, "Acquire", 1)
-    AIE.useLock(%lock41_2, "Acquire", 0)
+    AIE.use_lock(%lock41_3, "Acquire", 1)
+    AIE.use_lock(%lock41_2, "Acquire", 0)
     func.call @do_sieve(%buf41_3, %buf41_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_3, "Release", 0)
-    AIE.useLock(%lock41_2, "Release", 1)
+    AIE.use_lock(%lock41_3, "Release", 0)
+    AIE.use_lock(%lock41_2, "Release", 1)
     AIE.end
   }
 
   %core41_1 = AIE.core(%tile41_1) {
-    AIE.useLock(%lock41_2, "Acquire", 1)
-    AIE.useLock(%lock41_1, "Acquire", 0)
+    AIE.use_lock(%lock41_2, "Acquire", 1)
+    AIE.use_lock(%lock41_1, "Acquire", 0)
     func.call @do_sieve(%buf41_2, %buf41_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_2, "Release", 0)
-    AIE.useLock(%lock41_1, "Release", 1)
+    AIE.use_lock(%lock41_2, "Release", 0)
+    AIE.use_lock(%lock41_1, "Release", 1)
     AIE.end
   }
 
   %core42_1 = AIE.core(%tile42_1) {
-    AIE.useLock(%lock41_1, "Acquire", 1)
-    AIE.useLock(%lock42_1, "Acquire", 0)
+    AIE.use_lock(%lock41_1, "Acquire", 1)
+    AIE.use_lock(%lock42_1, "Acquire", 0)
     func.call @do_sieve(%buf41_1, %buf42_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock41_1, "Release", 0)
-    AIE.useLock(%lock42_1, "Release", 1)
+    AIE.use_lock(%lock41_1, "Release", 0)
+    AIE.use_lock(%lock42_1, "Release", 1)
     AIE.end
   }
 
   %core42_2 = AIE.core(%tile42_2) {
-    AIE.useLock(%lock42_1, "Acquire", 1)
-    AIE.useLock(%lock42_2, "Acquire", 0)
+    AIE.use_lock(%lock42_1, "Acquire", 1)
+    AIE.use_lock(%lock42_2, "Acquire", 0)
     func.call @do_sieve(%buf42_1, %buf42_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_1, "Release", 0)
-    AIE.useLock(%lock42_2, "Release", 1)
+    AIE.use_lock(%lock42_1, "Release", 0)
+    AIE.use_lock(%lock42_2, "Release", 1)
     AIE.end
   }
 
   %core42_3 = AIE.core(%tile42_3) {
-    AIE.useLock(%lock42_2, "Acquire", 1)
-    AIE.useLock(%lock42_3, "Acquire", 0)
+    AIE.use_lock(%lock42_2, "Acquire", 1)
+    AIE.use_lock(%lock42_3, "Acquire", 0)
     func.call @do_sieve(%buf42_2, %buf42_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_2, "Release", 0)
-    AIE.useLock(%lock42_3, "Release", 1)
+    AIE.use_lock(%lock42_2, "Release", 0)
+    AIE.use_lock(%lock42_3, "Release", 1)
     AIE.end
   }
 
   %core42_4 = AIE.core(%tile42_4) {
-    AIE.useLock(%lock42_3, "Acquire", 1)
-    AIE.useLock(%lock42_4, "Acquire", 0)
+    AIE.use_lock(%lock42_3, "Acquire", 1)
+    AIE.use_lock(%lock42_4, "Acquire", 0)
     func.call @do_sieve(%buf42_3, %buf42_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_3, "Release", 0)
-    AIE.useLock(%lock42_4, "Release", 1)
+    AIE.use_lock(%lock42_3, "Release", 0)
+    AIE.use_lock(%lock42_4, "Release", 1)
     AIE.end
   }
 
   %core42_5 = AIE.core(%tile42_5) {
-    AIE.useLock(%lock42_4, "Acquire", 1)
-    AIE.useLock(%lock42_5, "Acquire", 0)
+    AIE.use_lock(%lock42_4, "Acquire", 1)
+    AIE.use_lock(%lock42_5, "Acquire", 0)
     func.call @do_sieve(%buf42_4, %buf42_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_4, "Release", 0)
-    AIE.useLock(%lock42_5, "Release", 1)
+    AIE.use_lock(%lock42_4, "Release", 0)
+    AIE.use_lock(%lock42_5, "Release", 1)
     AIE.end
   }
 
   %core42_6 = AIE.core(%tile42_6) {
-    AIE.useLock(%lock42_5, "Acquire", 1)
-    AIE.useLock(%lock42_6, "Acquire", 0)
+    AIE.use_lock(%lock42_5, "Acquire", 1)
+    AIE.use_lock(%lock42_6, "Acquire", 0)
     func.call @do_sieve(%buf42_5, %buf42_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_5, "Release", 0)
-    AIE.useLock(%lock42_6, "Release", 1)
+    AIE.use_lock(%lock42_5, "Release", 0)
+    AIE.use_lock(%lock42_6, "Release", 1)
     AIE.end
   }
 
   %core42_7 = AIE.core(%tile42_7) {
-    AIE.useLock(%lock42_6, "Acquire", 1)
-    AIE.useLock(%lock42_7, "Acquire", 0)
+    AIE.use_lock(%lock42_6, "Acquire", 1)
+    AIE.use_lock(%lock42_7, "Acquire", 0)
     func.call @do_sieve(%buf42_6, %buf42_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_6, "Release", 0)
-    AIE.useLock(%lock42_7, "Release", 1)
+    AIE.use_lock(%lock42_6, "Release", 0)
+    AIE.use_lock(%lock42_7, "Release", 1)
     AIE.end
   }
 
   %core42_8 = AIE.core(%tile42_8) {
-    AIE.useLock(%lock42_7, "Acquire", 1)
-    AIE.useLock(%lock42_8, "Acquire", 0)
+    AIE.use_lock(%lock42_7, "Acquire", 1)
+    AIE.use_lock(%lock42_8, "Acquire", 0)
     func.call @do_sieve(%buf42_7, %buf42_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_7, "Release", 0)
-    AIE.useLock(%lock42_8, "Release", 1)
+    AIE.use_lock(%lock42_7, "Release", 0)
+    AIE.use_lock(%lock42_8, "Release", 1)
     AIE.end
   }
 
   %core43_8 = AIE.core(%tile43_8) {
-    AIE.useLock(%lock42_8, "Acquire", 1)
-    AIE.useLock(%lock43_8, "Acquire", 0)
+    AIE.use_lock(%lock42_8, "Acquire", 1)
+    AIE.use_lock(%lock43_8, "Acquire", 0)
     func.call @do_sieve(%buf42_8, %buf43_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock42_8, "Release", 0)
-    AIE.useLock(%lock43_8, "Release", 1)
+    AIE.use_lock(%lock42_8, "Release", 0)
+    AIE.use_lock(%lock43_8, "Release", 1)
     AIE.end
   }
 
   %core43_7 = AIE.core(%tile43_7) {
-    AIE.useLock(%lock43_8, "Acquire", 1)
-    AIE.useLock(%lock43_7, "Acquire", 0)
+    AIE.use_lock(%lock43_8, "Acquire", 1)
+    AIE.use_lock(%lock43_7, "Acquire", 0)
     func.call @do_sieve(%buf43_8, %buf43_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_8, "Release", 0)
-    AIE.useLock(%lock43_7, "Release", 1)
+    AIE.use_lock(%lock43_8, "Release", 0)
+    AIE.use_lock(%lock43_7, "Release", 1)
     AIE.end
   }
 
   %core43_6 = AIE.core(%tile43_6) {
-    AIE.useLock(%lock43_7, "Acquire", 1)
-    AIE.useLock(%lock43_6, "Acquire", 0)
+    AIE.use_lock(%lock43_7, "Acquire", 1)
+    AIE.use_lock(%lock43_6, "Acquire", 0)
     func.call @do_sieve(%buf43_7, %buf43_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_7, "Release", 0)
-    AIE.useLock(%lock43_6, "Release", 1)
+    AIE.use_lock(%lock43_7, "Release", 0)
+    AIE.use_lock(%lock43_6, "Release", 1)
     AIE.end
   }
 
   %core43_5 = AIE.core(%tile43_5) {
-    AIE.useLock(%lock43_6, "Acquire", 1)
-    AIE.useLock(%lock43_5, "Acquire", 0)
+    AIE.use_lock(%lock43_6, "Acquire", 1)
+    AIE.use_lock(%lock43_5, "Acquire", 0)
     func.call @do_sieve(%buf43_6, %buf43_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_6, "Release", 0)
-    AIE.useLock(%lock43_5, "Release", 1)
+    AIE.use_lock(%lock43_6, "Release", 0)
+    AIE.use_lock(%lock43_5, "Release", 1)
     AIE.end
   }
 
   %core43_4 = AIE.core(%tile43_4) {
-    AIE.useLock(%lock43_5, "Acquire", 1)
-    AIE.useLock(%lock43_4, "Acquire", 0)
+    AIE.use_lock(%lock43_5, "Acquire", 1)
+    AIE.use_lock(%lock43_4, "Acquire", 0)
     func.call @do_sieve(%buf43_5, %buf43_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_5, "Release", 0)
-    AIE.useLock(%lock43_4, "Release", 1)
+    AIE.use_lock(%lock43_5, "Release", 0)
+    AIE.use_lock(%lock43_4, "Release", 1)
     AIE.end
   }
 
   %core43_3 = AIE.core(%tile43_3) {
-    AIE.useLock(%lock43_4, "Acquire", 1)
-    AIE.useLock(%lock43_3, "Acquire", 0)
+    AIE.use_lock(%lock43_4, "Acquire", 1)
+    AIE.use_lock(%lock43_3, "Acquire", 0)
     func.call @do_sieve(%buf43_4, %buf43_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_4, "Release", 0)
-    AIE.useLock(%lock43_3, "Release", 1)
+    AIE.use_lock(%lock43_4, "Release", 0)
+    AIE.use_lock(%lock43_3, "Release", 1)
     AIE.end
   }
 
   %core43_2 = AIE.core(%tile43_2) {
-    AIE.useLock(%lock43_3, "Acquire", 1)
-    AIE.useLock(%lock43_2, "Acquire", 0)
+    AIE.use_lock(%lock43_3, "Acquire", 1)
+    AIE.use_lock(%lock43_2, "Acquire", 0)
     func.call @do_sieve(%buf43_3, %buf43_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_3, "Release", 0)
-    AIE.useLock(%lock43_2, "Release", 1)
+    AIE.use_lock(%lock43_3, "Release", 0)
+    AIE.use_lock(%lock43_2, "Release", 1)
     AIE.end
   }
 
   %core43_1 = AIE.core(%tile43_1) {
-    AIE.useLock(%lock43_2, "Acquire", 1)
-    AIE.useLock(%lock43_1, "Acquire", 0)
+    AIE.use_lock(%lock43_2, "Acquire", 1)
+    AIE.use_lock(%lock43_1, "Acquire", 0)
     func.call @do_sieve(%buf43_2, %buf43_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_2, "Release", 0)
-    AIE.useLock(%lock43_1, "Release", 1)
+    AIE.use_lock(%lock43_2, "Release", 0)
+    AIE.use_lock(%lock43_1, "Release", 1)
     AIE.end
   }
 
   %core44_1 = AIE.core(%tile44_1) {
-    AIE.useLock(%lock43_1, "Acquire", 1)
-    AIE.useLock(%lock44_1, "Acquire", 0)
+    AIE.use_lock(%lock43_1, "Acquire", 1)
+    AIE.use_lock(%lock44_1, "Acquire", 0)
     func.call @do_sieve(%buf43_1, %buf44_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock43_1, "Release", 0)
-    AIE.useLock(%lock44_1, "Release", 1)
+    AIE.use_lock(%lock43_1, "Release", 0)
+    AIE.use_lock(%lock44_1, "Release", 1)
     AIE.end
   }
 
   %core44_2 = AIE.core(%tile44_2) {
-    AIE.useLock(%lock44_1, "Acquire", 1)
-    AIE.useLock(%lock44_2, "Acquire", 0)
+    AIE.use_lock(%lock44_1, "Acquire", 1)
+    AIE.use_lock(%lock44_2, "Acquire", 0)
     func.call @do_sieve(%buf44_1, %buf44_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_1, "Release", 0)
-    AIE.useLock(%lock44_2, "Release", 1)
+    AIE.use_lock(%lock44_1, "Release", 0)
+    AIE.use_lock(%lock44_2, "Release", 1)
     AIE.end
   }
 
   %core44_3 = AIE.core(%tile44_3) {
-    AIE.useLock(%lock44_2, "Acquire", 1)
-    AIE.useLock(%lock44_3, "Acquire", 0)
+    AIE.use_lock(%lock44_2, "Acquire", 1)
+    AIE.use_lock(%lock44_3, "Acquire", 0)
     func.call @do_sieve(%buf44_2, %buf44_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_2, "Release", 0)
-    AIE.useLock(%lock44_3, "Release", 1)
+    AIE.use_lock(%lock44_2, "Release", 0)
+    AIE.use_lock(%lock44_3, "Release", 1)
     AIE.end
   }
 
   %core44_4 = AIE.core(%tile44_4) {
-    AIE.useLock(%lock44_3, "Acquire", 1)
-    AIE.useLock(%lock44_4, "Acquire", 0)
+    AIE.use_lock(%lock44_3, "Acquire", 1)
+    AIE.use_lock(%lock44_4, "Acquire", 0)
     func.call @do_sieve(%buf44_3, %buf44_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_3, "Release", 0)
-    AIE.useLock(%lock44_4, "Release", 1)
+    AIE.use_lock(%lock44_3, "Release", 0)
+    AIE.use_lock(%lock44_4, "Release", 1)
     AIE.end
   }
 
   %core44_5 = AIE.core(%tile44_5) {
-    AIE.useLock(%lock44_4, "Acquire", 1)
-    AIE.useLock(%lock44_5, "Acquire", 0)
+    AIE.use_lock(%lock44_4, "Acquire", 1)
+    AIE.use_lock(%lock44_5, "Acquire", 0)
     func.call @do_sieve(%buf44_4, %buf44_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_4, "Release", 0)
-    AIE.useLock(%lock44_5, "Release", 1)
+    AIE.use_lock(%lock44_4, "Release", 0)
+    AIE.use_lock(%lock44_5, "Release", 1)
     AIE.end
   }
 
   %core44_6 = AIE.core(%tile44_6) {
-    AIE.useLock(%lock44_5, "Acquire", 1)
-    AIE.useLock(%lock44_6, "Acquire", 0)
+    AIE.use_lock(%lock44_5, "Acquire", 1)
+    AIE.use_lock(%lock44_6, "Acquire", 0)
     func.call @do_sieve(%buf44_5, %buf44_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_5, "Release", 0)
-    AIE.useLock(%lock44_6, "Release", 1)
+    AIE.use_lock(%lock44_5, "Release", 0)
+    AIE.use_lock(%lock44_6, "Release", 1)
     AIE.end
   }
 
   %core44_7 = AIE.core(%tile44_7) {
-    AIE.useLock(%lock44_6, "Acquire", 1)
-    AIE.useLock(%lock44_7, "Acquire", 0)
+    AIE.use_lock(%lock44_6, "Acquire", 1)
+    AIE.use_lock(%lock44_7, "Acquire", 0)
     func.call @do_sieve(%buf44_6, %buf44_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_6, "Release", 0)
-    AIE.useLock(%lock44_7, "Release", 1)
+    AIE.use_lock(%lock44_6, "Release", 0)
+    AIE.use_lock(%lock44_7, "Release", 1)
     AIE.end
   }
 
   %core44_8 = AIE.core(%tile44_8) {
-    AIE.useLock(%lock44_7, "Acquire", 1)
-    AIE.useLock(%lock44_8, "Acquire", 0)
+    AIE.use_lock(%lock44_7, "Acquire", 1)
+    AIE.use_lock(%lock44_8, "Acquire", 0)
     func.call @do_sieve(%buf44_7, %buf44_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_7, "Release", 0)
-    AIE.useLock(%lock44_8, "Release", 1)
+    AIE.use_lock(%lock44_7, "Release", 0)
+    AIE.use_lock(%lock44_8, "Release", 1)
     AIE.end
   }
 
   %core45_8 = AIE.core(%tile45_8) {
-    AIE.useLock(%lock44_8, "Acquire", 1)
-    AIE.useLock(%lock45_8, "Acquire", 0)
+    AIE.use_lock(%lock44_8, "Acquire", 1)
+    AIE.use_lock(%lock45_8, "Acquire", 0)
     func.call @do_sieve(%buf44_8, %buf45_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock44_8, "Release", 0)
-    AIE.useLock(%lock45_8, "Release", 1)
+    AIE.use_lock(%lock44_8, "Release", 0)
+    AIE.use_lock(%lock45_8, "Release", 1)
     AIE.end
   }
 
   %core45_7 = AIE.core(%tile45_7) {
-    AIE.useLock(%lock45_8, "Acquire", 1)
-    AIE.useLock(%lock45_7, "Acquire", 0)
+    AIE.use_lock(%lock45_8, "Acquire", 1)
+    AIE.use_lock(%lock45_7, "Acquire", 0)
     func.call @do_sieve(%buf45_8, %buf45_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_8, "Release", 0)
-    AIE.useLock(%lock45_7, "Release", 1)
+    AIE.use_lock(%lock45_8, "Release", 0)
+    AIE.use_lock(%lock45_7, "Release", 1)
     AIE.end
   }
 
   %core45_6 = AIE.core(%tile45_6) {
-    AIE.useLock(%lock45_7, "Acquire", 1)
-    AIE.useLock(%lock45_6, "Acquire", 0)
+    AIE.use_lock(%lock45_7, "Acquire", 1)
+    AIE.use_lock(%lock45_6, "Acquire", 0)
     func.call @do_sieve(%buf45_7, %buf45_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_7, "Release", 0)
-    AIE.useLock(%lock45_6, "Release", 1)
+    AIE.use_lock(%lock45_7, "Release", 0)
+    AIE.use_lock(%lock45_6, "Release", 1)
     AIE.end
   }
 
   %core45_5 = AIE.core(%tile45_5) {
-    AIE.useLock(%lock45_6, "Acquire", 1)
-    AIE.useLock(%lock45_5, "Acquire", 0)
+    AIE.use_lock(%lock45_6, "Acquire", 1)
+    AIE.use_lock(%lock45_5, "Acquire", 0)
     func.call @do_sieve(%buf45_6, %buf45_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_6, "Release", 0)
-    AIE.useLock(%lock45_5, "Release", 1)
+    AIE.use_lock(%lock45_6, "Release", 0)
+    AIE.use_lock(%lock45_5, "Release", 1)
     AIE.end
   }
 
   %core45_4 = AIE.core(%tile45_4) {
-    AIE.useLock(%lock45_5, "Acquire", 1)
-    AIE.useLock(%lock45_4, "Acquire", 0)
+    AIE.use_lock(%lock45_5, "Acquire", 1)
+    AIE.use_lock(%lock45_4, "Acquire", 0)
     func.call @do_sieve(%buf45_5, %buf45_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_5, "Release", 0)
-    AIE.useLock(%lock45_4, "Release", 1)
+    AIE.use_lock(%lock45_5, "Release", 0)
+    AIE.use_lock(%lock45_4, "Release", 1)
     AIE.end
   }
 
   %core45_3 = AIE.core(%tile45_3) {
-    AIE.useLock(%lock45_4, "Acquire", 1)
-    AIE.useLock(%lock45_3, "Acquire", 0)
+    AIE.use_lock(%lock45_4, "Acquire", 1)
+    AIE.use_lock(%lock45_3, "Acquire", 0)
     func.call @do_sieve(%buf45_4, %buf45_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_4, "Release", 0)
-    AIE.useLock(%lock45_3, "Release", 1)
+    AIE.use_lock(%lock45_4, "Release", 0)
+    AIE.use_lock(%lock45_3, "Release", 1)
     AIE.end
   }
 
   %core45_2 = AIE.core(%tile45_2) {
-    AIE.useLock(%lock45_3, "Acquire", 1)
-    AIE.useLock(%lock45_2, "Acquire", 0)
+    AIE.use_lock(%lock45_3, "Acquire", 1)
+    AIE.use_lock(%lock45_2, "Acquire", 0)
     func.call @do_sieve(%buf45_3, %buf45_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_3, "Release", 0)
-    AIE.useLock(%lock45_2, "Release", 1)
+    AIE.use_lock(%lock45_3, "Release", 0)
+    AIE.use_lock(%lock45_2, "Release", 1)
     AIE.end
   }
 
   %core45_1 = AIE.core(%tile45_1) {
-    AIE.useLock(%lock45_2, "Acquire", 1)
-    AIE.useLock(%lock45_1, "Acquire", 0)
+    AIE.use_lock(%lock45_2, "Acquire", 1)
+    AIE.use_lock(%lock45_1, "Acquire", 0)
     func.call @do_sieve(%buf45_2, %buf45_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_2, "Release", 0)
-    AIE.useLock(%lock45_1, "Release", 1)
+    AIE.use_lock(%lock45_2, "Release", 0)
+    AIE.use_lock(%lock45_1, "Release", 1)
     AIE.end
   }
 
   %core46_1 = AIE.core(%tile46_1) {
-    AIE.useLock(%lock45_1, "Acquire", 1)
-    AIE.useLock(%lock46_1, "Acquire", 0)
+    AIE.use_lock(%lock45_1, "Acquire", 1)
+    AIE.use_lock(%lock46_1, "Acquire", 0)
     func.call @do_sieve(%buf45_1, %buf46_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock45_1, "Release", 0)
-    AIE.useLock(%lock46_1, "Release", 1)
+    AIE.use_lock(%lock45_1, "Release", 0)
+    AIE.use_lock(%lock46_1, "Release", 1)
     AIE.end
   }
 
   %core46_2 = AIE.core(%tile46_2) {
-    AIE.useLock(%lock46_1, "Acquire", 1)
-    AIE.useLock(%lock46_2, "Acquire", 0)
+    AIE.use_lock(%lock46_1, "Acquire", 1)
+    AIE.use_lock(%lock46_2, "Acquire", 0)
     func.call @do_sieve(%buf46_1, %buf46_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_1, "Release", 0)
-    AIE.useLock(%lock46_2, "Release", 1)
+    AIE.use_lock(%lock46_1, "Release", 0)
+    AIE.use_lock(%lock46_2, "Release", 1)
     AIE.end
   }
 
   %core46_3 = AIE.core(%tile46_3) {
-    AIE.useLock(%lock46_2, "Acquire", 1)
-    AIE.useLock(%lock46_3, "Acquire", 0)
+    AIE.use_lock(%lock46_2, "Acquire", 1)
+    AIE.use_lock(%lock46_3, "Acquire", 0)
     func.call @do_sieve(%buf46_2, %buf46_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_2, "Release", 0)
-    AIE.useLock(%lock46_3, "Release", 1)
+    AIE.use_lock(%lock46_2, "Release", 0)
+    AIE.use_lock(%lock46_3, "Release", 1)
     AIE.end
   }
 
   %core46_4 = AIE.core(%tile46_4) {
-    AIE.useLock(%lock46_3, "Acquire", 1)
-    AIE.useLock(%lock46_4, "Acquire", 0)
+    AIE.use_lock(%lock46_3, "Acquire", 1)
+    AIE.use_lock(%lock46_4, "Acquire", 0)
     func.call @do_sieve(%buf46_3, %buf46_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_3, "Release", 0)
-    AIE.useLock(%lock46_4, "Release", 1)
+    AIE.use_lock(%lock46_3, "Release", 0)
+    AIE.use_lock(%lock46_4, "Release", 1)
     AIE.end
   }
 
   %core46_5 = AIE.core(%tile46_5) {
-    AIE.useLock(%lock46_4, "Acquire", 1)
-    AIE.useLock(%lock46_5, "Acquire", 0)
+    AIE.use_lock(%lock46_4, "Acquire", 1)
+    AIE.use_lock(%lock46_5, "Acquire", 0)
     func.call @do_sieve(%buf46_4, %buf46_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_4, "Release", 0)
-    AIE.useLock(%lock46_5, "Release", 1)
+    AIE.use_lock(%lock46_4, "Release", 0)
+    AIE.use_lock(%lock46_5, "Release", 1)
     AIE.end
   }
 
   %core46_6 = AIE.core(%tile46_6) {
-    AIE.useLock(%lock46_5, "Acquire", 1)
-    AIE.useLock(%lock46_6, "Acquire", 0)
+    AIE.use_lock(%lock46_5, "Acquire", 1)
+    AIE.use_lock(%lock46_6, "Acquire", 0)
     func.call @do_sieve(%buf46_5, %buf46_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_5, "Release", 0)
-    AIE.useLock(%lock46_6, "Release", 1)
+    AIE.use_lock(%lock46_5, "Release", 0)
+    AIE.use_lock(%lock46_6, "Release", 1)
     AIE.end
   }
 
   %core46_7 = AIE.core(%tile46_7) {
-    AIE.useLock(%lock46_6, "Acquire", 1)
-    AIE.useLock(%lock46_7, "Acquire", 0)
+    AIE.use_lock(%lock46_6, "Acquire", 1)
+    AIE.use_lock(%lock46_7, "Acquire", 0)
     func.call @do_sieve(%buf46_6, %buf46_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_6, "Release", 0)
-    AIE.useLock(%lock46_7, "Release", 1)
+    AIE.use_lock(%lock46_6, "Release", 0)
+    AIE.use_lock(%lock46_7, "Release", 1)
     AIE.end
   }
 
   %core46_8 = AIE.core(%tile46_8) {
-    AIE.useLock(%lock46_7, "Acquire", 1)
-    AIE.useLock(%lock46_8, "Acquire", 0)
+    AIE.use_lock(%lock46_7, "Acquire", 1)
+    AIE.use_lock(%lock46_8, "Acquire", 0)
     func.call @do_sieve(%buf46_7, %buf46_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_7, "Release", 0)
-    AIE.useLock(%lock46_8, "Release", 1)
+    AIE.use_lock(%lock46_7, "Release", 0)
+    AIE.use_lock(%lock46_8, "Release", 1)
     AIE.end
   }
 
   %core47_8 = AIE.core(%tile47_8) {
-    AIE.useLock(%lock46_8, "Acquire", 1)
-    AIE.useLock(%lock47_8, "Acquire", 0)
+    AIE.use_lock(%lock46_8, "Acquire", 1)
+    AIE.use_lock(%lock47_8, "Acquire", 0)
     func.call @do_sieve(%buf46_8, %buf47_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock46_8, "Release", 0)
-    AIE.useLock(%lock47_8, "Release", 1)
+    AIE.use_lock(%lock46_8, "Release", 0)
+    AIE.use_lock(%lock47_8, "Release", 1)
     AIE.end
   }
 
   %core47_7 = AIE.core(%tile47_7) {
-    AIE.useLock(%lock47_8, "Acquire", 1)
-    AIE.useLock(%lock47_7, "Acquire", 0)
+    AIE.use_lock(%lock47_8, "Acquire", 1)
+    AIE.use_lock(%lock47_7, "Acquire", 0)
     func.call @do_sieve(%buf47_8, %buf47_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_8, "Release", 0)
-    AIE.useLock(%lock47_7, "Release", 1)
+    AIE.use_lock(%lock47_8, "Release", 0)
+    AIE.use_lock(%lock47_7, "Release", 1)
     AIE.end
   }
 
   %core47_6 = AIE.core(%tile47_6) {
-    AIE.useLock(%lock47_7, "Acquire", 1)
-    AIE.useLock(%lock47_6, "Acquire", 0)
+    AIE.use_lock(%lock47_7, "Acquire", 1)
+    AIE.use_lock(%lock47_6, "Acquire", 0)
     func.call @do_sieve(%buf47_7, %buf47_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_7, "Release", 0)
-    AIE.useLock(%lock47_6, "Release", 1)
+    AIE.use_lock(%lock47_7, "Release", 0)
+    AIE.use_lock(%lock47_6, "Release", 1)
     AIE.end
   }
 
   %core47_5 = AIE.core(%tile47_5) {
-    AIE.useLock(%lock47_6, "Acquire", 1)
-    AIE.useLock(%lock47_5, "Acquire", 0)
+    AIE.use_lock(%lock47_6, "Acquire", 1)
+    AIE.use_lock(%lock47_5, "Acquire", 0)
     func.call @do_sieve(%buf47_6, %buf47_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_6, "Release", 0)
-    AIE.useLock(%lock47_5, "Release", 1)
+    AIE.use_lock(%lock47_6, "Release", 0)
+    AIE.use_lock(%lock47_5, "Release", 1)
     AIE.end
   }
 
   %core47_4 = AIE.core(%tile47_4) {
-    AIE.useLock(%lock47_5, "Acquire", 1)
-    AIE.useLock(%lock47_4, "Acquire", 0)
+    AIE.use_lock(%lock47_5, "Acquire", 1)
+    AIE.use_lock(%lock47_4, "Acquire", 0)
     func.call @do_sieve(%buf47_5, %buf47_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_5, "Release", 0)
-    AIE.useLock(%lock47_4, "Release", 1)
+    AIE.use_lock(%lock47_5, "Release", 0)
+    AIE.use_lock(%lock47_4, "Release", 1)
     AIE.end
   }
 
   %core47_3 = AIE.core(%tile47_3) {
-    AIE.useLock(%lock47_4, "Acquire", 1)
-    AIE.useLock(%lock47_3, "Acquire", 0)
+    AIE.use_lock(%lock47_4, "Acquire", 1)
+    AIE.use_lock(%lock47_3, "Acquire", 0)
     func.call @do_sieve(%buf47_4, %buf47_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_4, "Release", 0)
-    AIE.useLock(%lock47_3, "Release", 1)
+    AIE.use_lock(%lock47_4, "Release", 0)
+    AIE.use_lock(%lock47_3, "Release", 1)
     AIE.end
   }
 
   %core47_2 = AIE.core(%tile47_2) {
-    AIE.useLock(%lock47_3, "Acquire", 1)
-    AIE.useLock(%lock47_2, "Acquire", 0)
+    AIE.use_lock(%lock47_3, "Acquire", 1)
+    AIE.use_lock(%lock47_2, "Acquire", 0)
     func.call @do_sieve(%buf47_3, %buf47_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_3, "Release", 0)
-    AIE.useLock(%lock47_2, "Release", 1)
+    AIE.use_lock(%lock47_3, "Release", 0)
+    AIE.use_lock(%lock47_2, "Release", 1)
     AIE.end
   }
 
   %core47_1 = AIE.core(%tile47_1) {
-    AIE.useLock(%lock47_2, "Acquire", 1)
-    AIE.useLock(%lock47_1, "Acquire", 0)
+    AIE.use_lock(%lock47_2, "Acquire", 1)
+    AIE.use_lock(%lock47_1, "Acquire", 0)
     func.call @do_sieve(%buf47_2, %buf47_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_2, "Release", 0)
-    AIE.useLock(%lock47_1, "Release", 1)
+    AIE.use_lock(%lock47_2, "Release", 0)
+    AIE.use_lock(%lock47_1, "Release", 1)
     AIE.end
   }
 
   %core48_1 = AIE.core(%tile48_1) {
-    AIE.useLock(%lock47_1, "Acquire", 1)
-    AIE.useLock(%lock48_1, "Acquire", 0)
+    AIE.use_lock(%lock47_1, "Acquire", 1)
+    AIE.use_lock(%lock48_1, "Acquire", 0)
     func.call @do_sieve(%buf47_1, %buf48_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock47_1, "Release", 0)
-    AIE.useLock(%lock48_1, "Release", 1)
+    AIE.use_lock(%lock47_1, "Release", 0)
+    AIE.use_lock(%lock48_1, "Release", 1)
     AIE.end
   }
 
   %core48_2 = AIE.core(%tile48_2) {
-    AIE.useLock(%lock48_1, "Acquire", 1)
-    AIE.useLock(%lock48_2, "Acquire", 0)
+    AIE.use_lock(%lock48_1, "Acquire", 1)
+    AIE.use_lock(%lock48_2, "Acquire", 0)
     func.call @do_sieve(%buf48_1, %buf48_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_1, "Release", 0)
-    AIE.useLock(%lock48_2, "Release", 1)
+    AIE.use_lock(%lock48_1, "Release", 0)
+    AIE.use_lock(%lock48_2, "Release", 1)
     AIE.end
   }
 
   %core48_3 = AIE.core(%tile48_3) {
-    AIE.useLock(%lock48_2, "Acquire", 1)
-    AIE.useLock(%lock48_3, "Acquire", 0)
+    AIE.use_lock(%lock48_2, "Acquire", 1)
+    AIE.use_lock(%lock48_3, "Acquire", 0)
     func.call @do_sieve(%buf48_2, %buf48_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_2, "Release", 0)
-    AIE.useLock(%lock48_3, "Release", 1)
+    AIE.use_lock(%lock48_2, "Release", 0)
+    AIE.use_lock(%lock48_3, "Release", 1)
     AIE.end
   }
 
   %core48_4 = AIE.core(%tile48_4) {
-    AIE.useLock(%lock48_3, "Acquire", 1)
-    AIE.useLock(%lock48_4, "Acquire", 0)
+    AIE.use_lock(%lock48_3, "Acquire", 1)
+    AIE.use_lock(%lock48_4, "Acquire", 0)
     func.call @do_sieve(%buf48_3, %buf48_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_3, "Release", 0)
-    AIE.useLock(%lock48_4, "Release", 1)
+    AIE.use_lock(%lock48_3, "Release", 0)
+    AIE.use_lock(%lock48_4, "Release", 1)
     AIE.end
   }
 
   %core48_5 = AIE.core(%tile48_5) {
-    AIE.useLock(%lock48_4, "Acquire", 1)
-    AIE.useLock(%lock48_5, "Acquire", 0)
+    AIE.use_lock(%lock48_4, "Acquire", 1)
+    AIE.use_lock(%lock48_5, "Acquire", 0)
     func.call @do_sieve(%buf48_4, %buf48_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_4, "Release", 0)
-    AIE.useLock(%lock48_5, "Release", 1)
+    AIE.use_lock(%lock48_4, "Release", 0)
+    AIE.use_lock(%lock48_5, "Release", 1)
     AIE.end
   }
 
   %core48_6 = AIE.core(%tile48_6) {
-    AIE.useLock(%lock48_5, "Acquire", 1)
-    AIE.useLock(%lock48_6, "Acquire", 0)
+    AIE.use_lock(%lock48_5, "Acquire", 1)
+    AIE.use_lock(%lock48_6, "Acquire", 0)
     func.call @do_sieve(%buf48_5, %buf48_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_5, "Release", 0)
-    AIE.useLock(%lock48_6, "Release", 1)
+    AIE.use_lock(%lock48_5, "Release", 0)
+    AIE.use_lock(%lock48_6, "Release", 1)
     AIE.end
   }
 
   %core48_7 = AIE.core(%tile48_7) {
-    AIE.useLock(%lock48_6, "Acquire", 1)
-    AIE.useLock(%lock48_7, "Acquire", 0)
+    AIE.use_lock(%lock48_6, "Acquire", 1)
+    AIE.use_lock(%lock48_7, "Acquire", 0)
     func.call @do_sieve(%buf48_6, %buf48_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_6, "Release", 0)
-    AIE.useLock(%lock48_7, "Release", 1)
+    AIE.use_lock(%lock48_6, "Release", 0)
+    AIE.use_lock(%lock48_7, "Release", 1)
     AIE.end
   }
 
   %core48_8 = AIE.core(%tile48_8) {
-    AIE.useLock(%lock48_7, "Acquire", 1)
-    AIE.useLock(%lock48_8, "Acquire", 0)
+    AIE.use_lock(%lock48_7, "Acquire", 1)
+    AIE.use_lock(%lock48_8, "Acquire", 0)
     func.call @do_sieve(%buf48_7, %buf48_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_7, "Release", 0)
-    AIE.useLock(%lock48_8, "Release", 1)
+    AIE.use_lock(%lock48_7, "Release", 0)
+    AIE.use_lock(%lock48_8, "Release", 1)
     AIE.end
   }
 
   %core49_8 = AIE.core(%tile49_8) {
-    AIE.useLock(%lock48_8, "Acquire", 1)
-    AIE.useLock(%lock49_8, "Acquire", 0)
+    AIE.use_lock(%lock48_8, "Acquire", 1)
+    AIE.use_lock(%lock49_8, "Acquire", 0)
     func.call @do_sieve(%buf48_8, %buf49_8) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock48_8, "Release", 0)
-    AIE.useLock(%lock49_8, "Release", 1)
+    AIE.use_lock(%lock48_8, "Release", 0)
+    AIE.use_lock(%lock49_8, "Release", 1)
     AIE.end
   }
 
   %core49_7 = AIE.core(%tile49_7) {
-    AIE.useLock(%lock49_8, "Acquire", 1)
-    AIE.useLock(%lock49_7, "Acquire", 0)
+    AIE.use_lock(%lock49_8, "Acquire", 1)
+    AIE.use_lock(%lock49_7, "Acquire", 0)
     func.call @do_sieve(%buf49_8, %buf49_7) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_8, "Release", 0)
-    AIE.useLock(%lock49_7, "Release", 1)
+    AIE.use_lock(%lock49_8, "Release", 0)
+    AIE.use_lock(%lock49_7, "Release", 1)
     AIE.end
   }
 
   %core49_6 = AIE.core(%tile49_6) {
-    AIE.useLock(%lock49_7, "Acquire", 1)
-    AIE.useLock(%lock49_6, "Acquire", 0)
+    AIE.use_lock(%lock49_7, "Acquire", 1)
+    AIE.use_lock(%lock49_6, "Acquire", 0)
     func.call @do_sieve(%buf49_7, %buf49_6) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_7, "Release", 0)
-    AIE.useLock(%lock49_6, "Release", 1)
+    AIE.use_lock(%lock49_7, "Release", 0)
+    AIE.use_lock(%lock49_6, "Release", 1)
     AIE.end
   }
 
   %core49_5 = AIE.core(%tile49_5) {
-    AIE.useLock(%lock49_6, "Acquire", 1)
-    AIE.useLock(%lock49_5, "Acquire", 0)
+    AIE.use_lock(%lock49_6, "Acquire", 1)
+    AIE.use_lock(%lock49_5, "Acquire", 0)
     func.call @do_sieve(%buf49_6, %buf49_5) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_6, "Release", 0)
-    AIE.useLock(%lock49_5, "Release", 1)
+    AIE.use_lock(%lock49_6, "Release", 0)
+    AIE.use_lock(%lock49_5, "Release", 1)
     AIE.end
   }
 
   %core49_4 = AIE.core(%tile49_4) {
-    AIE.useLock(%lock49_5, "Acquire", 1)
-    AIE.useLock(%lock49_4, "Acquire", 0)
+    AIE.use_lock(%lock49_5, "Acquire", 1)
+    AIE.use_lock(%lock49_4, "Acquire", 0)
     func.call @do_sieve(%buf49_5, %buf49_4) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_5, "Release", 0)
-    AIE.useLock(%lock49_4, "Release", 1)
+    AIE.use_lock(%lock49_5, "Release", 0)
+    AIE.use_lock(%lock49_4, "Release", 1)
     AIE.end
   }
 
   %core49_3 = AIE.core(%tile49_3) {
-    AIE.useLock(%lock49_4, "Acquire", 1)
-    AIE.useLock(%lock49_3, "Acquire", 0)
+    AIE.use_lock(%lock49_4, "Acquire", 1)
+    AIE.use_lock(%lock49_3, "Acquire", 0)
     func.call @do_sieve(%buf49_4, %buf49_3) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_4, "Release", 0)
-    AIE.useLock(%lock49_3, "Release", 1)
+    AIE.use_lock(%lock49_4, "Release", 0)
+    AIE.use_lock(%lock49_3, "Release", 1)
     AIE.end
   }
 
   %core49_2 = AIE.core(%tile49_2) {
-    AIE.useLock(%lock49_3, "Acquire", 1)
-    AIE.useLock(%lock49_2, "Acquire", 0)
+    AIE.use_lock(%lock49_3, "Acquire", 1)
+    AIE.use_lock(%lock49_2, "Acquire", 0)
     func.call @do_sieve(%buf49_3, %buf49_2) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_3, "Release", 0)
-    AIE.useLock(%lock49_2, "Release", 1)
+    AIE.use_lock(%lock49_3, "Release", 0)
+    AIE.use_lock(%lock49_2, "Release", 1)
     AIE.end
   }
 
   %core49_1 = AIE.core(%tile49_1) {
-    AIE.useLock(%lock49_2, "Acquire", 1)
-    AIE.useLock(%lock49_1, "Acquire", 0)
+    AIE.use_lock(%lock49_2, "Acquire", 1)
+    AIE.use_lock(%lock49_1, "Acquire", 0)
     func.call @do_sieve(%buf49_2, %buf49_1) : (memref<3072xi32>, memref<3072xi32>) -> ()
-    AIE.useLock(%lock49_2, "Release", 0)
-    AIE.useLock(%lock49_1, "Release", 1)
+    AIE.use_lock(%lock49_2, "Release", 0)
+    AIE.use_lock(%lock49_1, "Release", 1)
     AIE.end
   }
 

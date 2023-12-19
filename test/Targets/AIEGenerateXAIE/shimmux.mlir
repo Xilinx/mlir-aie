@@ -1,4 +1,4 @@
-//===- shimmux.mlir --------------------------------------------*- MLIR -*-===//
+//===- shim_mux.mlir --------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -18,7 +18,7 @@
 module {
  AIE.device(xcvc1902) {
   %t20 = AIE.tile(2, 0)
-  %mux = AIE.shimmux(%t20)  {
+  %mux = AIE.shim_mux(%t20)  {
     AIE.connect<DMA : 0, North : 3>
   }
  }

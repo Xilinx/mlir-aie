@@ -34,7 +34,7 @@ module {
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
 // CHECK:    AIE.connect<North : 0, South : 3>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
+// CHECK:  %{{.*}} = AIE.shim_mux(%[[T20]])  {
 // CHECK:    AIE.connect<North : 3, DMA : 1>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
@@ -56,13 +56,13 @@ module {
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
 // CHECK:    AIE.connect<South : 3, East : 0>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
+// CHECK:  %{{.*}} = AIE.shim_mux(%[[T20]])  {
 // CHECK:    AIE.connect<DMA : 0, North : 3>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T30]])  {
 // CHECK:    AIE.connect<West : 0, South : 3>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T30]])  {
+// CHECK:  %{{.*}} = AIE.shim_mux(%[[T30]])  {
 // CHECK:    AIE.connect<North : 3, DMA : 1>
 // CHECK:  }
 module {

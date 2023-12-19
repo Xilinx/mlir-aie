@@ -21,7 +21,7 @@ module @test_create_packet_flows0 {
 // CHECK:           %[[VAL_7:.*]] = AIE.amsel<0> (1)
 // CHECK:           %[[VAL_4:.*]] = AIE.masterset(Core : 0, %[[VAL_2:.*]])
 // CHECK:           %[[VAL_5:.*]] = AIE.masterset(Core : 1, %[[VAL_3:.*]])
-// CHECK:           AIE.packetrules(West : 0) {
+// CHECK:           AIE.packet_rules(West : 0) {
 // CHECK:             AIE.rule(31, 1, %[[VAL_3]])
 // CHECK:             AIE.rule(31, 0, %[[VAL_2]])
 // CHECK:           }

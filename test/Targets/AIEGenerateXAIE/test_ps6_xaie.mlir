@@ -44,12 +44,12 @@ module @test_ps6_xaie {
     AIE.masterset(Core : 0, %a0_0)
     AIE.masterset(Core : 1, %a0_1)
 
-    AIE.packetrules(West : 0) {
+    AIE.packet_rules(West : 0) {
       AIE.rule(0x1F, 0x0, %a0_0)
       AIE.rule(0x1F, 0x1, %a0_1)
     }
 
-    AIE.packetrules(West : 1) {
+    AIE.packet_rules(West : 1) {
       AIE.rule(0x1F, 0x0, %a0_1)
     }
   }

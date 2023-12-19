@@ -109,7 +109,7 @@ module @dmaChannels {
             %height = arith.constant 10 : index
 
             // acquire output buffer
-            AIE.useLock(%lock_out, "Acquire", 0) // acquire for produce
+            AIE.use_lock(%lock_out, "Acquire", 0) // acquire for produce
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 %subviewOut0 = AIE.objectfifo.acquire @of_in0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
@@ -138,7 +138,7 @@ module @dmaChannels {
             }
 
             // release output buffer
-            AIE.useLock(%lock_out, "Release", 1) // release for consume
+            AIE.use_lock(%lock_out, "Release", 1) // release for consume
             
             AIE.end
         }

@@ -40,10 +40,10 @@ module @aie_module {
       %8 = AIE.amsel<0> (1)
       %9 = AIE.masterset(South : 0, %8)
       %10 = AIE.masterset(North : 0, %7)
-      AIE.packetrules(North : 0) {
+      AIE.packet_rules(North : 0) {
         AIE.rule(31, 10, %8)
       }
-      AIE.packetrules(South : 4) {
+      AIE.packet_rules(South : 4) {
         AIE.rule(31, 3, %7)
       }
     }
@@ -53,31 +53,31 @@ module @aie_module {
       %8 = AIE.amsel<0> (1)
       %9 = AIE.masterset(DMA : 0, %7)
       %10 = AIE.masterset(South : 0, %8)
-      AIE.packetrules(DMA : 0) {
+      AIE.packet_rules(DMA : 0) {
         AIE.rule(31, 10, %8)
       }
-      AIE.packetrules(South : 0) {
+      AIE.packet_rules(South : 0) {
         AIE.rule(31, 3, %7)
       }
     }
     %4 = AIE.lock(%2, 1)
     %5 = AIE.buffer(%2) {address = 3072 : i32, sym_name = "buf1"} : memref<16xi32, 2>
     %6 = AIE.mem(%2) {
-      %7 = AIE.dmaStart(S2MM, 0, ^bb2, ^bb1)
+      %7 = AIE.dma_start(S2MM, 0, ^bb2, ^bb1)
     ^bb1:  // pred: ^bb0
-      %8 = AIE.dmaStart(MM2S, 0, ^bb3, ^bb4)
+      %8 = AIE.dma_start(MM2S, 0, ^bb3, ^bb4)
     ^bb2:  // 2 preds: ^bb0, ^bb2
-      AIE.useLock(%4, Acquire, 0)
-      AIE.dmaBdPacket(2, 3)
-      AIE.dmaBd(<%5 : memref<16xi32, 2>, 0, 16>, 0)
-      AIE.useLock(%4, Release, 1)
-      AIE.nextBd ^bb2
+      AIE.use_lock(%4, Acquire, 0)
+      AIE.dma_bd_packet(2, 3)
+      AIE.dma_bd(<%5 : memref<16xi32, 2>, 0, 16>, 0)
+      AIE.use_lock(%4, Release, 1)
+      AIE.next_bd ^bb2
     ^bb3:  // 2 preds: ^bb1, ^bb3
-      AIE.useLock(%4, Acquire, 1)
-      AIE.dmaBdPacket(6, 10)
-      AIE.dmaBd(<%5 : memref<16xi32, 2>, 0, 16>, 0)
-      AIE.useLock(%4, Release, 0)
-      AIE.nextBd ^bb3
+      AIE.use_lock(%4, Acquire, 1)
+      AIE.dma_bd_packet(6, 10)
+      AIE.dma_bd(<%5 : memref<16xi32, 2>, 0, 16>, 0)
+      AIE.use_lock(%4, Release, 0)
+      AIE.next_bd ^bb3
     ^bb4:  // pred: ^bb1
       AIE.end
     }

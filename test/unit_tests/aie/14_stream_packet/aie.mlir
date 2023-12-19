@@ -30,10 +30,10 @@ module @test14_stream_packet {
   %sw72 = AIE.switchbox(%t72) {
     %tmsel = AIE.amsel<1> (0) // <arbiter> (mask). mask is msel_enable
     %tmaster = AIE.masterset(West : 3, %tmsel)
-    AIE.packetrules(North : 3)  {
+    AIE.packet_rules(North : 3)  {
       AIE.rule(0x1f, 0xd, %tmsel) // (mask, id)
     }
-    AIE.packetrules(South : 1)  {
+    AIE.packet_rules(South : 1)  {
       AIE.rule(0x1f, 0xc, %tmsel)
     }
   }
@@ -49,25 +49,25 @@ module @test14_stream_packet {
   %l71 = AIE.lock(%t71, 0) {sym_name = "lock71" }
 
   %m73 = AIE.mem(%t73) {
-      %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+      %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l73, "Acquire", 0)
-      AIE.dmaBdPacket(0x5, 0xD)
-      AIE.dmaBd(<%buf73 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l73, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l73, "Acquire", 0)
+      AIE.dma_bd_packet(0x5, 0xD)
+      AIE.dma_bd(<%buf73 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l73, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m71 = AIE.mem(%t71) {
-      %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+      %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l71, "Acquire", 0)
-      AIE.dmaBdPacket(0x4, 0xC)
-      AIE.dmaBd(<%buf71 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l71, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l71, "Acquire", 0)
+      AIE.dma_bd_packet(0x4, 0xC)
+      AIE.dma_bd(<%buf71 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l71, "Release", 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -80,19 +80,19 @@ module @test14_stream_packet {
   %l62 = AIE.lock(%t62, 0)
 
   %m62 = AIE.mem(%t62) {
-      %srcDma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+      %srcDma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
     //^dma:
-    //  %srcDma1 = AIE.dmaStart("S2MM", 1, ^bd1, ^end)
+    //  %srcDma1 = AIE.dma_start("S2MM", 1, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%l62, "Acquire", 0)
-      AIE.dmaBd(<%buf62 : memref<512xi32>, 0, 512>, 0)
-      AIE.useLock(%l62, "Release", 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l62, "Acquire", 0)
+      AIE.dma_bd(<%buf62 : memref<512xi32>, 0, 512>, 0)
+      AIE.use_lock(%l62, "Release", 1)
+      AIE.next_bd ^end
     //^bd1:
-    //  AIE.useLock(%l62_1, "Acquire", 0)
-    //  AIE.dmaBd(<%buf62_1 : memref<256xi32>, 0, 256>, 0)
-    //  AIE.useLock(%l62_1, "Release", 1)
-    //  AIE.nextBd ^bd0
+    //  AIE.use_lock(%l62_1, "Acquire", 0)
+    //  AIE.dma_bd(<%buf62_1 : memref<256xi32>, 0, 256>, 0)
+    //  AIE.use_lock(%l62_1, "Release", 1)
+    //  AIE.next_bd ^bd0
     ^end:
       AIE.end
   }

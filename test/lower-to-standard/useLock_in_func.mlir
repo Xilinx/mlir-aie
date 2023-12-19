@@ -20,7 +20,7 @@ module @test {
   %lock13_3 = AIE.lock(%tile13, 0)
 
   func.func private @kernel(%lock : index) {
-    AIE.useLock(%lock, "Acquire", 0)
+    AIE.use_lock(%lock, "Acquire", 0)
     return
   }
 

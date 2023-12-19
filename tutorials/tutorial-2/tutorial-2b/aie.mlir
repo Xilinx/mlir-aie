@@ -40,7 +40,7 @@ module @tutorial_2b {
         // buf[3] = 14
         %core14 = AIE.core(%tile14) {
             // Acquire lock right when core starts
-            AIE.useLock(%lock14_0, "Acquire", 0)
+            AIE.use_lock(%lock14_0, "Acquire", 0)
 
             %val = arith.constant 14 : i32 // declare a constant (int32)
             %idx = arith.constant 3 : index // declare a constant (index)
@@ -50,7 +50,7 @@ module @tutorial_2b {
             // This can be used by host to mark beginning/end of a program or
             // when the host is trying to determine when the program is done
             // by acquiring this lock (with value 1). 
-            AIE.useLock(%lock14_0, "Release", 1)
+            AIE.use_lock(%lock14_0, "Release", 1)
             AIE.end
         }
     }

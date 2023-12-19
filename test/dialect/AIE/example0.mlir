@@ -44,41 +44,41 @@ module @example0 {
   %buf44 = AIE.buffer(%t44) : memref<256xi32>
 
   %m33 = AIE.mem(%t33) {
-      %dmaSt0 = AIE.dmaStart(MM2S, 0, ^bd0, ^dma0)
+      %dmaSt0 = AIE.dma_start(MM2S, 0, ^bd0, ^dma0)
     ^dma0:
-      %dmaSt1 = AIE.dmaStart("MM2S", 1, ^bd1, ^end)
+      %dmaSt1 = AIE.dma_start("MM2S", 1, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%l33_0, Acquire, 1)
-      AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l33_0, Release, 0)
-      AIE.nextBd ^end
+      AIE.use_lock(%l33_0, Acquire, 1)
+      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l33_0, Release, 0)
+      AIE.next_bd ^end
     ^bd1:
-      AIE.useLock(%l33_1, Acquire, 0)
-      AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l33_1, Release, 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l33_1, Acquire, 0)
+      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l33_1, Release, 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m42 = AIE.mem(%t42) {
-      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l42_0, Acquire, 0)
-      AIE.dmaBd(<%buf42 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l42_0, Release, 1)
-      AIE.nextBd ^end
+      AIE.use_lock(%l42_0, Acquire, 0)
+      AIE.dma_bd(<%buf42 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l42_0, Release, 1)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
 
   %m44 = AIE.mem(%t44) {
-      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
+      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l44_0, Acquire, 1)
-      AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l44_0, Release, 0)
-      AIE.nextBd ^end
+      AIE.use_lock(%l44_0, Acquire, 1)
+      AIE.dma_bd(<%buf44 : memref<256xi32>, 0, 256>, 0)
+      AIE.use_lock(%l44_0, Release, 0)
+      AIE.next_bd ^end
     ^end:
       AIE.end
   }
@@ -97,38 +97,38 @@ module @example0 {
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useLock(%l33_1, Acquire, 0)
-    AIE.useLock(%l33_0, Acquire, 0)
+    AIE.use_lock(%l33_1, Acquire, 0)
+    AIE.use_lock(%l33_0, Acquire, 0)
 
     // code
     %val0 = arith.constant 16 : i32
     %0 = arith.constant 0 : i32
-    AIE.putStream(%0 : i32, %val0 : i32)
-    %val1 = AIE.getStream(%0 : i32) : i128
+    AIE.put_stream(%0 : i32, %val0 : i32)
+    %val1 = AIE.get_stream(%0 : i32) : i128
     %val2 = arith.constant 1 : i384
     AIE.putCascade(%val2: i384)
 
-    AIE.useLock(%l33_0, Release, 1)
-    AIE.useLock(%l33_1, Release, 1)
+    AIE.use_lock(%l33_0, Release, 1)
+    AIE.use_lock(%l33_1, Release, 1)
 
     AIE.end
   }
 
   %c42 = AIE.core(%t42) {
-    AIE.useLock(%l42_0, Acquire, 1)
+    AIE.use_lock(%l42_0, Acquire, 1)
 
     // code
 
-    AIE.useLock(%l42_0, Release, 0)
+    AIE.use_lock(%l42_0, Release, 0)
     AIE.end
   }
 
   %c44 = AIE.core(%t44) {
-    AIE.useLock(%l44_0, Acquire, 1)
+    AIE.use_lock(%l44_0, Acquire, 1)
 
     // code
 
-    AIE.useLock(%l44_0, Release, 0)
+    AIE.use_lock(%l44_0, Release, 0)
     AIE.end
   }
 }

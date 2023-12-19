@@ -28,7 +28,7 @@ module {
       AIEX.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0,%c2,%c0,%c0][%c1,%c2,%c2,%c8][%c0,%c16,%c8]) { metadata = @of_fromMem, id = 0 : i32 } : (i32, i32, memref<4x2x8xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
       return
     }
-    AIE.shimDMAAllocation @of_fromMem (MM2S, 0, 0)
-    AIE.shimDMAAllocation @of_toMem (S2MM, 0, 0)
+    AIE.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
+    AIE.shim_dma_allocation @of_toMem (S2MM, 0, 0)
   }
 }

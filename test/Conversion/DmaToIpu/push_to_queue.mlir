@@ -19,7 +19,7 @@ module {
       AIEX.ipu.shimtile_push_queue {metadata = @fromMem, issue_token = false, repeat_count = 3 : i32, bd_id = 2 : i32 }
       return
     }
-    AIE.shimDMAAllocation @fromMem (MM2S, 0, 2)
-    AIE.shimDMAAllocation @toMem (S2MM, 1, 0)
+    AIE.shim_dma_allocation @fromMem (MM2S, 0, 2)
+    AIE.shim_dma_allocation @toMem (S2MM, 1, 0)
   }
 }

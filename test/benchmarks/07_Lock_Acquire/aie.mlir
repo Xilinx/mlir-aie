@@ -17,7 +17,7 @@ module @benchmark07_lock_acquire {
   %l13_0 = AIE.lock(%tile13, 0)
 
 AIE.core(%tile13) {
-    AIE.useLock(%l13_0, "Acquire", 0)
+    AIE.use_lock(%l13_0, "Acquire", 0)
     AIE.end
   }
 }

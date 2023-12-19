@@ -24,13 +24,13 @@
 module {
   AIE.device(ipu) {
     %0 = AIE.tile(0, 0)
-    %1 = AIE.shimmux(%0) {
+    %1 = AIE.shim_mux(%0) {
       AIE.connect<DMA : 0, North : 3>
     }
     %2 = AIE.switchbox(%0) {
       %7 = AIE.amsel<0> (0)
       %8 = AIE.masterset(North : 0, %7)
-      AIE.packetrules(South : 3) {
+      AIE.packet_rules(South : 3) {
         AIE.rule(31, 1, %7)
       }
     }
@@ -40,10 +40,10 @@ module {
       %8 = AIE.amsel<0> (1)
       %9 = AIE.masterset(DMA : 0, %7)
       %10 = AIE.masterset(North : 0, %8)
-      AIE.packetrules(DMA : 0) {
+      AIE.packet_rules(DMA : 0) {
         AIE.rule(31, 2, %8)
       }
-      AIE.packetrules(South : 0) {
+      AIE.packet_rules(South : 0) {
         AIE.rule(31, 1, %7)
       }
     }
@@ -51,7 +51,7 @@ module {
     %6 = AIE.switchbox(%5) {
       %7 = AIE.amsel<0> (0)
       %8 = AIE.masterset(DMA : 0, %7) {keep_pkt_header = true}
-      AIE.packetrules(South : 0) {
+      AIE.packet_rules(South : 0) {
         AIE.rule(31, 2, %7)
       }
     }

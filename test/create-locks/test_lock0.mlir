@@ -15,12 +15,12 @@
 // CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 3)
 // CHECK:           %[[VAL_2:.*]] = AIE.lock(%[[VAL_1]], 0)
 // CHECK:           %[[VAL_5:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:             AIE.useLock(%[[VAL_2]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_2]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_2]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:           }
 // CHECK:           %[[VAL_6:.*]] = AIE.core(%[[VAL_1]]) {
-// CHECK:             AIE.useLock(%[[VAL_2]], Acquire, 1)
-// CHECK:             AIE.useLock(%[[VAL_2]], Release, 0)
+// CHECK:             AIE.use_lock(%[[VAL_2]], Acquire, 1)
+// CHECK:             AIE.use_lock(%[[VAL_2]], Release, 0)
 // CHECK:           }
 // CHECK:         }
 

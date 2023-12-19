@@ -44,7 +44,7 @@ module @tutorial_9 {
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
         // Acquire lock right when core starts
-        AIE.useLock(%lock14_0, "Acquire", 0)
+        AIE.use_lock(%lock14_0, "Acquire", 0)
 
         // Call function and map local buffer %buf to function argument
         func.call @extern_kernel(%bufa, %bufb, %bufacc, %bufc) : (memref<32xi32>, memref<32xi32>, memref<32xi32>, memref<32xi32>) -> ()
@@ -53,7 +53,7 @@ module @tutorial_9 {
         // This can be used by host to mark beginning/end of a program or
         // when the host is trying to determine when the program is done
         // by acquiring this lock (with value 1). 
-        AIE.useLock(%lock14_0, "Release", 1)
+        AIE.use_lock(%lock14_0, "Release", 1)
         AIE.end
     } { link_with="kernel_matmul.o" } // indicate kernel object name used by this core
 

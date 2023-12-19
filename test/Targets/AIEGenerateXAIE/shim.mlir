@@ -52,26 +52,26 @@ module {
   %s20 = AIE.switchbox(%t20)  {
     AIE.connect<North : 0, South : 2>
   }
-  %mux = AIE.shimmux(%t20)  {
+  %mux = AIE.shim_mux(%t20)  {
     AIE.connect<North : 2, DMA : 0>
   }
-  %dma = AIE.shimDMA(%t20)  {
+  %dma = AIE.shim_dma(%t20)  {
       %lock0 = AIE.lock(%t20, 0)
       %lock1 = AIE.lock(%t20, 1)
 
-      AIE.dmaStart(S2MM, 0, ^bd0, ^dma0)
+      AIE.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      AIE.dmaStart(MM2S, 0, ^bd1, ^end)
+      AIE.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%lock0, Acquire, 0)
-      AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
-      AIE.useLock(%lock0, Release, 1)
-      AIE.nextBd ^bd0
+      AIE.use_lock(%lock0, Acquire, 0)
+      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+      AIE.use_lock(%lock0, Release, 1)
+      AIE.next_bd ^bd0
     ^bd1:
-      // AIE.useLock(%lock1, Acquire, 1)
-      AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 4>, 0)
-      // AIE.useLock(%lock1, Release, 0)
-      AIE.nextBd ^bd1
+      // AIE.use_lock(%lock1, Acquire, 1)
+      AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 4>, 0)
+      // AIE.use_lock(%lock1, Release, 0)
+      AIE.next_bd ^bd1
     ^end:
       AIE.end
   }

@@ -21,35 +21,35 @@
 // CHECK:           %[[VAL_7:.*]] = AIE.lock(%[[VAL_4]], 8)
 // CHECK:           %[[VAL_8:.*]] = AIE.core(%[[VAL_0]]) {
 // CHECK:             %[[VAL_9:.*]] = arith.constant 48 : index
-// CHECK:             AIE.useLock(%[[VAL_9]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_9]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_9]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_9]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:           %[[VAL_10:.*]] = AIE.core(%[[VAL_1]]) {
 // CHECK:             %[[VAL_11:.*]] = arith.constant 8 : index
-// CHECK:             AIE.useLock(%[[VAL_11]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_11]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_11]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_11]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:           %[[VAL_12:.*]] = AIE.core(%[[VAL_2]]) {
 // CHECK:             %[[VAL_13:.*]] = arith.constant 40 : index
-// CHECK:             AIE.useLock(%[[VAL_13]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_13]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_13]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_13]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:           %[[VAL_14:.*]] = AIE.core(%[[VAL_3]]) {
 // CHECK:             %[[VAL_15:.*]] = arith.constant 56 : index
-// CHECK:             AIE.useLock(%[[VAL_15]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_15]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_15]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_15]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:           %[[VAL_16:.*]] = AIE.core(%[[VAL_4]]) {
 // CHECK:             %[[VAL_17:.*]] = arith.constant 56 : index
 // CHECK:             %[[VAL_18:.*]] = arith.constant 24 : index
-// CHECK:             AIE.useLock(%[[VAL_18]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_18]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_17]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_17]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_18]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_18]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_17]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_17]], Release, 1)
 // CHECK:             AIE.end
 // CHECK:           }
 // CHECK:         }
@@ -67,30 +67,30 @@ module @test_xaie0 {
   %l43_8 = AIE.lock(%t44, 8)
 
   AIE.core(%t13) {
-    AIE.useLock(%l11_8, Acquire, 0)
-    AIE.useLock(%l11_8, Release, 1)
+    AIE.use_lock(%l11_8, Acquire, 0)
+    AIE.use_lock(%l11_8, Release, 1)
     AIE.end
   }
   AIE.core(%t35) {
-    AIE.useLock(%l33_8, Acquire, 0)
-    AIE.useLock(%l33_8, Release, 1)
+    AIE.use_lock(%l33_8, Acquire, 0)
+    AIE.use_lock(%l33_8, Release, 1)
     AIE.end
   }
   AIE.core(%t33) {
-    AIE.useLock(%l33_8, Acquire, 0)
-    AIE.useLock(%l33_8, Release, 1)
+    AIE.use_lock(%l33_8, Acquire, 0)
+    AIE.use_lock(%l33_8, Release, 1)
     AIE.end
   }
   AIE.core(%t34) {
-    AIE.useLock(%l33_8, Acquire, 0)
-    AIE.useLock(%l33_8, Release, 1)
+    AIE.use_lock(%l33_8, Acquire, 0)
+    AIE.use_lock(%l33_8, Release, 1)
     AIE.end
   }
   AIE.core(%t44) {
-    AIE.useLock(%l33_8, Acquire, 0)
-    AIE.useLock(%l33_8, Release, 1)
-    AIE.useLock(%l43_8, Acquire, 0)
-    AIE.useLock(%l43_8, Release, 1)
+    AIE.use_lock(%l33_8, Acquire, 0)
+    AIE.use_lock(%l33_8, Release, 1)
+    AIE.use_lock(%l43_8, Acquire, 0)
+    AIE.use_lock(%l43_8, Release, 1)
     AIE.end
   }
  }

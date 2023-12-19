@@ -49,7 +49,7 @@ AIE.device(xcvc1902) {
             ^bb0(%arg2: i32):
             %next = func.call @payload(%arg2) : (i32) -> i32
 
-            AIE.useLock(%hostLock, Acquire, 1)
+            AIE.use_lock(%hostLock, Acquire, 1)
 
             %inputSubview = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<64xi32>>
             %outputSubview = AIE.objectfifo.acquire @of_out (Produce, 1) : !AIE.objectfifosubview<memref<64xi32>>
@@ -65,7 +65,7 @@ AIE.device(xcvc1902) {
             AIE.objectfifo.release @of_in (Consume, 1)
             AIE.objectfifo.release @of_out (Produce, 1)
 
-            AIE.useLock(%hostLock, Release, 0)
+            AIE.use_lock(%hostLock, Release, 0)
 
             scf.yield %next : i32
         }

@@ -63,7 +63,7 @@ module @tutorial_2b {
                 scf.yield %cp : i32
             }
 
-            AIE.useLock(%lock14_done, "Release", 1)
+            AIE.use_lock(%lock14_done, "Release", 1)
 
             AIE.end
         }
@@ -77,28 +77,28 @@ module @tutorial_2b {
         // When core (1, 4) is done (lock14 released), its DMA will push all
         // of buffer14 onto the stream.
         // The order in which the buffer is pushed onto the stream is defined
-        // by the new attribute at the end of the dmaBd operation.
+        // by the new attribute at the end of the dma_bd operation.
         %mem14 = AIE.mem(%tile14) {
-          %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+          %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
-            AIE.useLock(%lock14_done, "AcquireGreaterEqual", 1)
+            AIE.use_lock(%lock14_done, "AcquireGreaterEqual", 1)
                                                              ////////// new //////////
-            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+            AIE.dma_bd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
                                                             // w, s    w, s    w,  s
                                                             // dim 2,  dim 1,  dim 0
-            AIE.useLock(%lock14_sent, "Release", 1)
-            AIE.nextBd ^end
+            AIE.use_lock(%lock14_sent, "Release", 1)
+            AIE.next_bd ^end
           ^end:
             AIE.end
         }
 
         %mem34 = AIE.mem(%tile34) {
-          %dstDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+          %dstDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
-            AIE.useLock(%lock34_wait, "AcquireGreaterEqual", 1)
-            AIE.dmaBd(<%buf34 : memref<128xi32>, 0, 128>, 0)
-            AIE.useLock(%lock34_recv, "Release", 1)
-            AIE.nextBd ^end
+            AIE.use_lock(%lock34_wait, "AcquireGreaterEqual", 1)
+            AIE.dma_bd(<%buf34 : memref<128xi32>, 0, 128>, 0)
+            AIE.use_lock(%lock34_recv, "Release", 1)
+            AIE.next_bd ^end
           ^end:
             AIE.end
         }

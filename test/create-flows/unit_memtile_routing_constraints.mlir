@@ -25,7 +25,7 @@
 // CHECK:  %switchbox_2_0 = AIE.switchbox(%tile_2_0) {
 // CHECK:    AIE.connect<North : 1, South : 2>
 // CHECK:  }
-// CHECK:  %shimmux_2_0 = AIE.shimmux(%tile_2_0) {
+// CHECK:  %shim_mux_2_0 = AIE.shim_mux(%tile_2_0) {
 // CHECK:    AIE.connect<North : 2, DMA : 0>
 // CHECK:  }
 // CHECK:  %switchbox_2_3 = AIE.switchbox(%tile_2_3) {

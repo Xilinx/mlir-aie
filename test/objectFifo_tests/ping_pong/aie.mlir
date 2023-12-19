@@ -82,7 +82,7 @@ module @ping_pong {
             %height = arith.constant 10 : index
 
             // acquire output buffer
-            AIE.useLock(%lock_out, "Acquire", 0) // acquire for produce
+            AIE.use_lock(%lock_out, "Acquire", 0) // acquire for produce
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 // acquire next element for consume
@@ -97,7 +97,7 @@ module @ping_pong {
             }
 
             // release output buffer
-            AIE.useLock(%lock_out, "Release", 1) // release for consume
+            AIE.use_lock(%lock_out, "Release", 1) // release for consume
             
             AIE.end
         }

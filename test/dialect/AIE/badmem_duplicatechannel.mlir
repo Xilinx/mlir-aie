@@ -9,15 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
-// CHECK: 'AIE.dmaStart' op duplicate DMA channel MM2S0 not allowed
+// CHECK: 'AIE.dma_start' op duplicate DMA channel MM2S0 not allowed
 
 module @test {
   %t1 = AIE.tile(1, 1)
 
   %mem13 = AIE.mem(%t1) {
-    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
-    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^bd0:
       AIE.end
   }

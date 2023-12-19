@@ -179,7 +179,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   }];
 }
 
-def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [
+def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -204,7 +204,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [
   let hasVerifier = 1;
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [
+def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     Interconnect, TileElement, IsShimTile,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
@@ -221,7 +221,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [
     Example:
     ```
     %tile = aie.tile(1, 1)
-    aie.shimmux(%tile) {
+    aie.shim_mux(%tile) {
       aie.connect<"North" : 0, "DMA" : 1>
     }
     ```
@@ -240,7 +240,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [
   }];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
+def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     FlowEndPoint, TileElement, HasValidBDs,
     HasValidDMAChannels, IsShimNOCTile,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
@@ -258,18 +258,18 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
       %buf = AIE.external_buffer : memref<256xi64>
       %lock1 = AIE.lock(%t70, 1)
 
-      %dma = AIE.shimDMA(%t70) {
-          AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+      %dma = AIE.shim_dma(%t70) {
+          AIE.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
-          AIE.useLock(%lock1, Acquire, 1)
+          AIE.use_lock(%lock1, Acquire, 1)
           AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
-          AIE.useLock(%lock1, Release, 0)
-          AIE.nextBd ^bd0
+          AIE.use_lock(%lock1, Release, 0)
+          AIE.next_bd ^bd0
         ^end:
           AIE.end
       }
     ```
-    Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descriptor.
+    Create the shim_dma for tile %t70 and setup one DMA channel and one Buffer Descriptor.
   }];
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
@@ -310,8 +310,8 @@ def AIE_CoreOp: AIE_Op<"core", [
     %tile = aie.tile(1, 1)
     %lock11_8 = AIE.lock(%tile, 8)
     aie.core(%tile) {
-      AIE.useLock(%lock11_8, "Acquire", 1)
-      AIE.useLock(%lock11_8, "Release", 0)
+      AIE.use_lock(%lock11_8, "Acquire", 1)
+      AIE.use_lock(%lock11_8, "Release", 0)
       AIE.end
     }
     ```
@@ -379,7 +379,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
-    This operation must exist within an `aie.switchbox` or `aie.shimswitchbox` operation.
+    This operation must exist within an `aie.switchbox` or `AIE.shim_switchbox` operation.
     All of the `aie.connect` operations in a switchbox must have a different destinations.
     All of the `aie.connect` operations must also have a destination which is different from all
     of the `aie.masterset` operations in the same switchbox.
@@ -457,7 +457,7 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
     ```
         %a0_0 = AIE.amsel<5>(3)
         %m1 = AIE.masterset("East" : 0, %a0_0 )
-        AIE.packetrules("South" : 0) {
+        AIE.packet_rules("South" : 0) {
           AIE.rule(0x1F, 0x10, %a0_0)
         }
     ```
@@ -550,7 +550,7 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   }];
 }
 
-def AIE_PacketRulesOp: AIE_Op<"packetrules", [SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$sourceChannel
@@ -700,12 +700,12 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
+def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   let summary = "Enable packet headers for a dma block descriptor";
   let description = [{
     This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
     the packet type (3-bits) and packet ID (5-bits).
-    
+
     This operation must be used in an MLIR block that lives inside a MemOp's region, and before AIE.dmaBd.
     The block descriptor specifies what lock to use and the buffer configuration.
 
@@ -713,10 +713,10 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
     ```
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
-        AIE.useLock(%lck, "Acquire", 0)
-        AIE.dmaBdPacket(0x4, 0xD)
+        AIE.use_lock(%lck, "Acquire", 0)
+        AIE.dma_bd_packet(0x4, 0xD)
         AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-        AIE.useLock(%lck, "Release", 1)
+        AIE.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
   }];
@@ -735,12 +735,12 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let summary = "Declare a dma block descriptor op";
   let description = [{
     This operation describes a block descriptor for DMA operations. In particular, it specifies
     what buffer addresss to use, the transfer length, and the buffer type (A or B).
-    
+
     This operation must be used in an MLIR block that lives inside a MemOp's region.
     The block descriptor specifies what lock to use and the buffer configuration.
 
@@ -748,16 +748,16 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ```
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
-        AIE.useLock(%lck, "Acquire", 0)
-        AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-        AIE.useLock(%lck, "Release", 1)
+        AIE.use_lock(%lck, "Acquire", 0)
+        AIE.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        AIE.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
 
       ...
 
       // this defines a BD that does not use any lock
       ^bd8:
-        AIE.dmaBd(<$buf1 : memref<64xi32>, 0, 64>, 0)
+        AIE.dma_bd(<$buf1 : memref<64xi32>, 0, 64>, 0)
     ```
     A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
     There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
@@ -767,14 +767,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     AIE-ML devices can apply data layout transformations at the buffer
     descriptor level. These transformation are described by strides (also called
     stepsizes) and wraps (also called lengths) in up to three dimensions (four
-    dimensions on memtiles). Strides and wraps can be supplied to the `dmaBdOp`
+    dimensions on memtiles). Strides and wraps can be supplied to the `dma_bd`
     through an optional argument, an array of tuples `<wrap, stride>`.
 
     The first element of this array gives the _highest-dimension_ stride and
     wrap, the last element of the array gives the lowest-dimension.
 
     Strides are always expressed in units of `i32`s; this is an architectural
-    requirement, as data is moved by the DMA at this fundamental size. 
+    requirement, as data is moved by the DMA at this fundamental size.
 
     We can model the access pattern strides and wraps generate by a series of
     nested loops. In general, a set of strides and wraps like this...
@@ -790,17 +790,17 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     for(int i = 0; i < wrap_2; i++)
       for(int j = 0; j < wrap_1; j++)
         for(int k = 0; k < wrap_0; k++)
-          // access/store element at/to buffer[  i * stride_2 
-          //                                   + j * stride_1 
+          // access/store element at/to buffer[  i * stride_2
+          //                                   + j * stride_1
           //                                   + k * stride_0]
     ```
 
-    The following example shows an access pattern that corresponds to 
-    alternating between even and odd elements of the buffer/stream every 8 
-    elements: 
+    The following example shows an access pattern that corresponds to
+    alternating between even and odd elements of the buffer/stream every 8
+    elements:
 
     ```
-    AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+    AIE.dma_bd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -808,6 +808,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
+        // TODO(max): this should be an enum
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB, // 0: A, 1: B
         OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
   );
@@ -837,7 +838,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [
+def AIE_DMAStartOp: AIE_Op<"dma_start", [
     ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
     Terminator,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
@@ -852,19 +853,19 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [
 
     Example:
     ```
-        AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+        AIE.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        AIE.useLock(%lock0, "Acquire", 0)
-        AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
-        AIE.useLock(%lock0, "Release", 1)
+        AIE.use_lock(%lock0, "Acquire", 0)
+        AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+        AIE.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
         AIE.end
     ```
 
-    Conceptually, the AIE.dmaStart operation is a terminator that either passes
+    Conceptually, the AIE.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
-    or to a basic block for another dmaStart, to an AIE.end operation.
+    or to a basic block for another dma_start, to an AIE.end operation.
   }];
 
   let arguments = (
@@ -882,7 +883,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [
   }];
 }
 
-// MemOps are not actually Callable, but we want to inline code into them, so we have to 
+// MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, FlowEndPoint, CallableOpInterface,
@@ -898,12 +899,12 @@ def AIE_MemOp: AIE_Op<"mem", [
     Example:
     ```
       m73 = AIE.mem(%t73) {
-          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.useLock(%lock, "Acquire", 0)
-          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
-          AIE.useLock(%lock, "Release", 1)
-          AIE.nextBd ^bd0
+          AIE.use_lock(%lock, "Acquire", 0)
+          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.use_lock(%lock, "Release", 1)
+          AIE.next_bd ^bd0
         ^end:
           AIE.end
       }
@@ -931,12 +932,12 @@ def AIE_MemOp: AIE_Op<"mem", [
 
 // This op is not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
-def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
+def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     TileElement, FlowEndPoint, CallableOpInterface,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
-  let summary = "Declare a memTileDMA op";
+  let summary = "Declare a memtile_dma op";
   let description = [{
     This operation describes a DMA inside an AIE2 MemTile.
     The region of the op is used to setup the DMAs and Block Descriptors.
@@ -948,13 +949,13 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
 
     Example:
     ```
-      m73 = AIE.memTileDMA(%t71) {
-          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+      m73 = AIE.memtile_dma(%t71) {
+          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.useLock(%lock, "Acquire", 0)
-          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
-          AIE.useLock(%lock, "Release", 1)
-          AIE.nextBd ^bd0
+          AIE.use_lock(%lock, "Acquire", 0)
+          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.use_lock(%lock, "Release", 1)
+          AIE.next_bd ^bd0
         ^end:
           AIE.end
       }
@@ -979,7 +980,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"nextBd", [
+def AIE_NextBDOp: AIE_Op<"next_bd", [
     Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
   ]> {
   let summary = "The next buffer descriptor";
@@ -987,17 +988,17 @@ def AIE_NextBDOp: AIE_Op<"nextBd", [
     This operation terminates the basic block describing a buffer descriptor inside
     a tile or shim DMA operation.  It references a single following buffer descriptor.
     Note that unlike other terminators (like cf.br), canonicalization should not remove
-    the `nextBd` terminator, since it would result in invalid buffer descriptors.
+    the `next_bd` terminator, since it would result in invalid buffer descriptors.
 
     Example:
     ```
       m73 = AIE.mem(%t73) {
-          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.useLock(%lock, "Acquire", 0)
-          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
-          AIE.useLock(%lock, "Release", 1)
-          AIE.nextBd ^bd0
+          AIE.use_lock(%lock, "Acquire", 0)
+          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.use_lock(%lock, "Release", 1)
+          AIE.next_bd ^bd0
         ^end:
           AIE.end
       }
@@ -1017,8 +1018,8 @@ def AIE_LockOp: AIE_Op<"lock", [
   ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
-    This operation creates a physical lock. For this operation the lockID variable is optional. 
-    However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass. 
+    This operation creates a physical lock. For this operation the lockID variable is optional.
+    However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass.
 
     Example:
     ```
@@ -1078,7 +1079,7 @@ def AIE_LockOp: AIE_Op<"lock", [
   let hasVerifier = 1;
 }
 
-def AIE_UseLockOp: AIE_Op<"useLock", []> {
+def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
     This operation uses a lock. In AIE1, a lock can be acquired with a value,
@@ -1186,11 +1187,11 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
     This operation represents a buffer that exists in some physical
     location in a device, most likely external memory. The exact address
     of the external buffer is passed by the mlir_aie_external_set_addr()
-    and mlir_aie_external_set_addr_myBuffer_ functions in the associated 
-    .cpp test file. 
+    and mlir_aie_external_set_addr_myBuffer_ functions in the associated
+    .cpp test file.
 
-    These external buffers are used within the buffer descriptors of a 
-    shimDMA, i.e., within AIE_DMABdOp operations of a AIE_ShimDMAOp.
+    These external buffers are used within the buffer descriptors of a
+    shim_dma, i.e., within AIE_DMABdOp operations of a AIE_ShimDMAOp.
 
     Example:
     ```
@@ -1233,7 +1234,7 @@ def AIE_EventOp: AIE_Op<"event", []> {
   }];
 }
 
-def AIE_GetStreamOp: AIE_Op<"getStream", [
+def AIE_GetStreamOp: AIE_Op<"get_stream", [
     HasParent<"CoreOp">
   ]>, Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
@@ -1256,7 +1257,7 @@ def AIE_GetStreamOp: AIE_Op<"getStream", [
   }];
 }
 
-def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
+def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   let summary = "An op to write to a stream channel/port of a switchbox";
   let description = [{
     An op to write to a stream channel/port of a switchbox.
@@ -1279,7 +1280,7 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
   }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"getCascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
+def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1303,15 +1304,15 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
-    This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
-    and hence there is no appropriate dmaStart operation to indicate which channel is being
-    used and on which column the shimDMA is. 
+    This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
+    and hence there is no appropriate dma_start operation to indicate which channel is being
+    used and on which column the shim_dma is.
 
-    It contains attributes for the sym_name of an operation which generated the shim DMA, 
-    for the DMAChannelDir and channel index, and for the column of the shim tile to which 
+    It contains attributes for the sym_name of an operation which generated the shim DMA,
+    for the DMAChannelDir and channel index, and for the column of the shim tile to which
     the originating operation was mapped.
 
     Example:
@@ -1322,7 +1323,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
-      AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
+      AIE.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
     ```
   }];
 
@@ -1383,35 +1384,35 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     specified in the first example.
 
     ## Data Layout Transformations on AIE-ML devices
-    
+
     On AIE-ML devices, objectFifos can also apply data layout transformations by
     using the DMAs n-dimensional address generation scheme. Two transformations
     can be applied for an objectFifo: one on the producer side, given by a
     `toStream` attribute, and one transformation on the consumer side, given by
     a `fromStream` attribute. See the `DMABDOp` documentation for a description
     of strides and wraps. The `toStream` and `fromStream` optional attributes
-    are given directly following the producer or consumer tile declaration. 
+    are given directly following the producer or consumer tile declaration.
     Different transformations can be specified for each consumer. See example
     below.
 
     Note that using data layout transformations will cause the DMA be used even
     between adjacent tiles whose objectFifos would otherwise use shared memory.
 
-    Further note that data layout transforms always apply at a granularity of 
-    `i32`s, irrespective of the used `memref` data type. This is an 
-    architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s, 
+    Further note that data layout transforms always apply at a granularity of
+    `i32`s, irrespective of the used `memref` data type. This is an
+    architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s,
     i.e. 16 bytes.
 
-    The following example shows an objectFifo which transposes a 16x16 matrix of 
+    The following example shows an objectFifo which transposes a 16x16 matrix of
     `i32`s on the producer side using strides and wraps. No transformation is
-    applied on the consumer side of %tile13 (in this case the `fromStream` 
+    applied on the consumer side of %tile13 (in this case the `fromStream`
     attribute may also be left off), and a transformation on %tile23 first gives
     all even indices from the stream, followed by all odd indices:
 
     ```
       AIE.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
                            {%tile13 fromStream [],
-                            %tile23 fromStream [<2, 1>, <128, 2>]}, 
+                            %tile23 fromStream [<2, 1>, <128, 2>]},
                            2 : i32
                           ) : !AIE.objectfifo<memref<256xi32>>
     ```
@@ -1428,17 +1429,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   );
 
   let assemblyFormat = [{
-    $sym_name 
-    `(` 
-        custom<ObjectFifoProducerTile>($producerTile, $dimensionsToStream) `,` 
-        `{` 
-          custom<ObjectFifoConsumerTiles>($consumerTiles, $dimensionsFromStreamPerConsumer) 
-        `}` 
-        `,` 
-        $elemNumber 
+    $sym_name
+    `(`
+        custom<ObjectFifoProducerTile>($producerTile, $dimensionsToStream) `,`
+        `{`
+          custom<ObjectFifoConsumerTiles>($consumerTiles, $dimensionsFromStreamPerConsumer)
+        `}`
+        `,`
+        $elemNumber
     `)` attr-dict `:` $elem_type
   }];
-  
+
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -1538,7 +1539,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
   let description = [{
     The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
     to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
-    generated for those shim tiles will use the registered external buffers. This is currently done because 
+    generated for those shim tiles will use the registered external buffers. This is currently done because
     external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
     same `objectFifos`.
 
@@ -1549,7 +1550,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
       AIE.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
-    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
+    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shim_dma of shimTile %t70.
   }];
 
   let arguments = (
@@ -1580,12 +1581,12 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
     the acquired objects which can be used to access them.
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations on
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `AIE.use_lock` operations on
     the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
     new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
     to be released by the same process, then performing another acquire operation on the same `objectFifo`
-    within the same process of size two or less will not result in any new useLock operations (and for size
-    greater than two, only (size - 2) useLock operations will be performed).
+    within the same process of size two or less will not result in any new use_lock operations (and for size
+    greater than two, only (size - 2) use_lock operations will be performed).
 
     Example:
     ```
@@ -1622,7 +1623,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
     (producer: release for read, consumer: release for write).
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations.
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations.
 
     Example:
     ```

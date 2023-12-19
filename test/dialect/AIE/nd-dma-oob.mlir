@@ -23,15 +23,15 @@ module @tutorial_2b {
         %lock14_done = AIE.lock(%tile14, 0) { init = 0 : i32, sym_name = "lock14_done" }
 
         %mem14 = AIE.mem(%tile14) {
-          %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+          %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             // The following should generate an out-of-bounds error: the second
             // repetition of accessing array %buf14 with stride of 128 will
             // attempt an access at index 128, which is OOB for a 128xi32 
             // memref.
             // expected-error@+1 {{Specified stepsize(s) and wrap(s) result in out of bounds access}}
-            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<2, 128>])
-            AIE.nextBd ^end
+            AIE.dma_bd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<2, 128>])
+            AIE.next_bd ^end
           ^end: 
             AIE.end
         }

@@ -181,7 +181,7 @@ module @twoFilter2D  {
             %lineWidth = arith.constant 16 : index
             %height = arith.constant 9 : index
 
-            AIE.useLock(%lock_out, "Acquire", 0) // acquire output buffer for produce
+            AIE.use_lock(%lock_out, "Acquire", 0) // acquire output buffer for produce
 
             // Top Border
             %subviewTop = AIE.objectfifo.acquire @of2 (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
@@ -206,7 +206,7 @@ module @twoFilter2D  {
             func.call @secondFilterTwoLines(%elemBottom0, %elemBottom1, %height, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
             AIE.objectfifo.release @of2 (Consume, 2)
 
-            AIE.useLock(%lock_out, "Release", 1) // release output buffer for consume
+            AIE.use_lock(%lock_out, "Release", 1) // release output buffer for consume
             
             AIE.end
         }

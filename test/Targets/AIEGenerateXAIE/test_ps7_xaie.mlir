@@ -39,11 +39,11 @@ module @test_ps7_xaie {
 
     AIE.masterset(Core : 0, %a0_0)
 
-    AIE.packetrules(West : 0) {
+    AIE.packet_rules(West : 0) {
       AIE.rule(0x1E, 0x0, %a0_0)
     }
 
-    AIE.packetrules(West : 1) {
+    AIE.packet_rules(West : 1) {
       AIE.rule(0x1F, 0x2, %a0_0)
     }
   }

@@ -22,7 +22,7 @@ module @tutorial_5 {
     %tile34 = AIE.tile(3, 4)
 
     // 1 tile in row 0 (col 7)
-    // col 7, row 0 has access to a shimDMA
+    // col 7, row 0 has access to a shim_dma
     %tile70 = AIE.tile(7, 0)
 
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
@@ -45,22 +45,22 @@ module @tutorial_5 {
     AIE.flow(%tile34, DMA: 0, %tile70, DMA: 0)
 
     // shim DMA programming is nearly identical to tile DMA programming
-    // shimDMA are blocking on release 1 (user intervention)
-    %shimdma70 = AIE.shimDMA(%tile70) {
-        AIE.dmaStart("MM2S", 0, ^bd1, ^ch2)
+    // shim_dma are blocking on release 1 (user intervention)
+    %shimdma70 = AIE.shim_dma(%tile70) {
+        AIE.dma_start("MM2S", 0, ^bd1, ^ch2)
         ^ch2:
-            AIE.dmaStart("S2MM", 0, ^bd2, ^end)
+            AIE.dma_start("S2MM", 0, ^bd2, ^end)
         ^bd1:
             // Lock used to allow host to start transfer
-            AIE.useLock(%lock70_in, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_in, "Release", 0)
-            AIE.nextBd ^end
+            AIE.use_lock(%lock70_in, "Acquire", 1)
+            AIE.dma_bd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
+            AIE.use_lock(%lock70_in, "Release", 0)
+            AIE.next_bd ^end
         ^bd2:
-            AIE.useLock(%lock70_out, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_out, "Release", 0)
-            AIE.nextBd ^end
+            AIE.use_lock(%lock70_out, "Acquire", 1)
+            AIE.dma_bd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
+            AIE.use_lock(%lock70_out, "Release", 0)
+            AIE.next_bd ^end
         ^end:
             AIE.end
     }
@@ -69,8 +69,8 @@ module @tutorial_5 {
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
         // This acquire will stall since locks are initialized to Release, 0
-        AIE.useLock(%lock34_out, "Acquire", 0) // Acquire out lock 
-        AIE.useLock(%lock34_in, "Acquire", 1)  // Acquire in lock 
+        AIE.use_lock(%lock34_out, "Acquire", 0) // Acquire out lock
+        AIE.use_lock(%lock34_in, "Acquire", 1)  // Acquire in lock
             // This will block while tileDMA moves data so we want to acquire this 2nd
         %idx1 = arith.constant 3 : index
         %d1   = memref.load %buf34[%idx1] : memref<256xi32>
@@ -80,8 +80,8 @@ module @tutorial_5 {
 		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
 
         // This release doesn't do much in our example but mimics ping-pong
-        AIE.useLock(%lock34_in, "Release", 0) // Release in lock
-        AIE.useLock(%lock34_out, "Release", 1) // Release out lock
+        AIE.use_lock(%lock34_in, "Release", 0) // Release in lock
+        AIE.use_lock(%lock34_out, "Release", 1) // Release out lock
         AIE.end
     }
 
@@ -92,25 +92,25 @@ module @tutorial_5 {
         // ^bd0 - first label/ bd definition to set
         // ^end - next label/ bd definition to set 
         // (here, that is AIE.end to indicate no more)
-        AIE.dmaStart("S2MM", 1, ^bd0, ^ch2)
+        AIE.dma_start("S2MM", 1, ^bd0, ^ch2)
         ^ch2:
-             AIE.dmaStart("MM2S", 0, ^bd1, ^end)
+             AIE.dma_start("MM2S", 0, ^bd1, ^end)
         ^bd0:
             // Add locks behvaior around bd definition
-            AIE.useLock(%lock34_in, "Acquire", 0)
+            AIE.use_lock(%lock34_in, "Acquire", 0)
             // bd definition
             // %buf34 - local buffer
             // 0   - offset of transfer
             // 256 - length of transfer
             // 0   - A/B mode enable (default is disabled)
-            AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_in, "Release", 1)
-            AIE.nextBd ^end
+            AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+            AIE.use_lock(%lock34_in, "Release", 1)
+            AIE.next_bd ^end
         ^bd1:
-            AIE.useLock(%lock34_out, "Acquire", 1)
-            AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_out, "Release", 0)
-            AIE.nextBd ^end
+            AIE.use_lock(%lock34_out, "Acquire", 1)
+            AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+            AIE.use_lock(%lock34_out, "Release", 0)
+            AIE.next_bd ^end
         ^end:
             AIE.end
     }    

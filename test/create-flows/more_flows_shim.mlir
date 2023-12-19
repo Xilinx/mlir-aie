@@ -20,7 +20,7 @@
 // CHECK:  %[[SB70:.*]] = AIE.switchbox(%[[T70]])  {
 // CHECK:    AIE.connect<North : 0, South : 2>
 // CHECK:  }
-// CHECK:  %[[SH70:.*]] = AIE.shimmux(%[[T70]])  {
+// CHECK:  %[[SH70:.*]] = AIE.shim_mux(%[[T70]])  {
 // CHECK:    AIE.connect<North : 2, PLIO : 2>
 // CHECK:  }
 // CHECK:  %[[SB71:.*]] = AIE.switchbox(%[[T71]])  {
@@ -45,7 +45,7 @@ module @test70 {
 // CHECK:  %[[SB60:.*]] = AIE.switchbox(%[[T60]])  {
 // CHECK:    AIE.connect<South : 6, North : 0>
 // CHECK:  }
-// CHECK:  %[[SH60:.*]] = AIE.shimmux(%[[T60]])  {
+// CHECK:  %[[SH60:.*]] = AIE.shim_mux(%[[T60]])  {
 // CHECK:    AIE.connect<PLIO : 6, North : 6>
 // CHECK:  }
 // CHECK:  %[[SB61:.*]] = AIE.switchbox(%[[T61]])  {
@@ -94,7 +94,7 @@ module @test40 {
 // CHECK:  %[[SB100:.*]] = AIE.switchbox(%[[T100]])  {
 // CHECK:    AIE.connect<North : 0, South : 4>
 // CHECK:  }
-// CHECK:  %[[SH100:.*]] = AIE.shimmux(%[[T100]])  {
+// CHECK:  %[[SH100:.*]] = AIE.shim_mux(%[[T100]])  {
 // CHECK:    AIE.connect<North : 4, NOC : 2>
 // CHECK:  }
 // CHECK:  %[[SB101:.*]] = AIE.switchbox(%[[T101]])  {

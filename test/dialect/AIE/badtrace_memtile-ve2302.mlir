@@ -27,7 +27,7 @@ AIE.device(xcve2302) {
   AIE.switchbox(%02) {
     %94 = AIE.amsel<0> (0)
     %95 = AIE.masterset(North : 0, %94)
-    AIE.packetrules(Trace : 1) {
+    AIE.packet_rules(Trace : 1) {
       AIE.rule(31, 1, %94)
     }
   }

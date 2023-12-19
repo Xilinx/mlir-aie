@@ -29,7 +29,7 @@ module {
       AIE.connect<South:1, North:2>
       %16 = AIE.amsel<0> (0)
       %17 = AIE.masterset(DMA : 1, %16)
-      AIE.packetrules(South : 0) {
+      AIE.packet_rules(South : 0) {
         AIE.rule(31, 0, %16)
       }
     }
@@ -39,7 +39,7 @@ module {
       AIE.connect<Core :0, Core :0>
       %18 = AIE.amsel<0> (0)
       %19 = AIE.masterset(North : 0, %18)
-      AIE.packetrules(DMA : 0) {
+      AIE.packet_rules(DMA : 0) {
         AIE.rule(31, 0, %18)
       }
     }

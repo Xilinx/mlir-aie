@@ -20,7 +20,7 @@ A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the f
 <p><img src="../images/diagram9.png" width="1000"><p>
 
 Here, we see the different components of the L1-L3 communication defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
-> Note that shimDMA are defined for the shim tiles (row 0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
+> Note that shim_dma are defined for the shim tiles (row 0). Also note that not every column in row 0 is shim_dma capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
 
 Further in-depth descriptions of the components presented above can be found in the `./flow` sub-directory.
 
@@ -28,11 +28,11 @@ Further in-depth descriptions of the components presented above can be found in 
 
 ### <ins> Register external_buffers to objectFifo</ins>
 
-As was the case in the previous tutorial, we will first look at the design written with the `objectFifo` abstraction. The `AIE.objectfifo.createObjectFifo` operation is used to create an objectFifo between an AIE tile and a shim tile (in this example, tile(7,0)), which has access to a shimDMA and which will enable data movement to/from external memory. This is shown in the diagram below.
+As was the case in the previous tutorial, we will first look at the design written with the `objectFifo` abstraction. The `AIE.objectfifo.createObjectFifo` operation is used to create an objectFifo between an AIE tile and a shim tile (in this example, tile(7,0)), which has access to a shim_dma and which will enable data movement to/from external memory. This is shown in the diagram below.
 
 <img src="../images/OF_external_mem.png" width="1000">
 
-While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` sub-directory.
+While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shim_dma, please refer to the `./flow` sub-directory.
 
 As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the external buffers are registered to the objectFifo with the operation:
 ```
@@ -47,7 +47,7 @@ AIE.objectfifo.register_external_buffers @name (shimTile, {list of external buff
 
 3. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
-4. How can the design be changed to use a double buffer in the shimDMA of shim tile (7,0) for objFifo_out instead? <img src="../images/answer1.jpg" title="An additional AIE.external_buffer should be created and registered to objFifo_out." height=25>
+4. How can the design be changed to use a double buffer in the shim_dma of shim tile (7,0) for objFifo_out instead? <img src="../images/answer1.jpg" title="An additional AIE.external_buffer should be created and registered to objFifo_out." height=25>
 
 5. Make the change in the [aie.mlir](aie.mlir) design then apply the objectFifo lowering (see tutorial-3/README.md for the command). Does the change above influence the number of L1 buffers created in tile (3,4) by objFifo_out? <img src="../images/answer1.jpg" title="No. The number of L1 buffers created in tile (3,4) is based on the size given to objFifo_out at creation, and based on the number of elements acquired by the core on tile (3,4)." height=25>
 

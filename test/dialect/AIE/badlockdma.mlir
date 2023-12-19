@@ -16,11 +16,11 @@ module @test {
   %lock = AIE.lock(%t2, 3) { sym_name = "lock1" }
 
   %mem13 = AIE.mem(%t1) {
-    %dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+    %dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%lock, "Acquire", 1)
-      AIE.useLock(%lock, "Release", 0)
-      AIE.nextBd ^end // point to the next BD, or termination
+      AIE.use_lock(%lock, "Acquire", 1)
+      AIE.use_lock(%lock, "Release", 0)
+      AIE.next_bd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }

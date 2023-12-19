@@ -17,7 +17,7 @@ AIE.device(xcvc1902) {
   %lock = AIE.lock(%t2, 3) { sym_name = "lock1" }
   // expected-error@-1 {{'AIE.lock' op in Column 4 and Row 4 is accessed from an unreachable tile in Column 1 and Row 1}}
   AIE.core(%t1) {
-    AIE.useLock(%lock, "Acquire", 1)
+    AIE.use_lock(%lock, "Acquire", 1)
     // expected-note@-1 {{user}}
     AIE.end
   }
@@ -28,8 +28,8 @@ AIE.device(xcvc1902) {
 AIE.device(xcvc1902) {
   %t = AIE.tile(2, 2)
   %l = AIE.lock(%t, 3)
-  AIE.useLock(%l, "Acquire", 1)
-  // expected-error@-1 {{'AIE.useLock' op must be used in a core or memory operation.}}
+  AIE.use_lock(%l, "Acquire", 1)
+  // expected-error@-1 {{'AIE.use_lock' op must be used in a core or memory operation.}}
 }
 
 // -----
@@ -39,7 +39,7 @@ AIE.device(xcvc1902) {
   %lock = AIE.lock(%t1, -3) { sym_name = "lock1" }
   // expected-error@-1 {{'AIE.lock' op attribute 'lockID' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 0}}
   AIE.core(%t1) {
-    AIE.useLock(%lock, "Acquire", 1)
+    AIE.use_lock(%lock, "Acquire", 1)
     AIE.end
   }
 }
@@ -50,8 +50,8 @@ AIE.device(xcvc1902) {
   %t = AIE.tile(3, 3)
   %l = AIE.lock(%t, 0)
   AIE.core(%t) {
-    // expected-error@+1 {{'AIE.useLock' op AcquireGreaterEqual is not supported in AIE1.}}
-    AIE.useLock(%l, AcquireGreaterEqual, 1)
+    // expected-error@+1 {{'AIE.use_lock' op AcquireGreaterEqual is not supported in AIE1.}}
+    AIE.use_lock(%l, AcquireGreaterEqual, 1)
     AIE.end
   }
 }

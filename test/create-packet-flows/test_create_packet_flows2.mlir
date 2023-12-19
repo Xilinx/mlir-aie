@@ -22,7 +22,7 @@ module @test_create_packet_flows2 {
 // VAL_3 should also appear here, but it's difficult to filecheck.
 // CHECK:           %[[VAL_5:.*]] = AIE.masterset(Core : 1,
 // CHECK-SACore :      %[[VAL_2]]
-// CHECK:           AIE.packetrules(West : 0) {
+// CHECK:           AIE.packet_rules(West : 0) {
 // CHECK:             AIE.rule(31, 1, %[[VAL_3:.*]])
 // CHECK:             AIE.rule(31, 0, %[[VAL_2]])
 // CHECK:           }

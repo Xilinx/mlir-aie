@@ -20,7 +20,7 @@ To convert a circuit switched flow into a packet switched one, we need to do two
 
 (1) Use the packet switched logical flow operator `AIE.packet_flow` instead of the circuit switched flow operator `AIE.flow`
 
-(2) Configure the source tile DMA to encapsulate the buffer data into packets using the `AIE.dmaBdPacket` operation
+(2) Configure the source tile DMA to encapsulate the buffer data into packets using the `AIE.dma_bd_packet` operation
 
 The packet switched flow operator is declared much like the circuit switched flow operator with the following syntax:
 ```
@@ -55,17 +55,17 @@ Valid bundle names and channels are listed below:
 
 ## <ins>Tile DMA packet config</ins>
 
-Tile DMA can be configured so that buffer data is packetized through the use of the `AIE.dmaBdPacket` operation as shown below:
+Tile DMA can be configured so that buffer data is packetized through the use of the `AIE.dma_bd_packet` operation as shown below:
 ```
-AIE.dmaBdPacket($packet_type, $packet_id)
+AIE.dma_bd_packet($packet_type, $packet_id)
 ```
 An example of this inside a BD definition would be:
 ```
     ^bd0:
-        AIE.useLock(%lock14_6, Acquire, 1)
-        AIE.dmaBdPacket(0x4, 0xD) 
-        AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
-        AIE.useLock(%lock14_6, Release, 0)
+        AIE.use_lock(%lock14_6, Acquire, 1)
+        AIE.dma_bd_packet(0x4, 0xD) 
+        AIE.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, 0)
+        AIE.use_lock(%lock14_6, Release, 0)
         cf.br ^end
 ```
 | Argument | Description |

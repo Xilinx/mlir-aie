@@ -31,13 +31,13 @@ module @aie_module  {
 
     // Tile DMA
     %m73 = AIE.mem(%t73) {
-        %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+        %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
         // Note: acquire and release are different locks.
-        AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buf_a_ping : memref<256xi32>, 0, 256>, 0)
-        AIE.useLock(%lock_a_read, Release, 1)
-        AIE.nextBd ^end
+        AIE.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
+        AIE.dma_bd(<%buf_a_ping : memref<256xi32>, 0, 256>, 0)
+        AIE.use_lock(%lock_a_read, Release, 1)
+        AIE.next_bd ^end
       ^end:
         AIE.end
     }

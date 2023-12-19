@@ -65,7 +65,7 @@ module @hdiff_bundle_1 {
     %lb = arith.constant 0 : index
     %ub = arith.constant 2 : index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock01_14, "Acquire", 0) // start the timer
+    AIE.use_lock(%lock01_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectfifo.acquire<Consume>(%block_0_buf_in_shim_2: !AIE.objectfifo<memref<256xi32>>, 8) : !AIE.objectfifosubview<memref<256xi32>>
       %row0 = AIE.objectfifo.subview.access %obj_in_subview[0] : !AIE.objectfifosubview<memref<256xi32>> -> memref<256xi32>
@@ -142,7 +142,7 @@ module @hdiff_bundle_1 {
       AIE.objectfifo.release<Consume>(%block_0_buf_row_1_inter_flx1 :!AIE.objectfifo<memref<512xi32>>, 5)
       AIE.objectfifo.release<Produce>(%block_0_buf_row_1_out_flx2 :!AIE.objectfifo<memref<256xi32>>, 1)
     }
-    AIE.useLock(%lock21_14, "Acquire", 0) // stop the timer
+    AIE.use_lock(%lock21_14, "Acquire", 0) // stop the timer
     AIE.end
   } { link_with="hdiff_flux2.o" }
 

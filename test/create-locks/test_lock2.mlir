@@ -25,30 +25,30 @@
 // CHECK:           AIEX.token(0) {sym_name = "token2"}
 // CHECK:           AIEX.token(0) {sym_name = "token3"}
 // CHECK:           %[[VAL_14:.*]] = AIE.core(%[[VAL_2]]) {
-// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 1)
-// CHECK:             AIE.useLock(%[[VAL_3]], Release, 0)
+// CHECK:             AIE.use_lock(%[[VAL_3]], Acquire, 1)
+// CHECK:             AIE.use_lock(%[[VAL_3]], Release, 0)
 // CHECK:           }
 // CHECK:           %[[VAL_15:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_5]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 0)
-// CHECK:             AIE.useLock(%[[VAL_3]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_1]], Release, 1)
-// CHECK:             AIE.useLock(%[[VAL_8]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_8]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_1]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_3]], Acquire, 0)
+// CHECK:             AIE.use_lock(%[[VAL_3]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_1]], Release, 1)
+// CHECK:             AIE.use_lock(%[[VAL_8]], Release, 1)
 // CHECK:           }
 // CHECK:           %[[VAL_16:.*]] = AIE.core(%[[VAL_4]]) {
-// CHECK:             AIE.useLock(%[[VAL_5]], Acquire, 1)
-// CHECK:             AIE.useLock(%[[VAL_5]], Release, 0)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Acquire, 1)
+// CHECK:             AIE.use_lock(%[[VAL_5]], Release, 0)
 // CHECK:           }
 // CHECK:           %[[VAL_17:.*]] = AIE.core(%[[VAL_6]]) {
-// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 1)
-// CHECK:             AIE.useLock(%[[VAL_1]], Release, 0)
+// CHECK:             AIE.use_lock(%[[VAL_1]], Acquire, 1)
+// CHECK:             AIE.use_lock(%[[VAL_1]], Release, 0)
 // CHECK:           }
 // CHECK:           %[[VAL_18:.*]] = AIE.core(%[[VAL_7]]) {
-// CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 1)
-// CHECK:             AIE.useLock(%[[VAL_8]], Release, 0)
+// CHECK:             AIE.use_lock(%[[VAL_8]], Acquire, 1)
+// CHECK:             AIE.use_lock(%[[VAL_8]], Release, 0)
 // CHECK:           }
 // CHECK:         }
 

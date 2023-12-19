@@ -15,7 +15,7 @@
 // arbiter() {
 // %1 = masterset(north:1, east:2);
 // }
-// packetrules(east:1) {
+// packet_rules(east:1) {
 // rule(10000|getRow(), %1);
 // }
 // for(i: 1:8)
