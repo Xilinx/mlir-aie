@@ -430,24 +430,25 @@ namespace xilinx::AIE {
 
 ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
                                         OpAsmParser::UnresolvedOperand &operand,
-                                        DimTupleArrayAttr &dimensions) {
-  std::vector<DimTupleAttr> emptyDims = {};
+                                        BDDimLayoutArrayAttr &dimensions) {
+  std::vector<BDDimLayoutAttr> emptyDims = {};
   if (parser.parseOperand(operand))
     return failure();
   if (succeeded(parser.parseOptionalKeyword("toStream"))) {
-    if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(
+    if (parser.parseCustomAttributeWithFallback<BDDimLayoutArrayAttr>(
             dimensions)) {
       return failure();
     }
   } else {
     dimensions =
-        DimTupleArrayAttr::get(parser.getContext(), ArrayRef(emptyDims));
+        BDDimLayoutArrayAttr::get(parser.getContext(), ArrayRef(emptyDims));
   }
   return success();
 }
 
 void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
-                                 Value operand, DimTupleArrayAttr dimensions) {
+                                 Value operand,
+                                 BDDimLayoutArrayAttr dimensions) {
   printer << operand;
   if (!dimensions.empty()) {
     printer << " toStream ";
@@ -457,10 +458,10 @@ void printObjectFifoProducerTile(OpAsmPrinter &printer, Operation *op,
 
 ParseResult parseObjectFifoConsumerTiles(
     OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &tiles,
-    DimTupleArrayArrayAttr &dimensions) {
+    BDDimLayoutArrayArrayAttr &dimensions) {
   // parseCommaSeparatedList doesn't handle the missing case for "none",
   // so we handle it custom here.
-  std::vector<DimTupleArrayAttr> tileDims = {};
+  std::vector<BDDimLayoutArrayAttr> tileDims = {};
 
   auto parseOneOperand = [&]() -> ParseResult {
     if (parser.parseOperand(tiles.emplace_back(), true)) {
@@ -469,11 +470,13 @@ ParseResult parseObjectFifoConsumerTiles(
     // By default, create empty dimensions array for each consumer; this way,
     // we can be certain to have as many entries in the dimensions array as
     // there are customer
-    DimTupleArrayAttr dimAttr = DimTupleArrayAttr::get(parser.getContext(), {});
+    BDDimLayoutArrayAttr dimAttr =
+        BDDimLayoutArrayAttr::get(parser.getContext(), {});
 
     if (succeeded(parser.parseOptionalKeyword("fromStream"))) {
       // If specified, parse actual data layout transform dimensions
-      if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(dimAttr)) {
+      if (parser.parseCustomAttributeWithFallback<BDDimLayoutArrayAttr>(
+              dimAttr)) {
         return failure();
       }
     }
@@ -485,13 +488,13 @@ ParseResult parseObjectFifoConsumerTiles(
                                      parseOneOperand, " in operand list"))
     return failure();
 
-  dimensions = DimTupleArrayArrayAttr::get(parser.getContext(), tileDims);
+  dimensions = BDDimLayoutArrayArrayAttr::get(parser.getContext(), tileDims);
   return success();
 }
 
 void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
                                   OperandRange tiles,
-                                  DimTupleArrayArrayAttr dimsPerTileAttr) {
+                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     printer << tile;
@@ -1374,7 +1377,7 @@ LogicalResult DMABDOp::verify() {
     for (int64_t memrefDim : buffer.getShape())
       memrefSize *= 4 * memrefDim;
 
-    ArrayRef<DimTupleAttr> dims = *getDimensions();
+    ArrayRef<BDDimLayoutAttr> dims = *getDimensions();
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>((*this)->getParentOp())) {
       maxNDims = 4;
@@ -1386,21 +1389,21 @@ LogicalResult DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims.size()) << " dimensions).";
     }
-    for (DimTupleAttr dim : dims) {
-      maxIdx += dim.getStepsize() * (dim.getWrap() - 1);
-      if (0 == dim.getStepsize()) {
+    for (BDDimLayoutAttr dim : dims) {
+      maxIdx += dim.getStep() * (dim.getWrap() - 1);
+      if (0 == dim.getStep()) {
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       }
-      if (dim.getStepsize() > memrefSize) {
+      if (dim.getStep() > memrefSize) {
         return emitOpError()
-               << "Step size " << std::to_string(dim.getStepsize() * 4) << " "
+               << "Step size " << std::to_string(dim.getStep() * 4) << " "
                << "bytes exceeds memref size " << std::to_string(memrefSize);
       }
       if (dim.getWrap() >= (1UL << 9) + 1) {
         return emitOpError() << "Wrap may not exceed 1023.";
       }
-      if (dim.getStepsize() >= (1UL << 19)) {
+      if (dim.getStep() >= (1UL << 19)) {
         return emitOpError() << "Stepsize may not exceed " << (1 << 20);
       }
     }

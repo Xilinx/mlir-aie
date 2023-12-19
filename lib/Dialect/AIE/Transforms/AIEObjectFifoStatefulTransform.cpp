@@ -213,7 +213,7 @@ struct AIEObjectFifoStatefulTransformPass
     if (hasSharedMemory) {
       // Even if just one of the consumers in the list of consumers wants to
       // perform a memory transform, we need to use DMAs.
-      for (DimTupleArrayAttr dims :
+      for (BDDimLayoutArrayAttr dims :
            createOp.getDimensionsFromStreamPerConsumer())
         if (!dims.empty()) {
           atLeastOneConsumerWantsTransform = true;
@@ -250,8 +250,8 @@ struct AIEObjectFifoStatefulTransformPass
   ObjectFifoCreateOp
   createObjectFifo(OpBuilder &builder, AIEObjectFifoType datatype,
                    std::string name, Value prodTile, Value consTile,
-                   Attribute depth, DimTupleArrayAttr dimensionsToStream,
-                   DimTupleArrayArrayAttr dimensionsFromStreamPerConsumer) {
+                   Attribute depth, BDDimLayoutArrayAttr dimensionsToStream,
+                   BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer) {
     auto ofName = builder.getStringAttr(name);
     auto fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype,
@@ -418,7 +418,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
-                DimTupleArrayAttr dims) {
+                BDDimLayoutArrayAttr dims) {
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqMode,
                               acqLockAction);
     if (!dims.getValue().empty())
@@ -440,7 +440,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
                      int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, size_t blockIndex, Block *succ,
-                     DimTupleArrayAttr dims) {
+                     BDDimLayoutArrayAttr dims) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
@@ -470,7 +470,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
-                 DimTupleArrayAttr dims) {
+                 BDDimLayoutArrayAttr dims) {
     if (op.getProducerTileOp().isShimTile()) {
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
@@ -488,7 +488,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createAIETileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
-                        DimTupleArrayAttr dims) {
+                        BDDimLayoutArrayAttr dims) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -570,7 +570,8 @@ struct AIEObjectFifoStatefulTransformPass
   /// It uses creatBdBlock(), see there for lockMode input.
   void createShimDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                     int channelIndex, int lockMode, DimTupleArrayAttr dims) {
+                     int channelIndex, int lockMode,
+                     BDDimLayoutArrayAttr dims) {
     size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
@@ -646,7 +647,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
-                        DimTupleArrayAttr dims) {
+                        BDDimLayoutArrayAttr dims) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -1191,7 +1192,7 @@ struct AIEObjectFifoStatefulTransformPass
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int consumerIndex = 0;
       int consumerDepth = createOp.size();
-      ArrayRef<DimTupleArrayAttr> consumerDims =
+      ArrayRef<BDDimLayoutArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
 
       // Only FIFOs using DMA are split into two ends;
@@ -1221,13 +1222,15 @@ struct AIEObjectFifoStatefulTransformPass
         } else {
           consumerFifoName = createOp.name().str() + "_cons";
         }
-        DimTupleArrayAttr emptyDims =
-            DimTupleArrayAttr::get(builder.getContext(), {});
-        DimTupleArrayAttr singletonFromStreamDims = DimTupleArrayAttr::get(
-            builder.getContext(),
-            ArrayRef<DimTupleAttr>{consumerDims[consumerIndex]});
-        DimTupleArrayArrayAttr fromStreamDims = DimTupleArrayArrayAttr::get(
-            builder.getContext(), singletonFromStreamDims);
+        BDDimLayoutArrayAttr emptyDims =
+            BDDimLayoutArrayAttr::get(builder.getContext(), {});
+        BDDimLayoutArrayAttr singletonFromStreamDims =
+            BDDimLayoutArrayAttr::get(
+                builder.getContext(),
+                ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
+        BDDimLayoutArrayArrayAttr fromStreamDims =
+            BDDimLayoutArrayArrayAttr::get(builder.getContext(),
+                                           singletonFromStreamDims);
 
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
@@ -1323,7 +1326,7 @@ struct AIEObjectFifoStatefulTransformPass
         // create consumer tile DMA
         DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
-        DimTupleArrayAttr consumerDims =
+        BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
                   consumerChan.channel, 1, consumerDims);

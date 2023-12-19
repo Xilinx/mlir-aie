@@ -14,6 +14,7 @@ from aie.dialects.aie import (
     ObjectFifoPort,
     ObjectFifoType,
     acquire,
+    bd_dim_layout,
     end,
     objectfifo,
     objectfifo_link,
@@ -92,7 +93,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectfifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: AIE.objectfifo @of0(%[[VAL0]] toStream [<wrap = 1, step = 2>], {%[[VAL1]] fromStream [<wrap = 1, step = 2>]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -106,8 +107,8 @@ def objFifo():
             [tile1],
             2,
             TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [(1, 2)],
-            [[(1, 2)]],
+            [bd_dim_layout(wrap=1, step=2)],
+            [[bd_dim_layout(wrap=1, step=2)]],
         )
         end()
 

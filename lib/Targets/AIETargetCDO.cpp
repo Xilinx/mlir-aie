@@ -334,7 +334,7 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
       StringRef AbMode = disable;
       //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
       int ndims = 0;
-      ArrayRef<DimTupleAttr> dims;
+      ArrayRef<BDDimLayoutAttr> dims;
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
         ShapedType bufferType =
@@ -522,7 +522,7 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
       StringRef bufB = "0";
       StringRef AbMode = disable;
       int ndims = 0;
-      ArrayRef<DimTupleAttr> dims;
+      ArrayRef<BDDimLayoutAttr> dims;
       //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;

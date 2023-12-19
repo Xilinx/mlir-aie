@@ -15,7 +15,7 @@
 // CHECK-LABEL:   AIE.device(xcve2302) {
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 2)
 // CHECK:           %[[VAL_1:.*]] = AIE.tile(1, 3)
-// CHECK:           AIE.objectfifo @objfifo(%[[VAL_0]] toStream [<1, 2>], {%[[VAL_1]] fromStream [<3, 4>]}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
+// CHECK:           AIE.objectfifo @objfifo(%[[VAL_0]] toStream [<wrap = 1, step = 2>], {%[[VAL_1]] fromStream [<wrap = 3, step = 4>]}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
 // CHECK:           %[[VAL_2:.*]] = arith.constant dense<1> : tensor<1xi32>
 // CHECK:           %[[VAL_3:.*]] = arith.constant dense<1> : tensor<1xi32>
 // CHECK:           %[[VAL_4:.*]] = arith.constant 10 : index
@@ -41,7 +41,7 @@ module @registerPatterns  {
         %tile12 = AIE.tile(1, 2)
         %tile13 = AIE.tile(1, 3)
 
-        AIE.objectfifo @objfifo (%tile12 toStream [<1, 2>], {%tile13 fromStream [<3, 4>]}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
+        AIE.objectfifo @objfifo (%tile12 toStream [<wrap = 1, step = 2>], {%tile13 fromStream [<wrap = 3, step = 4>]}, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
 
         %acquirePattern = arith.constant dense<[1]> : tensor<1xi32>
         %releasePattern = arith.constant dense<[1]> : tensor<1xi32>

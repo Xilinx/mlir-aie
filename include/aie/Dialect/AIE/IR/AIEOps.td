@@ -808,8 +808,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
-        DMABDBuffer:$AB,
-        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
+        DefaultValuedAttr<DMABDBuffer, "xilinx::AIE::DMABDBuffer::A">:$AB,
+        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
@@ -877,8 +877,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let extraClassDeclaration = [{
-    bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
+    bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
 }
 
@@ -1422,9 +1422,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
-        AIE_DimTupleArrayAttr:$dimensionsToStream,
-        AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
+        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        BDDimLayoutArrayAttr:$dimensionsToStream,
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
 
   let assemblyFormat = [{
@@ -1436,7 +1436,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `}`
         `,`
         $elemNumber
-    `)` attr-dict `:` $elem_type
+    `)` attr-dict `:` $elemType
   }];
 
   let hasVerifier = 1;
@@ -1462,17 +1462,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   let builders = [
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
                    "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
-                   CArg<"llvm::ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
-                   CArg<"llvm::ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>", "{}">:$dimensionsToStream,
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
       odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
       odsState.addAttribute(getElemTypeAttrName(odsState.name), mlir::TypeAttr::get(elem_type));
       odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
-                            odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
+                            odsBuilder.getAttr<BDDimLayoutArrayAttr>(dimensionsToStream));
       odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
-                            odsBuilder.getAttr<DimTupleArrayArrayAttr>(dimensionsFromStreamPerConsumer));
+                            odsBuilder.getAttr<BDDimLayoutArrayArrayAttr>(dimensionsFromStreamPerConsumer));
     }]>
   ];
 }

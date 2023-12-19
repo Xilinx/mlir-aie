@@ -84,10 +84,10 @@ static std::string tileDMATensorStr(int col, int row, int bdNum) {
 }
 
 void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
-                                    ArrayRef<DimTupleAttr> dims, int col,
+                                    ArrayRef<BDDimLayoutAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
                                     int offsetA, int lenA, int bytesA,
-                                    const char *error_retval) {
+                                    const char *errorRetval) {
   std::string tensor = tileDMATensorStr(col, row, bdNum);
   output << "XAie_DmaTensor " << tensor << " = {};\n";
   output << tensor << ".NumDim = " << std::to_string(ndims) << ";\n";
@@ -96,7 +96,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
             "__mlir_aie_alloc_dim_desc("
          << std::to_string(ndims) << ");\n";
   output << "if(NULL == " << tensor << ".Dim){\n"
-         << "  return " << error_retval << ";\n"
+         << "  return " << errorRetval << ";\n"
          << "}\n";
   for (int i = 0; i < ndims; i++) {
     // Pass down dimensions in reverse order; in the MLIR, this allows us
@@ -105,7 +105,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
     int j = ndims - i - 1;
     // Assume AIE-ML architecture; we assert this above
     output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
-           << " = { /* StepSize */ " << std::to_string(dims[i].getStepsize())
+           << " = { /* StepSize */ " << std::to_string(dims[i].getStep())
            << ", /* Wrap */ " << std::to_string(dims[i].getWrap()) << "};\n";
   }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
