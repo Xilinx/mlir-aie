@@ -10,7 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import arith
+from aie.extras.dialects.ext.scf import range_, yield_
 from aie.extras.context import mlir_mod_ctx
+from aie.ir import MemRefType, TypeAttr
 
 width = 64
 height = 36
@@ -53,7 +55,7 @@ def color_detect():
                 "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, T.i32()]
             )
             bitwiseANDLine = external_func(
-                "bitwiseORLine",
+                "bitwiseANDLine",
                 inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, T.i32()],
             )
 
@@ -179,7 +181,7 @@ def color_detect():
             # Compute tile 2
             @core(ComputeTile2, "rgba2hue.cc.o")
             def coreBody():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty
                     ).acquired_elem()
@@ -189,6 +191,7 @@ def color_detect():
                     Call(rgba2hueLine, [elemIn, elemOut, arith.constant(lineWidth)])
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_2to34", 1)
+                    yield_([])
 
             # Compute tile 3
             @core(ComputeTile3, "threshold.cc.o")
@@ -198,7 +201,7 @@ def color_detect():
                 thresholdMaxvalue = arith.constant(255, T.i16())
                 thresholdModeToZeroInv = arith.constant(4, T.i8())
                 thresholdModeBinary = arith.constant(0, T.i8())
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
                     ).acquired_elem()
@@ -237,6 +240,7 @@ def color_detect():
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_3to3", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_3to5", 1)
+                    yield_([])
 
             # Compute tile 4
             @core(ComputeTile4, "threshold.cc.o")
@@ -246,7 +250,7 @@ def color_detect():
                 thresholdMaxvalue = arith.constant(255, T.i16())
                 thresholdModeToZeroInv = arith.constant(4, T.i8())
                 thresholdModeBinary = arith.constant(0, T.i8())
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     elemIn = acquire(
                         ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
                     ).acquired_elem()
@@ -285,11 +289,12 @@ def color_detect():
                     )
                     objectfifo_release(ObjectFifoPort.Consume, "OF_4to4", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                    yield_([])
 
             # Compute tile 5
             @core(ComputeTile5, "combined_bitwiseOR_gray2rgba_bitwiseAND.a")
             def coreBody():
-                for _ in for_(sys.maxsize):
+                for _ in range_(sys.maxsize):
                     # bitwise OR
                     elemIn1 = acquire(
                         ObjectFifoPort.Consume, "OF_3to5", 1, line_ty
@@ -342,6 +347,7 @@ def color_detect():
                     objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
                     objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
                     objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                    yield_([])
 
             # To/from AIE-array data movement
 
