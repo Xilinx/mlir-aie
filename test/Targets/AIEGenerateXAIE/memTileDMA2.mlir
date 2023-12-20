@@ -53,15 +53,15 @@ module @aie_module  {
   %m01 = AIE.memtile_dma(%t01) {
       %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.dma_bd(<%buf_w : memref<16xi32>, 0, 16>, A)
+      AIE.dma_bd(%buf_w : memref<16xi32>, 0, 16)
       AIE.use_lock(%lock_w, "Release", 1)
       AIE.next_bd ^bd1
     ^bd1:
-      AIE.dma_bd(<%buf_l : memref<16xi32>, 0, 16>, A)
+      AIE.dma_bd(%buf_l : memref<16xi32>, 0, 16)
       AIE.use_lock(%lock_l, "Release", 1)
       AIE.next_bd ^bd2
     ^bd2:
-      AIE.dma_bd(<%buf_e : memref<16xi32>, 0, 16>, A)
+      AIE.dma_bd(%buf_e : memref<16xi32>, 0, 16)
       AIE.use_lock(%lock_e, "Release", 1)
       AIE.next_bd ^end
     ^end:

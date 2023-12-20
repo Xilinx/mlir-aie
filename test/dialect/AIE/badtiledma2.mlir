@@ -33,19 +33,19 @@ module @test {
       ^dma1:
         %dstDma = AIE.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
-        AIE.dma_bd(<%buf_e : memref<256xi32>, 0, 256>, A)
+        AIE.dma_bd(%buf_e : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_e, Release, 1)
         AIE.next_bd ^bd1
       ^bd1:
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 256>, A)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_l, Release, 1)
         AIE.next_bd ^end
       ^bd2:
-        AIE.dma_bd(<%buf_n : memref<256xi32>, 0, 256>, A)
+        AIE.dma_bd(%buf_n : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_n, Release, 1)
         AIE.next_bd ^bd3
       ^bd3:
-        AIE.dma_bd(<%buf_s : memref<256xi32>, 0, 256>, A)
+        AIE.dma_bd(%buf_s : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_s, Release, 1)
         AIE.next_bd ^end
       ^end:

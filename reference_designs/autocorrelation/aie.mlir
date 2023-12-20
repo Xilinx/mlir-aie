@@ -57,12 +57,12 @@ module @autocorrelation {
      AIE.dma_start("S2MM", 0, ^bdout, ^end)
     ^bdin:
       AIE.use_lock(%input_lock, "Acquire", 1)
-      AIE.dma_bd(<%input : memref<1024xi32>, 0, 1024>, A)
+      AIE.dma_bd(%input : memref<1024xi32>, 0, 1024)
       AIE.use_lock(%input_lock, "Release", 0)
       AIE.next_bd ^end
     ^bdout:
       AIE.use_lock(%output_lock, "Acquire", 0)
-      AIE.dma_bd(<%output : memref<1024xi32>, 0, 1024>, A)
+      AIE.dma_bd(%output : memref<1024xi32>, 0, 1024)
       AIE.use_lock(%output_lock, "Release", 1)
       AIE.next_bd ^end
     ^end:
@@ -85,12 +85,12 @@ module @autocorrelation {
     AIE.dma_start("MM2S", 0, ^bd1, ^end)
   ^bd0: 
     AIE.use_lock(%buf1_in_lock, Acquire, 0)
-    AIE.dma_bd(<%buf1_in : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf1_in : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%buf1_in_lock, Release, 1)
     AIE.next_bd ^end
   ^bd1: 
     AIE.use_lock(%buf1_out_lock, Acquire, 1)
-    AIE.dma_bd(<%buf1_out : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf1_out : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%buf1_out_lock, Release, 0)
     AIE.next_bd ^end
   ^end: 
@@ -101,7 +101,7 @@ module @autocorrelation {
     AIE.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     AIE.use_lock(%buf2_in_lock, Acquire, 0)
-    AIE.dma_bd(<%buf2_in : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf2_in : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%buf2_in_lock, Release, 1)
     AIE.next_bd ^end
   ^end: 
@@ -112,7 +112,7 @@ module @autocorrelation {
     AIE.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     AIE.use_lock(%buf3_in_lock, Acquire, 0)
-    AIE.dma_bd(<%buf3_in : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf3_in : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%buf3_in_lock, Release, 1)
     AIE.next_bd ^end
   ^end: 
@@ -123,7 +123,7 @@ module @autocorrelation {
     AIE.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     AIE.use_lock(%buf4_in_lock, Acquire, 0)
-    AIE.dma_bd(<%buf4_in : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf4_in : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%buf4_in_lock, Release, 1)
     AIE.next_bd ^end
   ^end: 

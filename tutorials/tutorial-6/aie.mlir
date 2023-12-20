@@ -67,7 +67,7 @@ module @tutorial_6 {
                 // 0x4 - packet type, arbitary value
                 // 0xD - packet ID, arbitary value but used for routing
                 AIE.dma_bd_packet(0x4, 0xD)
-                AIE.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, A)
+                AIE.dma_bd(%buf14 : memref<256xi32>, 0, 256)
                 AIE.use_lock(%lock14_6, Release, 0)
                 AIE.next_bd ^end
             ^end:
@@ -100,7 +100,7 @@ module @tutorial_6 {
             ^bd0:
                 AIE.use_lock(%lock34_7, Acquire, 0)
                 // Packets headers are dropped so no need to define packet behavior here
-                AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, A)
+                AIE.dma_bd(%buf34 : memref<256xi32>, 0, 256)
                 AIE.use_lock(%lock34_7, Release, 1)
                 AIE.next_bd ^end
             ^end:

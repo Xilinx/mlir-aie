@@ -28,22 +28,22 @@
 // CHECK:  AIEX.token(0) {sym_name = "token1"}
 // CHECK:  %10 = AIE.mem(%4) {
 // CHECK:    AIE.use_lock({{.*}}, Acquire, 1)
-// CHECK:    AIE.dma_bd(<%7 : memref<256xi32>, 0, 256>, A)
+// CHECK:    AIE.dma_bd(%7 : memref<256xi32>, 0, 256)
 // CHECK:    AIE.use_lock({{.*}}, Release, 0)
 // CHECK:    AIE.use_lock({{.*}}, Acquire, 1)
-// CHECK:    AIE.dma_bd(<%7 : memref<256xi32>, 0, 256>, A)
+// CHECK:    AIE.dma_bd(%7 : memref<256xi32>, 0, 256)
 // CHECK:    AIE.use_lock({{.*}}, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %11 = AIE.mem(%2) {
 // CHECK:    AIE.use_lock(%3, Acquire, 0)
-// CHECK:    AIE.dma_bd(<%8 : memref<256xi32>, 0, 256>, A)
+// CHECK:    AIE.dma_bd(%8 : memref<256xi32>, 0, 256)
 // CHECK:    AIE.use_lock(%3, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %12 = AIE.mem(%0) {
 // CHECK:    AIE.use_lock(%1, Acquire, 0)
-// CHECK:    AIE.dma_bd(<%9 : memref<256xi32>, 0, 256>, A)
+// CHECK:    AIE.dma_bd(%9 : memref<256xi32>, 0, 256)
 // CHECK:    AIE.use_lock(%1, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
@@ -92,12 +92,12 @@ module @test_lock5 {
       %dmaSt1 = AIE.dma_start("MM2S1", ^bd1, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, A)
+      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
       AIEX.useToken @token0(Release, 2)
       AIE.next_bd ^end
     ^bd1:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(<%buf33 : memref<256xi32>, 0, 256>, A)
+      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
       AIEX.useToken @token0(Release, 2)
       AIE.next_bd ^end
     ^end:
@@ -108,7 +108,7 @@ module @test_lock5 {
       %dmaSt = AIE.dma_start(S2MM0, ^bd0, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(<%buf44 : memref<256xi32>, 0, 256>, A)
+      AIE.dma_bd(%buf44 : memref<256xi32>, 0, 256)
       AIEX.useToken @token0(Release, 2)
       AIE.next_bd ^end
     ^end:
@@ -119,7 +119,7 @@ module @test_lock5 {
       %dmaSt = AIE.dma_start(S2MM0, ^bd0, ^end)
     ^bd0:
       AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(<%buf55 : memref<256xi32>, 0, 256>, A)
+      AIE.dma_bd(%buf55 : memref<256xi32>, 0, 256)
       AIEX.useToken @token0(Release, 2)
       AIE.next_bd ^end
     ^end:
