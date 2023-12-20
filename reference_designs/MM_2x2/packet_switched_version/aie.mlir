@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/../kernel.cc
+// RUN: xchesscc -p me -P %aietools/data/versal_prod/lib -c %S/../kernel.cc
 // RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 

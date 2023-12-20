@@ -14,14 +14,14 @@ f32: f32_chess f32.elf
 build: 
 	xchessmk test.prx
 sim: 
-	xca_udm_dbg -P $AIETOOLS_ROOT/data/cervino/lib/ -t sim.tcl
+	xca_udm_dbg -P $AIETOOLS_ROOT/data/versal_prod/lib/ -t sim.tcl
 
 
 i32_chess: 
-	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/versal_prod/lib/ -L $AIETOOLS_ROOT/data/versal_prod/lib/ -c hdiff.cc
 
 f32_chess: 
-	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff_fp32.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/versal_prod/lib/ -L $AIETOOLS_ROOT/data/versal_prod/lib/ -c hdiff_fp32.cc
 
 
 i32.elf: 
