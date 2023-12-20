@@ -527,7 +527,6 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         bufA = "XAIEDMA_TILE_BD_ADDRA";
         hasA = true;
 
-
         if (op.getDimensions()) {
           dims = *op.getDimensions();
           ndims = dims.size();
