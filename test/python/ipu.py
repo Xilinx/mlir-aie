@@ -943,7 +943,7 @@ def my_add_one_objFifo():
                     ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32())
                 ).acquired_elem()
                 elem_out = acquire(
-                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32())
+                    ObjectFifoPort.Produce, "out1", 1, T.memref(16, T.i32())
                 ).acquired_elem()
                 for i in range_(8):
                     v0 = memref.load(elem_in, [i])
