@@ -171,7 +171,7 @@ def color_detect():
                 ComputeTile5,
                 [ComputeTile5],
                 1,
-                ofifo_line_ty,
+                ofifo_line_bytes_ty,
                 [],
                 [],
             )
