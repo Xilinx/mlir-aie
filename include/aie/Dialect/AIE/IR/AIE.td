@@ -14,7 +14,7 @@
 include "mlir/IR/OpBase.td"
 
 def AIE_Dialect : Dialect {
-  let name = "AIE";
+  let name = "aie";
   let cppNamespace = "::xilinx::AIE";
   let description = [{
 

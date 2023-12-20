@@ -9,22 +9,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::AIE;
+
+#include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
 
 namespace xilinx::AIEX {
 
 // FIXME: use Tablegen'd dialect class
-AIEXDialect::AIEXDialect(MLIRContext *ctx)
-    : Dialect("AIEX", ctx, TypeID::get<AIEXDialect>()) {
+void AIEXDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
@@ -37,9 +35,9 @@ AIEXDialect::AIEXDialect(MLIRContext *ctx)
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
 LogicalResult AIEX::UseTokenOp::verify() {
-  auto parentOp = (*this)->getParentOp();
-  if (isa<func::FuncOp>(parentOp) || isa<CoreOp>(parentOp) ||
-      isa<MemOp>(parentOp) || isa<ShimDMAOp>(parentOp))
+  auto *parentOp = (*this)->getParentOp();
+  if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||
+      isa<AIE::MemOp>(parentOp) || isa<AIE::ShimDMAOp>(parentOp))
     return success();
   return failure();
 }
@@ -49,7 +47,7 @@ LogicalResult AIEX::MulticastOp::verify() {
   assert(getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front())
-    if (!isa<MultiDestOp, EndOp>(ops))
+    if (!isa<MultiDestOp, AIE::EndOp>(ops))
       return ops.emitOpError("cannot be contained in a Multicast op");
 
   return success();
@@ -60,7 +58,7 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
   assert(getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front())
-    if (!isa<BPIDOp, EndOp>(ops))
+    if (!isa<BPIDOp, AIE::EndOp>(ops))
       return ops.emitOpError("cannot be contained in a BroadcastPacket op");
 
   return success();
@@ -72,26 +70,26 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
     return emitOpError("must be used with memref type i32.");
   uint32_t strides[3]{0, 0, 0};
   uint32_t lengths[4]{0, 0, 0, 0};
-  if (auto const_op = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[2] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[2] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[1] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[1] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[0] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[0] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[3] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[3] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[2] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[2] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[1] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[1] = static_cast<uint32_t>(constOp.value());
   }
-  if (auto const_op = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[0] = static_cast<uint32_t>(const_op.value());
+  if (auto constOp = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[0] = static_cast<uint32_t>(constOp.value());
   }
   if (lengths[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
@@ -109,9 +107,9 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
 }
 
 LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
-  const auto &target_model = getTargetModel(*this);
-  auto num_bds = target_model.getNumBDs(0, 0); // assume shim
-  if (getBdId() > num_bds)
+  const auto &targetModel = AIE::getTargetModel(*this);
+  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getRepeatCount() > 255)
     return emitOpError("Repeat count exceeds the [0:255] range.");
@@ -119,9 +117,9 @@ LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
 }
 
 LogicalResult AIEX::IpuWriteBdExShimTileOp::verify() {
-  const auto &target_model = getTargetModel(*this);
-  auto num_bds = target_model.getNumBDs(0, 0); // assume shim
-  if (getBdId() > num_bds)
+  const auto &targetModel = AIE::getTargetModel(*this);
+  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getD0Wrap() > 0x3FF)
     return emitOpError("D0 Wrap exceeds the [0:1023] range.");

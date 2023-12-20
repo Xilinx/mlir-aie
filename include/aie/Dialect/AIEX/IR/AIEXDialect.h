@@ -13,38 +13,8 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/TypeSupport.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
-
-#include "llvm/ADT/StringSwitch.h"
-
-#include <map>
-#include <set>
-
-namespace xilinx::AIEX {
-
-// The Dialect
-class AIEXDialect : public mlir::Dialect {
-public:
-  explicit AIEXDialect(mlir::MLIRContext *ctx);
-  static llvm::StringRef getDialectNamespace() { return "AIEX"; }
-};
-
-} // namespace xilinx::AIEX
+// Include dialect declarations such as parseAttributes, parseType
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
