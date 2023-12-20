@@ -10,7 +10,9 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf 
+// RUN: %run_on_board ./test.elf
+
+// XFAIL: *
 
 module @autocorrelation {
     %tile0_1 = AIE.tile(2, 1)

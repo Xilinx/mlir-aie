@@ -8,7 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "memory_allocator.h"
 #include "test_library.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -46,19 +48,19 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
   printf("before configure DMA\n");
   mlir_aie_configure_dmas(_xaie);
-  mlir_aie_init_mems(_xaie, 8);
   int errors = 0;
 
   printf("Finish configure\n");
 #define DMA_COUNT 1024
-  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
-  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
-  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
-  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT);
-  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT);
+  ext_mem_model_t buf0, buf1, buf2, buf3, buf4, buf5, buf6, buf7;
+  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, buf1, DMA_COUNT);
+  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, buf2, DMA_COUNT);
+  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, buf3, DMA_COUNT);
+  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, buf4, DMA_COUNT);
+  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, buf5, DMA_COUNT);
+  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, buf6, DMA_COUNT);
+  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, buf7, DMA_COUNT);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT; i++) {
@@ -72,23 +74,23 @@ int main(int argc, char *argv[]) {
     *(mem_ptr7 + i) = 99; // Out_tile1
   }
 
-  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 2); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 3); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 4); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 5); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf1); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf2); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf3); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf4); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf5); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf6); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf7); // only used in libaiev2
 
-  mlir_aie_external_set_addr_LHS_tile0((u64)mem_ptr0);
-  mlir_aie_external_set_addr_LHS_tile1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
-  mlir_aie_external_set_addr_RHS_tile1((u64)mem_ptr3);
-  mlir_aie_external_set_addr_RHS_tile2((u64)mem_ptr4);
-  mlir_aie_external_set_addr_RHS_tile3((u64)mem_ptr5);
-  mlir_aie_external_set_addr_Out_tile0((u64)mem_ptr6);
-  mlir_aie_external_set_addr_Out_tile1((u64)mem_ptr7);
+  mlir_aie_external_set_addr_LHS_tile0(_xaie, (u64)mem_ptr0);
+  mlir_aie_external_set_addr_LHS_tile1(_xaie, (u64)mem_ptr1);
+  mlir_aie_external_set_addr_RHS_tile0(_xaie, (u64)mem_ptr2);
+  mlir_aie_external_set_addr_RHS_tile1(_xaie, (u64)mem_ptr3);
+  mlir_aie_external_set_addr_RHS_tile2(_xaie, (u64)mem_ptr4);
+  mlir_aie_external_set_addr_RHS_tile3(_xaie, (u64)mem_ptr5);
+  mlir_aie_external_set_addr_Out_tile0(_xaie, (u64)mem_ptr6);
+  mlir_aie_external_set_addr_Out_tile1(_xaie, (u64)mem_ptr7);
   mlir_aie_configure_shimdma_60(_xaie);
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_configure_shimdma_100(_xaie);
@@ -108,8 +110,8 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_acquire_of_out0_cons_lock_0(_xaie, 1, 0);
   mlir_aie_acquire_of_out1_cons_lock_0(_xaie, 1, 0);
-  mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
-  mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(buf6); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(buf7); // only used in libaiev2
 
   for (int idx0 = 0; idx0 < 1024; ++idx0) {
     if (mem_ptr6[idx0] != 352) {

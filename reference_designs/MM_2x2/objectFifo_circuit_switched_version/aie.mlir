@@ -15,7 +15,7 @@
 // RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @MM_2x2 {
+AIE.device(xcvc1902) {
   %t60 = AIE.tile(6, 0)
   %t63 = AIE.tile(6, 3)
   %t64 = AIE.tile(6, 4)
