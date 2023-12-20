@@ -9,19 +9,19 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.lock' op in Column 4 and Row 4 is accessed from an unreachable tile in Column 1 and Row 1
+// CHECK: error{{.*}}'aie.lock' op in Column 4 and Row 4 is accessed from an unreachable tile in Column 1 and Row 1
 module @test {
-  %t1 = AIE.tile(1, 1)
-  %t2 = AIE.tile(4, 4)
-  %lock = AIE.lock(%t2, 3) { sym_name = "lock1" }
+  %t1 = aie.tile(1, 1)
+  %t2 = aie.tile(4, 4)
+  %lock = aie.lock(%t2, 3) { sym_name = "lock1" }
 
-  %mem13 = AIE.mem(%t1) {
-    %dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
+  %mem13 = aie.mem(%t1) {
+    %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%lock, "Acquire", 1)
-      AIE.use_lock(%lock, "Release", 0)
-      AIE.next_bd ^end // point to the next BD, or termination
+      aie.use_lock(%lock, "Acquire", 1)
+      aie.use_lock(%lock, "Release", 0)
+      aie.next_bd ^end // point to the next BD, or termination
     ^end:
-      AIE.end
+      aie.end
   }
 }

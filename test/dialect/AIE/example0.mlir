@@ -30,105 +30,105 @@ module @example0 {
   // (2, 3) (3, 3) (4, 3) (5, 3)
   // (2, 2) (3, 2) (4, 2) (5, 2)
 
-  %t33 = AIE.tile(3, 3)
-  %t42 = AIE.tile(4, 2)
-  %t44 = AIE.tile(4, 4)
+  %t33 = aie.tile(3, 3)
+  %t42 = aie.tile(4, 2)
+  %t44 = aie.tile(4, 4)
 
-  %l33_0 = AIE.lock(%t33, 0)
-  %l33_1 = AIE.lock(%t33, 1)
-  %l42_0 = AIE.lock(%t42, 0)
-  %l44_0 = AIE.lock(%t44, 0)
+  %l33_0 = aie.lock(%t33, 0)
+  %l33_1 = aie.lock(%t33, 1)
+  %l42_0 = aie.lock(%t42, 0)
+  %l44_0 = aie.lock(%t44, 0)
 
-  %buf33 = AIE.buffer(%t33) : memref<256xi32>
-  %buf42 = AIE.buffer(%t42) : memref<256xi32>
-  %buf44 = AIE.buffer(%t44) : memref<256xi32>
+  %buf33 = aie.buffer(%t33) : memref<256xi32>
+  %buf42 = aie.buffer(%t42) : memref<256xi32>
+  %buf44 = aie.buffer(%t44) : memref<256xi32>
 
-  %m33 = AIE.mem(%t33) {
-      %dmaSt0 = AIE.dma_start(MM2S, 0, ^bd0, ^dma0)
+  %m33 = aie.mem(%t33) {
+      %dmaSt0 = aie.dma_start(MM2S, 0, ^bd0, ^dma0)
     ^dma0:
-      %dmaSt1 = AIE.dma_start("MM2S", 1, ^bd1, ^end)
+      %dmaSt1 = aie.dma_start("MM2S", 1, ^bd1, ^end)
     ^bd0:
-      AIE.use_lock(%l33_0, Acquire, 1)
-      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l33_0, Release, 0)
-      AIE.next_bd ^end
+      aie.use_lock(%l33_0, Acquire, 1)
+      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l33_0, Release, 0)
+      aie.next_bd ^end
     ^bd1:
-      AIE.use_lock(%l33_1, Acquire, 0)
-      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l33_1, Release, 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l33_1, Acquire, 0)
+      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l33_1, Release, 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %m42 = AIE.mem(%t42) {
-      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m42 = aie.mem(%t42) {
+      %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l42_0, Acquire, 0)
-      AIE.dma_bd(%buf42 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l42_0, Release, 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l42_0, Acquire, 0)
+      aie.dma_bd(%buf42 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l42_0, Release, 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %m44 = AIE.mem(%t44) {
-      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m44 = aie.mem(%t44) {
+      %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l44_0, Acquire, 1)
-      AIE.dma_bd(%buf44 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l44_0, Release, 0)
-      AIE.next_bd ^end
+      aie.use_lock(%l44_0, Acquire, 1)
+      aie.dma_bd(%buf44 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l44_0, Release, 0)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %s33 = AIE.switchbox(%t33) {
-    AIE.connect<DMA: 0, East: 0>
-    AIE.connect<DMA: 1, East: 1>
+  %s33 = aie.switchbox(%t33) {
+    aie.connect<DMA: 0, East: 0>
+    aie.connect<DMA: 1, East: 1>
   }
 
-  %s42 = AIE.switchbox(%t42) {
-    AIE.connect<North: 0, DMA: 0>
+  %s42 = aie.switchbox(%t42) {
+    aie.connect<North: 0, DMA: 0>
   }
 
-  %s44 = AIE.switchbox(%t44) {
-    AIE.connect<South:0, DMA: 0>
+  %s44 = aie.switchbox(%t44) {
+    aie.connect<South:0, DMA: 0>
   }
 
-  %c33 = AIE.core(%t33) {
-    AIE.use_lock(%l33_1, Acquire, 0)
-    AIE.use_lock(%l33_0, Acquire, 0)
+  %c33 = aie.core(%t33) {
+    aie.use_lock(%l33_1, Acquire, 0)
+    aie.use_lock(%l33_0, Acquire, 0)
 
     // code
     %val0 = arith.constant 16 : i32
     %0 = arith.constant 0 : i32
-    AIE.put_stream(%0 : i32, %val0 : i32)
-    %val1 = AIE.get_stream(%0 : i32) : i128
+    aie.put_stream(%0 : i32, %val0 : i32)
+    %val1 = aie.get_stream(%0 : i32) : i128
     %val2 = arith.constant 1 : i384
-    AIE.putCascade(%val2: i384)
+    aie.putCascade(%val2: i384)
 
-    AIE.use_lock(%l33_0, Release, 1)
-    AIE.use_lock(%l33_1, Release, 1)
+    aie.use_lock(%l33_0, Release, 1)
+    aie.use_lock(%l33_1, Release, 1)
 
-    AIE.end
+    aie.end
   }
 
-  %c42 = AIE.core(%t42) {
-    AIE.use_lock(%l42_0, Acquire, 1)
+  %c42 = aie.core(%t42) {
+    aie.use_lock(%l42_0, Acquire, 1)
 
     // code
 
-    AIE.use_lock(%l42_0, Release, 0)
-    AIE.end
+    aie.use_lock(%l42_0, Release, 0)
+    aie.end
   }
 
-  %c44 = AIE.core(%t44) {
-    AIE.use_lock(%l44_0, Acquire, 1)
+  %c44 = aie.core(%t44) {
+    aie.use_lock(%l44_0, Acquire, 1)
 
     // code
 
-    AIE.use_lock(%l44_0, Release, 0)
-    AIE.end
+    aie.use_lock(%l44_0, Release, 0)
+    aie.end
   }
 }

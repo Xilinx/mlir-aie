@@ -31,53 +31,53 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @AIE2_delayed_release {
-// CHECK:   AIE.device(xcve2302) {
-// CHECK:     %[[tile0:.*]] = AIE.tile(2, 2)
-// CHECK:     %[[tile1:.*]] = AIE.tile(2, 3)
-// CHECK:     %[[fifo_buff_0:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_0"} : memref<i32>
-// CHECK:     %[[fifo_buff_1:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_1"} : memref<i32>
-// CHECK:     %[[fifo_buff_2:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_2"} : memref<i32>
-// CHECK:     %[[fifo_buff_3:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_3"} : memref<i32>
-// CHECK:     %[[fifo_prod_lock:.*]] = AIE.lock(%[[tile0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
-// CHECK:     %[[fifo_cons_lock:.*]] = AIE.lock(%[[tile0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
-// CHECK:     %[[buf23:.*]] = AIE.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
-// CHECK:     %[[core0:.*]] = AIE.core(%[[tile0]]) {
+// CHECK:   aie.device(xcve2302) {
+// CHECK:     %[[tile0:.*]] = aie.tile(2, 2)
+// CHECK:     %[[tile1:.*]] = aie.tile(2, 3)
+// CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:     %[[fifo_buff_1:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:     %[[fifo_buff_2:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_2"} : memref<i32>
+// CHECK:     %[[fifo_buff_3:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_3"} : memref<i32>
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[buf23:.*]] = aie.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
+// CHECK:     %[[core0:.*]] = aie.core(%[[tile0]]) {
 // CHECK:       %c99_i32 = arith.constant 99 : i32
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c1 = arith.constant 1 : index
 // CHECK:       %c4 = arith.constant 4 : index
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_1]][] : memref<i32>
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_2]][] : memref<i32>
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_3]][] : memref<i32>
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // # Objects Held: 0   (After release)
-// CHECK:       AIE.end
+// CHECK:       aie.end
 // CHECK:     }
 
-// CHECK:     %[[core1:.*]] = AIE.core(%[[tile1]]) {
+// CHECK:     %[[core1:.*]] = aie.core(%[[tile1]]) {
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c1 = arith.constant 1 : index
 // CHECK:       %c2 = arith.constant 2 : index
@@ -85,7 +85,7 @@
 
 // -- Requested: 2 --
 // # Objects Held: 0     # Objects Requested: 2    # Acquire Needed: 2
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 2)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 2)
 // # Objects Held: 2
 
 // CHECK:       %[[VAL_11:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
@@ -100,7 +100,7 @@
 // -- Requested: 3 --
 // Since we already hold 2 and are requesting 3, we expect one acquire here.
 // # Objects Held: 2     # Objects Requested: 3    # Acquire Needed: 1
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 3
 // CHECK:       %[[VAL_13:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
 // CHECK:       memref.store %[[VAL_13]], %[[buf23]][%c2] : memref<4xi32>
@@ -111,72 +111,72 @@
 // CHECK:       memref.store %[[VAL_14]], %[[buf23]][%c3] : memref<4xi32>
 
 // These releases should all succeed.
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], Release, 3)
-// CHECK:       AIE.end
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, 3)
+// CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }
 // CHECK: }
 
 module @AIE2_delayed_release {
-    AIE.device(xcve2302) {
-        %tile22 = AIE.tile(2, 2)
-        %tile23 = AIE.tile(2, 3)
-        %buf23 = AIE.buffer(%tile23) {sym_name = "buf23"} : memref<4xi32>
+    aie.device(xcve2302) {
+        %tile22 = aie.tile(2, 2)
+        %tile23 = aie.tile(2, 3)
+        %buf23 = aie.buffer(%tile23) {sym_name = "buf23"} : memref<4xi32>
 
-        AIE.objectfifo @fifo (%tile22, {%tile23}, 4 : i32) : !AIE.objectfifo<memref<i32>>
+        aie.objectfifo @fifo (%tile22, {%tile23}, 4 : i32) : !aie.objectfifo<memref<i32>>
 
         // Producer -- produces one element at a time
-        %core22 = AIE.core(%tile22) {
+        %core22 = aie.core(%tile22) {
             %c99 = arith.constant 99 : i32
             %i0 = arith.constant 0 : index
             %i1 = arith.constant 1 : index
             %i4 = arith.constant 4 : index
             scf.for %it = %i0 to %i4 step %i1 {
                 // Produce one 1 element (acquire producer lock) ...
-                %subview = AIE.objectfifo.acquire @fifo (Produce, 1) : !AIE.objectfifosubview<memref<i32>>
-                %subview_obj = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+                %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
                 memref.store %c99, %subview_obj[] : memref<i32>
-                AIE.objectfifo.release @fifo (Produce, 1)
+                aie.objectfifo.release @fifo (Produce, 1)
                 // ... done producing (release consumer lock)
             }
-            AIE.end
+            aie.end
         }
 
         // Consumer -- consumes {2, 1, 3, 1}; releases {0, 0, 0, 2}
-        %core23 = AIE.core(%tile23) {
+        %core23 = aie.core(%tile23) {
             %i0 = arith.constant 0 : index
             %i1 = arith.constant 1 : index
             %i2 = arith.constant 2 : index
             %i3 = arith.constant 3 : index
 
             // Begin consuming 2 elements (acquire consumer lock with value 2)
-            %subview0 = AIE.objectfifo.acquire @fifo (Consume, 2) : !AIE.objectfifosubview<memref<i32>>
-            %subview0_obj = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview0 = aie.objectfifo.acquire @fifo (Consume, 2) : !aie.objectfifosubview<memref<i32>>
+            %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v0 = memref.load %subview0_obj[] : memref<i32>
             memref.store %v0, %buf23[%i0] : memref<4xi32>
 
             // For the next step, we only need one element (this could be a subroutine that acquires 1, not knowing that we already acquired 2)
-            %subview1 = AIE.objectfifo.acquire @fifo (Consume, 1) : !AIE.objectfifosubview<memref<i32>>
-            %subview1_obj = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview1 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v1 = memref.load %subview1_obj[] : memref<i32>
             memref.store %v1, %buf23[%i1] : memref<4xi32>
 
             // Actually, give us the two from before and one more for three objects total (consumer lock should increase by one)
-            %subview2 = AIE.objectfifo.acquire @fifo (Consume, 3) : !AIE.objectfifosubview<memref<i32>>
-            %subview2_obj = AIE.objectfifo.subview.access %subview2[0] : !AIE.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview2 = aie.objectfifo.acquire @fifo (Consume, 3) : !aie.objectfifosubview<memref<i32>>
+            %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v2 = memref.load %subview2_obj[] : memref<i32>
             memref.store %v2, %buf23[%i2] : memref<4xi32>
 
             // Now let's just work on one element (consumer lock should not change value)
-            %subview3 = AIE.objectfifo.acquire @fifo (Consume, 1) : !AIE.objectfifosubview<memref<i32>>
-            %subview3_obj = AIE.objectfifo.subview.access %subview3[0] : !AIE.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview3 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview3_obj = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
             %v3 = memref.load %subview3_obj[] : memref<i32>
             memref.store %v3, %buf23[%i3] : memref<4xi32>
 
             // Done, let's release everything we hold (we hold 3 objects from our max acquire)
-            AIE.objectfifo.release @fifo (Consume, 3)
+            aie.objectfifo.release @fifo (Consume, 3)
 
-            AIE.end
+            aie.end
         }
     }
 }

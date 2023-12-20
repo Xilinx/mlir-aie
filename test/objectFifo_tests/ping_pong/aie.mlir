@@ -19,14 +19,14 @@
 // that a flow and dma operations are established between the memory modules.
 
 module @ping_pong {
-    AIE.device(xcvc1902) {
-        %tile12 = AIE.tile(1, 2)
-        %tile33 = AIE.tile(3, 3)
+    aie.device(xcvc1902) {
+        %tile12 = aie.tile(1, 2)
+        %tile33 = aie.tile(3, 3)
 
-        %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
-        %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
+        %buff_out = aie.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
+        %lock_out = aie.lock(%tile33, 0) { sym_name = "lock_out" }
 
-        AIE.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        aie.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         // Fills the given memref with the same input index value.
         func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
@@ -43,24 +43,24 @@ module @ping_pong {
             return
         }
 
-        %core12 = AIE.core(%tile12) {
+        %core12 = aie.core(%tile12) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %height = arith.constant 10 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 // acquire next element for produce
-                %subview = AIE.objectfifo.acquire @objfifo (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview = aie.objectfifo.acquire @objfifo (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 // call generator function
                 func.call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
 
                 // release next element for consume
-                AIE.objectfifo.release @objfifo (Produce, 1)
+                aie.objectfifo.release @objfifo (Produce, 1)
             }
             
-            AIE.end
+            aie.end
         }
 
         // Stores the given memref in the bufferOut at the given row index.
@@ -76,30 +76,30 @@ module @ping_pong {
             return
         }
 
-        %core33 = AIE.core(%tile33) {
+        %core33 = aie.core(%tile33) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %height = arith.constant 10 : index
 
             // acquire output buffer
-            AIE.use_lock(%lock_out, "Acquire", 0) // acquire for produce
+            aie.use_lock(%lock_out, "Acquire", 0) // acquire for produce
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
                 // acquire next element for consume
-                %subview = AIE.objectfifo.acquire @objfifo (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview = aie.objectfifo.acquire @objfifo (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 // call consumer function
                 func.call @storeLineScalar(%elem0, %indexInHeight, %buff_out) : (memref<16xi32>, index, memref<10x16xi32>) -> ()
 
                 // release next element for produce
-                AIE.objectfifo.release @objfifo (Consume, 1)
+                aie.objectfifo.release @objfifo (Consume, 1)
             }
 
             // release output buffer
-            AIE.use_lock(%lock_out, "Release", 1) // release for consume
+            aie.use_lock(%lock_out, "Release", 1) // release for consume
             
-            AIE.end
+            aie.end
         }
     }
 }

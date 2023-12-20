@@ -12,13 +12,13 @@
 // RUN: %run_on_board ./test.elf
 
 module @test27_simple_shim_dma_single_lock {
-  AIE.device(xcvc1902) {
-    %tile72 = AIE.tile(7, 2)
-    %lockCore = AIE.lock(%tile72, 0)  {init = 0 : i32 , sym_name = "coreLock"} //{ init = 0 : i32 , sym_name = "coreLock"}
-    %dummyLock = AIE.lock(%tile72, 1) { sym_name = "dummyLock"}
-    %buf72_0 = AIE.buffer(%tile72) {sym_name = "aieL1" } : memref<16xi32>
+  aie.device(xcvc1902) {
+    %tile72 = aie.tile(7, 2)
+    %lockCore = aie.lock(%tile72, 0)  {init = 0 : i32 , sym_name = "coreLock"} //{ init = 0 : i32 , sym_name = "coreLock"}
+    %dummyLock = aie.lock(%tile72, 1) { sym_name = "dummyLock"}
+    %buf72_0 = aie.buffer(%tile72) {sym_name = "aieL1" } : memref<16xi32>
 
-    %core72 = AIE.core(%tile72) {
+    %core72 = aie.core(%tile72) {
       %c0 = arith.constant 0 : index
 
       %constant0 = arith.constant 0 : i32
@@ -27,23 +27,23 @@ module @test27_simple_shim_dma_single_lock {
       %constant43 = arith.constant 43 : i32
       %constant47 = arith.constant 47 : i32
 
-      AIE.use_lock(%lockCore, "Acquire", 0)
+      aie.use_lock(%lockCore, "Acquire", 0)
       memref.store %constant7, %buf72_0[%c0] : memref<16xi32>
-      AIE.use_lock(%lockCore, "Release", 1)
+      aie.use_lock(%lockCore, "Release", 1)
 
-      AIE.use_lock(%lockCore, "Acquire", 0)
+      aie.use_lock(%lockCore, "Acquire", 0)
       memref.store %constant13, %buf72_0[%c0] : memref<16xi32>
-      AIE.use_lock(%lockCore, "Release", 1)
+      aie.use_lock(%lockCore, "Release", 1)
 
-      AIE.use_lock(%lockCore, "Acquire", 0)
+      aie.use_lock(%lockCore, "Acquire", 0)
       memref.store %constant43, %buf72_0[%c0] : memref<16xi32>
-      AIE.use_lock(%lockCore, "Release", 1)
+      aie.use_lock(%lockCore, "Release", 1)
 
-      AIE.use_lock(%lockCore, "Acquire", 0)
+      aie.use_lock(%lockCore, "Acquire", 0)
       memref.store %constant47, %buf72_0[%c0] : memref<16xi32>
-      AIE.use_lock(%lockCore, "Release", 1)
+      aie.use_lock(%lockCore, "Release", 1)
 
-      AIE.end
+      aie.end
     }
   }
 }

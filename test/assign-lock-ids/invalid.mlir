@@ -1,65 +1,65 @@
 // RUN: aie-opt --aie-assign-lock-ids %s  -split-input-file -verify-diagnostics
 
-AIE.device(xcve2802) {
+aie.device(xcve2802) {
   // expected-note @below {{because only 16 locks available in this tile}}
-  %tMemTile = AIE.tile(4,4)
-  %l0 = AIE.lock(%tMemTile)
-  %l1 = AIE.lock(%tMemTile)
-  %l2 = AIE.lock(%tMemTile)
-  %l3 = AIE.lock(%tMemTile)
-  %l4 = AIE.lock(%tMemTile)
-  %l5 = AIE.lock(%tMemTile)
-  %l6 = AIE.lock(%tMemTile)
-  %l7 = AIE.lock(%tMemTile)
-  %l8 = AIE.lock(%tMemTile)
-  %l9 = AIE.lock(%tMemTile)
-  %l10 = AIE.lock(%tMemTile)
-  %l11 = AIE.lock(%tMemTile)
-  %l12 = AIE.lock(%tMemTile)
-  %l13 = AIE.lock(%tMemTile)
-  %l14 = AIE.lock(%tMemTile)
-  %l15 = AIE.lock(%tMemTile)
+  %tMemTile = aie.tile(4,4)
+  %l0 = aie.lock(%tMemTile)
+  %l1 = aie.lock(%tMemTile)
+  %l2 = aie.lock(%tMemTile)
+  %l3 = aie.lock(%tMemTile)
+  %l4 = aie.lock(%tMemTile)
+  %l5 = aie.lock(%tMemTile)
+  %l6 = aie.lock(%tMemTile)
+  %l7 = aie.lock(%tMemTile)
+  %l8 = aie.lock(%tMemTile)
+  %l9 = aie.lock(%tMemTile)
+  %l10 = aie.lock(%tMemTile)
+  %l11 = aie.lock(%tMemTile)
+  %l12 = aie.lock(%tMemTile)
+  %l13 = aie.lock(%tMemTile)
+  %l14 = aie.lock(%tMemTile)
+  %l15 = aie.lock(%tMemTile)
   // expected-error @below {{not allocated a lock}}
-  %l16 = AIE.lock(%tMemTile)
-  %l17 = AIE.lock(%tMemTile)
-  %l18 = AIE.lock(%tMemTile)
-  %l19 = AIE.lock(%tMemTile)
+  %l16 = aie.lock(%tMemTile)
+  %l17 = aie.lock(%tMemTile)
+  %l18 = aie.lock(%tMemTile)
+  %l19 = aie.lock(%tMemTile)
 }
 
 // -----
 
-AIE.device(xcve2802) {
+aie.device(xcve2802) {
   // expected-note @below {{because only 16 locks available in this tile}}
-  %tMemTile = AIE.tile(4,4)
-  %l0 = AIE.lock(%tMemTile)
-  %l1 = AIE.lock(%tMemTile, 1)
-  %l2 = AIE.lock(%tMemTile)
-  %l3 = AIE.lock(%tMemTile)
-  %l4 = AIE.lock(%tMemTile)
-  %l5 = AIE.lock(%tMemTile)
-  %l6 = AIE.lock(%tMemTile)
-  %l7 = AIE.lock(%tMemTile, 2)
-  %l8 = AIE.lock(%tMemTile)
-  %l9 = AIE.lock(%tMemTile)
-  %l10 = AIE.lock(%tMemTile, 15)
-  %l11 = AIE.lock(%tMemTile)
-  %l12 = AIE.lock(%tMemTile)
-  %l13 = AIE.lock(%tMemTile)
-  %l14 = AIE.lock(%tMemTile)
+  %tMemTile = aie.tile(4,4)
+  %l0 = aie.lock(%tMemTile)
+  %l1 = aie.lock(%tMemTile, 1)
+  %l2 = aie.lock(%tMemTile)
+  %l3 = aie.lock(%tMemTile)
+  %l4 = aie.lock(%tMemTile)
+  %l5 = aie.lock(%tMemTile)
+  %l6 = aie.lock(%tMemTile)
+  %l7 = aie.lock(%tMemTile, 2)
+  %l8 = aie.lock(%tMemTile)
+  %l9 = aie.lock(%tMemTile)
+  %l10 = aie.lock(%tMemTile, 15)
+  %l11 = aie.lock(%tMemTile)
+  %l12 = aie.lock(%tMemTile)
+  %l13 = aie.lock(%tMemTile)
+  %l14 = aie.lock(%tMemTile)
   // expected-error @below {{not allocated a lock}}
-  %l15 = AIE.lock(%tMemTile)
-  %l16 = AIE.lock(%tMemTile)
-  %l17 = AIE.lock(%tMemTile, 3)
-  %l18 = AIE.lock(%tMemTile)
-  %l19 = AIE.lock(%tMemTile)
+  %l15 = aie.lock(%tMemTile)
+  %l16 = aie.lock(%tMemTile)
+  %l17 = aie.lock(%tMemTile, 3)
+  %l18 = aie.lock(%tMemTile)
+  %l19 = aie.lock(%tMemTile)
 }
 
 // -----
 
-AIE.device(xcve2802) {
+aie.device(xcve2802) {
  //expected-note @below {{tile has lock ops assigned to same lock}}
-  %t22 = AIE.tile(2,2)
-  %l0 = AIE.lock(%t22, 7)
+  %t22 = aie.tile(2,2)
+  %l0 = aie.lock(%t22, 7)
   // expected-error @below {{is assigned to the same lock (7) as another op}}
-  %l1 = AIE.lock(%t22, 7)
+  %l1 = aie.lock(%t22, 7)
 }

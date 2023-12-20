@@ -39,47 +39,47 @@
 
 
 module {
- AIE.device(xcvc1902) {
-  %buffer = AIE.external_buffer { sym_name = "buf" } : memref<16 x f32>
-  %t21 = AIE.tile(2, 1)
-  %t20 = AIE.tile(2, 0)
-  %c21 = AIE.core(%t21)  {
-    AIE.end
+ aie.device(xcvc1902) {
+  %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
+  %t21 = aie.tile(2, 1)
+  %t20 = aie.tile(2, 0)
+  %c21 = aie.core(%t21)  {
+    aie.end
   }
-  %s21 = AIE.switchbox(%t21)  {
-    AIE.connect<Core : 0, South : 0>
+  %s21 = aie.switchbox(%t21)  {
+    aie.connect<Core : 0, South : 0>
   }
-  %s20 = AIE.switchbox(%t20)  {
-    AIE.connect<North : 0, South : 2>
+  %s20 = aie.switchbox(%t20)  {
+    aie.connect<North : 0, South : 2>
   }
-  %mux = AIE.shim_mux(%t20)  {
-    AIE.connect<North : 2, DMA : 0>
+  %mux = aie.shim_mux(%t20)  {
+    aie.connect<North : 2, DMA : 0>
   }
-  %dma = AIE.shim_dma(%t20)  {
-      %lock0 = AIE.lock(%t20, 0)
-      %lock1 = AIE.lock(%t20, 1)
+  %dma = aie.shim_dma(%t20)  {
+      %lock0 = aie.lock(%t20, 0)
+      %lock1 = aie.lock(%t20, 1)
 
-      AIE.dma_start(S2MM, 0, ^bd0, ^dma0)
+      aie.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      AIE.dma_start(MM2S, 0, ^bd1, ^end)
+      aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
-      AIE.use_lock(%lock0, Acquire, 0)
-      AIE.dma_bd(%buffer : memref<16 x f32>, 0, 16)
-      AIE.use_lock(%lock0, Release, 1)
-      AIE.next_bd ^bd0
+      aie.use_lock(%lock0, Acquire, 0)
+      aie.dma_bd(%buffer : memref<16 x f32>, 0, 16)
+      aie.use_lock(%lock0, Release, 1)
+      aie.next_bd ^bd0
     ^bd1:
-      // AIE.use_lock(%lock1, Acquire, 1)
-      AIE.dma_bd(%buffer : memref<16 x f32>, 0, 4)
-      // AIE.use_lock(%lock1, Release, 0)
-      AIE.next_bd ^bd1
+      // aie.use_lock(%lock1, Acquire, 1)
+      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)
+      // aie.use_lock(%lock1, Release, 0)
+      aie.next_bd ^bd1
     ^end:
-      AIE.end
+      aie.end
   }
-  AIE.wire(%s21 : South, %s20 : North)
-  AIE.wire(%s20 : South, %mux : North)
-  AIE.wire(%mux : DMA, %dma : DMA)
-  AIE.wire(%mux : South, %t20 : DMA)
-  AIE.wire(%s21 : Core, %c21 : Core)
-  AIE.wire(%s21 : Core, %t21 : Core)
+  aie.wire(%s21 : South, %s20 : North)
+  aie.wire(%s20 : South, %mux : North)
+  aie.wire(%mux : DMA, %dma : DMA)
+  aie.wire(%mux : South, %t20 : DMA)
+  aie.wire(%s21 : Core, %c21 : Core)
+  aie.wire(%s21 : Core, %t21 : Core)
  }
 }

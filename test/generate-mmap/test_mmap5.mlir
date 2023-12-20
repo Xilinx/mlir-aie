@@ -18,17 +18,17 @@
 // CHECK-NEXT: _symbol same 0x38000 16
 
 module @test_mmap1 {
- AIE.device(xcvc1902) {
-  %tsame = AIE.tile(3, 3)
-  %twest = AIE.tile(2, 3) // Different column
-  %teast = AIE.tile(4, 3) // Different column
-  %tsouth = AIE.tile(3, 2) // Different row
-  %tnorth = AIE.tile(3, 4) // Different row
+ aie.device(xcvc1902) {
+  %tsame = aie.tile(3, 3)
+  %twest = aie.tile(2, 3) // Different column
+  %teast = aie.tile(4, 3) // Different column
+  %tsouth = aie.tile(3, 2) // Different row
+  %tnorth = aie.tile(3, 4) // Different row
 
-  %bufsame = AIE.buffer(%tsame) { sym_name = "same", address = 0x0 } : memref<4xi32>
-  %bufeast = AIE.buffer(%teast) { sym_name = "east", address = 0x0 } : memref<4xi32>
-  %bufwest = AIE.buffer(%twest) { sym_name = "west", address = 0x0 } : memref<4xi32>
-  %bufsouth = AIE.buffer(%tsouth) { sym_name = "south", address = 0x0 } : memref<4xi32>
-  %bufnorth = AIE.buffer(%tnorth) { sym_name = "north", address = 0x0 } : memref<4xi32>
+  %bufsame = aie.buffer(%tsame) { sym_name = "same", address = 0x0 } : memref<4xi32>
+  %bufeast = aie.buffer(%teast) { sym_name = "east", address = 0x0 } : memref<4xi32>
+  %bufwest = aie.buffer(%twest) { sym_name = "west", address = 0x0 } : memref<4xi32>
+  %bufsouth = aie.buffer(%tsouth) { sym_name = "south", address = 0x0 } : memref<4xi32>
+  %bufnorth = aie.buffer(%tnorth) { sym_name = "north", address = 0x0 } : memref<4xi32>
  }
 }

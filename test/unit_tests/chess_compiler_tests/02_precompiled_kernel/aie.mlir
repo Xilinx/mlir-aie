@@ -18,14 +18,14 @@
 // CHECK: PASS!
 
 module @test_chess_02_deprecated_precompiled_kernel {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-  %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
+  %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" }
-  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "output_lock" }
+  %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" }
+  %lock13_5 = aie.lock(%tile13, 5) { sym_name = "output_lock" }
 
-  %core13 = AIE.core(%tile13) { AIE.end } { elf_file = "custom_1_3.elf" }
+  %core13 = aie.core(%tile13) { aie.end } { elf_file = "custom_1_3.elf" }
 
 }

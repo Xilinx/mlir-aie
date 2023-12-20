@@ -9,28 +9,28 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-create-cores --aie-lower-memcpy %s 2>&1 | FileCheck %s
-// CHECK: error: 'AIE.dma_start' op duplicate DMA channel MM2S0 not allowed
+// CHECK: error: 'aie.dma_start' op duplicate DMA channel MM2S0 not allowed
 
 module @duplicate_dma  {
- AIE.device(xcvc1902) {
-  %0 = AIE.tile(1, 1)
-  %1 = AIE.buffer(%0) : memref<256xi32>
-  %2 = AIE.mem(%0)  {
-    %15 = AIE.dma_start(MM2S, 0, ^bb1, ^bb4)
+ aie.device(xcvc1902) {
+  %0 = aie.tile(1, 1)
+  %1 = aie.buffer(%0) : memref<256xi32>
+  %2 = aie.mem(%0)  {
+    %15 = aie.dma_start(MM2S, 0, ^bb1, ^bb4)
   ^bb1:  // pred: ^bb0
-    AIEX.useToken @token0(Acquire, 1)
-    AIE.dma_bd(%1 : memref<256xi32>, 0, 256)
-    AIEX.useToken @token0(Release, 2)
-    AIE.next_bd ^bb2
+    aiex.useToken @token0(Acquire, 1)
+    aie.dma_bd(%1 : memref<256xi32>, 0, 256)
+    aiex.useToken @token0(Release, 2)
+    aie.next_bd ^bb2
   ^bb2:  
-    %16 = AIE.dma_start(MM2S, 0, ^bb3, ^bb4)
+    %16 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
   ^bb3:  
-    AIEX.useToken @token1(Acquire, 1)
-    AIE.dma_bd(%1 : memref<256xi32>, 0, 256)
-    AIEX.useToken @token1(Release, 2)
-    AIE.next_bd ^bb4
+    aiex.useToken @token1(Acquire, 1)
+    aie.dma_bd(%1 : memref<256xi32>, 0, 256)
+    aiex.useToken @token1(Release, 2)
+    aie.next_bd ^bb4
   ^bb4:  // 4 preds: ^bb0, ^bb1, ^bb2, ^bb3
-    AIE.end
+    aie.end
   }
  }
 }

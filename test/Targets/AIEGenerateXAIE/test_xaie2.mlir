@@ -29,29 +29,29 @@
 // CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}}0, {{.*}}DMA_S2MM));
 
 module @test_xaie2 {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
 
-  %buf33_0 = AIE.buffer(%t33) { address = 0x1000, sym_name = "buff33_0" }: memref<256xi32>
-  %buf33_1 = AIE.buffer(%t33) { address = 0x1400, sym_name = "buff33_1" }: memref<16xi32>
+  %buf33_0 = aie.buffer(%t33) { address = 0x1000, sym_name = "buff33_0" }: memref<256xi32>
+  %buf33_1 = aie.buffer(%t33) { address = 0x1400, sym_name = "buff33_1" }: memref<16xi32>
 
-  %l33_0 = AIE.lock(%t33, 0)
-  %l33_1 = AIE.lock(%t33, 1)
+  %l33_0 = aie.lock(%t33, 0)
+  %l33_1 = aie.lock(%t33, 1)
 
-  %m33 = AIE.mem(%t33) {
-      %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m33 = aie.mem(%t33) {
+      %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l33_0, Acquire, 0)
-      AIE.dma_bd(%buf33_0 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l33_0, Release, 1)
-      AIE.next_bd ^bd1
+      aie.use_lock(%l33_0, Acquire, 0)
+      aie.dma_bd(%buf33_0 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l33_0, Release, 1)
+      aie.next_bd ^bd1
     ^bd1:
-      AIE.use_lock(%l33_0, Acquire, 0)
-      AIE.dma_bd(%buf33_1 : memref<16xi32>, 0, 4)
-      AIE.use_lock(%l33_0, Release, 1)
-      AIE.next_bd ^bd0
+      aie.use_lock(%l33_0, Acquire, 0)
+      aie.dma_bd(%buf33_1 : memref<16xi32>, 0, 4)
+      aie.use_lock(%l33_0, Release, 1)
+      aie.next_bd ^bd0
     ^end:
-      AIE.end
+      aie.end
   }
  }
 }

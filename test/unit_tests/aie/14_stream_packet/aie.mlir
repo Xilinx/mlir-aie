@@ -12,89 +12,89 @@
 // RUN: %run_on_board ./test.elf
 
 module @test14_stream_packet {
-  %t73 = AIE.tile(7, 3)
-  %t72 = AIE.tile(7, 2)
-  %t62 = AIE.tile(6, 2)
-  %t71 = AIE.tile(7, 1)
+  %t73 = aie.tile(7, 3)
+  %t72 = aie.tile(7, 2)
+  %t62 = aie.tile(6, 2)
+  %t71 = aie.tile(7, 1)
 
-  %sw73 = AIE.switchbox(%t73) {
-    AIE.connect<"DMA" : 0, "South" : 3>
+  %sw73 = aie.switchbox(%t73) {
+    aie.connect<"DMA" : 0, "South" : 3>
   }
-  %sw71 = AIE.switchbox(%t71) {
-    AIE.connect<"DMA" : 0, "North" : 1>
+  %sw71 = aie.switchbox(%t71) {
+    aie.connect<"DMA" : 0, "North" : 1>
   }
-  //%sw72 = AIE.switchbox(%t72) {
-  //  AIE.connect<"North" : 3, "West" : 3>
-  //  AIE.connect<"South" : 1, "West" : 1>
+  //%sw72 = aie.switchbox(%t72) {
+  //  aie.connect<"North" : 3, "West" : 3>
+  //  aie.connect<"South" : 1, "West" : 1>
   //}
-  %sw72 = AIE.switchbox(%t72) {
-    %tmsel = AIE.amsel<1> (0) // <arbiter> (mask). mask is msel_enable
-    %tmaster = AIE.masterset(West : 3, %tmsel)
-    AIE.packet_rules(North : 3)  {
-      AIE.rule(0x1f, 0xd, %tmsel) // (mask, id)
+  %sw72 = aie.switchbox(%t72) {
+    %tmsel = aie.amsel<1> (0) // <arbiter> (mask). mask is msel_enable
+    %tmaster = aie.masterset(West : 3, %tmsel)
+    aie.packet_rules(North : 3)  {
+      aie.rule(0x1f, 0xd, %tmsel) // (mask, id)
     }
-    AIE.packet_rules(South : 1)  {
-      AIE.rule(0x1f, 0xc, %tmsel)
+    aie.packet_rules(South : 1)  {
+      aie.rule(0x1f, 0xc, %tmsel)
     }
   }
-  %sw62 = AIE.switchbox(%t62) {
-    AIE.connect<"East" : 3, "DMA" : 0>
-    //AIE.connect<"East" : 1, "DMA" : 1>
+  %sw62 = aie.switchbox(%t62) {
+    aie.connect<"East" : 3, "DMA" : 0>
+    //aie.connect<"East" : 1, "DMA" : 1>
   }
 
-  %buf73 = AIE.buffer(%t73) {sym_name = "buf73" } : memref<256xi32>
-  %buf71 = AIE.buffer(%t71) {sym_name = "buf71" } : memref<256xi32>
+  %buf73 = aie.buffer(%t73) {sym_name = "buf73" } : memref<256xi32>
+  %buf71 = aie.buffer(%t71) {sym_name = "buf71" } : memref<256xi32>
 
-  %l73 = AIE.lock(%t73, 0) {sym_name = "lock73" }
-  %l71 = AIE.lock(%t71, 0) {sym_name = "lock71" }
+  %l73 = aie.lock(%t73, 0) {sym_name = "lock73" }
+  %l71 = aie.lock(%t71, 0) {sym_name = "lock71" }
 
-  %m73 = AIE.mem(%t73) {
-      %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
+  %m73 = aie.mem(%t73) {
+      %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l73, "Acquire", 0)
-      AIE.dma_bd_packet(0x5, 0xD)
-      AIE.dma_bd(%buf73 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l73, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l73, "Acquire", 0)
+      aie.dma_bd_packet(0x5, 0xD)
+      aie.dma_bd(%buf73 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l73, "Release", 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %m71 = AIE.mem(%t71) {
-      %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
+  %m71 = aie.mem(%t71) {
+      %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l71, "Acquire", 0)
-      AIE.dma_bd_packet(0x4, 0xC)
-      AIE.dma_bd(%buf71 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l71, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l71, "Acquire", 0)
+      aie.dma_bd_packet(0x4, 0xC)
+      aie.dma_bd(%buf71 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l71, "Release", 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  //%buf62_0 = AIE.buffer(%t62) {sym_name = "buf62_0" } : memref<256xi32>
-  //%buf62_1 = AIE.buffer(%t62) {sym_name = "buf62_1" } : memref<256xi32>
-  //%l62_0 = AIE.lock(%t62, 0)
-  //%l62_1 = AIE.lock(%t62, 1)
-  %buf62 = AIE.buffer(%t62) {sym_name = "buf62" } : memref<512xi32>
-  %l62 = AIE.lock(%t62, 0)
+  //%buf62_0 = aie.buffer(%t62) {sym_name = "buf62_0" } : memref<256xi32>
+  //%buf62_1 = aie.buffer(%t62) {sym_name = "buf62_1" } : memref<256xi32>
+  //%l62_0 = aie.lock(%t62, 0)
+  //%l62_1 = aie.lock(%t62, 1)
+  %buf62 = aie.buffer(%t62) {sym_name = "buf62" } : memref<512xi32>
+  %l62 = aie.lock(%t62, 0)
 
-  %m62 = AIE.mem(%t62) {
-      %srcDma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
+  %m62 = aie.mem(%t62) {
+      %srcDma0 = aie.dma_start("S2MM", 0, ^bd0, ^end)
     //^dma:
-    //  %srcDma1 = AIE.dma_start("S2MM", 1, ^bd1, ^end)
+    //  %srcDma1 = aie.dma_start("S2MM", 1, ^bd1, ^end)
     ^bd0:
-      AIE.use_lock(%l62, "Acquire", 0)
-      AIE.dma_bd(%buf62 : memref<512xi32>, 0, 512)
-      AIE.use_lock(%l62, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l62, "Acquire", 0)
+      aie.dma_bd(%buf62 : memref<512xi32>, 0, 512)
+      aie.use_lock(%l62, "Release", 1)
+      aie.next_bd ^end
     //^bd1:
-    //  AIE.use_lock(%l62_1, "Acquire", 0)
-    //  AIE.dma_bd(%buf62_1 : memref<256xi32>, 0, 256)
-    //  AIE.use_lock(%l62_1, "Release", 1)
-    //  AIE.next_bd ^bd0
+    //  aie.use_lock(%l62_1, "Acquire", 0)
+    //  aie.dma_bd(%buf62_1 : memref<256xi32>, 0, 256)
+    //  aie.use_lock(%l62_1, "Release", 1)
+    //  aie.next_bd ^bd0
     ^end:
-      AIE.end
+      aie.end
   }
 
 }

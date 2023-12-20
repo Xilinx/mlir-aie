@@ -12,144 +12,144 @@
 // RUN: aie-opt --aie-herd-routing %s | FileCheck %s
 
 // CHECK-LABEL: module @test_herd_routing1 {
-// CHECK:   %0 = AIE.herd[4] [1] {sym_name = "t"}
-// CHECK:   %1 = AIE.herd[4] [4] {sym_name = "s"}
-// CHECK:   %2 = AIE.iter(0, 1, 1)
-// CHECK:   %3 = AIE.iter(0, 4, 1)
-// CHECK:   %4 = AIE.iter(0, 4, 1)
-// CHECK:   %5 = AIE.select(%0, %3, %2)
-// CHECK:   %6 = AIE.select(%1, %3, %4)
-// CHECK:   %7 = AIE.iter(1, 2, 1)
-// CHECK:   %8 = AIE.iter(4, 5, 1)
-// CHECK:   %9 = AIE.select(%0, %7, %8)
-// CHECK:   %10 = AIE.switchbox(%9) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
+// CHECK:   %0 = aie.herd[4] [1] {sym_name = "t"}
+// CHECK:   %1 = aie.herd[4] [4] {sym_name = "s"}
+// CHECK:   %2 = aie.iter(0, 1, 1)
+// CHECK:   %3 = aie.iter(0, 4, 1)
+// CHECK:   %4 = aie.iter(0, 4, 1)
+// CHECK:   %5 = aie.select(%0, %3, %2)
+// CHECK:   %6 = aie.select(%1, %3, %4)
+// CHECK:   %7 = aie.iter(1, 2, 1)
+// CHECK:   %8 = aie.iter(4, 5, 1)
+// CHECK:   %9 = aie.select(%0, %7, %8)
+// CHECK:   %10 = aie.switchbox(%9) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
 // CHECK:   }
-// CHECK:   %11 = AIE.iter(1, 2, 1)
-// CHECK:   %12 = AIE.iter(3, 4, 1)
-// CHECK:   %13 = AIE.select(%0, %11, %12)
-// CHECK:   %14 = AIE.switchbox(%13) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %11 = aie.iter(1, 2, 1)
+// CHECK:   %12 = aie.iter(3, 4, 1)
+// CHECK:   %13 = aie.select(%0, %11, %12)
+// CHECK:   %14 = aie.switchbox(%13) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %15 = AIE.iter(0, 1, 1)
-// CHECK:   %16 = AIE.iter(4, 5, 1)
-// CHECK:   %17 = AIE.select(%0, %15, %16)
-// CHECK:   %18 = AIE.switchbox(%17) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
+// CHECK:   %15 = aie.iter(0, 1, 1)
+// CHECK:   %16 = aie.iter(4, 5, 1)
+// CHECK:   %17 = aie.select(%0, %15, %16)
+// CHECK:   %18 = aie.switchbox(%17) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
 // CHECK:   }
-// CHECK:   %19 = AIE.iter(1, 2, 1)
-// CHECK:   %20 = AIE.iter(0, 1, 1)
-// CHECK:   %21 = AIE.select(%0, %19, %20)
-// CHECK:   %22 = AIE.switchbox(%21) {
-// CHECK:     AIE.connect<DMA : 0, North : 0>
+// CHECK:   %19 = aie.iter(1, 2, 1)
+// CHECK:   %20 = aie.iter(0, 1, 1)
+// CHECK:   %21 = aie.select(%0, %19, %20)
+// CHECK:   %22 = aie.switchbox(%21) {
+// CHECK:     aie.connect<DMA : 0, North : 0>
 // CHECK:   }
-// CHECK:   %23 = AIE.iter(3, 4, 1)
-// CHECK:   %24 = AIE.iter(2, 3, 1)
-// CHECK:   %25 = AIE.select(%0, %23, %24)
-// CHECK:   %26 = AIE.switchbox(%25) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %23 = aie.iter(3, 4, 1)
+// CHECK:   %24 = aie.iter(2, 3, 1)
+// CHECK:   %25 = aie.select(%0, %23, %24)
+// CHECK:   %26 = aie.switchbox(%25) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %27 = AIE.iter(1, 2, 1)
-// CHECK:   %28 = AIE.iter(2, 3, 1)
-// CHECK:   %29 = AIE.select(%0, %27, %28)
-// CHECK:   %30 = AIE.switchbox(%29) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %27 = aie.iter(1, 2, 1)
+// CHECK:   %28 = aie.iter(2, 3, 1)
+// CHECK:   %29 = aie.select(%0, %27, %28)
+// CHECK:   %30 = aie.switchbox(%29) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %31 = AIE.iter(2, 3, 1)
-// CHECK:   %32 = AIE.iter(2, 3, 1)
-// CHECK:   %33 = AIE.select(%0, %31, %32)
-// CHECK:   %34 = AIE.switchbox(%33) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %31 = aie.iter(2, 3, 1)
+// CHECK:   %32 = aie.iter(2, 3, 1)
+// CHECK:   %33 = aie.select(%0, %31, %32)
+// CHECK:   %34 = aie.switchbox(%33) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %35 = AIE.iter(0, 1, 1)
-// CHECK:   %36 = AIE.iter(0, 1, 1)
-// CHECK:   %37 = AIE.select(%0, %35, %36)
-// CHECK:   %38 = AIE.switchbox(%37) {
-// CHECK:     AIE.connect<DMA : 0, North : 0>
+// CHECK:   %35 = aie.iter(0, 1, 1)
+// CHECK:   %36 = aie.iter(0, 1, 1)
+// CHECK:   %37 = aie.select(%0, %35, %36)
+// CHECK:   %38 = aie.switchbox(%37) {
+// CHECK:     aie.connect<DMA : 0, North : 0>
 // CHECK:   }
-// CHECK:   %39 = AIE.iter(3, 4, 1)
-// CHECK:   %40 = AIE.iter(3, 4, 1)
-// CHECK:   %41 = AIE.select(%0, %39, %40)
-// CHECK:   %42 = AIE.switchbox(%41) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %39 = aie.iter(3, 4, 1)
+// CHECK:   %40 = aie.iter(3, 4, 1)
+// CHECK:   %41 = aie.select(%0, %39, %40)
+// CHECK:   %42 = aie.switchbox(%41) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %43 = AIE.iter(3, 4, 1)
-// CHECK:   %44 = AIE.iter(0, 1, 1)
-// CHECK:   %45 = AIE.select(%0, %43, %44)
-// CHECK:   %46 = AIE.switchbox(%45) {
-// CHECK:     AIE.connect<DMA : 0, North : 0>
+// CHECK:   %43 = aie.iter(3, 4, 1)
+// CHECK:   %44 = aie.iter(0, 1, 1)
+// CHECK:   %45 = aie.select(%0, %43, %44)
+// CHECK:   %46 = aie.switchbox(%45) {
+// CHECK:     aie.connect<DMA : 0, North : 0>
 // CHECK:   }
-// CHECK:   %47 = AIE.iter(2, 3, 1)
-// CHECK:   %48 = AIE.iter(3, 4, 1)
-// CHECK:   %49 = AIE.select(%0, %47, %48)
-// CHECK:   %50 = AIE.switchbox(%49) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %47 = aie.iter(2, 3, 1)
+// CHECK:   %48 = aie.iter(3, 4, 1)
+// CHECK:   %49 = aie.select(%0, %47, %48)
+// CHECK:   %50 = aie.switchbox(%49) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %51 = AIE.iter(0, 1, 1)
-// CHECK:   %52 = AIE.iter(3, 4, 1)
-// CHECK:   %53 = AIE.select(%0, %51, %52)
-// CHECK:   %54 = AIE.switchbox(%53) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %51 = aie.iter(0, 1, 1)
+// CHECK:   %52 = aie.iter(3, 4, 1)
+// CHECK:   %53 = aie.select(%0, %51, %52)
+// CHECK:   %54 = aie.switchbox(%53) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %55 = AIE.iter(2, 3, 1)
-// CHECK:   %56 = AIE.iter(4, 5, 1)
-// CHECK:   %57 = AIE.select(%0, %55, %56)
-// CHECK:   %58 = AIE.switchbox(%57) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
+// CHECK:   %55 = aie.iter(2, 3, 1)
+// CHECK:   %56 = aie.iter(4, 5, 1)
+// CHECK:   %57 = aie.select(%0, %55, %56)
+// CHECK:   %58 = aie.switchbox(%57) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
 // CHECK:   }
-// CHECK:   %59 = AIE.iter(2, 3, 1)
-// CHECK:   %60 = AIE.iter(0, 1, 1)
-// CHECK:   %61 = AIE.select(%0, %59, %60)
-// CHECK:   %62 = AIE.switchbox(%61) {
-// CHECK:     AIE.connect<DMA : 0, North : 0>
+// CHECK:   %59 = aie.iter(2, 3, 1)
+// CHECK:   %60 = aie.iter(0, 1, 1)
+// CHECK:   %61 = aie.select(%0, %59, %60)
+// CHECK:   %62 = aie.switchbox(%61) {
+// CHECK:     aie.connect<DMA : 0, North : 0>
 // CHECK:   }
-// CHECK:   %63 = AIE.iter(3, 4, 1)
-// CHECK:   %64 = AIE.iter(1, 2, 1)
-// CHECK:   %65 = AIE.select(%0, %63, %64)
-// CHECK:   %66 = AIE.switchbox(%65) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %63 = aie.iter(3, 4, 1)
+// CHECK:   %64 = aie.iter(1, 2, 1)
+// CHECK:   %65 = aie.select(%0, %63, %64)
+// CHECK:   %66 = aie.switchbox(%65) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %67 = AIE.iter(3, 4, 1)
-// CHECK:   %68 = AIE.iter(4, 5, 1)
-// CHECK:   %69 = AIE.select(%0, %67, %68)
-// CHECK:   %70 = AIE.switchbox(%69) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
+// CHECK:   %67 = aie.iter(3, 4, 1)
+// CHECK:   %68 = aie.iter(4, 5, 1)
+// CHECK:   %69 = aie.select(%0, %67, %68)
+// CHECK:   %70 = aie.switchbox(%69) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
 // CHECK:   }
-// CHECK:   %71 = AIE.iter(1, 2, 1)
-// CHECK:   %72 = AIE.iter(1, 2, 1)
-// CHECK:   %73 = AIE.select(%0, %71, %72)
-// CHECK:   %74 = AIE.switchbox(%73) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %71 = aie.iter(1, 2, 1)
+// CHECK:   %72 = aie.iter(1, 2, 1)
+// CHECK:   %73 = aie.select(%0, %71, %72)
+// CHECK:   %74 = aie.switchbox(%73) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %75 = AIE.iter(2, 3, 1)
-// CHECK:   %76 = AIE.iter(1, 2, 1)
-// CHECK:   %77 = AIE.select(%0, %75, %76)
-// CHECK:   %78 = AIE.switchbox(%77) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %75 = aie.iter(2, 3, 1)
+// CHECK:   %76 = aie.iter(1, 2, 1)
+// CHECK:   %77 = aie.select(%0, %75, %76)
+// CHECK:   %78 = aie.switchbox(%77) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %79 = AIE.iter(0, 1, 1)
-// CHECK:   %80 = AIE.iter(2, 3, 1)
-// CHECK:   %81 = AIE.select(%0, %79, %80)
-// CHECK:   %82 = AIE.switchbox(%81) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %79 = aie.iter(0, 1, 1)
+// CHECK:   %80 = aie.iter(2, 3, 1)
+// CHECK:   %81 = aie.select(%0, %79, %80)
+// CHECK:   %82 = aie.switchbox(%81) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
-// CHECK:   %83 = AIE.iter(0, 1, 1)
-// CHECK:   %84 = AIE.iter(1, 2, 1)
-// CHECK:   %85 = AIE.select(%0, %83, %84)
-// CHECK:   %86 = AIE.switchbox(%85) {
-// CHECK:     AIE.connect<South : 0, DMA : 0>
-// CHECK:     AIE.connect<South : 0, North : 0>
+// CHECK:   %83 = aie.iter(0, 1, 1)
+// CHECK:   %84 = aie.iter(1, 2, 1)
+// CHECK:   %85 = aie.select(%0, %83, %84)
+// CHECK:   %86 = aie.switchbox(%85) {
+// CHECK:     aie.connect<South : 0, DMA : 0>
+// CHECK:     aie.connect<South : 0, North : 0>
 // CHECK:   }
 // CHECK: }
 
@@ -164,17 +164,17 @@
 // t[2][0] broadcasts to s[2][0], s[2][1], s[2][2], s[2][3]
 // t[3][0] broadcasts to s[3][0], s[3][1], s[3][2], s[3][3]
 module @test_herd_routing1 {
- AIE.device(xcvc1902) {
-  %0 = AIE.herd[4][1] { sym_name = "t" } // herd t
-  %1 = AIE.herd[4][4] { sym_name = "s" } // herd s
+ aie.device(xcvc1902) {
+  %0 = aie.herd[4][1] { sym_name = "t" } // herd t
+  %1 = aie.herd[4][4] { sym_name = "s" } // herd s
 
-  %i0 = AIE.iter(0, 1, 1)
-  %i1 = AIE.iter(0, 4, 1)
-  %i2 = AIE.iter(0, 4, 1)
+  %i0 = aie.iter(0, 1, 1)
+  %i1 = aie.iter(0, 4, 1)
+  %i2 = aie.iter(0, 4, 1)
 
-  %2 = AIE.select(%0, %i1, %i0)
-  %3 = AIE.select(%1, %i1, %i2)
-  AIE.place(%0, %1, 0, 1) // herd t[0][0] and herd s[0][0] are spaced by 0-horizontally and 1-vertically
-  AIE.route(<%2, DMA: 0>, <%3, DMA: 0>)
+  %2 = aie.select(%0, %i1, %i0)
+  %3 = aie.select(%1, %i1, %i2)
+  aie.place(%0, %1, 0, 1) // herd t[0][0] and herd s[0][0] are spaced by 0-horizontally and 1-vertically
+  aie.route(<%2, DMA: 0>, <%3, DMA: 0>)
  }
 }

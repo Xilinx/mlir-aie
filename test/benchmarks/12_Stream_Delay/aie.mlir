@@ -12,51 +12,51 @@
 // RUN: %run_on_board ./test.elf
 
 module @test12_stream_delay {
-  %tile13 = AIE.tile(1, 3)
-  %tile23 = AIE.tile(2, 3)
-  %tile33 = AIE.tile(3, 3)
+  %tile13 = aie.tile(1, 3)
+  %tile23 = aie.tile(2, 3)
+  %tile33 = aie.tile(3, 3)
 
-  %tile43 = AIE.tile(4, 3)
-
-
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a13" } : memref<512xi32>
+  %tile43 = aie.tile(4, 3)
 
 
-  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "input_lock" }
-
-  AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
-  AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 1> }
-  AIE.switchbox(%tile33) { AIE.connect<"West": 1, "East": 1> }
-  AIE.switchbox(%tile43) { AIE.connect<"West": 1, "DMA": 1> }
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a13" } : memref<512xi32>
 
 
-  %mem13 = AIE.mem(%tile13) {
-    %dma0 = AIE.dma_start(MM2S, 0, ^bd0, ^end)
+  %lock13_5 = aie.lock(%tile13, 5) { sym_name = "input_lock" }
+
+  aie.switchbox(%tile13) { aie.connect<"DMA": 0, "East": 1> }
+  aie.switchbox(%tile23) { aie.connect<"West": 1, "East": 1> }
+  aie.switchbox(%tile33) { aie.connect<"West": 1, "East": 1> }
+  aie.switchbox(%tile43) { aie.connect<"West": 1, "DMA": 1> }
+
+
+  %mem13 = aie.mem(%tile13) {
+    %dma0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%lock13_5, "Acquire", 1)
-      AIE.dma_bd(%buf13_0 : memref<512xi32>, 0, 512)
-      AIE.use_lock(%lock13_5, "Release", 0)
-      AIE.next_bd ^end
+      aie.use_lock(%lock13_5, "Acquire", 1)
+      aie.dma_bd(%buf13_0 : memref<512xi32>, 0, 512)
+      aie.use_lock(%lock13_5, "Release", 0)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %lock43_6 = AIE.lock(%tile43, 6) // interbuffer lock
-  %lock43_7 = AIE.lock(%tile43, 7) // interbuffer lock
-  %buf43_0 = AIE.buffer(%tile43) { sym_name = "a43" } : memref<512xi32>
-  %buf43_1 = AIE.buffer(%tile43) { sym_name = "b43" } : memref<256xi32>
+  %lock43_6 = aie.lock(%tile43, 6) // interbuffer lock
+  %lock43_7 = aie.lock(%tile43, 7) // interbuffer lock
+  %buf43_0 = aie.buffer(%tile43) { sym_name = "a43" } : memref<512xi32>
+  %buf43_1 = aie.buffer(%tile43) { sym_name = "b43" } : memref<256xi32>
 
-  %mem43 = AIE.mem(%tile43) {
+  %mem43 = aie.mem(%tile43) {
 
 
-     %dma0 = AIE.dma_start(S2MM, 1, ^bd0, ^end)
+     %dma0 = aie.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%lock43_6, "Acquire", 0)
-      AIE.dma_bd(%buf43_0: memref<512xi32>, 0, 512)
-      AIE.use_lock(%lock43_6, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%lock43_6, "Acquire", 0)
+      aie.dma_bd(%buf43_0: memref<512xi32>, 0, 512)
+      aie.use_lock(%lock43_6, "Release", 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
 

@@ -11,43 +11,43 @@
 // RUN: aie-opt --aie-create-cores --aie-lower-memcpy %s | FileCheck %s
 
 // CHECK-LABEL: module @test_dma0 {
-// CHECK:         %[[VAL_0:.*]] = AIE.tile(1, 1)
-// CHECK:         %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<256xi32>
-// CHECK:         %[[VAL_2:.*]] = AIE.mem(%[[VAL_0]]) {
-// CHECK:           %[[VAL_3:.*]] = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
+// CHECK:         %[[VAL_0:.*]] = aie.tile(1, 1)
+// CHECK:         %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:         %[[VAL_2:.*]] = aie.mem(%[[VAL_0]]) {
+// CHECK:           %[[VAL_3:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
-// CHECK:           AIEX.useToken @token0(Acquire, 1)
-// CHECK:           AIE.dma_bd(%[[VAL_1]] : memref<256xi32>, 0, 256)
-// CHECK:           AIEX.useToken @token0(Release, 2)
-// CHECK:           AIE.next_bd ^bb2
+// CHECK:           aiex.useToken @token0(Acquire, 1)
+// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<256xi32>, 0, 256)
+// CHECK:           aiex.useToken @token0(Release, 2)
+// CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
-// CHECK:           AIE.end
+// CHECK:           aie.end
 // CHECK:         }
-// CHECK:         %[[VAL_4:.*]] = AIE.tile(2, 2)
-// CHECK:         %[[VAL_5:.*]] = AIE.buffer(%[[VAL_4]]) : memref<256xi32>
-// CHECK:         %[[VAL_6:.*]] = AIE.mem(%[[VAL_4]]) {
-// CHECK:           %[[VAL_7:.*]] = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:         %[[VAL_4:.*]] = aie.tile(2, 2)
+// CHECK:         %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) : memref<256xi32>
+// CHECK:         %[[VAL_6:.*]] = aie.mem(%[[VAL_4]]) {
+// CHECK:           %[[VAL_7:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
-// CHECK:           AIEX.useToken @token0(Acquire, 1)
-// CHECK:           AIE.dma_bd(%[[VAL_5]] : memref<256xi32>, 0, 256)
-// CHECK:           AIEX.useToken @token0(Release, 2)
-// CHECK:           AIE.next_bd ^bb2
+// CHECK:           aiex.useToken @token0(Acquire, 1)
+// CHECK:           aie.dma_bd(%[[VAL_5]] : memref<256xi32>, 0, 256)
+// CHECK:           aiex.useToken @token0(Release, 2)
+// CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
-// CHECK:           AIE.end
+// CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_8:.*]] = memref.alloc() : memref<256xi32>
 // CHECK:         %[[VAL_9:.*]] = memref.alloc() : memref<256xi32>
-// CHECK:         AIEX.token(0) {sym_name = "token0"}
-// CHECK:         %[[VAL_10:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:           AIEX.useToken @token0(Acquire, 0)
-// CHECK:           AIEX.useToken @token0(Release, 1)
-// CHECK:           AIE.end
+// CHECK:         aiex.token(0) {sym_name = "token0"}
+// CHECK:         %[[VAL_10:.*]] = aie.core(%[[VAL_0]]) {
+// CHECK:           aiex.useToken @token0(Acquire, 0)
+// CHECK:           aiex.useToken @token0(Release, 1)
+// CHECK:           aie.end
 // CHECK:         }
-// CHECK:         AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
-// CHECK:         %[[VAL_11:.*]] = AIE.core(%[[VAL_4]]) {
-// CHECK:           AIEX.useToken @token0(Acquire, 2)
-// CHECK:           AIEX.useToken @token0(Release, 3)
-// CHECK:           AIE.end
+// CHECK:         aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
+// CHECK:         %[[VAL_11:.*]] = aie.core(%[[VAL_4]]) {
+// CHECK:           aiex.useToken @token0(Acquire, 2)
+// CHECK:           aiex.useToken @token0(Release, 3)
+// CHECK:           aie.end
 // CHECK:         }
 // CHECK:       }
 
@@ -67,32 +67,32 @@
 // Using Blocks also allows us to inject lock/token Ops more naturally (instead of having to create
 // a new op with locking mechanism -- which is clunky and makes it harder to do locking analysis ...)
 module @test_dma0 {
- AIE.device(xcvc1902) {
-  %t11 = AIE.tile(1, 1)
-  %t22 = AIE.tile(2, 2)
+ aie.device(xcvc1902) {
+  %t11 = aie.tile(1, 1)
+  %t22 = aie.tile(2, 2)
 
   %buf0 = memref.alloc() : memref<256xi32>
   
   %buf1 = memref.alloc() : memref<256xi32>
 
-  AIEX.token(0) { sym_name="token0" }
+  aiex.token(0) { sym_name="token0" }
 
   func.func @task0(%arg0: memref<256xi32>) -> () {
-    AIEX.useToken @token0(Acquire, 0)
+    aiex.useToken @token0(Acquire, 0)
     // code
-    AIEX.useToken @token0(Release, 1)
+    aiex.useToken @token0(Release, 1)
     return
   }
 
   func.func @task1(%arg0: memref<256xi32>) -> () {
-    AIEX.useToken @token0(Acquire, 2)
+    aiex.useToken @token0(Acquire, 2)
     // code
-    AIEX.useToken @token0(Release, 3)
+    aiex.useToken @token0(Release, 3)
     return
   }
 
   func.call @task0(%buf0) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
-  AIEX.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
+  aiex.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
   func.call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
  }
 }

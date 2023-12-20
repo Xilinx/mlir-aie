@@ -12,5 +12,5 @@
 // CHECK: AIE
 
 module {
-  %01 = AIE.tile(0, 1)
+  %01 = aie.tile(0, 1)
 }

@@ -26,25 +26,25 @@ range_ = for_
 
 
 # CHECK:  module {
-# CHECK:    AIE.device(xcve2802) {
+# CHECK:    aie.device(xcve2802) {
 # CHECK:      func.func private @test_func(memref<8x8xi32>) -> i32
-# CHECK:      %tile_0_2 = AIE.tile(0, 2)
-# CHECK:      %tile_1_2 = AIE.tile(1, 2)
-# CHECK:      %tile_3_3 = AIE.tile(3, 3)
-# CHECK:      AIE.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !AIE.objectfifo<memref<256xi32>>
-# CHECK:      AIE.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !AIE.objectfifo<memref<8x8xi32>>
-# CHECK:      AIE.objectfifo.link [@of0] -> [@of1]()
-# CHECK:      %core_3_3 = AIE.core(%tile_3_3) {
+# CHECK:      %tile_0_2 = aie.tile(0, 2)
+# CHECK:      %tile_1_2 = aie.tile(1, 2)
+# CHECK:      %tile_3_3 = aie.tile(3, 3)
+# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
+# CHECK:      aie.objectfifo.link [@of0] -> [@of1]()
+# CHECK:      %core_3_3 = aie.core(%tile_3_3) {
 # CHECK:        %c0 = arith.constant 0 : index
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index
 # CHECK:        scf.for %arg0 = %c0 to %c10 step %c1 {
-# CHECK:          %0 = AIE.objectfifo.acquire @of1(Consume, 1) : !AIE.objectfifosubview<memref<8x8xi32>>
-# CHECK:          %1 = AIE.objectfifo.subview.access %0[0] : !AIE.objectfifosubview<memref<8x8xi32>> -> memref<8x8xi32>
+# CHECK:          %0 = aie.objectfifo.acquire @of1(Consume, 1) : !aie.objectfifosubview<memref<8x8xi32>>
+# CHECK:          %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<8x8xi32>> -> memref<8x8xi32>
 # CHECK:          %2 = func.call @test_func(%1) : (memref<8x8xi32>) -> i32
-# CHECK:          AIE.objectfifo.release @of1(Consume, 1)
+# CHECK:          aie.objectfifo.release @of1(Consume, 1)
 # CHECK:        }
-# CHECK:        AIE.end
+# CHECK:        aie.end
 # CHECK:      } {link_with = "test.o"}
 # CHECK:    }
 # CHECK:  }

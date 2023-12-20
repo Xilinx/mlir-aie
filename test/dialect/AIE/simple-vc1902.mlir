@@ -9,16 +9,16 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt %s | FileCheck %s
-// CHECK: %[[T01:.*]] = AIE.tile(0, 1)
-// CHECK: %[[T12:.*]] = AIE.tile(1, 2)
-// CHECK: AIE.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
+// CHECK: %[[T01:.*]] = aie.tile(0, 1)
+// CHECK: %[[T12:.*]] = aie.tile(1, 2)
+// CHECK: aie.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
 
 module {
-  AIE.device(xcvc1902) {
-    %01 = AIE.tile(0, 1)
-    %12 = AIE.tile(1, 2)
-    %02 = AIE.tile(0, 2)
-    %lock = AIE.lock(%12, 15) { sym_name = "lock1" }
-    AIE.flow(%01, DMA : 0, %12, Core : 1)
+  aie.device(xcvc1902) {
+    %01 = aie.tile(0, 1)
+    %12 = aie.tile(1, 2)
+    %02 = aie.tile(0, 2)
+    %lock = aie.lock(%12, 15) { sym_name = "lock1" }
+    aie.flow(%01, DMA : 0, %12, Core : 1)
   }
 }

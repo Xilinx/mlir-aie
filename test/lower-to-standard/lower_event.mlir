@@ -13,12 +13,12 @@
 // CHECK: call @llvm.aie.event0()
 // CHECK: call @llvm.aie.event1()
 module @test {
- AIE.device(xcvc1902) {
-  %tile11 = AIE.tile(1, 1)
-  %core11 = AIE.core(%tile11) {
-    AIE.event(0)
-    AIE.event(1)
-    AIE.end
+ aie.device(xcvc1902) {
+  %tile11 = aie.tile(1, 1)
+  %core11 = aie.core(%tile11) {
+    aie.event(0)
+    aie.event(1)
+    aie.end
   }
  }
 }

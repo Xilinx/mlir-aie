@@ -9,14 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.lock' op is accessed outside of a tile
+// CHECK: error{{.*}}'aie.lock' op is accessed outside of a tile
 module @test {
-  %t1 = AIE.tile(1, 1)
-  %t2 = AIE.tile(4, 4)
-  %lock = AIE.lock(%t2, 3) { sym_name = "lock1" }
+  %t1 = aie.tile(1, 1)
+  %t2 = aie.tile(4, 4)
+  %lock = aie.lock(%t2, 3) { sym_name = "lock1" }
 
   func.func @task3() -> () {
-    AIE.use_lock(%lock, "Acquire", 1)
+    aie.use_lock(%lock, "Acquire", 1)
     return
   }
 }

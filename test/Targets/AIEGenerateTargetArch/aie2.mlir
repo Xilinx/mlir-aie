@@ -12,7 +12,7 @@
 // CHECK: AIE2
 
 module {
-  AIE.device(xcve2802) {
-    %01 = AIE.tile(0, 1)
+  aie.device(xcve2802) {
+    %01 = aie.tile(0, 1)
   }
 }

@@ -19,15 +19,15 @@ from util import construct_and_print_module
 
 
 # CHECK:  module {
-# CHECK:    AIE.device(xcve2802) {
-# CHECK:      %tile_0_2 = AIE.tile(0, 2)
-# CHECK:      %tile_1_2 = AIE.tile(1, 2)
-# CHECK:      %tile_2_2 = AIE.tile(2, 2)
-# CHECK:      %tile_2_3 = AIE.tile(2, 3)
-# CHECK:      AIE.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !AIE.objectfifo<memref<256xi32>>
-# CHECK:      AIE.objectfifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : !AIE.objectfifo<memref<64xi32>>
-# CHECK:      AIE.objectfifo.link [@of0] -> [@of1]()
-# CHECK:      AIE.objectfifo @of2(%tile_1_2 toStream [<wrap = 1, step = 2>], {%tile_2_2 fromStream [<wrap = 1, step = 2>], %tile_2_3 fromStream [<wrap = 1, step = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:    aie.device(xcve2802) {
+# CHECK:      %tile_0_2 = aie.tile(0, 2)
+# CHECK:      %tile_1_2 = aie.tile(1, 2)
+# CHECK:      %tile_2_2 = aie.tile(2, 2)
+# CHECK:      %tile_2_3 = aie.tile(2, 3)
+# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+# CHECK:      aie.objectfifo.link [@of0] -> [@of1]()
+# CHECK:      aie.objectfifo @of2(%tile_1_2 toStream [<wrap = 1, step = 2>], {%tile_2_2 fromStream [<wrap = 1, step = 2>], %tile_2_3 fromStream [<wrap = 1, step = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
 @construct_and_print_module

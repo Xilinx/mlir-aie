@@ -33,53 +33,53 @@
 // to drop headers when the packet's destination is a DMA.
 //
 module @aie_module {
-  AIE.device(xcvc1902) {
-    %0 = AIE.tile(7, 0)
-    %1 = AIE.switchbox(%0) {
-      %7 = AIE.amsel<0> (0)
-      %8 = AIE.amsel<0> (1)
-      %9 = AIE.masterset(South : 0, %8)
-      %10 = AIE.masterset(North : 0, %7)
-      AIE.packet_rules(North : 0) {
-        AIE.rule(31, 10, %8)
+  aie.device(xcvc1902) {
+    %0 = aie.tile(7, 0)
+    %1 = aie.switchbox(%0) {
+      %7 = aie.amsel<0> (0)
+      %8 = aie.amsel<0> (1)
+      %9 = aie.masterset(South : 0, %8)
+      %10 = aie.masterset(North : 0, %7)
+      aie.packet_rules(North : 0) {
+        aie.rule(31, 10, %8)
       }
-      AIE.packet_rules(South : 4) {
-        AIE.rule(31, 3, %7)
-      }
-    }
-    %2 = AIE.tile(7, 1)
-    %3 = AIE.switchbox(%2) {
-      %7 = AIE.amsel<0> (0)
-      %8 = AIE.amsel<0> (1)
-      %9 = AIE.masterset(DMA : 0, %7)
-      %10 = AIE.masterset(South : 0, %8)
-      AIE.packet_rules(DMA : 0) {
-        AIE.rule(31, 10, %8)
-      }
-      AIE.packet_rules(South : 0) {
-        AIE.rule(31, 3, %7)
+      aie.packet_rules(South : 4) {
+        aie.rule(31, 3, %7)
       }
     }
-    %4 = AIE.lock(%2, 1)
-    %5 = AIE.buffer(%2) {address = 3072 : i32, sym_name = "buf1"} : memref<16xi32, 2>
-    %6 = AIE.mem(%2) {
-      %7 = AIE.dma_start(S2MM, 0, ^bb2, ^bb1)
+    %2 = aie.tile(7, 1)
+    %3 = aie.switchbox(%2) {
+      %7 = aie.amsel<0> (0)
+      %8 = aie.amsel<0> (1)
+      %9 = aie.masterset(DMA : 0, %7)
+      %10 = aie.masterset(South : 0, %8)
+      aie.packet_rules(DMA : 0) {
+        aie.rule(31, 10, %8)
+      }
+      aie.packet_rules(South : 0) {
+        aie.rule(31, 3, %7)
+      }
+    }
+    %4 = aie.lock(%2, 1)
+    %5 = aie.buffer(%2) {address = 3072 : i32, sym_name = "buf1"} : memref<16xi32, 2>
+    %6 = aie.mem(%2) {
+      %7 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
     ^bb1:  // pred: ^bb0
-      %8 = AIE.dma_start(MM2S, 0, ^bb3, ^bb4)
+      %8 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
     ^bb2:  // 2 preds: ^bb0, ^bb2
-      AIE.use_lock(%4, Acquire, 0)
-      AIE.dma_bd_packet(2, 3)
-      AIE.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
-      AIE.use_lock(%4, Release, 1)
-      AIE.next_bd ^bb2
+      aie.use_lock(%4, Acquire, 0)
+      aie.dma_bd_packet(2, 3)
+      aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
+      aie.use_lock(%4, Release, 1)
+      aie.next_bd ^bb2
     ^bb3:  // 2 preds: ^bb1, ^bb3
-      AIE.use_lock(%4, Acquire, 1)
-      AIE.dma_bd_packet(6, 10)
-      AIE.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
-      AIE.use_lock(%4, Release, 0)
-      AIE.next_bd ^bb3
+      aie.use_lock(%4, Acquire, 1)
+      aie.dma_bd_packet(6, 10)
+      aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
+      aie.use_lock(%4, Release, 0)
+      aie.next_bd ^bb3
     ^bb4:  // pred: ^bb1
-      AIE.end
+      aie.end
     }
   }
 }

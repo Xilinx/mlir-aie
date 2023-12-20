@@ -9,14 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T23:.*]] = AIE.tile(2, 3)
-// CHECK: %[[T32:.*]] = AIE.tile(3, 2)
-// CHECK: AIE.flow(%[[T23]], Core : 1, %[[T32]], DMA : 0)
+// CHECK: %[[T23:.*]] = aie.tile(2, 3)
+// CHECK: %[[T32:.*]] = aie.tile(3, 2)
+// CHECK: aie.flow(%[[T23]], Core : 1, %[[T32]], DMA : 0)
 
 module {
-  AIE.device(xcvc1902) {
-    %0 = AIE.tile(2, 3)
-    %1 = AIE.tile(3, 2)
-    AIE.flow(%0, Core : 1, %1, DMA : 0)
+  aie.device(xcvc1902) {
+    %0 = aie.tile(2, 3)
+    %1 = aie.tile(3, 2)
+    aie.flow(%0, Core : 1, %1, DMA : 0)
   }
 }

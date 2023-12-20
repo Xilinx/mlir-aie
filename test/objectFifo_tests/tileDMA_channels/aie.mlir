@@ -20,18 +20,18 @@
 // final output. 
 
 module @dmaChannels {
-    AIE.device(xcvc1902) {
-        %tile12 = AIE.tile(1, 2)
-        %tile33 = AIE.tile(3, 3)
+    aie.device(xcvc1902) {
+        %tile12 = aie.tile(1, 2)
+        %tile33 = aie.tile(3, 3)
 
-        %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
-        %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
+        %buff_out = aie.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
+        %lock_out = aie.lock(%tile33, 0) { sym_name = "lock_out" }
 
-        AIE.objectfifo @of_in0 (%tile33, {%tile12}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
-        AIE.objectfifo @of_in1 (%tile33, {%tile12}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        aie.objectfifo @of_in0 (%tile33, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of_in1 (%tile33, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-        AIE.objectfifo @of_out0 (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
-        AIE.objectfifo @of_out1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
+        aie.objectfifo @of_out0 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of_out1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         func.func @copy(%lineIn : memref<16xi32>, %lineOut : memref<16xi32>) -> () {
             %c0 = arith.constant 0 : index
@@ -45,34 +45,34 @@ module @dmaChannels {
             return
         }
 
-        %core12 = AIE.core(%tile12) {
+        %core12 = aie.core(%tile12) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %height = arith.constant 10 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
-                %subviewIn0 = AIE.objectfifo.acquire @of_in0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemIn0 = AIE.objectfifo.subview.access %subviewIn0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn0 = aie.objectfifo.acquire @of_in0 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemIn0 = aie.objectfifo.subview.access %subviewIn0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewIn1 = AIE.objectfifo.acquire @of_in1 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemIn1 = AIE.objectfifo.subview.access %subviewIn1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn1 = aie.objectfifo.acquire @of_in1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemIn1 = aie.objectfifo.subview.access %subviewIn1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut0 = AIE.objectfifo.acquire @of_out0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemOut0 = AIE.objectfifo.subview.access %subviewOut0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut0 = aie.objectfifo.acquire @of_out0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemOut0 = aie.objectfifo.subview.access %subviewOut0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut1 = AIE.objectfifo.acquire @of_out1 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemOut1 = AIE.objectfifo.subview.access %subviewOut1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut1 = aie.objectfifo.acquire @of_out1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemOut1 = aie.objectfifo.subview.access %subviewOut1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @copy(%elemIn0, %elemOut0) : (memref<16xi32>, memref<16xi32>) -> ()
                 func.call @copy(%elemIn1, %elemOut1) : (memref<16xi32>, memref<16xi32>) -> ()
 
-                AIE.objectfifo.release @of_in0 (Consume, 1)
-                AIE.objectfifo.release @of_in1 (Consume, 1)
-                AIE.objectfifo.release @of_out0 (Produce, 1)
-                AIE.objectfifo.release @of_out1 (Produce, 1)
+                aie.objectfifo.release @of_in0 (Consume, 1)
+                aie.objectfifo.release @of_in1 (Consume, 1)
+                aie.objectfifo.release @of_out0 (Produce, 1)
+                aie.objectfifo.release @of_out1 (Produce, 1)
             }
             
-            AIE.end
+            aie.end
         }
 
         // Fills the given memref.
@@ -103,44 +103,44 @@ module @dmaChannels {
             return
         }
 
-        %core33 = AIE.core(%tile33) {
+        %core33 = aie.core(%tile33) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %height = arith.constant 10 : index
 
             // acquire output buffer
-            AIE.use_lock(%lock_out, "Acquire", 0) // acquire for produce
+            aie.use_lock(%lock_out, "Acquire", 0) // acquire for produce
 
             scf.for %indexInHeight = %c0 to %height step %c1 { 
-                %subviewOut0 = AIE.objectfifo.acquire @of_in0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemOut0 = AIE.objectfifo.subview.access %subviewOut0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut0 = aie.objectfifo.acquire @of_in0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemOut0 = aie.objectfifo.subview.access %subviewOut0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewOut1 = AIE.objectfifo.acquire @of_in1 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemOut1 = AIE.objectfifo.subview.access %subviewOut1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewOut1 = aie.objectfifo.acquire @of_in1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemOut1 = aie.objectfifo.subview.access %subviewOut1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @generateLineScalar(%elemOut0) : (memref<16xi32>) -> ()
                 func.call @generateLineScalar(%elemOut1) : (memref<16xi32>) -> ()
 
-                AIE.objectfifo.release @of_in0 (Produce, 1)
-                AIE.objectfifo.release @of_in1 (Produce, 1)
+                aie.objectfifo.release @of_in0 (Produce, 1)
+                aie.objectfifo.release @of_in1 (Produce, 1)
 
 
-                %subviewIn0 = AIE.objectfifo.acquire @of_out0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemIn0 = AIE.objectfifo.subview.access %subviewIn0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn0 = aie.objectfifo.acquire @of_out0 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemIn0 = aie.objectfifo.subview.access %subviewIn0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-                %subviewIn1 = AIE.objectfifo.acquire @of_out1 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-                %elemIn1 = AIE.objectfifo.subview.access %subviewIn1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subviewIn1 = aie.objectfifo.acquire @of_out1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elemIn1 = aie.objectfifo.subview.access %subviewIn1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
                 func.call @addAndStore(%elemIn0, %elemIn1, %indexInHeight, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
 
-                AIE.objectfifo.release @of_out0 (Consume, 1)
-                AIE.objectfifo.release @of_out1 (Consume, 1)
+                aie.objectfifo.release @of_out0 (Consume, 1)
+                aie.objectfifo.release @of_out1 (Consume, 1)
             }
 
             // release output buffer
-            AIE.use_lock(%lock_out, "Release", 1) // release for consume
+            aie.use_lock(%lock_out, "Release", 1) // release for consume
             
-            AIE.end
+            aie.end
         }
     }
 }

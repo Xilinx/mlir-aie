@@ -189,119 +189,119 @@
 //   Row Y+1: ifm[0][0-3]
 //   Row Y:   pp[0][0-3]
 module @test_herd_xaie0 {
- AIE.device(xcvc1902) {
-  %0 = AIE.herd[4][1] { sym_name = "pp" }      // herd ping-pong
-  %1 = AIE.herd[4][1] { sym_name = "ifm" }     // herd input-feature-map
-  %2 = AIE.herd[4][4] { sym_name = "compute" } // herd compute
+ aie.device(xcvc1902) {
+  %0 = aie.herd[4][1] { sym_name = "pp" }      // herd ping-pong
+  %1 = aie.herd[4][1] { sym_name = "ifm" }     // herd input-feature-map
+  %2 = aie.herd[4][4] { sym_name = "compute" } // herd compute
 
   // Route <%1, DMA : 0> to <%2, DMA : 0>
-  %ix0 = AIE.iter(0, 1, 1)
-  %iy0 = AIE.iter(0, 1, 1)
-  %sel0 = AIE.select(%1, %ix0, %iy0)
-  AIE.switchbox(%sel0) {
-    AIE.connect<DMA : 0, North: 0>
+  %ix0 = aie.iter(0, 1, 1)
+  %iy0 = aie.iter(0, 1, 1)
+  %sel0 = aie.select(%1, %ix0, %iy0)
+  aie.switchbox(%sel0) {
+    aie.connect<DMA : 0, North: 0>
   }
 
-  %ix1 = AIE.iter(0, 3, 1)
-  %iy1 = AIE.iter(0, 1, 1)
-  %sel1 = AIE.select(%2, %ix1, %iy1)
-  AIE.switchbox(%sel1) {
-    AIE.connect<North : 0, DMA: 0>
-    AIE.connect<North : 0, South: 0>
+  %ix1 = aie.iter(0, 3, 1)
+  %iy1 = aie.iter(0, 1, 1)
+  %sel1 = aie.select(%2, %ix1, %iy1)
+  aie.switchbox(%sel1) {
+    aie.connect<North : 0, DMA: 0>
+    aie.connect<North : 0, South: 0>
   }
 
-  %ix2 = AIE.iter(3, 4, 1)
-  %iy2 = AIE.iter(0, 1, 1)
-  %sel2 = AIE.select(%2, %ix2, %iy2)
-  AIE.switchbox(%sel2) {
-    AIE.connect<North : 0, DMA: 0>
-  }
-
-  // Route <%0, DMA: 0> to <%1, DMA: 1>
-  %ix3 = AIE.iter(0, 1, 1)
-  %iy3 = AIE.iter(0, 1, 1)
-  %sel3 = AIE.select(%0, %ix3, %iy3)
-  AIE.switchbox(%sel3) {
-    AIE.connect<DMA : 0, North: 0>
+  %ix2 = aie.iter(3, 4, 1)
+  %iy2 = aie.iter(0, 1, 1)
+  %sel2 = aie.select(%2, %ix2, %iy2)
+  aie.switchbox(%sel2) {
+    aie.connect<North : 0, DMA: 0>
   }
 
   // Route <%0, DMA: 0> to <%1, DMA: 1>
-  %ix4 = AIE.iter(0, 1, 1)
-  %iy4 = AIE.iter(0, 1, 1)
-  %sel4 = AIE.select(%0, %ix4, %iy4)
-  AIE.switchbox(%sel4) {
-    AIE.connect<DMA  : 0, North : 1>
-    AIE.connect<East : 0, North : 2>
-    AIE.connect<East : 1, North : 3>
-    AIE.connect<East : 2, North : 4>
+  %ix3 = aie.iter(0, 1, 1)
+  %iy3 = aie.iter(0, 1, 1)
+  %sel3 = aie.select(%0, %ix3, %iy3)
+  aie.switchbox(%sel3) {
+    aie.connect<DMA : 0, North: 0>
   }
 
-  %ix5 = AIE.iter(0, 1, 1)
-  %iy5 = AIE.iter(1, 2, 1)
-  %sel5 = AIE.select(%0, %ix5, %iy5)
-  AIE.switchbox(%sel5) {
-    AIE.connect<South : 1, North: 1>
-    AIE.connect<South : 2, North: 2>
-    AIE.connect<South : 3, North: 3>
-    AIE.connect<South : 4, North: 4>
+  // Route <%0, DMA: 0> to <%1, DMA: 1>
+  %ix4 = aie.iter(0, 1, 1)
+  %iy4 = aie.iter(0, 1, 1)
+  %sel4 = aie.select(%0, %ix4, %iy4)
+  aie.switchbox(%sel4) {
+    aie.connect<DMA  : 0, North : 1>
+    aie.connect<East : 0, North : 2>
+    aie.connect<East : 1, North : 3>
+    aie.connect<East : 2, North : 4>
   }
 
-  %ix6 = AIE.iter(1, 2, 1)
-  %iy6 = AIE.iter(0, 1, 1)
-  %sel6 = AIE.select(%0, %ix6, %iy6)
-  AIE.switchbox(%sel3) {
-    AIE.connect<DMA : 0, West: 0>
-    AIE.connect<East : 1, West: 1>
-    AIE.connect<East : 2, West: 2>
+  %ix5 = aie.iter(0, 1, 1)
+  %iy5 = aie.iter(1, 2, 1)
+  %sel5 = aie.select(%0, %ix5, %iy5)
+  aie.switchbox(%sel5) {
+    aie.connect<South : 1, North: 1>
+    aie.connect<South : 2, North: 2>
+    aie.connect<South : 3, North: 3>
+    aie.connect<South : 4, North: 4>
   }
 
-  %ix7 = AIE.iter(2, 3, 1)
-  %iy7 = AIE.iter(0, 1, 1)
-  %sel7 = AIE.select(%0, %ix7, %iy7)
-  AIE.switchbox(%sel3) {
-    AIE.connect<DMA : 0, West: 1>
-    AIE.connect<East : 2, West: 2>
+  %ix6 = aie.iter(1, 2, 1)
+  %iy6 = aie.iter(0, 1, 1)
+  %sel6 = aie.select(%0, %ix6, %iy6)
+  aie.switchbox(%sel3) {
+    aie.connect<DMA : 0, West: 0>
+    aie.connect<East : 1, West: 1>
+    aie.connect<East : 2, West: 2>
   }
 
-  %ix8 = AIE.iter(3, 4, 1)
-  %iy8 = AIE.iter(0, 1, 1)
-  %sel8 = AIE.select(%0, %ix8, %iy8)
-  AIE.switchbox(%sel8) {
-    AIE.connect<DMA : 0, West: 2>
+  %ix7 = aie.iter(2, 3, 1)
+  %iy7 = aie.iter(0, 1, 1)
+  %sel7 = aie.select(%0, %ix7, %iy7)
+  aie.switchbox(%sel3) {
+    aie.connect<DMA : 0, West: 1>
+    aie.connect<East : 2, West: 2>
   }
 
-  %ix9 = AIE.iter(0, 1, 1)
-  %iy9 = AIE.iter(0, 1, 1)
-  %sel9 = AIE.select(%2, %ix9, %iy9)
-  AIE.switchbox(%sel9) {
-    AIE.connect<South : 1, DMA: 1>
-    AIE.connect<South : 2, North: 1>
-    AIE.connect<South : 3, North: 2>
-    AIE.connect<South : 4, North: 3>
+  %ix8 = aie.iter(3, 4, 1)
+  %iy8 = aie.iter(0, 1, 1)
+  %sel8 = aie.select(%0, %ix8, %iy8)
+  aie.switchbox(%sel8) {
+    aie.connect<DMA : 0, West: 2>
   }
 
-  %ix10 = AIE.iter(0, 1, 1)
-  %iy10 = AIE.iter(1, 2, 1)
-  %sel10 = AIE.select(%2, %ix10, %iy10)
-  AIE.switchbox(%sel10) {
-    AIE.connect<South : 1, DMA: 1>
-    AIE.connect<South : 2, North: 1>
-    AIE.connect<South : 3, North: 2>
+  %ix9 = aie.iter(0, 1, 1)
+  %iy9 = aie.iter(0, 1, 1)
+  %sel9 = aie.select(%2, %ix9, %iy9)
+  aie.switchbox(%sel9) {
+    aie.connect<South : 1, DMA: 1>
+    aie.connect<South : 2, North: 1>
+    aie.connect<South : 3, North: 2>
+    aie.connect<South : 4, North: 3>
   }
 
-  %ix11 = AIE.iter(0, 1, 1)
-  %iy11 = AIE.iter(2, 3, 1)
-  %sel11 = AIE.select(%2, %ix11, %iy11)
-  AIE.switchbox(%sel10) {
-    AIE.connect<South : 1, DMA: 1>
-    AIE.connect<South : 2, North: 1>
+  %ix10 = aie.iter(0, 1, 1)
+  %iy10 = aie.iter(1, 2, 1)
+  %sel10 = aie.select(%2, %ix10, %iy10)
+  aie.switchbox(%sel10) {
+    aie.connect<South : 1, DMA: 1>
+    aie.connect<South : 2, North: 1>
+    aie.connect<South : 3, North: 2>
   }
 
-  %ix12 = AIE.iter(0, 1, 1)
-  %iy12 = AIE.iter(2, 3, 1)
-  %sel12 = AIE.select(%2, %ix12, %iy12)
-  AIE.switchbox(%sel10) {
-    AIE.connect<South : 1, DMA: 1>
+  %ix11 = aie.iter(0, 1, 1)
+  %iy11 = aie.iter(2, 3, 1)
+  %sel11 = aie.select(%2, %ix11, %iy11)
+  aie.switchbox(%sel10) {
+    aie.connect<South : 1, DMA: 1>
+    aie.connect<South : 2, North: 1>
+  }
+
+  %ix12 = aie.iter(0, 1, 1)
+  %iy12 = aie.iter(2, 3, 1)
+  %sel12 = aie.select(%2, %ix12, %iy12)
+  aie.switchbox(%sel10) {
+    aie.connect<South : 1, DMA: 1>
   }
  }
 }

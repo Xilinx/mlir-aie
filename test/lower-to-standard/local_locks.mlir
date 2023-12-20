@@ -22,13 +22,13 @@
 // CHECK33:  }
 
 module @local_locks {
- AIE.device(xcvc1902) {
-  %3 = AIE.tile(3, 3)
-  %11 = AIE.core(%3)  {
+ aie.device(xcvc1902) {
+  %3 = aie.tile(3, 3)
+  %11 = aie.core(%3)  {
     %c56 = arith.constant 56 : index
-    AIE.use_lock(%c56, Acquire, 0)
-    AIE.use_lock(%c56, Release, 1)
-    AIE.end
+    aie.use_lock(%c56, Acquire, 0)
+    aie.use_lock(%c56, Release, 1)
+    aie.end
   }
  }
 }

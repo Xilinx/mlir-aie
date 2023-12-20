@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 //
-// This tests the lowering from AIE.switchbox ops to configuration register
+// This tests the lowering from aie.switchbox ops to configuration register
 // writes for LibXAIEV1. This test targets PL shim tiles that only contain
 // stream switches that connect the AIE array to PL.
 //
@@ -27,16 +27,16 @@
 // CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0));
 
 module {
- AIE.device(xcvc1902) {
-  %t40 = AIE.tile(4, 0)
-  %t41 = AIE.tile(4, 1)
-  %4 = AIE.switchbox(%t40)  {
-    AIE.connect<South : 4, North : 0>
-    AIE.connect<North : 0, South : 2>
+ aie.device(xcvc1902) {
+  %t40 = aie.tile(4, 0)
+  %t41 = aie.tile(4, 1)
+  %4 = aie.switchbox(%t40)  {
+    aie.connect<South : 4, North : 0>
+    aie.connect<North : 0, South : 2>
   }
-  %5 = AIE.switchbox(%t41)  {
-    AIE.connect<South : 0, North : 0>
-    AIE.connect<North : 0, South : 0>
+  %5 = aie.switchbox(%t41)  {
+    aie.connect<South : 0, North : 0>
+    aie.connect<North : 0, South : 0>
   }
  }
 }

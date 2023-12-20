@@ -12,23 +12,23 @@
 // RUN: %run_on_board ./test.elf
 
 module @single_depth {
-    AIE.device(xcvc1902) {
-        %tile20 = AIE.tile(2, 0)
-        %tile23 = AIE.tile(2, 3)
-        %tile25 = AIE.tile(2, 5)
+    aie.device(xcvc1902) {
+        %tile20 = aie.tile(2, 0)
+        %tile23 = aie.tile(2, 3)
+        %tile25 = aie.tile(2, 5)
 
-        %lock_pc = AIE.lock(%tile25, 0) {sym_name = "lock_pc"}
+        %lock_pc = aie.lock(%tile25, 0) {sym_name = "lock_pc"}
 
-        %lock_out = AIE.lock(%tile25, 1) {sym_name = "lock_out"}
-        %buff_out = AIE.buffer(%tile25) {sym_name = "buff_out"} : memref<4x32xi32>
+        %lock_out = aie.lock(%tile25, 1) {sym_name = "lock_out"}
+        %buff_out = aie.buffer(%tile25) {sym_name = "buff_out"} : memref<4x32xi32>
 
 
-        AIE.objectfifo @of_in (%tile20, {%tile23, %tile25}, 2 : i32) : !AIE.objectfifo<memref<32xi32>>
-        AIE.objectfifo @of_inter (%tile23, {%tile25}, 2 : i32) : !AIE.objectfifo<memref<32xi32>>
+        aie.objectfifo @of_in (%tile20, {%tile23, %tile25}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+        aie.objectfifo @of_inter (%tile23, {%tile25}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
 
-        %ext_buffer_in_0  = AIE.external_buffer {sym_name = "ext_buffer_in_0"} : memref<32xi32>
-        %ext_buffer_in_1  = AIE.external_buffer {sym_name = "ext_buffer_in_1"} : memref<32xi32>
-        AIE.objectfifo.register_external_buffers @of_in (%tile20, {%ext_buffer_in_0, %ext_buffer_in_1}) : (memref<32xi32>, memref<32xi32>)
+        %ext_buffer_in_0  = aie.external_buffer {sym_name = "ext_buffer_in_0"} : memref<32xi32>
+        %ext_buffer_in_1  = aie.external_buffer {sym_name = "ext_buffer_in_1"} : memref<32xi32>
+        aie.objectfifo.register_external_buffers @of_in (%tile20, {%ext_buffer_in_0, %ext_buffer_in_1}) : (memref<32xi32>, memref<32xi32>)
 
         func.func @add_one(%elemIn : memref<32xi32>, %elemOut : memref<32xi32>) -> () {
             %c0 = arith.constant 0 : index
@@ -58,55 +58,55 @@ module @single_depth {
             return
         }
 
-        %core23 = AIE.core(%tile23) {
+        %core23 = aie.core(%tile23) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %iter_max = arith.constant 4 : index
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %subviewIn = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<32xi32>>
-                %elemIn = AIE.objectfifo.subview.access %subviewIn[0] : !AIE.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn = aie.objectfifo.acquire @of_in (Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
+                %elemIn = aie.objectfifo.subview.access %subviewIn[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
 
-                %subviewOut = AIE.objectfifo.acquire @of_inter (Produce, 1) : !AIE.objectfifosubview<memref<32xi32>>
-                %elemOut = AIE.objectfifo.subview.access %subviewOut[0] : !AIE.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+                %subviewOut = aie.objectfifo.acquire @of_inter (Produce, 1) : !aie.objectfifosubview<memref<32xi32>>
+                %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
 
                 func.call @add_one(%elemIn, %elemOut) : (memref<32xi32>, memref<32xi32>) -> ()
 
-                AIE.objectfifo.release @of_in (Consume, 1)
-                AIE.objectfifo.release @of_inter (Produce, 1)
+                aie.objectfifo.release @of_in (Consume, 1)
+                aie.objectfifo.release @of_inter (Produce, 1)
             }
 
-            AIE.end
+            aie.end
         }
 
-        %core25 = AIE.core(%tile25) {
+        %core25 = aie.core(%tile25) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %height = arith.constant 32 : index
             %iter_max = arith.constant 4 : index
 
-            AIE.use_lock(%lock_pc, Acquire, 0)
+            aie.use_lock(%lock_pc, Acquire, 0)
 
-            AIE.use_lock(%lock_out, Acquire, 0)
+            aie.use_lock(%lock_out, Acquire, 0)
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %subviewIn_21 = AIE.objectfifo.acquire @of_in (Consume, 1) : !AIE.objectfifosubview<memref<32xi32>>
-                %elemIn_21 = AIE.objectfifo.subview.access %subviewIn_21[0] : !AIE.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn_21 = aie.objectfifo.acquire @of_in (Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
+                %elemIn_21 = aie.objectfifo.subview.access %subviewIn_21[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
 
-                %subviewIn_22 = AIE.objectfifo.acquire @of_inter (Consume, 1) : !AIE.objectfifosubview<memref<32xi32>>
-                %elemIn_22 = AIE.objectfifo.subview.access %subviewIn_22[0] : !AIE.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+                %subviewIn_22 = aie.objectfifo.acquire @of_inter (Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
+                %elemIn_22 = aie.objectfifo.subview.access %subviewIn_22[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
 
                 func.call @add_store(%elemIn_21, %elemIn_22, %buff_out, %iter) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
 
-                AIE.objectfifo.release @of_in (Consume, 1)
-                AIE.objectfifo.release @of_inter (Consume, 1)
+                aie.objectfifo.release @of_in (Consume, 1)
+                aie.objectfifo.release @of_inter (Consume, 1)
             }
 
-            AIE.use_lock(%lock_out, Release, 1)
+            aie.use_lock(%lock_out, Release, 1)
 
-            AIE.use_lock(%lock_pc, Release, 1)
+            aie.use_lock(%lock_pc, Release, 1)
 
-            AIE.end
+            aie.end
         }
     }
 }

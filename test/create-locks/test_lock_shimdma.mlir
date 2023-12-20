@@ -12,44 +12,44 @@
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABELs: module @test_lock_shimdma  {
-// CHECK:   AIEX.token(0) {sym_name = "token0"}
-// CHECK:   %0 = AIE.external_buffer : memref<256xi32>
-// CHECK:   %1 = AIE.tile(6, 0)
-// CHECK:   %2 = AIE.lock(%1, 0)
-// CHECK:   %3 = AIE.core(%1)  {
-// CHECK:     AIE.use_lock(%2, Acquire, 1)
-// CHECK:     AIE.use_lock(%2, Release, 0)
-// CHECK:     AIE.end
+// CHECK:   aiex.token(0) {sym_name = "token0"}
+// CHECK:   %0 = aie.external_buffer : memref<256xi32>
+// CHECK:   %1 = aie.tile(6, 0)
+// CHECK:   %2 = aie.lock(%1, 0)
+// CHECK:   %3 = aie.core(%1)  {
+// CHECK:     aie.use_lock(%2, Acquire, 1)
+// CHECK:     aie.use_lock(%2, Release, 0)
+// CHECK:     aie.end
 // CHECK:   }
-// CHECK:   %4 = AIE.shim_dma(%1)  {
-// CHECK:     %10 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:   %4 = aie.shim_dma(%1)  {
+// CHECK:     %10 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
-// CHECK:     AIE.use_lock(%2, Acquire, 0)
-// CHECK:     AIE.dma_bd(%0 : memref<256xi32>, 0, 256)
-// CHECK:     AIE.use_lock(%2, Release, 1)
-// CHECK:     AIE.next_bd ^bb2
+// CHECK:     aie.use_lock(%2, Acquire, 0)
+// CHECK:     aie.dma_bd(%0 : memref<256xi32>, 0, 256)
+// CHECK:     aie.use_lock(%2, Release, 1)
+// CHECK:     aie.next_bd ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
-// CHECK:     AIE.end
+// CHECK:     aie.end
 // CHECK:   }
-// CHECK:   %5 = AIE.tile(3, 3)
-// CHECK:   %6 = AIE.lock(%5, 0)
-// CHECK:   %7 = AIE.buffer(%5) : memref<256xi32>
-// CHECK:   %8 = AIE.core(%5)  {
-// CHECK:     AIE.use_lock(%6, Acquire, 0)
-// CHECK:     AIE.use_lock(%6, Release, 1)
-// CHECK:     AIE.end
+// CHECK:   %5 = aie.tile(3, 3)
+// CHECK:   %6 = aie.lock(%5, 0)
+// CHECK:   %7 = aie.buffer(%5) : memref<256xi32>
+// CHECK:   %8 = aie.core(%5)  {
+// CHECK:     aie.use_lock(%6, Acquire, 0)
+// CHECK:     aie.use_lock(%6, Release, 1)
+// CHECK:     aie.end
 // CHECK:   }
-// CHECK:   %9 = AIE.mem(%5)  {
-// CHECK:     %10 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
+// CHECK:   %9 = aie.mem(%5)  {
+// CHECK:     %10 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
-// CHECK:     AIE.use_lock(%6, Acquire, 1)
-// CHECK:     AIE.dma_bd(%7 : memref<256xi32>, 0, 256)
-// CHECK:     AIE.use_lock(%6, Release, 0)
-// CHECK:     AIE.next_bd ^bb2
+// CHECK:     aie.use_lock(%6, Acquire, 1)
+// CHECK:     aie.dma_bd(%7 : memref<256xi32>, 0, 256)
+// CHECK:     aie.use_lock(%6, Release, 0)
+// CHECK:     aie.next_bd ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
-// CHECK:     AIE.end
+// CHECK:     aie.end
 // CHECK:   }
-// CHECK:   AIE.flow(%5, DMA : 0, %1, DMA : 0)
+// CHECK:   aie.flow(%5, DMA : 0, %1, DMA : 0)
 // CHECK: }
 
 // Generate LockOp in the top-level module
@@ -57,47 +57,47 @@
 // [Core-Mem] ---> [ShimDMA] (non-neighboring tiles)
 // single producer, single consumer
 module @test_lock_shimdma {
- AIE.device(xcvc1902) {
-  AIEX.token(0) {sym_name = "token0"}
-  %buf_ext = AIE.external_buffer : memref<256xi32>
+ aie.device(xcvc1902) {
+  aiex.token(0) {sym_name = "token0"}
+  %buf_ext = aie.external_buffer : memref<256xi32>
 
-  %t60 = AIE.tile(6, 0)
-  %c60 = AIE.core(%t60) {
+  %t60 = aie.tile(6, 0)
+  %c60 = aie.core(%t60) {
     // TODO: This represents the token uses on the host CPU. A representation of
     // the host CPU in MLIR might be a better place for holding this.
-    AIEX.useToken @token0(Acquire, 2)
-    AIEX.useToken @token0(Release, 3)
-    AIE.end
+    aiex.useToken @token0(Acquire, 2)
+    aiex.useToken @token0(Release, 3)
+    aie.end
   }
-  %m60 = AIE.shim_dma(%t60) {
-      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m60 = aie.shim_dma(%t60) {
+      %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(%buf_ext : memref<256xi32>, 0, 256)
-      AIEX.useToken @token0(Release, 2)
-      AIE.next_bd ^end
+      aiex.useToken @token0(Acquire, 1)
+      aie.dma_bd(%buf_ext : memref<256xi32>, 0, 256)
+      aiex.useToken @token0(Release, 2)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %t33 = AIE.tile(3, 3)
-  %buf33 = AIE.buffer(%t33) : memref<256xi32>
-  %c33 = AIE.core(%t33) {
-    AIEX.useToken @token0(Acquire, 0)
-    AIEX.useToken @token0(Release, 1)
-    AIE.end
+  %t33 = aie.tile(3, 3)
+  %buf33 = aie.buffer(%t33) : memref<256xi32>
+  %c33 = aie.core(%t33) {
+    aiex.useToken @token0(Acquire, 0)
+    aiex.useToken @token0(Release, 1)
+    aie.end
   }
-  %m33 = AIE.mem(%t33) {
-      %dmaSt = AIE.dma_start(MM2S, 0, ^bd0, ^end)
+  %m33 = aie.mem(%t33) {
+      %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIEX.useToken @token0(Acquire, 1)
-      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
-      AIEX.useToken @token0(Release, 2)
-      AIE.next_bd ^end
+      aiex.useToken @token0(Acquire, 1)
+      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aiex.useToken @token0(Release, 2)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  AIE.flow(%t33, DMA : 0, %t60, DMA : 0)
+  aie.flow(%t33, DMA : 0, %t60, DMA : 0)
  }
 }

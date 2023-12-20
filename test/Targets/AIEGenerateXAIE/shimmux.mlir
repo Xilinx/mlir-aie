@@ -16,10 +16,10 @@
 // CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 3));
 
 module {
- AIE.device(xcvc1902) {
-  %t20 = AIE.tile(2, 0)
-  %mux = AIE.shim_mux(%t20)  {
-    AIE.connect<DMA : 0, North : 3>
+ aie.device(xcvc1902) {
+  %t20 = aie.tile(2, 0)
+  %mux = aie.shim_mux(%t20)  {
+    aie.connect<DMA : 0, North : 3>
   }
  }
 }

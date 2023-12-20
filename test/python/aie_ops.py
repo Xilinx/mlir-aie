@@ -30,16 +30,16 @@ from util import construct_and_print_module
 
 
 # CHECK-LABEL: tileOp
-# CHECK: AIE.tile(0, 0)
+# CHECK: aie.tile(0, 0)
 @construct_and_print_module
 def tileOp():
     t = tile(col=0, row=0)
 
 
 # CHECK-LABEL: coreOp
-# CHECK: %[[VAL1:.*]] = AIE.tile(1, 1)
-# CHECK: %[[VAL2:.*]] = AIE.core(%[[VAL1]]) {
-# CHECK:   AIE.end
+# CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
+# CHECK: %[[VAL2:.*]] = aie.core(%[[VAL1]]) {
+# CHECK:   aie.end
 # CHECK: }
 @construct_and_print_module
 def coreOp():
@@ -51,21 +51,22 @@ def coreOp():
 
 
 # CHECK-LABEL: memOp
-# CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
-# CHECK: %[[VAL2:.*]] = AIE.mem(%[[VAL1]]) {
-# CHECK:   AIE.end
+# CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
+# CHECK: %[[VAL2:.*]] = aie.mem(%[[VAL1]]) {
+# CHECK:   aie.end
 # CHECK: }
 @construct_and_print_module
 def memOp():
     t = tile(col=2, row=2)
     m = MemOp(T.index(), t)
+    assert isinstance(m.result.owner.opview, MemOp)
     bb = Block.create_at_start(m.body)
     with InsertionPoint(bb):
         end()
 
 
 # CHECK-LABEL: deviceOp
-# CHECK: AIE.device
+# CHECK: aie.device
 @construct_and_print_module
 def deviceOp():
     dev = Device(AIEDevice.xcvc1902)
@@ -75,8 +76,8 @@ def deviceOp():
 
 
 # CHECK-LABEL: bufferOp
-# CHECK: %[[VAL_0:.*]] = AIE.tile(0, 3)
-# CHECK: %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
+# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
@@ -84,16 +85,16 @@ def bufferOp():
 
 
 # CHECK-LABEL: externalBufferOp
-# CHECK: %[[VAL_0:.*]] = AIE.external_buffer : memref<12xi32>
+# CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
 @construct_and_print_module
 def externalBufferOp():
     b = ExternalBuffer(size=(12,), datatype=T.i32())
 
 
 # CHECK-LABEL: objFifo
-# CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectfifo @of0(%[[VAL0]] toStream [<wrap = 1, step = 2>], {%[[VAL1]] fromStream [<wrap = 1, step = 2>]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
+# CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
+# CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
+# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<wrap = 1, step = 2>], {%[[VAL1]] fromStream [<wrap = 1, step = 2>]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -114,12 +115,12 @@ def objFifo():
 
 
 # CHECK-LABEL: objFifoLink
-# CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: %[[VAL_2:.*]] = AIE.tile(7, 7)
-# CHECK: AIE.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
-# CHECK: AIE.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
-# CHECK: AIE.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
+# CHECK: %[[VAL_2:.*]] = aie.tile(7, 7)
+# CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcvc1902)
@@ -151,10 +152,10 @@ def objFifoLink():
 
 
 # CHECK-LABEL: objFifoAcquire
-# CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectfifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -184,11 +185,11 @@ def objFifoAcquire():
 
 
 # CHECK-LABEL: objFifoSubviewAccess
-# CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = AIE.objectfifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectfifosubview<memref<12xf16>>
-# CHECK: %[[VAL_4:.*]] = AIE.objectfifo.subview.access %[[VAL_3]][0] : !AIE.objectfifosubview<memref<12xf16>> -> memref<12xf16>
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
@@ -221,10 +222,10 @@ def objFifoSubviewAccess():
 
 
 # CHECK-LABEL: objFifoRelease
-# CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectfifo<memref<12xf16>>
-# CHECK: AIE.objectfifo.release @[[VAL_2]](Produce, 1)
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
+# CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo.release @[[VAL_2]](Produce, 1)
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
@@ -250,9 +251,9 @@ def objFifoRelease():
 
 # CHECK-LABEL: test_module_context
 # CHECK: module {
-# CHECK:   %tile_1_1 = AIE.tile(1, 1)
-# CHECK:   %core_1_1 = AIE.core(%tile_1_1) {
-# CHECK:     AIE.end
+# CHECK:   %tile_1_1 = aie.tile(1, 1)
+# CHECK:   %core_1_1 = aie.core(%tile_1_1) {
+# CHECK:     aie.end
 # CHECK:   }
 # CHECK: }
 def test_module_context():

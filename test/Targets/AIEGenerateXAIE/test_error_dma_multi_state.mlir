@@ -12,20 +12,20 @@
 // CHECK: acquires/releases the lock in a DMA block from/to multiple states.
 
 module @test_error_dma_multi_state {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %l33_0 = AIE.lock(%t33, 0)
-  AIE.mem(%t33) {
-    AIE.dma_start(MM2S, 0, ^bb1, ^end)
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %l33_0 = aie.lock(%t33, 0)
+  aie.mem(%t33) {
+    aie.dma_start(MM2S, 0, ^bb1, ^end)
   ^bb1:
-    AIE.use_lock(%l33_0, Acquire, 0)
+    aie.use_lock(%l33_0, Acquire, 0)
     // This should fail because only one state can be acquired in a DmaBd
-    AIE.use_lock(%l33_0, Acquire, 1)
-    AIE.use_lock(%l33_0, Release, 0)
-    AIE.use_lock(%l33_0, Release, 1)
-    AIE.next_bd ^end
+    aie.use_lock(%l33_0, Acquire, 1)
+    aie.use_lock(%l33_0, Release, 0)
+    aie.use_lock(%l33_0, Release, 1)
+    aie.next_bd ^end
   ^end:
-    AIE.end
+    aie.end
   }
  }
 }

@@ -9,15 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.putCascade' op must be a 512-bit type
+// CHECK: error{{.*}}'aie.putCascade' op must be a 512-bit type
 
 module @test {
-  AIE.device(xcve2802) {
-    %t33 = AIE.tile(3, 3)
-    %c33 = AIE.core(%t33) {
+  aie.device(xcve2802) {
+    %t33 = aie.tile(3, 3)
+    %c33 = aie.core(%t33) {
       %val2 = arith.constant 1 : i64
-      AIE.putCascade(%val2: i64)
-      AIE.end
+      aie.putCascade(%val2: i64)
+      aie.end
     }
   }
 }

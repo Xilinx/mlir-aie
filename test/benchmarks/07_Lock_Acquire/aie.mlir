@@ -12,12 +12,12 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark07_lock_acquire {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %l13_0 = AIE.lock(%tile13, 0)
+  %l13_0 = aie.lock(%tile13, 0)
 
-AIE.core(%tile13) {
-    AIE.use_lock(%l13_0, "Acquire", 0)
-    AIE.end
+aie.core(%tile13) {
+    aie.use_lock(%l13_0, "Acquire", 0)
+    aie.end
   }
 }

@@ -13,24 +13,24 @@
 // RUN: %run_on_board ./test.elf
 
 module @test17_shim_dma_with_core{
-  %t73 = AIE.tile(7, 3)
-  %t72 = AIE.tile(7, 2)
-  %t71 = AIE.tile(7, 1)
-  %t70 = AIE.tile(7, 0)
+  %t73 = aie.tile(7, 3)
+  %t72 = aie.tile(7, 2)
+  %t71 = aie.tile(7, 1)
+  %t70 = aie.tile(7, 0)
 
-  %buf_a_ping = AIE.buffer(%t73) {sym_name = "a_ping" } : memref<64xi32>
-  %buf_a_pong = AIE.buffer(%t73) {sym_name = "a_pong" } : memref<64xi32>
-  %buf_b_ping = AIE.buffer(%t73) {sym_name = "b_ping" } : memref<64xi32>
-  %buf_b_pong = AIE.buffer(%t73) {sym_name = "b_pong" } : memref<64xi32>
+  %buf_a_ping = aie.buffer(%t73) {sym_name = "a_ping" } : memref<64xi32>
+  %buf_a_pong = aie.buffer(%t73) {sym_name = "a_pong" } : memref<64xi32>
+  %buf_b_ping = aie.buffer(%t73) {sym_name = "b_ping" } : memref<64xi32>
+  %buf_b_pong = aie.buffer(%t73) {sym_name = "b_pong" } : memref<64xi32>
 
-  %lock_a_ping = AIE.lock(%t73, 3) // a_ping
-  %lock_a_pong = AIE.lock(%t73, 4) // a_pong
-  %lock_b_ping = AIE.lock(%t73, 5) // b_ping
-  %lock_b_pong = AIE.lock(%t73, 6) // b_pong
+  %lock_a_ping = aie.lock(%t73, 3) // a_ping
+  %lock_a_pong = aie.lock(%t73, 4) // a_pong
+  %lock_b_ping = aie.lock(%t73, 5) // b_ping
+  %lock_b_pong = aie.lock(%t73, 6) // b_pong
 
   // func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>, %C: i32) -> ()
 
-  %c13 = AIE.core(%t73) {
+  %c13 = aie.core(%t73) {
     %buffer_size =  arith.constant 256 : i32
 
     %lb = arith.constant 0 : index
@@ -44,8 +44,8 @@ module @test17_shim_dma_with_core{
     %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
 
-      AIE.use_lock(%lock_a_ping, "Acquire", 1) // acquire for read
-      AIE.use_lock(%lock_b_ping, "Acquire", 0) // acquire for write
+      aie.use_lock(%lock_a_ping, "Acquire", 1) // acquire for read
+      aie.use_lock(%lock_b_ping, "Acquire", 0) // acquire for write
       // copy loop
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
@@ -55,11 +55,11 @@ module @test17_shim_dma_with_core{
         scf.yield %i : i32
       }
 //      func.call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<256xi32>, memref<256xi32>,i32) -> ()
-      AIE.use_lock(%lock_a_ping, "Release", 0) // release for write
-      AIE.use_lock(%lock_b_ping, "Release", 1) // release for read
+      aie.use_lock(%lock_a_ping, "Release", 0) // release for write
+      aie.use_lock(%lock_b_ping, "Release", 1) // release for read
 
-      AIE.use_lock(%lock_a_pong, "Acquire", 1) // acquire for read
-      AIE.use_lock(%lock_b_pong, "Acquire", 0) // acquire for write
+      aie.use_lock(%lock_a_pong, "Acquire", 1) // acquire for read
+      aie.use_lock(%lock_b_pong, "Acquire", 0) // acquire for write
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
         %i = memref.load %buf_a_pong[%arg0] : memref<64xi32>
@@ -67,77 +67,77 @@ module @test17_shim_dma_with_core{
         memref.store %i2, %buf_b_pong[%arg0] : memref<64xi32>
         scf.yield %i : i32
       }
-      AIE.use_lock(%lock_a_pong, "Release", 0) // release for write
-      AIE.use_lock(%lock_b_pong, "Release", 1) // release for read
+      aie.use_lock(%lock_a_pong, "Release", 0) // release for write
+      aie.use_lock(%lock_b_pong, "Release", 1) // release for read
     }
 
-    AIE.end
+    aie.end
   }
 
   // Tile DMA
-  %m73 = AIE.mem(%t73) {
-      %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^dma0)
+  %m73 = aie.mem(%t73) {
+      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
-      %dstDma = AIE.dma_start("MM2S", 1, ^bd2, ^end)
+      %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
     ^bd0:
-      AIE.use_lock(%lock_a_ping, "Acquire", 0)
-      AIE.dma_bd(%buf_a_ping : memref<64xi32>, 0, 64)
-      AIE.use_lock(%lock_a_ping, "Release", 1)
-      AIE.next_bd ^bd1
+      aie.use_lock(%lock_a_ping, "Acquire", 0)
+      aie.dma_bd(%buf_a_ping : memref<64xi32>, 0, 64)
+      aie.use_lock(%lock_a_ping, "Release", 1)
+      aie.next_bd ^bd1
     ^bd1:
-      AIE.use_lock(%lock_a_pong, "Acquire", 0)
-      AIE.dma_bd(%buf_a_pong : memref<64xi32>, 0, 64)
-      AIE.use_lock(%lock_a_pong, "Release", 1)
-      AIE.next_bd ^bd0
+      aie.use_lock(%lock_a_pong, "Acquire", 0)
+      aie.dma_bd(%buf_a_pong : memref<64xi32>, 0, 64)
+      aie.use_lock(%lock_a_pong, "Release", 1)
+      aie.next_bd ^bd0
     ^bd2:
-      AIE.use_lock(%lock_b_ping, "Acquire", 1)
-      AIE.dma_bd(%buf_b_ping : memref<64xi32>, 0, 64)
-      AIE.use_lock(%lock_b_ping, "Release", 0)
-      AIE.next_bd ^bd3
+      aie.use_lock(%lock_b_ping, "Acquire", 1)
+      aie.dma_bd(%buf_b_ping : memref<64xi32>, 0, 64)
+      aie.use_lock(%lock_b_ping, "Release", 0)
+      aie.next_bd ^bd3
     ^bd3:
-      AIE.use_lock(%lock_b_pong, "Acquire", 1)
-      AIE.dma_bd(%buf_b_pong : memref<64xi32>, 0, 64)
-      AIE.use_lock(%lock_b_pong, "Release", 0)
-      AIE.next_bd ^bd2
+      aie.use_lock(%lock_b_pong, "Acquire", 1)
+      aie.dma_bd(%buf_b_pong : memref<64xi32>, 0, 64)
+      aie.use_lock(%lock_b_pong, "Release", 0)
+      aie.next_bd ^bd2
     ^end:
-      AIE.end
+      aie.end
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
-  %buffer_out = AIE.external_buffer {sym_name = "output_buffer" } : memref<512 x i32>
-  %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
-  %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock" }
+  %buffer_in  = aie.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
+  %buffer_out = aie.external_buffer {sym_name = "output_buffer" } : memref<512 x i32>
+  %lock1 = aie.lock(%t70, 1) {sym_name = "input_lock" }
+  %lock2 = aie.lock(%t70, 2) {sym_name = "output_lock" }
 
   // Shim DMA connection to kernel
-  AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-  AIE.flow(%t73, "DMA" : 1, %t71, "South" : 2)
-  %sw1  = AIE.switchbox(%t70) {
-    AIE.connect<"South" : 3, "North" : 3>
-    AIE.connect<"North" : 2, "South" : 2>
+  aie.flow(%t71, "South" : 3, %t73, "DMA" : 0)
+  aie.flow(%t73, "DMA" : 1, %t71, "South" : 2)
+  %sw1  = aie.switchbox(%t70) {
+    aie.connect<"South" : 3, "North" : 3>
+    aie.connect<"North" : 2, "South" : 2>
   }
-  %mux1 = AIE.shim_mux  (%t70) {
-    AIE.connect<"DMA"   : 0, "North" : 3>
-    AIE.connect<"North" : 2, "DMA" : 0>
+  %mux1 = aie.shim_mux  (%t70) {
+    aie.connect<"DMA"   : 0, "North" : 3>
+    aie.connect<"North" : 2, "DMA" : 0>
   }
 
   // Shim DMA loads large buffer to local memory
-  %dma = AIE.shim_dma(%t70) {
-      AIE.dma_start(MM2S, 0, ^bd0, ^dma)
+  %dma = aie.shim_dma(%t70) {
+      aie.dma_start(MM2S, 0, ^bd0, ^dma)
     ^dma:
-      AIE.dma_start(S2MM, 0, ^bd1, ^end)
+      aie.dma_start(S2MM, 0, ^bd1, ^end)
     ^bd0:
-      AIE.use_lock(%lock1, Acquire, 1)
-      AIE.dma_bd(%buffer_in : memref<512 x i32>, 0, 512)
-      AIE.use_lock(%lock1, Release, 0)
-      AIE.next_bd ^bd0
+      aie.use_lock(%lock1, Acquire, 1)
+      aie.dma_bd(%buffer_in : memref<512 x i32>, 0, 512)
+      aie.use_lock(%lock1, Release, 0)
+      aie.next_bd ^bd0
     ^bd1:
-      AIE.use_lock(%lock2, Acquire, 1)
-      AIE.dma_bd(%buffer_out : memref<512 x i32>, 0, 512)
-      AIE.use_lock(%lock2, Release, 0)
-      AIE.next_bd ^bd1
+      aie.use_lock(%lock2, Acquire, 1)
+      aie.dma_bd(%buffer_out : memref<512 x i32>, 0, 512)
+      aie.use_lock(%lock2, Release, 0)
+      aie.next_bd ^bd1
     ^end:
-      AIE.end
+      aie.end
   }
 
 

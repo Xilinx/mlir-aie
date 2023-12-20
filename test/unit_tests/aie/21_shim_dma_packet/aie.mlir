@@ -18,97 +18,97 @@
 // on a single DMA.
 
 module @kernel_gemm  {
-  %3 = AIE.tile(27, 0)
-  %4 = AIE.switchbox(%3)  {
-    %43 = AIE.amsel<0> (0)
-    %44 = AIE.masterset(West : 0, %43)
-    AIE.packet_rules(DMA : 0)  {
-      AIE.rule(31, 2, %43)
+  %3 = aie.tile(27, 0)
+  %4 = aie.switchbox(%3)  {
+    %43 = aie.amsel<0> (0)
+    %44 = aie.masterset(West : 0, %43)
+    aie.packet_rules(DMA : 0)  {
+      aie.rule(31, 2, %43)
     }
   }
-  %5 = AIE.lock(%3, 0) { sym_name = "input_lock_0" }
-  %6 = AIE.external_buffer {sym_name = "buf0"} : memref<32x32xi32>
+  %5 = aie.lock(%3, 0) { sym_name = "input_lock_0" }
+  %6 = aie.external_buffer {sym_name = "buf0"} : memref<32x32xi32>
 
-  %8 = AIE.shim_dma(%3)  {
-    %43 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
+  %8 = aie.shim_dma(%3)  {
+    %43 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.use_lock(%5, Acquire, 1)
-    AIE.dma_bd_packet(0, 2)
-    AIE.dma_bd(%6 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%5, Release, 0)
-    AIE.next_bd ^bb1
+    aie.use_lock(%5, Acquire, 1)
+    aie.dma_bd_packet(0, 2)
+    aie.dma_bd(%6 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%5, Release, 0)
+    aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
-    AIE.end
+    aie.end
   }
-  %9 = AIE.tile(26, 0)
-  %10 = AIE.switchbox(%9)  {
-    %43 = AIE.amsel<0> (0)
-    %44 = AIE.masterset(West : 0, %43)
-    AIE.packet_rules(DMA : 1)  {
-      AIE.rule(31, 3, %43)
+  %9 = aie.tile(26, 0)
+  %10 = aie.switchbox(%9)  {
+    %43 = aie.amsel<0> (0)
+    %44 = aie.masterset(West : 0, %43)
+    aie.packet_rules(DMA : 1)  {
+      aie.rule(31, 3, %43)
     }
-    AIE.packet_rules(East : 0)  {
-      AIE.rule(31, 2, %43)
+    aie.packet_rules(East : 0)  {
+      aie.rule(31, 2, %43)
     }
-    AIE.connect<South : 3, North : 0>
-    AIE.connect<West : 0, South : 2>
+    aie.connect<South : 3, North : 0>
+    aie.connect<West : 0, South : 2>
   }
-  %11 = AIE.lock(%9, 2) { sym_name = "input_lock_2" }
-  %12 = AIE.lock(%9, 1) { sym_name = "input_lock_1" }
-  %13 = AIE.lock(%9, 0) { sym_name = "output_lock" }
-  %14 = AIE.external_buffer {sym_name = "buf1"} : memref<32x32xi32>
-  %15 = AIE.external_buffer {sym_name = "buf2"} : memref<32x32xi32>
-  %16 = AIE.external_buffer {sym_name = "buf3"} : memref<32x32xi32>
+  %11 = aie.lock(%9, 2) { sym_name = "input_lock_2" }
+  %12 = aie.lock(%9, 1) { sym_name = "input_lock_1" }
+  %13 = aie.lock(%9, 0) { sym_name = "output_lock" }
+  %14 = aie.external_buffer {sym_name = "buf1"} : memref<32x32xi32>
+  %15 = aie.external_buffer {sym_name = "buf2"} : memref<32x32xi32>
+  %16 = aie.external_buffer {sym_name = "buf3"} : memref<32x32xi32>
 
-  %18 = AIE.shim_dma(%9)  {
-    %43 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
+  %18 = aie.shim_dma(%9)  {
+    %43 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.use_lock(%13, Acquire, 0)
-    AIE.dma_bd(%16 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%13, Release, 1)
-    AIE.next_bd ^bb1
+    aie.use_lock(%13, Acquire, 0)
+    aie.dma_bd(%16 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%13, Release, 1)
+    aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
-    %44 = AIE.dma_start(MM2S, 0, ^bb3, ^bb4)
+    %44 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
   ^bb3:  // 2 preds: ^bb2, ^bb3
-    AIE.use_lock(%11, Acquire, 1)
-    AIE.dma_bd(%15 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%11, Release, 0)
-    AIE.next_bd ^bb3
+    aie.use_lock(%11, Acquire, 1)
+    aie.dma_bd(%15 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%11, Release, 0)
+    aie.next_bd ^bb3
   ^bb4:  // pred: ^bb2
-    %45 = AIE.dma_start(MM2S, 1, ^bb5, ^bb6)
+    %45 = aie.dma_start(MM2S, 1, ^bb5, ^bb6)
   ^bb5:  // 2 preds: ^bb4, ^bb5
-    AIE.use_lock(%12, Acquire, 1)
-    AIE.dma_bd_packet(0, 3)
-    AIE.dma_bd(%14 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%12, Release, 0)
-    AIE.next_bd ^bb5
+    aie.use_lock(%12, Acquire, 1)
+    aie.dma_bd_packet(0, 3)
+    aie.dma_bd(%14 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%12, Release, 0)
+    aie.next_bd ^bb5
   ^bb6:  // pred: ^bb4
-    AIE.end
+    aie.end
   }
-  %19 = AIE.tile(25, 2) {polyaie.leaf}
-  %20 = AIE.lock(%19, 15)
-  %21 = AIE.switchbox(%19)  {
-    %43 = AIE.amsel<0> (0)
-    %44 = AIE.masterset(DMA : 1, %43)
-    AIE.packet_rules(South : 0)  {
-      AIE.rule(30, 2, %43)
+  %19 = aie.tile(25, 2) {polyaie.leaf}
+  %20 = aie.lock(%19, 15)
+  %21 = aie.switchbox(%19)  {
+    %43 = aie.amsel<0> (0)
+    %44 = aie.masterset(DMA : 1, %43)
+    aie.packet_rules(South : 0)  {
+      aie.rule(30, 2, %43)
     }
-    AIE.connect<East : 0, DMA : 0>
-    AIE.connect<DMA : 0, South : 0>
+    aie.connect<East : 0, DMA : 0>
+    aie.connect<DMA : 0, South : 0>
   }
-  %22 = AIE.lock(%19, 3)
-  %23 = AIE.lock(%19, 2)
-  %24 = AIE.lock(%19, 1)
-  %25 = AIE.lock(%19, 0)
-  %26 = AIE.buffer(%19) {sym_name = "C_out"} : memref<32x32xi32>
-  %29 = AIE.buffer(%19) {sym_name = "C"} : memref<32x32xi32>
-  %30 = AIE.buffer(%19) {sym_name = "A"} : memref<32x32xi32>
-  %31 = AIE.buffer(%19) {sym_name = "B"} : memref<32x32xi32>
-  %32 = AIE.core(%19)  {
-    AIE.use_lock(%23, Acquire, 1)
-    AIE.use_lock(%24, Acquire, 1)
-    AIE.use_lock(%25, Acquire, 0)
-    AIE.use_lock(%22, Acquire, 1)
+  %22 = aie.lock(%19, 3)
+  %23 = aie.lock(%19, 2)
+  %24 = aie.lock(%19, 1)
+  %25 = aie.lock(%19, 0)
+  %26 = aie.buffer(%19) {sym_name = "C_out"} : memref<32x32xi32>
+  %29 = aie.buffer(%19) {sym_name = "C"} : memref<32x32xi32>
+  %30 = aie.buffer(%19) {sym_name = "A"} : memref<32x32xi32>
+  %31 = aie.buffer(%19) {sym_name = "B"} : memref<32x32xi32>
+  %32 = aie.core(%19)  {
+    aie.use_lock(%23, Acquire, 1)
+    aie.use_lock(%24, Acquire, 1)
+    aie.use_lock(%25, Acquire, 0)
+    aie.use_lock(%22, Acquire, 1)
     affine.for %arg0 = 0 to 32 {
       affine.for %arg1 = 0 to 32 {
         %43 = affine.load %29[%arg0, %arg1] : memref<32x32xi32>
@@ -123,72 +123,72 @@ module @kernel_gemm  {
         }
       }
     }
-    AIE.use_lock(%22, Release, 0)
-    AIE.use_lock(%25, Release, 1)
-    AIE.use_lock(%24, Release, 0)
-    AIE.use_lock(%23, Release, 0)
-    AIE.use_lock(%20, Release, 1)
-    AIE.end
+    aie.use_lock(%22, Release, 0)
+    aie.use_lock(%25, Release, 1)
+    aie.use_lock(%24, Release, 0)
+    aie.use_lock(%23, Release, 0)
+    aie.use_lock(%20, Release, 1)
+    aie.end
   }
-  %33 = AIE.mem(%19)  {
-    %43 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
+  %33 = aie.mem(%19)  {
+    %43 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.use_lock(%22, Acquire, 0)
-    AIE.dma_bd(%31 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%22, Release, 1)
-    AIE.next_bd ^bb1
+    aie.use_lock(%22, Acquire, 0)
+    aie.dma_bd(%31 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%22, Release, 1)
+    aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
-    %44 = AIE.dma_start(S2MM, 1, ^bb3, ^bb5)
+    %44 = aie.dma_start(S2MM, 1, ^bb3, ^bb5)
   ^bb3:  // 2 preds: ^bb2, ^bb4
-    AIE.use_lock(%24, Acquire, 0)
-    AIE.dma_bd_packet(0, 2)
-    AIE.dma_bd(%29 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%24, Release, 1)
-    AIE.next_bd ^bb4
+    aie.use_lock(%24, Acquire, 0)
+    aie.dma_bd_packet(0, 2)
+    aie.dma_bd(%29 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%24, Release, 1)
+    aie.next_bd ^bb4
   ^bb4:  // pred: ^bb3
-    AIE.use_lock(%23, Acquire, 0)
-    AIE.dma_bd_packet(0, 3)
-    AIE.dma_bd(%30 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%23, Release, 1)
-    AIE.next_bd ^bb3
+    aie.use_lock(%23, Acquire, 0)
+    aie.dma_bd_packet(0, 3)
+    aie.dma_bd(%30 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%23, Release, 1)
+    aie.next_bd ^bb3
   ^bb5:  // pred: ^bb2
-    %45 = AIE.dma_start(MM2S, 0, ^bb6, ^bb7)
+    %45 = aie.dma_start(MM2S, 0, ^bb6, ^bb7)
   ^bb6:  // 2 preds: ^bb5, ^bb6
-    AIE.use_lock(%25, Acquire, 1)
-    AIE.dma_bd(%26 : memref<32x32xi32>, 0, 1024)
-    AIE.use_lock(%25, Release, 0)
-    AIE.next_bd ^bb6
+    aie.use_lock(%25, Acquire, 1)
+    aie.dma_bd(%26 : memref<32x32xi32>, 0, 1024)
+    aie.use_lock(%25, Release, 0)
+    aie.next_bd ^bb6
   ^bb7:  // pred: ^bb5
-    AIE.end
+    aie.end
   }
-  %34 = AIE.tile(25, 0)
-  %35 = AIE.switchbox(%34)  {
-    %43 = AIE.amsel<0> (0)
-    %44 = AIE.masterset(North : 0, %43)
-    AIE.packet_rules(East : 0)  {
-      AIE.rule(30, 2, %43)
+  %34 = aie.tile(25, 0)
+  %35 = aie.switchbox(%34)  {
+    %43 = aie.amsel<0> (0)
+    %44 = aie.masterset(North : 0, %43)
+    aie.packet_rules(East : 0)  {
+      aie.rule(30, 2, %43)
     }
-    AIE.connect<North : 0, East : 0>
+    aie.connect<North : 0, East : 0>
   }
-  %36 = AIE.tile(25, 1)
-  %37 = AIE.switchbox(%36)  {
-    %43 = AIE.amsel<0> (0)
-    %44 = AIE.masterset(North : 0, %43)
-    AIE.packet_rules(South : 0)  {
-      AIE.rule(30, 2, %43)
+  %36 = aie.tile(25, 1)
+  %37 = aie.switchbox(%36)  {
+    %43 = aie.amsel<0> (0)
+    %44 = aie.masterset(North : 0, %43)
+    aie.packet_rules(South : 0)  {
+      aie.rule(30, 2, %43)
     }
-    AIE.connect<North : 0, South : 0>
+    aie.connect<North : 0, South : 0>
   }
-  %38 = AIE.tile(26, 1)
-  %39 = AIE.tile(26, 2)
-  %40 = AIE.switchbox(%38)  {
-    AIE.connect<South : 0, North : 0>
+  %38 = aie.tile(26, 1)
+  %39 = aie.tile(26, 2)
+  %40 = aie.switchbox(%38)  {
+    aie.connect<South : 0, North : 0>
   }
-  %41 = AIE.switchbox(%39)  {
-    AIE.connect<South : 0, West : 0>
+  %41 = aie.switchbox(%39)  {
+    aie.connect<South : 0, West : 0>
   }
-  %42 = AIE.shim_mux(%9)  {
-    AIE.connect<DMA : 0, North : 3>
-    AIE.connect<North : 2, DMA : 0>
+  %42 = aie.shim_mux(%9)  {
+    aie.connect<DMA : 0, North : 3>
+    aie.connect<North : 2, DMA : 0>
   }
 }

@@ -29,22 +29,22 @@
 // CHECK33:  }
 
 module @codegen1 {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %a = AIE.buffer(%t33) { sym_name = "a" } : memref<4xi32>
-  %core33 = AIE.core(%t33) {
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %a = aie.buffer(%t33) { sym_name = "a" } : memref<4xi32>
+  %core33 = aie.core(%t33) {
     %0 = arith.constant 0 : index
     %377 = arith.constant 377 : i32
     memref.store %377, %a[%0] : memref<4xi32>
-    AIE.end
+    aie.end
   }
-  %t34 = AIE.tile(4, 3)
+  %t34 = aie.tile(4, 3)
 
-  %core34 = AIE.core(%t34) {
+  %core34 = aie.core(%t34) {
     %0 = arith.constant 0 : index
     %1 = memref.load %a[%0] : memref<4xi32>
-//    AIE.debug(%1 : i32)
-    AIE.end
+//    aie.debug(%1 : i32)
+    aie.end
   }
  }
 }

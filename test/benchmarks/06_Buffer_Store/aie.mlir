@@ -12,14 +12,14 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark06_buffer_store {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     %val1 = arith.constant 7 : i32
     %idx1 = arith.constant 3 : index
     memref.store %val1, %buf13_0[%idx1] : memref<256xi32>
-    AIE.end
+    aie.end
   }
 }

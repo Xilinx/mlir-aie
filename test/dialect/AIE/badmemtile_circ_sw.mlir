@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'AIE.connect' op illegal memtile stream switch connection
+// CHECK: error{{.*}} 'aie.connect' op illegal memtile stream switch connection
 
-AIE.device(xcve2802) {
-  %01 = AIE.tile(0, 1)
-  AIE.switchbox(%01) {
-    AIE.connect<North: 0, South: 1>
+aie.device(xcve2802) {
+  %01 = aie.tile(0, 1)
+  aie.switchbox(%01) {
+    aie.connect<North: 0, South: 1>
   }
 }

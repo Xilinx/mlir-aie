@@ -13,11 +13,11 @@
 
 module @benchmark09_shim_broadcast {
 
-  %t70 = AIE.tile(7, 0)
-  %t72 = AIE.tile(7, 2)
-  %t3 = AIE.tile(3,0)
-  %60 = AIE.tile(6,0)
-  AIE.lock(%t72, 1) { sym_name = "lock1" }
-  AIE.lock(%t72, 2) { sym_name = "lock2" }
+  %t70 = aie.tile(7, 0)
+  %t72 = aie.tile(7, 2)
+  %t3 = aie.tile(3,0)
+  %60 = aie.tile(6,0)
+  aie.lock(%t72, 1) { sym_name = "lock1" }
+  aie.lock(%t72, 2) { sym_name = "lock2" }
   
 }

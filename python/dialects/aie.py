@@ -23,6 +23,7 @@ from ..ir import (
     IntegerType,
     _i32ArrayAttr,
 )
+from ._ods_common import _cext
 
 # Comes from _aie
 register_dialect(get_dialect_registry())

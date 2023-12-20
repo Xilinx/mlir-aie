@@ -14,12 +14,12 @@
 // XFAIL: *
 
 module {
-  AIE.device(xcvc1902) {
-    %30 = AIE.tile(3, 0) // Shim-NOC
-    AIE.shim_mux(%30) {
+  aie.device(xcvc1902) {
+    %30 = aie.tile(3, 0) // Shim-NOC
+    aie.shim_mux(%30) {
       // Can't connect DMA and NOC in same tile.
-      AIE.connect<DMA: 0, North: 3>
-      AIE.connect<NOC: 1, North: 6>
+      aie.connect<DMA: 0, North: 3>
+      aie.connect<NOC: 1, North: 6>
     }
   }
 }

@@ -23,18 +23,18 @@
 // correctly.
 
 module attributes {llvm.target_triple = "x86_64-unknown-linux-gnu"}  {
-  %tile32 = AIE.tile(1, 3)
+  %tile32 = aie.tile(1, 3)
 
-  %buf_a = AIE.buffer(%tile32) {sym_name = "a"} : memref<16xi32>
-  %buf_b = AIE.buffer(%tile32) {sym_name = "b"} : memref<i32>
+  %buf_a = aie.buffer(%tile32) {sym_name = "a"} : memref<16xi32>
+  %buf_b = aie.buffer(%tile32) {sym_name = "b"} : memref<i32>
 
-  %core32 = AIE.core(%tile32)  {
+  %core32 = aie.core(%tile32)  {
     %val0 = affine.load %buf_b[] : memref<i32>
     affine.for %arg0 = 0 to 16 {
       %val1 = affine.load %buf_a[%arg0] : memref<16xi32>
       %val2 = arith.addi %val0, %val1 : i32
       affine.store %val2, %buf_a[%arg0] : memref<16xi32>
     }
-    AIE.end
+    aie.end
   }
 }

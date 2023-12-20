@@ -262,7 +262,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
           aie.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock1, Acquire, 1)
-          aie.dma_bd(<%buf : memref<512 x i16>, 0, 512>, A)
+          aie.dma_bd(%buf : memref<512 x i16>, 0, 512)
           aie.use_lock(%lock1, Release, 0)
           aie.next_bd ^bd0
         ^end:

@@ -15,18 +15,18 @@
 // CHECK: }
 
 module @test {
- AIE.device(xcvc1902) {
-  %tile13 = AIE.tile(1, 3)
-  %lock13_3 = AIE.lock(%tile13, 0)
+ aie.device(xcvc1902) {
+  %tile13 = aie.tile(1, 3)
+  %lock13_3 = aie.lock(%tile13, 0)
 
   func.func private @kernel(%lock : index) {
-    AIE.use_lock(%lock, "Acquire", 0)
+    aie.use_lock(%lock, "Acquire", 0)
     return
   }
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     func.call @kernel(%lock13_3) : (index) -> ()
-    AIE.end
+    aie.end
   }
  }
 }

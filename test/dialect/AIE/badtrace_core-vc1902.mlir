@@ -9,26 +9,26 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt -split-input-file %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'AIE.connect' op illegal Trace destination
+// CHECK: error{{.*}} 'aie.connect' op illegal Trace destination
 
-AIE.device(xcvc1902) {
-  %01 = AIE.tile(0, 3)
-  AIE.switchbox(%01) {
-    AIE.connect<Trace: 0, East: 1>
+aie.device(xcvc1902) {
+  %01 = aie.tile(0, 3)
+  aie.switchbox(%01) {
+    aie.connect<Trace: 0, East: 1>
   }
 }
 
 // -----
 
-// CHECK: error{{.*}} 'AIE.amsel' op illegal Trace destination
+// CHECK: error{{.*}} 'aie.amsel' op illegal Trace destination
 
-AIE.device(xcvc1902) {
-  %02 = AIE.tile(0, 3)
-  AIE.switchbox(%02) {
-    %94 = AIE.amsel<0> (0)
-    %95 = AIE.masterset(North : 0, %94)
-    AIE.packet_rules(Trace : 1) {
-      AIE.rule(31, 1, %94)
+aie.device(xcvc1902) {
+  %02 = aie.tile(0, 3)
+  aie.switchbox(%02) {
+    %94 = aie.amsel<0> (0)
+    %95 = aie.masterset(North : 0, %94)
+    aie.packet_rules(Trace : 1) {
+      aie.rule(31, 1, %94)
     }
   }
 }

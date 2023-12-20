@@ -11,17 +11,17 @@
 // RUN: aie-opt --aie-create-cores %s | FileCheck %s
 
 // CHECK-LABEL: module @test_core0 {
-// CHECK:         %[[VAL_0:.*]] = AIE.tile(1, 1)
-// CHECK:         %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<256xi32>
-// CHECK:         %[[VAL_2:.*]] = AIE.mem(%[[VAL_0]]) {
-// CHECK:           AIE.end
+// CHECK:         %[[VAL_0:.*]] = aie.tile(1, 1)
+// CHECK:         %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:         %[[VAL_2:.*]] = aie.mem(%[[VAL_0]]) {
+// CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_3:.*]] = memref.alloc() : memref<256xi32>
 // CHECK:         func.func @host_task() {
 // CHECK:           return
 // CHECK:         }
-// CHECK:         %[[VAL_4:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:           AIE.end
+// CHECK:         %[[VAL_4:.*]] = aie.core(%[[VAL_0]]) {
+// CHECK:           aie.end
 // CHECK:         }
 // CHECK:         func.call @host_task() : () -> ()
 // CHECK:       }
@@ -35,7 +35,7 @@
 //   - clone function body into core's region; map the function arguments to the
 //     corresponding newly created buffer ops
 module @test_core0 {
- AIE.device(xcvc1902) {
+ aie.device(xcvc1902) {
   %buf = memref.alloc() : memref<256xi32>
 
   func.func @aie_task(%arg0: memref<256xi32>) -> () {

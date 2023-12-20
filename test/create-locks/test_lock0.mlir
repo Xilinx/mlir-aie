@@ -10,17 +10,17 @@
 
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
-// CHECK-LABEL:   AIE.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = AIE.tile(3, 3)
-// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 3)
-// CHECK:           %[[VAL_2:.*]] = AIE.lock(%[[VAL_1]], 0)
-// CHECK:           %[[VAL_5:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:             AIE.use_lock(%[[VAL_2]], Acquire, 0)
-// CHECK:             AIE.use_lock(%[[VAL_2]], Release, 1)
+// CHECK-LABEL:   aie.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(3, 3)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 3)
+// CHECK:           %[[VAL_2:.*]] = aie.lock(%[[VAL_1]], 0)
+// CHECK:           %[[VAL_5:.*]] = aie.core(%[[VAL_0]]) {
+// CHECK:             aie.use_lock(%[[VAL_2]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[VAL_2]], Release, 1)
 // CHECK:           }
-// CHECK:           %[[VAL_6:.*]] = AIE.core(%[[VAL_1]]) {
-// CHECK:             AIE.use_lock(%[[VAL_2]], Acquire, 1)
-// CHECK:             AIE.use_lock(%[[VAL_2]], Release, 0)
+// CHECK:           %[[VAL_6:.*]] = aie.core(%[[VAL_1]]) {
+// CHECK:             aie.use_lock(%[[VAL_2]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[VAL_2]], Release, 0)
 // CHECK:           }
 // CHECK:         }
 
@@ -28,30 +28,30 @@
 // Lower UseTokenOp to UseLockOp
 // Tile-Tile
 module @test_lock0 {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %t23 = AIE.tile(2, 3)
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %t23 = aie.tile(2, 3)
 
-  AIEX.token(0) {sym_name = "token0"}
+  aiex.token(0) {sym_name = "token0"}
 
-  %m33 = AIE.mem(%t33) {
-      AIE.end
+  %m33 = aie.mem(%t33) {
+      aie.end
   }
 
-  %m23 = AIE.mem(%t23) {
-      AIE.end
+  %m23 = aie.mem(%t23) {
+      aie.end
   }
 
-  %c33 = AIE.core(%t33) {
-    AIEX.useToken @token0(Acquire, 0)
-    AIEX.useToken @token0(Release, 1)
-    AIE.end
+  %c33 = aie.core(%t33) {
+    aiex.useToken @token0(Acquire, 0)
+    aiex.useToken @token0(Release, 1)
+    aie.end
   }
 
-  %c23 = AIE.core(%t23) {
-    AIEX.useToken @token0(Acquire, 1)
-    AIEX.useToken @token0(Release, 2)
-    AIE.end
+  %c23 = aie.core(%t23) {
+    aiex.useToken @token0(Acquire, 1)
+    aiex.useToken @token0(Release, 2)
+    aie.end
   }
  }
 }
