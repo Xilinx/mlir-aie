@@ -9,10 +9,8 @@
 aiecc - AIE compiler driver for MLIR tools
 """
 
-import itertools
 import os
 import stat
-import platform
 import sys
 import time
 import subprocess
@@ -49,7 +47,7 @@ aie_opt_passes = [
 ]
 
 
-class flow_runner:
+class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
         self.opts = opts
@@ -1014,7 +1012,7 @@ def run(mlir_module, args=None):
     if opts.verbose:
         print("created temporary directory", tmpdirname)
 
-    runner = flow_runner(mlir_module, opts, tmpdirname)
+    runner = FlowRunner(mlir_module, opts, tmpdirname)
     asyncio.run(runner.run_flow())
 
     if opts.profiling:
