@@ -79,10 +79,6 @@ using SwitchboxNode = struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
   int id;
 };
 
-// warning: 'xilinx::AIE::ChannelEdge::src' will be initialized after
-// SwitchboxNode &src; [-Wreorder]
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wreorder"
 using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
   using Channel::Channel;
 
@@ -98,7 +94,6 @@ using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
 
   SwitchboxNode &src;
 };
-#pragma GCC diagnostic pop
 
 class SwitchboxGraph : public SwitchboxGraphBase {
 public:

@@ -163,6 +163,7 @@ cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
+add_flag_if_supported("-Werror=switch-enum" WERROR_SWITCH_ENUM)
 
 # What happens when you have a non-void function with no return?
 # No `ret` instruction is generated and so execution of that function just
