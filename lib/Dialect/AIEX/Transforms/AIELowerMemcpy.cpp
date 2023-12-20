@@ -62,8 +62,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     rewriter.setInsertionPointToStart(bdBlock);
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 acquireTknVal, LockAction::Acquire);
-    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len,
-                             DMABDBuffer::A); // A type for now
+    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len);
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 releaseTknVal, LockAction::Release);
     rewriter.create<NextBDOp>(rewriter.getUnknownLoc(), &endBlock);

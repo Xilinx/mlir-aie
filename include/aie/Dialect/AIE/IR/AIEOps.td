@@ -808,31 +808,27 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
-        DefaultValuedAttr<DMABDBuffer, "xilinx::AIE::DMABDBuffer::A">:$AB,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB (`,` $dimensions^ )? `)` attr-dict
+    `(` $buffer `:` type($buffer) `,` $offset `,` $len (`,` $dimensions^ )? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
     int getOffsetValue() { return getOffset(); }
     int getLenValue() { return getLen(); }
-    bool isA() { return (getAB() == DMABDBuffer::A); }
-    bool isB() { return (getAB() == DMABDBuffer::B); }
   }];
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "DMABDBuffer":$AB), [{
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
-      odsState.addAttribute(getABAttrName(odsState.name), DMABDBufferAttr::get($_builder.getContext(), AB));
     }]>
   ];
 }
