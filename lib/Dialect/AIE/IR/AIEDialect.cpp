@@ -698,6 +698,14 @@ LogicalResult ObjectFifoAcquireOp::verify() {
           "on non-consumer tile");
   }
 
+  auto objFifoElem =
+      getObjectFifo().getElemType().cast<AIEObjectFifoType>().getElementType();
+  auto objFifoSubviewElem =
+      getResult().getType().cast<AIEObjectFifoSubviewType>().getElementType();
+  if (objFifoElem != objFifoSubviewElem)
+    return emitOpError(
+        "ObjectFifo element and ObjectFifoSubview element must match.\n");
+
   return success();
 }
 
