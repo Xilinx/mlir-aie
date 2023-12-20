@@ -17,8 +17,10 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+// clang-format off
 #include <aie_api/aie.hpp>
 #include "lut_inv_8b.h"
+// clang-format on
 
 const int32_t SRS_SHIFT = 12;
 
