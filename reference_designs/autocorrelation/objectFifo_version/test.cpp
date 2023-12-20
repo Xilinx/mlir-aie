@@ -8,7 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "memory_allocator.h"
 #include "test_library.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -37,12 +39,13 @@ int main(int argc, char *argv[]) {
 
   int errors = 0;
 
-  mlir_aie_init_mems(_xaie, 2);
-  int *input = mlir_aie_mem_alloc(_xaie, 0, 1024);
-  int *output = mlir_aie_mem_alloc(_xaie, 1, 1024);
+#define DMA_COUNT 1024
+  ext_mem_model_t buf0, buf1;
+  int *input = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
+  int *output = mlir_aie_mem_alloc(_xaie, buf1, DMA_COUNT);
 
-  mlir_aie_external_set_addr_input((u64)input);
-  mlir_aie_external_set_addr_output((u64)output);
+  mlir_aie_external_set_addr_input(_xaie, (u64)input);
+  mlir_aie_external_set_addr_output(_xaie, (u64)output);
 
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_start_cores(_xaie);
@@ -51,8 +54,8 @@ int main(int argc, char *argv[]) {
     input[i] = rand() & 0xFF;
   }
 
-  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf1); // only used in libaiev2
 
   mlir_aie_release_of_in_lock_0(_xaie, 1, 10000);
 
@@ -61,8 +64,8 @@ int main(int argc, char *argv[]) {
     printf("ERROR: timeout hit!\n");
   }
 
-  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf1); // only used in libaiev2
 
   for (int i = 0; i < 64; i++) {
     printf("output[%d] = %d\n", i, output[i]);
