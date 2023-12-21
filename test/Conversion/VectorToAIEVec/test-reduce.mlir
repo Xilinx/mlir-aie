@@ -273,7 +273,7 @@ func.func @reduce_min_f32(%arg0: vector<16xf32>) -> f32 {
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MIN3]], %[[MIN3]], %[[C4]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
   // CHECK: %[[MIN4:.*]] = aievec.min %[[MIN3]], %[[SHIFT4]] : vector<16xf32>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MIN4]], %[[C0]] : vector<16xf32>, i32, f32 
-  %0 = vector.reduction <minf>, %arg0 : vector<16xf32> into f32
+  %0 = vector.reduction <minimumf>, %arg0 : vector<16xf32> into f32
   // CHECK: return %[[EXTELEM]] : f32
   return %0 : f32
 }
@@ -295,7 +295,7 @@ func.func @reduce_max_f32(%arg0: vector<16xf32>) -> f32 {
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MAX3]], %[[MAX3]], %[[C4]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
   // CHECK: %[[MAX4:.*]] = aievec.max %[[MAX3]], %[[SHIFT4]] : vector<16xf32>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX4]], %[[C0]] : vector<16xf32>, i32, f32
-  %0 = vector.reduction <maxf>, %arg0 : vector<16xf32> into f32
+  %0 = vector.reduction <maximumf>, %arg0 : vector<16xf32> into f32
   // CHECK: return %[[EXTELEM]] : f32
   return %0 : f32
 }
@@ -319,7 +319,7 @@ func.func @reduce_min_bf16(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MIN4]], %[[MIN4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MIN5:.*]] = aievec.min %[[MIN4]], %[[SHIFT5]] : vector<32xbf16>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
-  %0 = vector.reduction <minf>, %arg0 : vector<32xbf16> into bf16
+  %0 = vector.reduction <minimumf>, %arg0 : vector<32xbf16> into bf16
   // CHECK: return %[[EXTELEM]] : bf16
   return %0 : bf16
 }
@@ -343,7 +343,7 @@ func.func @reduce_max_bf16(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MAX4]], %[[MAX4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MAX5:.*]] = aievec.max %[[MAX4]], %[[SHIFT5]] : vector<32xbf16>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
-  %0 = vector.reduction <maxf>, %arg0 : vector<32xbf16> into bf16
+  %0 = vector.reduction <maximumf>, %arg0 : vector<32xbf16> into bf16
   // CHECK: return %[[EXTELEM]] : bf16
   return %0 : bf16
 }

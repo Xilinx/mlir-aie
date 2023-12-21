@@ -17,7 +17,7 @@ module {
       %6 = arith.maximumf %arg3, %5 : vector<32xbf16>
       affine.yield %6 : vector<32xbf16>
     }
-    %1 = vector.reduction <maxf>, %0 : vector<32xbf16> into bf16
+    %1 = vector.reduction <maximumf>, %0 : vector<32xbf16> into bf16
     affine.for %arg2 = 0 to 1024 {
       %5 = affine.load %arg0[%arg2] : memref<1024xbf16>
       %6 = arith.subf %5, %1 : bf16
