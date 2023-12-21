@@ -34,6 +34,6 @@ set(LIBS
   MLIRAIEVecTransformOps
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
-  MLIRTestTransformDialect
+  MLIRTransformDialect
   )
 target_link_libraries(aie-opt PUBLIC ${LIBS})

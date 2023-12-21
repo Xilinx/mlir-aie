@@ -15,7 +15,7 @@ module {
       %4 = arith.minimumf %arg3, %3 : vector<16xf32>
       affine.yield %4 : vector<16xf32>
     }
-    %1 = vector.reduction <minf>, %0 : vector<16xf32> into f32
+    %1 = vector.reduction <minimumf>, %0 : vector<16xf32> into f32
     affine.store %1, %arg1[] : memref<f32>
     return
   }

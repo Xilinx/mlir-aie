@@ -1401,7 +1401,7 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MINSI &&
                                      kind != vector::CombiningKind::MINUI &&
-                                     kind != vector::CombiningKind::MINF)
+                                     kind != vector::CombiningKind::MINIMUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
@@ -1427,7 +1427,7 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MAXSI &&
                                      kind != vector::CombiningKind::MAXUI &&
-                                     kind != vector::CombiningKind::MAXF)
+                                     kind != vector::CombiningKind::MAXIMUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
@@ -3194,10 +3194,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
         if (auto kind = op.getKind(); kind != vector::CombiningKind::ADD &&
                                       kind != vector::CombiningKind::MINSI &&
                                       kind != vector::CombiningKind::MINUI &&
-                                      kind != vector::CombiningKind::MINF &&
+                                      kind != vector::CombiningKind::MINIMUMF &&
                                       kind != vector::CombiningKind::MAXSI &&
                                       kind != vector::CombiningKind::MAXUI &&
-                                      kind != vector::CombiningKind::MAXF)
+                                      kind != vector::CombiningKind::MAXIMUMF)
           return true;
 
         auto vType = dyn_cast<VectorType>(op.getVector().getType());
