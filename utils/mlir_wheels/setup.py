@@ -112,7 +112,6 @@ class CMakeBuild(build_ext):
             "-DMLIR_ENABLE_BINDINGS_PYTHON=ON",
             "-DMLIR_ENABLE_EXECUTION_ENGINE=ON",
             "-DMLIR_ENABLE_SPIRV_CPU_RUNNER=ON",
-            "-DMLIR_INCLUDE_TESTS=ON",
             # get rid of that annoying af git on the end of .17git
             "-DLLVM_VERSION_SUFFIX=",
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
