@@ -20,6 +20,9 @@ import glob
 import random
 import json
 import tempfile
+from textwrap import dedent
+
+import aiofiles
 
 from aie.passmanager import PassManager
 from aie.ir import Module, Context, Location
@@ -31,7 +34,7 @@ import aie.compiler.aiecc.configure
 import rich.progress as progress
 import re
 
-aie_opt_passes = [
+aie_opt_lower_to_llvm_passes = [
     "--canonicalize",
     "--cse",
     "--convert-vector-to-llvm",
@@ -45,6 +48,17 @@ aie_opt_passes = [
     "--canonicalize",
     "--cse",
 ]
+
+
+async def read_file_async(file_path: str) -> str:
+    async with aiofiles.open(file_path, mode="r") as f:
+        contents = await f.read()
+    return contents
+
+
+async def write_file_async(file_content: str, file_path: str):
+    async with aiofiles.open(file_path, mode="w") as f:
+        await f.write(file_content)
 
 
 class FlowRunner:
@@ -84,7 +98,7 @@ class FlowRunner:
 
         if ret != 0:
             self.progress_bar._tasks[task].description = "[red] Error"
-            print("Error encountered while running: " + commandstr)
+            print("Error encountered while running: " + commandstr, file=sys.stderr)
             sys.exit(1)
 
     def do_run(self, command):
@@ -131,35 +145,61 @@ class FlowRunner:
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
     async def chesshack(self, task, llvmir):
         llvmir_chesshack = llvmir + "chesshack.ll"
-
-        # fmt: off
-        await self.do_call(task, ["cp", llvmir, llvmir_chesshack])
-        await self.do_call(task, ["sed", "-i", "s/noundef//", llvmir_chesshack])
-        await self.do_call(task, ["sed", "-i", "s/noalias_sidechannel[^,],//", llvmir_chesshack])
         llvmir_chesslinked = llvmir + "chesslinked.ll"
-        # Note that chess-clang comes from a time before opaque pointers
-        # await self.do_call(task, ['clang', "-Xclang -no-opaque-pointers", llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-emit-llvm', '-o', llvmir_chesslinked])
+        if not self.opts.execute:
+            return llvmir_chesslinked
+        llvmir = await read_file_async(llvmir)
+        llvmir = llvmir.replace("noundef", "")
+        llvmir = re.sub(r"noalias_sidechannel[^,],", "", llvmir)
+
+        await write_file_async(llvmir, llvmir_chesshack)
+        assert os.path.exists(llvmir_chesshack)
+        # fmt: off
         await self.do_call(task, ["llvm-link", llvmir_chesshack, self.chess_intrinsic_wrapper, "-S", "-o", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "s/noundef//", llvmir_chesslinked])
-        # Formal function argument names not used in older LLVM
-        await self.do_call(task, ["sed", "-i", "-E", "/define .*@/ s/%[0-9]*//g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/mustprogress//g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/poison/undef/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/nocallback//g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(none\)/readnone/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(read\)/readonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(write\)/writeonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: readwrite\)/argmemonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: read\)/argmemonly readonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: write\)/argmemonly writeonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(inaccessiblemem: readwrite\)/inaccessiblememonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(inaccessiblemem: read\)/inaccessiblememonly readonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(inaccessiblemem: write\)/inaccessiblememonly writeonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: readwrite, inaccessiblemem: readwrite\)/inaccessiblemem_or_argmemonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: read, inaccessiblemem: read\)/inaccessiblemem_or_argmemonly readonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", "s/memory\(argmem: write, inaccessiblemem: write\)/inaccessiblemem_or_argmemonly writeonly/g", llvmir_chesslinked])
-        await self.do_call(task, ["sed", "-i", "-E", 's/target triple = "aie.*"/target triple = "pdarch-unknown-unknown-elf"/g', llvmir_chesslinked])
         # fmt: on
+
+        llvmir_chesslinked_ = await read_file_async(llvmir_chesslinked)
+        llvmir_chesslinked_ = llvmir_chesslinked_.replace("noundef", "")
+        # Formal function argument names not used in older LLVM
+        llvmir_chesslinked_ = re.sub(
+            r"^define .*@.*",
+            lambda m: re.sub(r"%[0-9]*", "", m.group(0)),
+            llvmir_chesslinked_,
+            flags=re.MULTILINE,
+        )
+        llvmir_chesslinked_ = (
+            llvmir_chesslinked_.replace("mustprogress", "")
+            .replace("poison", "undef")
+            .replace("nocallback", "")
+            .replace("memory(none)", "readnone")
+            .replace("memory(read)", "readonly")
+            .replace("memory(write)", "writeonly")
+            .replace("memory(argmem: readwrite)", "argmemonly")
+            .replace("memory(argmem: read)", "argmemonly readonly")
+            .replace("memory(argmem: write)", "argmemonly writeonly")
+            .replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly")
+            .replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly")
+            .replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly")
+            .replace(
+                "memory(argmem: readwrite, inaccessiblemem: readwrite)",
+                "inaccessiblemem_or_argmemonly",
+            )
+            .replace(
+                "memory(argmem: read, inaccessiblemem: read)",
+                "inaccessiblemem_or_argmemonly readonly",
+            )
+            .replace(
+                "memory(argmem: write, inaccessiblemem: write)",
+                "inaccessiblemem_or_argmemonly writeonly",
+            )
+        )
+        llvmir_chesslinked_ = re.sub(
+            r'target triple = "aie.*"',
+            'target triple = "pdarch-unknown-unknown-elf"',
+            llvmir_chesslinked_,
+        )
+
+        await write_file_async(llvmir_chesslinked_, llvmir_chesslinked)
 
         return llvmir_chesslinked
 
@@ -177,10 +217,25 @@ class FlowRunner:
 
             # fmt: off
             await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+f", "+P", "4", chess_intrinsic_wrapper_cpp, "-o", self.chess_intrinsic_wrapper])
-            await self.do_call(task, ["sed", "-i", "s/^target.*//", self.chess_intrinsic_wrapper])
-            await self.do_call(task, ["sed", "-i", "s/noalias_sidechannel[^,]*,//", self.chess_intrinsic_wrapper])
-            await self.do_call(task, ["sed", "-i", "s/nocallback[^,]*,//", self.chess_intrinsic_wrapper])
             # fmt: on
+            # this has to be here and not higher because there are tests that check for the command string for the above do_call
+            if not self.opts.execute:
+                return
+            chess_intrinsic_wrapper = await read_file_async(
+                self.chess_intrinsic_wrapper
+            )
+            chess_intrinsic_wrapper = re.sub(
+                r"^target.*", "", chess_intrinsic_wrapper, flags=re.MULTILINE
+            )
+            chess_intrinsic_wrapper = re.sub(
+                r"noalias_sidechannel[^,]*,", "", chess_intrinsic_wrapper
+            )
+            chess_intrinsic_wrapper = re.sub(
+                r"nocallback[^,]*,", "", chess_intrinsic_wrapper
+            )
+            await write_file_async(
+                chess_intrinsic_wrapper, self.chess_intrinsic_wrapper
+            )
 
     async def process_core(self, core):
         peano_path = os.path.join(opts.peano_install_dir, "bin")
@@ -214,9 +269,6 @@ class FlowRunner:
                 "libc.a",
             )
             me_basic_o = os.path.join(runtime_lib_path, "me_basic.o")
-            libc = os.path.join(runtime_lib_path, "libc.a")
-            libm = os.path.join(runtime_lib_path, "libm.a")
-            libsoftfloat = os.path.join(runtime_lib_path, "libsoftfloat.a")
             if os.path.isfile(llvmlibc_build_lib_path):
                 libc = llvmlibc_build_lib_path
             else:
@@ -239,7 +291,7 @@ class FlowRunner:
                 file_core = self.tmpcorefile(core, "mlir")
                 await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", self.file_with_addresses, "-o", file_core])
                 file_opt_core = self.tmpcorefile(core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", *aie_opt_passes, file_core, "-o", file_opt_core])
+                await self.do_call(task, ["aie-opt", *aie_opt_lower_to_llvm_passes, file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = self.tmpcorefile(core, "bcf")
                 await self.do_call(task, ["aie-translate", self.file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -422,27 +474,24 @@ class FlowRunner:
             f.write(json.dumps(design, indent=2))
 
     async def emit_design_bif(self, path, output_filename):
-        s = """
-all:
-{
-  id_code = 0x14ca8093
-  extended_id_code = 0x01
-  image
-  {
-    name=aie_image, id=0x1c000000
-    { type=cdo
-"""
-        s = s + f"     file={path}/aie_cdo_error_handling.bin\n"
-        s = s + f"     file={path}/aie_cdo_elfs.bin\n"
-        s = s + f"     file={path}/aie_cdo_init.bin\n"
-        s = s + f"     file={path}/aie_cdo_enable.bin\n"
-        s = (
-            s
-            + """
-    }
-  }
-}
-"""
+        s = dedent(
+            f"""\
+            all:
+            {{
+              id_code = 0x14ca8093
+              extended_id_code = 0x01
+              image
+              {{
+                name=aie_image, id=0x1c000000
+                {{ type=cdo
+                   file={path}/aie_cdo_error_handling.bin
+                   file={path}/aie_cdo_elfs.bin
+                   file={path}/aie_cdo_init.bin
+                   file={path}/aie_cdo_enable.bin
+                }}
+              }}
+            }}
+            """
         )
         print(output_filename)
         with open(output_filename, "w") as f:
@@ -486,10 +535,8 @@ all:
             await asyncio.gather(p0, p1)
             await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", os.path.join(self.tmpdirname, "cdo_main.out"), os.path.join(self.tmpdirname, "gen_cdo.o"), os.path.join(self.tmpdirname, "cdo_main.o")])
 
-            try:
-                ld_path = os.environ["LD_LIBRARY_PATH"] + ":"
-            except:
-                ld_path = ""
+            if ld_path := os.getenv("LD_LIBRARY_PATH", ""):
+                ld_path += ":"
             os.environ["LD_LIBRARY_PATH"] = ld_path + xaiengine_lib_path + ":" + os.path.join(opts.aietools_path, "lib", "lnx64.o")
 
             await self.do_call(task, [os.path.join(self.tmpdirname, "cdo_main.out"), "--work-dir-path", self.tmpdirname + "/"])
@@ -599,12 +646,16 @@ all:
                 runtime_testlib_path, "libmemory_allocator_ion.a"
             )
 
-            cmd += [memory_allocator]
-            cmd += ["-I%s" % xaiengine_include_path]
-            cmd += ["-L%s" % xaiengine_lib_path]
-            cmd += ["-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o")]
-            cmd += ["-I%s" % self.tmpdirname]
-            cmd += ["-fuse-ld=lld", "-lm", "-lxaiengine"]
+            cmd += [
+                memory_allocator,
+                "-I%s" % xaiengine_include_path,
+                "-L%s" % xaiengine_lib_path,
+                "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
+                "-I%s" % self.tmpdirname,
+                "-fuse-ld=lld",
+                "-lm",
+                "-lxaiengine",
+            ]
 
             cmd += self.aie_target_defines()
 
@@ -782,17 +833,19 @@ all:
         )
 
         sim_script = os.path.join(self.tmpdirname, "aiesim.sh")
-        sim_script_template = """
-#!/bin/sh
-prj_name=$(basename $(dirname $(realpath $0)))
-root=$(dirname $(dirname $(realpath $0)))
-vcd_filename=foo
-if [ -n "$1" ]; then
-  vcd_filename=$1
-fi
-cd $root
-aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
-"""
+        sim_script_template = dedent(
+            """\
+            #!/bin/sh
+            prj_name=$(basename $(dirname $(realpath $0)))
+            root=$(dirname $(dirname $(realpath $0)))
+            vcd_filename=foo
+            if [ -n "$1" ]; then
+              vcd_filename=$1
+            fi
+            cd $root
+            aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
+            """
+        )
         with open(sim_script, "wt") as sim_script_file:
             sim_script_file.write(sim_script_template)
         stats = os.stat(sim_script)
@@ -864,7 +917,10 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             )
             self.aie_target = t.stdout.strip()
             if not re.fullmatch("AIE.?", self.aie_target):
-                print("Unexpected target " + self.aie_target + ". Exiting...")
+                print(
+                    "Unexpected target " + self.aie_target + ". Exiting...",
+                    file=sys.stderr,
+                )
                 exit(-3)
             self.aie_peano_target = self.aie_target.lower() + "-none-elf"
 
@@ -901,7 +957,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             # fmt: off
             if opts.unified:
                 self.file_opt_with_addresses = os.path.join(self.tmpdirname, "input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_passes, self.file_with_addresses, "-o", self.file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, self.file_with_addresses, "-o", self.file_opt_with_addresses])
 
                 self.file_llvmir = os.path.join(self.tmpdirname, "input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", self.file_opt_with_addresses, "-o", self.file_llvmir])
@@ -1004,6 +1060,7 @@ def run(mlir_module, args=None):
         tmpdirname = os.path.basename(opts.filename) + ".prj"
     else:
         tmpdirname = tempfile.mkdtemp()
+    tmpdirname = os.path.abspath(tmpdirname)
 
     try:
         os.mkdir(tmpdirname)
