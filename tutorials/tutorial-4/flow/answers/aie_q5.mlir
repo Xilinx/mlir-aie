@@ -56,7 +56,7 @@ module @tutorial_4 {
         AIE.dma_start("MM2S", 0, ^bd0, ^end)
         ^bd0:
             AIE.use_lock(%lock14_6, Acquire, 1)
-            AIE.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%buf14 : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock14_6, Release, 0)
             AIE.next_bd ^bd0
         ^end:
@@ -97,7 +97,7 @@ module @tutorial_4 {
             // 0   - offset of transfer
             // 256 - length of transfer
             // 0   - A/B mode enable (default is disabled)
-            AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%buf34 : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock34_7, Release, 1)
             AIE.next_bd ^bd0
         ^end:

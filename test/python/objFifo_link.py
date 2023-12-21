@@ -7,6 +7,7 @@ import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
     ObjectFifoType,
+    bd_dim_layout,
     objectfifo,
     objectfifo_link,
     tile,
@@ -26,7 +27,7 @@ from util import construct_and_print_module
 # CHECK:      AIE.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !AIE.objectfifo<memref<256xi32>>
 # CHECK:      AIE.objectfifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : !AIE.objectfifo<memref<64xi32>>
 # CHECK:      AIE.objectfifo.link [@of0] -> [@of1]()
-# CHECK:      AIE.objectfifo @of2(%tile_1_2 toStream [<1, 2>], {%tile_2_2 fromStream [<1, 2>], %tile_2_3 fromStream [<1, 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectfifo<memref<256xui8>>
+# CHECK:      AIE.objectfifo @of2(%tile_1_2 toStream [<wrap = 1, step = 2>], {%tile_2_2 fromStream [<wrap = 1, step = 2>], %tile_2_3 fromStream [<wrap = 1, step = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !AIE.objectfifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
 @construct_and_print_module
@@ -65,6 +66,6 @@ def link_example():
             [T0, T1],
             [2, 2, 7],
             TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
-            [(1, 2)],
-            [[(1, 2)], [(1, 2)]],
+            [bd_dim_layout(wrap=1, step=2)],
+            [[bd_dim_layout(wrap=1, step=2)], [bd_dim_layout(wrap=1, step=2)]],
         )

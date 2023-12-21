@@ -97,13 +97,13 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasA = false;
     bool hasB = false;
     int ndims = 0;
-    ArrayRef<DimTupleAttr> dims;
+    ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block.template getOps<DMABDOp>()) {
       foundBd = true;
       ShapedType bufferType =
           op.getBuffer().getType().template cast<::mlir::MemRefType>();
-      if (op.isA() && !targetModel.isShimNOCTile(col, row)) {
+      if (!targetModel.isShimNOCTile(col, row)) {
         BaseAddrA = op.getBufferOp().address();
         int bufferCol = op.getBufferOp().getTileOp().colIndex();
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
@@ -119,17 +119,11 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         }
       }
 
-      if (op.isA() || targetModel.isShimNOCTile(col, row)) {
-        lenA = op.getLenValue();
-        bytesA = bufferType.getElementTypeBitWidth() / 8;
-        offsetA = op.getOffsetValue() * bytesA;
-        hasA = true;
-      }
-      if (op.isB()) {
-        lenB = op.getLenValue();
-        bytesB = bufferType.getElementTypeBitWidth() / 8;
-        hasB = true;
-      }
+      lenA = op.getLenValue();
+      bytesA = bufferType.getElementTypeBitWidth() / 8;
+      offsetA = op.getOffsetValue() * bytesA;
+      hasA = true;
+
       if (op.getDimensions()) {
         dims = *op.getDimensions();
         ndims = dims.size();

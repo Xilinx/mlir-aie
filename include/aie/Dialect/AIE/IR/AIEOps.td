@@ -800,7 +800,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     elements:
 
     ```
-    AIE.dma_bd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+    AIE.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -808,33 +808,28 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
-        // TODO(max): this should be an enum
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB, // 0: A, 1: B
-        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
+        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB (`,` $dimensions^ )? `)` attr-dict
+    `(` $buffer `:` type($buffer) `,` $offset `,` $len (`,` $dimensions^ )? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
     int getOffsetValue() { return getOffset(); }
     int getLenValue() { return getLen(); }
-    bool isA() { return (getAB() == 0); }
-    bool isB() { return (getAB() == 1); }
   }];
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
-      odsState.addAttribute(getABAttrName(odsState.name), $_builder.getI32IntegerAttr(AB));
-      }]>
+    }]>
   ];
 }
 
@@ -856,7 +851,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         AIE.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         AIE.use_lock(%lock0, "Acquire", 0)
-        AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+        AIE.dma_bd(%buffer : memref<16 x f32>, 0, 16)
         AIE.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
@@ -878,8 +873,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let extraClassDeclaration = [{
-    bool isSend() { return (static_cast<int32_t>(getChannelDir()) == 1); }
-    bool isRecv() { return (static_cast<int32_t>(getChannelDir()) == 0); }
+    bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
+    bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
 }
 
@@ -902,7 +897,7 @@ def AIE_MemOp: AIE_Op<"mem", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -953,7 +948,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -996,7 +991,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -1423,9 +1418,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
-        AIE_DimTupleArrayAttr:$dimensionsToStream,
-        AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
+        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        BDDimLayoutArrayAttr:$dimensionsToStream,
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
 
   let assemblyFormat = [{
@@ -1437,7 +1432,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `}`
         `,`
         $elemNumber
-    `)` attr-dict `:` $elem_type
+    `)` attr-dict `:` $elemType
   }];
 
   let hasVerifier = 1;
@@ -1463,17 +1458,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   let builders = [
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
                    "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
-                   CArg<"llvm::ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
-                   CArg<"llvm::ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>", "{}">:$dimensionsToStream,
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
       odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
       odsState.addAttribute(getElemTypeAttrName(odsState.name), mlir::TypeAttr::get(elem_type));
       odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
-                            odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
+                            odsBuilder.getAttr<BDDimLayoutArrayAttr>(dimensionsToStream));
       odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
-                            odsBuilder.getAttr<DimTupleArrayArrayAttr>(dimensionsFromStreamPerConsumer));
+                            odsBuilder.getAttr<BDDimLayoutArrayArrayAttr>(dimensionsFromStreamPerConsumer));
     }]>
   ];
 }

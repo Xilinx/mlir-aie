@@ -53,12 +53,12 @@ module @tutorial_5 {
         ^bd1:
             // Lock used to allow host to start transfer
             AIE.use_lock(%lock70_in, "Acquire", 1)
-            AIE.dma_bd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%ext_buf70_in : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock70_in, "Release", 0)
             AIE.next_bd ^end
         ^bd2:
             AIE.use_lock(%lock70_out, "Acquire", 1)
-            AIE.dma_bd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%ext_buf70_out : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock70_out, "Release", 0)
             AIE.next_bd ^end
         ^end:
@@ -103,12 +103,12 @@ module @tutorial_5 {
             // 0   - offset of transfer
             // 256 - length of transfer
             // 0   - A/B mode enable (default is disabled)
-            AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%buf34 : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock34_in, "Release", 1)
             AIE.next_bd ^end
         ^bd1:
             AIE.use_lock(%lock34_out, "Acquire", 1)
-            AIE.dma_bd(<%buf34 : memref<256xi32>, 0, 256>, 0)
+            AIE.dma_bd(%buf34 : memref<256xi32>, 0, 256)
             AIE.use_lock(%lock34_out, "Release", 0)
             AIE.next_bd ^end
         ^end:

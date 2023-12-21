@@ -18,7 +18,7 @@
 // CHECK:           %[[VAL_3:.*]] = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           AIEX.useToken @token0(Acquire, 1)
-// CHECK:           AIE.dma_bd(<%[[VAL_1]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:           AIE.dma_bd(%[[VAL_1]] : memref<256xi32>, 0, 256)
 // CHECK:           AIEX.useToken @token0(Release, 2)
 // CHECK:           AIE.next_bd ^bb2
 // CHECK:         ^bb2:
@@ -30,7 +30,7 @@
 // CHECK:           %[[VAL_7:.*]] = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           AIEX.useToken @token1(Acquire, 1)
-// CHECK:           AIE.dma_bd(<%[[VAL_5]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:           AIE.dma_bd(%[[VAL_5]] : memref<256xi32>, 0, 256)
 // CHECK:           AIEX.useToken @token1(Release, 2)
 // CHECK:           AIE.next_bd ^bb2
 // CHECK:         ^bb2:
@@ -43,14 +43,14 @@
 // CHECK:           %[[VAL_12:.*]] = AIE.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:         ^bb1:
 // CHECK:           AIEX.useToken @token0(Acquire, 1)
-// CHECK:           AIE.dma_bd(<%[[VAL_9]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:           AIE.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 256)
 // CHECK:           AIEX.useToken @token0(Release, 2)
 // CHECK:           AIE.next_bd ^bb4
 // CHECK:         ^bb2:
 // CHECK:           %[[VAL_13:.*]] = AIE.dma_start(S2MM, 0, ^bb3, ^bb4)
 // CHECK:         ^bb3:
 // CHECK:           AIEX.useToken @token1(Acquire, 1)
-// CHECK:           AIE.dma_bd(<%[[VAL_10]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:           AIE.dma_bd(%[[VAL_10]] : memref<256xi32>, 0, 256)
 // CHECK:           AIEX.useToken @token1(Release, 2)
 // CHECK:           AIE.next_bd ^bb4
 // CHECK:         ^bb4:

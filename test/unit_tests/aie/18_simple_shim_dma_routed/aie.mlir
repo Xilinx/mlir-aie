@@ -24,7 +24,7 @@ module @test18_simple_shim_dma_routed {
 
     ^bd0:
       AIE.use_lock(%lock1, Acquire, 1)
-      AIE.dma_bd(<%buffer : memref<512 x i32>, 0, 512>, 0)
+      AIE.dma_bd(%buffer : memref<512 x i32>, 0, 512)
       AIE.use_lock(%lock1, Release, 0)
       AIE.next_bd ^bd0
     ^end:
@@ -43,12 +43,12 @@ module @test18_simple_shim_dma_routed {
       %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
     ^bd0:
       AIE.use_lock(%l72_0, "Acquire", 0)
-      AIE.dma_bd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(%buf72_0 : memref<256xi32>, 0, 256)
       AIE.use_lock(%l72_0, "Release", 1)
       AIE.next_bd ^bd1
     ^bd1:
       AIE.use_lock(%l72_1, "Acquire", 0)
-      AIE.dma_bd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
+      AIE.dma_bd(%buf72_1 : memref<256xi32>, 0, 256)
       AIE.use_lock(%l72_1, "Release", 1)
       AIE.next_bd ^bd0
     ^end:

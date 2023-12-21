@@ -83,7 +83,7 @@ module @tutorial_2b {
           ^bd0:
             AIE.use_lock(%lock14_done, "AcquireGreaterEqual", 1)
                                                              ////////// new //////////
-            AIE.dma_bd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+            AIE.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<wrap = 8, step = 16>, <wrap = 2, step = 1>, <wrap = 8, step = 2>])
                                                             // w, s    w, s    w,  s
                                                             // dim 2,  dim 1,  dim 0
             AIE.use_lock(%lock14_sent, "Release", 1)
@@ -96,7 +96,7 @@ module @tutorial_2b {
           %dstDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
             AIE.use_lock(%lock34_wait, "AcquireGreaterEqual", 1)
-            AIE.dma_bd(<%buf34 : memref<128xi32>, 0, 128>, 0)
+            AIE.dma_bd(%buf34 : memref<128xi32>, 0, 128)
             AIE.use_lock(%lock34_recv, "Release", 1)
             AIE.next_bd ^end
           ^end:

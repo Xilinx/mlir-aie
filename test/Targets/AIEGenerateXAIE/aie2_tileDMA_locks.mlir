@@ -43,19 +43,19 @@ module @aie_module  {
         %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
         AIE.use_lock(%lock_l1, AcquireGreaterEqual, 1)
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 256>, 0)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_l2, Release, 1)
         AIE.next_bd ^bd1
       ^bd1:
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 256>, 0)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_l1, Release, 1)
         AIE.next_bd ^bd2
       ^bd2:
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 256>, 0)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_l1, Release, 1)
         AIE.next_bd ^bd3
       ^bd3:
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 256>, 0)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock_l1, Release, 1)
         AIE.next_bd ^end
       ^end:

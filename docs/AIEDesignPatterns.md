@@ -62,7 +62,7 @@ Start the Memory Map to Stream DMA from the source:
 	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%lock71, "Acquire", 0) // Acquire in State 0
-		AIE.dma_bd(<%buf71 : memref<512xi32>, 0, 512>, 0)
+		AIE.dma_bd(%buf71 : memref<512xi32>, 0, 512)
 		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
 		br ^end 
 	^end:
@@ -76,7 +76,7 @@ Start the Stream to Memory Map DMA from the destination:
 	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%lock72, "Acquire", 0)
-		AIE.dma_bd(<%buf72 : memref<512xi32>, 0, 512>, 0)
+		AIE.dma_bd(%buf72 : memref<512xi32>, 0, 512)
 		AIE.use_lock(%lock72, "Release", 1)
 		br ^end 
 	^end:
@@ -118,12 +118,12 @@ Then we can write the Stream to Memory Map DMA transfer with 2 buffer descriptor
 	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%lock72_0, "Acquire", 0)
-		AIE.dma_bd(<%buf72_0: memref<256xi32>, 0, 256>, 0)
+		AIE.dma_bd(%buf72_0: memref<256xi32>, 0, 256)
 		AIE.use_lock(%lock72_0, "Release", 1)
 		br ^bd1 // point to the next BD, or termination
 	^bd1:
 		AIE.use_lock(%lock72_1, "Acquire", 0)
-		AIE.dma_bd(<%buf72_1: memref<256xi32>, 0, 256>, 0)
+		AIE.dma_bd(%buf72_1: memref<256xi32>, 0, 256)
 		AIE.use_lock(%lock72_1, "Release", 1)
 		br ^bd0 // point to the next BD, or termination
 	^end:
@@ -175,7 +175,7 @@ Start the Memory Map to Stream DMA from the source:
 	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%lock71, "Acquire", 1) // Acquire in State 0
-		AIE.dma_bd(<%buf71 : memref<512xi32>, 0, 512>, 0)
+		AIE.dma_bd(%buf71 : memref<512xi32>, 0, 512)
 		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
 		br ^end 
 	^end:
@@ -189,7 +189,7 @@ Start the Stream to Memory Map DMA from the destination:
 	%dma0 = AIE.dma_start("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%lock72, "Acquire", 0)
-		AIE.dma_bd(<%buf72 : memref<512xi32>, 0, 512>, 0)
+		AIE.dma_bd(%buf72 : memref<512xi32>, 0, 512)
 		AIE.use_lock(%lock72, "Release", 1)
 		br ^end 
 	^end:
@@ -232,7 +232,7 @@ We can then use the shim_dma to read/write from that location:
 	%dma0 = AIE.dma_start("MM2S", 0, ^bd0, ^end) \\Read
 	^bd0:
 		AIE.use_lock(%lock70 , "Acquire", 0)
-		AIE.dma_bd(<%ext_buffer : memref<512xi32>, 0, 512>, 0)
+		AIE.dma_bd(%ext_buffer : memref<512xi32>, 0, 512)
 		AIE.use_lock(%lolock70 k72, "Release", 1)
 		br ^end 
 	^end:
@@ -278,12 +278,12 @@ module {
 	%srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.use_lock(%l72_0, "Acquire", 1)
-		AIE.dma_bd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
+		AIE.dma_bd(%buf72_0 : memref<256xi32>, 0, 256)
 		AIE.use_lock(%l72_0, "Release", 0)
 	br ^bd1
 	^bd1:
 		AIE.use_lock(%l72_1, "Acquire", 1)
-		AIE.dma_bd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
+		AIE.dma_bd(%buf72_1 : memref<256xi32>, 0, 256)
 		AIE.use_lock(%l72_1, "Release", 0)
 	br ^bd0
 	^end:
