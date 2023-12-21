@@ -22,34 +22,34 @@
 
 // one-to-many, single arbiter
 module @test_ps0_xaie {
- AIE.device(xcvc1902) {
-  %t11 = AIE.tile(1, 1)
+ aie.device(xcvc1902) {
+  %t11 = aie.tile(1, 1)
 
-  AIE.switchbox(%t11) {
-    %a0_0 = AIE.amsel<0>(0)
-    %a0_1 = AIE.amsel<0>(1)
+  aie.switchbox(%t11) {
+    %a0_0 = aie.amsel<0>(0)
+    %a0_1 = aie.amsel<0>(1)
 
-    AIE.masterset(Core : 0, %a0_0)
-    AIE.masterset(Core : 1, %a0_1)
+    aie.masterset(Core : 0, %a0_0)
+    aie.masterset(Core : 1, %a0_1)
 
-    AIE.packet_rules(West : 0) {
-      AIE.rule(0x1F, 0x0, %a0_0)
-      AIE.rule(0x1F, 0x1, %a0_1)
+    aie.packet_rules(West : 0) {
+      aie.rule(0x1F, 0x0, %a0_0)
+      aie.rule(0x1F, 0x1, %a0_1)
     }
   }
  }
 }
 
 //module @test_ps0_logical {
-//  %t11 = AIE.tile(1, 1)
+//  %t11 = aie.tile(1, 1)
 //
-//  AIE.packet_flow(0x0) {
-//    AIE.packet_source<%t11, West : 0>
-//    AIE.packet_dest<%t11, Core : 0>
+//  aie.packet_flow(0x0) {
+//    aie.packet_source<%t11, West : 0>
+//    aie.packet_dest<%t11, Core : 0>
 //  }
 //
-//  AIE.packet_flow(0x1) {
-//    AIE.packet_source<%t11, West : 0>
-//    AIE.packet_dest<%t11, Core : 1>
+//  aie.packet_flow(0x1) {
+//    aie.packet_source<%t11, West : 0>
+//    aie.packet_dest<%t11, Core : 1>
 //  }
 //}

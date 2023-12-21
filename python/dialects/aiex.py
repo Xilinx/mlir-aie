@@ -2,7 +2,7 @@
 from functools import partial
 
 from . import arith
-from ._AIEX_ops_gen import *
+from ._aiex_ops_gen import *
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..ir import FlatSymbolRefAttr, IntegerType, IntegerAttr

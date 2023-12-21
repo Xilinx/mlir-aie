@@ -10,7 +10,7 @@
 
 // RUN: aie-translate --aie-ipu-instgen %s | FileCheck %s
 module {
-  AIE.device(ipu) {
+  aie.device(ipu) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // look for the prolog.
@@ -48,7 +48,7 @@ module {
       // CHECK: 00000009
       // CHECK: 2CD0000C
       // CHECK: 2E107041
-      AIEX.ipu.writebd_shimtile { bd_id = 6 : i32,
+      aiex.ipu.writebd_shimtile { bd_id = 6 : i32,
                                   buffer_length = 1 : i32,
                                   buffer_offset = 2 : i32,
                                   enable_packet = 0 : i32,
@@ -77,10 +77,10 @@ module {
       // CHECK: 02030400
       // CHECK: ABC00DEF
       // CHECK: 00000042
-      AIEX.ipu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
+      aiex.ipu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
       // CHECK: 03030401
       // CHECK: 05010200
-      AIEX.ipu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+      aiex.ipu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
       return
     }
   }

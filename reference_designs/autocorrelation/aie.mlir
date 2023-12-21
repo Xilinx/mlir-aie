@@ -14,120 +14,120 @@
 
 
 module @autocorrelation {
-  %tile0_1 = AIE.tile(2, 1)
-  %tile0_2 = AIE.tile(2, 2)
-  %tile0_3 = AIE.tile(2, 3)
-  %tile0_4 = AIE.tile(2, 4)
-  %tile0_5 = AIE.tile(2, 5)
-  %tile0_6 = AIE.tile(2, 6)
-  %tile0_7 = AIE.tile(2, 7)
-  %tile0_8 = AIE.tile(2, 8)
+  %tile0_1 = aie.tile(2, 1)
+  %tile0_2 = aie.tile(2, 2)
+  %tile0_3 = aie.tile(2, 3)
+  %tile0_4 = aie.tile(2, 4)
+  %tile0_5 = aie.tile(2, 5)
+  %tile0_6 = aie.tile(2, 6)
+  %tile0_7 = aie.tile(2, 7)
+  %tile0_8 = aie.tile(2, 8)
 
-  %tile7_0 = AIE.tile(7, 0)
+  %tile7_0 = aie.tile(7, 0)
 
-  %input = AIE.external_buffer {sym_name = "input"} : memref<1024 x i32>
-  %output = AIE.external_buffer {sym_name = "output"} : memref<1024 x i32>
+  %input = aie.external_buffer {sym_name = "input"} : memref<1024 x i32>
+  %output = aie.external_buffer {sym_name = "output"} : memref<1024 x i32>
 
-  %input_lock = AIE.lock(%tile7_0) {sym_name = "input_lock"}
-  %output_lock = AIE.lock(%tile7_0) {sym_name = "output_lock"}
+  %input_lock = aie.lock(%tile7_0) {sym_name = "input_lock"}
+  %output_lock = aie.lock(%tile7_0) {sym_name = "output_lock"}
 
-  %buf1_in = AIE.buffer(%tile0_1) : memref<1024xi32>
-  %buf1_out = AIE.buffer(%tile0_1) : memref<1024xi32>
-  %buf1_in_lock = AIE.lock(%tile0_1)
-  %buf1_out_lock = AIE.lock(%tile0_1)
+  %buf1_in = aie.buffer(%tile0_1) : memref<1024xi32>
+  %buf1_out = aie.buffer(%tile0_1) : memref<1024xi32>
+  %buf1_in_lock = aie.lock(%tile0_1)
+  %buf1_out_lock = aie.lock(%tile0_1)
 
-  %buf2_in = AIE.buffer(%tile0_2) : memref<1024xi32>
-  %buf2_out = AIE.buffer(%tile0_2) : memref<1024xi32>
-  %buf2_in_lock = AIE.lock(%tile0_2)
-  %buf2_out_lock = AIE.lock(%tile0_2)
+  %buf2_in = aie.buffer(%tile0_2) : memref<1024xi32>
+  %buf2_out = aie.buffer(%tile0_2) : memref<1024xi32>
+  %buf2_in_lock = aie.lock(%tile0_2)
+  %buf2_out_lock = aie.lock(%tile0_2)
 
-  %buf3_in = AIE.buffer(%tile0_3) : memref<1024xi32>
-  %buf3_out = AIE.buffer(%tile0_3) : memref<1024xi32>
-  %buf3_in_lock = AIE.lock(%tile0_3) 
-  %buf3_out_lock = AIE.lock(%tile0_3) 
+  %buf3_in = aie.buffer(%tile0_3) : memref<1024xi32>
+  %buf3_out = aie.buffer(%tile0_3) : memref<1024xi32>
+  %buf3_in_lock = aie.lock(%tile0_3)
+  %buf3_out_lock = aie.lock(%tile0_3)
 
-  %buf4_in = AIE.buffer(%tile0_4) : memref<1024xi32>
-  %buf4_out = AIE.buffer(%tile0_4) : memref<1024xi32>
-  %buf4_in_lock = AIE.lock(%tile0_4)
-  %buf4_out_lock = AIE.lock(%tile0_4)
+  %buf4_in = aie.buffer(%tile0_4) : memref<1024xi32>
+  %buf4_out = aie.buffer(%tile0_4) : memref<1024xi32>
+  %buf4_in_lock = aie.lock(%tile0_4)
+  %buf4_out_lock = aie.lock(%tile0_4)
 
-  AIE.shim_dma(%tile7_0) {
-     AIE.dma_start("MM2S", 0, ^bdin, ^dma2)
+  aie.shim_dma(%tile7_0) {
+     aie.dma_start("MM2S", 0, ^bdin, ^dma2)
     ^dma2:
-     AIE.dma_start("S2MM", 0, ^bdout, ^end)
+     aie.dma_start("S2MM", 0, ^bdout, ^end)
     ^bdin:
-      AIE.use_lock(%input_lock, "Acquire", 1)
-      AIE.dma_bd(%input : memref<1024xi32>, 0, 1024)
-      AIE.use_lock(%input_lock, "Release", 0)
-      AIE.next_bd ^end
+      aie.use_lock(%input_lock, "Acquire", 1)
+      aie.dma_bd(%input : memref<1024xi32>, 0, 1024)
+      aie.use_lock(%input_lock, "Release", 0)
+      aie.next_bd ^end
     ^bdout:
-      AIE.use_lock(%output_lock, "Acquire", 0)
-      AIE.dma_bd(%output : memref<1024xi32>, 0, 1024)
-      AIE.use_lock(%output_lock, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%output_lock, "Acquire", 0)
+      aie.dma_bd(%output : memref<1024xi32>, 0, 1024)
+      aie.use_lock(%output_lock, "Release", 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
   // Simple broadcast flows for input
-  AIE.flow(%tile7_0, DMA : 0, %tile0_1, DMA : 0)
-  AIE.flow(%tile7_0, DMA : 0, %tile0_2, DMA : 0)
-  AIE.flow(%tile7_0, DMA : 0, %tile0_3, DMA : 0)
-  AIE.flow(%tile7_0, DMA : 0, %tile0_4, DMA : 0)
+  aie.flow(%tile7_0, DMA : 0, %tile0_1, DMA : 0)
+  aie.flow(%tile7_0, DMA : 0, %tile0_2, DMA : 0)
+  aie.flow(%tile7_0, DMA : 0, %tile0_3, DMA : 0)
+  aie.flow(%tile7_0, DMA : 0, %tile0_4, DMA : 0)
 
   // Flow for output
-  AIE.flow(%tile0_1, DMA : 0, %tile7_0, DMA : 0)
+  aie.flow(%tile0_1, DMA : 0, %tile7_0, DMA : 0)
 
   // The row 1 tile collects the result and DMAs back to the shim
-  AIE.mem(%tile0_1)  {
-    AIE.dma_start("S2MM", 0, ^bd0, ^dma0)
+  aie.mem(%tile0_1)  {
+    aie.dma_start("S2MM", 0, ^bd0, ^dma0)
   ^dma0: 
-    AIE.dma_start("MM2S", 0, ^bd1, ^end)
+    aie.dma_start("MM2S", 0, ^bd1, ^end)
   ^bd0: 
-    AIE.use_lock(%buf1_in_lock, Acquire, 0)
-    AIE.dma_bd(%buf1_in : memref<1024xi32>, 0, 1024)
-    AIE.use_lock(%buf1_in_lock, Release, 1)
-    AIE.next_bd ^end
+    aie.use_lock(%buf1_in_lock, Acquire, 0)
+    aie.dma_bd(%buf1_in : memref<1024xi32>, 0, 1024)
+    aie.use_lock(%buf1_in_lock, Release, 1)
+    aie.next_bd ^end
   ^bd1: 
-    AIE.use_lock(%buf1_out_lock, Acquire, 1)
-    AIE.dma_bd(%buf1_out : memref<1024xi32>, 0, 1024)
-    AIE.use_lock(%buf1_out_lock, Release, 0)
-    AIE.next_bd ^end
-  ^end: 
-    AIE.end
+    aie.use_lock(%buf1_out_lock, Acquire, 1)
+    aie.dma_bd(%buf1_out : memref<1024xi32>, 0, 1024)
+    aie.use_lock(%buf1_out_lock, Release, 0)
+    aie.next_bd ^end
+  ^end:
+    aie.end
   }
 
-  AIE.mem(%tile0_2)  {
-    AIE.dma_start("S2MM", 0, ^bd0, ^end)
+  aie.mem(%tile0_2)  {
+    aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
-    AIE.use_lock(%buf2_in_lock, Acquire, 0)
-    AIE.dma_bd(%buf2_in : memref<1024xi32>, 0, 1024)
-    AIE.use_lock(%buf2_in_lock, Release, 1)
-    AIE.next_bd ^end
-  ^end: 
-    AIE.end
+    aie.use_lock(%buf2_in_lock, Acquire, 0)
+    aie.dma_bd(%buf2_in : memref<1024xi32>, 0, 1024)
+    aie.use_lock(%buf2_in_lock, Release, 1)
+    aie.next_bd ^end
+  ^end:
+    aie.end
   }
 
-  AIE.mem(%tile0_3)  {
-    AIE.dma_start("S2MM", 0, ^bd0, ^end)
+  aie.mem(%tile0_3)  {
+    aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
-    AIE.use_lock(%buf3_in_lock, Acquire, 0)
-    AIE.dma_bd(%buf3_in : memref<1024xi32>, 0, 1024)
-    AIE.use_lock(%buf3_in_lock, Release, 1)
-    AIE.next_bd ^end
-  ^end: 
-    AIE.end
+    aie.use_lock(%buf3_in_lock, Acquire, 0)
+    aie.dma_bd(%buf3_in : memref<1024xi32>, 0, 1024)
+    aie.use_lock(%buf3_in_lock, Release, 1)
+    aie.next_bd ^end
+  ^end:
+    aie.end
   }
 
-  AIE.mem(%tile0_4)  {
-    AIE.dma_start("S2MM", 0, ^bd0, ^end)
+  aie.mem(%tile0_4)  {
+    aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
-    AIE.use_lock(%buf4_in_lock, Acquire, 0)
-    AIE.dma_bd(%buf4_in : memref<1024xi32>, 0, 1024)
-    AIE.use_lock(%buf4_in_lock, Release, 1)
-    AIE.next_bd ^end
-  ^end: 
-    AIE.end
+    aie.use_lock(%buf4_in_lock, Acquire, 0)
+    aie.dma_bd(%buf4_in : memref<1024xi32>, 0, 1024)
+    aie.use_lock(%buf4_in_lock, Release, 1)
+    aie.next_bd ^end
+  ^end:
+    aie.end
   }
 
   func.func @autocorrelate(%bufin: memref<1024xi32>, %bufout:memref<1024xi32>, %offset:index, %blocksize:index) -> () {
@@ -151,72 +151,72 @@ module @autocorrelation {
     return
   }
 
-  AIE.core(%tile0_1) {
-    AIE.use_lock(%buf1_in_lock, "Acquire", 1)
-    AIE.use_lock(%buf1_out_lock, "Acquire", 0)
+  aie.core(%tile0_1) {
+    aie.use_lock(%buf1_in_lock, "Acquire", 1)
+    aie.use_lock(%buf1_out_lock, "Acquire", 0)
     %offset = arith.constant 0 : index
     %blocksize = arith.constant 16 : index
     func.call @autocorrelate(%buf1_in, %buf1_out, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
-    AIE.use_lock(%buf1_in_lock, "Release", 0)
+    aie.use_lock(%buf1_in_lock, "Release", 0)
 
     // Append the prior results, block of 16.
-    AIE.use_lock(%buf2_out_lock, "Acquire", 1)
+    aie.use_lock(%buf2_out_lock, "Acquire", 1)
     %1 = memref.subview %buf2_out[0][64][1] : memref<1024xi32> to memref<64xi32>
     %2 = memref.subview %buf1_out[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
     memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
-    AIE.use_lock(%buf2_out_lock, "Release", 0)
+    aie.use_lock(%buf2_out_lock, "Release", 0)
 
-    AIE.use_lock(%buf1_out_lock, "Release", 1)
-    AIE.end
+    aie.use_lock(%buf1_out_lock, "Release", 1)
+    aie.end
   }
 
-  AIE.core(%tile0_2) {
-    AIE.use_lock(%buf2_in_lock, "Acquire", 1)
-    AIE.use_lock(%buf2_out_lock, "Acquire", 0)
+  aie.core(%tile0_2) {
+    aie.use_lock(%buf2_in_lock, "Acquire", 1)
+    aie.use_lock(%buf2_out_lock, "Acquire", 0)
     %offset = arith.constant 16 : index
     %blocksize = arith.constant 16 : index
     func.call @autocorrelate(%buf2_in, %buf2_out, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
-    AIE.use_lock(%buf2_in_lock, "Release", 0)
+    aie.use_lock(%buf2_in_lock, "Release", 0)
 
     // Append the prior results, block of 16.
-    AIE.use_lock(%buf3_out_lock, "Acquire", 1)
+    aie.use_lock(%buf3_out_lock, "Acquire", 1)
     %1 = memref.subview %buf3_out[0][64][1] : memref<1024xi32> to memref<64xi32>
     %2 = memref.subview %buf2_out[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
     memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
-    AIE.use_lock(%buf3_out_lock, "Release", 0)
+    aie.use_lock(%buf3_out_lock, "Release", 0)
 
-    AIE.use_lock(%buf2_out_lock, "Release", 1)
-    AIE.end
+    aie.use_lock(%buf2_out_lock, "Release", 1)
+    aie.end
   }
 
-  AIE.core(%tile0_3) {
-    AIE.use_lock(%buf3_in_lock, "Acquire", 1)
-    AIE.use_lock(%buf3_out_lock, "Acquire", 0)
+  aie.core(%tile0_3) {
+    aie.use_lock(%buf3_in_lock, "Acquire", 1)
+    aie.use_lock(%buf3_out_lock, "Acquire", 0)
     %offset = arith.constant 32 : index
     %blocksize = arith.constant 16 : index
     func.call @autocorrelate(%buf3_in, %buf3_out, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
-    AIE.use_lock(%buf3_in_lock, "Release", 0)
+    aie.use_lock(%buf3_in_lock, "Release", 0)
 
     // Append the prior results, block of 16.
-    AIE.use_lock(%buf4_out_lock, "Acquire", 1)
+    aie.use_lock(%buf4_out_lock, "Acquire", 1)
     %1 = memref.subview %buf4_out[0][64][1] : memref<1024xi32> to memref<64xi32>
     %2 = memref.subview %buf3_out[%blocksize][64][1] : memref<1024xi32> to memref<64xi32, strided<[1], offset: ?>>
     memref.copy %1, %2 : memref<64xi32> to memref<64xi32, strided<[1], offset: ?>>
-    AIE.use_lock(%buf4_out_lock, "Release", 0)
+    aie.use_lock(%buf4_out_lock, "Release", 0)
 
-    AIE.use_lock(%buf3_out_lock, "Release", 1)
-    AIE.end
+    aie.use_lock(%buf3_out_lock, "Release", 1)
+    aie.end
   }
 
-  AIE.core(%tile0_4) {
-    AIE.use_lock(%buf4_in_lock, "Acquire", 1)
-    AIE.use_lock(%buf4_out_lock, "Acquire", 0)
+  aie.core(%tile0_4) {
+    aie.use_lock(%buf4_in_lock, "Acquire", 1)
+    aie.use_lock(%buf4_out_lock, "Acquire", 0)
     %offset = arith.constant 48 : index
     %blocksize = arith.constant 16 : index
     func.call @autocorrelate(%buf4_in, %buf4_out, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
-    AIE.use_lock(%buf4_in_lock, "Release", 0)
-    AIE.use_lock(%buf4_out_lock, "Release", 1)
-    AIE.end
+    aie.use_lock(%buf4_in_lock, "Release", 0)
+    aie.use_lock(%buf4_out_lock, "Release", 1)
+    aie.end
   }
 
 }

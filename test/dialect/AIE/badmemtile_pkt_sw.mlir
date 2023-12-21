@@ -9,15 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'AIE.amsel' op illegal memtile stream switch connection
+// CHECK: error{{.*}} 'aie.amsel' op illegal memtile stream switch connection
 
-AIE.device(xcve2802) {
-  %01 = AIE.tile(0, 1)
-  AIE.switchbox(%01) {
-    %94 = AIE.amsel<0> (0)
-    %95 = AIE.masterset(North : 1, %94)
-    AIE.packet_rules(South : 3) {
-      AIE.rule(31, 1, %94)
+aie.device(xcve2802) {
+  %01 = aie.tile(0, 1)
+  aie.switchbox(%01) {
+    %94 = aie.amsel<0> (0)
+    %95 = aie.masterset(North : 1, %94)
+    aie.packet_rules(South : 3) {
+      aie.rule(31, 1, %94)
     }
   }
 }

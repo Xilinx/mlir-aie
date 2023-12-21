@@ -19,17 +19,17 @@ from util import construct_and_print_module
 
 
 # CHECK:  module {
-# CHECK:    AIE.device(xcve2802) {
-# CHECK:      %tile_1_4 = AIE.tile(1, 4)
-# CHECK:      %buffer_1_4 = AIE.buffer(%tile_1_4) : memref<256xi32>
-# CHECK:      %core_1_4 = AIE.core(%tile_1_4) {
+# CHECK:    aie.device(xcve2802) {
+# CHECK:      %tile_1_4 = aie.tile(1, 4)
+# CHECK:      %buffer_1_4 = aie.buffer(%tile_1_4) : memref<256xi32>
+# CHECK:      %core_1_4 = aie.core(%tile_1_4) {
 # CHECK:        %c3 = arith.constant 3 : index
 # CHECK:        %0 = memref.load %buffer_1_4[%c3] : memref<256xi32>
 # CHECK:        %c4_i32 = arith.constant 4 : i32
 # CHECK:        %1 = arith.addi %0, %c4_i32 : i32
 # CHECK:        %c3_0 = arith.constant 3 : index
 # CHECK:        memref.store %1, %buffer_1_4[%c3_0] : memref<256xi32>
-# CHECK:        AIE.end
+# CHECK:        aie.end
 # CHECK:      }
 # CHECK:    }
 # CHECK:  }

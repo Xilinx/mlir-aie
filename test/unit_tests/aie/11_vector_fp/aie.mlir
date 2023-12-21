@@ -12,11 +12,11 @@
 // RUN: %run_on_board ./test.elf
 
 module @test {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xf32>
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xf32>
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     %c0 = arith.constant 0 : index
     %c64 = arith.constant 64 : index
     %c8 = arith.constant 8 : index
@@ -37,6 +37,6 @@ module @test {
       %61 = arith.mulf %59, %60 : vector<8xf32>
       vector.transfer_write %61, %buf13_0[%arg0] : vector<8xf32>, memref<256xf32>
     }
-    AIE.end
+    aie.end
   }
 }

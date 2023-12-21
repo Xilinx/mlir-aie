@@ -19,10 +19,10 @@
 // CHECK: __mlir_aie_try(XAie_CoreEnable(&(ctx->DevInst), XAie_TileLoc(3,3)));
 
 module @test_xaie0 {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  AIE.core(%t33) {
-    AIE.end
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  aie.core(%t33) {
+    aie.end
   } { elf_file = "test.elf" }
  }
 }

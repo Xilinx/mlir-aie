@@ -12,9 +12,9 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark10_tile_broadcast_horizontal {
-  %t63 = AIE.tile(6, 3)
-  %t73 = AIE.tile(7, 3)
-  %t83 = AIE.tile(8,3)
+  %t63 = aie.tile(6, 3)
+  %t73 = aie.tile(7, 3)
+  %t83 = aie.tile(8,3)
   
 
 }

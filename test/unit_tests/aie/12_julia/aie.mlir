@@ -15,18 +15,18 @@
 
 
 module @test {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<2xi32>
-  %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<4096xi32>
-  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "output_lock" }
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<2xi32>
+  %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<4096xi32>
+  %lock13_3 = aie.lock(%tile13, 3) { sym_name = "output_lock" }
 
   func.func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> ()
 
-  %core13 = AIE.core(%tile13) {
-    AIE.use_lock(%lock13_3, "Acquire", 1) // acquire
+  %core13 = aie.core(%tile13) {
+    aie.use_lock(%lock13_3, "Acquire", 1) // acquire
     func.call @func(%buf13_0, %buf13_1) : (memref<2xi32>, memref<4096xi32>) -> ()
-    AIE.use_lock(%lock13_3, "Release", 0) // release for write
-    AIE.end
+    aie.use_lock(%lock13_3, "Release", 0) // release for write
+    aie.end
   } { link_with="kernel.o" }
 }

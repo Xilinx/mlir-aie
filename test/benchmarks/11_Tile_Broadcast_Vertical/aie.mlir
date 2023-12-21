@@ -12,10 +12,10 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark11_tile_broadcast_vertical {
-  %t72 = AIE.tile(7, 2)
-  %t73 = AIE.tile(7, 3)
-  %t74 = AIE.tile(7,4)
-  %t75 = AIE.tile(7,5)
+  %t72 = aie.tile(7, 2)
+  %t73 = aie.tile(7, 3)
+  %t74 = aie.tile(7,4)
+  %t75 = aie.tile(7,5)
   
 
 }

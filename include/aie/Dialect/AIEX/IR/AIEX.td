@@ -21,7 +21,7 @@ include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def AIEX_Dialect : Dialect {
-  let name = "AIEX";
+  let name = "aiex";
   let cppNamespace = "::xilinx::AIEX";
   let description = [{
 
@@ -30,7 +30,6 @@ def AIEX_Dialect : Dialect {
     to the more mature AIE dialect.
 
   }];
-  let useDefaultTypePrinterParser = 1;
 }
 
 
@@ -104,11 +103,11 @@ def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::E
       %74 = AIE.tile(7, 4)
       %63 = AIE.tile(6, 3)
       %64 = AIE.tile(6, 4)
-      AIEX.multicast(%70, "DMA" : 0){
-        AIEX.multi_dest<%73, "DMA" : 0>
-        AIEX.multi_dest<%74, "DMA" : 0>
-        AIEX.multi_dest<%63, "DMA" : 0>
-        AIEX.multi_dest<%64, "DMA" : 0>
+      aiex.multicast(%70, "DMA" : 0){
+        aiex.multi_dest<%73, "DMA" : 0>
+        aiex.multi_dest<%74, "DMA" : 0>
+        aiex.multi_dest<%63, "DMA" : 0>
+        aiex.multi_dest<%64, "DMA" : 0>
       }
     ```
   }];
@@ -129,10 +128,10 @@ def AIE_MultiDestOp: AIEX_Op<"multi_dest", [HasParent<"MulticastOp">]> {
   let summary = "A destination port of multicast flow";
   let description = [{
     An object representing the destination of a multicast flow. This must exist
-    within an [AIEX.multicast] operation. There can be multiple destinations within an
-    AIEX.multicast Op.
+    within an [aiex.multicast] operation. There can be multiple destinations within an
+    aiex.multicast Op.
 
-    See [AIEX.multicast]for an example.
+    See [aiex.multicast]for an example.
   }];
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict

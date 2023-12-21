@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.lock' op lock assigned invalid id (maximum is 15)
+// CHECK: error{{.*}}'aie.lock' op lock assigned invalid id (maximum is 15)
 module @test {
-  %t1 = AIE.tile(1, 1)
-  %lock = AIE.lock(%t1, 16) { sym_name = "lock1" }
+  %t1 = aie.tile(1, 1)
+  %lock = aie.lock(%t1, 16) { sym_name = "lock1" }
 }

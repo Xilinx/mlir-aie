@@ -9,44 +9,44 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt -aie-find-flows %s | FileCheck %s
-// CHECK: %[[T23:.*]] = AIE.tile(2, 3)
-// CHECK: %[[T22:.*]] = AIE.tile(2, 2)
-// CHECK: AIE.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
-// CHECK: AIE.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
-// CHECK: AIE.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
-// CHECK: AIE.packet_flow(0) {
-// CHECK:   AIE.packet_source<%[[T22]], DMA : 0>
-// CHECK:   AIE.packet_dest<%[[T23]], DMA : 1>
+// CHECK: %[[T23:.*]] = aie.tile(2, 3)
+// CHECK: %[[T22:.*]] = aie.tile(2, 2)
+// CHECK: aie.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
+// CHECK: aie.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
+// CHECK: aie.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
+// CHECK: aie.packet_flow(0) {
+// CHECK:   aie.packet_source<%[[T22]], DMA : 0>
+// CHECK:   aie.packet_dest<%[[T23]], DMA : 1>
 // CHECK: }
 module {
-  AIE.device(xcvc1902) {
-    %tile0 = AIE.tile(2, 3)
-    %tile1 = AIE.tile(2, 2)
+  aie.device(xcvc1902) {
+    %tile0 = aie.tile(2, 3)
+    %tile1 = aie.tile(2, 2)
 
-    %0 = AIE.switchbox(%tile0) {
-      AIE.connect<Core :0, South:1>
-      AIE.connect<South:1, Core :1>
-      AIE.connect<South:1, North:2>
-      %16 = AIE.amsel<0> (0)
-      %17 = AIE.masterset(DMA : 1, %16)
-      AIE.packet_rules(South : 0) {
-        AIE.rule(31, 0, %16)
+    %0 = aie.switchbox(%tile0) {
+      aie.connect<Core :0, South:1>
+      aie.connect<South:1, Core :1>
+      aie.connect<South:1, North:2>
+      %16 = aie.amsel<0> (0)
+      %17 = aie.masterset(DMA : 1, %16)
+      aie.packet_rules(South : 0) {
+        aie.rule(31, 0, %16)
       }
     }
-    %1 = AIE.switchbox(%tile1) {
-      AIE.connect<North:1, Core :1>
-      AIE.connect<Core :1, North:1>
-      AIE.connect<Core :0, Core :0>
-      %18 = AIE.amsel<0> (0)
-      %19 = AIE.masterset(North : 0, %18)
-      AIE.packet_rules(DMA : 0) {
-        AIE.rule(31, 0, %18)
+    %1 = aie.switchbox(%tile1) {
+      aie.connect<North:1, Core :1>
+      aie.connect<Core :1, North:1>
+      aie.connect<Core :0, Core :0>
+      %18 = aie.amsel<0> (0)
+      %19 = aie.masterset(North : 0, %18)
+      aie.packet_rules(DMA : 0) {
+        aie.rule(31, 0, %18)
       }
     }
-    AIE.wire(%0: Core, %tile0: Core)
-    AIE.wire(%1: Core, %tile1: Core)
-    AIE.wire(%0: DMA, %tile0: DMA)
-    AIE.wire(%1: DMA, %tile1: DMA)
-    AIE.wire(%0: South, %1: North)
+    aie.wire(%0: Core, %tile0: Core)
+    aie.wire(%1: Core, %tile1: Core)
+    aie.wire(%0: DMA, %tile0: DMA)
+    aie.wire(%1: DMA, %tile1: DMA)
+    aie.wire(%0: South, %1: North)
   }
 }

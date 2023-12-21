@@ -12,51 +12,51 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark_02_LM2DDR {
-  %t70 = AIE.tile(7, 0)
-  %t71 = AIE.tile(7, 1)
+  %t70 = aie.tile(7, 0)
+  %t71 = aie.tile(7, 1)
  
-  %lock_a_ping = AIE.lock(%t71, 3) // a_ping
+  %lock_a_ping = aie.lock(%t71, 3) // a_ping
 
-  %buf71_0 = AIE.buffer(%t71) {sym_name = "buf71_0" } : memref<7168xi32>
+  %buf71_0 = aie.buffer(%t71) {sym_name = "buf71_0" } : memref<7168xi32>
 
   //Declare the buffers
-  %buffer_out = AIE.external_buffer {sym_name = "buffer" } : memref<7168xi32>
+  %buffer_out = aie.external_buffer {sym_name = "buffer" } : memref<7168xi32>
 
-  %m71 = AIE.mem(%t71) {
-      %srcDma = AIE.dma_start(MM2S, 1, ^bd0, ^end)
+  %m71 = aie.mem(%t71) {
+      %srcDma = aie.dma_start(MM2S, 1, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%lock_a_ping, "Acquire", 0)
-      AIE.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
-      AIE.use_lock(%lock_a_ping, "Release", 1)
-      AIE.next_bd ^end
+      aie.use_lock(%lock_a_ping, "Acquire", 0)
+      aie.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
+      aie.use_lock(%lock_a_ping, "Release", 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %dma = AIE.shim_dma(%t70) {
-    %lock1 = AIE.lock(%t70, 2)
+  %dma = aie.shim_dma(%t70) {
+    %lock1 = aie.lock(%t70, 2)
 
-    AIE.dma_start(S2MM, 0, ^bd0, ^end)
+    aie.dma_start(S2MM, 0, ^bd0, ^end)
 
     ^bd0:
-      AIE.use_lock(%lock1, Acquire, 1)
-      AIE.dma_bd(%buffer_out : memref<7168xi32>, 0, 7168)
-      AIE.use_lock(%lock1, Release, 0)
-      AIE.next_bd ^bd0
+      aie.use_lock(%lock1, Acquire, 1)
+      aie.dma_bd(%buffer_out : memref<7168xi32>, 0, 7168)
+      aie.use_lock(%lock1, Release, 0)
+      aie.next_bd ^bd0
     ^end:
-      AIE.end
+      aie.end
   }
 
   // Shim DMA connection to kernel
-  %sw2 = AIE.switchbox(%t71){
-    AIE.connect<"DMA" : 1, "South" : 2>
+  %sw2 = aie.switchbox(%t71){
+    aie.connect<"DMA" : 1, "South" : 2>
   }
   
-  %sw1  = AIE.switchbox(%t70) {
-    AIE.connect<"North" : 2, "South" : 2>
+  %sw1  = aie.switchbox(%t70) {
+    aie.connect<"North" : 2, "South" : 2>
   }
-  %mux1 = AIE.shim_mux  (%t70) {
-    AIE.connect<"North" : 2, "DMA" : 0>
+  %mux1 = aie.shim_mux  (%t70) {
+    aie.connect<"North" : 2, "DMA" : 0>
   }
 
 }

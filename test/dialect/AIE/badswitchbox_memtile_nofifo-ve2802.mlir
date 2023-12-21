@@ -10,13 +10,13 @@
 
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.connect' op source bundle FIFO not supported
+// CHECK: error{{.*}}'aie.connect' op source bundle FIFO not supported
 
 module {
-  AIE.device(xcve2802) {
-    %01 = AIE.tile(0, 1) // mem tile
-    AIE.switchbox(%01) {
-      AIE.connect<FIFO: 0, South: 0> // No fifo in memtile
+  aie.device(xcve2802) {
+    %01 = aie.tile(0, 1) // mem tile
+    aie.switchbox(%01) {
+      aie.connect<FIFO: 0, South: 0> // No fifo in memtile
     }
   }
 }

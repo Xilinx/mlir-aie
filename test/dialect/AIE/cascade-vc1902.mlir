@@ -12,12 +12,12 @@
 // RUN: aie-opt %s
 
 module @test {
-  AIE.device(xcvc1902) {
-    %t33 = AIE.tile(3, 3)
-    %c33 = AIE.core(%t33) {
-      %val2 = AIE.get_cascade() : i384
-      AIE.putCascade(%val2: i384)
-      AIE.end
+  aie.device(xcvc1902) {
+    %t33 = aie.tile(3, 3)
+    %c33 = aie.core(%t33) {
+      %val2 = aie.get_cascade() : i384
+      aie.putCascade(%val2: i384)
+      aie.end
     }
   }
 }

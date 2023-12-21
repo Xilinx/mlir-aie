@@ -36,31 +36,31 @@
 // Test LLVM lowering to some AIE scalar intrinsic functions (streams, cascades)
 // Each core's region is lowered to LLVM Dialect
 module @test_core_llvm0 {
- AIE.device(xcvc1902) {
-  %tile11 = AIE.tile(1, 1)
-  %tile21 = AIE.tile(2, 1)
+ aie.device(xcvc1902) {
+  %tile11 = aie.tile(1, 1)
+  %tile21 = aie.tile(2, 1)
 
-  %core11 = AIE.core(%tile11) {
+  %core11 = aie.core(%tile11) {
     %0 = arith.constant 0 : i32
     %1 = arith.constant 1 : i32
     %val0 = arith.constant 16 : i32
     %val1 = arith.constant 32 : i128
-    AIE.put_stream(%0 : i32, %val0 : i32)
-    AIE.put_stream(%1 : i32, %val1 : i128)
+    aie.put_stream(%0 : i32, %val0 : i32)
+    aie.put_stream(%1 : i32, %val1 : i128)
     %val2 = arith.constant 64 : i384
-    AIE.putCascade(%val2 : i384)
-    AIE.end
+    aie.putCascade(%val2 : i384)
+    aie.end
   }
 
-  %core21 = AIE.core(%tile21) {
+  %core21 = aie.core(%tile21) {
     %0 = arith.constant 0 : i32
     %1 = arith.constant 1 : i32
-    //%val0 = AIE.get_stream(0) : i32
-    %val0 = AIE.get_stream(%0 : i32) : i32
-    %val1 = AIE.get_stream(%1 : i32) : i32
+    //%val0 = aie.get_stream(0) : i32
+    %val0 = aie.get_stream(%0 : i32) : i32
+    %val1 = aie.get_stream(%1 : i32) : i32
     %2 = arith.addi %val0, %val1 : i32
-    %3 = AIE.get_cascade() : i384
-    AIE.end
+    %3 = aie.get_cascade() : i384
+    aie.end
   }
 
  }

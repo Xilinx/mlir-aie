@@ -14,17 +14,17 @@
 // RUN: %run_on_board ./test.elf
 
 module @test {
-  %tile13 = AIE.tile(1, 3)
+  %tile13 = aie.tile(1, 3)
 
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<32x32xi32>
-  %buf13_1 = AIE.buffer(%tile13) { sym_name = "debuf" } : memref<32x32xf32>
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<32x32xi32>
+  %buf13_1 = aie.buffer(%tile13) { sym_name = "debuf" } : memref<32x32xf32>
 
-  %lock13_3 = AIE.lock(%tile13, 3)
+  %lock13_3 = aie.lock(%tile13, 3)
 
   func.func private @func(%A: memref<32x32xi32>, %MinRe : f32, %MaxRe : f32, %MinIm : f32, %MaxIm : f32) -> ()
   func.func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> ()
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     %MinRe = arith.constant -1.5 : f32
     %MaxRe = arith.constant 0.5 : f32
     %MinIm = arith.constant -1.0 : f32
@@ -45,11 +45,11 @@ module @test {
     %sum = scf.for %iv = %lb to %ub step %step
       iter_args(%Im = %MinIm) -> (f32) {
       %Im_next = arith.addf %Im, %StepIm : f32
-      AIE.use_lock(%lock13_3, "Acquire", 1) // acquire
+      aie.use_lock(%lock13_3, "Acquire", 1) // acquire
       func.call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
-      AIE.use_lock(%lock13_3, "Release", 0) // release for write
+      aie.use_lock(%lock13_3, "Release", 0) // release for write
       scf.yield %Im_next : f32
     }
-    AIE.end
+    aie.end
   } { link_with="kernel.o" }
 }

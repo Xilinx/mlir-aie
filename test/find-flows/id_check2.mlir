@@ -9,35 +9,35 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt -aie-find-flows %s | FileCheck %s
-// CHECK: %[[T23:.*]] = AIE.tile(2, 3)
-// CHECK: %[[T22:.*]] = AIE.tile(2, 2)
-// CHECK: AIE.packet_flow(13) {
-// CHECK:   AIE.packet_source<%[[T22]], DMA : 0>
-// CHECK:   AIE.packet_dest<%[[T23]], DMA : 1>
+// CHECK: %[[T23:.*]] = aie.tile(2, 3)
+// CHECK: %[[T22:.*]] = aie.tile(2, 2)
+// CHECK: aie.packet_flow(13) {
+// CHECK:   aie.packet_source<%[[T22]], DMA : 0>
+// CHECK:   aie.packet_dest<%[[T23]], DMA : 1>
 // CHECK: }
 module {
-  AIE.device(xcvc1902) {
-    %tile0 = AIE.tile(2, 3)
-    %tile1 = AIE.tile(2, 2)
+  aie.device(xcvc1902) {
+    %tile0 = aie.tile(2, 3)
+    %tile1 = aie.tile(2, 2)
 
-    %0 = AIE.switchbox(%tile0) {
-      %16 = AIE.amsel<0> (0)
-      %17 = AIE.masterset(DMA : 1, %16)
-      AIE.packet_rules(South : 0) {
-        AIE.rule(7, 5, %16)
+    %0 = aie.switchbox(%tile0) {
+      %16 = aie.amsel<0> (0)
+      %17 = aie.masterset(DMA : 1, %16)
+      aie.packet_rules(South : 0) {
+        aie.rule(7, 5, %16)
       }
     }
-    %1 = AIE.switchbox(%tile1) {
-      %18 = AIE.amsel<0> (0)
-      %19 = AIE.masterset(North : 0, %18)
-      AIE.packet_rules(DMA : 0) {
-        AIE.rule(12, 12, %18)
+    %1 = aie.switchbox(%tile1) {
+      %18 = aie.amsel<0> (0)
+      %19 = aie.masterset(North : 0, %18)
+      aie.packet_rules(DMA : 0) {
+        aie.rule(12, 12, %18)
       }
     }
-    AIE.wire(%0: Core, %tile0: Core)
-    AIE.wire(%1: Core, %tile1: Core)
-    AIE.wire(%0: DMA, %tile0: DMA)
-    AIE.wire(%1: DMA, %tile1: DMA)
-    AIE.wire(%0: South, %1: North)
+    aie.wire(%0: Core, %tile0: Core)
+    aie.wire(%1: Core, %tile1: Core)
+    aie.wire(%0: DMA, %tile0: DMA)
+    aie.wire(%1: DMA, %tile1: DMA)
+    aie.wire(%0: South, %1: North)
   }
 }

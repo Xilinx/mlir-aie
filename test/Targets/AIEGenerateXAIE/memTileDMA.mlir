@@ -10,7 +10,7 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// AIE.end is not the last block.
+// aie.end is not the last block.
 
 // CHECK: XAie_DmaDesc [[bd0:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1)));
@@ -38,46 +38,46 @@
 
 
 module @aie_module  {
- AIE.device(xcve2302) {
-  %t01 = AIE.tile(2, 1)
-  %buf01_0 = AIE.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
-  %buf01_1 = AIE.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
+ aie.device(xcve2302) {
+  %t01 = aie.tile(2, 1)
+  %buf01_0 = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
+  %buf01_1 = aie.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
 
-  %l01_0 = AIE.lock(%t01, 0) { init = 1 : i32 }
-  %l01_1 = AIE.lock(%t01, 1)
-  %l01_2 = AIE.lock(%t01, 2) { init = 1 : i32 }
-  %l01_3 = AIE.lock(%t01, 3)
+  %l01_0 = aie.lock(%t01, 0) { init = 1 : i32 }
+  %l01_1 = aie.lock(%t01, 1)
+  %l01_2 = aie.lock(%t01, 2) { init = 1 : i32 }
+  %l01_3 = aie.lock(%t01, 3)
 
-  %m01 = AIE.memtile_dma(%t01) {
-      %srcDma = AIE.dma_start(S2MM, 0, ^bd0, ^dma0)
+  %m01 = aie.memtile_dma(%t01) {
+      %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      %memSrcDma = AIE.dma_start(MM2S, 1, ^bd1, ^dma1)
+      %memSrcDma = aie.dma_start(MM2S, 1, ^bd1, ^dma1)
     ^dma1:
-      %memDstDma = AIE.dma_start(S2MM, 1, ^bd2, ^dma2)
+      %memDstDma = aie.dma_start(S2MM, 1, ^bd2, ^dma2)
     ^dma2:
-      %dstDma = AIE.dma_start(MM2S, 0, ^bd3, ^end)
+      %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
-      AIE.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      AIE.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
-      AIE.use_lock(%l01_1, "Release", 1)
-      AIE.next_bd ^bd0
+      aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
+      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.use_lock(%l01_1, "Release", 1)
+      aie.next_bd ^bd0
     ^bd1:
-      AIE.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-      AIE.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
-      AIE.use_lock(%l01_0, "Release", 1)
-      AIE.next_bd ^bd1
+      aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
+      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.use_lock(%l01_0, "Release", 1)
+      aie.next_bd ^bd1
     ^bd2:
-      AIE.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-      AIE.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
-      AIE.use_lock(%l01_3, "Release", 1)
-      AIE.next_bd ^bd2
+      aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
+      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.use_lock(%l01_3, "Release", 1)
+      aie.next_bd ^bd2
     ^bd3:
-      AIE.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-      AIE.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
-      AIE.use_lock(%l01_2, "Release", 1)
-      AIE.next_bd ^bd3
+      aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
+      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.use_lock(%l01_2, "Release", 1)
+      aie.next_bd ^bd3
     ^end:
-      AIE.end
+      aie.end
   }
  }
 }

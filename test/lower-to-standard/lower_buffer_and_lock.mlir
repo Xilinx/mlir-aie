@@ -18,7 +18,7 @@
 //   - Buffer: depending on which tile (or memory module) a buffer is instantiated, create an LLVM
 //             static allocation (for now) for each core that can access to the buffer
 module @test_core_llvm1 {
- AIE.device(xcvc1902) {
+ aie.device(xcvc1902) {
 // CHECK11:  memref.global "public" @a : memref<256xi32>
 // CHECK11:  func.func @core_1_1() {
 // CHECK11:    %c56 = arith.constant 56 : index
@@ -51,27 +51,27 @@ module @test_core_llvm1 {
 // CHECK12:    call @llvm.aie.lock.release.reg(%3, %c0_i32) : (i32, i32) -> ()
 // CHECK12:    return
 // CHECK12:  }
-  %tile11 = AIE.tile(1, 1)
-  %tile12 = AIE.tile(1, 2)
+  %tile11 = aie.tile(1, 1)
+  %tile12 = aie.tile(1, 2)
 
-  %lock11_8 = AIE.lock(%tile11, 8)
-  %buf11_0  = AIE.buffer(%tile11) { sym_name = "a" } : memref<256xi32>
+  %lock11_8 = aie.lock(%tile11, 8)
+  %buf11_0  = aie.buffer(%tile11) { sym_name = "a" } : memref<256xi32>
 
-  %core11 = AIE.core(%tile11) {
-    AIE.use_lock(%lock11_8, Acquire, 0)
+  %core11 = aie.core(%tile11) {
+    aie.use_lock(%lock11_8, Acquire, 0)
     %0 = arith.constant 1 : i32
     %i = arith.constant 16 : index
     memref.store %0, %buf11_0[%i] : memref<256xi32>
-    AIE.use_lock(%lock11_8, Release, 1)
-    AIE.end
+    aie.use_lock(%lock11_8, Release, 1)
+    aie.end
   }
 
-  %core12 = AIE.core(%tile12) {
-    AIE.use_lock(%lock11_8, Acquire, 1)
+  %core12 = aie.core(%tile12) {
+    aie.use_lock(%lock11_8, Acquire, 1)
     %i = arith.constant 16 : index
     %0 = memref.load %buf11_0[%i] : memref<256xi32>
-    AIE.use_lock(%lock11_8, Release, 0)
-    AIE.end
+    aie.use_lock(%lock11_8, Release, 0)
+    aie.end
   }
  }
 }

@@ -10,31 +10,31 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// CHECK-LABEL:   AIE.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 3)
-// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 2)
-// CHECK:           %[[VAL_2:.*]] = AIE.switchbox(%[[VAL_1]]) {
-// CHECK:             AIE.connect<North : 0, Core : 1>
-// CHECK:             AIE.connect<Core : 0, Core : 0>
-// CHECK:             AIE.connect<Core : 1, North : 0>
+// CHECK-LABEL:   aie.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(2, 3)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 2)
+// CHECK:           %[[VAL_2:.*]] = aie.switchbox(%[[VAL_1]]) {
+// CHECK:             aie.connect<North : 0, Core : 1>
+// CHECK:             aie.connect<Core : 0, Core : 0>
+// CHECK:             aie.connect<Core : 1, North : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_3:.*]] = AIE.switchbox(%[[VAL_0]]) {
-// CHECK:             AIE.connect<Core : 0, South : 0>
-// CHECK:             AIE.connect<South : 0, Core : 1>
+// CHECK:           %[[VAL_3:.*]] = aie.switchbox(%[[VAL_0]]) {
+// CHECK:             aie.connect<Core : 0, South : 0>
+// CHECK:             aie.connect<South : 0, Core : 1>
 // CHECK:           }
-// CHECK:           AIE.wire(%[[VAL_1]] : Core, %[[VAL_4:.*]] : Core)
-// CHECK:           AIE.wire(%[[VAL_1]] : DMA, %[[VAL_4]] : DMA)
-// CHECK:           AIE.wire(%[[VAL_0]] : Core, %[[VAL_5:.*]] : Core)
-// CHECK:           AIE.wire(%[[VAL_0]] : DMA, %[[VAL_5]] : DMA)
-// CHECK:           AIE.wire(%[[VAL_4]] : North, %[[VAL_5]] : South)
+// CHECK:           aie.wire(%[[VAL_1]] : Core, %[[VAL_4:.*]] : Core)
+// CHECK:           aie.wire(%[[VAL_1]] : DMA, %[[VAL_4]] : DMA)
+// CHECK:           aie.wire(%[[VAL_0]] : Core, %[[VAL_5:.*]] : Core)
+// CHECK:           aie.wire(%[[VAL_0]] : DMA, %[[VAL_5]] : DMA)
+// CHECK:           aie.wire(%[[VAL_4]] : North, %[[VAL_5]] : South)
 // CHECK:         }
 
 module {
-  AIE.device(xcvc1902) {
-    %t23 = AIE.tile(2, 3)
-    %t22 = AIE.tile(2, 2)
-    AIE.flow(%t23, Core : 0, %t22, Core : 1)
-    AIE.flow(%t22, Core : 0, %t22, Core : 0)
-    AIE.flow(%t22, Core : 1, %t23, Core : 1)
+  aie.device(xcvc1902) {
+    %t23 = aie.tile(2, 3)
+    %t22 = aie.tile(2, 2)
+    aie.flow(%t23, Core : 0, %t22, Core : 1)
+    aie.flow(%t22, Core : 0, %t22, Core : 0)
+    aie.flow(%t22, Core : 1, %t23, Core : 1)
   }
 }

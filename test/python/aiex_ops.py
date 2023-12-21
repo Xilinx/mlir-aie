@@ -10,7 +10,7 @@ from util import construct_and_print_module
 
 
 # CHECK-LABEL: getTileOp
-# CHECK: AIEX.getTile
+# CHECK: aiex.getTile
 @construct_and_print_module
 def getTileOp():
     four = arith.constant(4, index=True)

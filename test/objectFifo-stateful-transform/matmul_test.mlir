@@ -9,37 +9,37 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:           %[[VAL_0:.*]] = AIE.tile(0, 0)
-// CHECK:           %[[VAL_1:.*]] = AIE.tile(0, 2)
-// CHECK:           %[[VAL_2:.*]] = AIE.lock(%[[VAL_0]], 4) {init = 0 : i32, sym_name = "outC_cons_prod_lock"}
-// CHECK:           %[[VAL_3:.*]] = AIE.lock(%[[VAL_0]], 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
-// CHECK:           %[[VAL_4:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
-// CHECK:           %[[VAL_5:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "outC_buff_1"} : memref<16x16xi16>
-// CHECK:           %[[VAL_6:.*]] = AIE.lock(%[[VAL_1]], 4) {init = 2 : i32, sym_name = "outC_prod_lock"}
-// CHECK:           %[[VAL_7:.*]] = AIE.lock(%[[VAL_1]], 5) {init = 0 : i32, sym_name = "outC_cons_lock"}
-// CHECK:           %[[VAL_8:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_0"} : memref<8x16xi16>
-// CHECK:           %[[VAL_9:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_1"} : memref<8x16xi16>
-// CHECK:           %[[VAL_10:.*]] = AIE.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
-// CHECK:           %[[VAL_11:.*]] = AIE.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
-// CHECK:           %[[VAL_12:.*]] = AIE.lock(%[[VAL_0]], 2) {init = 0 : i32, sym_name = "inB_prod_lock"}
-// CHECK:           %[[VAL_13:.*]] = AIE.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "inB_cons_lock"}
-// CHECK:           %[[VAL_14:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_0"} : memref<16x8xi16>
-// CHECK:           %[[VAL_15:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_1"} : memref<16x8xi16>
-// CHECK:           %[[VAL_16:.*]] = AIE.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
-// CHECK:           %[[VAL_17:.*]] = AIE.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
-// CHECK:           %[[VAL_18:.*]] = AIE.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "inA_prod_lock"}
-// CHECK:           %[[VAL_19:.*]] = AIE.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "inA_cons_lock"}
-// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           AIE.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 1)
-// CHECK:           AIE.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_2:.*]] = aie.lock(%[[VAL_0]], 4) {init = 0 : i32, sym_name = "outC_cons_prod_lock"}
+// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]], 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
+// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
+// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_1"} : memref<16x16xi16>
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 4) {init = 2 : i32, sym_name = "outC_prod_lock"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 5) {init = 0 : i32, sym_name = "outC_cons_lock"}
+// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_0"} : memref<8x16xi16>
+// CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_1"} : memref<8x16xi16>
+// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
+// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]], 2) {init = 0 : i32, sym_name = "inB_prod_lock"}
+// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "inB_cons_lock"}
+// CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_0"} : memref<16x8xi16>
+// CHECK:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_1"} : memref<16x8xi16>
+// CHECK:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
+// CHECK:           %[[VAL_17:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
+// CHECK:           %[[VAL_18:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "inA_prod_lock"}
+// CHECK:           %[[VAL_19:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "inA_cons_lock"}
+// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 1)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK:           func.func @zero_scalar_i16(%[[VAL_20:.*]]: memref<16x16xi16>) {
 // CHECK:             return
 // CHECK:           }
 // CHECK:           func.func @matmul_scalar_i16_i16(%[[VAL_21:.*]]: memref<16x8xi16>, %[[VAL_22:.*]]: memref<8x16xi16>, %[[VAL_23:.*]]: memref<16x16xi16>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK:           AIE.shim_dma_allocation @inA(MM2S, 0, 0)
-// CHECK:           %[[VAL_24:.*]] = AIE.core(%[[VAL_1]]) {
+// CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 0)
+// CHECK:           %[[VAL_24:.*]] = aie.core(%[[VAL_1]]) {
 // CHECK:             %[[VAL_25:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_26:.*]] = arith.constant 1 : index
 // CHECK:             %[[VAL_27:.*]] = arith.constant 4 : index
@@ -47,98 +47,98 @@
 // CHECK:             scf.for %[[VAL_29:.*]] = %[[VAL_25]] to %[[VAL_28]] step %[[VAL_26]] {
 // CHECK:               %[[VAL_30:.*]] = arith.constant 2 : index
 // CHECK:               scf.for %[[VAL_31:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_30]] {
-// CHECK:                 AIE.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
+// CHECK:                 aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
 // CHECK:                 func.call @zero_scalar_i16(%[[VAL_4]]) : (memref<16x16xi16>) -> ()
 // CHECK:                 %[[VAL_32:.*]] = arith.constant 2 : index
 // CHECK:                 scf.for %[[VAL_33:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_32]] {
-// CHECK:                   AIE.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_14]], %[[VAL_8]], %[[VAL_4]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   AIE.use_lock(%[[VAL_16]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_10]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_16]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_10]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_15]], %[[VAL_9]], %[[VAL_4]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   AIE.use_lock(%[[VAL_16]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_10]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_16]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_10]], Release, 1)
 // CHECK:                 }
-// CHECK:                 AIE.use_lock(%[[VAL_7]], Release, 1)
-// CHECK:                 AIE.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
+// CHECK:                 aie.use_lock(%[[VAL_7]], Release, 1)
+// CHECK:                 aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
 // CHECK:                 func.call @zero_scalar_i16(%[[VAL_5]]) : (memref<16x16xi16>) -> ()
 // CHECK:                 %[[VAL_34:.*]] = arith.constant 2 : index
 // CHECK:                 scf.for %[[VAL_35:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_34]] {
-// CHECK:                   AIE.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_14]], %[[VAL_8]], %[[VAL_5]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   AIE.use_lock(%[[VAL_16]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_10]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_16]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_10]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
+// CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_15]], %[[VAL_9]], %[[VAL_5]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   AIE.use_lock(%[[VAL_16]], Release, 1)
-// CHECK:                   AIE.use_lock(%[[VAL_10]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_16]], Release, 1)
+// CHECK:                   aie.use_lock(%[[VAL_10]], Release, 1)
 // CHECK:                 }
-// CHECK:                 AIE.use_lock(%[[VAL_7]], Release, 1)
+// CHECK:                 aie.use_lock(%[[VAL_7]], Release, 1)
 // CHECK:               }
 // CHECK:             }
-// CHECK:             AIE.end
+// CHECK:             aie.end
 // CHECK:           }
-// CHECK:           AIE.shim_dma_allocation @inB(MM2S, 1, 0)
-// CHECK:           AIE.shim_dma_allocation @outC(S2MM, 0, 0)
-// CHECK:           %[[VAL_36:.*]] = AIE.mem(%[[VAL_1]]) {
-// CHECK:             %[[VAL_37:.*]] = AIE.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           aie.shim_dma_allocation @inB(MM2S, 1, 0)
+// CHECK:           aie.shim_dma_allocation @outC(S2MM, 0, 0)
+// CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
+// CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             AIE.use_lock(%[[VAL_16]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_14]] : memref<16x8xi16>, 0, 128)
-// CHECK:             AIE.use_lock(%[[VAL_17]], Release, 1)
-// CHECK:             AIE.next_bd ^bb2
+// CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<16x8xi16>, 0, 128)
+// CHECK:             aie.use_lock(%[[VAL_17]], Release, 1)
+// CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             AIE.use_lock(%[[VAL_16]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_15]] : memref<16x8xi16>, 0, 128)
-// CHECK:             AIE.use_lock(%[[VAL_17]], Release, 1)
-// CHECK:             AIE.next_bd ^bb1
+// CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_15]] : memref<16x8xi16>, 0, 128)
+// CHECK:             aie.use_lock(%[[VAL_17]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
-// CHECK:             %[[VAL_38:.*]] = AIE.dma_start(S2MM, 1, ^bb4, ^bb6)
+// CHECK:             %[[VAL_38:.*]] = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
 // CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:             AIE.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_8]] : memref<8x16xi16>, 0, 128)
-// CHECK:             AIE.use_lock(%[[VAL_11]], Release, 1)
-// CHECK:             AIE.next_bd ^bb5
+// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<8x16xi16>, 0, 128)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, 1)
+// CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:  // pred: ^bb4
-// CHECK:             AIE.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_9]] : memref<8x16xi16>, 0, 128)
-// CHECK:             AIE.use_lock(%[[VAL_11]], Release, 1)
-// CHECK:             AIE.next_bd ^bb4
+// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<8x16xi16>, 0, 128)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, 1)
+// CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:  // pred: ^bb3
-// CHECK:             %[[VAL_39:.*]] = AIE.dma_start(MM2S, 0, ^bb7, ^bb9)
+// CHECK:             %[[VAL_39:.*]] = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
 // CHECK:           ^bb7:  // 2 preds: ^bb6, ^bb8
-// CHECK:             AIE.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_4]] : memref<16x16xi16>, 0, 256)
-// CHECK:             AIE.use_lock(%[[VAL_6]], Release, 1)
-// CHECK:             AIE.next_bd ^bb8
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16x16xi16>, 0, 256)
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, 1)
+// CHECK:             aie.next_bd ^bb8
 // CHECK:           ^bb8:  // pred: ^bb7
-// CHECK:             AIE.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
-// CHECK:             AIE.dma_bd(%[[VAL_5]] : memref<16x16xi16>, 0, 256)
-// CHECK:             AIE.use_lock(%[[VAL_6]], Release, 1)
-// CHECK:             AIE.next_bd ^bb7
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
+// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<16x16xi16>, 0, 256)
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, 1)
+// CHECK:             aie.next_bd ^bb7
 // CHECK:           ^bb9:  // pred: ^bb6
-// CHECK:             AIE.end
+// CHECK:             aie.end
 // CHECK:           }
 
 module @matmul {
-  AIE.device(xcve2302) {
+  aie.device(xcve2302) {
 
-    %t00 = AIE.tile(0, 0)
-    %t02 = AIE.tile(0, 2)
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
 
-    AIE.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !AIE.objectfifo<memref<16x8xi16>>
-    AIE.objectfifo @inB  (%t00, { %t02 }, 2 : i32) : !AIE.objectfifo<memref<8x16xi16>>
-    AIE.objectfifo @outC (%t02, { %t00 }, 2 : i32) : !AIE.objectfifo<memref<16x16xi16>>
+    aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>
+    aie.objectfifo @inB  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<8x16xi16>>
+    aie.objectfifo @outC (%t02, { %t00 }, 2 : i32) : !aie.objectfifo<memref<16x16xi16>>
 
     func.func @zero_scalar_i16(%elem0 : memref<16x16xi16>) -> () { return }
     func.func @matmul_scalar_i16_i16(%elem0 : memref<16x8xi16>, %elem1 : memref<8x16xi16>, %elem2 : memref<16x16xi16>) -> () { return }
 
-    AIE.core(%t02) {
+    aie.core(%t02) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
@@ -147,25 +147,25 @@ module @matmul {
       scf.for %reps = %c0 to %intmax step %c1 {
 
         scf.for %arg2 = %c0 to %c4 step %c1 {
-          %subview2 = AIE.objectfifo.acquire @outC (Produce, 1) : !AIE.objectfifosubview<memref<16x16xi16>>
-          %elem2 = AIE.objectfifo.subview.access %subview2[0] : !AIE.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
+          %subview2 = aie.objectfifo.acquire @outC (Produce, 1) : !aie.objectfifosubview<memref<16x16xi16>>
+          %elem2 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
           func.call @zero_scalar_i16(%elem2) : (memref<16x16xi16>) -> ()
 
           scf.for %arg3 = %c0 to %c4 step %c1 {
-            %subview0 = AIE.objectfifo.acquire @inA (Consume, 1) : !AIE.objectfifosubview<memref<16x8xi16>>
-            %elem0 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
-            %subview1 = AIE.objectfifo.acquire @inB (Consume, 1) : !AIE.objectfifosubview<memref<8x16xi16>>
-            %elem1 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
+            %subview0 = aie.objectfifo.acquire @inA (Consume, 1) : !aie.objectfifosubview<memref<16x8xi16>>
+            %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
+            %subview1 = aie.objectfifo.acquire @inB (Consume, 1) : !aie.objectfifosubview<memref<8x16xi16>>
+            %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
 
             func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem2) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
 
-            AIE.objectfifo.release @inA (Consume, 1)
-            AIE.objectfifo.release @inB (Consume, 1)
+            aie.objectfifo.release @inA (Consume, 1)
+            aie.objectfifo.release @inB (Consume, 1)
           }
-          AIE.objectfifo.release @outC (Produce, 1)
+          aie.objectfifo.release @outC (Produce, 1)
         }
       }
-      AIE.end
+      aie.end
     }
   }
 }

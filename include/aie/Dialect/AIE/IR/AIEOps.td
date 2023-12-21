@@ -215,7 +215,7 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let summary = "Declare a switch in the PL shim";
   let description = [{
     This operation represents the additional interconnect that is part of a shim interface tile.
-    Like the `AIE.switchbox` operation, `AIE.shimMux` is configured
+    Like the `aie.switchbox` operation, `aie.shim_mux` is configured
     by code in its region, but can only contain connect operations
 
     Example:
@@ -255,18 +255,18 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
 
     Example:
     ```
-      %buf = AIE.external_buffer : memref<256xi64>
-      %lock1 = AIE.lock(%t70, 1)
+      %buf = aie.external_buffer : memref<256xi64>
+      %lock1 = aie.lock(%t70, 1)
 
-      %dma = AIE.shim_dma(%t70) {
-          AIE.dma_start(MM2S, 0, ^bd0, ^end)
+      %dma = aie.shim_dma(%t70) {
+          aie.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
-          AIE.use_lock(%lock1, Acquire, 1)
-          AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
-          AIE.use_lock(%lock1, Release, 0)
-          AIE.next_bd ^bd0
+          aie.use_lock(%lock1, Acquire, 1)
+          aie.dma_bd(%buf : memref<512 x i16>, 0, 512)
+          aie.use_lock(%lock1, Release, 0)
+          aie.next_bd ^bd0
         ^end:
-          AIE.end
+          aie.end
       }
     ```
     Create the shim_dma for tile %t70 and setup one DMA channel and one Buffer Descriptor.
@@ -308,17 +308,17 @@ def AIE_CoreOp: AIE_Op<"core", [
     Examples:
     ```
     %tile = aie.tile(1, 1)
-    %lock11_8 = AIE.lock(%tile, 8)
+    %lock11_8 = aie.lock(%tile, 8)
     aie.core(%tile) {
-      AIE.use_lock(%lock11_8, "Acquire", 1)
-      AIE.use_lock(%lock11_8, "Release", 0)
-      AIE.end
+      aie.use_lock(%lock11_8, "Acquire", 1)
+      aie.use_lock(%lock11_8, "Release", 0)
+      aie.end
     }
     ```
     ```
-    %tile = AIE.tile(3, 3)
-    AIE.core(%tile) {
-      AIE.end
+    %tile = aie.tile(3, 3)
+    aie.core(%tile) {
+      aie.end
     } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
     ```
   }];
@@ -379,7 +379,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
-    This operation must exist within an `aie.switchbox` or `AIE.shim_switchbox` operation.
+    This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` operation.
     All of the `aie.connect` operations in a switchbox must have a different destinations.
     All of the `aie.connect` operations must also have a destination which is different from all
     of the `aie.masterset` operations in the same switchbox.
@@ -455,10 +455,10 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
 
     Example:
     ```
-        %a0_0 = AIE.amsel<5>(3)
-        %m1 = AIE.masterset("East" : 0, %a0_0 )
-        AIE.packet_rules("South" : 0) {
-          AIE.rule(0x1F, 0x10, %a0_0)
+        %a0_0 = aie.amsel<5>(3)
+        %m1 = aie.masterset("East" : 0, %a0_0 )
+        aie.packet_rules("South" : 0) {
+          aie.rule(0x1F, 0x10, %a0_0)
         }
     ```
     This code associates arbiter 5 with msel=3.  A packet-switched connection is made routing
@@ -503,8 +503,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     This operation specifies the configuration for a master port.
 
     Example:
-      %a0_m2 = AIE.amsel<0>(2)
-      AIE.masterset("Core" : 0, %a0_m2)
+      %a0_m2 = aie.amsel<0>(2)
+      aie.masterset("Core" : 0, %a0_m2)
 
     The code will configure the master port <"Core" : 0> to use arbiter 0 with msel 2
     (see AMSelOp for more details regarding AMSel)
@@ -513,12 +513,12 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     a master port can be activated by different msels from one arbiter
 
     Example:
-      %a1_0 = AIE.amsel<1>(0)
-      %a1_1 = AIE.amsel<1>(1)
-      %a2_3 = AIE.amsel<2>(3)
+      %a1_0 = aie.amsel<1>(0)
+      %a1_1 = aie.amsel<1>(1)
+      %a2_3 = aie.amsel<2>(3)
 
-      AIE.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
-      AIE.masterset("West" : 3, %a1_0, %a1_1) // this is OK
+      aie.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
+      aie.masterset("West" : 3, %a1_0, %a1_1) // this is OK
   }];
 
   let assemblyFormat = [{
@@ -560,10 +560,10 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
   let description = [{
     This operation defines packet-switched routing configuration for packets entering a switchbox.
     It references a port of the containing swithcbox, which be unique among other packetRules
-    operations and [AIE.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
-    It contains a region of up to 4 [AIE.rule](#aierule-aiepacketruleop) operations.
+    operations and [aie.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
+    It contains a region of up to 4 [aie.rule](#aierule-aiepacketruleop) operations.
 
-    See [AIE.rule](#aierule-aiepacketruleop) for an example.
+    See [aie.rule](#aierule-aiepacketruleop) for an example.
   }];
 
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
@@ -585,7 +585,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let description = [{
     This operation defines a matching rule and a destination for packet-switched
     connections in a switchbox.  Routing is based on the ID field of packet arriving on the
-    matching port of the containing [AIE.packetRules](#aiepacketrules-aiepacketrulesop).
+    matching port of the containing [aie.packetRules](#aiepacketrules-aiepacketrulesop).
     The ID is first bitwise-AND'd with the mask and then checked for equality with the given ID.
     It is routed to arbiter and master set associated with the first matching entry.
 
@@ -603,12 +603,12 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
     We encapsulate the configuration table as follows:
     Example:
     ```
-      %a4_1 = AIE.amsel<4>(1)
-      %a3_2 = AIE.amsel<3>(2)
+      %a4_1 = aie.amsel<4>(1)
+      %a3_2 = aie.amsel<3>(2)
 
-      AIE.packetRules("Core" : 0) {
-        AIE.rule(0x1F, 0x2, %a4_1)
-        AIE.rule(0x1B, 0x1, %a3_2)
+      aie.packet_rules("Core" : 0) {
+        aie.rule(0x1F, 0x2, %a4_1)
+        aie.rule(0x1B, 0x1, %a3_2)
       }
     ```
   }];
@@ -635,10 +635,10 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
     Example:
     ```
-      %01 = AIE.tile(0, 1)
-      AIE.packet_flow(0x10) {
-        AIE.packet_source<%01, "Core" : 0>
-        AIE.packet_dest<%01, "Core" : 0>
+      %01 = aie.tile(0, 1)
+      aie.packet_flow(0x10) {
+        aie.packet_source<%01, "Core" : 0>
+        aie.packet_dest<%01, "Core" : 0>
       }
     ```
   }];
@@ -660,9 +660,9 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let summary = "A sourceport";
   let description = [{
     A object representing the destination of a packet-switched flow. This must exist
-    within an [AIE.packet_flow](#aiepacketflow-aiepacketflowop) operation.
+    within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation.
 
-    See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+    See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
   }];
 
   let assemblyFormat = [{
@@ -684,10 +684,10 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let summary = "A destination port";
   let description = [{
     A object representing the destination of a packet-switched flow. This must exist
-    within an [AIE.packet_flow](#aiepacketflow-aiepacketflowop) operation. The destination
+    within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation. The destination
     Must be unique within a design.
 
-    See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+    See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
   }];
 
   let assemblyFormat = [{
@@ -706,17 +706,17 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
     This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
     the packet type (3-bits) and packet ID (5-bits).
 
-    This operation must be used in an MLIR block that lives inside a MemOp's region, and before AIE.dmaBd.
+    This operation must be used in an MLIR block that lives inside a MemOp's region, and before aie.dma_bd.
     The block descriptor specifies what lock to use and the buffer configuration.
 
     Example:
     ```
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
-        AIE.use_lock(%lck, "Acquire", 0)
-        AIE.dma_bd_packet(0x4, 0xD)
-        AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-        AIE.use_lock(%lck, "Release", 1)
+        aie.use_lock(%lck, "Acquire", 0)
+        aie.dma_bd_packet(0x4, 0xD)
+        aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        aie.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
   }];
@@ -748,16 +748,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ```
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
-        AIE.use_lock(%lck, "Acquire", 0)
-        AIE.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-        AIE.use_lock(%lck, "Release", 1)
+        aie.use_lock(%lck, "Acquire", 0)
+        aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        aie.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
 
       ...
 
       // this defines a BD that does not use any lock
       ^bd8:
-        AIE.dma_bd(<$buf1 : memref<64xi32>, 0, 64>, 0)
+        aie.dma_bd(<$buf1 : memref<64xi32>, 0, 64>, 0)
     ```
     A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
     There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
@@ -800,7 +800,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     elements:
 
     ```
-    AIE.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+    aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -848,19 +848,19 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 
     Example:
     ```
-        AIE.dma_start("MM2S", 0, ^bd0, ^end)
+        aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        AIE.use_lock(%lock0, "Acquire", 0)
-        AIE.dma_bd(%buffer : memref<16 x f32>, 0, 16)
-        AIE.use_lock(%lock0, "Release", 1)
+        aie.use_lock(%lock0, "Acquire", 0)
+        aie.dma_bd(%buffer : memref<16 x f32>, 0, 16)
+        aie.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
-        AIE.end
+        aie.end
     ```
 
-    Conceptually, the AIE.dma_start operation is a terminator that either passes
+    Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
-    or to a basic block for another dma_start, to an AIE.end operation.
+    or to a basic block for another dma_start, to an aie.end operation.
   }];
 
   let arguments = (
@@ -893,15 +893,15 @@ def AIE_MemOp: AIE_Op<"mem", [
 
     Example:
     ```
-      m73 = AIE.mem(%t73) {
-          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
+      m73 = aie.mem(%t73) {
+          %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
-          AIE.use_lock(%lock, "Release", 1)
-          AIE.next_bd ^bd0
+          aie.use_lock(%lock, "Acquire", 0)
+          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.use_lock(%lock, "Release", 1)
+          aie.next_bd ^bd0
         ^end:
-          AIE.end
+          aie.end
       }
     ```
     Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
@@ -944,15 +944,15 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
 
     Example:
     ```
-      m73 = AIE.memtile_dma(%t71) {
-          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
+      m73 = aie.memtile_dma(%t71) {
+          %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
-          AIE.use_lock(%lock, "Release", 1)
-          AIE.next_bd ^bd0
+          aie.use_lock(%lock, "Acquire", 0)
+          aie.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
+          aie.use_lock(%lock, "Release", 1)
+          aie.next_bd ^bd0
         ^end:
-          AIE.end
+          aie.end
       }
     ```
     Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
@@ -987,15 +987,15 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
 
     Example:
     ```
-      m73 = AIE.mem(%t73) {
-          %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
+      m73 = aie.mem(%t73) {
+          %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
-          AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
-          AIE.use_lock(%lock, "Release", 1)
-          AIE.next_bd ^bd0
+          aie.use_lock(%lock, "Acquire", 0)
+          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.use_lock(%lock, "Release", 1)
+          aie.next_bd ^bd0
         ^end:
-          AIE.end
+          aie.end
       }
     ```
   }];
@@ -1018,14 +1018,14 @@ def AIE_LockOp: AIE_Op<"lock", [
 
     Example:
     ```
-      %tile33 = AIE.tile(3, 3)
-      %lck = AIE.lock(%tile33, 7)
+      %tile33 = aie.tile(3, 3)
+      %lck = aie.lock(%tile33, 7)
     ```
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
 
     Case when LockID is not assigned:
-      Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
-      After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
+      Before AIEAssignLockIDs: %tile33 = aie.tile(3)
+      After AIEAssignLockIDs: %tile33 = aie.tile(3, $assigned_value)
   }];
 
   let arguments = (
@@ -1131,8 +1131,8 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
     Example:
     ```
-      %tile33 = AIE.tile(3, 3)
-      %buf = AIE.buffer(%tile33) : memref<256xi64>
+      %tile33 = aie.tile(3, 3)
+      %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
   }];
@@ -1190,7 +1190,7 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
 
     Example:
     ```
-      %buf = AIE.external_buffer : memref<256xi64>
+      %buf = aie.external_buffer : memref<256xi64>
     ```
     This operation represents an external buffer.
   }];
@@ -1312,13 +1312,13 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
 
     Example:
     ```
-      %tile00 = AIE.tile(0, 0)
-      %tile02 = AIE.tile(0, 2)
-      AIE.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectfifo<memref<64xi16>>
+      %tile00 = aie.tile(0, 0)
+      %tile02 = aie.tile(0, 2)
+      aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo<memref<64xi16>>
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
-      AIE.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
+      aie.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
     ```
   }];
 
@@ -1356,7 +1356,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 
     1-to-1 tile example:
     ```
-      AIE.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
+      aie.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !aie.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12` and `%tile23` of 4 elements, each a buffer of 16 32-bit integers.
     Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`,
@@ -1365,14 +1365,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 
     1-to-2 tiles broadcast example:
     ```
-      AIE.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectfifo<memref<16xi32>>
+      aie.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !aie.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16
     32-bit integers.
 
     1-to-2 tiles broadcast with explicit sizes example:
     ```
-      AIE.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectfifo<memref<16xi32>>
+      aie.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !aie.objectfifo<memref<16xi32>>
     ```
     This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool
     at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis
@@ -1405,11 +1405,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     all even indices from the stream, followed by all odd indices:
 
     ```
-      AIE.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+      aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
                            {%tile13 fromStream [],
                             %tile23 fromStream [<2, 1>, <128, 2>]},
                            2 : i32
-                          ) : !AIE.objectfifo<memref<256xi32>>
+                          ) : !aie.objectfifo<memref<256xi32>>
     ```
   }];
 
@@ -1485,9 +1485,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
     Example:
     ```
-      AIE.objectfifo @of1 (%t70, { %t72 }, 2) : !AIE.objectfifo<memref<64xi16>>
-      AIE.objectfifo @of2 (%t72, { %t74 }, 2) : !AIE.objectfifo<memref<64xi16>>
-      AIE.objectfifo.link [@of1] -> [@of2] ()
+      aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo<memref<64xi16>>
+      aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo<memref<64xi16>>
+      aie.objectfifo.link [@of1] -> [@of2] ()
     ```
     This operation links two `objectFifos` which have tile `%t72` as a link point.
 
@@ -1540,10 +1540,10 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
 
     Example:
     ```
-      AIE.objectfifo @of1 (%t70, %t73, 2) : !AIE.objectfifo<memref<64xi16>>
-      %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
-      %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-      AIE.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+      aie.objectfifo @of1 (%t70, %t73, 2) : !aie.objectfifo<memref<64xi16>>
+      %buffer_in_0  = aie.external_buffer : memref<512 x i16>
+      %buffer_in_1  = aie.external_buffer : memref<512 x i16>
+      aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
     This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shim_dma of shimTile %t70.
   }];
@@ -1576,7 +1576,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
     the acquired objects which can be used to access them.
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `AIE.use_lock` operations on
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations on
     the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
     new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
     to be released by the same process, then performing another acquire operation on the same `objectFifo`
@@ -1585,7 +1585,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectfifo.acquire @of1 (Consume, 2) : !AIE.objectfifosubview<memref<16xi32>>
+      %subview = aie.objectfifo.acquire @of1 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
     port and returns a subview of the acquired objects.
@@ -1622,7 +1622,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
 
     Example:
     ```
-      AIE.objectfifo.release @of1 (Produce, 1)
+      aie.objectfifo.release @of1 (Produce, 1)
     ```
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
   }];
@@ -1652,8 +1652,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
 
     Example:
     ```
-      %subview = AIE.objectfifo.acquire @of1 (Produce, 3) : !AIE.objectfifosubview<memref<16xi32>>
-      %elem = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
+      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
     ```
     In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
     the `objectFifo` if other acquire operations took place beforehand.
@@ -1691,13 +1691,13 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
 
     Example:
     ```
-      AIE.objectfifo @of1 (%t72, %t73, 2) : !AIE.objectfifo<memref<16xi32>>
+      aie.objectfifo @of1 (%t72, %t73, 2) : !aie.objectfifo<memref<16xi32>>
       %length = arith.constant 10 : index
       %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
-      func @producer_work(%input : !AIE.objectfifosubview<memref<16xi32>>) -> () { ... }
+      func @producer_work(%input : !aie.objectfifosubview<memref<16xi32>>) -> () { ... }
 
-      AIE.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+      aie.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```
     This operation registers function @producer_work and associated patterns to the produce end of @of1.
     @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.

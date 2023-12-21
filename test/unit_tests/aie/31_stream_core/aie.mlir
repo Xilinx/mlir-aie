@@ -17,38 +17,38 @@
 // XFAIL: *
 
 module {
-  %tile13 = AIE.tile(1, 3)
-  %tile23 = AIE.tile(2, 3)
+  %tile13 = aie.tile(1, 3)
+  %tile23 = aie.tile(2, 3)
 
-  %buf13 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-  %buf23 = AIE.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
+  %buf13 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
+  %buf23 = aie.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
-  %lock23_7 = AIE.lock(%tile23, 7) { sym_name = "output_lock" } // output buffer lock
+  %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+  %lock23_7 = aie.lock(%tile23, 7) { sym_name = "output_lock" } // output buffer lock
 
   func.func private @do_mul(%A: memref<256xi32>) -> ()
   func.func private @do_mac(%A: memref<256xi32>) -> ()
 
-  AIE.flow(%tile13, Core : 0, %tile23, Core : 0)
+  aie.flow(%tile13, Core : 0, %tile23, Core : 0)
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    AIE.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
+    aie.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
     %val = memref.load %buf13[%idx0] : memref<256xi32>
-    AIE.put_stream(%0 : i32, %val : i32)
-    AIE.use_lock(%lock13_3, "Release", 0) // release for write
-    AIE.end
+    aie.put_stream(%0 : i32, %val : i32)
+    aie.use_lock(%lock13_3, "Release", 0) // release for write
+    aie.end
   }
 
-  %core23 = AIE.core(%tile23) {
+  %core23 = aie.core(%tile23) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    AIE.use_lock(%lock23_7, "Acquire", 0) // acquire for write
-    %val = AIE.get_stream(%0 : i32) : i32
+    aie.use_lock(%lock23_7, "Acquire", 0) // acquire for write
+    %val = aie.get_stream(%0 : i32) : i32
     memref.store %val, %buf23[%idx0] : memref<256xi32>
-    AIE.use_lock(%lock23_7, "Release", 1) // release for read
-    AIE.end
+    aie.use_lock(%lock23_7, "Release", 1) // release for read
+    aie.end
   }
 
 }

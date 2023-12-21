@@ -14,19 +14,19 @@
 // CHECK: PASS!
 
 module @test04_shared_memory {
-  AIE.device(xcve2802) {
-    %tile13 = AIE.tile(1, 3)
-    %tile14 = AIE.tile(1, 4)
+  aie.device(xcve2802) {
+    %tile13 = aie.tile(1, 3)
+    %tile14 = aie.tile(1, 4)
 
-    %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-    %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
-    %buf14_0 = AIE.buffer(%tile14) { sym_name = "c" } : memref<256xi32>
+    %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
+    %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
+    %buf14_0 = aie.buffer(%tile14) { sym_name = "c" } : memref<256xi32>
 
-    %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
-    %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "output_lock" } // output buffer lock
+    %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+    %lock13_5 = aie.lock(%tile13, 5) { sym_name = "output_lock" } // output buffer lock
 
-    %core13 = AIE.core(%tile13) {
-      AIE.use_lock(%lock13_3, AcquireGreaterEqual, 1)
+    %core13 = aie.core(%tile13) {
+      aie.use_lock(%lock13_3, AcquireGreaterEqual, 1)
       %idx1 = arith.constant 3 : index
       %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
       %2    = arith.addi %val1, %val1 : i32
@@ -35,8 +35,8 @@ module @test04_shared_memory {
       %5 = arith.addi %4, %val1 : i32
       %idx2 = arith.constant 5 : index
       memref.store %5, %buf13_1[%idx2] : memref<256xi32>
-      AIE.use_lock(%lock13_5, Release, 1)
-      AIE.end
+      aie.use_lock(%lock13_5, Release, 1)
+      aie.end
     }
   }
 }

@@ -9,14 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.get_cascade' op must be a 384-bit type
+// CHECK: error{{.*}}'aie.get_cascade' op must be a 384-bit type
 
 module @test {
-  AIE.device(xcvc1902) {
-    %t33 = AIE.tile(3, 3)
-    %c33 = AIE.core(%t33) {
-      %val2 = AIE.get_cascade() : i64
-      AIE.end
+  aie.device(xcvc1902) {
+    %t33 = aie.tile(3, 3)
+    %c33 = aie.core(%t33) {
+      %val2 = aie.get_cascade() : i64
+      aie.end
     }
   }
 }

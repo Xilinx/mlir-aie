@@ -12,8 +12,8 @@
 // CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(3,3), XAie_LockInit(0, 1)));
 
 module @test_lock_init {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %l33_0 = AIE.lock(%t33, 0) { init = 1 : i32 }
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %l33_0 = aie.lock(%t33, 0) { init = 1 : i32 }
  }
 }

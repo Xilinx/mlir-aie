@@ -835,7 +835,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                 [
                     "lower-affine",
                     "aie-canonicalize-device",
-                    "AIE.device(" + "aie-assign-lock-ids",
+                    "aie.device(" + "aie-assign-lock-ids",
                     "aie-register-objectFifos",
                     "aie-objectFifo-stateful-transform",
                     "aie-lower-broadcast-packet",

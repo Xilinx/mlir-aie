@@ -17,7 +17,7 @@
 // CHECK:    call @llvm.aie.lock.release.reg({{.*}}, %c1_i32) : (i32, i32) -> ()
 
 module @example0 {
- AIE.device(xcvc1902) {
+ aie.device(xcvc1902) {
 
   // Odd  AIE rows: DMem on the East
   // Even AIE rows: DMem on the West
@@ -26,67 +26,67 @@ module @example0 {
   // (2, 3) (3, 3) (4, 3) (5, 3)
   // (2, 2) (3, 2) (4, 2) (5, 2)
 
-  %t11 = AIE.tile(1, 1)
-  %t33 = AIE.tile(3, 3)
-  %t43 = AIE.tile(4, 3)
+  %t11 = aie.tile(1, 1)
+  %t33 = aie.tile(3, 3)
+  %t43 = aie.tile(4, 3)
 
-  %l33_0 = AIE.lock(%t33, 0)
-  %l33_1 = AIE.lock(%t33, 1)
-  %l43_0 = AIE.lock(%t43, 0)
+  %l33_0 = aie.lock(%t33, 0)
+  %l33_1 = aie.lock(%t33, 1)
+  %l43_0 = aie.lock(%t43, 0)
 
-  %buf33 = AIE.buffer(%t33) { sym_name = "a" } : memref<256xi32>
-  %buf43 = AIE.buffer(%t43) { sym_name = "b" } : memref<256xi32>
+  %buf33 = aie.buffer(%t33) { sym_name = "a" } : memref<256xi32>
+  %buf43 = aie.buffer(%t43) { sym_name = "b" } : memref<256xi32>
 
-  %m33 = AIE.mem(%t33) {
-      %dmaSt0 = AIE.dma_start(MM2S, 0, ^bd0, ^end)
+  %m33 = aie.mem(%t33) {
+      %dmaSt0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l33_0, Acquire, 1)
-      AIE.dma_bd(%buf33 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l33_0, Release, 0)
-      AIE.next_bd ^end
+      aie.use_lock(%l33_0, Acquire, 1)
+      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l33_0, Release, 0)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %m43 = AIE.mem(%t43) {
-      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m43 = aie.mem(%t43) {
+      %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l43_0, Acquire, 0)
-      AIE.dma_bd(%buf43 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l43_0, Release, 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l43_0, Acquire, 0)
+      aie.dma_bd(%buf43 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l43_0, Release, 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %s33 = AIE.switchbox(%t33) {
-    AIE.connect<DMA: 0, North: 0>
+  %s33 = aie.switchbox(%t33) {
+    aie.connect<DMA: 0, North: 0>
   }
 
-  %s43 = AIE.switchbox(%t43) {
-    AIE.connect<South: 0, DMA: 0>
+  %s43 = aie.switchbox(%t43) {
+    aie.connect<South: 0, DMA: 0>
   }
 
-  %c33 = AIE.core(%t33) {
-    AIE.use_lock(%l33_0, Acquire, 0)
+  %c33 = aie.core(%t33) {
+    aie.use_lock(%l33_0, Acquire, 0)
     // code
     %val0 = arith.constant 16 : i32
     %0 = arith.constant 0 : i32
-    AIE.put_stream(%0 : i32, %val0 : i32)
-    %val1 = AIE.get_stream(%0 : i32) : i128
+    aie.put_stream(%0 : i32, %val0 : i32)
+    %val1 = aie.get_stream(%0 : i32) : i128
     %val2 = arith.constant 1 : i384
-    AIE.putCascade(%val2: i384)
-    AIE.use_lock(%l33_0, Release, 1)
-    AIE.end
+    aie.putCascade(%val2: i384)
+    aie.use_lock(%l33_0, Release, 1)
+    aie.end
   }
 
-  %c43 = AIE.core(%t43) {
-    AIE.use_lock(%l43_0, Acquire, 1)
+  %c43 = aie.core(%t43) {
+    aie.use_lock(%l43_0, Acquire, 1)
 
     // code
 
-    AIE.use_lock(%l43_0, Release, 0)
-    AIE.end
+    aie.use_lock(%l43_0, Release, 0)
+    aie.end
   }
  }
 }

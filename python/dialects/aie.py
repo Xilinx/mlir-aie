@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 
-from ._AIE_enum_gen import *
-from ._AIE_ops_gen import *
+from ._aie_enum_gen import *
+from ._aie_ops_gen import *
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
@@ -23,9 +23,12 @@ from ..ir import (
     IntegerType,
     _i32ArrayAttr,
 )
+from ._ods_common import _cext
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
+
+assert _cext.globals._check_dialect_module_loaded("aie")
 
 
 def external_func(name, inputs, outputs=None, visibility="private"):
@@ -63,7 +66,7 @@ from typing import List, Union, Tuple
 
 
 def bd_dim_layout(wrap, step):
-    return Attribute.parse(f"#AIE.bd_dim_layout<{wrap=}, {step=}>")
+    return Attribute.parse(f"#aie.bd_dim_layout<{wrap=}, {step=}>")
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
@@ -73,7 +76,7 @@ def bd_dim_layout_array_attr_builder(
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
         tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
-        f'#AIE<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
+        f'#aie<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -81,7 +84,7 @@ def bd_dim_layout_array_attr_builder(
 def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
     tup_arrs = list(map(bd_dim_layout_array_attr_builder, tup_arrs))
     return Attribute.parse(
-        f'#AIE<bd_dim_layout_arr_arr[{", ".join(map(str, tup_arrs))}]>', context=context
+        f'#aie<bd_dim_layout_arr_arr[{", ".join(map(str, tup_arrs))}]>', context=context
     )
 
 

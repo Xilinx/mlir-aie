@@ -8,17 +8,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Check that the arith.constants in AIE.core are not moved out of the region by pass
+// Check that the arith.constants in aie.core are not moved out of the region by pass
 
 // RUN: aie-opt %s -canonicalize | FileCheck %s
-// CHECK: AIE.core
+// CHECK: aie.core
 // CHECK: arith.constant
 module @aie.herd_0  {
-  %0 = AIE.tile(8, 3)
-  %1 = AIE.buffer(%0) {sym_name = "b2"} : memref<32x32xi32>
-  %2 = AIE.buffer(%0) {sym_name = "b1"} : memref<32x32xi32>
-  %3 = AIE.buffer(%0) {sym_name = "b0"} : memref<32x32xi32>
-  %4 = AIE.core(%0)  {
+  %0 = aie.tile(8, 3)
+  %1 = aie.buffer(%0) {sym_name = "b2"} : memref<32x32xi32>
+  %2 = aie.buffer(%0) {sym_name = "b1"} : memref<32x32xi32>
+  %3 = aie.buffer(%0) {sym_name = "b0"} : memref<32x32xi32>
+  %4 = aie.core(%0)  {
     cf.br ^bb1
   ^bb1:  // pred: ^bb0
     cf.br ^bb2
@@ -40,6 +40,6 @@ module @aie.herd_0  {
         }
       }
     }
-    AIE.end
+    aie.end
   }
 }

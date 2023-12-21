@@ -10,13 +10,13 @@
 
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.connect' op source bundle DMA not supported
+// CHECK: error{{.*}}'aie.connect' op source bundle DMA not supported
 
 module {
-  AIE.device(xcve2802) {
-    %20 = AIE.tile(2, 0) // shim-noc tile
-    AIE.switchbox(%20) {
-      AIE.connect<DMA: 0, South: 0> // No dma in shimtile.. Go through shim_mux
+  aie.device(xcve2802) {
+    %20 = aie.tile(2, 0) // shim-noc tile
+    aie.switchbox(%20) {
+      aie.connect<DMA: 0, South: 0> // No dma in shimtile.. Go through shim_mux
     }
   }
 }

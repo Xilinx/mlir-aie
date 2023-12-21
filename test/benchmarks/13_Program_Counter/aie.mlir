@@ -12,18 +12,18 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark13_program_counter {
-  %t73 = AIE.tile(7, 3)
+  %t73 = aie.tile(7, 3)
 
 
-  %buf73_0 = AIE.buffer(%t73) { sym_name = "a" } : memref<256xi32>
+  %buf73_0 = aie.buffer(%t73) { sym_name = "a" } : memref<256xi32>
 
-  %core73 = AIE.core(%t73) {
+  %core73 = aie.core(%t73) {
     %val1 = arith.constant 7 : i32
     %idx1 = arith.constant 3 : index
     %2 = arith.addi %val1, %val1 : i32
     memref.store %2, %buf73_0[%idx1] : memref<256xi32>
 
-    AIE.end
+    aie.end
   }
 
 }

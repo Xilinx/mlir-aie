@@ -12,19 +12,19 @@
 
 module @tutorial_2b {
     
-    AIE.device(xcve2802) {
-        %tile31 = AIE.tile(3, 1)
+    aie.device(xcve2802) {
+        %tile31 = aie.tile(3, 1)
 
-        %buf31 = AIE.buffer(%tile31) { sym_name = "buf31" } : memref<128xi32>
+        %buf31 = aie.buffer(%tile31) { sym_name = "buf31" } : memref<128xi32>
 
-        %mem31 = AIE.memtile_dma(%tile31) {
-          %srcDma = AIE.dma_start("MM2S", 0, ^bd0, ^end)
+        %mem31 = aie.memtile_dma(%tile31) {
+          %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             //expected-error@+1 {{Cannot give more than 4 dimensions}}
-            AIE.dma_bd(%buf31 : memref<128xi32>, 0, 128, [<wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>])
-            AIE.next_bd ^end
+            aie.dma_bd(%buf31 : memref<128xi32>, 0, 128, [<wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>, <wrap = 1, step = 1>])
+            aie.next_bd ^end
           ^end: 
-            AIE.end
+            aie.end
         }
 
     }

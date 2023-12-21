@@ -12,21 +12,21 @@
 // RUN: %run_on_board ./test.elf
 
 module @test15_prime_sieve {
-  %tile13 = AIE.tile(1, 3)
-  %tile14 = AIE.tile(1, 4)
-  %tile15 = AIE.tile(1, 5)
-  %tile16 = AIE.tile(1, 6)
+  %tile13 = aie.tile(1, 3)
+  %tile14 = aie.tile(1, 4)
+  %tile15 = aie.tile(1, 5)
+  %tile16 = aie.tile(1, 6)
 
-  %lock13_0 = AIE.lock(%tile13, 0) { sym_name = "input_lock" }
-  %lock14_0 = AIE.lock(%tile14, 0)
-  %lock15_0 = AIE.lock(%tile15, 0)
-  %lock16_0 = AIE.lock(%tile16, 0) { sym_name = "output_lock" }
-  %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-  %buf14_0 = AIE.buffer(%tile14) { sym_name = "prime2" } : memref<256xi32>
-  %buf15_0 = AIE.buffer(%tile15) { sym_name = "prime3" } : memref<256xi32>
-  %buf16_0 = AIE.buffer(%tile16) { sym_name = "prime5" } : memref<256xi32>
+  %lock13_0 = aie.lock(%tile13, 0) { sym_name = "input_lock" }
+  %lock14_0 = aie.lock(%tile14, 0)
+  %lock15_0 = aie.lock(%tile15, 0)
+  %lock16_0 = aie.lock(%tile16, 0) { sym_name = "output_lock" }
+  %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
+  %buf14_0 = aie.buffer(%tile14) { sym_name = "prime2" } : memref<256xi32>
+  %buf15_0 = aie.buffer(%tile15) { sym_name = "prime3" } : memref<256xi32>
+  %buf16_0 = aie.buffer(%tile16) { sym_name = "prime5" } : memref<256xi32>
 
-  %core13 = AIE.core(%tile13) {
+  %core13 = aie.core(%tile13) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c64 = arith.constant 64 : index
@@ -40,8 +40,8 @@ module @test15_prime_sieve {
       memref.store %sum_iter, %buf13_0[%arg0] : memref<256xi32>
       scf.yield %sum_next : i32
     }
-    AIE.use_lock(%lock13_0, "Release", 1)
-    AIE.end
+    aie.use_lock(%lock13_0, "Release", 1)
+    aie.end
   }
   func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
     %c0 = arith.constant 0 : index
@@ -88,28 +88,28 @@ module @test15_prime_sieve {
     return
   }
 
-  %core14 = AIE.core(%tile14) {
-    AIE.use_lock(%lock13_0, "Acquire", 1)
-    AIE.use_lock(%lock14_0, "Acquire", 0)
+  %core14 = aie.core(%tile14) {
+    aie.use_lock(%lock13_0, "Acquire", 1)
+    aie.use_lock(%lock14_0, "Acquire", 0)
     func.call @do_sieve(%buf13_0, %buf14_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    AIE.use_lock(%lock13_0, "Release", 0)
-    AIE.use_lock(%lock14_0, "Release", 1)
-    AIE.end
+    aie.use_lock(%lock13_0, "Release", 0)
+    aie.use_lock(%lock14_0, "Release", 1)
+    aie.end
   }
-  %core15 = AIE.core(%tile15) {
-    AIE.use_lock(%lock14_0, "Acquire", 1)
-    AIE.use_lock(%lock15_0, "Acquire", 0)
+  %core15 = aie.core(%tile15) {
+    aie.use_lock(%lock14_0, "Acquire", 1)
+    aie.use_lock(%lock15_0, "Acquire", 0)
     func.call @do_sieve(%buf14_0, %buf15_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    AIE.use_lock(%lock14_0, "Release", 0)
-    AIE.use_lock(%lock15_0, "Release", 1)
-    AIE.end
+    aie.use_lock(%lock14_0, "Release", 0)
+    aie.use_lock(%lock15_0, "Release", 1)
+    aie.end
   }
-  %core16 = AIE.core(%tile16) {
-    AIE.use_lock(%lock15_0, "Acquire", 1)
-    AIE.use_lock(%lock16_0, "Acquire", 0)
+  %core16 = aie.core(%tile16) {
+    aie.use_lock(%lock15_0, "Acquire", 1)
+    aie.use_lock(%lock16_0, "Acquire", 0)
     func.call @do_sieve(%buf15_0, %buf16_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    AIE.use_lock(%lock15_0, "Release", 0)
-    AIE.use_lock(%lock16_0, "Release", 1)
-    AIE.end
+    aie.use_lock(%lock15_0, "Release", 0)
+    aie.use_lock(%lock16_0, "Release", 1)
+    aie.end
   }
 }

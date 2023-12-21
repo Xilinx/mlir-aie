@@ -9,13 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'AIE.core' op failed to verify that op exists in a core tile
+// CHECK: error{{.*}}'aie.core' op failed to verify that op exists in a core tile
 
 module @test {
-  AIE.device(xcve2802) {
-    %t1 = AIE.tile(4, 1)
-    %core = AIE.core(%t1) {
-      AIE.end
+  aie.device(xcve2802) {
+    %t1 = aie.tile(4, 1)
+    %core = aie.core(%t1) {
+      aie.end
     }
   }
 }

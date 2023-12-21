@@ -46,7 +46,7 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/AIEBinding.td
   SOURCES
     dialects/aie.py
-  DIALECT_NAME AIE
+  DIALECT_NAME aie
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
 )
@@ -57,7 +57,7 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/AIEXBinding.td
   SOURCES
     dialects/aiex.py
-  DIALECT_NAME AIEX
+  DIALECT_NAME aiex
 )
 
 declare_mlir_dialect_python_bindings(

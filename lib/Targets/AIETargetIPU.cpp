@@ -10,6 +10,7 @@
 
 #include "AIETargets.h"
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -18,6 +19,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
+
 #include <vector>
 
 using namespace mlir;

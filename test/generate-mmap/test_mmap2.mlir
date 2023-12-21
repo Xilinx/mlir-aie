@@ -22,14 +22,14 @@
 // CHECK: _symbol a 0x20000 16
 
 module @test_mmap1 {
- AIE.device(xcvc1902) {
-  %tsame = AIE.tile(3, 3)
-  %twest = AIE.tile(2, 3) // Different column
-  %teast = AIE.tile(4, 3) // Different column
-  %tsouth = AIE.tile(3, 2) // Different row
-  %tnorth = AIE.tile(3, 4) // Different row
+ aie.device(xcvc1902) {
+  %tsame = aie.tile(3, 3)
+  %twest = aie.tile(2, 3) // Different column
+  %teast = aie.tile(4, 3) // Different column
+  %tsouth = aie.tile(3, 2) // Different row
+  %tnorth = aie.tile(3, 4) // Different row
 
-  %bufsame = AIE.buffer(%tsame) { sym_name = "a", address = 0x0 } : memref<4xi32>
+  %bufsame = aie.buffer(%tsame) { sym_name = "a", address = 0x0 } : memref<4xi32>
  }
 }
 

@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'AIE.connect' op source index cannot be less than zero
+// CHECK: error{{.*}} 'aie.connect' op source index cannot be less than zero
 
 module {
-  %20 = AIE.tile(2, 0)
-  AIE.switchbox(%20) {
-    AIE.connect<East: -1, East: 0>
+  %20 = aie.tile(2, 0)
+  aie.switchbox(%20) {
+    aie.connect<East: -1, East: 0>
   }
 }

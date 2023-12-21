@@ -11,37 +11,37 @@
 // RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
 
 // CHECK-LABEL: module @aie_module {
-// CHECK:   %[[VAL_0:.*]] = AIE.tile(7, 2)
-// CHECK:   %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0:.*]]) {
-// CHECK:     %[[VAL_2:.*]] = AIE.amsel<0> (0)
-// CHECK:     %[[VAL_3:.*]] = AIE.masterset(DMA : 1, %[[VAL_2:.*]])
-// CHECK:     AIE.packet_rules(North : 3) {
-// CHECK:       AIE.rule(31, 10, %[[VAL_2:.*]])
+// CHECK:   %[[VAL_0:.*]] = aie.tile(7, 2)
+// CHECK:   %[[VAL_1:.*]] = aie.switchbox(%[[VAL_0:.*]]) {
+// CHECK:     %[[VAL_2:.*]] = aie.amsel<0> (0)
+// CHECK:     %[[VAL_3:.*]] = aie.masterset(DMA : 1, %[[VAL_2:.*]])
+// CHECK:     aie.packet_rules(North : 3) {
+// CHECK:       aie.rule(31, 10, %[[VAL_2:.*]])
 // CHECK:     }
 // CHECK:   }
-// CHECK:   %[[VAL_5:.*]] = AIE.tile(7, 3)
-// CHECK:   %[[VAL_6:.*]] = AIE.switchbox(%[[VAL_5:.*]]) {
-// CHECK:     %[[VAL_7:.*]] = AIE.amsel<0> (0)
-// CHECK:     %[[VAL_8:.*]] = AIE.masterset(South : 3, %[[VAL_7:.*]])
-// CHECK:     AIE.packet_rules(DMA : 0) {
-// CHECK:       AIE.rule(31, 10, %[[VAL_7:.*]])
+// CHECK:   %[[VAL_5:.*]] = aie.tile(7, 3)
+// CHECK:   %[[VAL_6:.*]] = aie.switchbox(%[[VAL_5:.*]]) {
+// CHECK:     %[[VAL_7:.*]] = aie.amsel<0> (0)
+// CHECK:     %[[VAL_8:.*]] = aie.masterset(South : 3, %[[VAL_7:.*]])
+// CHECK:     aie.packet_rules(DMA : 0) {
+// CHECK:       aie.rule(31, 10, %[[VAL_7:.*]])
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.flow(%[[VAL_0]], DMA : 1, %[[VAL_5]], DMA : 0)
+// CHECK:   aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_5]], DMA : 0)
 
 //
 // one circuit routing and one packet routing
 //
 
 module @aie_module  {
- AIE.device(xcvc1902) {
-  %t70 = AIE.tile(7, 2)
-  %t71 = AIE.tile(7, 3)
+ aie.device(xcvc1902) {
+  %t70 = aie.tile(7, 2)
+  %t71 = aie.tile(7, 3)
 
-  AIE.packet_flow(0xA) {
-    AIE.packet_source<%t71, DMA : 0>
-    AIE.packet_dest<%t70, DMA : 1>
+  aie.packet_flow(0xA) {
+    aie.packet_source<%t71, DMA : 0>
+    aie.packet_dest<%t70, DMA : 1>
   }
-  AIE.flow(%t70, DMA : 1, %t71, DMA : 0)
+  aie.flow(%t70, DMA : 1, %t71, DMA : 0)
  }
 }

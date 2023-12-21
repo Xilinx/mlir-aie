@@ -13,36 +13,36 @@
 // The idea of this pass is probably not a good one.
 
 //CHECK-LABEL: module @test_buffer_merge0 {
-//CHECK: %[[TILE33:.*]] = AIE.tile(3, 3)
-//CHECK: %[[TILE34:.*]] = AIE.tile(3, 4)
-//CHECK: %[[TILE32:.*]] = AIE.tile(3, 2)
-//CHECK: %[[LOCK33:.*]] = AIE.lock(%[[TILE33]], 0)
-//CHECK: %[[LOCK34:.*]] = AIE.lock(%[[TILE34]], 0)
-//CHECK: %[[LOCK32:.*]] = AIE.lock(%[[TILE32]], 0)
-//CHECK: %[[BUF33:.*]] = AIE.buffer(%[[TILE33]]) : memref<256xi32>
-//CHECK: %[[BUF34:.*]] = AIE.buffer(%[[TILE34]]) : memref<256xi32>
-//CHECK: %[[BUF32:.*]] = AIE.buffer(%[[TILE32]]) : memref<256xi32>
-//CHECK: %11 = AIE.core(%2) {
-//CHECK:   AIE.use_lock(%1, Acquire, 0)
+//CHECK: %[[TILE33:.*]] = aie.tile(3, 3)
+//CHECK: %[[TILE34:.*]] = aie.tile(3, 4)
+//CHECK: %[[TILE32:.*]] = aie.tile(3, 2)
+//CHECK: %[[LOCK33:.*]] = aie.lock(%[[TILE33]], 0)
+//CHECK: %[[LOCK34:.*]] = aie.lock(%[[TILE34]], 0)
+//CHECK: %[[LOCK32:.*]] = aie.lock(%[[TILE32]], 0)
+//CHECK: %[[BUF33:.*]] = aie.buffer(%[[TILE33]]) : memref<256xi32>
+//CHECK: %[[BUF34:.*]] = aie.buffer(%[[TILE34]]) : memref<256xi32>
+//CHECK: %[[BUF32:.*]] = aie.buffer(%[[TILE32]]) : memref<256xi32>
+//CHECK: %11 = aie.core(%2) {
+//CHECK:   aie.use_lock(%1, Acquire, 0)
 //CHECK:   %c16 = arith.constant 16 : index
 //CHECK:   %c1_i32 = arith.constant 1 : i32
 //CHECK:   store %c1_i32, %6[%c16] : memref<256xi32>
-//CHECK:   AIE.use_lock(%1, Release, 1)
-//CHECK:   AIE.end
+//CHECK:   aie.use_lock(%1, Release, 1)
+//CHECK:   aie.end
 //CHECK: }
-//CHECK: %12 = AIE.core(%3) {
-//CHECK:   AIE.use_lock(%1, Acquire, 1)
+//CHECK: %12 = aie.core(%3) {
+//CHECK:   aie.use_lock(%1, Acquire, 1)
 //CHECK:   %c16 = arith.constant 16 : index
 //CHECK:   %c1_i32 = arith.constant 1 : i32
 //CHECK:   %16 = memref.load %6[%c16] : memref<256xi32>
-//CHECK:   AIE.use_lock(%1, Release, 0)
-//CHECK:   AIE.end
+//CHECK:   aie.use_lock(%1, Release, 0)
+//CHECK:   aie.end
 //CHECK: }
-//CHECK: %13 = AIE.switchbox(%2) {
+//CHECK: %13 = aie.switchbox(%2) {
 //CHECK: }
-//CHECK: %14 = AIE.switchbox(%0) {
+//CHECK: %14 = aie.switchbox(%0) {
 //CHECK: }
-//CHECK: %15 = AIE.switchbox(%3) {
+//CHECK: %15 = aie.switchbox(%3) {
 //CHECK: }
 //CHECK: }
 
@@ -63,67 +63,67 @@
 //   6. Remove the associated DMA operations (or Block Descriptors)
 //   7. Remove the associated routing ConnectOps for the DMA operations
 module @test_buffer_merge0 {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %t34 = AIE.tile(3, 4)
-  %t32 = AIE.tile(3, 2)
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %t34 = aie.tile(3, 4)
+  %t32 = aie.tile(3, 2)
 
-  %l34_0 = AIE.lock(%t34, 0)
-  %l32_0 = AIE.lock(%t32, 0)
+  %l34_0 = aie.lock(%t34, 0)
+  %l32_0 = aie.lock(%t32, 0)
 
-  %buf34_0 = AIE.buffer(%t34) : memref<256xi32>
-  %buf32_0 = AIE.buffer(%t32) : memref<256xi32>
+  %buf34_0 = aie.buffer(%t34) : memref<256xi32>
+  %buf32_0 = aie.buffer(%t32) : memref<256xi32>
 
-  %m34 = AIE.mem(%t34) {
-      %dmaSt = AIE.dma_start(MM2S, 0, ^bd0, ^end)
+  %m34 = aie.mem(%t34) {
+      %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l34_0, Acquire, 1)
-      AIE.dma_bd(%buf34_0 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l34_0, Release, 0)
-      AIE.next_bd ^end
+      aie.use_lock(%l34_0, Acquire, 1)
+      aie.dma_bd(%buf34_0 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l34_0, Release, 0)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %m32 = AIE.mem(%t32) {
-      %dmaSt = AIE.dma_start(S2MM, 0, ^bd0, ^end)
+  %m32 = aie.mem(%t32) {
+      %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.use_lock(%l32_0, Acquire, 0)
-      AIE.dma_bd(%buf32_0 : memref<256xi32>, 0, 256)
-      AIE.use_lock(%l32_0, Release, 1)
-      AIE.next_bd ^end
+      aie.use_lock(%l32_0, Acquire, 0)
+      aie.dma_bd(%buf32_0 : memref<256xi32>, 0, 256)
+      aie.use_lock(%l32_0, Release, 1)
+      aie.next_bd ^end
     ^end:
-      AIE.end
+      aie.end
   }
 
-  %c34 = AIE.core(%t34) {
-    AIE.use_lock(%l34_0, Acquire, 0)
+  %c34 = aie.core(%t34) {
+    aie.use_lock(%l34_0, Acquire, 0)
     %i = arith.constant 16 : index
     %0 = arith.constant 1 : i32
     store %0, %buf34_0[%i] : memref<256xi32>
-    AIE.use_lock(%l34_0, Release, 1)
-    AIE.end
+    aie.use_lock(%l34_0, Release, 1)
+    aie.end
   }
 
-  %c32 = AIE.core(%t32) {
-    AIE.use_lock(%l32_0, Acquire, 1)
+  %c32 = aie.core(%t32) {
+    aie.use_lock(%l32_0, Acquire, 1)
     %i = arith.constant 16 : index
     %0 = arith.constant 1 : i32
     %1 = memref.load %buf32_0[%i] : memref<256xi32>
-    AIE.use_lock(%l32_0, Release, 0)
-    AIE.end
+    aie.use_lock(%l32_0, Release, 0)
+    aie.end
   }
 
-  %s34 = AIE.switchbox(%t34) {
-    AIE.connect<DMA: 0, South: 0>
+  %s34 = aie.switchbox(%t34) {
+    aie.connect<DMA: 0, South: 0>
   }
 
-  %s33 = AIE.switchbox(%t33) {
-    AIE.connect<North: 0, South: 0>
+  %s33 = aie.switchbox(%t33) {
+    aie.connect<North: 0, South: 0>
   }
 
-  %s32 = AIE.switchbox(%t32) {
-    AIE.connect<North: 0, DMA: 0>
+  %s32 = aie.switchbox(%t32) {
+    aie.connect<North: 0, DMA: 0>
   }
  }
 }

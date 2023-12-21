@@ -31,20 +31,20 @@
 // test currently fails because this is only a concept and not yet implemented:
 
 // CHECK: module @aie2_dynamic_locks {
-// CHECK:   AIE.device(xcve2302) {
-// CHECK:     %[[tile23:.*]] = AIE.tile(2, 2)
-// CHECK:     %[[tile43:.*]] = AIE.tile(4, 3)
+// CHECK:   aie.device(xcve2302) {
+// CHECK:     %[[tile23:.*]] = aie.tile(2, 2)
+// CHECK:     %[[tile43:.*]] = aie.tile(4, 3)
 
 // The setup for flows, locks, and buffers can be the same in the dynamic case:
-// CHECK:     %[[fifo_buff_0:.*]] = AIE.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_prod_lock:.*]] = AIE.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock"}
-// CHECK:     %[[fifo_cons_lock:.*]] = AIE.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
-// CHECK:     %[[fifo_cons_buff_0:.*]] = AIE.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_cons_prod_lock:.*]] = AIE.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock"}
-// CHECK:     %[[fifo_cons_cons_lock:.*]] = AIE.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock"}
-// CHECK:     AIE.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
+// CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[fifo_cons_buff_0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
+// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock"}
+// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock"}
+// CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
 
-// CHECK:     %[[ssa8:.*]] = AIE.core(%[[tile23]]) {
+// CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
 // CHECK:       %c0 = arith.constant 0 : index
 // CHECK:       %c1 = arith.constant 1 : index
 // CHECK:       %c3 = arith.constant 3 : index
@@ -60,7 +60,7 @@
 // have the value change from iteration to iteration).
 
 // This is what currently is being generated:
-//              AIE.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+//              aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
 // Instead:
 //   Initialize the number of objects held, which is always zero at the
 //   beginning before any acquires:
@@ -82,7 +82,7 @@
 //   The only thing that is different about acquiring the lock is that we use
 //   a new useLockDyn that takes an SSA value instead of a constant for the
 //   lock value, so that it can be dynamic.
-// CHECK:         AIEX.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock0_diff]])
+// CHECK:         aiex.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock0_diff]])
 //   We also need to update how many elements we hold now that we acquired more:
 // CHECK:         %[[uselock0_newnum:.*]] = arith.addi %[[lock0_num0]], 1 : i32
 // CHECK:         scf.yield %[[uselock0_newnum]]
@@ -112,7 +112,7 @@
 // CHECK:         %[[uselock1_diff:.*]] = arith.subi %[[lock0_num_iter]], %[[uselock1_target:.*]] : i32
 // CHECK:         %[[uselock1_need_acq:.*]] = arith.cmpi "sgt" %[[uselock1_diff]], 1 : i32
 // CHECK:         %[[lock0_num3:.*]] = scf.if %[[uselock1_need_acq]] -> (i32) {
-// CHECK:           AIEX.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock1_diff]])
+// CHECK:           aiex.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock1_diff]])
 // CHECK:           %[[uselock1_newnum:.*]] = arith.addi %[[lock0_num_iter]], 1 : i32
 // CHECK:           scf.yield %[[uselock1_newnum]]
 // CHECK:         } else {
@@ -122,36 +122,36 @@
 
 // Release inside loop:
 //   The release will always release, but additionally to 
-// CHECK:         AIE.use_lock(%[[fifo_cons_lock]], Release, 1)
+// CHECK:         aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // CHECK:         %[[lock0_num4:.*]] = arith.subi %[[lock0_num3]], 1 : i32
 
 // At the very end of the loop, we need to yield how many objects are being held
 // after all the acquires and releases inside the loop:
 // CHECK:         scf.yield %lock0_num4
 // CHECK:       }
-// CHECK:       AIE.end
+// CHECK:       aie.end
 // CHECK:     }
 
 // The DMAs should remain all the same and will be configured statically:
-// CHECK:     %[[ssa9:.*]] = AIE.mem(%[[tile23]]) {
-// CHECK:       %11 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
+// CHECK:     %[[ssa9:.*]] = aie.mem(%[[tile23]]) {
+// CHECK:       %11 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       AIE.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(%[[fifo_buff_0]] : memref<i64>, 0, 1)
-// CHECK:       AIE.use_lock(%[[fifo_prod_lock]], Release, 1)
-// CHECK:       AIE.next_bd ^bb1
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%[[fifo_buff_0]] : memref<i64>, 0, 1)
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, 1)
+// CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
-// CHECK:       AIE.end
+// CHECK:       aie.end
 // CHECK:     }
-// CHECK:     %10 = AIE.mem(%[[tile43]]) {
-// CHECK:       %11 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:     %10 = aie.mem(%[[tile43]]) {
+// CHECK:       %11 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       AIE.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(%[[fifo_cons_buff_0]] : memref<i64>, 0, 1)
-// CHECK:       AIE.use_lock(%[[fifo_cons_cons_lock]], Release, 1)
-// CHECK:       AIE.next_bd ^bb1
+// CHECK:       aie.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%[[fifo_cons_buff_0]] : memref<i64>, 0, 1)
+// CHECK:       aie.use_lock(%[[fifo_cons_cons_lock]], Release, 1)
+// CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
-// CHECK:       AIE.end
+// CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }
 // CHECK: }
@@ -162,13 +162,13 @@
 
 
 module @aie2_dynamic_locks {
-    AIE.device(xcve2302) {
-        %tile22 = AIE.tile(2, 2)  // producer tile
-        %tile43 = AIE.tile(4, 3)  // consumer tile
-        AIE.objectfifo @fifo (%tile22, {%tile43}, 1 : i32) : !AIE.objectfifo<memref<i64>>
+    aie.device(xcve2302) {
+        %tile22 = aie.tile(2, 2)  // producer tile
+        %tile43 = aie.tile(4, 3)  // consumer tile
+        aie.objectfifo @fifo (%tile22, {%tile43}, 1 : i32) : !aie.objectfifo<memref<i64>>
 
         // Producer core
-        %core22 = AIE.core(%tile22) {
+        %core22 = aie.core(%tile22) {
             // Initialize value to zero
             %i_c0 = arith.constant 0 : index
             %i_c1 = arith.constant 1 : index
@@ -177,7 +177,7 @@ module @aie2_dynamic_locks {
             %c1 = arith.constant 1 : i64
 
             // Acquire one element.
-            %subview0  = AIE.objectfifo.acquire @fifo (Produce, 1) : !AIE.objectfifosubview<memref<i64>>
+            %subview0  = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i64>>
 
             scf.for %idx = %i_c0 to %i_c3 step %i_c1 {
                 // Acquire one element (again). In the first iteration of the
@@ -186,13 +186,13 @@ module @aie2_dynamic_locks {
                 // just above the loop. In the second iteration, that object
                 // has been released, and now a lock acquire 1 would be 
                 // required.
-                %subview = AIE.objectfifo.acquire @fifo (Produce, 1) : !AIE.objectfifosubview<memref<i64>>
-                %elem = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<i64>> -> memref<i64>
+                %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i64>>
+                %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i64>> -> memref<i64>
                 memref.store %c1, %elem[] : memref<i64>
-                AIE.objectfifo.release @fifo (Produce, 1)
+                aie.objectfifo.release @fifo (Produce, 1)
             }
 
-            AIE.end
+            aie.end
         }
     }
 }

@@ -10,26 +10,26 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-canonicalize-device %s | FileCheck %s
-// CHECK: AIE.device(xcvc1902) {
-// CHECK:   %[[T0:.*]] = AIE.tile(0, 1)
-// CHECK:   %[[T1:.*]] = AIE.tile(1, 2)
-// CHECK:   %[[T2:.*]] = AIE.tile(0, 2)
-// CHECK:   AIE.flow(%[[T0]], DMA : 0, %[[T1]], Core : 1)
-// CHECK:   AIE.packet_flow(16) {
-// CHECK:     AIE.packet_source<%[[T0]], Core : 0>
-// CHECK:     AIE.packet_dest<%[[T1]], Core : 0>
-// CHECK:     AIE.packet_dest<%[[T2]], DMA : 1>
+// CHECK: aie.device(xcvc1902) {
+// CHECK:   %[[T0:.*]] = aie.tile(0, 1)
+// CHECK:   %[[T1:.*]] = aie.tile(1, 2)
+// CHECK:   %[[T2:.*]] = aie.tile(0, 2)
+// CHECK:   aie.flow(%[[T0]], DMA : 0, %[[T1]], Core : 1)
+// CHECK:   aie.packet_flow(16) {
+// CHECK:     aie.packet_source<%[[T0]], Core : 0>
+// CHECK:     aie.packet_dest<%[[T1]], Core : 0>
+// CHECK:     aie.packet_dest<%[[T2]], DMA : 1>
 // CHECK:   }
 // CHECK: }
 
 module {
-  %01 = AIE.tile(0, 1)
-  %12 = AIE.tile(1, 2)
-  %02 = AIE.tile(0, 2)
-  AIE.flow(%01, DMA : 0, %12, Core : 1)
-  AIE.packet_flow(0x10) {
-    AIE.packet_source < %01, Core : 0>
-    AIE.packet_dest < %12, Core : 0>
-    AIE.packet_dest < %02, DMA : 1>
+  %01 = aie.tile(0, 1)
+  %12 = aie.tile(1, 2)
+  %02 = aie.tile(0, 2)
+  aie.flow(%01, DMA : 0, %12, Core : 1)
+  aie.packet_flow(0x10) {
+    aie.packet_source < %01, Core : 0>
+    aie.packet_dest < %12, Core : 0>
+    aie.packet_dest < %02, DMA : 1>
   }
 }

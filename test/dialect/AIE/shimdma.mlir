@@ -15,60 +15,60 @@
 // CHECK-LABEL: module {
 // CHECK:       }
 
-AIE.device(xcvc1902) {
-  %t1 = AIE.tile(2, 0)
-  %buf = AIE.external_buffer : memref<256xi32>
-  %mem = AIE.shim_dma(%t1) {
-  AIE.dma_start("MM2S", 0, ^bd0, ^dma1)
+aie.device(xcvc1902) {
+  %t1 = aie.tile(2, 0)
+  %buf = aie.external_buffer : memref<256xi32>
+  %mem = aie.shim_dma(%t1) {
+  aie.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
-    AIE.dma_start("MM2S", 1, ^bd15, ^dma1)
+    aie.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd1
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd1
     ^bd1:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd2
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd2
     ^bd2:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd3
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd3
     ^bd3:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd4
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd4
     ^bd4:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd5
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd5
     ^bd5:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd6
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd6
     ^bd6:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd7
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd7
     ^bd7:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd8
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd8
     ^bd8:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd9
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd9
     ^bd9:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd10
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd10
     ^bd10:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd11
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd11
     ^bd11:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd12
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd12
     ^bd12:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd13
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd13
     ^bd13:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd14
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd14
     ^bd14:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.next_bd ^bd15
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.next_bd ^bd15
     ^bd15:
-      AIE.dma_bd(%buf : memref<256xi32>, 0, 256)
-      AIE.end
+      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.end
   }
 }

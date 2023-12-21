@@ -5,5 +5,5 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
-add_mlir_dialect(AIEX AIEX)
-add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=AIEX)
+add_mlir_dialect(AIEX aiex)
+add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=aiex)

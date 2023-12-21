@@ -12,21 +12,21 @@
 // CHECK: used in a DMA block that have multiple locks.
 
 module @test_error_dma_multi_lock {
- AIE.device(xcvc1902) {
-  %t33 = AIE.tile(3, 3)
-  %l33_0 = AIE.lock(%t33, 0)
-  %l33_1 = AIE.lock(%t33, 1)
-  AIE.mem(%t33) {
-    AIE.dma_start(MM2S, 0, ^bb1, ^end)
+ aie.device(xcvc1902) {
+  %t33 = aie.tile(3, 3)
+  %l33_0 = aie.lock(%t33, 0)
+  %l33_1 = aie.lock(%t33, 1)
+  aie.mem(%t33) {
+    aie.dma_start(MM2S, 0, ^bb1, ^end)
   ^bb1:
-    AIE.use_lock(%l33_0, Acquire, 1)
+    aie.use_lock(%l33_0, Acquire, 1)
     // This should fail because only one lock can be used in a DmaBd
-    AIE.use_lock(%l33_1, Acquire, 1)
-    AIE.use_lock(%l33_0, Release, 0)
-    AIE.use_lock(%l33_1, Release, 0)
-    AIE.next_bd ^end
+    aie.use_lock(%l33_1, Acquire, 1)
+    aie.use_lock(%l33_0, Release, 0)
+    aie.use_lock(%l33_1, Release, 0)
+    aie.next_bd ^end
   ^end:
-    AIE.end
+    aie.end
   }
  }
 }
