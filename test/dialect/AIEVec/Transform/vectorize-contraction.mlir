@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -test-transform-dialect-interpreter -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: aie-opt %s -transform-interpreter -split-input-file -verify-diagnostics | FileCheck %s
 
 #map = affine_map<(d0, d1, d2) -> (d0, d2)>
 #map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
@@ -18,12 +18,11 @@ func.func @single_contraction(%A : tensor<16x24xf32>, %B : tensor<24x16xf32>,
   return %0 : tensor<16x16xf32>
 }
 
-transform.with_pdl_patterns {
-^bb0(%arg0 : !transform.any_op):
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1 : !transform.any_op):
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
     %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> (!transform.op<"linalg.generic">)
     %1 = transform.structured.vectorize_contraction %0 : (!transform.op<"linalg.generic">) -> (!transform.op<"linalg.generic">)
+    transform.yield
   }
 }
 
@@ -80,12 +79,11 @@ func.func @multiple_parallel_contraction(%A : tensor<8x8x16x24xf32>, %B : tensor
   return %0 : tensor<8x8x16x16xf32>
 }
 
-transform.with_pdl_patterns {
-^bb0(%arg0 : !transform.any_op):
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1 : !transform.any_op):
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
     %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> (!transform.op<"linalg.generic">)
     %1 = transform.structured.vectorize_contraction %0 : (!transform.op<"linalg.generic">) -> (!transform.op<"linalg.generic">)
+    transform.yield
   }
 }
 
@@ -145,12 +143,11 @@ func.func @packed_gemm(%A : tensor<16x8x4x8xbf16>, %B : tensor<8x16x8x4xbf16>,
   return %0 : tensor<16x16x4x4xf32>
 }
 
-transform.with_pdl_patterns {
-^bb0(%arg0 : !transform.any_op):
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1 : !transform.any_op):
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
     %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> (!transform.op<"linalg.generic">)
     %1 = transform.structured.vectorize_contraction %0 : (!transform.op<"linalg.generic">) -> (!transform.op<"linalg.generic">)
+    transform.yield
   }
 }
 
