@@ -19,6 +19,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -36,4 +37,7 @@ void aieRegisterAllPasses() {
   xilinx::registerAllDialects(registry);
 
   registerAllExtensions(registry);
+
+  registry.insert<DLTIDialect>();
+  registerAllToLLVMIRTranslations(registry);
 }

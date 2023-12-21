@@ -11,6 +11,11 @@
 
 #include "aie/Targets/TranslateAIEVecToCpp.h"
 
+#include "mlir/Target/LLVMIR/Export.h"
+
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+
 using namespace mlir;
 using namespace mlir::python;
 using namespace mlir::python::adaptors;
@@ -58,4 +63,20 @@ PYBIND11_MODULE(_aie_python_passes, m) {
         return cpp;
       },
       "module"_a, "aieml"_a = false);
+
+  m.def(
+      "translate_mlir_to_llvmir",
+      [](MlirOperation op) {
+        std::string llvmir;
+        llvm::raw_string_ostream os(llvmir);
+        Operation *op_ = unwrap(op);
+        llvm::LLVMContext llvmContext;
+        auto llvmModule = translateModuleToLLVMIR(op_, llvmContext);
+        if (!llvmModule)
+          throw std::runtime_error("couldn't translate");
+
+        llvmModule->print(os, nullptr);
+        return llvmir;
+      },
+      "module"_a);
 }
