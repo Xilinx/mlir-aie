@@ -800,7 +800,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     elements:
 
     ```
-    AIE.dma_bd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+    AIE.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -851,7 +851,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         AIE.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         AIE.use_lock(%lock0, "Acquire", 0)
-        AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+        AIE.dma_bd(%buffer : memref<16 x f32>, 0, 16)
         AIE.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
@@ -897,7 +897,7 @@ def AIE_MemOp: AIE_Op<"mem", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -948,7 +948,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -991,7 +991,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:

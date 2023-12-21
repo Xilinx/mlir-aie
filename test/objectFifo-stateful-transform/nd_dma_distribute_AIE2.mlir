@@ -56,24 +56,24 @@
 // CHECK:       %22 = AIE.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128>, 0, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
+// CHECK:       AIE.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 0, 128, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
 // CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       AIE.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128>, 0, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
+// CHECK:       AIE.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 0, 128, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
 // CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       AIE.next_bd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       %23 = AIE.dma_start(MM2S, 1, ^bb7, ^bb9)
 // CHECK:     ^bb7:  // 2 preds: ^bb6, ^bb8
 // CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128>, 0, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
+// CHECK:       AIE.dma_bd(%[[of0_cons_buf_0:.*]] : memref<256xi32>, 512, 128, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
 // CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       AIE.next_bd ^bb8
 // CHECK:     ^bb8:  // pred: ^bb7
 // CHECK:       AIE.use_lock(%[[of0_cons_cons_lock:.*]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128>, 0, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
+// CHECK:       AIE.dma_bd(%[[of0_cons_buf_1:.*]] : memref<256xi32>, 512, 128, [<wrap = 4, step = 64>, <wrap = 2, step = 4>, <wrap = 8, step = 8>, <wrap = 4, step = 1>])
 // CHECK:       AIE.use_lock(%[[of0_cons_prod_lock:.*]], Release, 1)
 // CHECK:       AIE.next_bd ^bb7
 // CHECK:     ^bb9:  // pred: ^bb6
