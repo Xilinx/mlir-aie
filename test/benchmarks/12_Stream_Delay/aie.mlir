@@ -34,7 +34,7 @@ module @test12_stream_delay {
     %dma0 = AIE.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.use_lock(%lock13_5, "Acquire", 1)
-      AIE.dma_bd(<%buf13_0 : memref<512xi32>, 0, 512>, A)
+      AIE.dma_bd(%buf13_0 : memref<512xi32>, 0, 512)
       AIE.use_lock(%lock13_5, "Release", 0)
       AIE.next_bd ^end
     ^end:
@@ -52,7 +52,7 @@ module @test12_stream_delay {
      %dma0 = AIE.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
       AIE.use_lock(%lock43_6, "Acquire", 0)
-      AIE.dma_bd(<%buf43_0: memref<512xi32>, 0, 512>, A)
+      AIE.dma_bd(%buf43_0: memref<512xi32>, 0, 512)
       AIE.use_lock(%lock43_6, "Release", 1)
       AIE.next_bd ^end
     ^end:

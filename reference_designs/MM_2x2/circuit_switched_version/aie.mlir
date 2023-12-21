@@ -104,22 +104,22 @@ module @MM_2x2 {
       AIE.dma_start("S2MM", 1, ^bd7, ^end)
     ^bd4:
       AIE.use_lock(%lock60_0, "Acquire", 1)
-      AIE.dma_bd(<%buffer0 : memref<1024xi32>, 0, 1024>, A)    //send LHS_tile0
+      AIE.dma_bd(%buffer0 : memref<1024xi32>, 0, 1024)    //send LHS_tile0
       AIE.use_lock(%lock60_0, "Release", 0)
       AIE.next_bd ^bd4
     ^bd5:
       AIE.use_lock(%lock60_1, "Acquire", 1)
-      AIE.dma_bd(<%buffer1 : memref<1024xi32>, 0, 1024>, A)    //send LHS_tile1
+      AIE.dma_bd(%buffer1 : memref<1024xi32>, 0, 1024)    //send LHS_tile1
       AIE.use_lock(%lock60_1, "Release", 0)
       AIE.next_bd ^bd5
     ^bd6:
       AIE.use_lock(%lock60_2, "Acquire", 1)
-      AIE.dma_bd(<%buffer6 : memref<1025xi32>, 0, 1025>, A)    //send Out_tile0
+      AIE.dma_bd(%buffer6 : memref<1025xi32>, 0, 1025)    //send Out_tile0
       AIE.use_lock(%lock60_2, "Release", 0)
       AIE.next_bd ^bd6
     ^bd7:
       AIE.use_lock(%lock60_3, "Acquire", 1)
-      AIE.dma_bd(<%buffer7 : memref<1025xi32>, 0, 1025>, A)    //send Out_tile1
+      AIE.dma_bd(%buffer7 : memref<1025xi32>, 0, 1025)    //send Out_tile1
       AIE.use_lock(%lock60_3, "Release", 0)
       AIE.next_bd ^bd7
     ^end:
@@ -132,12 +132,12 @@ module @MM_2x2 {
       AIE.dma_start("MM2S", 1, ^bd5, ^end)
     ^bd4:
       AIE.use_lock(%lock70_0, "Acquire", 1)
-      AIE.dma_bd(<%buffer2 : memref<1024xi32>, 0, 1024>, A)    //send RHS_tile0
+      AIE.dma_bd(%buffer2 : memref<1024xi32>, 0, 1024)    //send RHS_tile0
       AIE.use_lock(%lock70_0, "Release", 0)
       AIE.next_bd ^bd4
     ^bd5:
       AIE.use_lock(%lock70_1, "Acquire", 1)
-      AIE.dma_bd(<%buffer3 : memref<1024xi32>, 0, 1024>, A)    //send RHS_tile1
+      AIE.dma_bd(%buffer3 : memref<1024xi32>, 0, 1024)    //send RHS_tile1
       AIE.use_lock(%lock70_1, "Release", 0)
       AIE.next_bd ^bd5
     ^end:
@@ -150,12 +150,12 @@ module @MM_2x2 {
       AIE.dma_start("MM2S", 1, ^bd5, ^end)
     ^bd4:
       AIE.use_lock(%lock100_0, "Acquire", 1)
-      AIE.dma_bd(<%buffer4 : memref<1024xi32>, 0, 1024>, A)    //send RHS_tile2
+      AIE.dma_bd(%buffer4 : memref<1024xi32>, 0, 1024)    //send RHS_tile2
       AIE.use_lock(%lock100_0, "Release", 0)
       AIE.next_bd ^bd4
     ^bd5:
       AIE.use_lock(%lock100_1, "Acquire", 1)
-      AIE.dma_bd(<%buffer5 : memref<1024xi32>, 0, 1024>, A)    //send RHS_tile3
+      AIE.dma_bd(%buffer5 : memref<1024xi32>, 0, 1024)    //send RHS_tile3
       AIE.use_lock(%lock100_1, "Release", 0)
       AIE.next_bd ^bd5
     ^end:
@@ -168,12 +168,12 @@ module @MM_2x2 {
     AIE.dma_start("S2MM", 1, ^bd1, ^end)
   ^bd0: 
     AIE.use_lock(%lock63_0, Acquire, 0)
-    AIE.dma_bd(<%buf63_0 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf63_0 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock63_0, Release, 1)
     AIE.next_bd ^bd0
   ^bd1: 
     AIE.use_lock(%lock63_1, Acquire, 0)
-    AIE.dma_bd(<%buf63_1 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf63_1 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock63_1, Release, 1)
     AIE.next_bd ^bd1
   ^end: 
@@ -186,19 +186,19 @@ module @MM_2x2 {
     AIE.dma_start("S2MM", 1, ^bd1, ^dma1)
   ^bd0: 
     AIE.use_lock(%lock64_0, Acquire, 0)
-    AIE.dma_bd(<%buf64_0 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf64_0 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock64_0, Release, 1)
     AIE.next_bd ^bd0
   ^bd1: 
     AIE.use_lock(%lock64_1, Acquire, 0)
-    AIE.dma_bd(<%buf64_1 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf64_1 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock64_1, Release, 1)
     AIE.next_bd ^bd1
   ^dma1:
     AIE.dma_start("MM2S", 0, ^bd2, ^end)
   ^bd2:
     AIE.use_lock(%lock64_2, Acquire, 1)
-    AIE.dma_bd(<%buf64_2 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf64_2 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock64_2, Release, 0)
     AIE.next_bd ^bd2
   ^end: 
@@ -237,12 +237,12 @@ module @MM_2x2 {
     AIE.dma_start("S2MM", 1, ^bd1, ^end)
   ^bd0: 
     AIE.use_lock(%lock73_0, Acquire, 0)
-    AIE.dma_bd(<%buf73_0 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf73_0 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock73_0, Release, 1)
     AIE.next_bd ^bd0
   ^bd1: 
     AIE.use_lock(%lock73_1, Acquire, 0)
-    AIE.dma_bd(<%buf73_1 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf73_1 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock73_1, Release, 1)
     AIE.next_bd ^bd1
   ^end: 
@@ -255,19 +255,19 @@ module @MM_2x2 {
     AIE.dma_start("S2MM", 1, ^bd1, ^dma1)
   ^bd0: 
     AIE.use_lock(%lock74_0, Acquire, 0)
-    AIE.dma_bd(<%buf74_0 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf74_0 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock74_0, Release, 1)
     AIE.next_bd ^bd0
   ^bd1: 
     AIE.use_lock(%lock74_1, Acquire, 0)
-    AIE.dma_bd(<%buf74_1 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf74_1 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock74_1, Release, 1)
     AIE.next_bd ^bd1
   ^dma1:
     AIE.dma_start("MM2S", 0, ^bd2, ^end)
   ^bd2:
     AIE.use_lock(%lock74_2, Acquire, 1)
-    AIE.dma_bd(<%buf74_2 : memref<1024xi32>, 0, 1024>, A)
+    AIE.dma_bd(%buf74_2 : memref<1024xi32>, 0, 1024)
     AIE.use_lock(%lock74_2, Release, 0)
     AIE.next_bd ^bd2
   ^end: 

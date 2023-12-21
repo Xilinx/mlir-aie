@@ -64,7 +64,7 @@ An example of this inside a BD definition would be:
     ^bd0:
         AIE.use_lock(%lock14_6, Acquire, 1)
         AIE.dma_bd_packet(0x4, 0xD) 
-        AIE.dma_bd(<%buf14 : memref<256xi32>, 0, 256>, A)
+        AIE.dma_bd(%buf14 : memref<256xi32>, 0, 256)
         AIE.use_lock(%lock14_6, Release, 0)
         cf.br ^end
 ```

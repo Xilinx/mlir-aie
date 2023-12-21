@@ -330,7 +330,6 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
       bool hasA = false;
       bool hasB = false;
       StringRef bufA = "0";
-      StringRef bufB = "0";
       StringRef AbMode = disable;
       //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
       int ndims = 0;
@@ -339,21 +338,14 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         foundBd = true;
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
-        if (op.isA()) {
-          BaseAddrA =
-              cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
-          lenA = op.getLenValue();
-          bytesA = bufferType.getElementTypeBitWidth() / 8;
-          offsetA = op.getOffsetValue();
-          bufA = "XAIEDMA_TILE_BD_ADDRA";
-          hasA = true;
-        }
-        if (op.isB()) {
-          lenB = op.getLenValue();
-          bytesB = bufferType.getElementTypeBitWidth() / 8;
-          bufB = "XAIEDMA_TILE_BD_ADDRB";
-          hasB = true;
-        }
+        BaseAddrA =
+            cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
+        lenA = op.getLenValue();
+        bytesA = bufferType.getElementTypeBitWidth() / 8;
+        offsetA = op.getOffsetValue();
+        bufA = "XAIEDMA_TILE_BD_ADDRA";
+        hasA = true;
+
         if (op.getDimensions()) {
           dims = *op.getDimensions();
           ndims = dims.size();
@@ -519,7 +511,6 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
       bool hasA = false;
       bool hasB = false;
       StringRef bufA = "0";
-      StringRef bufB = "0";
       StringRef AbMode = disable;
       int ndims = 0;
       ArrayRef<BDDimLayoutAttr> dims;
@@ -528,21 +519,14 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         foundBd = true;
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
-        if (op.isA()) {
-          BaseAddrA =
-              cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
-          lenA = op.getLenValue();
-          bytesA = bufferType.getElementTypeBitWidth() / 8;
-          offsetA = op.getOffsetValue();
-          bufA = "XAIEDMA_TILE_BD_ADDRA";
-          hasA = true;
-        }
-        if (op.isB()) {
-          lenB = op.getLenValue();
-          bytesB = bufferType.getElementTypeBitWidth() / 8;
-          bufB = "XAIEDMA_TILE_BD_ADDRB";
-          hasB = true;
-        }
+        BaseAddrA =
+            cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
+        lenA = op.getLenValue();
+        bytesA = bufferType.getElementTypeBitWidth() / 8;
+        offsetA = op.getOffsetValue();
+        bufA = "XAIEDMA_TILE_BD_ADDRA";
+        hasA = true;
+
         if (op.getDimensions()) {
           dims = *op.getDimensions();
           ndims = dims.size();

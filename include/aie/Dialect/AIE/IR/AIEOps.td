@@ -800,7 +800,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     elements:
 
     ```
-    AIE.dma_bd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+    AIE.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -808,31 +808,27 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         AIEI32Attr:$offset,
         AIEI32Attr:$len,
-        DefaultValuedAttr<DMABDBuffer, "xilinx::AIE::DMABDBuffer::A">:$AB,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB (`,` $dimensions^ )? `)` attr-dict
+    `(` $buffer `:` type($buffer) `,` $offset `,` $len (`,` $dimensions^ )? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
     int getOffsetValue() { return getOffset(); }
     int getLenValue() { return getLen(); }
-    bool isA() { return (getAB() == DMABDBuffer::A); }
-    bool isB() { return (getAB() == DMABDBuffer::B); }
   }];
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "DMABDBuffer":$AB), [{
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
-      odsState.addAttribute(getABAttrName(odsState.name), DMABDBufferAttr::get($_builder.getContext(), AB));
     }]>
   ];
 }
@@ -855,7 +851,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         AIE.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         AIE.use_lock(%lock0, "Acquire", 0)
-        AIE.dma_bd(<%buffer : memref<16 x f32>, 0, 16>, 0)
+        AIE.dma_bd(%buffer : memref<16 x f32>, 0, 16)
         AIE.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
@@ -901,7 +897,7 @@ def AIE_MemOp: AIE_Op<"mem", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -952,7 +948,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:
@@ -995,7 +991,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
           %srcDma = AIE.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           AIE.use_lock(%lock, "Acquire", 0)
-          AIE.dma_bd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.dma_bd(%buf : memref<64xi16>, 0, 64)
           AIE.use_lock(%lock, "Release", 1)
           AIE.next_bd ^bd0
         ^end:

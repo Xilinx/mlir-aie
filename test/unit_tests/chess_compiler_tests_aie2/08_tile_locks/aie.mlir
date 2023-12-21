@@ -69,22 +69,22 @@ module @test_chess_08_tile_locks {
         %dstDma = AIE.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
         AIE.use_lock(%lock_s1, AcquireGreaterEqual, 1)
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 0, 2>, A)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 0, 2)
         AIE.use_lock(%lock_d1, Release, 1)
         AIE.next_bd ^bd1
       ^bd1:
         AIE.use_lock(%lock_s1, AcquireGreaterEqual, 1)
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 4, 2>, A)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 4, 2)
         AIE.use_lock(%lock_d1, Release, 1)
         AIE.next_bd ^end
       ^bd2:
         AIE.use_lock(%lock_s2, AcquireGreaterEqual, 1)
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 8, 2>, A)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 8, 2)
         AIE.use_lock(%lock_d2, Release, 1)
         AIE.next_bd ^bd3
       ^bd3:
         AIE.use_lock(%lock_s2, AcquireGreaterEqual, 1)
-        AIE.dma_bd(<%buf_l : memref<256xi32>, 12, 2>, A)
+        AIE.dma_bd(%buf_l : memref<256xi32>, 12, 2)
         AIE.use_lock(%lock_d2, Release, 1)
         AIE.next_bd ^end
       ^end:

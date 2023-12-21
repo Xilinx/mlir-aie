@@ -115,15 +115,6 @@ def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
   let cppNamespace = "xilinx::AIE";
 }
 
-def DMABDBuffer: I32EnumAttr<"DMABDBuffer",
-  "DMA Block descriptor buffer type.",
-  [
-    I32EnumAttrCase<"A", 0>,
-    I32EnumAttrCase<"B", 1>
-  ]> {
-  let cppNamespace = "xilinx::AIE";
-}
-
 def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   let mnemonic = "bd_dim_layout";
   let summary = [{

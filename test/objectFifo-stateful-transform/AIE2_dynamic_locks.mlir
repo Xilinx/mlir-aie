@@ -137,7 +137,7 @@
 // CHECK:       %11 = AIE.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       AIE.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[fifo_buff_0]] : memref<i64>, 0, 1>, A)
+// CHECK:       AIE.dma_bd(%[[fifo_buff_0]] : memref<i64>, 0, 1)
 // CHECK:       AIE.use_lock(%[[fifo_prod_lock]], Release, 1)
 // CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
@@ -147,7 +147,7 @@
 // CHECK:       %11 = AIE.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       AIE.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dma_bd(<%[[fifo_cons_buff_0]] : memref<i64>, 0, 1>, A)
+// CHECK:       AIE.dma_bd(%[[fifo_cons_buff_0]] : memref<i64>, 0, 1)
 // CHECK:       AIE.use_lock(%[[fifo_cons_cons_lock]], Release, 1)
 // CHECK:       AIE.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
