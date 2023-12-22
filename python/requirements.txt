@@ -11,5 +11,6 @@ psutil
 rich
 lit
 aiofiles
+ctypesgen
 # aie branch
 git+https://github.com/makslevental/mlir-python-extras@a731660c5ae4409bdf99abfabdf4e11b7ca35e52
