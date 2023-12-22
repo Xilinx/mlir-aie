@@ -23,21 +23,6 @@ using namespace xilinx::AIE;
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 
-WireBundle AIE::getConnectingBundle(WireBundle dir) {
-  switch (dir) {
-  case WireBundle::North:
-    return WireBundle::South;
-  case WireBundle::South:
-    return WireBundle::North;
-  case WireBundle::East:
-    return WireBundle::West;
-  case WireBundle::West:
-    return WireBundle::East;
-  default:
-    return dir;
-  }
-}
-
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow

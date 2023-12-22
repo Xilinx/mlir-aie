@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Targets/TranslateAIEVecToCpp.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"

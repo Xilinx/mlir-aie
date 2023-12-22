@@ -13,7 +13,7 @@
  * Converts the flows into a JSON file to be read by other tools.
  */
 
-#include "AIETargets.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
@@ -29,22 +29,6 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace xilinx::AIE {
-
-// returns the opposite WireBundle, useful for connecting switchboxes
-WireBundle getConnectingBundle(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::North:
-    return WireBundle::South;
-  case WireBundle::South:
-    return WireBundle::North;
-  case WireBundle::East:
-    return WireBundle::West;
-  case WireBundle::West:
-    return WireBundle::East;
-  default:
-    return bundle;
-  }
-}
 
 // returns coordinates in the direction indicated by bundle
 TileID getNextCoords(int col, int row, WireBundle bundle) {

@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIETargets.h"
-
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Targets/AIETargets.h"
 
 using namespace mlir;
 using namespace xilinx;

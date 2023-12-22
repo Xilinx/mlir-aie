@@ -11,7 +11,7 @@
 // This file defines helpers to emit C++ code for AIE vector dialect.
 //===----------------------------------------------------------------------===//
 
-#include "aie/Targets/TranslateAIEVecToCpp.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"

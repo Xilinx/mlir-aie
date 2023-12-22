@@ -233,8 +233,6 @@ private:
   std::list<ChannelEdge> edges;
 };
 
-WireBundle getConnectingBundle(WireBundle dir);
-
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
 // environment. It passes flows to the Pathfinder as ordered pairs of ints.
 // Detailed routing is received as SwitchboxSettings

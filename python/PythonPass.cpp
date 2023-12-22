@@ -9,7 +9,7 @@
 #include "PybindTypes.h"
 #include "RouterPass.h"
 
-#include "aie/Targets/TranslateAIEVecToCpp.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "mlir/Target/LLVMIR/Export.h"
 
@@ -74,9 +74,32 @@ PYBIND11_MODULE(_aie_python_passes, m) {
         auto llvmModule = translateModuleToLLVMIR(op_, llvmContext);
         if (!llvmModule)
           throw std::runtime_error("couldn't translate");
-
         llvmModule->print(os, nullptr);
         return llvmir;
+      },
+      "module"_a);
+
+  m.def(
+      "generate_cdo",
+      [](MlirOperation op) {
+        std::string cdo;
+        llvm::raw_string_ostream os(cdo);
+        ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+        if (failed(AIETranslateToCDO(mod, os)))
+          throw std::runtime_error("couldn't translate");
+        return cdo;
+      },
+      "module"_a);
+
+  m.def(
+      "ipu_instgen",
+      [](MlirOperation op) {
+        std::string cdo;
+        llvm::raw_string_ostream os(cdo);
+        ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+        if (failed(AIETranslateToIPU(mod, os)))
+          throw std::runtime_error("couldn't translate");
+        return cdo;
       },
       "module"_a);
 }

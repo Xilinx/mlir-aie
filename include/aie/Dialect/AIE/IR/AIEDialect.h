@@ -129,6 +129,8 @@ public:
 
 namespace xilinx::AIE {
 
+WireBundle getConnectingBundle(WireBundle dir);
+
 #define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                             \
   friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) {              \
     std::ostringstream ss;                                                     \
@@ -247,7 +249,8 @@ void collectBuffers(
 
 namespace llvm {
 // Functions hash just like pointers.
-template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
+template <>
+struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
   static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
     auto *pointer = DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
@@ -271,7 +274,8 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
 
 namespace llvm {
 // Functions hash just like pointers.
-template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
+template <>
+struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
   static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
     auto *pointer = DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
@@ -292,7 +296,8 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
   }
 };
 
-template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
+template <>
+struct DenseMapInfo<xilinx::AIE::DMAChannel> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
 
@@ -315,7 +320,8 @@ template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
   }
 };
 
-template <> struct DenseMapInfo<xilinx::AIE::Port> {
+template <>
+struct DenseMapInfo<xilinx::AIE::Port> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
 
@@ -340,14 +346,16 @@ template <> struct DenseMapInfo<xilinx::AIE::Port> {
 
 } // namespace llvm
 
-template <> struct std::less<xilinx::AIE::Port> {
+template <>
+struct std::less<xilinx::AIE::Port> {
   bool operator()(const xilinx::AIE::Port &a,
                   const xilinx::AIE::Port &b) const {
     return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
   }
 };
 
-template <> struct std::hash<xilinx::AIE::Port> {
+template <>
+struct std::hash<xilinx::AIE::Port> {
   std::size_t operator()(const xilinx::AIE::Port &p) const noexcept {
     std::size_t h1 = std::hash<xilinx::AIE::WireBundle>{}(p.bundle);
     std::size_t h2 = std::hash<int>{}(p.channel);
