@@ -70,7 +70,7 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "translate_mlir_to_llvmir",
       [&stealCStr](MlirOperation op) {
-        return stealCStr(translateModuleToLLVMIR(op));
+        return stealCStr(aieTranslateModuleToLLVMIR(op));
       },
       "module"_a);
 

@@ -30,7 +30,7 @@ MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op, bool aieml) {
   return mlirStringRefCreate(cStr, cpp.size());
 };
 
-MlirStringRef translateModuleToLLVMIR(MlirOperation op) {
+MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op) {
   std::string llvmir;
   llvm::raw_string_ostream os(llvmir);
   Operation *op_ = unwrap(op);
