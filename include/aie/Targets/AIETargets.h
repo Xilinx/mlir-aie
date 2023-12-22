@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TARGET_TRANSLATEAIE_H
-#define TARGET_TRANSLATEAIE_H
+#ifndef AIE_TARGETS_AIETARGETS_H
+#define AIE_TARGETS_AIETARGETS_H
 
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 
