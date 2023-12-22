@@ -36,9 +36,7 @@ jobs:
 
             python -m venv aie-venv
             source aie-venv/bin/activate
-          
-            pip install -r utils/requirements.txt
-            pip install lit
+            pip install -r python/requirements.txt
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \

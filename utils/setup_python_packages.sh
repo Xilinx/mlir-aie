@@ -21,4 +21,4 @@ else
   source sandbox/bin/activate
 fi
 python3 -m pip install --upgrade pip
-python3 -m pip install -r utils/requirements.txt
+python3 -m pip install -r python/requirements.txt

@@ -1,15 +1,17 @@
-numpy>=1.19.5, <=1.26
-pybind11>=2.9.0, <=2.10.3
 PyYAML>=5.3.1, <=6.0.1
+aiofiles
+cmake==3.27.9
 dataclasses>=0.6, <=0.8
-networkx[default]
-ortools
 gurobipy
+lit
 matplotlib
+networkx[default]
+numpy>=1.19.5, <=1.26
 ortools
 psutil
+pybind11>=2.9.0, <=2.10.3
+pylint
 rich
-lit
-aiofiles
-# aie branch
-git+https://github.com/makslevental/mlir-python-extras@a731660c5ae4409bdf99abfabdf4e11b7ca35e52
+
+# this is actually the aie branch of mlir-python-extras (see https://github.com/makslevental/mlir-python-extras/pull/33)
+aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/a731660c5ae4409bdf99abfabdf4e11b7ca35e52.zip
