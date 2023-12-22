@@ -138,7 +138,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
           output << "_include _file " << fileName << "\n";
         }
       }
-      output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow();
+      output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
+             << "\n";
     }
   return success();
 }

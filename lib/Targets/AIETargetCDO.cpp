@@ -132,7 +132,7 @@ static std::string cdoGenFileFooter() {
       << "      int trace_config_stream_option = 0;\n"
       << "#endif\n"
       << "    }\n"
-      << "  } initAIEControl;\n";
+      << "  } initAIEControl;\n\n";
   return str;
 }
 

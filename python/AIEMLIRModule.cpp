@@ -49,15 +49,14 @@ PYBIND11_MODULE(_aie, m) {
           "Get an instance of ObjectFifoSubviewType with given element type.",
           py::arg("self"), py::arg("type") = py::none());
 
-  auto stealCStr = [](const char *cppStr) {
-    if (!cppStr)
+  auto stealCStr = [](MlirStringRef mlirString) {
+    if (!mlirString.data || mlirString.length == 0)
       throw std::runtime_error("couldn't translate");
-    std::string cpp(cppStr);
-    free((void *)cppStr);
+    std::string cpp(mlirString.data, mlirString.length);
+    free((void *)mlirString.data);
     py::handle pyS = PyUnicode_DecodeLatin1(cpp.data(), cpp.length(), nullptr);
     if (!pyS)
       throw py::error_already_set();
-
     return py::reinterpret_steal<py::str>(pyS);
   };
 
