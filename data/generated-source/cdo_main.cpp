@@ -1,8 +1,10 @@
-#include "cdo_driver.h"
 #include "gen_cdo.h"
 #include <getopt.h>
 #include <iostream>
 #include <unistd.h>
+extern "C" {
+#include "cdo_driver.h"
+}
 
 int main(int argc, char **argv) {
   std::string workDirPath;
