@@ -6,9 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef AIE_TARGETS_AIETARGETS_H
+#define AIE_TARGETS_AIETARGETS_H
+
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+
+#include "llvm/Support/raw_ostream.h"
+
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace xilinx {
 namespace AIE {
@@ -27,12 +33,24 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateToCDO(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
-
 mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
 std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
+mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
+                                      llvm::raw_ostream &output, int tileCol,
+                                      int tileRow);
 } // namespace AIE
+
+namespace aievec {
+
+/// Translates the AIE vector dialect MLIR to C++ code.
+mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aieml,
+                                         mlir::raw_ostream &os);
+
+} // namespace aievec
 } // namespace xilinx
+
+#endif

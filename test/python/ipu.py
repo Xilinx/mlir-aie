@@ -10,38 +10,35 @@ import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
     Call,
+    CoreOp,
     ObjectFifoPort,
     ObjectFifoType,
     acquire,
     core,
     device,
     external_func,
+    generate_bcf,
+    generate_cdo,
+    generate_xaie,
+    ipu_instgen,
     objectfifo,
     objectfifo_link,
     objectfifo_release,
     tile,
+    translate_mlir_to_llvmir,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
-from aie.extras.dialects.ext import memref, arith
+from aie.extras.dialects.ext import memref, arith, func
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
-from aie.ir import Context, Location, Module, InsertionPoint, TypeAttr
-from aie.passmanager import PassManager
+from aie.extras.runtime.passes import run_pipeline
+from aie.extras.util import find_ops
+from aie.ir import TypeAttr
+from util import construct_and_print_module
+
 
 range_ = for_
-
-
-def construct_and_print_module(f):
-    with Context() as ctx, Location.unknown():
-        module = Module.create()
-        print("\nTEST:", f.__name__)
-        with InsertionPoint(module.body):
-            f()
-        pm = PassManager("builtin.module")
-        pm.add("canonicalize")
-        pm.run(module.operation)
-        print(module)
 
 
 # CHECK-LABEL: my_vector_scalar
@@ -84,7 +81,7 @@ def construct_and_print_module(f):
 
 
 @construct_and_print_module
-def my_vector_scalar():
+def my_vector_scalar(module):
     N = 4096
     n = 1024
     N_div_n = N // n
@@ -145,6 +142,8 @@ def my_vector_scalar():
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
+    print(run_pipeline(module, "builtin.module(canonicalize)"))
+
 
 # CHECK-LABEL: my_matmul
 # CHECK: module {
@@ -204,7 +203,7 @@ def my_vector_scalar():
 
 
 @construct_and_print_module
-def my_matmul():
+def my_matmul(module):
     M = 128
     K = 128
     N = 128
@@ -374,6 +373,8 @@ def my_matmul():
 
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
+    print(run_pipeline(module, "builtin.module(canonicalize)"))
+
 
 # CHECK-LABEL: edge_detect
 # CHECK: module {
@@ -525,7 +526,7 @@ def my_matmul():
 
 
 @construct_and_print_module
-def edge_detect():
+def edge_detect(module):
     @device(AIEDevice.ipu)
     def device_body():
         rgba2gray_line = external_func(
@@ -841,6 +842,8 @@ def edge_detect():
             )
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
+    print(run_pipeline(module, "builtin.module(canonicalize)"))
+
 
 # CHECK-LABEL: my_add_one_objFifo
 # module {
@@ -889,7 +892,7 @@ def edge_detect():
 #   }
 # }
 @construct_and_print_module
-def my_add_one_objFifo():
+def my_add_one_objFifo(module):
     @device(AIEDevice.ipu)
     def device_body():
         shim_tile = tile(0, 0)
@@ -965,3 +968,611 @@ def my_add_one_objFifo():
                 metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64]
             )
             ipu_sync(column=0, row=0, direction=0, channel=0)
+
+    print(run_pipeline(module, "builtin.module(canonicalize)"))
+
+
+@construct_and_print_module
+def my_passthrough(module):
+    N = 4096
+    ofifo_mem_ref_ty = TypeAttr.get(ObjectFifoType.get(T.memref(1024, T.i32())))
+    tensor_ty = T.memref(N, T.i32())
+
+    @device(AIEDevice.ipu)
+    def device_body():
+        # Tile declarations
+        shim_tile = tile(0, 0)
+        compute_tile2 = tile(0, 2)
+
+        # AIE-array data movement with object fifos
+        objectfifo("in", shim_tile, [compute_tile2], 2, ofifo_mem_ref_ty, [], [])
+        objectfifo("out", compute_tile2, [shim_tile], 2, ofifo_mem_ref_ty, [], [])
+        objectfifo_link(["in"], ["out"])
+
+        @core(compute_tile2)
+        def core_body():
+            tmp = memref.alloc([1], T.i32())
+            v0 = arith.constant(0, T.i32())
+            memref.store(v0, tmp, [0])
+
+        @func.func(emit=True)
+        def sequence(A: tensor_ty, B: tensor_ty, C: tensor_ty):
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+            ipu_sync(column=0, row=0, direction=0, channel=0)
+
+    pass_pipeline = ",".join(
+        [
+            "lower-affine",
+            "aie-canonicalize-device",
+            "aie.device(" + "aie-assign-lock-ids",
+            "aie-register-objectFifos",
+            "aie-objectFifo-stateful-transform",
+            "aie-lower-broadcast-packet",
+            "aie-create-packet-flows",
+            "aie-lower-multicast",
+            "aie-assign-buffer-addresses)",
+            "convert-scf-to-cf",
+        ]
+    )
+    input_with_addresses = run_pipeline(module, "builtin.module(" + pass_pipeline + ")")
+    # print(module)
+    cores = [
+        (c.tile.owner.opview.col.value, c.tile.owner.opview.row.value, None)
+        for c in find_ops(
+            input_with_addresses.operation,
+            lambda o: isinstance(o.operation.opview, CoreOp),
+        )
+    ]
+
+    generated_ipu_insts = run_pipeline(
+        input_with_addresses, "builtin.module(aie.device(aie-dma-to-ipu))"
+    )
+    ipu_insts = ipu_instgen(generated_ipu_insts.operation)
+    # CHECK: 00000011
+    # CHECK: 01000405
+    # CHECK: 01000100
+    # CHECK: 0B590100
+    # CHECK: 000055FF
+    # CHECK: 00000001
+    # CHECK: 00000010
+    # CHECK: 314E5A5F
+    # CHECK: 635F5F31
+    # CHECK: 676E696C
+    # CHECK: 39354E5F
+    # CHECK: 6E693131
+    # CHECK: 5F727473
+    # CHECK: 64726F77
+    # CHECK: 00004573
+    # CHECK: 07BD9630
+    # CHECK: 000055FF
+    # CHECK: 06000120
+    # CHECK: 00000000
+    # CHECK: 00001000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 80000000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 02000000
+    # CHECK: 02000000
+    # CHECK: 0001D204
+    # CHECK: 80000000
+    # CHECK: 06000101
+    # CHECK: 00000000
+    # CHECK: 00001000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 80000000
+    # CHECK: 00000000
+    # CHECK: 00000000
+    # CHECK: 02000000
+    # CHECK: 02000000
+    # CHECK: 0001D214
+    # CHECK: 00000001
+    # CHECK: 03000000
+    # CHECK: 00010100
+    print(ipu_insts)
+
+    pass_pipeline = ",".join(
+        [
+            "aie.device(aie-localize-locks",
+            "aie-normalize-address-spaces)",
+            "aie-standard-lowering{ tilecol=%d tilerow=%d }" % cores[0][0:2],
+            "aiex-standard-lowering",
+        ]
+    )
+    input_opt_with_addresses = run_pipeline(
+        input_with_addresses, "builtin.module(" + pass_pipeline + ")"
+    )
+    pass_pipeline = ",".join(
+        [
+            "canonicalize",
+            "cse",
+            "convert-vector-to-llvm",
+            "expand-strided-metadata",
+            "lower-affine",
+            "convert-math-to-llvm",
+            "convert-arith-to-llvm",
+            "finalize-memref-to-llvm",
+            "convert-func-to-llvm{use-bare-ptr-memref-call-conv}",
+            "convert-cf-to-llvm",
+            "canonicalize",
+            "cse",
+        ]
+    )
+    llvmlir = run_pipeline(
+        input_opt_with_addresses, "builtin.module(" + pass_pipeline + ")"
+    )
+    llvmir = translate_mlir_to_llvmir(llvmlir.operation)
+    # CHECK: ; ModuleID = 'LLVMDialectModule'
+    # CHECK: source_filename = "LLVMDialectModule"
+    # CHECK: target triple = "aie2"
+    # CHECK: @in_cons_buff_1 = external global [1024 x i32]
+    # CHECK: @in_cons_buff_0 = external global [1024 x i32]
+    # CHECK: @out_cons = external global [1024 x i32]
+    # CHECK: @out = external global [1024 x i32]
+    # CHECK: @in_cons = external global [1024 x i32]
+    # CHECK: @in = external global [1024 x i32]
+    # CHECK: declare void @debug_i32(i32)
+    # CHECK: declare void @llvm.aie2.put.ms(i32, i32)
+    # CHECK: declare { i32, i32 } @llvm.aie2.get.ss()
+    # CHECK: declare void @llvm.aie2.mcd.write.vec(<16 x i32>, i32)
+    # CHECK: declare <16 x i32> @llvm.aie2.scd.read.vec(i32)
+    # CHECK: declare void @llvm.aie2.acquire(i32, i32)
+    # CHECK: declare void @llvm.aie2.release(i32, i32)
+    # CHECK: define void @sequence(ptr %0, ptr %1, ptr %2) {
+    # CHECK:   ret void
+    # CHECK: }
+    # CHECK: define void @core_0_2() {
+    # CHECK:   ret void
+    # CHECK: }
+    # CHECK: !llvm.module.flags = !{!0}
+    # CHECK: !0 = !{i32 2, !"Debug Info Version", i32 3}
+    print(llvmir)
+
+    pass_pipeline = ",".join(
+        [
+            "aie-create-pathfinder-flows",
+            "aie-lower-broadcast-packet",
+            "aie-create-packet-flows",
+            "aie-lower-multicast",
+        ]
+    )
+    input_physical = run_pipeline(
+        input_with_addresses, "builtin.module(aie.device(" + pass_pipeline + "))"
+    )
+
+    aie_inc = generate_xaie(input_physical.operation)
+    # CHECK: #ifndef MLIR_AIE_QUIET
+    # CHECK: #define __mlir_aie_verbose(x) x
+    # CHECK: #else
+    # CHECK: #define __mlir_aie_verbose(x)
+    # CHECK: #endif
+    #
+    # CHECK: // The following is a wrapper for the common "if(call() != 0) return 1" pattern.
+    # CHECK: // Use this only in functions that return int. If the call this wrapper is used
+    # CHECK: // on does not succeed, the expanded code will exit out of the function
+    # CHECK: // containing this macro with an error code.
+    # CHECK: #define __mlir_aie_try(x) do { \
+    # CHECK:   AieRC ret = (x); \
+    # CHECK:   if(ret != XAIE_OK) { \
+    # CHECK:     return x; \
+    # CHECK:   } \
+    # CHECK: } while(0)
+    #
+    # CHECK: static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) {
+    # CHECK:   XAie_DmaDimDesc *ret = NULL;
+    # CHECK:   ret = (XAie_DmaDimDesc *)calloc(sizeof(XAie_DmaDimDesc), ndims);
+    # CHECK:   if(NULL == ret) {
+    # CHECK:     __mlir_aie_verbose(fprintf(stderr, "Allocating DmaDimDesc failed.\n"));
+    # CHECK:   }
+    # CHECK:   return ret;
+    # CHECK: }
+    #
+    # CHECK: aie_libxaie_ctx_t* mlir_aie_init_libxaie() {
+    # CHECK:   aie_libxaie_ctx_t *ctx = new aie_libxaie_ctx_t;
+    # CHECK:   if (!ctx)
+    # CHECK:     return 0;
+    # CHECK:   ctx->AieConfigPtr.AieGen = XAIE_DEV_GEN_AIEML;
+    # CHECK:   ctx->AieConfigPtr.BaseAddr = 0x20000000000;
+    # CHECK:   ctx->AieConfigPtr.ColShift = 25;
+    # CHECK:   ctx->AieConfigPtr.RowShift = 20;
+    # CHECK:   ctx->AieConfigPtr.NumRows = 6;
+    # CHECK:   ctx->AieConfigPtr.NumCols = 5;
+    # CHECK:   ctx->AieConfigPtr.ShimRowNum = 0;
+    # CHECK:   ctx->AieConfigPtr.MemTileRowStart = 1;
+    # CHECK:   ctx->AieConfigPtr.MemTileNumRows = 1;
+    # CHECK:   //  ctx->AieConfigPtr.ReservedRowStart = XAIE_RES_TILE_ROW_START;
+    # CHECK:   //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;
+    # CHECK:   ctx->AieConfigPtr.AieTileRowStart = 2;
+    # CHECK:   ctx->AieConfigPtr.AieTileNumRows = 4;
+    # CHECK:   ctx->AieConfigPtr.PartProp = {0};
+    # CHECK:   ctx->DevInst = {0};
+    # CHECK:   return ctx;
+    # CHECK: }
+    #
+    # CHECK: int mlir_aie_configure_cores(aie_libxaie_ctx_t* ctx) {
+    # CHECK: __mlir_aie_try(XAie_CoreReset(&(ctx->DevInst), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_CoreDisable(&(ctx->DevInst), XAie_TileLoc(0,2)));
+    # CHECK: for (int l = 0; l < 16; ++l)
+    # CHECK:   __mlir_aie_try(XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(l, 0x0), 0));
+    # CHECK: {
+    # CHECK: AieRC RC = XAie_LoadElf(&(ctx->DevInst), XAie_TileLoc(0,2), (const char*)"core_0_2.elf",0);
+    # CHECK: if (RC != XAIE_OK)
+    # CHECK:     __mlir_aie_verbose(fprintf(stderr, "Failed to load elf for Core[%d,%d], ret is %d\n", 0, 2, RC));
+    # CHECK: assert(RC == XAIE_OK);
+    # CHECK: }
+    # CHECK: return XAIE_OK;
+    # CHECK: } // mlir_aie_configure_cores
+    #
+    # CHECK: int mlir_aie_start_cores(aie_libxaie_ctx_t* ctx) {
+    # CHECK: __mlir_aie_try(XAie_CoreUnreset(&(ctx->DevInst), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_CoreEnable(&(ctx->DevInst), XAie_TileLoc(0,2)));
+    # CHECK: return XAIE_OK;
+    # CHECK: } // mlir_aie_start_cores
+    #
+    # CHECK: int mlir_aie_configure_dmas(aie_libxaie_ctx_t* ctx) {
+    # CHECK: XAie_DmaDesc dma_tile02_bd0;
+    # CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile02_bd0), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetLock(&(dma_tile02_bd0), XAie_LockInit(0,-1),XAie_LockInit(1,1)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&(dma_tile02_bd0), /* addrA */ 0x400,  /* len */ 1024 * 4));
+    # CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&(dma_tile02_bd0),  /* nextbd */ 1,  /* enableNextBd */ 1));
+    # CHECK: __mlir_aie_try(XAie_DmaEnableBd(&(dma_tile02_bd0)));
+    # CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile02_bd0), XAie_TileLoc(0,2),  /* bd */ 0));
+    # CHECK: XAie_DmaDesc dma_tile02_bd1;
+    # CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile02_bd1), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetLock(&(dma_tile02_bd1), XAie_LockInit(0,-1),XAie_LockInit(1,1)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&(dma_tile02_bd1), /* addrA */ 0x1400,  /* len */ 1024 * 4));
+    # CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&(dma_tile02_bd1),  /* nextbd */ 0,  /* enableNextBd */ 1));
+    # CHECK: __mlir_aie_try(XAie_DmaEnableBd(&(dma_tile02_bd1)));
+    # CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile02_bd1), XAie_TileLoc(0,2),  /* bd */ 1));
+    # CHECK: XAie_DmaDesc dma_tile02_bd2;
+    # CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile02_bd2), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetLock(&(dma_tile02_bd2), XAie_LockInit(1,-1),XAie_LockInit(0,1)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&(dma_tile02_bd2), /* addrA */ 0x400,  /* len */ 1024 * 4));
+    # CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&(dma_tile02_bd2),  /* nextbd */ 3,  /* enableNextBd */ 1));
+    # CHECK: __mlir_aie_try(XAie_DmaEnableBd(&(dma_tile02_bd2)));
+    # CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile02_bd2), XAie_TileLoc(0,2),  /* bd */ 2));
+    # CHECK: XAie_DmaDesc dma_tile02_bd3;
+    # CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile02_bd3), XAie_TileLoc(0,2)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetLock(&(dma_tile02_bd3), XAie_LockInit(1,-1),XAie_LockInit(0,1)));
+    # CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&(dma_tile02_bd3), /* addrA */ 0x1400,  /* len */ 1024 * 4));
+    # CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&(dma_tile02_bd3),  /* nextbd */ 2,  /* enableNextBd */ 1));
+    # CHECK: __mlir_aie_try(XAie_DmaEnableBd(&(dma_tile02_bd3)));
+    # CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile02_bd3), XAie_TileLoc(0,2),  /* bd */ 3));
+    # CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(0,2), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0));
+    # CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(0,2), /* ChNum */ 0, /* dmaDir */ DMA_S2MM));
+    # CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(0,2), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */2));
+    # CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(0,2), /* ChNum */ 0, /* dmaDir */ DMA_MM2S));
+    # CHECK: return XAIE_OK;
+    # CHECK: } // mlir_aie_configure_dmas
+    #
+    # CHECK: int mlir_aie_initialize_locks(aie_libxaie_ctx_t* ctx) {
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(2, 0)));
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(3, 0)));
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(0, 2)));
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(1, 0)));
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(0, 0)));
+    # CHECK: __mlir_aie_try(XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(1, 0)));
+    # CHECK: return XAIE_OK;
+    # CHECK: } // mlir_aie_initialize_locks
+    # CHECK: int mlir_aie_configure_switchboxes(aie_libxaie_ctx_t* ctx) {
+    # CHECK:   int x, y;
+    # CHECK: // Core Stream Switch column 0 row 0
+    # CHECK: x = 0;
+    # CHECK: y = 0;
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 3, NORTH, 0));
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2));
+    # CHECK: // Core Stream Switch column 0 row 2
+    # CHECK: x = 0;
+    # CHECK: y = 2;
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 0, DMA, 0));
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), DMA, 0, SOUTH, 0));
+    # CHECK: // Core Stream Switch column 0 row 1
+    # CHECK: x = 0;
+    # CHECK: y = 1;
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 0, NORTH, 0));
+    # CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0));
+    # CHECK: // ShimMux column 0 row 0
+    # CHECK: // NOTE ShimMux always connects from the south as directions are defined relative to the tile stream switch
+    # CHECK: x = 0;
+    # CHECK: y = 0;
+    # CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 3));
+    # CHECK: __mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 2));
+    # CHECK: return XAIE_OK;
+    # CHECK: } // mlir_aie_configure_switchboxes
+    #
+    # CHECK: const int in_cons_buff_0_offset = 1024;
+    # CHECK: int32_t mlir_aie_read_buffer_in_cons_buff_0(aie_libxaie_ctx_t* ctx, int index) {
+    # CHECK: u32 value; auto rc = XAie_DataMemRdWord(&(ctx->DevInst), XAie_TileLoc(0,2), in_cons_buff_0_offset + (index*4), &value);
+    # CHECK:   return value;
+    # CHECK: }
+    # CHECK: int mlir_aie_write_buffer_in_cons_buff_0(aie_libxaie_ctx_t* ctx, int index, int32_t value) {
+    # CHECK:   int32_t int_value = value;
+    # CHECK: AieRC rc =    XAie_DataMemWrWord(&(ctx->DevInst), XAie_TileLoc(0,2), in_cons_buff_0_offset + (index*4), int_value);
+    # CHECK: return rc;
+    # CHECK: }
+    # CHECK: const int in_cons_buff_1_offset = 5120;
+    # CHECK: int32_t mlir_aie_read_buffer_in_cons_buff_1(aie_libxaie_ctx_t* ctx, int index) {
+    # CHECK: u32 value; auto rc = XAie_DataMemRdWord(&(ctx->DevInst), XAie_TileLoc(0,2), in_cons_buff_1_offset + (index*4), &value);
+    # CHECK:   return value;
+    # CHECK: }
+    # CHECK: int mlir_aie_write_buffer_in_cons_buff_1(aie_libxaie_ctx_t* ctx, int index, int32_t value) {
+    # CHECK:   int32_t int_value = value;
+    # CHECK: AieRC rc =    XAie_DataMemWrWord(&(ctx->DevInst), XAie_TileLoc(0,2), in_cons_buff_1_offset + (index*4), int_value);
+    # CHECK: return rc;
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_out_cons_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 2;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_out_cons_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 2;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_out_cons_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 3;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_out_cons_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 3;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_in_cons_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 0;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_in_cons_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 0;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_in_cons_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 1;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_in_cons_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 1;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,2), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_in_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 0;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_in_prod_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 0;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_acquire_in_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 1;
+    # CHECK:   return XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    # CHECK: int mlir_aie_release_in_cons_lock(aie_libxaie_ctx_t* ctx, int value, int timeout) {
+    # CHECK:   const int id = 1;
+    # CHECK:   return XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(0,0), XAie_LockInit(id,value), timeout);
+    # CHECK: }
+    print(aie_inc)
+
+    aie_control = generate_cdo(input_physical.operation)
+    # CHECK: /********************************************* Disclaimer *********************************************/
+    # CHECK: /* This file is generated by aie-translate. */
+    # CHECK: /* Changes to this file may cause incorrect behavior. */
+    #
+    # CHECK: /************************** Constants/Macros *****************************/
+    # CHECK: #define HW_GEN                   XAIE_DEV_GEN_AIEML
+    # CHECK: #define XAIE_NUM_ROWS            6
+    # CHECK: #define XAIE_NUM_COLS            5
+    # CHECK: #define XAIE_BASE_ADDR           0x40000000
+    # CHECK: #define XAIE_COL_SHIFT           25
+    # CHECK: #define XAIE_ROW_SHIFT           20
+    # CHECK: #define XAIE_SHIM_ROW            0
+    # CHECK: #define XAIE_MEM_TILE_ROW_START  1
+    # CHECK: #define XAIE_MEM_TILE_NUM_ROWS   1
+    # CHECK: #define XAIE_AIE_TILE_ROW_START  2
+    # CHECK: #define XAIE_AIE_TILE_NUM_ROWS   4
+    # CHECK: #define FOR_WRITE                0
+    # CHECK: #define FOR_READ                 1
+    # CHECK: #define XAIE_PARTITION_BASE_ADDR 0x0
+    #
+    # CHECK: /***************************** Includes *********************************/
+    # CHECK: //#include <fstream>
+    # CHECK: extern "C"
+    # CHECK: {
+    # CHECK:   #include <xaiengine.h>
+    # CHECK: }
+    # CHECK: //#include "adf/adf_api/AIEControlConfig.h"
+    #
+    # CHECK: #define __mlir_aie_try(x) x
+    # CHECK: static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) {
+    # CHECK:   XAie_DmaDimDesc *ret = NULL;
+    # CHECK:   ret = (XAie_DmaDimDesc *)calloc(sizeof(XAie_DmaDimDesc), ndims);
+    # CHECK:   if(NULL == ret) {
+    # CHECK:     fprintf(stderr, "Allocating DmaDimDesc failed.\n");
+    # CHECK:   }
+    # CHECK:   return ret;
+    # CHECK: }
+    # CHECK: XAie_InstDeclare(DevInst, &ConfigPtr);   // Declare global device instance
+    #
+    # CHECK: bool ppgraph_load_elf(const std::string& work_path, std::vector<std::string>& elfInfoPath)
+    # CHECK: {
+    # CHECK: std::string work_dir = (work_path.empty() ?  "Work" : work_path);
+    # CHECK: {
+    # CHECK: if (XAie_LoadElf(&DevInst, XAie_TileLoc(0,2), (work_dir + "/core_0_2.elf").c_str(), XAIE_ENABLE) != XAIE_OK)
+    # CHECK: {
+    # CHECK:     std::cerr << "ERROR: Failed to load elf for core(%d,%d)" << std::endl;
+    # CHECK:     return false;
+    # CHECK: }
+    # CHECK: }
+    # CHECK:     return true;
+    # CHECK: } // ppgraph_load_elf
+    #
+    # CHECK: void ppgraph_core_enable()
+    # CHECK: {
+    # CHECK: XAie_CoreEnable(&DevInst, XAie_TileLoc(0,2));
+    # CHECK:     return;
+    # CHECK: } // ppgraph_core_enable
+    #
+    # CHECK: void enableErrorHandling()
+    # CHECK: {
+    # CHECK:     XAie_ErrorHandlingInit(&DevInst);
+    # CHECK: } // enableErrorHandling
+    #
+    # CHECK: void ppgraph_init(const std::string& work_path)
+    # CHECK: {
+    # CHECK: XAie_CoreReset(&DevInst, XAie_TileLoc(0,2));
+    # CHECK: XAie_CoreUnreset(&DevInst, XAie_TileLoc(0,2));
+    # CHECK: for (int l=0; l<16; l++)
+    # CHECK:   XAie_LockSetValue(&DevInst, XAie_TileLoc(0,2), XAie_LockInit(l, 0));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,0), XAie_LockInit(2, 0));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,0), XAie_LockInit(3, 0));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,2), XAie_LockInit(0, 2));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,2), XAie_LockInit(1, 0));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,0), XAie_LockInit(0, 0));
+    # CHECK: XAie_LockSetValue(&DevInst, XAie_TileLoc(0,0), XAie_LockInit(1, 0));
+    # CHECK: XAie_DmaDesc dma_tile02_bd0;
+    # CHECK: XAie_DmaDescInit(&DevInst, &(dma_tile02_bd0), XAie_TileLoc(0,2));
+    # CHECK: XAie_DmaSetLock(&(dma_tile02_bd0), XAie_LockInit(0,-1),XAie_LockInit(1,1));
+    # CHECK: XAie_DmaSetAddrLen(&(dma_tile02_bd0), /* addrA */ 0x400,  /* len */ 1024 * 4);
+    # CHECK: XAie_DmaSetNextBd(&(dma_tile02_bd0),  /* nextbd */ 1,  /* enableNextBd */ 1);
+    # CHECK: XAie_DmaEnableBd(&(dma_tile02_bd0));
+    # CHECK: XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd0), XAie_TileLoc(0,2),  /* bd */ 0);
+    # CHECK: XAie_DmaDesc dma_tile02_bd1;
+    # CHECK: XAie_DmaDescInit(&DevInst, &(dma_tile02_bd1), XAie_TileLoc(0,2));
+    # CHECK: XAie_DmaSetLock(&(dma_tile02_bd1), XAie_LockInit(0,-1),XAie_LockInit(1,1));
+    # CHECK: XAie_DmaSetAddrLen(&(dma_tile02_bd1), /* addrA */ 0x1400,  /* len */ 1024 * 4);
+    # CHECK: XAie_DmaSetNextBd(&(dma_tile02_bd1),  /* nextbd */ 0,  /* enableNextBd */ 1);
+    # CHECK: XAie_DmaEnableBd(&(dma_tile02_bd1));
+    # CHECK: XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd1), XAie_TileLoc(0,2),  /* bd */ 1);
+    # CHECK: XAie_DmaDesc dma_tile02_bd2;
+    # CHECK: XAie_DmaDescInit(&DevInst, &(dma_tile02_bd2), XAie_TileLoc(0,2));
+    # CHECK: XAie_DmaSetLock(&(dma_tile02_bd2), XAie_LockInit(1,-1),XAie_LockInit(0,1));
+    # CHECK: XAie_DmaSetAddrLen(&(dma_tile02_bd2), /* addrA */ 0x400,  /* len */ 1024 * 4);
+    # CHECK: XAie_DmaSetNextBd(&(dma_tile02_bd2),  /* nextbd */ 3,  /* enableNextBd */ 1);
+    # CHECK: XAie_DmaEnableBd(&(dma_tile02_bd2));
+    # CHECK: XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd2), XAie_TileLoc(0,2),  /* bd */ 2);
+    # CHECK: XAie_DmaDesc dma_tile02_bd3;
+    # CHECK: XAie_DmaDescInit(&DevInst, &(dma_tile02_bd3), XAie_TileLoc(0,2));
+    # CHECK: XAie_DmaSetLock(&(dma_tile02_bd3), XAie_LockInit(1,-1),XAie_LockInit(0,1));
+    # CHECK: XAie_DmaSetAddrLen(&(dma_tile02_bd3), /* addrA */ 0x1400,  /* len */ 1024 * 4);
+    # CHECK: XAie_DmaSetNextBd(&(dma_tile02_bd3),  /* nextbd */ 2,  /* enableNextBd */ 1);
+    # CHECK: XAie_DmaEnableBd(&(dma_tile02_bd3));
+    # CHECK: XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd3), XAie_TileLoc(0,2),  /* bd */ 3);
+    # CHECK: XAie_DmaChannelPushBdToQueue(&DevInst, XAie_TileLoc(0,2), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0);
+    # CHECK: XAie_DmaChannelEnable(&DevInst, XAie_TileLoc(0,2), /* ChNum */ 0, /* dmaDir */ DMA_S2MM);
+    # CHECK: XAie_DmaChannelPushBdToQueue(&DevInst, XAie_TileLoc(0,2), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */2);
+    # CHECK: XAie_DmaChannelEnable(&DevInst, XAie_TileLoc(0,2), /* ChNum */ 0, /* dmaDir */ DMA_MM2S);
+    # CHECK:   int x, y;
+    # CHECK: // Core Stream Switch column 0 row 0
+    # CHECK: x = 0;
+    # CHECK: y = 0;
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), CTRL, 0, SOUTH, 0);
+    # CHECK: {
+    # CHECK:   //configure DMA_<S2MM/MM2S>_<N>_Ctrl register
+    # CHECK:   XAie_DmaChannelDesc DmaChannelDescInst;
+    # CHECK:   XAie_DmaChannelDescInit(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x,y));
+    # CHECK:   XAie_DmaChannelSetControllerId(&DmaChannelDescInst, 0);
+    # CHECK:   XAie_DmaWriteChannel(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x,y), 0, DMA_S2MM);
+    # CHECK: }
+    #
+    # CHECK: {
+    # CHECK:   //configure DMA_<S2MM/MM2S>_<N>_Ctrl register
+    # CHECK:   XAie_DmaChannelDesc DmaChannelDescInst;
+    # CHECK:   XAie_DmaChannelDescInit(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x,y));
+    # CHECK:   XAie_DmaChannelSetControllerId(&DmaChannelDescInst, 0);
+    # CHECK:   XAie_DmaWriteChannel(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x,y), 1, DMA_S2MM);
+    # CHECK: }
+    #
+    # CHECK: XAie_AieToPlIntfEnable (&DevInst, XAie_TileLoc(x, y), 0, PLIF_WIDTH_32);
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), SOUTH, 3, NORTH, 0);
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2);
+    # CHECK: // Core Stream Switch column 0 row 2
+    # CHECK: x = 0;
+    # CHECK: y = 2;
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), SOUTH, 0, DMA, 0);
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), DMA, 0, SOUTH, 0);
+    # CHECK: // Core Stream Switch column 0 row 1
+    # CHECK: x = 0;
+    # CHECK: y = 1;
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), SOUTH, 0, NORTH, 0);
+    # CHECK: XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0);
+    # CHECK: // ShimMux column 0 row 0
+    # CHECK: // NOTE ShimMux always connects from the south as directions are defined relative to the tile stream switch
+    # CHECK: x = 0;
+    # CHECK: y = 0;
+    # CHECK: XAie_EnableShimDmaToAieStrmPort(&DevInst, XAie_TileLoc(x,y), 3);
+    # CHECK: XAie_EnableAieToShimDmaStrmPort(&DevInst, XAie_TileLoc(x,y), 2);
+    # CHECK: } // ppgraph_init
+    #
+    #
+    #
+    # CHECK:   class InitializeAIEControl
+    # CHECK:   {
+    # CHECK:   public:
+    # CHECK:     InitializeAIEControl()
+    # CHECK:     {
+    # CHECK:       XAie_SetupConfig(ConfigPtr, HW_GEN, XAIE_BASE_ADDR, XAIE_COL_SHIFT,
+    # CHECK:                        XAIE_ROW_SHIFT, XAIE_NUM_COLS, XAIE_NUM_ROWS,
+    # CHECK:                        XAIE_SHIM_ROW, XAIE_MEM_TILE_ROW_START,
+    # CHECK:                        XAIE_MEM_TILE_NUM_ROWS, XAIE_AIE_TILE_ROW_START,
+    # CHECK:                        XAIE_AIE_TILE_NUM_ROWS);
+    #
+    # CHECK:       XAie_SetupPartitionConfig(&DevInst, XAIE_PARTITION_BASE_ADDR, 1, 1);
+    #
+    # CHECK:       XAie_CfgInitialize(&(DevInst), &ConfigPtr);
+    #
+    # CHECK: #if defined(__AIESIM__)
+    # CHECK: #if defined(__CDO__)
+    # CHECK:       XAie_SetIOBackend(&(DevInst), XAIE_IO_BACKEND_CDO); // Set aiengine driver library to run for CDO Mode
+    # CHECK:       XAie_UpdateNpiAddr(&(DevInst), 0x0);
+    # CHECK: #else
+    # CHECK:       //AIE driver currently error out XAie_UpdateNpiAddr for AIESIM
+    # CHECK: #endif
+    # CHECK: #else
+    # CHECK:       XAie_UpdateNpiAddr(&(DevInst), 0x0);
+    # CHECK: #endif
+    #
+    # CHECK: #if defined(__AIESIM__) && !defined(__CDO__)
+    # CHECK:       XAie_TurnEccOff(&DevInst);
+    # CHECK: #endif
+    #
+    # CHECK: #if defined(__AIESIM__) && !defined(__CDO__)
+    # CHECK:       extern unsigned ess_debug;
+    # CHECK: #else
+    # CHECK:       unsigned ess_debug = false;
+    # CHECK: #endif
+    #
+    # CHECK: #ifdef __EXCLUDE_PL_CONTROL__
+    # CHECK:       bool exclude_pl_control = true;
+    # CHECK: #else
+    # CHECK:       bool exclude_pl_control = false;
+    # CHECK: #endif
+    #
+    # CHECK: #ifdef __CDO__
+    # CHECK:       int trace_config_stream_option = 2;
+    # CHECK: #else
+    # CHECK:       int trace_config_stream_option = 0;
+    # CHECK: #endif
+    # CHECK:     }
+    # CHECK:   } initAIEControl;
+    print(aie_control)
+
+    core_0_2 = generate_bcf(input_with_addresses.operation, 0, 2)
+    # CHECK: _entry_point _main_init
+    # CHECK: _symbol core_0_2 _after _main_init
+    # CHECK: _symbol      _main_init 0
+    # CHECK: _reserved DMb      0x00000 0x40000 //Don't put data in code memory
+    # CHECK: _reserved DMb 0x40000 0x10000  // No tile with memory exists to the south.
+    # CHECK: _reserved DMb 0x50000 0x10000  // No tile with memory exists to the west.
+    # CHECK: _reserved DMb 0x60000 0x10000  // Don't allocate variables outside of local memory.
+    # CHECK: _symbol in_cons_buff_0 0x70400 0x1000
+    # CHECK: _extern in_cons_buff_0
+    # CHECK: _reserved DMb 0x70400 0x1000
+    # CHECK: _symbol in_cons_buff_1 0x71400 0x1000
+    # CHECK: _extern in_cons_buff_1
+    # CHECK: _reserved DMb 0x71400 0x1000
+    # CHECK: _stack    DM_stack 0x70000  0x400 //stack for core
+    # CHECK: _reserved DMb 0x80000 0x80000 // And everything else the core can't see
+    # CHECK: _resolve _main core_0_2
+    print(core_0_2)

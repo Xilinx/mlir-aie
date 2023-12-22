@@ -9,7 +9,7 @@ from ._aie_ops_gen import *
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from .._mlir_libs._aie import ObjectFifoType
+from .._mlir_libs._aie import ObjectFifoType, translate_aie_vec_to_cpp
 
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant

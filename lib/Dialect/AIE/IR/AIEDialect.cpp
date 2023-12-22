@@ -1640,6 +1640,22 @@ bool TileOp::isShimNOCorPLTile() {
   const auto &targetModel = getTargetModel(*this);
   return targetModel.isShimNOCorPLTile(getCol(), getRow());
 }
+
+WireBundle getConnectingBundle(WireBundle dir) {
+  switch (dir) {
+  case WireBundle::North:
+    return WireBundle::South;
+  case WireBundle::South:
+    return WireBundle::North;
+  case WireBundle::East:
+    return WireBundle::West;
+  case WireBundle::West:
+    return WireBundle::East;
+  default:
+    return dir;
+  }
+}
+
 } // namespace xilinx::AIE
 
 // Include implementations for custom attributes

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIETargets.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"

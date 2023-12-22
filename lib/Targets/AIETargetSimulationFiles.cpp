@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIETargets.h"
-
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Import.h"

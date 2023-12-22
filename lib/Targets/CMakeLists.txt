@@ -9,6 +9,7 @@ add_subdirectory(AIEVecToCpp)
 
 add_mlir_library(AIETargets
   AIETargets.cpp
+  AIETargetBCF.cpp
   AIETargetCDO.cpp
   AIETargetIPU.cpp
   AIETargetLdScript.cpp
@@ -17,8 +18,10 @@ add_mlir_library(AIETargets
   AIETargetSimulationFiles.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
+
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
+  $(CMAKE_CURRENT_SRC_DIR)/../../../include/aie/Targets
 
   LINK_COMPONENTS
   Core

@@ -9,8 +9,6 @@
 #include "PybindTypes.h"
 #include "RouterPass.h"
 
-#include "aie/Targets/TranslateAIEVecToCpp.h"
-
 using namespace mlir;
 using namespace mlir::python;
 using namespace mlir::python::adaptors;
@@ -46,16 +44,4 @@ PYBIND11_MODULE(_aie_python_passes, m) {
         });
 
   m.def("get_connecting_bundle", &getConnectingBundle);
-
-  m.def(
-      "translate_aie_vec_to_cpp",
-      [](MlirOperation op, bool aieml) {
-        std::string cpp;
-        llvm::raw_string_ostream os(cpp);
-        mlir::Operation *op_ = unwrap(op);
-        if (failed(xilinx::aievec::translateAIEVecToCpp(op_, aieml, os)))
-          throw std::runtime_error("couldn't translate");
-        return cpp;
-      },
-      "module"_a, "aieml"_a = false);
 }

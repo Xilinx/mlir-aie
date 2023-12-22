@@ -8,9 +8,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "AIETargetShared.h"
-#include "AIETargets.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "mlir/Target/LLVMIR/Import.h"
 
