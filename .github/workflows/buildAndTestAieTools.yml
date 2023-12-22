@@ -80,12 +80,16 @@ jobs:
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi 
             
+            apt install python3.10-venv
+            python -m venv aie-venv
+            source aie-venv/bin/activate
+            pip install -r python/requirements.txt
+            
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \
               -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
             unzip -q mlir-*.whl
-            
-            pip install -r python/requirements.txt
+            find mlir -exec touch -a -m -t 201108231405.14 {} \;
             
             # don't delete the space in the sed
             pushd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake && popd
