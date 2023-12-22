@@ -56,4 +56,5 @@ def generate_cdo():
     ]
     main(args)
 
-generate_cdo()
+generate_xaiengine_capi()
+# generate_cdo()

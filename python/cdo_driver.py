@@ -440,7 +440,7 @@ def ord_if_char(value):
 # End preamble
 
 _libs = {}
-_libdirs = ['/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo']
+_libdirs = ['/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo', '/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo']
 
 # Begin loader
 
@@ -509,7 +509,7 @@ class LibraryLoader:
     class Lookup:
         """Looking up calling conventions for a platform"""
 
-        mode = ctypes.DEFAULT_MODE
+        mode = ctypes.RTLD_GLOBAL
 
         def __init__(self, path):
             super(LibraryLoader.Lookup, self).__init__()
@@ -857,12 +857,20 @@ del loaderclass
 
 # End loader
 
-add_library_search_dirs(['/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo'])
+add_library_search_dirs(
+    ["/media/mlevental/9b03e9bc-780d-4e14-9b46-ec8089db51a6/Xilinx/Vitis/2023.2/aietools/lib/lnx64.o",
+     "/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo"])
 
 # Begin libraries
-_libs["cdo_driver"] = load_library("cdo_driver")
+# _libs["cdo_driver"] = ctypes.cdll.LoadLibrary("/media/mlevental/9b03e9bc-780d-4e14-9b46-ec8089db51a6/Xilinx/Vitis/2023.2/aietools/lib/lnx64.o/libcdo_driver.so")
+# _libs["xaienginecdo"] = ctypes.cdll.LoadLibrary("/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo/libxaienginecdo.so")
+# _libs["cdo_driver"] = ctypes.cdll.LoadLibrary("/media/mlevental/9b03e9bc-780d-4e14-9b46-ec8089db51a6/Xilinx/Vitis/2023.2/aietools/lib/lnx64.o/libcdo_driver.so")
+# _libs["xaienginecdo"] = ctypes.CDLL("/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo/libxaienginecdo.so", mode = ctypes.RTLD_GLOBAL)
+_libs["cdo_driver"] = LibraryLoader.Lookup("/media/mlevental/9b03e9bc-780d-4e14-9b46-ec8089db51a6/Xilinx/Vitis/2023.2/aietools/lib/lnx64.o/libcdo_driver.so")
+# _libs["xaienginecdo"] = LibraryLoader.Lookup("/home/mlevental/dev_projects/mlir-aie/cmake-build-debug/runtime_lib/x86_64/xaiengine/cdo/libxaienginecdo.so")
+# _libs["xaienginecdo"] = load_library("xaienginecdo")
 
-# 1 libraries
+# 2 libraries
 # End libraries
 
 # No modules
