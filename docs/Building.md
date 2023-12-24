@@ -53,7 +53,7 @@ the tools are largely board and device independent and can be adapted to other e
 
 2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
     packages. This script creates and installs the python packages
-    listed in `utils/requirements.txt` in a virtual python environment
+    listed in `python/requirements.txt` in a virtual python environment
     called 'sandbox', then it enters the sandbox:
     ```
     source utils/setup_python_packages.sh
