@@ -5,6 +5,7 @@
 
 from typing import List, Optional, Union, Tuple
 
+from aie.ir import _typeAttr
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
@@ -125,6 +126,11 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
+@register_attribute_builder("MemRefTypeAttr")
+def _memref_type_attr(x, context):
+    return _typeAttr(x, context)
 
 
 #### AIE Wrappers ####
@@ -251,6 +257,9 @@ mem = region_op(
 )
 shim_dma = region_op(
     lambda tile, *, loc=None, ip=None: ShimDMAOp(T.index(), tile, loc=loc, ip=ip)
+)
+memtile_dma = region_op(
+    lambda tile, *, loc=None, ip=None: MemTileDMAOp(T.index(), tile, loc=loc, ip=ip)
 )
 
 
