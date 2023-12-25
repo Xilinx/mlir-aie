@@ -1030,8 +1030,9 @@ def AIE_LockOp: AIE_Op<"lock", [
 
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$lockID,
-        OptionalAttr<AIEI32Attr>:$init
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$lockID,
+      OptionalAttr<AIEI32Attr>:$init,
+      OptionalAttr<StrAttr>:$sym_name
   );
 
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
@@ -1079,7 +1080,9 @@ def AIE_LockOp: AIE_Op<"lock", [
         $_builder.getIndexType(),
         tile,
         $_builder.getI32IntegerAttr(lockID),
-        $_builder.getI32IntegerAttr(init));
+        $_builder.getI32IntegerAttr(init),
+        nullptr
+      );
     }]>
   ];
   let hasVerifier = 1;
