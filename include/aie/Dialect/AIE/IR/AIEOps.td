@@ -1059,7 +1059,18 @@ def AIE_LockOp: AIE_Op<"lock", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<LockOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      if (hasName())
+        setNameFn(getResult(), name().str());
+      else {
+        std::string nameWithoutDialect =
+            getOperationName().str().substr(getOperationName().find('.') + 1);
+        setNameFn(getResult(), nameWithoutDialect + "_" +
+              std::to_string(getTileID().col) + "_" +
+              std::to_string(getTileID().row));
+      }
+    }
   }];
 
   let builders = [
@@ -1172,11 +1183,24 @@ def AIE_BufferOp: AIE_Op<"buffer", [
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<BufferOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      if (hasName())
+        setNameFn(getResult(), name().str());
+      else {
+        std::string nameWithoutDialect =
+            getOperationName().str().substr(getOperationName().find('.') + 1);
+        setNameFn(getResult(), nameWithoutDialect + "_" +
+              std::to_string(getTileID().col) + "_" +
+              std::to_string(getTileID().row));
+      }
+    }
   }];
 }
 
-def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef)> {
+def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let description = [{
     This operation represents a buffer that exists in some physical
@@ -1213,6 +1237,14 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
       emitOpError("does not have '")
           << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
+    }
+  }];
+
+  let extraClassDefinition = [{
+    void $cppClass::getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      if (hasName())
+        setNameFn(getResult(), name().str());
     }
   }];
 }
