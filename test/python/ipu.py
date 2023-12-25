@@ -6,39 +6,57 @@
 
 # RUN: %python %s | FileCheck %s
 
+from aie.extras.dialects.ext import memref, arith, func
+from aie.extras.runtime.passes import run_pipeline
+from aie.extras.util import find_ops, bb
+
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
     Call,
     CoreOp,
+    DMAChannelDir,
+    LockAction,
     ObjectFifoPort,
     ObjectFifoType,
+    WireBundle,
     acquire,
+    buffer,
     core,
     device,
+    dma_bd,
+    dma_start,
+    end as end_,
     external_func,
+    flow,
     generate_bcf,
     generate_cdo,
     generate_xaie,
     ipu_instgen,
+    lock,
+    mem,
+    next_bd,
     objectfifo,
     objectfifo_link,
     objectfifo_release,
     tile,
     translate_mlir_to_llvmir,
+    use_lock,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
-from aie.extras.dialects.ext import memref, arith, func
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
-from aie.extras.runtime.passes import run_pipeline
-from aie.extras.util import find_ops
 from aie.ir import TypeAttr
 from util import construct_and_print_module
 
-
 range_ = for_
+
+DMA = WireBundle.DMA
+S2MM = DMAChannelDir.S2MM
+MM2S = DMAChannelDir.MM2S
+Acquire = LockAction.Acquire
+Release = LockAction.Release
 
 
 # CHECK-LABEL: my_vector_scalar
@@ -1576,3 +1594,203 @@ def my_passthrough(module):
     # CHECK: _reserved DMb 0x80000 0x80000 // And everything else the core can't see
     # CHECK: _resolve _main core_0_2
     print(core_0_2)
+
+
+# CHECK-LABEL: test_29_mb_matrix_add
+# CHECK: module {
+# CHECK:   %tile_7_0 = aie.tile(7, 0)
+# CHECK:   %tile_7_2 = aie.tile(7, 2)
+# CHECK:   aie.flow(%tile_7_0, DMA : 0, %tile_7_2, DMA : 0)
+# CHECK:   aie.flow(%tile_7_0, DMA : 1, %tile_7_2, DMA : 1)
+# CHECK:   aie.flow(%tile_7_2, DMA : 0, %tile_7_0, DMA : 0)
+# CHECK:   aie.flow(%tile_7_2, DMA : 1, %tile_7_0, DMA : 1)
+# CHECK:   %buffer_7_2 = aie.buffer(%tile_7_2) {sym_name = "ping_a"} : memref<128xi32>
+# CHECK:   %buffer_7_2_0 = aie.buffer(%tile_7_2) {sym_name = "ping_b"} : memref<128xi32>
+# CHECK:   %buffer_7_2_1 = aie.buffer(%tile_7_2) {sym_name = "ping_c"} : memref<128xi32>
+# CHECK:   %buffer_7_2_2 = aie.buffer(%tile_7_2) {sym_name = "pong_a"} : memref<128xi32>
+# CHECK:   %buffer_7_2_3 = aie.buffer(%tile_7_2) {sym_name = "pong_b"} : memref<128xi32>
+# CHECK:   %buffer_7_2_4 = aie.buffer(%tile_7_2) {sym_name = "pong_c"} : memref<128xi32>
+# CHECK:   %lock_7_2 = aie.lock(%tile_7_2, 0)
+# CHECK:   %lock_7_2_5 = aie.lock(%tile_7_2, 1)
+# CHECK:   %lock_7_2_6 = aie.lock(%tile_7_2, 2)
+# CHECK:   %lock_7_2_7 = aie.lock(%tile_7_2, 3)
+# CHECK:   %lock_7_2_8 = aie.lock(%tile_7_2, 4)
+# CHECK:   %lock_7_2_9 = aie.lock(%tile_7_2, 5)
+# CHECK:   %mem_7_2 = aie.mem(%tile_7_2) {
+# CHECK:     %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb3, ^bb1)
+# CHECK:   ^bb1:  // pred: ^bb0
+# CHECK:     %[[VAL_1:.*]] = aie.dma_start(S2MM, 1, ^bb5, ^bb2)
+# CHECK:   ^bb2:  // pred: ^bb1
+# CHECK:     %[[VAL_2:.*]] = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
+# CHECK:   ^bb3:  // 2 preds: ^bb0, ^bb4
+# CHECK:     aie.use_lock(%lock_7_2, Acquire, 0)
+# CHECK:     aie.dma_bd(%buffer_7_2 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2, Release, 1)
+# CHECK:     aie.next_bd ^bb4
+# CHECK:   ^bb4:  // pred: ^bb3
+# CHECK:     aie.use_lock(%lock_7_2_5, Acquire, 0)
+# CHECK:     aie.dma_bd(%buffer_7_2_2 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2_5, Release, 1)
+# CHECK:     aie.next_bd ^bb3
+# CHECK:   ^bb5:  // 2 preds: ^bb1, ^bb6
+# CHECK:     aie.use_lock(%lock_7_2_8, Acquire, 0)
+# CHECK:     aie.dma_bd(%buffer_7_2_0 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2_8, Release, 1)
+# CHECK:     aie.next_bd ^bb6
+# CHECK:   ^bb6:  // pred: ^bb5
+# CHECK:     aie.use_lock(%lock_7_2_9, Acquire, 0)
+# CHECK:     aie.dma_bd(%buffer_7_2_3 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2_9, Release, 1)
+# CHECK:     aie.next_bd ^bb5
+# CHECK:   ^bb7:  // 2 preds: ^bb2, ^bb8
+# CHECK:     aie.use_lock(%lock_7_2_6, Acquire, 1)
+# CHECK:     aie.dma_bd(%buffer_7_2_1 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2_6, Release, 0)
+# CHECK:     aie.next_bd ^bb8
+# CHECK:   ^bb8:  // pred: ^bb7
+# CHECK:     aie.use_lock(%lock_7_2_7, Acquire, 1)
+# CHECK:     aie.dma_bd(%buffer_7_2_4 : memref<128xi32>, 0, 128)
+# CHECK:     aie.use_lock(%lock_7_2_7, Release, 0)
+# CHECK:     aie.next_bd ^bb7
+# CHECK:    ^bb9:  // pred: ^bb2
+# CHECK:     aie.end
+# CHECK:   }
+# CHECK:   %core_7_2 = aie.core(%tile_7_2) {
+# CHECK:     %c0 = arith.constant 0 : index
+# CHECK:     %c16 = arith.constant 16 : index
+# CHECK:     %c1 = arith.constant 1 : index
+# CHECK:     scf.for %arg0 = %c0 to %c16 step %c1 {
+# CHECK:       aie.use_lock(%lock_7_2, Acquire, 1)
+# CHECK:       aie.use_lock(%lock_7_2_8, Acquire, 1)
+# CHECK:       aie.use_lock(%lock_7_2_6, Acquire, 0)
+# CHECK:       %c0_10 = arith.constant 0 : index
+# CHECK:       %c128 = arith.constant 128 : index
+# CHECK:       %c1_11 = arith.constant 1 : index
+# CHECK:       scf.for %arg1 = %c0_10 to %c128 step %c1_11 {
+# CHECK:         %[[VAL_0:.*]] = memref.load %buffer_7_2[%arg1] : memref<128xi32>
+# CHECK:         %[[VAL_1:.*]] = memref.load %buffer_7_2_0[%arg1] : memref<128xi32>
+# CHECK:         %[[VAL_2:.*]] = arith.addi %[[VAL_0]], %[[VAL_1]] : i32
+# CHECK:         memref.store %[[VAL_2]], %buffer_7_2_1[%arg1] : memref<128xi32>
+# CHECK:       }
+# CHECK:       aie.use_lock(%lock_7_2, Release, 0)
+# CHECK:       aie.use_lock(%lock_7_2_8, Release, 0)
+# CHECK:       aie.use_lock(%lock_7_2_6, Release, 1)
+# CHECK:       aie.use_lock(%lock_7_2_5, Acquire, 1)
+# CHECK:       aie.use_lock(%lock_7_2_9, Acquire, 1)
+# CHECK:       aie.use_lock(%lock_7_2_7, Acquire, 0)
+# CHECK:       %c0_12 = arith.constant 0 : index
+# CHECK:       %c128_13 = arith.constant 128 : index
+# CHECK:       %c1_14 = arith.constant 1 : index
+# CHECK:       scf.for %arg1 = %c0_12 to %c128_13 step %c1_14 {
+# CHECK:         %[[VAL_0:.*]] = memref.load %buffer_7_2_2[%arg1] : memref<128xi32>
+# CHECK:         %[[VAL_1:.*]] = memref.load %buffer_7_2_3[%arg1] : memref<128xi32>
+# CHECK:         %[[VAL_2:.*]] = arith.addi %[[VAL_0]], %[[VAL_1]] : i32
+# CHECK:         memref.store %[[VAL_2]], %buffer_7_2_4[%arg1] : memref<128xi32>
+# CHECK:       }
+# CHECK:       aie.use_lock(%lock_7_2_5, Release, 0)
+# CHECK:       aie.use_lock(%lock_7_2_9, Release, 0)
+# CHECK:       aie.use_lock(%lock_7_2_7, Release, 1)
+# CHECK:     }
+# CHECK:     aie.end
+# CHECK:   }
+# CHECK: }
+@construct_and_print_module
+def test_29_mb_matrix_add(module):
+    tile_7_0 = tile(7, 0)
+    tile_7_2 = tile(7, 2)
+
+    flow(tile_7_0, DMA, 0, tile_7_2, DMA, 0)
+    flow(tile_7_0, DMA, 1, tile_7_2, DMA, 1)
+    flow(tile_7_2, DMA, 0, tile_7_0, DMA, 0)
+    flow(tile_7_2, DMA, 1, tile_7_0, DMA, 1)
+
+    buf72_0 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="ping_a")
+    buf72_4 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="ping_b")
+    buf72_1 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="ping_c")
+    buf72_2 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="pong_a")
+    buf72_5 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="pong_b")
+    buf72_3 = buffer(T.memref(128, T.i32()), tile_7_2, sym_name="pong_c")
+
+    l72_0 = lock(tile_7_2, lock_id=0)
+    l72_1 = lock(tile_7_2, lock_id=1)
+    l72_2 = lock(tile_7_2, lock_id=2)
+    l72_3 = lock(tile_7_2, lock_id=3)
+    l72_4 = lock(tile_7_2, lock_id=4)
+    l72_5 = lock(tile_7_2, lock_id=5)
+
+    @mem(tile_7_2)
+    def m72():
+        bd0, src1 = dma_start(S2MM, 0)
+        with bb(src1):
+            bd4, dma0 = dma_start(S2MM, 1)
+        with bb(dma0):
+            bd2, end = dma_start(MM2S, 0)
+        with bb(bd0):
+            use_lock(l72_0, 0, Acquire)
+            dma_bd(buf72_0, 0, 128)
+            use_lock(l72_0, 1, Release)
+            bd1 = next_bd()
+        with bb(bd1):
+            use_lock(l72_1, 0, Acquire)
+            dma_bd(buf72_2, 0, 128)
+            use_lock(l72_1, 1, Release)
+            next_bd(bd0)
+        with bb(bd4):
+            use_lock(l72_4, 0, Acquire)
+            dma_bd(buf72_4, 0, 128)
+            use_lock(l72_4, 1, Release)
+            bd5 = next_bd()
+        with bb(bd5):
+            use_lock(l72_5, 0, Acquire)
+            dma_bd(buf72_5, 0, 128)
+            use_lock(l72_5, 1, Release)
+            next_bd(bd4)
+        with bb(bd2):
+            use_lock(l72_2, 1, Acquire)
+            dma_bd(buf72_1, 0, 128)
+            use_lock(l72_2, 0, Release)
+            bd3 = next_bd()
+        with bb(bd3):
+            use_lock(l72_3, 1, Acquire)
+            dma_bd(buf72_3, 0, 128)
+            use_lock(l72_3, 0, Release)
+            next_bd(bd2)
+        with bb(end):
+            end_()
+
+    @core(tile_7_2)
+    def payload():
+        for arg5 in range_(0, 16):
+            use_lock(l72_0, 1, Acquire)
+            use_lock(l72_4, 1, Acquire)
+            use_lock(l72_2, 0, Acquire)
+
+            for arg3 in range_(0, 128):
+                v0 = memref.load(buf72_0, [arg3])
+                v1 = memref.load(buf72_4, [arg3])
+                v2 = arith.addi(v0, v1)
+                memref.store(v2, buf72_1, [arg3])
+                yield_([])
+
+            use_lock(l72_0, 0, Release)
+            use_lock(l72_4, 0, Release)
+            use_lock(l72_2, 1, Release)
+
+            use_lock(l72_1, 1, Acquire)
+            use_lock(l72_5, 1, Acquire)
+            use_lock(l72_3, 0, Acquire)
+
+            for arg4 in range_(0, 128):
+                v3 = memref.load(buf72_2, [arg4])
+                v4 = memref.load(buf72_5, [arg4])
+                v5 = arith.addi(v3, v4)
+                memref.store(v5, buf72_3, [arg4])
+                yield_([])
+
+            use_lock(l72_1, 0, Release)
+            use_lock(l72_5, 0, Release)
+            use_lock(l72_3, 1, Release)
+
+            yield_([])
+
+    print(module)

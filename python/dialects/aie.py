@@ -3,24 +3,34 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from typing import List, Optional, Union, Tuple
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
+from ._aie_ops_gen import _Dialect
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from .._mlir_libs._aie import ObjectFifoType, translate_aie_vec_to_cpp
+from .._mlir_libs._aie import (
+    ObjectFifoType,
+    translate_aie_vec_to_cpp,
+    ObjectFifoSubviewType,
+)
 
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
+from ..extras.util import Successor, get_user_code_loc
 from ..ir import (
+    ArrayAttr,
     Attribute,
+    Block,
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
+    TypeAttr,
     _i32ArrayAttr,
 )
 from ._ods_common import _cext
@@ -60,9 +70,6 @@ class Call(CallOp):
                 argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
                 arguments=attrInputs,
             )
-
-
-from typing import List, Union, Tuple
 
 
 def bd_dim_layout(wrap, step):
@@ -237,6 +244,75 @@ class PacketFlow(PacketFlowOp):
             end = EndOp()
 
 
-#### Global Wrappers ####
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device)
+mem = region_op(
+    lambda tile, *, loc=None, ip=None: MemOp(T.index(), tile, loc=loc, ip=ip)
+)
+shim_dma = region_op(
+    lambda tile, *, loc=None, ip=None: ShimDMAOp(T.index(), tile, loc=loc, ip=ip)
+)
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class DMAStartOp(DMAStartOp):
+    def __init__(
+        self,
+        channel_dir,
+        channel_index,
+        *,
+        dest: Optional[Successor | Block] = None,
+        chain: Optional[Successor | Block] = None,
+        loc=None,
+        ip=None,
+    ):
+        if isinstance(dest, Successor):
+            dest = dest.block
+        if isinstance(chain, Successor):
+            chain = chain.block
+        if dest is None:
+            dest = InsertionPoint.current.block
+        if chain is None:
+            chain = InsertionPoint.current.block
+        super().__init__(channel_dir, channel_index, dest, chain, loc=loc, ip=ip)
+
+    @property
+    def dest(self):
+        return Successor(self, [], self.successors[0], 0)
+
+    @property
+    def chain(self):
+        return Successor(self, [], self.successors[1], 1)
+
+
+def dma_start(
+    channel_dir,
+    channel_index,
+    *,
+    dest: Optional[Successor | Block] = None,
+    chain: Optional[Successor | Block] = None,
+    loc=None,
+    ip=None,
+):
+    op = DMAStartOp(channel_dir, channel_index, dest=dest, chain=chain, loc=loc, ip=ip)
+    return op.dest, op.chain
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class NextBDOp(NextBDOp):
+    def __init__(self, dest: Optional[Successor | Block] = None, *, loc=None, ip=None):
+        if isinstance(dest, Successor):
+            dest = dest.block
+        if dest is None:
+            dest = InsertionPoint.current.block
+        if loc is None:
+            loc = get_user_code_loc()
+        super().__init__(dest, loc=loc, ip=ip)
+
+    @property
+    def dest(self):
+        return Successor(self, [], self.successors[0], 0)
+
+
+def next_bd(dest: Optional[Successor | Block] = None, loc=None, ip=None):
+    return NextBDOp(dest, loc=loc, ip=ip).dest
