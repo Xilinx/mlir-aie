@@ -14,4 +14,4 @@ pylint
 rich
 
 # this is actually the aie branch of mlir-python-extras (see https://github.com/makslevental/mlir-python-extras/pull/33)
-aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/a731660c5ae4409bdf99abfabdf4e11b7ca35e52.zip
+aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/5055eeea7c1e275d55b435974742c108b5ba4535.zip
