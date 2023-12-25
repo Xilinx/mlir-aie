@@ -405,7 +405,10 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoCreateOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoCreateOp::verify() {
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
@@ -512,7 +515,10 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
 
 } // namespace xilinx::AIE
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoLinkOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
@@ -647,7 +653,10 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   return outputObjFifos;
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoRegisterExternalBuffersOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
   if (!getTileOp().isShimTile())
     return emitOpError("tile is not a shim tile");
@@ -671,7 +680,10 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoAcquireOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
     return emitOpError("must acquire at least one element");
@@ -724,7 +736,10 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoReleaseOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
     return emitOpError("must release at least one element");
@@ -769,7 +784,10 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoSubviewAccessOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoSubviewAccessOp::verify() {
   if (auto parent = getOperation()->getParentOfType<CoreOp>();
       parent == nullptr)
@@ -783,7 +801,10 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
 // ObjectFifoRegisterProcessOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ObjectFifoRegisterProcessOp::verify() {
   if (getProcessLength() < 1)
     return emitOpError("process length must be >= 1");
@@ -814,7 +835,10 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
 // PutCascadeOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult PutCascadeOp::verify() {
   const auto &targetModel = getTargetModel(*this);
   Type type = getCascadeValue().getType();
@@ -832,7 +856,10 @@ LogicalResult PutCascadeOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
 // GetCascadeOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult GetCascadeOp::verify() {
   const auto &targetModel = getTargetModel(*this);
   Type type = getCascadeValue().getType();
@@ -1127,7 +1154,10 @@ int ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
 
 int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
+//===----------------------------------------------------------------------===//
 // ShimDMAOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult ShimDMAOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
@@ -1169,7 +1199,10 @@ LogicalResult PacketFlowOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
 // CoreOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
@@ -1186,7 +1219,10 @@ int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
+//===----------------------------------------------------------------------===//
 // BufferOp
+//===----------------------------------------------------------------------===//
+
 int64_t BufferOp::getAllocationSize() {
   auto type = getType().cast<MemRefType>();
   return type.getNumElements() * type.getElementTypeBitWidth() / 8;
@@ -1230,7 +1266,10 @@ void xilinx::AIE::collectBuffers(
   }
 }
 
+//===----------------------------------------------------------------------===//
 // MemOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult MemOp::verify() {
   Region &body = getBody();
   DenseSet<DMAChannel> usedChannels;
@@ -1274,7 +1313,10 @@ int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 /// function.
 Region *MemOp::getCallableRegion() { return &getBody(); }
 
+//===----------------------------------------------------------------------===//
 // MemTileDMAOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult MemTileDMAOp::verify() {
   assert(getOperation()->getNumRegions() == 1 &&
          "MemTileDMAOp has zero region!");
@@ -1351,7 +1393,10 @@ LogicalResult MemTileDMAOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
 // DMABDOp
+//===----------------------------------------------------------------------===//
+
 BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
@@ -1432,7 +1477,10 @@ int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 /// function.
 Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 
+//===----------------------------------------------------------------------===//
 // SwitchboxOp
+//===----------------------------------------------------------------------===//
+
 TileOp SwitchboxOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
