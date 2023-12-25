@@ -114,9 +114,9 @@ Notice how the `affine_maps` describing the access patterns have been
 split between tile accesses, in the `linalg.generic` op, and matrix
 multiply accesses, in the `vector.contract` op.
 
-Traits: FunctionalStyleTransformOpTrait, TransformEachOpTrait
+Traits: `FunctionalStyleTransformOpTrait`, `TransformEachOpTrait`
 
-Interfaces: MemoryEffectsOpInterface, TransformOpInterface
+Interfaces: `MemoryEffectsOpInterface`, `TransformOpInterface`
 
 #### Operands:
 

@@ -32,11 +32,11 @@ ADF.graph("name") {
 }
 ```
 
-Traits: AlwaysSpeculatableImplTrait, NoTerminator, SingleBlock
+Traits: `AlwaysSpeculatableImplTrait`, `NoTerminator`, `SingleBlock`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -64,11 +64,11 @@ This is usually used to represent inout parameter val=ues
   %2 = ADF.inout_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
 ```
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -121,11 +121,11 @@ interface values defined by the argument array attributes.
   %1 = ADF.input_port("name")  [0:i1, 128:i32] -> !ADF.interface<!ADF.int32> // for ADF window access mechanism 
 ```
 
-Traits: AlwaysSpeculatableImplTrait, ConstantLike
+Traits: `AlwaysSpeculatableImplTrait`, `ConstantLike`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -163,11 +163,11 @@ window size through entire ADF graph.
           (!ADF.interface<!ADF.int32>, !ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>
 ```
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -208,11 +208,11 @@ The operation takes an argument with "window" type and also returns an
   %2 = ADF.output_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
 ```
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 

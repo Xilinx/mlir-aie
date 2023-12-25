@@ -14,11 +14,11 @@ AMD-specific advanced add operation that adds two 1-D vectors
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs + $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -62,11 +62,11 @@ operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
 AMD-specific aie-ml intrinsic that allows you to perform addition operation
 on all types of vectors.`$result = `$lhs + $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -98,11 +98,11 @@ AMD-specific intrinsic that computes bitwise and of two vectors and returns
 the result.
 `$result = band(`$lhs, $rhs`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -133,11 +133,11 @@ AMD-specific intrinsic that computes bitwise negation of a vector and
 returns the result.
 `$result = bneg(`$source`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -168,11 +168,11 @@ AMD-specific intrinsic that computes bitwise or of two vectors and returns
 the result.
 `$result = bor(`$lhs, $rhs`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -196,11 +196,11 @@ AMD-specific broadcast intrinsic. Extract element index from vector and broadcas
 value to all lanes of the vector.
 `$result = broadcast($source, $idx)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -229,11 +229,11 @@ _AIE-ML broadcast scalar_
 AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
 `$result = broadcast_scalar($source)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -264,11 +264,11 @@ AMD-specific intrinsic that computes bitwise xor of two vectors and returns
 the result.
 `$result = bxor(`$lhs, $rhs`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -291,11 +291,11 @@ _AIE cast_
 AIE-ML cast intrinsic. Cast values from source data type to result data types.
 `$result = cast($source, isResAcc)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -343,11 +343,11 @@ performed. The following comparisons are supported:
 -   signed greater than or equal (mnemonic: `"sge"`)
 -   unsigned greater than or equal (mnemonic: `"uge"`)
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -379,11 +379,11 @@ vectors into a bigger vector. The verifier confirms that all the
 input vectors have the same number of lanes.
 `$result = concat($sources[0], $sources[1], ...)`
 
-Traits: AlwaysSpeculatableImplTrait, InferTypeOpAdaptor
+Traits: `AlwaysSpeculatableImplTrait`, `InferTypeOpAdaptor`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -407,11 +407,11 @@ the source vector, and transfers the data from those lanes to the
 result. The lane selection is controlled by index.
 `$result = ext($source, $index)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -447,11 +447,11 @@ operation ::= `aievec.ext_elem` $source `,` $index attr-dict `:` type($source) `
 AMD - specific extract element
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -475,11 +475,11 @@ AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate conv
 operation of (M x N)matrix with (N x 1)kernel.
 `$result = mac_convMxN($lhs, $rhs, $acc)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -518,11 +518,11 @@ the result and acc are 48-bit or 80-bit accumulator.
 Note: the same operator can be used as fmsub operator by setting the
 'fmsub' bool to true.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -566,11 +566,11 @@ and adds the result to an accumulator.
 Note: the same operator can be used as fmsub operator by setting the
 'fmsub' bool to true.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -624,11 +624,11 @@ Currently, this intrinsic supports the following type combinations:
      `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
      `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -659,11 +659,11 @@ operation ::= `aievec.max` $lhs `,` $rhs attr-dict `:` type($result)
 AMD-specific intrinsic that calculates the maximum between two input vectors.
 `$result = max(`$lhs, $rhs`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -693,11 +693,11 @@ operation ::= `aievec.min` $lhs `,` $rhs attr-dict `:` type($result)
 AMD-specific intrinsic that calculates the minimum between two input vectors.
 `$result = min(`$lhs, $rhs`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -723,11 +723,11 @@ is at least twice the size of right operand vector. For integers, the
 lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
 `$result = `$lhs * $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -767,11 +767,11 @@ AMD-specific multiply convolution intrinsic. Multiply convolution operation
 of (M x N)matrix with (N x 1)kernel.
 `$result = mul_convMxN($lhs, $rhs)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -803,11 +803,11 @@ AMD-specific multiply operation that multiplies two 1-D vectors in the same chan
 The vector sizes are at least 512 bits.
 `$result = `$lhs * $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -837,11 +837,11 @@ operation ::= `aievec.neg` $source attr-dict `:` type($result)
 AMD-specific intrinsic that negates the vector and returns the result.
 `$result = neg(`$source`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -864,11 +864,11 @@ AMD-specific pack intrinsic. Pack a vector of 16-bit values into
 a vector of 8-bit values.
 `$result = pack($source)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -897,11 +897,11 @@ operation ::= `aievec.sel` $lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` t
 AMD-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
 `$result = sel(`$lhs, $rhs, $sel`).
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -928,11 +928,11 @@ If the bit in select is 0(1), it returns the value in the first(second)
 set of lanes.
 `$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -973,11 +973,11 @@ and returns v1::v2[shift: shift+64]. The verifier confirms that all the
 input vectors have the same number of lanes.
 `$result = shift($lhs, $rhs, $shift)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -1008,11 +1008,11 @@ _AIE2 shuffle_
 AMD-specific vector shuffle intrinsic by a specific shuffle mode.
 `$result = shuffle($source, $mode)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -1043,11 +1043,11 @@ accumulator data type to AIE vector data types. The adjustment in
 precision is controlled by the shift parameter.
 `$result = srs($source, $shift)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1071,11 +1071,11 @@ AMD-specific advanced sub operation that subtracts two 1-D vectors
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs - $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -1119,11 +1119,11 @@ operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
 AMD-specific aie-ml intrinsic that allows you to perform substraction operation
 on all types of vectors.`$result = `$lhs - $rhs`.
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, InferTypeOpInterface, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1147,11 +1147,11 @@ AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
 a vector of 16-bit values.
 `$result = unpack($source)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1176,11 +1176,11 @@ upd intrinsic combines the load of data from memory into a vector
 register, and then updating the lanes of the result vector using it. 
 `$result = upd($source[$indices], $offset, $index)`
 
-Traits: AlwaysSpeculatableImplTrait, AttrSizedOperandSegments
+Traits: `AlwaysSpeculatableImplTrait`, `AttrSizedOperandSegments`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
@@ -1214,11 +1214,11 @@ to accumulator data type. The adjustment in precision is controlled by
 the shift parameter.
 `$result = ups($source, $shift)`
 
-Traits: AlwaysSpeculatableImplTrait
+Traits: `AlwaysSpeculatableImplTrait`
 
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
-Effects: MemoryEffects::Effect{}
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 

@@ -25,7 +25,7 @@ An object representing the destination of a  Broad Packet. This must exist
 within an [AIE.bp_id] operation.
 See [AIE.broadcast_packet] for an example.
 
-Traits: HasParent<BPIDOp>
+Traits: `HasParent<BPIDOp>`
 
 #### Attributes:
 
@@ -67,7 +67,7 @@ A set of destination packets that share the same source and ID. This must exist
 within an [AIE.broadcast_packet] operation.
 See [AIE.broadcast_packet]for an example.
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 
 #### Attributes:
 
@@ -111,7 +111,7 @@ Example:
   }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 
 #### Attributes:
 
@@ -560,7 +560,7 @@ aiex.multicast Op.
 
 See [aiex.multicast]for an example.
 
-Traits: HasParent<MulticastOp>
+Traits: `HasParent<MulticastOp>`
 
 #### Attributes:
 
@@ -616,7 +616,7 @@ Example:
   }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 
 #### Attributes:
 
@@ -794,7 +794,7 @@ Example:
   AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
 
-Interfaces: Symbol
+Interfaces: `Symbol`
 
 #### Attributes:
 
