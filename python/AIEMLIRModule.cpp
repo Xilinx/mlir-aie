@@ -101,4 +101,16 @@ PYBIND11_MODULE(_aie, m) {
         return stealCStr(aieTranslateToBCF(op, col, row));
       },
       "module"_a, "col"_a, "row"_a);
+
+  m.def(
+      "aie_llvm_link",
+      [&stealCStr](std::vector<std::string> moduleStrs) {
+        std::vector<MlirStringRef> modules;
+        modules.reserve(moduleStrs.size());
+        for (auto &moduleStr : moduleStrs)
+          modules.push_back({moduleStr.data(), moduleStr.length()});
+
+        return stealCStr(aieLLVMLink(modules.data(), modules.size()));
+      },
+      "modules"_a);
 }

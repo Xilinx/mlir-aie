@@ -42,6 +42,11 @@ mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       llvm::raw_ostream &output, int tileCol,
                                       int tileRow);
+mlir::LogicalResult
+AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
+            bool DisableDITypeMap = false, bool NoVerify = false,
+            bool Internalize = false, bool OnlyNeeded = false,
+            bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
 } // namespace AIE
 
 namespace aievec {
