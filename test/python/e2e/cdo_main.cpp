@@ -7,7 +7,6 @@ extern "C" {
 #include <xaiengine/xaie_plif.h>
 #include <xaiengine/xaie_ss.h>
 }
-//#include <xaiengine>
 
 #include <getopt.h>
 #include <iostream>
@@ -33,7 +32,7 @@ extern "C" {
 /***************************** Includes *********************************/
 
 #define __mlir_aie_try(x) x
-static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) {
+static XAie_DmaDimDesc *mlirAieAllocDimDesc(size_t ndims) {
   XAie_DmaDimDesc *ret = NULL;
   ret = (XAie_DmaDimDesc *)calloc(sizeof(XAie_DmaDimDesc), ndims);
   if (NULL == ret) {
@@ -44,30 +43,30 @@ static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) {
 
 XAie_InstDeclare(DevInst, &ConfigPtr); // Declare global device instance
 
-bool ppgraph_load_elf(const std::string &work_path,
-                      std::vector<std::string> &elfInfoPath) {
-  std::string work_dir = (work_path.empty() ? "Work" : work_path);
+bool ppgraphLoadElf(const std::string &workPath,
+                    std::vector<std::string> &elfInfoPath) {
+  std::string workDir = (workPath.empty() ? "Work" : workPath);
   {
     if (XAie_LoadElf(&DevInst, XAie_TileLoc(0, 2),
-                     (work_dir + "/core_0_2.elf").c_str(),
+                     (workDir + "/core_0_2.elf").c_str(),
                      XAIE_ENABLE) != XAIE_OK) {
-      std::cerr << "ERROR: Failed to load elf for core at " << work_dir << std::endl;
+      std::cerr << "ERROR: Failed to load elf for core at " << workDir
+                << std::endl;
       return false;
     }
   }
   return true;
 } // ppgraph_load_elf
 
-void ppgraph_core_enable() {
+void ppgraphCoreEnable() {
   XAie_CoreEnable(&DevInst, XAie_TileLoc(0, 2));
-  return;
 } // ppgraph_core_enable
 
 void enableErrorHandling() {
   XAie_ErrorHandlingInit(&DevInst);
 } // enableErrorHandling
 
-void ppgraph_init(const std::string &work_path) {
+void ppgraphInit(const std::string &workPath) {
   XAie_CoreReset(&DevInst, XAie_TileLoc(0, 2));
   XAie_CoreUnreset(&DevInst, XAie_TileLoc(0, 2));
   for (int l = 0; l < 16; l++)
@@ -84,34 +83,34 @@ void ppgraph_init(const std::string &work_path) {
   XAie_LockSetValue(&DevInst, XAie_TileLoc(0, 2), XAie_LockInit(1, 0));
   XAie_LockSetValue(&DevInst, XAie_TileLoc(0, 2), XAie_LockInit(2, 2));
   XAie_LockSetValue(&DevInst, XAie_TileLoc(0, 2), XAie_LockInit(3, 0));
-  XAie_DmaDesc dma_tile02_bd0;
-  XAie_DmaDescInit(&DevInst, &(dma_tile02_bd0), XAie_TileLoc(0, 2));
-  XAie_DmaSetLock(&(dma_tile02_bd0), XAie_LockInit(0, -1), XAie_LockInit(1, 1));
-  XAie_DmaSetAddrLen(&(dma_tile02_bd0), /* addrA */ 0x400, /* len */ 8 * 4);
-  XAie_DmaSetNextBd(&(dma_tile02_bd0), /* nextbd */ 1, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile02_bd0));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd0), XAie_TileLoc(0, 2), /* bd */ 0);
-  XAie_DmaDesc dma_tile02_bd1;
-  XAie_DmaDescInit(&DevInst, &(dma_tile02_bd1), XAie_TileLoc(0, 2));
-  XAie_DmaSetLock(&(dma_tile02_bd1), XAie_LockInit(0, -1), XAie_LockInit(1, 1));
-  XAie_DmaSetAddrLen(&(dma_tile02_bd1), /* addrA */ 0x420, /* len */ 8 * 4);
-  XAie_DmaSetNextBd(&(dma_tile02_bd1), /* nextbd */ 0, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile02_bd1));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd1), XAie_TileLoc(0, 2), /* bd */ 1);
-  XAie_DmaDesc dma_tile02_bd2;
-  XAie_DmaDescInit(&DevInst, &(dma_tile02_bd2), XAie_TileLoc(0, 2));
-  XAie_DmaSetLock(&(dma_tile02_bd2), XAie_LockInit(3, -1), XAie_LockInit(2, 1));
-  XAie_DmaSetAddrLen(&(dma_tile02_bd2), /* addrA */ 0x440, /* len */ 8 * 4);
-  XAie_DmaSetNextBd(&(dma_tile02_bd2), /* nextbd */ 3, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile02_bd2));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd2), XAie_TileLoc(0, 2), /* bd */ 2);
-  XAie_DmaDesc dma_tile02_bd3;
-  XAie_DmaDescInit(&DevInst, &(dma_tile02_bd3), XAie_TileLoc(0, 2));
-  XAie_DmaSetLock(&(dma_tile02_bd3), XAie_LockInit(3, -1), XAie_LockInit(2, 1));
-  XAie_DmaSetAddrLen(&(dma_tile02_bd3), /* addrA */ 0x460, /* len */ 8 * 4);
-  XAie_DmaSetNextBd(&(dma_tile02_bd3), /* nextbd */ 2, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile02_bd3));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile02_bd3), XAie_TileLoc(0, 2), /* bd */ 3);
+  XAie_DmaDesc dmaTile02Bd0;
+  XAie_DmaDescInit(&DevInst, &(dmaTile02Bd0), XAie_TileLoc(0, 2));
+  XAie_DmaSetLock(&(dmaTile02Bd0), XAie_LockInit(0, -1), XAie_LockInit(1, 1));
+  XAie_DmaSetAddrLen(&(dmaTile02Bd0), /* addrA */ 0x400, /* len */ 8 * 4);
+  XAie_DmaSetNextBd(&(dmaTile02Bd0), /* nextbd */ 1, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile02Bd0));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile02Bd0), XAie_TileLoc(0, 2), /* bd */ 0);
+  XAie_DmaDesc dmaTile02Bd1;
+  XAie_DmaDescInit(&DevInst, &(dmaTile02Bd1), XAie_TileLoc(0, 2));
+  XAie_DmaSetLock(&(dmaTile02Bd1), XAie_LockInit(0, -1), XAie_LockInit(1, 1));
+  XAie_DmaSetAddrLen(&(dmaTile02Bd1), /* addrA */ 0x420, /* len */ 8 * 4);
+  XAie_DmaSetNextBd(&(dmaTile02Bd1), /* nextbd */ 0, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile02Bd1));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile02Bd1), XAie_TileLoc(0, 2), /* bd */ 1);
+  XAie_DmaDesc dmaTile02Bd2;
+  XAie_DmaDescInit(&DevInst, &(dmaTile02Bd2), XAie_TileLoc(0, 2));
+  XAie_DmaSetLock(&(dmaTile02Bd2), XAie_LockInit(3, -1), XAie_LockInit(2, 1));
+  XAie_DmaSetAddrLen(&(dmaTile02Bd2), /* addrA */ 0x440, /* len */ 8 * 4);
+  XAie_DmaSetNextBd(&(dmaTile02Bd2), /* nextbd */ 3, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile02Bd2));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile02Bd2), XAie_TileLoc(0, 2), /* bd */ 2);
+  XAie_DmaDesc dmaTile02Bd3;
+  XAie_DmaDescInit(&DevInst, &(dmaTile02Bd3), XAie_TileLoc(0, 2));
+  XAie_DmaSetLock(&(dmaTile02Bd3), XAie_LockInit(3, -1), XAie_LockInit(2, 1));
+  XAie_DmaSetAddrLen(&(dmaTile02Bd3), /* addrA */ 0x460, /* len */ 8 * 4);
+  XAie_DmaSetNextBd(&(dmaTile02Bd3), /* nextbd */ 2, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile02Bd3));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile02Bd3), XAie_TileLoc(0, 2), /* bd */ 3);
   XAie_DmaChannelPushBdToQueue(&DevInst, XAie_TileLoc(0, 2), /* ChNum */ 0,
                                /* dmaDir */ DMA_S2MM, /* BdNum */ 0);
   XAie_DmaChannelEnable(&DevInst, XAie_TileLoc(0, 2), /* ChNum */ 0,
@@ -120,73 +119,69 @@ void ppgraph_init(const std::string &work_path) {
                                /* dmaDir */ DMA_MM2S, /* BdNum */ 2);
   XAie_DmaChannelEnable(&DevInst, XAie_TileLoc(0, 2), /* ChNum */ 0,
                         /* dmaDir */ DMA_MM2S);
-  XAie_DmaDesc dma_tile01_bd0;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd0), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd0), XAie_LockInit(64, -1),
-                  XAie_LockInit(65, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd0), /* addrA */ 0x80000, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd0), /* nextbd */ 1, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd0));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd0), XAie_TileLoc(0, 1), /* bd */ 0);
-  XAie_DmaDesc dma_tile01_bd1;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd1), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd1), XAie_LockInit(64, -1),
-                  XAie_LockInit(65, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd1), /* addrA */ 0x80040, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd1), /* nextbd */ 0, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd1));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd1), XAie_TileLoc(0, 1), /* bd */ 1);
-  XAie_DmaDesc dma_tile01_bd2;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd2), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd2), XAie_LockInit(65, -1),
-                  XAie_LockInit(64, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd2), /* addrA */ 0x80000, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd2), /* nextbd */ 3, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd2));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd2), XAie_TileLoc(0, 1), /* bd */ 2);
-  XAie_DmaDesc dma_tile01_bd3;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd3), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd3), XAie_LockInit(65, -1),
-                  XAie_LockInit(64, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd3), /* addrA */ 0x80040, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd3), /* nextbd */ 2, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd3));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd3), XAie_TileLoc(0, 1), /* bd */ 3);
-  XAie_DmaDesc dma_tile01_bd24;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd24), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd24), XAie_LockInit(67, -1),
+  XAie_DmaDesc dmaTile01Bd0;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd0), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd0), XAie_LockInit(64, -1), XAie_LockInit(65, 1));
+  XAie_DmaSetAddrLen(&(dmaTile01Bd0), /* addrA */ 0x80000, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd0), /* nextbd */ 1, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd0));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd0), XAie_TileLoc(0, 1), /* bd */ 0);
+  XAie_DmaDesc dmaTile01Bd1;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd1), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd1), XAie_LockInit(64, -1), XAie_LockInit(65, 1));
+  XAie_DmaSetAddrLen(&(dmaTile01Bd1), /* addrA */ 0x80040, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd1), /* nextbd */ 0, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd1));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd1), XAie_TileLoc(0, 1), /* bd */ 1);
+  XAie_DmaDesc dmaTile01Bd2;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd2), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd2), XAie_LockInit(65, -1), XAie_LockInit(64, 1));
+  XAie_DmaSetAddrLen(&(dmaTile01Bd2), /* addrA */ 0x80000, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd2), /* nextbd */ 3, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd2));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd2), XAie_TileLoc(0, 1), /* bd */ 2);
+  XAie_DmaDesc dmaTile01Bd3;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd3), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd3), XAie_LockInit(65, -1), XAie_LockInit(64, 1));
+  XAie_DmaSetAddrLen(&(dmaTile01Bd3), /* addrA */ 0x80040, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd3), /* nextbd */ 2, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd3));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd3), XAie_TileLoc(0, 1), /* bd */ 3);
+  XAie_DmaDesc dmaTile01Bd24;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd24), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd24), XAie_LockInit(67, -1),
                   XAie_LockInit(66, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd24), /* addrA */ 0x80080, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd24), /* nextbd */ 25, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd24));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd24), XAie_TileLoc(0, 1),
+  XAie_DmaSetAddrLen(&(dmaTile01Bd24), /* addrA */ 0x80080, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd24), /* nextbd */ 25, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd24));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd24), XAie_TileLoc(0, 1),
                   /* bd */ 24);
-  XAie_DmaDesc dma_tile01_bd25;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd25), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd25), XAie_LockInit(67, -1),
+  XAie_DmaDesc dmaTile01Bd25;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd25), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd25), XAie_LockInit(67, -1),
                   XAie_LockInit(66, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd25), /* addrA */ 0x800C0, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd25), /* nextbd */ 24, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd25));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd25), XAie_TileLoc(0, 1),
+  XAie_DmaSetAddrLen(&(dmaTile01Bd25), /* addrA */ 0x800C0, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd25), /* nextbd */ 24, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd25));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd25), XAie_TileLoc(0, 1),
                   /* bd */ 25);
-  XAie_DmaDesc dma_tile01_bd26;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd26), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd26), XAie_LockInit(66, -1),
+  XAie_DmaDesc dmaTile01Bd26;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd26), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd26), XAie_LockInit(66, -1),
                   XAie_LockInit(67, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd26), /* addrA */ 0x80080, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd26), /* nextbd */ 27, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd26));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd26), XAie_TileLoc(0, 1),
+  XAie_DmaSetAddrLen(&(dmaTile01Bd26), /* addrA */ 0x80080, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd26), /* nextbd */ 27, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd26));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd26), XAie_TileLoc(0, 1),
                   /* bd */ 26);
-  XAie_DmaDesc dma_tile01_bd27;
-  XAie_DmaDescInit(&DevInst, &(dma_tile01_bd27), XAie_TileLoc(0, 1));
-  XAie_DmaSetLock(&(dma_tile01_bd27), XAie_LockInit(66, -1),
+  XAie_DmaDesc dmaTile01Bd27;
+  XAie_DmaDescInit(&DevInst, &(dmaTile01Bd27), XAie_TileLoc(0, 1));
+  XAie_DmaSetLock(&(dmaTile01Bd27), XAie_LockInit(66, -1),
                   XAie_LockInit(67, 1));
-  XAie_DmaSetAddrLen(&(dma_tile01_bd27), /* addrA */ 0x800C0, /* len */ 16 * 4);
-  XAie_DmaSetNextBd(&(dma_tile01_bd27), /* nextbd */ 26, /* enableNextBd */ 1);
-  XAie_DmaEnableBd(&(dma_tile01_bd27));
-  XAie_DmaWriteBd(&DevInst, &(dma_tile01_bd27), XAie_TileLoc(0, 1),
+  XAie_DmaSetAddrLen(&(dmaTile01Bd27), /* addrA */ 0x800C0, /* len */ 16 * 4);
+  XAie_DmaSetNextBd(&(dmaTile01Bd27), /* nextbd */ 26, /* enableNextBd */ 1);
+  XAie_DmaEnableBd(&(dmaTile01Bd27));
+  XAie_DmaWriteBd(&DevInst, &(dmaTile01Bd27), XAie_TileLoc(0, 1),
                   /* bd */ 27);
   XAie_DmaChannelPushBdToQueue(&DevInst, XAie_TileLoc(0, 1), /* ChNum */ 0,
                                /* dmaDir */ DMA_S2MM, /* BdNum */ 0);
@@ -211,19 +206,19 @@ void ppgraph_init(const std::string &work_path) {
   XAie_StrmConnCctEnable(&DevInst, XAie_TileLoc(x, y), CTRL, 0, SOUTH, 0);
   {
     // configure DMA_<S2MM/MM2S>_<N>_Ctrl register
-    XAie_DmaChannelDesc DmaChannelDescInst;
-    XAie_DmaChannelDescInit(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x, y));
-    XAie_DmaChannelSetControllerId(&DmaChannelDescInst, 0);
-    XAie_DmaWriteChannel(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x, y), 0,
+    XAie_DmaChannelDesc dmaChannelDescInst;
+    XAie_DmaChannelDescInit(&DevInst, &dmaChannelDescInst, XAie_TileLoc(x, y));
+    XAie_DmaChannelSetControllerId(&dmaChannelDescInst, 0);
+    XAie_DmaWriteChannel(&DevInst, &dmaChannelDescInst, XAie_TileLoc(x, y), 0,
                          DMA_S2MM);
   }
 
   {
     // configure DMA_<S2MM/MM2S>_<N>_Ctrl register
-    XAie_DmaChannelDesc DmaChannelDescInst;
-    XAie_DmaChannelDescInit(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x, y));
-    XAie_DmaChannelSetControllerId(&DmaChannelDescInst, 0);
-    XAie_DmaWriteChannel(&DevInst, &DmaChannelDescInst, XAie_TileLoc(x, y), 1,
+    XAie_DmaChannelDesc dmaChannelDescInst;
+    XAie_DmaChannelDescInit(&DevInst, &dmaChannelDescInst, XAie_TileLoc(x, y));
+    XAie_DmaChannelSetControllerId(&dmaChannelDescInst, 0);
+    XAie_DmaWriteChannel(&DevInst, &dmaChannelDescInst, XAie_TileLoc(x, y), 1,
                          DMA_S2MM);
   }
 
@@ -271,94 +266,94 @@ public:
   }
 } initAIEControl;
 
-void initializeCDOGenerator(bool AXIdebug, bool endianness) {
-  if (AXIdebug)
+void initializeCDOGenerator(bool axIdebug, bool endianness) {
+  if (axIdebug)
     EnAXIdebug(); // Enables AXI-MM prints for configs being added in CDO,
                   // helpful for debugging
   setEndianness(endianness);
 }
 
 void addInitConfigToCDO(const std::string &workDirPath) {
-  ppgraph_init(workDirPath);
+  ppgraphInit(workDirPath);
 }
 
-void addCoreEnableToCDO() { ppgraph_core_enable(); }
+void addCoreEnableToCDO() { ppgraphCoreEnable(); }
 
 void addErrorHandlingToCDO() { enableErrorHandling(); }
 
 void addAieElfsToCDO(const std::string &workDirPath) {
   std::vector<std::string> elfInfoPath;
-  if (!ppgraph_load_elf(workDirPath, elfInfoPath))
+  if (!ppgraphLoadElf(workDirPath, elfInfoPath))
     exit(EXIT_FAILURE);
 }
 
 void generateCDOBinariesSeparately(const std::string &workDirPath,
-                                   bool AXIdebug) {
+                                   bool axIdebug) {
 
   // aie_cdo_error_handling.bin
   const std::string errorHandlingCDOFilePath =
       workDirPath + "/aie_cdo_error_handling.bin";
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "START: Error Handling Configuration\n";
   startCDOFileStream(errorHandlingCDOFilePath.c_str());
   FileHeader();
   addErrorHandlingToCDO();
   configureHeader();
   endCurrentCDOFileStream();
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "DONE: Error Handling Configuration\n\n";
 
   // aie_cdo_elfs.bin
   const std::string elfsCDOFilePath = workDirPath + "/aie_cdo_elfs.bin";
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "START: AIE ELF Configuration\n";
   startCDOFileStream(elfsCDOFilePath.c_str());
   FileHeader();
   addAieElfsToCDO(workDirPath);
   configureHeader();
   endCurrentCDOFileStream();
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "DONE: AIE ELF Configuration\n\n";
 
   // aie_cdo_init.bin
   const std::string initCfgCDOFilePath = workDirPath + "/aie_cdo_init.bin";
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "START: Initial Configuration (SHIM and AIE Array)\n";
   startCDOFileStream(initCfgCDOFilePath.c_str());
   FileHeader();
   addInitConfigToCDO(workDirPath);
   configureHeader();
   endCurrentCDOFileStream();
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "DONE: Initial Configuration (SHIM and AIE Array)\n\n";
 
   // aie_cdo_enable.bin
   const std::string coreEnableCDOFilePath = workDirPath + "/aie_cdo_enable.bin";
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "START: Core Enable Configuration\n";
   startCDOFileStream(coreEnableCDOFilePath.c_str());
   FileHeader();
   addCoreEnableToCDO();
   configureHeader();
   endCurrentCDOFileStream();
-  if (AXIdebug)
+  if (axIdebug)
     std::cout << "DONE: Core Enable Configuration\n\n";
 }
 
 int main(int argc, char **argv) {
   std::string workDirPath;
-  bool AXIdebug = false;
+  bool axIdebug = false;
   bool endianness = byte_ordering::Little_Endian;
   int opt;
-  static struct option long_options[] = {
+  static struct option longOptions[] = {
       /* name, has_arg, flag, val */
-      {"help", no_argument, NULL, 0},
-      {"aximm-dump", no_argument, NULL, 1},
-      {"big-endian-cdo", no_argument, NULL, 2},
-      {"work-dir-path", required_argument, NULL, 3}};
-  while (1) {
+      {"help", no_argument, nullptr, 0},
+      {"aximm-dump", no_argument, nullptr, 1},
+      {"big-endian-cdo", no_argument, nullptr, 2},
+      {"work-dir-path", required_argument, nullptr, 3}};
+  while (true) {
     int optIndex = 0;
-    opt = getopt_long(argc, argv, "habw:", long_options, &optIndex);
+    opt = getopt_long(argc, argv, "habw:", longOptions, &optIndex);
     if (opt == -1)
       break;
     switch (opt) {
@@ -398,7 +393,7 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     case 1:
     case 'a':
-      AXIdebug = true;
+      axIdebug = true;
       break;
     case 2:
     case 'b':
@@ -426,7 +421,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  initializeCDOGenerator(AXIdebug, endianness);
-  generateCDOBinariesSeparately(workDirPath, AXIdebug);
+  initializeCDOGenerator(axIdebug, endianness);
+  generateCDOBinariesSeparately(workDirPath, axIdebug);
   return EXIT_SUCCESS;
 }

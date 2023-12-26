@@ -1422,4 +1422,4 @@ def add_one_using_dma(module):
     )
 
     # CHECK: PASS!
-    print(handle.stdout.decode('utf-8').strip())
+    print(handle.stdout.decode("utf-8").strip())

@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -20,39 +21,39 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 64;
-constexpr int OUT_SIZE = 64;
+constexpr int inSize = 64;
+constexpr int outSize = 64;
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
+std::vector<uint32_t> loadInstrSequence(const std::string &instrPath) {
+  std::ifstream instrFile(instrPath);
   std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
+  std::vector<uint32_t> instrV;
+  while (std::getline(instrFile, line)) {
     std::istringstream iss(line);
     uint32_t a;
     if (!(iss >> std::hex >> a)) {
       throw std::runtime_error("Unable to parse instruction file\n");
     }
-    instr_v.push_back(a);
+    instrV.push_back(a);
   }
-  return instr_v;
+  return instrV;
 }
 
 int main(int argc, const char *argv[]) {
   auto xclbin = xrt::xclbin("final.xclbin");
-  std::string Node = "MLIR_AIE";
-  std::vector<uint32_t> instr_v = load_instr_sequence("insts.txt");
+  std::string node = "MLIR_AIE";
+  std::vector<uint32_t> instrV = loadInstrSequence("insts.txt");
 
-  unsigned int device_index = 0;
-  auto device = xrt::device(device_index);
+  unsigned int deviceIndex = 0;
+  auto device = xrt::device(deviceIndex);
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [node](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
                                  std::cout << "Name: " << name << std::endl;
-                                 return name.rfind(Node, 0) == 0;
+                                 return name.rfind(node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
 
@@ -62,33 +63,33 @@ int main(int argc, const char *argv[]) {
 
   auto kernel = xrt::kernel(context, kernelName);
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto boInstr = xrt::bo(device, instrV.size() * sizeof(int),
+                         XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+  auto boInA = xrt::bo(device, inSize * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                       kernel.group_id(2));
+  auto boInB = xrt::bo(device, inSize * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                       kernel.group_id(3));
+  auto boOut = xrt::bo(device, outSize * sizeof(int32_t),
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
+  uint32_t *bufInA = boInA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
+  for (int i = 0; i < inSize; i++)
     srcVecA.push_back(i + 1);
   std::memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  void *bufInstr = bo_instr.map<void *>();
-  std::memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
+  void *bufInstr = boInstr.map<void *>();
+  std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
 
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  boInA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(boInstr, instrV.size(), boInA, boInB, boOut);
   run.wait();
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  boOut.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
+  uint32_t *bufOut = boOut.map<uint32_t *>();
 
   int errors = 0;
 
@@ -107,8 +108,7 @@ int main(int argc, const char *argv[]) {
   if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
-  } else {
-    std::cout << "\nfailed.\n\n";
-    return 1;
   }
+  std::cout << "\nfailed.\n\n";
+  return 1;
 }
