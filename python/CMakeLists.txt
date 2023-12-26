@@ -89,6 +89,14 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
     compiler/aiecc/*.py
 )
 
+if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  declare_mlir_python_sources(AIEPythonSources.XRT
+    ADD_TO_PARENT AIEPythonSources
+    SOURCES
+      xrt.py
+  )
+endif()
+
 ################################################################################
 # Extensions
 ################################################################################
@@ -127,13 +135,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
 
-  declare_mlir_python_extension(AIEPythonExtensions.MLIR
-    MODULE_NAME _aie
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR "/"
-
-    SOURCES
-
+  set(_py_srcs
     ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
     # Python passes
     ${CMAKE_CURRENT_SOURCE_DIR}/PybindTypes.cpp
@@ -142,8 +144,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     ${_mlir_python_cpp_sources}
     ${RegisterEverythingSources}
+  )
 
-    PRIVATE_LINK_LIBS
+  set(_py_libs
     LLVMSupport
     AIECAPI
     AIETargets
@@ -153,10 +156,31 @@ if (AIE_ENABLE_PYTHON_PASSES)
     ${MLIR_TRANSLATION_LIBS}
     ${MLIR_UPSTREAM_CAPI_LIBS}
   )
+
+  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+    list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
+    list(APPEND _py_libs xrt_coreutil)
+  endif()
+
+  declare_mlir_python_extension(AIEPythonExtensions.MLIR
+    MODULE_NAME _aie
+    ADD_TO_PARENT AIEPythonExtensions
+    ROOT_DIR "/"
+
+    SOURCES
+      ${_py_srcs}
+
+    PRIVATE_LINK_LIBS
+      ${_py_libs}
+  )
   target_include_directories(
     AIEPythonExtensions.MLIR
     INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
   )
+  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+    target_include_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_INCLUDE_DIR})
+    target_link_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_LIB_DIR})
+  endif()
 
   # Kill all of the dependencies (mlir_python_DEPENDS) on cpp sources in the dialect build targets
   # so the C extension modules don't get built but the Python sources do get installed.
@@ -194,6 +218,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
     _mlirRegisterEverything
     _mlirSparseTensorPasses
   )
+  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+    list(APPEND _other_extensions _xrt)
+  endif()
 
   file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs")
 
@@ -237,6 +264,23 @@ else ()
     PRIVATE_LINK_LIBS
       LLVMSupport
   )
+
+  if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+    declare_mlir_python_extension(AIEPythonExtensions.XRT
+      MODULE_NAME _xrt
+      ADD_TO_PARENT AIEPythonExtensions
+      ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+
+      PARTIAL_SOURCES_INTENDED
+      SOURCES
+        XRTModule.cpp
+
+      PRIVATE_LINK_LIBS
+        LLVMSupport
+    )
+    target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
+    target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
+  endif()
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
