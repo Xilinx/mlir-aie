@@ -45,6 +45,10 @@ if(POLICY CMP0116)
   cmake_policy(SET CMP0116 OLD)
 endif()
 
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+endif()
+
 project(AIE LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -93,6 +97,7 @@ set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
+find_package(XRT)
 
 # Set up default Vitis Sysroot as sysroot when testing on aarch64
 list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)
@@ -145,6 +150,9 @@ cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
 
 cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
+
+cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
+  "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL" OFF)
 
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
