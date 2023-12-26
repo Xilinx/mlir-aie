@@ -29,6 +29,10 @@ if(POLICY CMP0127)
   cmake_policy(SET CMP0127 NEW)
 endif()
 
+if(POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif()
+
 project(aie-test LANGUAGES CXX C)
 
 # find package AIE if running tests from AIE installation
