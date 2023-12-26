@@ -87,3 +87,17 @@ MlirStringRef aieTranslateToBCF(MlirOperation op, int col, int row) {
   bcf.copy(cStr, bcf.size());
   return mlirStringRefCreate(cStr, bcf.size());
 }
+
+MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules) {
+  std::string ll;
+  llvm::raw_string_ostream os(ll);
+  std::vector<std::string> files;
+  files.reserve(nModules);
+  for (int i = 0; i < nModules; ++i)
+    files.emplace_back(modules[i].data, modules[i].length);
+  if (failed(AIELLVMLink(os, files)))
+    return mlirStringRefCreate(nullptr, 0);
+  char *cStr = static_cast<char *>(malloc(ll.size()));
+  ll.copy(cStr, ll.size());
+  return mlirStringRefCreate(cStr, ll.size());
+}
