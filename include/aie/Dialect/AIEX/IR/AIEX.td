@@ -465,9 +465,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
 def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
   let summary = "half dma operator";
   let arguments = (
-    ins FlatSymbolRefAttr:$metadata,
-        I32Attr:$id,
-        I32:$x,
+    ins I32:$x,
         I32:$y,
         AnyMemRef:$memref,
         I32:$offset3,
@@ -480,7 +478,9 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
         I32:$length0,
         I32:$stride3,
         I32:$stride2,
-        I32:$stride1
+        I32:$stride1,
+        FlatSymbolRefAttr:$metadata,
+        I32Attr:$id
   );
   let results = (outs );
   let assemblyFormat = [{

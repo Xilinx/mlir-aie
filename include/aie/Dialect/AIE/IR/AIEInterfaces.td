@@ -113,8 +113,8 @@ def TileElement : OpInterface<"TileElement", [
       std::string nameWithoutDialect =
           op.getOperationName().str().substr(op.getOperationName().find('.') + 1);
       setNameFn(op.getResult(), nameWithoutDialect + "_" +
-                                    std::to_string(this->getTileID().col) + "_" +
-                                    std::to_string(this->getTileID().row));
+                                    std::to_string(getTileID().col) + "_" +
+                                    std::to_string(getTileID().row));
     }
   }];
 }

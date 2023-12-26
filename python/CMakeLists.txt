@@ -4,10 +4,11 @@
 include(AddMLIRPython)
 
 execute_process(
+  COMMAND_ERROR_IS_FATAL ANY
   COMMAND ${Python3_EXECUTABLE} -m
-    pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
+    pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt --no-build-isolation # no-build-isolation so that builds are cached
   RESULT_VARIABLE CMD_ERROR
-  OUTPUT_FILE CMD_OUTPUT
+  OUTPUT_VARIABLE CMD_OUTPUT
 )
 if(NOT CMD_ERROR EQUAL "0")
   message(FATAL_ERROR "pip install requirements.txt failed:" ${CMD_OUTPUT})
@@ -145,6 +146,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     PRIVATE_LINK_LIBS
     LLVMSupport
     AIECAPI
+    AIETargets
     ${MLIR_CONVERSION_LIBS}
     ${MLIR_DIALECT_LIBS}
     ${MLIR_EXTENSION_LIBS}

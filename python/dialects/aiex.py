@@ -61,4 +61,5 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
         )
 
 
+ipu_dma_memcpy_nd_ = ipu_dma_memcpy_nd
 ipu_dma_memcpy_nd = IpuDmaMemcpyNd
