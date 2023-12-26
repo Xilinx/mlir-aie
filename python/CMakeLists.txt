@@ -277,6 +277,7 @@ else ()
 
       PRIVATE_LINK_LIBS
         LLVMSupport
+        xrt_coreutil
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
