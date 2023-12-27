@@ -141,14 +141,17 @@ mem_topology = {
 }
 
 
-def emit_partition(module, kernel_id="0x901"):
+def emit_partition(mlir_module_str, kernel_id="0x901"):
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        tiles = find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
+        )
+        min_col = min([t.col.value for t in tiles])
+        max_col = max([t.col.value for t in tiles])
+
     uuid = random.randint(2222, 9999)
-    tiles = find_ops(
-        module,
-        lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
-    )
-    min_col = min([t.col.value for t in tiles])
-    max_col = max([t.col.value for t in tiles])
     num_cols = max_col - min_col + 1
     return {
         "aie_partition": {
@@ -179,7 +182,19 @@ def emit_partition(module, kernel_id="0x901"):
     }
 
 
-def emit_design_bif(path):
+def generate_cores_list(mlir_module_str):
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        cores = [
+            (c.tile.owner.opview.col.value, c.tile.owner.opview.row.value, None)
+            for c in find_ops(
+                module.operation,
+                lambda o: isinstance(o.operation.opview, aiedialect.CoreOp),
+            )
+        ]
+
+
+def emit_design_bif(root_path):
     return dedent(
         f"""\
         all:
@@ -190,10 +205,10 @@ def emit_design_bif(path):
           {{
             name=aie_image, id=0x1c000000
             {{ type=cdo
-               file={path}/aie_cdo_error_handling.bin
-               file={path}/aie_cdo_elfs.bin
-               file={path}/aie_cdo_init.bin
-               file={path}/aie_cdo_enable.bin
+               file={root_path}/aie_cdo_error_handling.bin
+               file={root_path}/aie_cdo_elfs.bin
+               file={root_path}/aie_cdo_init.bin
+               file={root_path}/aie_cdo_enable.bin
             }}
           }}
         }}
@@ -206,7 +221,7 @@ def emit_design_bif(path):
 # do this, so we have to explicitly specify included files on the link line.
 async def extract_input_files(file_core_bcf):
     core_bcf = await read_file_async(file_core_bcf)
-    return re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE)
+    return " ".join(re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE))
 
 
 def do_run(command, verbose=False):
@@ -231,8 +246,8 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
 
 
 def corefile(dirname, core, ext):
-    corecol, corerow, _ = core
-    return os.path.join(dirname, "core_%d_%d.%s" % (corecol, corerow, ext))
+    col, row, _ = core
+    return os.path.join(dirname, f"core_{col}_{row}.{ext}")
 
 
 def aie_target_defines(aie_target):
@@ -272,7 +287,7 @@ class FlowRunner:
             ret = 0
         end = time.time()
         if self.opts.verbose:
-            print("Done in %.3f sec: %s" % (end - start, commandstr))
+            print(f"Done in {end - start:.3f} sec: {commandstr}")
         self.runtimes[commandstr] = end - start
         if task:
             self.progress_bar.update(task, advance=1, command="")
@@ -336,8 +351,8 @@ class FlowRunner:
                 runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.cpp"
             )
 
-            chess_intrinsic_wrapper_ll_path = os.path.join(
-                self.tmpdirname, "chess_intrinsic_wrapper.ll"
+            chess_intrinsic_wrapper_ll_path = self.prepend_tmp(
+                "chess_intrinsic_wrapper.ll"
             )
 
             # fmt: off
@@ -454,7 +469,7 @@ class FlowRunner:
                 if not opts.unified:
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
                     await self.do_call(task, [peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
-                    await self.do_call(task, [peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=%s" % aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
+                    await self.do_call(task, [peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
 
@@ -529,7 +544,9 @@ class FlowRunner:
             )
 
             await write_file_async(
-                json.dumps(emit_partition(opts.kernel_id), indent=2),
+                json.dumps(
+                    emit_partition(self.mlir_module_str, opts.kernel_id), indent=2
+                ),
                 self.prepend_tmp("aie_partition.json"),
             )
 
@@ -544,8 +561,7 @@ class FlowRunner:
             )
 
             await write_file_async(
-                json.dumps(emit_design_bif(self.tmpdirname), indent=2),
-                self.prepend_tmp("design.bif"),
+                emit_design_bif(self.tmpdirname), self.prepend_tmp("design.bif")
             )
 
             # fmt: off
@@ -553,7 +569,7 @@ class FlowRunner:
             await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
             # fmt: on
 
-    async def process_host_cgen(self, aie_target):
+    async def process_host_cgen(self, aie_target, file_with_addresses):
         async with self.limit:
             if self.stopall:
                 return
@@ -608,7 +624,7 @@ class FlowRunner:
 
             cmd = ["clang++", "-std=c++11"]
             if opts.host_target:
-                cmd += ["--target=%s" % opts.host_target]
+                cmd += ["--target=" + opts.host_target]
                 if (
                     opts.aiesim
                     and opts.host_target
@@ -623,16 +639,15 @@ class FlowRunner:
                     )
 
             if self.opts.sysroot:
-                cmd += ["--sysroot=%s" % opts.sysroot]
+                cmd += ["--sysroot=" + opts.sysroot]
                 # In order to find the toolchain in the sysroot, we need to have
                 # a 'target' that includes 'linux' and for the 'lib/gcc/$target/$version'
                 # directory to have a corresponding 'include/gcc/$target/$version'.
                 # In some of our sysroots, it seems that we find a lib/gcc, but it
                 # doesn't have a corresponding include/gcc directory.  Instead
                 # force using '/usr/lib,include/gcc'
-
                 if opts.host_target == "aarch64-linux-gnu":
-                    cmd += ["--gcc-toolchain=%s/usr" % opts.sysroot]
+                    cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
 
             install_path = aie.compiler.aiecc.configure.install_path()
             runtime_xaiengine_path = os.path.join(
@@ -653,10 +668,10 @@ class FlowRunner:
 
             cmd += [
                 memory_allocator,
-                "-I%s" % xaiengine_include_path,
-                "-L%s" % xaiengine_lib_path,
+                "-I" + xaiengine_include_path,
+                "-L" + xaiengine_lib_path,
                 "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
-                "-I%s" % self.tmpdirname,
+                "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
                 "-lxaiengine",
@@ -883,9 +898,7 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_addresses = os.path.join(
-                self.tmpdirname, "input_with_addresses.mlir"
-            )
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             pass_pipeline = ",".join(
                 [
                     "lower-affine",
@@ -931,9 +944,7 @@ class FlowRunner:
 
             # Optionally generate insts.txt for IPU instruction stream
             if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = os.path.join(
-                    self.tmpdirname, "generated_ipu_insts.mlir"
-                )
+                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
@@ -976,7 +987,7 @@ class FlowRunner:
                 elif opts.compile:
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
                     await self.do_call(progress_bar.task, [peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
-                    await self.do_call(progress_bar.task, [peano_llc_path, file_llvmir_opt, "-O2", "--march=%s" % aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
+                    await self.do_call(progress_bar.task, [peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
             progress_bar.update(progress_bar.task, advance=0, visible=False)
@@ -986,7 +997,7 @@ class FlowRunner:
                 command="%d Workers" % nworkers,
             )
 
-            processes = [self.process_host_cgen(aie_target)]
+            processes = [self.process_host_cgen(aie_target, file_with_addresses)]
             await asyncio.gather(
                 *processes
             )  # ensure that process_host_cgen finishes before running gen_sim
@@ -1016,7 +1027,8 @@ class FlowRunner:
         )
         for i in range(50):
             if i < len(sortedruntimes):
-                print("%.4f sec: %s" % (sortedruntimes[i][1], sortedruntimes[i][0]))
+                s1, s0 = sortedruntimes[i][1], sortedruntimes[i][0]
+                print(f"{s1:.4f} sec: {s0}")
 
 
 def run(mlir_module, args=None):
@@ -1066,7 +1078,7 @@ def run(mlir_module, args=None):
         sys.exit("AIE Simulation (--aiesim) currently requires --xbridge")
 
     if opts.verbose:
-        sys.stderr.write("\ncompiling %s\n" % opts.filename)
+        sys.stderr.write(f"\ncompiling {opts.filename}\n")
 
     if opts.tmpdir:
         tmpdirname = opts.tmpdir
