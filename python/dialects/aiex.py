@@ -1,4 +1,6 @@
-# ./python/aie/dialects/aiex/__init__.py -*- Python -*-
+# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 from functools import partial
 
 from . import arith

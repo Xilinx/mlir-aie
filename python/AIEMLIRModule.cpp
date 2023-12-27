@@ -84,7 +84,12 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "ipu_instgen",
       [&stealCStr](MlirOperation op) {
-        return stealCStr(aieTranslateToIPU(op));
+        py::str ipuInstructions = stealCStr(aieTranslateToIPU(op));
+        auto individualInstructions =
+            ipuInstructions.attr("split")().cast<py::list>();
+        for (size_t i = 0; i < individualInstructions.size(); ++i)
+          individualInstructions[i] = individualInstructions[i].attr("strip")();
+        return individualInstructions;
       },
       "module"_a);
 

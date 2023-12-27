@@ -191,7 +191,11 @@ if config.enable_chess_tests:
             print(
                 "WARNING: no valid xchess license that is required by some of the lit tests"
             )
-
+    elif os.getenv("XILINXD_LICENSE_FILE") is not None:
+        print("Chess license found")
+        llvm_config.with_environment(
+            "XILINXD_LICENSE_FILE", os.getenv("XILINXD_LICENSE_FILE")
+        )
     else:
         print("Chess not found")
 
