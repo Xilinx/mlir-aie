@@ -201,6 +201,14 @@ def emit_design_bif(path):
     )
 
 
+# Extract included files from the given Chess linker script.
+# We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't
+# do this, so we have to explicitly specify included files on the link line.
+async def extract_input_files(file_core_bcf):
+    core_bcf = await read_file_async(file_core_bcf)
+    return re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE)
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -274,13 +282,6 @@ class FlowRunner:
         else:
             result += ["-D__AIEARCH__=10"]
         return result
-
-    # Extract included files from the given Chess linker script.
-    # We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't
-    # do this, so we have to explicitly specify included files on the link line.
-    async def extract_input_files(self, file_core_bcf):
-        core_bcf = await read_file_async(file_core_bcf)
-        return re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE)
 
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
     async def chesshack(self, task, llvmir):
@@ -425,7 +426,7 @@ class FlowRunner:
                 if not opts.unified:
                     file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
                     if self.opts.link and self.opts.xbridge:
-                        link_with_obj = await self.extract_input_files(file_core_bcf)
+                        link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
@@ -433,7 +434,7 @@ class FlowRunner:
                 else:
                     file_core_obj = self.file_obj
                     if opts.link and opts.xbridge:
-                        link_with_obj = await self.extract_input_files(file_core_bcf)
+                        link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
                         await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
@@ -446,7 +447,7 @@ class FlowRunner:
                 else:
                     file_core_obj = self.file_obj
                 if opts.link and opts.xbridge:
-                    link_with_obj = await self.extract_input_files(file_core_bcf)
+                    link_with_obj = await extract_input_files(file_core_bcf)
                     await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
                     await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
@@ -529,7 +530,7 @@ class FlowRunner:
                 ),
                 os.path.join(self.tmpdirname, "kernels.json"),
             )
-            
+
             await write_file_async(
                 json.dumps(emit_design_bif(self.tmpdirname), indent=2),
                 os.path.join(self.tmpdirname, "design.bif"),
