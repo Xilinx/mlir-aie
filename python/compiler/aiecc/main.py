@@ -185,8 +185,12 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
 def generate_cores_list(mlir_module_str):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        cores = [
-            (c.tile.owner.opview.col.value, c.tile.owner.opview.row.value, None)
+        return [
+            (
+                c.tile.owner.opview.col.value,
+                c.tile.owner.opview.row.value,
+                c.link_with.value if c.link_with is not None else None,
+            )
             for c in find_ops(
                 module.operation,
                 lambda o: isinstance(o.operation.opview, aiedialect.CoreOp),
@@ -265,6 +269,9 @@ class FlowRunner:
         self.progress_bar = None
         self.maxtasks = 5
         self.stopall = False
+        self.peano_clang_path = os.path.join(opts.peano_install_dir, "bin", "clang")
+        self.peano_opt_path = os.path.join(opts.peano_install_dir, "bin", "opt")
+        self.peano_llc_path = os.path.join(opts.peano_install_dir, "bin", "llc")
 
     def prepend_tmp(self, x):
         return os.path.join(self.tmpdirname, x)
@@ -381,10 +388,6 @@ class FlowRunner:
         chess_intrinsic_wrapper_ll_path,
         file_with_addresses,
     ):
-        peano_path = os.path.join(opts.peano_install_dir, "bin")
-        peano_clang_path = os.path.join(peano_path, "clang")
-        peano_opt_path = os.path.join(peano_path, "opt")
-        peano_llc_path = os.path.join(peano_path, "llc")
         async with self.limit:
             if self.stopall:
                 return
@@ -456,20 +459,20 @@ class FlowRunner:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
-                        await self.do_call(task, [peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
                 else:
                     file_core_obj = self.unified_file_core_obj
                     if opts.link and opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
-                        await self.do_call(task, [peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             elif opts.compile:
                 if not opts.unified:
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
-                    await self.do_call(task, [peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
-                    await self.do_call(task, [peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
 
@@ -477,7 +480,7 @@ class FlowRunner:
                     link_with_obj = await extract_input_files(file_core_bcf)
                     await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
-                    await self.do_call(task, [peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                    await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             self.progress_bar.update(self.progress_bar.task_completed, advance=1)
             if task:
@@ -876,10 +879,6 @@ class FlowRunner:
         print("To run simulation: " + sim_script)
 
     async def run_flow(self):
-        peano_path = os.path.join(opts.peano_install_dir, "bin")
-        peano_clang_path = os.path.join(peano_path, "clang")
-        peano_opt_path = os.path.join(peano_path, "opt")
-        peano_llc_path = os.path.join(peano_path, "llc")
         nworkers = int(opts.nthreads)
         if nworkers == 0:
             nworkers = os.cpu_count()
@@ -920,11 +919,7 @@ class FlowRunner:
                 self.opts.verbose,
             )
 
-            t = do_run(
-                ["aie-translate", "--aie-generate-corelist", file_with_addresses],
-                self.opts.verbose,
-            )
-            cores = eval(t.stdout)
+            cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
                 [
                     "aie-translate",
@@ -986,8 +981,8 @@ class FlowRunner:
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
-                    await self.do_call(progress_bar.task, [peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
-                    await self.do_call(progress_bar.task, [peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
             progress_bar.update(progress_bar.task, advance=0, visible=False)
@@ -1036,11 +1031,6 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    mlir_module = str(mlir_module)
-
-    aie_path = aie.compiler.aiecc.configure.install_path()
-    peano_path = os.path.join(opts.peano_install_dir, "bin")
-
     if "VITIS" not in os.environ:
         # Try to find vitis in the path
         vpp_path = shutil.which("v++")
@@ -1071,6 +1061,8 @@ def run(mlir_module, args=None):
         print("Vitis not found...")
 
     # This path should be generated from cmake
+    aie_path = aie.compiler.aiecc.configure.install_path()
+    peano_path = os.path.join(opts.peano_install_dir, "bin")
     os.environ["PATH"] = os.pathsep.join([aie_path, os.environ["PATH"]])
     os.environ["PATH"] = os.pathsep.join([peano_path, os.environ["PATH"]])
 
@@ -1095,7 +1087,7 @@ def run(mlir_module, args=None):
     if opts.verbose:
         print("created temporary directory", tmpdirname)
 
-    runner = FlowRunner(mlir_module, opts, tmpdirname)
+    runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())
 
     if opts.profiling:
