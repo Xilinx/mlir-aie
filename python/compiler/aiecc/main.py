@@ -359,7 +359,12 @@ class FlowRunner:
             return chess_intrinsic_wrapper_ll_path
 
     async def process_core(
-        self, core, aie_target, aie_peano_target, chess_intrinsic_wrapper_ll_path
+        self,
+        core,
+        aie_target,
+        aie_peano_target,
+        chess_intrinsic_wrapper_ll_path,
+        file_with_addresses,
     ):
         peano_path = os.path.join(opts.peano_install_dir, "bin")
         peano_clang_path = os.path.join(peano_path, "clang")
@@ -412,15 +417,15 @@ class FlowRunner:
             corecol, corerow, elf_file = core
             if not opts.unified:
                 file_core = corefile(self.tmpdirname, core, "mlir")
-                await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", self.file_with_addresses, "-o", file_core])
+                await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", file_with_addresses, "-o", file_core])
                 file_opt_core = corefile(self.tmpdirname, core, "opt.mlir")
                 await self.do_call(task, ["aie-opt", *aie_opt_lower_to_llvm_passes, file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, core, "bcf")
-                await self.do_call(task, ["aie-translate", self.file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
             else:
                 file_core_ldscript = corefile(self.tmpdirname, core, "ld.script")
-                await self.do_call(task, ["aie-translate", self.file_with_addresses, "--aie-generate-ldscript", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-ldscript", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
             if not self.opts.unified:
                 file_core_llvmir = corefile(self.tmpdirname, core, "ll")
                 await self.do_call(task, ["aie-translate", "--mlir-to-llvmir", file_opt_core, "-o", file_core_llvmir])
@@ -570,7 +575,7 @@ class FlowRunner:
                     "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
                     "--aie-lower-multicast",
-                    self.file_with_addresses,
+                    file_with_addresses,
                     "-o",
                     file_physical,
                 ],
@@ -878,7 +883,7 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            self.file_with_addresses = os.path.join(
+            file_with_addresses = os.path.join(
                 self.tmpdirname, "input_with_addresses.mlir"
             )
             pass_pipeline = ",".join(
@@ -898,12 +903,12 @@ class FlowRunner:
             run_passes(
                 "builtin.module(" + pass_pipeline + ")",
                 self.mlir_module_str,
-                self.file_with_addresses,
+                file_with_addresses,
                 self.opts.verbose,
             )
 
             t = do_run(
-                ["aie-translate", "--aie-generate-corelist", self.file_with_addresses],
+                ["aie-translate", "--aie-generate-corelist", file_with_addresses],
                 self.opts.verbose,
             )
             cores = eval(t.stdout)
@@ -911,7 +916,7 @@ class FlowRunner:
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
-                    self.file_with_addresses,
+                    file_with_addresses,
                 ],
                 self.opts.verbose,
             )
@@ -934,7 +939,7 @@ class FlowRunner:
                     [
                         "aie-opt",
                         "--aie-dma-to-ipu",
-                        self.file_with_addresses,
+                        file_with_addresses,
                         "-o",
                         generated_insts_mlir,
                     ],
@@ -959,7 +964,7 @@ class FlowRunner:
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, self.file_with_addresses, "-o", file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, file_with_addresses, "-o", file_opt_with_addresses])
 
                 file_llvmir = self.prepend_tmp("input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
@@ -995,6 +1000,7 @@ class FlowRunner:
                         aie_target,
                         aie_peano_target,
                         chess_intrinsic_wrapper_ll_path,
+                        file_with_addresses,
                     )
                 )
             await asyncio.gather(*processes)
