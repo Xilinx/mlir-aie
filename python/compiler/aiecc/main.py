@@ -23,6 +23,7 @@ import tempfile
 from textwrap import dedent
 
 import aiofiles
+from aie.extras.util import find_ops
 
 from aie.passmanager import PassManager
 from aie.ir import Module, Context, Location
@@ -59,6 +60,145 @@ async def read_file_async(file_path: str) -> str:
 async def write_file_async(file_content: str, file_path: str):
     async with aiofiles.open(file_path, mode="w") as f:
         await f.write(file_content)
+
+
+def emit_design_kernel_json(
+    kernel_name="MLIR_AIE",
+    kernel_id="0x901",
+    instance_name="MLIRAIE",
+    buffer_args=None,
+):
+    if buffer_args is None:
+        buffer_args = ["in", "tmp", "out"]
+
+    arguments = [
+        {
+            "name": "instr",
+            "memory-connection": "SRAM",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": "0x00",
+        },
+        {
+            "name": "ninstr",
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": "0x08",
+        },
+    ]
+
+    offset = 0x10
+    for buf in buffer_args:
+        arg = {
+            "name": buf,
+            "memory-connection": "HOST",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": str(hex(offset)),
+        }
+        arguments.append(arg)
+        offset += 0x8
+
+    return {
+        "ps-kernels": {
+            "kernels": [
+                {
+                    "name": kernel_name,
+                    "type": "dpu",
+                    "extended-data": {
+                        "subtype": "DPU",
+                        "functional": "1",
+                        "dpu_kernel_id": kernel_id,
+                    },
+                    "arguments": arguments,
+                    "instances": [{"name": instance_name}],
+                }
+            ]
+        }
+    }
+
+
+mem_topology = {
+    "mem_topology": {
+        "m_count": "2",
+        "m_mem_data": [
+            {
+                "m_type": "MEM_DRAM",
+                "m_used": "1",
+                "m_sizeKB": "0x10000",
+                "m_tag": "HOST",
+                "m_base_address": "0x4000000",
+            },
+            {
+                "m_type": "MEM_DRAM",
+                "m_used": "1",
+                "m_sizeKB": "0xc000",
+                "m_tag": "SRAM",
+                "m_base_address": "0x4000000",
+            },
+        ],
+    }
+}
+
+
+def emit_partition(module, kernel_id="0x901"):
+    uuid = random.randint(2222, 9999)
+    tiles = find_ops(
+        module,
+        lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
+    )
+    min_col = min([t.col.value for t in tiles])
+    max_col = max([t.col.value for t in tiles])
+    num_cols = max_col - min_col + 1
+    return {
+        "aie_partition": {
+            "name": "QoS",
+            "operations_per_cycle": "2048",
+            "inference_fingerprint": "23423",
+            "pre_post_fingerprint": "12345",
+            "partition": {
+                "column_width": num_cols,
+                "start_columns": [*range(1, 6 - num_cols)],
+            },
+            "PDIs": [
+                {
+                    "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
+                    "file_name": "./design.pdi",
+                    "cdo_groups": [
+                        {
+                            "name": "DPU",
+                            "type": "PRIMARY",
+                            "pdi_id": "0x01",
+                            "dpu_kernel_ids": [kernel_id],
+                            "pre_cdo_groups": ["0xC1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def emit_design_bif(path):
+    return dedent(
+        f"""\
+        all:
+        {{
+          id_code = 0x14ca8093
+          extended_id_code = 0x01
+          image
+          {{
+            name=aie_image, id=0x1c000000
+            {{ type=cdo
+               file={path}/aie_cdo_error_handling.bin
+               file={path}/aie_cdo_elfs.bin
+               file={path}/aie_cdo_init.bin
+               file={path}/aie_cdo_enable.bin
+            }}
+          }}
+        }}
+        """
+    )
 
 
 class FlowRunner:
@@ -316,163 +456,6 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def emit_mem_topology_json(self, output_filename):
-        mem_topology = {
-            "mem_topology": {
-                "m_count": "2",
-                "m_mem_data": [
-                    {
-                        "m_type": "MEM_DRAM",
-                        "m_used": "1",
-                        "m_sizeKB": "0x10000",
-                        "m_tag": "HOST",
-                        "m_base_address": "0x4000000",
-                    },
-                    {
-                        "m_type": "MEM_DRAM",
-                        "m_used": "1",
-                        "m_sizeKB": "0xc000",
-                        "m_tag": "SRAM",
-                        "m_base_address": "0x4000000",
-                    },
-                ],
-            }
-        }
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(mem_topology, indent=2))
-
-    async def emit_design_partition_json(self, output_filename, kernel_id="0x901"):
-        with Context() as ctx, Location.unknown():
-            with open(self.file_with_addresses, "r") as f:
-                mlir_module = Module.parse(f.read())
-
-        def minmax(op, mn=0, mx=0):
-            for r in op.regions:
-                for b in r.blocks:
-                    for o in b.operations:
-                        if isinstance(o.operation.opview, aiedialect.TileOp):
-                            mn = min(mn, o.col.value)
-                            mx = max(mx, o.col.value)
-                        mn, mx = minmax(o, mn, mx)
-            return mn, mx
-
-        mn, mx = minmax(mlir_module.operation)
-        num_cols = 1 + mx - mn
-
-        uuid = random.randint(2222, 9999)
-        partition = {
-            "aie_partition": {
-                "name": "QoS",
-                "operations_per_cycle": "2048",
-                "inference_fingerprint": "23423",
-                "pre_post_fingerprint": "12345",
-                "partition": {
-                    "column_width": num_cols,
-                    "start_columns": [*range(1, 6 - num_cols)],
-                },
-                "PDIs": [
-                    {
-                        "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
-                        "file_name": "./design.pdi",
-                        "cdo_groups": [
-                            {
-                                "name": "DPU",
-                                "type": "PRIMARY",
-                                "pdi_id": "0x01",
-                                "dpu_kernel_ids": [kernel_id],
-                                "pre_cdo_groups": ["0xC1"],
-                            }
-                        ],
-                    }
-                ],
-            }
-        }
-
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(partition, indent=2))
-
-    async def emit_design_kernel_json(
-        self,
-        output_filename,
-        kernel_name="MLIR_AIE",
-        kernel_id="0x901",
-        instance_name="MLIRAIE",
-        buffer_args=None,
-    ):
-        if buffer_args is None:
-            buffer_args = ["in", "tmp", "out"]
-
-        arguments = [
-            {
-                "name": "instr",
-                "memory-connection": "SRAM",
-                "address-qualifier": "GLOBAL",
-                "type": "char *",
-                "offset": "0x00",
-            },
-            {
-                "name": "ninstr",
-                "address-qualifier": "SCALAR",
-                "type": "uint64_t",
-                "offset": "0x08",
-            },
-        ]
-        offset = 0x10
-        for buf in buffer_args:
-            arg = {
-                "name": buf,
-                "memory-connection": "HOST",
-                "address-qualifier": "GLOBAL",
-                "type": "char *",
-                "offset": str(hex(offset)),
-            }
-            arguments.append(arg)
-            offset += 0x8
-        design = {
-            "ps-kernels": {
-                "kernels": [
-                    {
-                        "name": kernel_name,
-                        "type": "dpu",
-                        "extended-data": {
-                            "subtype": "DPU",
-                            "functional": "1",
-                            "dpu_kernel_id": kernel_id,
-                        },
-                        "arguments": arguments,
-                        "instances": [{"name": instance_name}],
-                    }
-                ]
-            }
-        }
-        print(output_filename)
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(design, indent=2))
-
-    async def emit_design_bif(self, path, output_filename):
-        s = dedent(
-            f"""\
-            all:
-            {{
-              id_code = 0x14ca8093
-              extended_id_code = 0x01
-              image
-              {{
-                name=aie_image, id=0x1c000000
-                {{ type=cdo
-                   file={path}/aie_cdo_error_handling.bin
-                   file={path}/aie_cdo_elfs.bin
-                   file={path}/aie_cdo_init.bin
-                   file={path}/aie_cdo_enable.bin
-                }}
-              }}
-            }}
-            """
-        )
-        print(output_filename)
-        with open(output_filename, "w") as f:
-            f.write(s)
-
     async def process_xclbin_gen(self):
         async with self.limit:
             if self.stopall:
@@ -510,16 +493,49 @@ class FlowRunner:
             p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", os.path.join(self.tmpdirname, "cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
             await asyncio.gather(p0, p1)
             await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", os.path.join(self.tmpdirname, "cdo_main.out"), os.path.join(self.tmpdirname, "gen_cdo.o"), os.path.join(self.tmpdirname, "cdo_main.o")])
+            # fmt: on
 
-            if ld_path := os.getenv("LD_LIBRARY_PATH", ""):
-                ld_path += ":"
-            os.environ["LD_LIBRARY_PATH"] = ld_path + xaiengine_lib_path + ":" + os.path.join(opts.aietools_path, "lib", "lnx64.o")
+            ld_paths = [
+                os.getenv("LD_LIBRARY_PATH"),
+                xaiengine_lib_path,
+                os.path.join(opts.aietools_path, "lib", "lnx64.o"),
+            ]
+            os.environ["LD_LIBRARY_PATH"] = ":".join(list(filter(None, ld_paths)))
+            await self.do_call(
+                task,
+                [
+                    os.path.join(self.tmpdirname, "cdo_main.out"),
+                    "--work-dir-path",
+                    self.tmpdirname + "/",
+                ],
+            )
 
-            await self.do_call(task, [os.path.join(self.tmpdirname, "cdo_main.out"), "--work-dir-path", self.tmpdirname + "/"])
-            await self.emit_mem_topology_json(os.path.join(self.tmpdirname, "mem_topology.json"))
-            await self.emit_design_partition_json(os.path.join(self.tmpdirname, "aie_partition.json"), opts.kernel_id)
-            await self.emit_design_kernel_json(os.path.join(self.tmpdirname, "kernels.json"), opts.kernel_name, opts.kernel_id, opts.instance_name, buffers)
-            await self.emit_design_bif(self.tmpdirname, os.path.join(self.tmpdirname, "design.bif"))
+            await write_file_async(
+                json.dumps(mem_topology, indent=2),
+                os.path.join(self.tmpdirname, "mem_topology.json"),
+            )
+
+            await write_file_async(
+                json.dumps(emit_partition(opts.kernel_id), indent=2),
+                os.path.join(self.tmpdirname, "aie_partition.json"),
+            )
+
+            await write_file_async(
+                json.dumps(
+                    emit_design_kernel_json(
+                        opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
+                    ),
+                    indent=2,
+                ),
+                os.path.join(self.tmpdirname, "kernels.json"),
+            )
+            
+            await write_file_async(
+                json.dumps(emit_design_bif(self.tmpdirname), indent=2),
+                os.path.join(self.tmpdirname, "design.bif"),
+            )
+
+            # fmt: off
             await self.do_call(task, ["bootgen", "-arch", "versal", "-image", os.path.join(self.tmpdirname, "design.bif"), "-o", os.path.join(self.tmpdirname, "design.pdi"), "-w"])
             await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + os.path.join(self.tmpdirname, "mem_topology.json"), "--add-kernel", os.path.join(self.tmpdirname, "kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + os.path.join(self.tmpdirname, "aie_partition.json"), "--force", "--output", opts.xclbin_name])
             # fmt: on
