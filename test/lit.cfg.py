@@ -193,7 +193,9 @@ if config.enable_chess_tests:
             )
     elif os.getenv("XILINXD_LICENSE_FILE") is not None:
         print("Chess license found")
-        llvm_config.with_environment("XILINXD_LICENSE_FILE", os.getenv("XILINXD_LICENSE_FILE"))
+        llvm_config.with_environment(
+            "XILINXD_LICENSE_FILE", os.getenv("XILINXD_LICENSE_FILE")
+        )
     else:
         print("Chess not found")
 

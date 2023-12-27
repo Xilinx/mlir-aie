@@ -69,8 +69,8 @@ wrap_C = np.asarray(outps[0])
 A = np.random.randint(0, 10, 64, dtype=np.int32)
 C = np.zeros(64, dtype=np.int32)
 
-np.copyto(wrap_A, A, casting='no')
-np.copyto(wrap_C, C, casting='no')
+np.copyto(wrap_A, A, casting="no")
+np.copyto(wrap_C, C, casting="no")
 
 xclbin.sync_buffers_to_device()
 xclbin.run()
