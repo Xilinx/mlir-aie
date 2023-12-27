@@ -138,9 +138,9 @@ class FlowRunner:
     # Extract included files from the given Chess linker script.
     # We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't
     # do this, so we have to explicitly specify included files on the link line.
-    def extract_input_files(self, file_core_bcf):
-        t = self.do_run(["awk", "/_include _file/ {print($3)}", file_core_bcf])
-        return " ".join(t.stdout.split())
+    async def extract_input_files(self, file_core_bcf):
+        core_bcf = await read_file_async(file_core_bcf)
+        return re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE)
 
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
     async def chesshack(self, task, llvmir):
@@ -149,8 +149,6 @@ class FlowRunner:
         if not self.opts.execute:
             return llvmir_chesslinked
         llvmir = await read_file_async(llvmir)
-        llvmir = llvmir.replace("noundef", "")
-        llvmir = re.sub(r"noalias_sidechannel[^,],", "", llvmir)
 
         await write_file_async(llvmir, llvmir_chesshack)
         assert os.path.exists(llvmir_chesshack)
@@ -159,19 +157,8 @@ class FlowRunner:
         # fmt: on
 
         llvmir_chesslinked_ = await read_file_async(llvmir_chesslinked)
-        llvmir_chesslinked_ = llvmir_chesslinked_.replace("noundef", "")
-        # Formal function argument names not used in older LLVM
-        llvmir_chesslinked_ = re.sub(
-            r"^define .*@.*",
-            lambda m: re.sub(r"%[0-9]*", "", m.group(0)),
-            llvmir_chesslinked_,
-            flags=re.MULTILINE,
-        )
         llvmir_chesslinked_ = (
-            llvmir_chesslinked_.replace("mustprogress", "")
-            .replace("poison", "undef")
-            .replace("nocallback", "")
-            .replace("memory(none)", "readnone")
+            llvmir_chesslinked_.replace("memory(none)", "readnone")
             .replace("memory(read)", "readonly")
             .replace("memory(write)", "writeonly")
             .replace("memory(argmem: readwrite)", "argmemonly")
@@ -192,11 +179,6 @@ class FlowRunner:
                 "memory(argmem: write, inaccessiblemem: write)",
                 "inaccessiblemem_or_argmemonly writeonly",
             )
-        )
-        llvmir_chesslinked_ = re.sub(
-            r'target triple = "aie.*"',
-            'target triple = "pdarch-unknown-unknown-elf"',
-            llvmir_chesslinked_,
         )
 
         await write_file_async(llvmir_chesslinked_, llvmir_chesslinked)
@@ -226,12 +208,6 @@ class FlowRunner:
             )
             chess_intrinsic_wrapper = re.sub(
                 r"^target.*", "", chess_intrinsic_wrapper, flags=re.MULTILINE
-            )
-            chess_intrinsic_wrapper = re.sub(
-                r"noalias_sidechannel[^,]*,", "", chess_intrinsic_wrapper
-            )
-            chess_intrinsic_wrapper = re.sub(
-                r"nocallback[^,]*,", "", chess_intrinsic_wrapper
             )
             await write_file_async(
                 chess_intrinsic_wrapper, self.chess_intrinsic_wrapper
@@ -309,7 +285,7 @@ class FlowRunner:
                 if not opts.unified:
                     file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
                     if self.opts.link and self.opts.xbridge:
-                        link_with_obj = self.extract_input_files(file_core_bcf)
+                        link_with_obj = await self.extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
@@ -317,7 +293,7 @@ class FlowRunner:
                 else:
                     file_core_obj = self.file_obj
                     if opts.link and opts.xbridge:
-                        link_with_obj = self.extract_input_files(file_core_bcf)
+                        link_with_obj = await self.extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
                         await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
@@ -330,7 +306,7 @@ class FlowRunner:
                 else:
                     file_core_obj = self.file_obj
                 if opts.link and opts.xbridge:
-                    link_with_obj = self.extract_input_files(file_core_bcf)
+                    link_with_obj = await self.extract_input_files(file_core_bcf)
                     await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
                     await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
