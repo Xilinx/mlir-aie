@@ -13,122 +13,150 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 
 #include <algorithm>
-#include <cstring>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
 namespace py = pybind11;
 using namespace py::literals;
 
-constexpr int inSize = 64;
-constexpr int outSize = 64;
-
-std::vector<uint32_t> loadInstrSequence(const std::string &instrPath) {
-  std::ifstream instrFile(instrPath);
-  std::string line;
-  std::vector<uint32_t> instrV;
-  while (std::getline(instrFile, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instrV.push_back(a);
+class PyXCLBin {
+public:
+  PyXCLBin(const std::string &xclBinPath, const std::string &kernelName,
+           int deviceIndex)
+      : xclBin(std::make_unique<xrt::xclbin>(xclBinPath)),
+        device(std::make_unique<xrt::device>(deviceIndex)) {
+    device->register_xclbin(*xclBin);
+    context = std::make_unique<xrt::hw_context>(*device, xclBin->get_uuid());
+    kernel = std::make_unique<xrt::kernel>(*context, kernelName);
   }
-  return instrV;
-}
 
-// int main(int argc, const char *argv[]) {
-//   auto xclbin = xrt::xclbin("final.xclbin");
-//   std::string node = "MLIR_AIE";
-//   std::vector<uint32_t> instrV = loadInstrSequence("insts.txt");
-//
-//   unsigned int deviceIndex = 0;
-//   auto device = xrt::device(deviceIndex);
-//
-//   // Get the kernel from the xclbin
-//   auto xkernels = xclbin.get_kernels();
-//   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-//                                [node](xrt::xclbin::kernel &k) {
-//                                  auto name = k.get_name();
-//                                  std::cout << "Name: " << name << std::endl;
-//                                  return name.rfind(node, 0) == 0;
-//                                });
-//   auto kernelName = xkernel.get_name();
-//
-//   device.register_xclbin(xclbin);
-//
-//   xrt::hw_context context(device, xclbin.get_uuid());
-//
-//   auto kernel = xrt::kernel(context, kernelName);
-//
-//   auto boInstr = xrt::bo(device, instrV.size() * sizeof(int),
-//                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-//   auto boInA = xrt::bo(device, inSize * sizeof(int32_t),
-//   XRT_BO_FLAGS_HOST_ONLY,
-//                        kernel.group_id(2));
-//   auto boInB = xrt::bo(device, inSize * sizeof(int32_t),
-//   XRT_BO_FLAGS_HOST_ONLY,
-//                        kernel.group_id(3));
-//   auto boOut = xrt::bo(device, outSize * sizeof(int32_t),
-//                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-//
-//   uint32_t *bufInA = boInA.map<uint32_t *>();
-//   std::vector<uint32_t> srcVecA;
-//   for (int i = 0; i < inSize; i++)
-//     srcVecA.push_back(i + 1);
-//   std::memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-//
-//   void *bufInstr = boInstr.map<void *>();
-//   std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
-//
-//   boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-//   boInA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-//
-//   auto run = kernel(boInstr, instrV.size(), boInA, boInB, boOut);
-//   run.wait();
-//
-//   boOut.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-//
-//   uint32_t *bufOut = boOut.map<uint32_t *>();
-//
-//   int errors = 0;
-//
-//   for (uint32_t i = 0; i < 64; i++) {
-//     uint32_t ref = i + 2;
-//     if (*(bufOut + i) != ref) {
-//       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-//                 << std::endl;
-//       errors++;
-//     } else {
-//       std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-//                 << std::endl;
-//     }
-//   }
-//
-//   if (!errors) {
-//     std::cout << "\nPASS!\n\n";
-//     return 0;
-//   }
-//   std::cout << "\nfailed.\n\n";
-//   return 1;
-// }
+  void loadIPUInstructions(const std::vector<uint32_t> &insts) {
+    ipuInstructions =
+        std::make_unique<xrt::bo>(*device, insts.size() * sizeof(uint32_t),
+                                  XCL_BO_FLAGS_CACHEABLE, kernel->group_id(0));
+    uint32_t *bufInstr = ipuInstructions->map<uint32_t *>();
+    for (size_t i = 0; i < insts.size(); ++i)
+      bufInstr[i] = insts.at(i);
+    ipuInstructions->sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
+
+  template <typename ElementT>
+  std::pair<std::vector<py::memoryview>, std::vector<py::memoryview>>
+  mmapBuffers(std::vector<std::vector<int>> inputShapes,
+              std::vector<std::vector<int>> outputShapes) {
+    this->inputBuffers.reserve(inputShapes.size());
+    this->outputBuffers.reserve(outputShapes.size());
+    std::vector<py::memoryview> inputViews;
+    std::vector<py::memoryview> outputViews;
+    inputViews.reserve(inputShapes.size());
+
+    auto initAndViewBuffer = [this](
+                                 std::vector<int> shape, int groupId,
+                                 std::vector<std::unique_ptr<xrt::bo>> &buffers,
+                                 std::vector<py::memoryview> &views) {
+      int nElements =
+          std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>());
+      int nBytes = nElements * sizeof(ElementT);
+      xrt::bo xrtBuf(*device, nBytes, XRT_BO_FLAGS_HOST_ONLY,
+                     kernel->group_id(groupId));
+      buffers.push_back(std::make_unique<xrt::bo>(xrtBuf));
+
+      ElementT *buf = xrtBuf.map<ElementT *>();
+      for (int i = 0; i < nElements; ++i)
+        buf[i] = static_cast<ElementT>(0);
+
+      std::vector<int> strides_{1};
+      for (int i = shape.size() - 1; i > 0; i--)
+        strides_.push_back(strides_.back() * shape[i]);
+      std::vector<int> strides;
+      // stride in bytes
+      std::transform(strides_.rbegin(), strides_.rend(),
+                     std::back_inserter(strides),
+                     [](int s) { return s * sizeof(ElementT); });
+      views.push_back(py::memoryview::from_buffer(buf, shape, strides));
+    };
+
+    // group_id 0 is for ipu instructions and then data buffers start with group
+    // 2?
+    for (size_t i = 0; i < inputShapes.size(); ++i)
+      initAndViewBuffer(inputShapes[i], i + 2, this->inputBuffers, inputViews);
+    for (size_t i = 0; i < outputShapes.size(); ++i)
+      initAndViewBuffer(outputShapes[i], i + 2 + this->inputBuffers.size(),
+                        this->outputBuffers, outputViews);
+    return {inputViews, outputViews};
+  }
+
+  void syncBuffersToDevice() {
+    for (auto &buf : this->inputBuffers)
+      buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    for (auto &buf : this->outputBuffers)
+      buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
+
+  void syncBuffersFromDevice() {
+    for (auto &buf : this->inputBuffers)
+      buf->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    for (auto &buf : this->outputBuffers)
+      buf->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  }
+
+  void run() {
+    run_ = std::make_unique<xrt::run>(*kernel);
+    run_->set_arg(0, *ipuInstructions);
+    run_->set_arg(1, ipuInstructions->size());
+    for (size_t i = 0; i < inputBuffers.size(); ++i)
+      run_->set_arg(i + 2, *inputBuffers[i]);
+    for (size_t i = 0; i < outputBuffers.size(); ++i)
+      run_->set_arg(i + 2 + inputBuffers.size(), *outputBuffers[i]);
+    run_->start();
+  }
+
+  void wait() { run_->wait(); }
+
+  std::unique_ptr<xrt::xclbin> xclBin;
+  std::unique_ptr<xrt::device> device;
+  std::unique_ptr<xrt::hw_context> context;
+  std::unique_ptr<xrt::kernel> kernel;
+  std::unique_ptr<xrt::bo> ipuInstructions;
+
+  std::vector<std::unique_ptr<xrt::bo>> inputBuffers;
+  std::vector<std::unique_ptr<xrt::bo>> outputBuffers;
+
+  std::unique_ptr<xrt::run> run_;
+};
 
 PYBIND11_MODULE(_xrt, m) {
-  m.def(
-      "load_xclbin",
-      [](const std::string &path) {
-        xrt::xclbin xclbin = xrt::xclbin(path);
-        for (const auto &item : xclbin.get_kernels())
-          py::print(item.get_name());
-      },
-      "path"_a);
+
+  py::class_<PyXCLBin>(m, "XCLBin", py::module_local())
+      .def(py::init<const std::string &, const std::string &, int>(),
+           "xclbin_path"_a, "kernel_name"_a, "device_index"_a = 0)
+      .def("load_ipu_instructions", &PyXCLBin::loadIPUInstructions, "insts"_a)
+      .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
+      .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
+      .def("run", &PyXCLBin::run)
+      .def("wait", &PyXCLBin::wait)
+      .def(
+          "mmap_buffers",
+          [](PyXCLBin &self, const std::vector<std::vector<int>> &inputShapes,
+             const std::vector<std::vector<int>> &outputShapes,
+             const py::object &npFormat) {
+            auto npy = py::module_::import("numpy");
+            if (npFormat.is(npy.attr("int32")))
+              return self.mmapBuffers<int32_t>(inputShapes, outputShapes);
+            if (npFormat.is(npy.attr("float32")))
+              return self.mmapBuffers<float>(inputShapes, outputShapes);
+            if (npFormat.is(npy.attr("int64")))
+              return self.mmapBuffers<int64_t>(inputShapes, outputShapes);
+            if (npFormat.is(npy.attr("float64")))
+              return self.mmapBuffers<double>(inputShapes, outputShapes);
+            throw std::runtime_error("unsupported np format: " +
+                                     py::repr(npFormat).cast<std::string>());
+          },
+          "input_shape"_a, "output_shapes"_a, "np_format"_a);
 }

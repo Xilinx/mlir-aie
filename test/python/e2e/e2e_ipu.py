@@ -5,6 +5,7 @@
 # (c) Copyright 2023 AMD Inc.
 
 # RUN: HOST_RUNTIME_LIB_DIR=%host_runtime_lib% WORKDIR=%T XRT_DIR=%XRT_DIR %PYTHON %s | FileCheck %s
+# REQUIRES: xrt_python_bindings
 # REQUIRES: ryzen_ai
 
 import json
@@ -12,12 +13,17 @@ import random
 import os
 import re
 import subprocess
+import sys
+
+import numpy as np
 from pathlib import Path
 from textwrap import dedent
 
 from aie.extras.dialects.ext import memref, arith, func
 from aie.extras.runtime.passes import run_pipeline, Pipeline
 from aie.extras.util import find_ops, bb
+
+from aie.xrt import XCLBin
 
 import aie.extras.types as T
 from aie.dialects import aie
@@ -1204,6 +1210,7 @@ def add_one_using_dma(module):
     VITIS_BIN_DIR = AIETOOLS_DIR.parent / "bin"
     RDI_DATADIR = f"{AIETOOLS_DIR}/data"
     XRT_DIR = Path(os.getenv("XRT_DIR", "/opt/xilinx/xrt")).absolute()
+    XILINXD_LICENSE_FILE = Path(os.getenv("XILINXD_LICENSE_FILE")).absolute()
     ld_path = [
         os.getenv("LD_LIBRARY_PATH"),
         f"{AIETOOLS_DIR}/lib/lnx64.o",
@@ -1223,7 +1230,8 @@ def add_one_using_dma(module):
         "LD_LIBRARY_PATH": ld_path,
         "RDI_DATADIR": RDI_DATADIR,
         "PATH": path,
-        "XILINXD_LICENSE_FILE": os.getenv("XILINXD_LICENSE_FILE"),
+        "XILINXD_LICENSE_FILE": XILINXD_LICENSE_FILE,
+        "XILINX_XRT": XRT_DIR,
     }
 
     xchess_args = [
@@ -1337,9 +1345,28 @@ def add_one_using_dma(module):
         f"AIE_PARTITION:JSON:{WORKDIR / 'aie_partition.json'}",
         "--force",
         "--output",
-        "final.xclbin",
+        f"{WORKDIR / 'final.xclbin'}",
     ]
     subprocess.run(cmd, check=True, cwd=WORKDIR, env=env)
+
+    handle = subprocess.run(
+        [
+            "flock",
+            "/tmp/ipu.lock",
+            "/opt/xilinx/xrt/amdaie/setup_xclbin_firmware.sh",
+            "-dev",
+            "Phoenix",
+            "-xclbin",
+            f"{WORKDIR / 'final.xclbin'}",
+        ],
+        capture_output=True,
+        cwd=WORKDIR,
+        env=env,
+    )
+    stderr = handle.stderr.decode("utf-8").strip()
+    if len(stderr):
+        print(f"{stderr=}", file=sys.stderr)
+        assert False
 
     ipu_insts = ipu_instgen(generated_ipu_insts.operation)
     # CHECK: 00000011
@@ -1387,39 +1414,26 @@ def add_one_using_dma(module):
     # CHECK: 80000001
     # CHECK: 03000000
     # CHECK: 00010100
-    print(ipu_insts)
+    print("\n".join(ipu_insts))
 
-    with open(WORKDIR / "insts.txt", "w") as f:
-        f.write(ipu_insts)
+    xclbin = XCLBin(f"{WORKDIR / 'final.xclbin'}", "MLIR_AIE")
+    ipu_insts = [int(inst, 16) for inst in ipu_insts]
+    xclbin.load_ipu_instructions(ipu_insts)
+    inps, outps = xclbin.mmap_buffers([(64,), (64,)], [(64,)], np.int32)
 
-    cmd = [
-        "g++",
-        "-std=gnu++17",
-        "-Wl,--no-as-needed",
-        f"-I{XRT_DIR}/include",
-        f"-L{XRT_DIR}/lib",
-        "-luuid",
-        "-lxrt_coreutil",
-        "-o",
-        "test.exe",
-        str(Path(__file__).parent.absolute() / "test.cpp"),
-    ]
-    subprocess.run(cmd, check=True, cwd=WORKDIR)
-    assert (WORKDIR / "test.exe").exists()
-    handle = subprocess.run(
-        [
-            "flock",
-            "/tmp/ipu.lock",
-            "/opt/xilinx/run_on_ipu.sh",
-            f"{WORKDIR}/test.exe",
-            # this doesn't do anything but it's to satisfy run_on_ipu (for now)
-            f"{WORKDIR}/final.xclbin",
-        ],
-        check=True,
-        capture_output=True,
-        cwd=WORKDIR,
-        env=env,
-    )
+    wrap_A = np.asarray(inps[0])
+    wrap_C = np.asarray(outps[0])
 
-    # CHECK: PASS!
-    print(handle.stdout.decode("utf-8").strip())
+    A = np.random.randint(0, 10, 64, dtype=np.int32)
+    C = np.zeros(64, dtype=np.int32)
+
+    np.copyto(wrap_A, A, casting="no")
+    np.copyto(wrap_C, C, casting="no")
+
+    xclbin.sync_buffers_to_device()
+    xclbin.run()
+    xclbin.wait()
+    xclbin.sync_buffers_from_device()
+
+    # CHECK: True
+    print(np.allclose(A + 1, wrap_C))

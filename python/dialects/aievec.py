@@ -1,3 +1,6 @@
+# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 from ._aievec_ops_gen import *
 
 from .._mlir_libs._aie import *
