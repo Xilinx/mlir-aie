@@ -260,6 +260,33 @@ def aie_target_defines(aie_target):
     return ["-D__AIEARCH__=10"]
 
 
+def chesshack(llvmir_chesslinked):
+    llvmir_chesslinked = (
+        llvmir_chesslinked.replace("memory(none)", "readnone")
+        .replace("memory(read)", "readonly")
+        .replace("memory(write)", "writeonly")
+        .replace("memory(argmem: readwrite)", "argmemonly")
+        .replace("memory(argmem: read)", "argmemonly readonly")
+        .replace("memory(argmem: write)", "argmemonly writeonly")
+        .replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly")
+        .replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly")
+        .replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly")
+        .replace(
+            "memory(argmem: readwrite, inaccessiblemem: readwrite)",
+            "inaccessiblemem_or_argmemonly",
+        )
+        .replace(
+            "memory(argmem: read, inaccessiblemem: read)",
+            "inaccessiblemem_or_argmemonly readonly",
+        )
+        .replace(
+            "memory(argmem: write, inaccessiblemem: write)",
+            "inaccessiblemem_or_argmemonly writeonly",
+        )
+    )
+    return llvmir_chesslinked
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -310,45 +337,30 @@ class FlowRunner:
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
     async def chesshack(self, task, llvmir, chess_intrinsic_wrapper_ll_path):
         llvmir_chesshack = llvmir + "chesshack.ll"
-        llvmir_chesslinked = llvmir + "chesslinked.ll"
+        llvmir_chesslinked_path = llvmir + "chesslinked.ll"
         if not self.opts.execute:
-            return llvmir_chesslinked
+            return llvmir_chesslinked_path
         llvmir = await read_file_async(llvmir)
 
         await write_file_async(llvmir, llvmir_chesshack)
         assert os.path.exists(llvmir_chesshack)
-        # fmt: off
-        await self.do_call(task, ["llvm-link", llvmir_chesshack, chess_intrinsic_wrapper_ll_path, "-S", "-o", llvmir_chesslinked])
-        # fmt: on
-
-        llvmir_chesslinked_ = await read_file_async(llvmir_chesslinked)
-        llvmir_chesslinked_ = (
-            llvmir_chesslinked_.replace("memory(none)", "readnone")
-            .replace("memory(read)", "readonly")
-            .replace("memory(write)", "writeonly")
-            .replace("memory(argmem: readwrite)", "argmemonly")
-            .replace("memory(argmem: read)", "argmemonly readonly")
-            .replace("memory(argmem: write)", "argmemonly writeonly")
-            .replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly")
-            .replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly")
-            .replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly")
-            .replace(
-                "memory(argmem: readwrite, inaccessiblemem: readwrite)",
-                "inaccessiblemem_or_argmemonly",
-            )
-            .replace(
-                "memory(argmem: read, inaccessiblemem: read)",
-                "inaccessiblemem_or_argmemonly readonly",
-            )
-            .replace(
-                "memory(argmem: write, inaccessiblemem: write)",
-                "inaccessiblemem_or_argmemonly writeonly",
-            )
+        await self.do_call(
+            task,
+            [
+                "llvm-link",
+                llvmir_chesshack,
+                chess_intrinsic_wrapper_ll_path,
+                "-S",
+                "-o",
+                llvmir_chesslinked_path,
+            ],
         )
 
-        await write_file_async(llvmir_chesslinked_, llvmir_chesslinked)
+        llvmir_chesslinked_ir = await read_file_async(llvmir_chesslinked_path)
+        llvmir_chesslinked_ir = chesshack(llvmir_chesslinked_ir)
+        await write_file_async(llvmir_chesslinked_ir, llvmir_chesslinked_path)
 
-        return llvmir_chesslinked
+        return llvmir_chesslinked_path
 
     async def prepare_for_chesshack(self, task, aie_target):
         if opts.compile and opts.xchesscc:
