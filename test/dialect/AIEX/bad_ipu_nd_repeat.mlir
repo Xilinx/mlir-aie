@@ -13,16 +13,8 @@
 module {
   aie.device(ipu) {
     func.func @sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
-      %c0 = arith.constant 0 : i32
-      %c1 = arith.constant 1 : i32
-      %c2 = arith.constant 2 : i32
-      %c4 = arith.constant 4 : i32
-      %c8 = arith.constant 8 : i32
-      %c16 = arith.constant 16 : i32
-      %c32 = arith.constant 32 : i32
-      %c128 = arith.constant 128 : i32
       // expected-error@+1 {{Length 3 exceeds the [1:64] range}}
-      aiex.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8]) { metadata = @of_fromMem, id = 0 : i32 } : (i32, i32, memref<128x4x2x8xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
+      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<128x4x2x8xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [128 : i32, 2 : i32, 2 : i32, 8 : i32], strides = [0 : i32, 16 : i32, 8 : i32],  metadata = @of_fromMem, id = 0 : i32 }
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)

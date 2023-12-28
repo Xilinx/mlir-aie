@@ -29,37 +29,25 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
         if offsets is None:
             offsets = [0] * 4
         symMetadata = FlatSymbolRefAttr.get(metadata)
-        iTy = IntegerType.get_signless(32)
         x = 0
         y = 0
-        intX = arith.ConstantOp(iTy, IntegerAttr.get(iTy, x))
-        intY = arith.ConstantOp(iTy, IntegerAttr.get(iTy, y))
-        valueOffsets = []
-        valueLengths = []
-        valueStrides = []
-        for i in offsets:
-            valueOffsets.append(arith.ConstantOp(iTy, IntegerAttr.get(iTy, i)))
-        for i in lengths:
-            valueLengths.append(arith.ConstantOp(iTy, IntegerAttr.get(iTy, i)))
-        for i in strides:
-            valueStrides.append(arith.ConstantOp(iTy, IntegerAttr.get(iTy, i)))
         super().__init__(
             metadata=symMetadata,
             id=bd_id,
-            x=intX,
-            y=intY,
+            x=x,
+            y=y,
             memref=mem,
-            offset3=valueOffsets[0],
-            offset2=valueOffsets[1],
-            offset1=valueOffsets[2],
-            offset0=valueOffsets[3],
-            length3=valueLengths[0],
-            length2=valueLengths[1],
-            length1=valueLengths[2],
-            length0=valueLengths[3],
-            stride3=valueStrides[0],
-            stride2=valueStrides[1],
-            stride1=valueStrides[2],
+            offset3=offsets[0],
+            offset2=offsets[1],
+            offset1=offsets[2],
+            offset0=offsets[3],
+            length3=lengths[0],
+            length2=lengths[1],
+            length1=lengths[2],
+            length0=lengths[3],
+            stride3=strides[0],
+            stride2=strides[1],
+            stride1=strides[2],
         )
 
 

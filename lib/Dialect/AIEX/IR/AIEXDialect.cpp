@@ -68,29 +68,11 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
-  uint32_t strides[3]{0, 0, 0};
-  uint32_t lengths[4]{0, 0, 0, 0};
-  if (auto constOp = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[2] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[1] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[0] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[3] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[2] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[1] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[0] = static_cast<uint32_t>(constOp.value());
-  }
+  llvm::SmallVector<uint32_t> strides(
+      llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(getStrides())));
+  llvm::SmallVector<uint32_t> lengths(
+      llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(getLengths())));
+
   if (lengths[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
   if (strides[1] && lengths[1] > 0x3FF)

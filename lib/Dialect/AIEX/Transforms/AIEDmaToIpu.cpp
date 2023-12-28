@@ -194,32 +194,12 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    SmallVector<uint32_t, 4> offsets(4, 0);
-    SmallVector<uint32_t, 4> lengths(4, 1);
-    SmallVector<uint32_t, 3> strides(3, 0);
-
-    if (auto c = op.getOffset0().getDefiningOp<arith::ConstantIntOp>())
-      offsets[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset1().getDefiningOp<arith::ConstantIntOp>())
-      offsets[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset2().getDefiningOp<arith::ConstantIntOp>())
-      offsets[2] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset3().getDefiningOp<arith::ConstantIntOp>())
-      offsets[3] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength0().getDefiningOp<arith::ConstantIntOp>())
-      lengths[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength1().getDefiningOp<arith::ConstantIntOp>())
-      lengths[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength2().getDefiningOp<arith::ConstantIntOp>())
-      lengths[2] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength3().getDefiningOp<arith::ConstantIntOp>())
-      lengths[3] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride1().getDefiningOp<arith::ConstantIntOp>())
-      strides[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride2().getDefiningOp<arith::ConstantIntOp>())
-      strides[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride3().getDefiningOp<arith::ConstantIntOp>())
-      strides[2] = static_cast<uint32_t>(c.value());
+    SmallVector<uint32_t, 4> offsets(
+        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getOffsets())));
+    SmallVector<uint32_t, 4> lengths(
+        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getLengths())));
+    SmallVector<uint32_t, 3> strides(
+        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getStrides())));
 
     // column
     column = IntegerAttr::get(i32ty, col);

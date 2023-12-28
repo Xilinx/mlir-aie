@@ -20,8 +20,8 @@ module @passThroughLine_aie2 {
         %tile00 = aie.tile(0, 0)
         %tile02 = aie.tile(0, 2)
 
-        aie.objectFifo @inOF(%tile00, {%tile02}, 2 : i32) : !aie.objectFifo<memref<1920xui8>>
-        aie.objectFifo @outOF(%tile02, {%tile00}, 2 : i32) : !aie.objectFifo<memref<1920xui8>>
+        aie.objectfifo @inOF(%tile00, {%tile02}, 2 : i32) : !aie.objectfifo<memref<1920xui8>>
+        aie.objectfifo @outOF(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<1920xui8>>
        
         // Define the algorithm for the core of tile(0,2) 
         %core02 = aie.core(%tile02) {
@@ -31,30 +31,28 @@ module @passThroughLine_aie2 {
             %tilewidth  = arith.constant 1920 : i32
             
             scf.for %iter = %c0 to %tileheight step %c1 { 
-                // Acquire objectFifos and get subviews
-                %subviewIn = aie.objectFifo.acquire @inOF(Consume, 1) : !aie.objectFifoSubview<memref<1920xui8>>
-                %elemIn = aie.objectFifo.subview.access %subviewIn[0] : !aie.objectFifoSubview<memref<1920xui8>> -> memref<1920xui8>
-                %subviewOut = aie.objectFifo.acquire @outOF(Produce, 1) : !aie.objectFifoSubview<memref<1920xui8>>
-                %elemOut = aie.objectFifo.subview.access %subviewOut[0] : !aie.objectFifoSubview<memref<1920xui8>> -> memref<1920xui8>
+                // Acquire objectfifos and get subviews
+                %subviewIn = aie.objectfifo.acquire @inOF(Consume, 1) : !aie.objectfifosubview<memref<1920xui8>>
+                %elemIn = aie.objectfifo.subview.access %subviewIn[0] : !aie.objectfifosubview<memref<1920xui8>> -> memref<1920xui8>
+                %subviewOut = aie.objectfifo.acquire @outOF(Produce, 1) : !aie.objectfifosubview<memref<1920xui8>>
+                %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<1920xui8>> -> memref<1920xui8>
 
                 func.call @passThroughLine(%elemIn, %elemOut, %tilewidth) : (memref<1920xui8>, memref<1920xui8>, i32) -> ()
 
-                // Release objectFifos
-                aie.objectFifo.release @inOF(Consume, 1)
-                aie.objectFifo.release @outOF(Produce, 1)
+                // Release objectfifos
+                aie.objectfifo.release @inOF(Consume, 1)
+                aie.objectfifo.release @outOF(Produce, 1)
             }
             aie.end
         } { link_with="passThrough.cc.o" } // indicate kernel object name used by this core
 
         func.func @sequence(%in : memref<518400xi32>, %arg1 : memref<1xi32>, %out : memref<518400xi32>) {
-            %c0 = arith.constant 0 : i32
-            %c1 = arith.constant 1 : i32
-            %tileheight = arith.constant 1080  : i32
-            %tilewidth  = arith.constant 480 : i32  // in 32b words so tileWidth/4
+            // %tileheight = arith.constant 1080  : i32
+            //%tilewidth  = arith.constant 480 : i32  // in 32b words so tileWidth/4
 
             //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-            aiex.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth]) { metadata = @inOF, id = 1 : i32 } : (i32, i32, memref<518400xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
-            aiex.ipu.dma_memcpy_nd (%c0, %c0, %out[%c0, %c0, %c0, %c0][%c1, %c1, %tileheight, %tilewidth][%c0, %c0, %tilewidth]) { metadata = @outOF, id = 0 : i32 } : (i32, i32, memref<518400xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
+            aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<518400xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @inOF, id = 1 : i32 }
+            aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<518400xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @outOF, id = 0 : i32 }
             aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
             return
         }

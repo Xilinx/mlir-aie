@@ -465,33 +465,18 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
 def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
   let summary = "half dma operator";
   let arguments = (
-    ins I32:$x,
-        I32:$y,
+    ins I32Attr:$x,
+        I32Attr:$y,
         AnyMemRef:$memref,
-        I32:$offset3,
-        I32:$offset2,
-        I32:$offset1,
-        I32:$offset0,
-        I32:$length3,
-        I32:$length2,
-        I32:$length1,
-        I32:$length0,
-        I32:$stride3,
-        I32:$stride2,
-        I32:$stride1,
+        // NOTE: these are in reverse order: offset3, offset2, ...
+        ConfinedAttr<I32ArrayAttr, [ArrayCount<4>]>:$offsets,
+        ConfinedAttr<I32ArrayAttr, [ArrayCount<4>]>:$lengths,
+        ConfinedAttr<I32ArrayAttr, [ArrayCount<3>]>:$strides,
         FlatSymbolRefAttr:$metadata,
         I32Attr:$id
   );
-  let results = (outs );
   let assemblyFormat = [{
-    `(` $x `,`$y `,`$memref
-    `[` $offset3`,`$offset2`,`$offset1`,`$offset0 `]`
-    `[` $length3`,`$length2`,`$length1`,`$length0 `]`
-    `[` $stride3`,`$stride2`,`$stride1 `]` `)` attr-dict `:`
-    `(` type($x)`,`type($y)`,`type($memref)`,`
-    `[` type($offset3)`,`type($offset2)`,`type($offset1)`,` type($offset0) `]` `,`
-    `[` type($length3)`,`type($length2)`,`type($length1)`,` type($length0) `]` `,`
-    `[` type($stride3)`,`type($stride2)`,`type($stride1) `]` `)`
+    `(` $x `,` $y `,` $memref `:` type($memref) `)` attr-dict
   }];
   let hasVerifier = 1;
   let description = [{
