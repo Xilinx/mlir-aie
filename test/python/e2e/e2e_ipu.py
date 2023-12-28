@@ -28,6 +28,7 @@ from aie.compiler.aiecc.main import (
     emit_design_bif,
     emit_design_kernel_json,
     mem_topology,
+    chesshack,
 )
 
 from aie.xrt import XCLBin
@@ -84,54 +85,6 @@ MM2S = DMAChannelDir.MM2S
 Acquire = LockAction.Acquire
 AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
-
-
-def chesshack(llvmir):
-    llvmir = llvmir.replace("noundef", "")
-    llvmir = re.sub(r"noalias_sidechannel[^,],", "", llvmir)
-
-    llvmir_chesslinked_ = llvmir
-    llvmir_chesslinked_ = llvmir_chesslinked_.replace("noundef", "")
-    # Formal function argument names not used in older LLVM
-    llvmir_chesslinked_ = re.sub(
-        r"^define .*@.*",
-        lambda m: re.sub(r"%[0-9]*", "", m.group(0)),
-        llvmir_chesslinked_,
-        flags=re.MULTILINE,
-    )
-    llvmir_chesslinked_ = (
-        llvmir_chesslinked_.replace("mustprogress", "")
-        .replace("poison", "undef")
-        .replace("nocallback", "")
-        .replace("memory(none)", "readnone")
-        .replace("memory(read)", "readonly")
-        .replace("memory(write)", "writeonly")
-        .replace("memory(argmem: readwrite)", "argmemonly")
-        .replace("memory(argmem: read)", "argmemonly readonly")
-        .replace("memory(argmem: write)", "argmemonly writeonly")
-        .replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly")
-        .replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly")
-        .replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly")
-        .replace(
-            "memory(argmem: readwrite, inaccessiblemem: readwrite)",
-            "inaccessiblemem_or_argmemonly",
-        )
-        .replace(
-            "memory(argmem: read, inaccessiblemem: read)",
-            "inaccessiblemem_or_argmemonly readonly",
-        )
-        .replace(
-            "memory(argmem: write, inaccessiblemem: write)",
-            "inaccessiblemem_or_argmemonly writeonly",
-        )
-    )
-    llvmir_chesslinked_ = re.sub(
-        r'target triple = "aie.*"',
-        'target triple = "pdarch-unknown-unknown-elf"',
-        llvmir_chesslinked_,
-    )
-
-    return llvmir_chesslinked_
 
 
 def extract_input_files(core_bcf):
@@ -568,7 +521,7 @@ def add_one_using_dma(module):
 
     # CHECK: ; ModuleID = 'aie-llvm-link'
     # CHECK: source_filename = "aie-llvm-link"
-    # CHECK: target triple = "pdarch-unknown-unknown-elf"
+    # CHECK: target triple = "aie2"
     #
     # CHECK: %struct.ipd.custom_type.uint2_t.uint2_t = type { i2 }
     #
@@ -577,7 +530,7 @@ def add_one_using_dma(module):
     # CHECK: @objFifo_in1_cons_buff_1 = external global [8 x i32]
     # CHECK: @objFifo_in1_cons_buff_0 = external global [8 x i32]
     #
-    # CHECK: define void @bobsyouruncle(ptr , ptr , ptr ) {
+    # CHECK: define void @bobsyouruncle(ptr %0, ptr %1, ptr %2) {
     # CHECK:   ret void
     # CHECK: }
     #
@@ -653,13 +606,13 @@ def add_one_using_dma(module):
     #
     # CHECK: declare void @llvm.aie2.acquire(i32, i32)
     #
-    # CHECK: ; Function Attrs:  nofree nosync nounwind willreturn inaccessiblememonly writeonly
-    # CHECK: declare void @llvm.assume(i1 ) #0
+    # CHECK: ; Function Attrs: nocallback nofree nosync nounwind willreturn inaccessiblememonly writeonly
+    # CHECK: declare void @llvm.assume(i1 noundef) #0
     #
     # CHECK: declare void @llvm.aie2.release(i32, i32)
     #
-    # CHECK: ; Function Attrs:  nounwind
-    # CHECK: define dso_local void @llvm___aie2___acquire(i32  , i32  ) local_unnamed_addr addrspace(1) #1 {
+    # CHECK: ; Function Attrs: mustprogress nounwind
+    # CHECK: define dso_local void @llvm___aie2___acquire(i32 noundef %0, i32 noundef %1) local_unnamed_addr addrspace(1) #1 {
     # CHECK:   tail call addrspace(1) void @llvm.chess_memory_fence()
     # CHECK:   tail call addrspace(1) void @_Z25chess_separator_schedulerv() #5
     # CHECK:   tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_acquire_guarded___uint___uint(i32 zeroext %0, i32 zeroext %1) #5
@@ -668,7 +621,7 @@ def add_one_using_dma(module):
     # CHECK:   ret void
     # CHECK: }
     #
-    # CHECK: ; Function Attrs:  nounwind willreturn
+    # CHECK: ; Function Attrs: mustprogress nounwind willreturn
     # CHECK: declare void @llvm.chess_memory_fence() addrspace(1) #2
     #
     # CHECK: ; Function Attrs: nounwind inaccessiblememonly
@@ -677,8 +630,8 @@ def add_one_using_dma(module):
     # CHECK: ; Function Attrs: nounwind inaccessiblememonly
     # CHECK: declare dso_local x86_regcallcc void @__regcall3__chessintr_void_acquire_guarded___uint___uint(i32 zeroext, i32 zeroext) local_unnamed_addr addrspace(1) #3
     #
-    # CHECK: ; Function Attrs:  nounwind
-    # CHECK: define dso_local void @llvm___aie2___release(i32  , i32  ) local_unnamed_addr addrspace(1) #1 {
+    # CHECK: ; Function Attrs: mustprogress nounwind
+    # CHECK: define dso_local void @llvm___aie2___release(i32 noundef %0, i32 noundef %1) local_unnamed_addr addrspace(1) #1 {
     # CHECK:   tail call addrspace(1) void @llvm.chess_memory_fence()
     # CHECK:   tail call addrspace(1) void @_Z25chess_separator_schedulerv() #5
     # CHECK:   tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_release_guarded___uint___sint(i32 zeroext %0, i32 signext %1) #5
@@ -705,9 +658,9 @@ def add_one_using_dma(module):
     # CHECK:   ret void
     # CHECK: }
     #
-    # CHECK: attributes #0 = {  nofree nosync nounwind willreturn inaccessiblememonly writeonly }
-    # CHECK: attributes #1 = {  nounwind "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
-    # CHECK: attributes #2 = {  nounwind willreturn }
+    # CHECK: attributes #0 = { nocallback nofree nosync nounwind willreturn inaccessiblememonly writeonly }
+    # CHECK: attributes #1 = { mustprogress nounwind "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+    # CHECK: attributes #2 = { mustprogress nounwind willreturn }
     # CHECK: attributes #3 = { nounwind inaccessiblememonly "frame-pointer"="all" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
     # CHECK: attributes #4 = { nounwind "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
     # CHECK: attributes #5 = { nounwind inaccessiblememonly "no-builtin-memcpy" }
@@ -1211,25 +1164,6 @@ def add_one_using_dma(module):
     ]
     subprocess.run(cmd, check=True, cwd=WORKDIR, env=env)
 
-    handle = subprocess.run(
-        [
-            "flock",
-            "/tmp/ipu.lock",
-            "/opt/xilinx/xrt/amdaie/setup_xclbin_firmware.sh",
-            "-dev",
-            "Phoenix",
-            "-xclbin",
-            f"{WORKDIR / 'final.xclbin'}",
-        ],
-        capture_output=True,
-        cwd=WORKDIR,
-        env=env,
-    )
-    stderr = handle.stderr.decode("utf-8").strip()
-    if len(stderr):
-        print(f"{stderr=}", file=sys.stderr)
-        assert False
-
     ipu_insts = ipu_instgen(generated_ipu_insts.operation)
     # CHECK: 00000011
     # CHECK: 01000405
@@ -1277,6 +1211,25 @@ def add_one_using_dma(module):
     # CHECK: 03000000
     # CHECK: 00010100
     print("\n".join(ipu_insts))
+
+    handle = subprocess.run(
+        [
+            "flock",
+            "/tmp/ipu.lock",
+            "/opt/xilinx/xrt/amdaie/setup_xclbin_firmware.sh",
+            "-dev",
+            "Phoenix",
+            "-xclbin",
+            f"{WORKDIR / 'final.xclbin'}",
+        ],
+        capture_output=True,
+        cwd=WORKDIR,
+        env=env,
+    )
+    stderr = handle.stderr.decode("utf-8").strip()
+    if len(stderr):
+        print(f"{stderr=}", file=sys.stderr)
+        assert False
 
     xclbin = XCLBin(f"{WORKDIR / 'final.xclbin'}", "MLIR_AIE")
     ipu_insts = [int(inst, 16) for inst in ipu_insts]
