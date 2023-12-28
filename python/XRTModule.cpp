@@ -149,6 +149,8 @@ PYBIND11_MODULE(_xrt, m) {
              const std::vector<std::vector<int>> &outputShapes,
              const py::object &npFormat) {
             auto npy = py::module_::import("numpy");
+            if (npFormat.is(npy.attr("int16")))
+              return self.mmapBuffers<int16_t>(inputShapes, outputShapes);
             if (npFormat.is(npy.attr("int32")))
               return self.mmapBuffers<int32_t>(inputShapes, outputShapes);
             if (npFormat.is(npy.attr("float32")))

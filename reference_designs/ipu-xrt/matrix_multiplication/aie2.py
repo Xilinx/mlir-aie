@@ -32,7 +32,7 @@ def my_matmul():
     M_div_m = M // m
     K_div_k = K // k
     N_div_n = N // n
-    tiles = M_div_m * N_div_n
+    slices = M_div_m * N_div_n
 
     # Matrix A: MxK, submatrices a: mxk
     k_in_i32s = k * word_size_in // 4
@@ -139,7 +139,7 @@ def my_matmul():
             @core(compute_tile2, "mm.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles):
+                    for _ in for_(slices):
                         elem_out = acquire(
                             ObjectFifoPort.Produce, "memC", 1, memref_c_ty
                         ).acquired_elem()

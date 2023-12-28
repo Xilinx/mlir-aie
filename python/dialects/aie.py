@@ -77,6 +77,9 @@ def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
 
+BDDimLayout = bd_dim_layout
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(
     tups: List[Union[Attribute, Tuple[int]]], context=None

@@ -3,6 +3,8 @@
 /sandbox*
 /llvm*
 /cmakeModules*
+/cmake-build-debug
+/mlir_install
 .vscode
 __pycache__
 
