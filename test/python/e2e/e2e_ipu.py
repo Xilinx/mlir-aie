@@ -226,28 +226,24 @@ def add_one_using_dma(module):
             arg1: T.memref(32, T.i32()),
             arg2: T.memref(64, T.i32()),
         ):
-            c0_i32 = arith.constant(0)
-            c1_i32 = arith.constant(1)
-            c64_i32 = arith.constant(64)
-
             ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+                0,
+                0,
                 arg0,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
+                [0, 0, 0, 0],
+                [1, 1, 1, 64],
+                [0, 0, 0],
                 metadata="objFifo_in0",
                 id=0,
             )
 
             ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+                0,
+                0,
                 arg2,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
+                [0, 0, 0, 0],
+                [1, 1, 1, 64],
+                [0, 0, 0],
                 metadata="objFifo_out0",
                 id=1,
             )

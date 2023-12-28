@@ -90,11 +90,8 @@ Release = LockAction.Release
 # CHECK:       aie.end
 # CHECK:     } {link_with = "scale.o"}
 # CHECK:     func.func @sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c1_i32 = arith.constant 1 : i32
-# CHECK:       %c4096_i32 = arith.constant 4096 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<4096xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], strides = [0 : i32, 0 : i32, 0 : i32], id = 0 : i32, metadata = @out}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<4096xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], strides = [0 : i32, 0 : i32, 0 : i32], id = 1 : i32, metadata = @in}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<4096xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], metadata = @out, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<4096xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], metadata = @in, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -204,19 +201,11 @@ def my_vector_scalar(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "mm.o"}
 # CHECK:     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
-# CHECK:       %c2048_i32 = arith.constant 2048 : i32
-# CHECK:       %c16_i32 = arith.constant 16 : i32
-# CHECK:       %c4_i32 = arith.constant 4 : i32
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c2_i32 = arith.constant 2 : i32
-# CHECK:       %c64_i32 = arith.constant 64 : i32
-# CHECK:       %c32_i32 = arith.constant 32 : i32
-# CHECK:       %c4096_i32 = arith.constant 4096 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 2 : i32, 64 : i32, 32 : i32], strides = [4096 : i32, 32 : i32, 64 : i32], id = 0 : i32, metadata = @outC}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], strides = [0 : i32, 16 : i32, 64 : i32], id = 1 : i32, metadata = @inA}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], strides = [32 : i32, 2048 : i32, 64 : i32], id = 2 : i32, metadata = @inB}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 4096 : i32, 4096 : i32], lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], strides = [0 : i32, 16 : i32, 64 : i32], id = 3 : i32, metadata = @inA}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], strides = [32 : i32, 2048 : i32, 64 : i32], id = 4 : i32, metadata = @inB}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) {id = 0 : i32, lengths = [2 : i32, 2 : i32, 64 : i32, 32 : i32], metadata = @outC, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [4096 : i32, 32 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 1 : i32, lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], metadata = @inA, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 16 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 2 : i32, lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], metadata = @inB, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [32 : i32, 2048 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 3 : i32, lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], metadata = @inA, offsets = [0 : i32, 0 : i32, 0 : i32, 4096 : i32], strides = [0 : i32, 16 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 4 : i32, lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], metadata = @inB, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [32 : i32, 2048 : i32, 64 : i32]}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -534,12 +523,8 @@ def my_matmul(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "combined_gray2rgba_addWeighted.a"}
 # CHECK:     func.func @sequence(%arg0: memref<2304xi32>, %arg1: memref<2304xi32>, %arg2: memref<2304xi32>) {
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c1_i32 = arith.constant 1 : i32
-# CHECK:       %c36_i32 = arith.constant 36 : i32
-# CHECK:       %c64_i32 = arith.constant 64 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<2304xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 64 : i32], id = 0 : i32, metadata = @outOF_L2L3}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<2304xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 64 : i32], id = 1 : i32, metadata = @inOF_L3L2}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<2304xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], metadata = @outOF_L2L3, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<2304xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], metadata = @inOF_L3L2, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 64 : i32]}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -903,11 +888,8 @@ def edge_detect(module):
 #       aie.end
 #     }
 #     func.func @sequence(%in : memref<64xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
-#       %c0 = arith.constant 0 : i32
-#       %c1 = arith.constant 1 : i32
-#       %c64 = arith.constant 64 : i32
-#       aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 0 : i32],  metadata = @objFifo_out0, id = 1 : i32 }
-#       aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 0 : i32],  metadata = @objFifo_in0, id = 0 : i32 }
+#       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @out0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+#       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @in0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
 #       aiex.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
 #       return
 #     }
@@ -1667,11 +1649,8 @@ def my_passthrough(module):
 # CHECK:    }
 # CHECK:    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
 # CHECK:    func.func @bobsyouruncle(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
-# CHECK:      %c0_i32 = arith.constant 0 : i32
-# CHECK:      %c1_i32 = arith.constant 1 : i32
-# CHECK:      %c64_i32 = arith.constant 64 : i32
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 0 : i32], id = 0 : i32, metadata = @objFifo_in0}
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], strides = [0 : i32, 0 : i32, 0 : i32], id = 1 : i32, metadata = @objFifo_out0}
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @objFifo_in0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @objFifo_out0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
 # CHECK:      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:      return
 # CHECK:    }
@@ -1889,28 +1868,24 @@ def add_one_using_dma(module):
             arg1: T.memref(32, T.i32()),
             arg2: T.memref(64, T.i32()),
         ):
-            c0_i32 = arith.constant(0)
-            c1_i32 = arith.constant(1)
-            c64_i32 = arith.constant(64)
-
             ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+                0,
+                0,
                 arg0,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
+                [0, 0, 0, 0],
+                [1, 1, 1, 64],
+                [0, 0, 0],
                 metadata="objFifo_in0",
                 id=0,
             )
 
             ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+                0,
+                0,
                 arg2,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
+                [0, 0, 0, 0],
+                [1, 1, 1, 64],
+                [0, 0, 0],
                 metadata="objFifo_out0",
                 id=1,
             )

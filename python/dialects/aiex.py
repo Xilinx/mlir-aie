@@ -28,26 +28,17 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
             lengths = [0] * 4
         if offsets is None:
             offsets = [0] * 4
-        symMetadata = FlatSymbolRefAttr.get(metadata)
         x = 0
         y = 0
         super().__init__(
-            metadata=symMetadata,
+            metadata=metadata,
             id=bd_id,
             x=x,
             y=y,
             memref=mem,
-            offset3=offsets[0],
-            offset2=offsets[1],
-            offset1=offsets[2],
-            offset0=offsets[3],
-            length3=lengths[0],
-            length2=lengths[1],
-            length1=lengths[2],
-            length0=lengths[3],
-            stride3=strides[0],
-            stride2=strides[1],
-            stride1=strides[2],
+            offsets=offsets,
+            lengths=lengths,
+            strides=strides,
         )
 
 

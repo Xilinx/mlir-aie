@@ -82,6 +82,7 @@ config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 
 opencv_flags = ""
 if config.opencv_include_dir and config.opencv_libs:
+    print("opencv found")
     config.available_features.add("opencv")
     opencv_flags = opencv_flags + " -I" + config.opencv_include_dir
     if config.opencv_lib_dir:
@@ -89,6 +90,7 @@ if config.opencv_include_dir and config.opencv_libs:
     libs = config.opencv_libs.split(";")
     opencv_flags = opencv_flags + " " + " ".join(["-l" + l for l in libs])
 else:
+    print("opencv not found")
     opencv_flags = ""
 config.substitutions.append(("%opencv_flags", opencv_flags))
 
