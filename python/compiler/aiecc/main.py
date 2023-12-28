@@ -23,6 +23,7 @@ import tempfile
 from textwrap import dedent
 
 import aiofiles
+from aie.extras.util import find_ops
 
 from aie.passmanager import PassManager
 from aie.ir import Module, Context, Location
@@ -61,6 +62,204 @@ async def write_file_async(file_content: str, file_path: str):
         await f.write(file_content)
 
 
+def emit_design_kernel_json(
+    kernel_name="MLIR_AIE",
+    kernel_id="0x901",
+    instance_name="MLIRAIE",
+    buffer_args=None,
+):
+    if buffer_args is None:
+        buffer_args = ["in", "tmp", "out"]
+
+    arguments = [
+        {
+            "name": "instr",
+            "memory-connection": "SRAM",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": "0x00",
+        },
+        {
+            "name": "ninstr",
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": "0x08",
+        },
+    ]
+
+    offset = 0x10
+    for buf in buffer_args:
+        arg = {
+            "name": buf,
+            "memory-connection": "HOST",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": str(hex(offset)),
+        }
+        arguments.append(arg)
+        offset += 0x8
+
+    return {
+        "ps-kernels": {
+            "kernels": [
+                {
+                    "name": kernel_name,
+                    "type": "dpu",
+                    "extended-data": {
+                        "subtype": "DPU",
+                        "functional": "1",
+                        "dpu_kernel_id": kernel_id,
+                    },
+                    "arguments": arguments,
+                    "instances": [{"name": instance_name}],
+                }
+            ]
+        }
+    }
+
+
+mem_topology = {
+    "mem_topology": {
+        "m_count": "2",
+        "m_mem_data": [
+            {
+                "m_type": "MEM_DRAM",
+                "m_used": "1",
+                "m_sizeKB": "0x10000",
+                "m_tag": "HOST",
+                "m_base_address": "0x4000000",
+            },
+            {
+                "m_type": "MEM_DRAM",
+                "m_used": "1",
+                "m_sizeKB": "0xc000",
+                "m_tag": "SRAM",
+                "m_base_address": "0x4000000",
+            },
+        ],
+    }
+}
+
+
+def emit_partition(mlir_module_str, kernel_id="0x901"):
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        tiles = find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
+        )
+        min_col = min([t.col.value for t in tiles])
+        max_col = max([t.col.value for t in tiles])
+
+    uuid = random.randint(2222, 9999)
+    num_cols = max_col - min_col + 1
+    return {
+        "aie_partition": {
+            "name": "QoS",
+            "operations_per_cycle": "2048",
+            "inference_fingerprint": "23423",
+            "pre_post_fingerprint": "12345",
+            "partition": {
+                "column_width": num_cols,
+                "start_columns": [*range(1, 6 - num_cols)],
+            },
+            "PDIs": [
+                {
+                    "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
+                    "file_name": "./design.pdi",
+                    "cdo_groups": [
+                        {
+                            "name": "DPU",
+                            "type": "PRIMARY",
+                            "pdi_id": "0x01",
+                            "dpu_kernel_ids": [kernel_id],
+                            "pre_cdo_groups": ["0xC1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+
+def generate_cores_list(mlir_module_str):
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        return [
+            (
+                c.tile.owner.opview.col.value,
+                c.tile.owner.opview.row.value,
+                c.elf_file.value if c.elf_file is not None else None,
+            )
+            for c in find_ops(
+                module.operation,
+                lambda o: isinstance(o.operation.opview, aiedialect.CoreOp),
+            )
+        ]
+
+
+def emit_design_bif(root_path):
+    return dedent(
+        f"""\
+        all:
+        {{
+          id_code = 0x14ca8093
+          extended_id_code = 0x01
+          image
+          {{
+            name=aie_image, id=0x1c000000
+            {{ type=cdo
+               file={root_path}/aie_cdo_error_handling.bin
+               file={root_path}/aie_cdo_elfs.bin
+               file={root_path}/aie_cdo_init.bin
+               file={root_path}/aie_cdo_enable.bin
+            }}
+          }}
+        }}
+        """
+    )
+
+
+# Extract included files from the given Chess linker script.
+# We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't
+# do this, so we have to explicitly specify included files on the link line.
+async def extract_input_files(file_core_bcf):
+    core_bcf = await read_file_async(file_core_bcf)
+    return " ".join(re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE))
+
+
+def do_run(command, verbose=False):
+    if verbose:
+        print(" ".join(command))
+    m = subprocess.PIPE
+    ret = subprocess.run(command, stdout=m, stderr=m, universal_newlines=True)
+    return ret
+
+
+def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
+    if verbose:
+        print("Running:", pass_pipeline)
+    with Context() as ctx, Location.unknown():
+        module = Module.parse(mlir_module_str)
+        PassManager.parse(pass_pipeline).run(module.operation)
+        mlir_module_str = str(module)
+        if outputfile:
+            with open(outputfile, "w") as g:
+                g.write(mlir_module_str)
+    return mlir_module_str
+
+
+def corefile(dirname, core, ext):
+    col, row, _ = core
+    return os.path.join(dirname, f"core_{col}_{row}.{ext}")
+
+
+def aie_target_defines(aie_target):
+    if aie_target == "AIE2":
+        return ["-D__AIEARCH__=20"]
+    return ["-D__AIEARCH__=10"]
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -70,6 +269,12 @@ class FlowRunner:
         self.progress_bar = None
         self.maxtasks = 5
         self.stopall = False
+        self.peano_clang_path = os.path.join(opts.peano_install_dir, "bin", "clang")
+        self.peano_opt_path = os.path.join(opts.peano_install_dir, "bin", "opt")
+        self.peano_llc_path = os.path.join(opts.peano_install_dir, "bin", "llc")
+
+    def prepend_tmp(self, x):
+        return os.path.join(self.tmpdirname, x)
 
     async def do_call(self, task, command, force=False):
         if self.stopall:
@@ -89,7 +294,7 @@ class FlowRunner:
             ret = 0
         end = time.time()
         if self.opts.verbose:
-            print("Done in %.3f sec: %s" % (end - start, commandstr))
+            print(f"Done in {end - start:.3f} sec: {commandstr}")
         self.runtimes[commandstr] = end - start
         if task:
             self.progress_bar.update(task, advance=1, command="")
@@ -97,81 +302,28 @@ class FlowRunner:
             self.progress_bar._tasks[task].total = self.maxtasks
 
         if ret != 0:
-            self.progress_bar._tasks[task].description = "[red] Error"
+            if task:
+                self.progress_bar._tasks[task].description = "[red] Error"
             print("Error encountered while running: " + commandstr, file=sys.stderr)
-            sys.exit(1)
-
-    def do_run(self, command):
-        if self.opts.verbose:
-            print(" ".join(command))
-        m = subprocess.PIPE
-        ret = subprocess.run(command, stdout=m, stderr=m, universal_newlines=True)
-        return ret
-
-    def run_passes(self, pass_pipeline, mlir_module_str, outputfile=None):
-        if self.opts.verbose:
-            print("Running:", pass_pipeline)
-        with Context() as ctx, Location.unknown():
-            module = Module.parse(mlir_module_str)
-            PassManager.parse(pass_pipeline).run(module.operation)
-            mlir_module_str = str(module)
-            if outputfile:
-                with open(outputfile, "w") as g:
-                    g.write(mlir_module_str)
-        return mlir_module_str
-
-    def corefile(self, dirname, core, ext):
-        (corecol, corerow, _) = core
-        return os.path.join(dirname, "core_%d_%d.%s" % (corecol, corerow, ext))
-
-    def tmpcorefile(self, core, ext):
-        return self.corefile(self.tmpdirname, core, ext)
-
-    def aie_target_defines(self):
-        result = []
-        if self.aie_target == "AIE2":
-            result += ["-D__AIEARCH__=20"]
-        else:
-            result += ["-D__AIEARCH__=10"]
-        return result
-
-    # Extract included files from the given Chess linker script.
-    # We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't
-    # do this, so we have to explicitly specify included files on the link line.
-    def extract_input_files(self, file_core_bcf):
-        t = self.do_run(["awk", "/_include _file/ {print($3)}", file_core_bcf])
-        return " ".join(t.stdout.split())
+            sys.exit(ret)
 
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
-    async def chesshack(self, task, llvmir):
+    async def chesshack(self, task, llvmir, chess_intrinsic_wrapper_ll_path):
         llvmir_chesshack = llvmir + "chesshack.ll"
         llvmir_chesslinked = llvmir + "chesslinked.ll"
         if not self.opts.execute:
             return llvmir_chesslinked
         llvmir = await read_file_async(llvmir)
-        llvmir = llvmir.replace("noundef", "")
-        llvmir = re.sub(r"noalias_sidechannel[^,],", "", llvmir)
 
         await write_file_async(llvmir, llvmir_chesshack)
         assert os.path.exists(llvmir_chesshack)
         # fmt: off
-        await self.do_call(task, ["llvm-link", llvmir_chesshack, self.chess_intrinsic_wrapper, "-S", "-o", llvmir_chesslinked])
+        await self.do_call(task, ["llvm-link", llvmir_chesshack, chess_intrinsic_wrapper_ll_path, "-S", "-o", llvmir_chesslinked])
         # fmt: on
 
         llvmir_chesslinked_ = await read_file_async(llvmir_chesslinked)
-        llvmir_chesslinked_ = llvmir_chesslinked_.replace("noundef", "")
-        # Formal function argument names not used in older LLVM
-        llvmir_chesslinked_ = re.sub(
-            r"^define .*@.*",
-            lambda m: re.sub(r"%[0-9]*", "", m.group(0)),
-            llvmir_chesslinked_,
-            flags=re.MULTILINE,
-        )
         llvmir_chesslinked_ = (
-            llvmir_chesslinked_.replace("mustprogress", "")
-            .replace("poison", "undef")
-            .replace("nocallback", "")
-            .replace("memory(none)", "readnone")
+            llvmir_chesslinked_.replace("memory(none)", "readnone")
             .replace("memory(read)", "readonly")
             .replace("memory(write)", "writeonly")
             .replace("memory(argmem: readwrite)", "argmemonly")
@@ -193,62 +345,56 @@ class FlowRunner:
                 "inaccessiblemem_or_argmemonly writeonly",
             )
         )
-        llvmir_chesslinked_ = re.sub(
-            r'target triple = "aie.*"',
-            'target triple = "pdarch-unknown-unknown-elf"',
-            llvmir_chesslinked_,
-        )
 
         await write_file_async(llvmir_chesslinked_, llvmir_chesslinked)
 
         return llvmir_chesslinked
 
-    async def prepare_for_chesshack(self, task):
+    async def prepare_for_chesshack(self, task, aie_target):
         if opts.compile and opts.xchesscc:
             install_path = aie.compiler.aiecc.configure.install_path()
             runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
             chess_intrinsic_wrapper_cpp = os.path.join(
-                runtime_lib_path, self.aie_target.upper(), "chess_intrinsic_wrapper.cpp"
+                runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.cpp"
             )
 
-            self.chess_intrinsic_wrapper = os.path.join(
-                self.tmpdirname, "chess_intrinsic_wrapper.ll"
+            chess_intrinsic_wrapper_ll_path = self.prepend_tmp(
+                "chess_intrinsic_wrapper.ll"
             )
 
             # fmt: off
-            await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+f", "+P", "4", chess_intrinsic_wrapper_cpp, "-o", self.chess_intrinsic_wrapper])
+            await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+f", "+P", "4", chess_intrinsic_wrapper_cpp, "-o", chess_intrinsic_wrapper_ll_path])
             # fmt: on
+
             # this has to be here and not higher because there are tests that check for the command string for the above do_call
             if not self.opts.execute:
                 return
             chess_intrinsic_wrapper = await read_file_async(
-                self.chess_intrinsic_wrapper
+                chess_intrinsic_wrapper_ll_path
             )
             chess_intrinsic_wrapper = re.sub(
                 r"^target.*", "", chess_intrinsic_wrapper, flags=re.MULTILINE
             )
-            chess_intrinsic_wrapper = re.sub(
-                r"noalias_sidechannel[^,]*,", "", chess_intrinsic_wrapper
-            )
-            chess_intrinsic_wrapper = re.sub(
-                r"nocallback[^,]*,", "", chess_intrinsic_wrapper
-            )
             await write_file_async(
-                chess_intrinsic_wrapper, self.chess_intrinsic_wrapper
+                chess_intrinsic_wrapper, chess_intrinsic_wrapper_ll_path
             )
+            return chess_intrinsic_wrapper_ll_path
 
-    async def process_core(self, core):
-        peano_path = os.path.join(opts.peano_install_dir, "bin")
-        peano_clang_path = os.path.join(peano_path, "clang")
-        peano_opt_path = os.path.join(peano_path, "opt")
-        peano_llc_path = os.path.join(peano_path, "llc")
+    async def process_core(
+        self,
+        core,
+        aie_target,
+        aie_peano_target,
+        chess_intrinsic_wrapper_ll_path,
+        file_with_addresses,
+    ):
         async with self.limit:
             if self.stopall:
                 return
 
             install_path = aie.compiler.aiecc.configure.install_path()
             runtime_lib_path = os.path.join(
-                install_path, "aie_runtime_lib", self.aie_target.upper()
+                install_path, "aie_runtime_lib", aie_target.upper()
             )
             clang_path = os.path.dirname(shutil.which("clang"))
             # The build path for libc can be very different from where it's installed.
@@ -256,7 +402,7 @@ class FlowRunner:
                 clang_path,
                 "..",
                 "runtimes",
-                "runtimes-" + self.aie_target.lower() + "-none-unknown-elf-bins",
+                "runtimes-" + aie_target.lower() + "-none-unknown-elf-bins",
                 "libc",
                 "lib",
                 "libc.a",
@@ -265,7 +411,7 @@ class FlowRunner:
                 clang_path,
                 "..",
                 "lib",
-                self.aie_target.lower() + "-none-unknown-elf",
+                aie_target.lower() + "-none-unknown-elf",
                 "libc.a",
             )
             me_basic_o = os.path.join(runtime_lib_path, "me_basic.o")
@@ -286,218 +432,62 @@ class FlowRunner:
                 task = None
 
             # fmt: off
-            (corecol, corerow, elf_file) = core
+            corecol, corerow, elf_file = core
             if not opts.unified:
-                file_core = self.tmpcorefile(core, "mlir")
-                await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", self.file_with_addresses, "-o", file_core])
-                file_opt_core = self.tmpcorefile(core, "opt.mlir")
+                file_core = corefile(self.tmpdirname, core, "mlir")
+                await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", file_with_addresses, "-o", file_core])
+                file_opt_core = corefile(self.tmpdirname, core, "opt.mlir")
                 await self.do_call(task, ["aie-opt", *aie_opt_lower_to_llvm_passes, file_core, "-o", file_opt_core])
             if self.opts.xbridge:
-                file_core_bcf = self.tmpcorefile(core, "bcf")
-                await self.do_call(task, ["aie-translate", self.file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
+                file_core_bcf = corefile(self.tmpdirname, core, "bcf")
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
             else:
-                file_core_ldscript = self.tmpcorefile(core, "ld.script")
-                await self.do_call(task, ["aie-translate", self.file_with_addresses, "--aie-generate-ldscript", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
+                file_core_ldscript = corefile(self.tmpdirname, core, "ld.script")
+                await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-ldscript", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_ldscript])
             if not self.opts.unified:
-                file_core_llvmir = self.tmpcorefile(core, "ll")
+                file_core_llvmir = corefile(self.tmpdirname, core, "ll")
                 await self.do_call(task, ["aie-translate", "--mlir-to-llvmir", file_opt_core, "-o", file_core_llvmir])
-                file_core_obj = self.tmpcorefile(core, "o")
+                file_core_obj = corefile(self.tmpdirname, core, "o")
 
-            file_core_elf = elf_file if elf_file else self.corefile(".", core, "elf")
+            file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
 
             if opts.compile and opts.xchesscc:
                 if not opts.unified:
-                    file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
+                    file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, chess_intrinsic_wrapper_ll_path)
                     if self.opts.link and self.opts.xbridge:
-                        link_with_obj = self.extract_input_files(file_core_bcf)
-                        await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
+                        link_with_obj = await extract_input_files(file_core_bcf)
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
-                        await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
-                        await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, "-o", file_core_obj])
+                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
                 else:
-                    file_core_obj = self.file_obj
+                    file_core_obj = self.unified_file_core_obj
                     if opts.link and opts.xbridge:
-                        link_with_obj = self.extract_input_files(file_core_bcf)
-                        await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
+                        link_with_obj = await extract_input_files(file_core_bcf)
+                        await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
-                        await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             elif opts.compile:
                 if not opts.unified:
-                    file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
-                    await self.do_call(task, [peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
-                    await self.do_call(task, [peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=%s" % self.aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
+                    file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
-                    file_core_obj = self.file_obj
+                    file_core_obj = self.unified_file_core_obj
+
                 if opts.link and opts.xbridge:
-                    link_with_obj = self.extract_input_files(file_core_bcf)
-                    await self.do_call(task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
+                    link_with_obj = await extract_input_files(file_core_bcf)
+                    await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
-                    await self.do_call(task, [peano_clang_path, "-O2", "--target=" + self.aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                    await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             self.progress_bar.update(self.progress_bar.task_completed, advance=1)
             if task:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def emit_mem_topology_json(self, output_filename):
-        mem_topology = {
-            "mem_topology": {
-                "m_count": "2",
-                "m_mem_data": [
-                    {
-                        "m_type": "MEM_DRAM",
-                        "m_used": "1",
-                        "m_sizeKB": "0x10000",
-                        "m_tag": "HOST",
-                        "m_base_address": "0x4000000",
-                    },
-                    {
-                        "m_type": "MEM_DRAM",
-                        "m_used": "1",
-                        "m_sizeKB": "0xc000",
-                        "m_tag": "SRAM",
-                        "m_base_address": "0x4000000",
-                    },
-                ],
-            }
-        }
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(mem_topology, indent=2))
-
-    async def emit_design_partition_json(self, output_filename, kernel_id="0x901"):
-        with Context() as ctx, Location.unknown():
-            with open(self.file_with_addresses, "r") as f:
-                mlir_module = Module.parse(f.read())
-
-        def minmax(op, mn=0, mx=0):
-            for r in op.regions:
-                for b in r.blocks:
-                    for o in b.operations:
-                        if isinstance(o.operation.opview, aiedialect.TileOp):
-                            mn = min(mn, o.col.value)
-                            mx = max(mx, o.col.value)
-                        mn, mx = minmax(o, mn, mx)
-            return mn, mx
-
-        mn, mx = minmax(mlir_module.operation)
-        num_cols = 1 + mx - mn
-
-        uuid = random.randint(2222, 9999)
-        partition = {
-            "aie_partition": {
-                "name": "QoS",
-                "operations_per_cycle": "2048",
-                "inference_fingerprint": "23423",
-                "pre_post_fingerprint": "12345",
-                "partition": {
-                    "column_width": num_cols,
-                    "start_columns": [*range(1, 6 - num_cols)],
-                },
-                "PDIs": [
-                    {
-                        "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
-                        "file_name": "./design.pdi",
-                        "cdo_groups": [
-                            {
-                                "name": "DPU",
-                                "type": "PRIMARY",
-                                "pdi_id": "0x01",
-                                "dpu_kernel_ids": [kernel_id],
-                                "pre_cdo_groups": ["0xC1"],
-                            }
-                        ],
-                    }
-                ],
-            }
-        }
-
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(partition, indent=2))
-
-    async def emit_design_kernel_json(
-        self,
-        output_filename,
-        kernel_name="MLIR_AIE",
-        kernel_id="0x901",
-        instance_name="MLIRAIE",
-        buffer_args=None,
-    ):
-        if buffer_args is None:
-            buffer_args = ["in", "tmp", "out"]
-
-        arguments = [
-            {
-                "name": "instr",
-                "memory-connection": "SRAM",
-                "address-qualifier": "GLOBAL",
-                "type": "char *",
-                "offset": "0x00",
-            },
-            {
-                "name": "ninstr",
-                "address-qualifier": "SCALAR",
-                "type": "uint64_t",
-                "offset": "0x08",
-            },
-        ]
-        offset = 0x10
-        for buf in buffer_args:
-            arg = {
-                "name": buf,
-                "memory-connection": "HOST",
-                "address-qualifier": "GLOBAL",
-                "type": "char *",
-                "offset": str(hex(offset)),
-            }
-            arguments.append(arg)
-            offset += 0x8
-        design = {
-            "ps-kernels": {
-                "kernels": [
-                    {
-                        "name": kernel_name,
-                        "type": "dpu",
-                        "extended-data": {
-                            "subtype": "DPU",
-                            "functional": "1",
-                            "dpu_kernel_id": kernel_id,
-                        },
-                        "arguments": arguments,
-                        "instances": [{"name": instance_name}],
-                    }
-                ]
-            }
-        }
-        print(output_filename)
-        with open(output_filename, "w") as f:
-            f.write(json.dumps(design, indent=2))
-
-    async def emit_design_bif(self, path, output_filename):
-        s = dedent(
-            f"""\
-            all:
-            {{
-              id_code = 0x14ca8093
-              extended_id_code = 0x01
-              image
-              {{
-                name=aie_image, id=0x1c000000
-                {{ type=cdo
-                   file={path}/aie_cdo_error_handling.bin
-                   file={path}/aie_cdo_elfs.bin
-                   file={path}/aie_cdo_init.bin
-                   file={path}/aie_cdo_enable.bin
-                }}
-              }}
-            }}
-            """
-        )
-        print(output_filename)
-        with open(output_filename, "w") as f:
-            f.write(s)
-
-    async def process_xclbin_gen(self):
+    async def process_xclbin_gen(self, aie_target):
         async with self.limit:
             if self.stopall:
                 return
@@ -530,25 +520,59 @@ class FlowRunner:
                 shutil.copy(elf_map, self.tmpdirname)
 
             # fmt: off
-            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *self.aie_target_defines(), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", os.path.join(self.tmpdirname, "gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
-            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", os.path.join(self.tmpdirname, "cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
+            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
+            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
             await asyncio.gather(p0, p1)
-            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", os.path.join(self.tmpdirname, "cdo_main.out"), os.path.join(self.tmpdirname, "gen_cdo.o"), os.path.join(self.tmpdirname, "cdo_main.o")])
-
-            if ld_path := os.getenv("LD_LIBRARY_PATH", ""):
-                ld_path += ":"
-            os.environ["LD_LIBRARY_PATH"] = ld_path + xaiengine_lib_path + ":" + os.path.join(opts.aietools_path, "lib", "lnx64.o")
-
-            await self.do_call(task, [os.path.join(self.tmpdirname, "cdo_main.out"), "--work-dir-path", self.tmpdirname + "/"])
-            await self.emit_mem_topology_json(os.path.join(self.tmpdirname, "mem_topology.json"))
-            await self.emit_design_partition_json(os.path.join(self.tmpdirname, "aie_partition.json"), opts.kernel_id)
-            await self.emit_design_kernel_json(os.path.join(self.tmpdirname, "kernels.json"), opts.kernel_name, opts.kernel_id, opts.instance_name, buffers)
-            await self.emit_design_bif(self.tmpdirname, os.path.join(self.tmpdirname, "design.bif"))
-            await self.do_call(task, ["bootgen", "-arch", "versal", "-image", os.path.join(self.tmpdirname, "design.bif"), "-o", os.path.join(self.tmpdirname, "design.pdi"), "-w"])
-            await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + os.path.join(self.tmpdirname, "mem_topology.json"), "--add-kernel", os.path.join(self.tmpdirname, "kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + os.path.join(self.tmpdirname, "aie_partition.json"), "--force", "--output", opts.xclbin_name])
+            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
             # fmt: on
 
-    async def process_host_cgen(self):
+            ld_paths = [
+                os.getenv("LD_LIBRARY_PATH"),
+                xaiengine_lib_path,
+                os.path.join(opts.aietools_path, "lib", "lnx64.o"),
+            ]
+            os.environ["LD_LIBRARY_PATH"] = ":".join(list(filter(None, ld_paths)))
+            await self.do_call(
+                task,
+                [
+                    self.prepend_tmp("cdo_main.out"),
+                    "--work-dir-path",
+                    self.tmpdirname + "/",
+                ],
+            )
+
+            await write_file_async(
+                json.dumps(mem_topology, indent=2),
+                self.prepend_tmp("mem_topology.json"),
+            )
+
+            await write_file_async(
+                json.dumps(
+                    emit_partition(self.mlir_module_str, opts.kernel_id), indent=2
+                ),
+                self.prepend_tmp("aie_partition.json"),
+            )
+
+            await write_file_async(
+                json.dumps(
+                    emit_design_kernel_json(
+                        opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
+                    ),
+                    indent=2,
+                ),
+                self.prepend_tmp("kernels.json"),
+            )
+
+            await write_file_async(
+                emit_design_bif(self.tmpdirname), self.prepend_tmp("design.bif")
+            )
+
+            # fmt: off
+            await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
+            await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
+            # fmt: on
+
+    async def process_host_cgen(self, aie_target, file_with_addresses):
         async with self.limit:
             if self.stopall:
                 return
@@ -561,7 +585,7 @@ class FlowRunner:
                 task = None
 
             # Generate the included host interface
-            file_physical = os.path.join(self.tmpdirname, "input_physical.mlir")
+            file_physical = self.prepend_tmp("input_physical.mlir")
             await self.do_call(
                 task,
                 [
@@ -570,12 +594,12 @@ class FlowRunner:
                     "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
                     "--aie-lower-multicast",
-                    self.file_with_addresses,
+                    file_with_addresses,
                     "-o",
                     file_physical,
                 ],
             )
-            file_inc_cpp = os.path.join(self.tmpdirname, "aie_inc.cpp")
+            file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
             await self.do_call(
                 task,
                 [
@@ -588,7 +612,7 @@ class FlowRunner:
             )
 
             # Optionally generate aie_control.cpp for CDO to XCLBIN backend
-            file_control_cpp = os.path.join(self.tmpdirname, "aie_control.cpp")
+            file_control_cpp = self.prepend_tmp("aie_control.cpp")
             if opts.cdo:
                 await self.do_call(
                     task,
@@ -603,7 +627,7 @@ class FlowRunner:
 
             cmd = ["clang++", "-std=c++11"]
             if opts.host_target:
-                cmd += ["--target=%s" % opts.host_target]
+                cmd += ["--target=" + opts.host_target]
                 if (
                     opts.aiesim
                     and opts.host_target
@@ -618,16 +642,15 @@ class FlowRunner:
                     )
 
             if self.opts.sysroot:
-                cmd += ["--sysroot=%s" % opts.sysroot]
+                cmd += ["--sysroot=" + opts.sysroot]
                 # In order to find the toolchain in the sysroot, we need to have
                 # a 'target' that includes 'linux' and for the 'lib/gcc/$target/$version'
                 # directory to have a corresponding 'include/gcc/$target/$version'.
                 # In some of our sysroots, it seems that we find a lib/gcc, but it
                 # doesn't have a corresponding include/gcc directory.  Instead
                 # force using '/usr/lib,include/gcc'
-
                 if opts.host_target == "aarch64-linux-gnu":
-                    cmd += ["--gcc-toolchain=%s/usr" % opts.sysroot]
+                    cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
 
             install_path = aie.compiler.aiecc.configure.install_path()
             runtime_xaiengine_path = os.path.join(
@@ -648,16 +671,16 @@ class FlowRunner:
 
             cmd += [
                 memory_allocator,
-                "-I%s" % xaiengine_include_path,
-                "-L%s" % xaiengine_lib_path,
+                "-I" + xaiengine_include_path,
+                "-L" + xaiengine_lib_path,
                 "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
-                "-I%s" % self.tmpdirname,
+                "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
                 "-lxaiengine",
             ]
 
-            cmd += self.aie_target_defines()
+            cmd += aie_target_defines(aie_target)
 
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
@@ -666,7 +689,7 @@ class FlowRunner:
             if task:
                 self.progress_bar.update(task, advance=0, visible=False)
 
-    async def gen_sim(self, task):
+    async def gen_sim(self, task, aie_target):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
         # which conflict with the options below (e.g. -o)
         print(opts.host_args)
@@ -674,7 +697,7 @@ class FlowRunner:
             opts.host_args
         )
 
-        sim_dir = os.path.join(self.tmpdirname, "sim")
+        sim_dir = self.prepend_tmp("sim")
         shutil.rmtree(sim_dir, ignore_errors=True)
         subdirs = ["arch", "reports", "config", "ps"]
 
@@ -683,17 +706,14 @@ class FlowRunner:
             os.makedirs(dir, exist_ok=True)
             return dir
 
-        try:
-            [sim_arch_dir, sim_reports_dir, sim_config_dir, sim_ps_dir] = map(
-                make_sim_dir, subdirs
-            )
-        except FileExistsError:
-            pass
+        sim_arch_dir, sim_reports_dir, sim_config_dir, sim_ps_dir = map(
+            make_sim_dir, subdirs
+        )
 
         install_path = aie.compiler.aiecc.configure.install_path()
 
         runtime_simlib_path = os.path.join(
-            install_path, "aie_runtime_lib", self.aie_target.upper(), "aiesim"
+            install_path, "aie_runtime_lib", aie_target.upper(), "aiesim"
         )
         runtime_testlib_path = os.path.join(
             install_path,
@@ -711,7 +731,7 @@ class FlowRunner:
         )
         sim_makefile = os.path.join(runtime_simlib_path, "Makefile")
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
-        file_physical = os.path.join(self.tmpdirname, "input_physical.mlir")
+        file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
             runtime_testlib_path, "libmemory_allocator_sim_aie.a"
         )
@@ -813,7 +833,7 @@ class FlowRunner:
                     "-o",
                     os.path.join(sim_ps_dir, "ps.so"),
                     os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp"),
-                    *self.aie_target_defines(),
+                    *aie_target_defines(aie_target),
                     *host_opts,
                     *sim_cc_args,
                     *sim_link_args,
@@ -832,7 +852,7 @@ class FlowRunner:
             ],
         )
 
-        sim_script = os.path.join(self.tmpdirname, "aiesim.sh")
+        sim_script = self.prepend_tmp("aiesim.sh")
         sim_script_template = dedent(
             """\
             #!/bin/sh
@@ -859,10 +879,6 @@ class FlowRunner:
         print("To run simulation: " + sim_script)
 
     async def run_flow(self):
-        peano_path = os.path.join(opts.peano_install_dir, "bin")
-        peano_clang_path = os.path.join(peano_path, "clang")
-        peano_opt_path = os.path.join(peano_path, "opt")
-        peano_llc_path = os.path.join(peano_path, "llc")
         nworkers = int(opts.nthreads)
         if nworkers == 0:
             nworkers = os.cpu_count()
@@ -881,9 +897,7 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            self.file_with_addresses = os.path.join(
-                self.tmpdirname, "input_with_addresses.mlir"
-            )
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             pass_pipeline = ",".join(
                 [
                     "lower-affine",
@@ -898,43 +912,40 @@ class FlowRunner:
                     "convert-scf-to-cf",
                 ]
             )
-            self.run_passes(
+            run_passes(
                 "builtin.module(" + pass_pipeline + ")",
                 self.mlir_module_str,
-                self.file_with_addresses,
+                file_with_addresses,
+                self.opts.verbose,
             )
 
-            t = self.do_run(
-                ["aie-translate", "--aie-generate-corelist", self.file_with_addresses]
-            )
-            cores = eval(t.stdout)
-            t = self.do_run(
+            cores = generate_cores_list(await read_file_async(file_with_addresses))
+            t = do_run(
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
-                    self.file_with_addresses,
-                ]
+                    file_with_addresses,
+                ],
+                self.opts.verbose,
             )
-            self.aie_target = t.stdout.strip()
-            if not re.fullmatch("AIE.?", self.aie_target):
+            aie_target = t.stdout.strip()
+            if not re.fullmatch("AIE.?", aie_target):
                 print(
-                    "Unexpected target " + self.aie_target + ". Exiting...",
+                    "Unexpected target " + aie_target + ". Exiting...",
                     file=sys.stderr,
                 )
                 exit(-3)
-            self.aie_peano_target = self.aie_target.lower() + "-none-elf"
+            aie_peano_target = aie_target.lower() + "-none-elf"
 
             # Optionally generate insts.txt for IPU instruction stream
             if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = os.path.join(
-                    self.tmpdirname, "generated_ipu_insts.mlir"
-                )
+                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
                         "--aie-dma-to-ipu",
-                        self.file_with_addresses,
+                        file_with_addresses,
                         "-o",
                         generated_insts_mlir,
                     ],
@@ -952,25 +963,26 @@ class FlowRunner:
                 if opts.only_ipu:
                     return
 
-            await self.prepare_for_chesshack(progress_bar.task)
+            chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(
+                progress_bar.task, aie_target
+            )
 
             # fmt: off
             if opts.unified:
-                self.file_opt_with_addresses = os.path.join(self.tmpdirname, "input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, self.file_with_addresses, "-o", self.file_opt_with_addresses])
+                file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
+                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, file_with_addresses, "-o", file_opt_with_addresses])
 
-                self.file_llvmir = os.path.join(self.tmpdirname, "input.ll")
-                await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", self.file_opt_with_addresses, "-o", self.file_llvmir])
+                file_llvmir = self.prepend_tmp("input.ll")
+                await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
 
-                self.file_obj = os.path.join(self.tmpdirname, "input.o")
+                self.unified_file_core_obj = self.prepend_tmp("input.o")
                 if opts.compile and opts.xchesscc:
-                    file_llvmir_hacked = await self.chesshack(progress_bar.task, self.file_llvmir)
-                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", self.aie_target.lower(), "+w", os.path.join(self.tmpdirname, "work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.file_obj])
+                    file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, chess_intrinsic_wrapper_ll_path)
+                    await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
-                    self.file_llvmir_opt = os.path.join(self.tmpdirname, "input.opt.ll")
-                    await self.do_call(progress_bar.task, [peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", self.file_llvmir, "-o", self.file_llvmir_opt])
-
-                    await self.do_call(progress_bar.task, [peano_llc_path, self.file_llvmir_opt, "-O2", "--march=%s" % self.aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.file_obj])
+                    file_llvmir_opt = self.prepend_tmp("input.opt.ll")
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
             progress_bar.update(progress_bar.task, advance=0, visible=False)
@@ -980,20 +992,28 @@ class FlowRunner:
                 command="%d Workers" % nworkers,
             )
 
-            processes = [self.process_host_cgen()]
+            processes = [self.process_host_cgen(aie_target, file_with_addresses)]
             await asyncio.gather(
                 *processes
             )  # ensure that process_host_cgen finishes before running gen_sim
             processes = []
             if opts.aiesim:
-                processes.append(self.gen_sim(progress_bar.task))
+                processes.append(self.gen_sim(progress_bar.task, aie_target))
             for core in cores:
-                processes.append(self.process_core(core))
+                processes.append(
+                    self.process_core(
+                        core,
+                        aie_target,
+                        aie_peano_target,
+                        chess_intrinsic_wrapper_ll_path,
+                        file_with_addresses,
+                    )
+                )
             await asyncio.gather(*processes)
 
             # Must have elfs, before we build the final binary assembly
             if opts.cdo:
-                processes = [self.process_xclbin_gen()]
+                processes = [self.process_xclbin_gen(aie_target)]
                 await asyncio.gather(*processes)
 
     def dumpprofile(self):
@@ -1002,18 +1022,14 @@ class FlowRunner:
         )
         for i in range(50):
             if i < len(sortedruntimes):
-                print("%.4f sec: %s" % (sortedruntimes[i][1], sortedruntimes[i][0]))
+                s1, s0 = sortedruntimes[i][1], sortedruntimes[i][0]
+                print(f"{s1:.4f} sec: {s0}")
 
 
 def run(mlir_module, args=None):
     global opts
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
-
-    mlir_module = str(mlir_module)
-
-    aie_path = aie.compiler.aiecc.configure.install_path()
-    peano_path = os.path.join(opts.peano_install_dir, "bin")
 
     if "VITIS" not in os.environ:
         # Try to find vitis in the path
@@ -1045,6 +1061,8 @@ def run(mlir_module, args=None):
         print("Vitis not found...")
 
     # This path should be generated from cmake
+    aie_path = aie.compiler.aiecc.configure.install_path()
+    peano_path = os.path.join(opts.peano_install_dir, "bin")
     os.environ["PATH"] = os.pathsep.join([aie_path, os.environ["PATH"]])
     os.environ["PATH"] = os.pathsep.join([peano_path, os.environ["PATH"]])
 
@@ -1052,7 +1070,7 @@ def run(mlir_module, args=None):
         sys.exit("AIE Simulation (--aiesim) currently requires --xbridge")
 
     if opts.verbose:
-        sys.stderr.write("\ncompiling %s\n" % opts.filename)
+        sys.stderr.write(f"\ncompiling {opts.filename}\n")
 
     if opts.tmpdir:
         tmpdirname = opts.tmpdir
@@ -1069,7 +1087,7 @@ def run(mlir_module, args=None):
     if opts.verbose:
         print("created temporary directory", tmpdirname)
 
-    runner = FlowRunner(mlir_module, opts, tmpdirname)
+    runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())
 
     if opts.profiling:

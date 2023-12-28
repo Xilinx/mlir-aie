@@ -373,8 +373,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
       if (auto coreOp = tileOp.getCoreOp()) {
         std::string fileName;
-        if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
-          fileName = std::string(fileAttr.getValue());
+        if (auto fileAttr = coreOp.getElfFile())
+          fileName = fileAttr.value().str();
         else
           fileName = std::string("core_") + std::to_string(col) + "_" +
                      std::to_string(row) + ".elf";

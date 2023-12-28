@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
-// RUN: clang++ -O2 --target=aie -c -I/usr/include/aie %S/kernel.cpp
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ -O2 --target=aie -c -I/usr/include/aie %S/kernel.cpp
 // RUN: %PYTHON aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%host_runtime_lib%/ %host_runtime_lib%/test_library.cpp %S/test.cpp %S/kernel.cpp -lstdc++ -o test.elf
 // RUN: %run_on_board ./test.elf
 

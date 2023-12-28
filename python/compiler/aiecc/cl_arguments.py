@@ -6,26 +6,9 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 import argparse
-import os
-import shlex
 import sys
-import shutil
 
 from aie.compiler.aiecc.configure import *
-
-aie_dir = os.path.realpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
-)
-peano_install_dir = ""
-# The expected location in an install area
-peano_install_dir = os.path.join(aie_dir, "peano")
-if not os.path.exists(peano_install_dir):
-    # The expected location in a build area
-    peano_install_dir = os.path.realpath(os.path.join(aie_dir, "..", "peano"))
-if not os.path.exists(peano_install_dir):
-    peano_install_dir = "peano_not_found"
-
-peano_install_dir = "/home/jfifield/acdc/install-llvm-aie"
 
 
 def parse_args(args=None):

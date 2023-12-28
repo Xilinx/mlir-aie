@@ -22,6 +22,13 @@ from textwrap import dedent
 from aie.extras.dialects.ext import memref, arith, func
 from aie.extras.runtime.passes import run_pipeline, Pipeline
 from aie.extras.util import find_ops, bb
+from aie.compiler.aiecc.main import (
+    generate_cores_list,
+    emit_partition,
+    emit_design_bif,
+    emit_design_kernel_json,
+    mem_topology,
+)
 
 from aie.xrt import XCLBin
 
@@ -129,145 +136,6 @@ def chesshack(llvmir):
 
 def extract_input_files(core_bcf):
     return re.findall(r"^_include _file (.*)", core_bcf, re.MULTILINE)
-
-
-def emit_design_kernel_json(
-    kernel_name="MLIR_AIE",
-    kernel_id="0x901",
-    instance_name="MLIRAIE",
-    buffer_args=None,
-):
-    if buffer_args is None:
-        buffer_args = ["in", "tmp", "out"]
-
-    arguments = [
-        {
-            "name": "instr",
-            "memory-connection": "SRAM",
-            "address-qualifier": "GLOBAL",
-            "type": "char *",
-            "offset": "0x00",
-        },
-        {
-            "name": "ninstr",
-            "address-qualifier": "SCALAR",
-            "type": "uint64_t",
-            "offset": "0x08",
-        },
-    ]
-
-    offset = 0x10
-    for buf in buffer_args:
-        arg = {
-            "name": buf,
-            "memory-connection": "HOST",
-            "address-qualifier": "GLOBAL",
-            "type": "char *",
-            "offset": str(hex(offset)),
-        }
-        arguments.append(arg)
-        offset += 0x8
-
-    return {
-        "ps-kernels": {
-            "kernels": [
-                {
-                    "name": kernel_name,
-                    "type": "dpu",
-                    "extended-data": {
-                        "subtype": "DPU",
-                        "functional": "1",
-                        "dpu_kernel_id": kernel_id,
-                    },
-                    "arguments": arguments,
-                    "instances": [{"name": instance_name}],
-                }
-            ]
-        }
-    }
-
-
-mem_topology = {
-    "mem_topology": {
-        "m_count": "2",
-        "m_mem_data": [
-            {
-                "m_type": "MEM_DRAM",
-                "m_used": "1",
-                "m_sizeKB": "0x10000",
-                "m_tag": "HOST",
-                "m_base_address": "0x4000000",
-            },
-            {
-                "m_type": "MEM_DRAM",
-                "m_used": "1",
-                "m_sizeKB": "0xc000",
-                "m_tag": "SRAM",
-                "m_base_address": "0x4000000",
-            },
-        ],
-    }
-}
-
-
-def emit_partition(module, kernel_id="0x901"):
-    uuid = random.randint(2222, 9999)
-    tiles = find_ops(
-        module,
-        lambda o: isinstance(o.operation.opview, TileOp),
-    )
-    min_col = min([t.col.value for t in tiles])
-    max_col = max([t.col.value for t in tiles])
-    num_cols = max_col - min_col + 1
-    return {
-        "aie_partition": {
-            "name": "QoS",
-            "operations_per_cycle": "2048",
-            "inference_fingerprint": "23423",
-            "pre_post_fingerprint": "12345",
-            "partition": {
-                "column_width": num_cols,
-                "start_columns": [*range(1, 6 - num_cols)],
-            },
-            "PDIs": [
-                {
-                    "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
-                    "file_name": "./design.pdi",
-                    "cdo_groups": [
-                        {
-                            "name": "DPU",
-                            "type": "PRIMARY",
-                            "pdi_id": "0x01",
-                            "dpu_kernel_ids": [kernel_id],
-                            "pre_cdo_groups": ["0xC1"],
-                        }
-                    ],
-                }
-            ],
-        }
-    }
-
-
-def emit_design_bif(path):
-    return dedent(
-        f"""\
-        all:
-        {{
-          id_code = 0x14ca8093
-          extended_id_code = 0x01
-          image
-          {{
-            name=aie_image, id=0x1c000000
-            {{ type=cdo
-               file={path}/aie_cdo_error_handling.bin
-               file={path}/aie_cdo_elfs.bin
-               file={path}/aie_cdo_init.bin
-               file={path}/aie_cdo_enable.bin
-            }}
-          }}
-        }}
-        """
-    )
 
 
 # CHECK-LABEL: add_one_using_dma
@@ -550,13 +418,7 @@ def add_one_using_dma(module):
     # CHECK: aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     print(generated_ipu_insts)
 
-    cores = [
-        (c.tile.owner.opview.col.value, c.tile.owner.opview.row.value, None)
-        for c in find_ops(
-            input_with_addresses.operation,
-            lambda o: isinstance(o.operation.opview, CoreOp),
-        )
-    ]
+    cores = generate_cores_list(str(input_with_addresses))
     print(cores)
 
     aie_opt_lower_to_llvm_passes = [
@@ -1317,7 +1179,7 @@ def add_one_using_dma(module):
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)
     with open(WORKDIR / "aie_partition.json", "w") as f:
-        json.dump(emit_partition(module.operation), f, indent=2)
+        json.dump(emit_partition(str(module)), f, indent=2)
     with open(WORKDIR / "kernels.json", "w") as f:
         json.dump(emit_design_kernel_json(), f, indent=2)
     with open(WORKDIR / "design.bif", "w") as f:
