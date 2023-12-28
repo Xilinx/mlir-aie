@@ -36,4 +36,5 @@ add_mlir_dialect_library(
   MLIRIR
   MLIRPass
   MLIRSupport
-  MLIRTransformUtils)
+  MLIRTransformUtils
+  MLIRFuncDialect)
