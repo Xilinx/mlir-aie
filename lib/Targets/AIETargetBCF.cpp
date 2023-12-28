@@ -132,12 +132,9 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
         output << "_reserved DMb 0x40000 0xc0000 // And everything else "
                   "the core can't see\n";
       }
-      if (auto coreOp = tile.getCoreOp()) {
-        if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("link_with")) {
-          auto fileName = std::string(fileAttr.getValue());
-          output << "_include _file " << fileName << "\n";
-        }
-      }
+      if (tile.getCoreOp() && tile.getCoreOp().getLinkWith())
+        output << "_include _file "
+               << tile.getCoreOp().getLinkWith().value().str() << "\n";
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
              << "\n";
     }

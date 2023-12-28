@@ -221,10 +221,9 @@ void registerAIETranslations() {
           int row = tileOp.rowIndex();
           if (auto coreOp = tileOp.getCoreOp()) {
             std::string elfFile = "None";
-            if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
-              elfFile = "\"" + std::string(fileAttr.getValue()) + "\"";
-            output << '(' << std::to_string(col) << ',' << std::to_string(row)
-                   << ',' << elfFile << "),";
+            if (auto fileAttr = coreOp.getElfFile())
+              elfFile = "\"" + fileAttr.value().str() + "\"";
+            output << '(' << col << ',' << row << ',' << elfFile << "),";
           }
         }
         output << "]\n";

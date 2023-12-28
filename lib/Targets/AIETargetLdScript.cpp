@@ -163,10 +163,9 @@ SECTIONS
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
-        if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("link_with")) {
-          auto fileName = std::string(fileAttr.getValue());
-          output << "INPUT(" << fileName << ")\n";
-        }
+        if (auto fileAttr = coreOp.getLinkWith())
+          output << "INPUT(" << fileAttr.value().str() << ")\n";
+
         output << "PROVIDE(_main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
       }

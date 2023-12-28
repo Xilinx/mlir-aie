@@ -290,7 +290,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<AIEI32Attr, "0x400">:$stackSize,
-    OptionalAttr<StrAttr>:$link_with
+    OptionalAttr<StrAttr>:$link_with,
+    OptionalAttr<StrAttr>:$elf_file
   );
   let summary = "Declare a core module";
   let description = [{

@@ -189,7 +189,7 @@ def generate_cores_list(mlir_module_str):
             (
                 c.tile.owner.opview.col.value,
                 c.tile.owner.opview.row.value,
-                c.link_with.value if c.link_with is not None else None,
+                c.elf_file.value if c.elf_file is not None else None,
             )
             for c in find_ops(
                 module.operation,
