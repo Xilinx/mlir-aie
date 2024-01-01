@@ -36,6 +36,9 @@ def AIEVectorize : Pass<"aie-vectorize", "mlir::ModuleOp"> {
     Option<"dupFactor", "dup-factor", "unsigned", /*default=*/"2",
      "Duplication factor for each value in convolution filter "
      "(useful for 8x8 scheme)">,
+    Option<"unalignedLoadsCheck", "unaligned-loads-check", "bool", /*default=*/"true",
+     "Enable the unaligned loads check.">,
+    Option<"aieml", "aieml", "bool", /*default=*/"false", "">,
   ];
 }
 

@@ -877,6 +877,10 @@ LogicalResult GetCascadeOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// DeviceOp
+//===----------------------------------------------------------------------===//
+
 const AIETargetModel &DeviceOp::getTargetModel() {
   switch (getDevice()) {
   case AIEDevice::xcvc1902:
@@ -892,6 +896,10 @@ const AIETargetModel &DeviceOp::getTargetModel() {
 }
 
 LogicalResult DeviceOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult TileOp::verify() {
   const auto &targetModel = getTargetModel(*this);
@@ -921,6 +929,58 @@ LogicalResult TileOp::verify() {
   return success();
 }
 
+int TileOp::getNumSourceConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+  // Note dest is correct here, since direction is reversed.
+  {
+    // Note dest is correct here, since direction is reversed.
+    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
+        targetModel.isShimPLTile(getCol(), getRow()))
+      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
+                                                      bundle);
+    return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
+                                                      bundle);
+  }
+  return 0;
+}
+
+int TileOp::getNumDestConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+  // Note source is correct here, since direction is reversed.
+  {
+    // Note source is correct here, since direction is reversed.
+    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
+        targetModel.isShimPLTile(getCol(), getRow()))
+      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
+                                                      bundle);
+    return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
+                                                        bundle);
+  }
+  return 0;
+}
+
+bool TileOp::isMemTile() {
+  const auto &targetModel = getTargetModel(*this);
+  return targetModel.isMemTile(getCol(), getRow());
+}
+
+bool TileOp::isShimNOCTile() {
+  const auto &targetModel = getTargetModel(*this);
+  return targetModel.isShimNOCTile(getCol(), getRow());
+}
+
+bool TileOp::isShimPLTile() {
+  const auto &targetModel = getTargetModel(*this);
+  return targetModel.isShimPLTile(getCol(), getRow());
+}
+
+bool TileOp::isShimNOCorPLTile() {
+  const auto &targetModel = getTargetModel(*this);
+  return targetModel.isShimNOCorPLTile(getCol(), getRow());
+}
+
 bool isLegalMemtileConnection(const AIETargetModel &targetModel,
                               MasterSetOp masterOp, PacketRulesOp slaveOp) {
   auto srcBundle = masterOp.destPort().bundle;
@@ -941,149 +1001,9 @@ bool isLegalMemtileConnection(const AIETargetModel &targetModel,
                                               dstChan);
 }
 
-LogicalResult SwitchboxOp::verify() {
-  Region &body = getConnections();
-  DenseSet<Port> sourceset;
-  DenseSet<Port> destset;
-  auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(tile);
-  if (body.empty())
-    return emitOpError("should have non-empty body");
-  for (auto &ops : body.front()) {
-    // Would be simpler if this could be templatized.
-    auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
-                             int bound) -> LogicalResult {
-      if (index >= bound) {
-        if (bound > 0)
-          return ops.emitOpError("index ")
-                 << index << " for " << dir << " bundle "
-                 << stringifyWireBundle(bundle) << " must be less than "
-                 << bound;
-        return ops.emitOpError()
-               << dir << " bundle " << stringifyWireBundle(bundle)
-               << " not supported; index: " << index << ", bound: " << bound;
-      }
-      return success();
-    };
-
-    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
-      sourceset.insert(source);
-
-      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
-      if (destset.count(dest)) {
-        return connectOp.emitOpError()
-               << "; connecting " << to_string(source) << " to "
-               << to_string(dest) << " on "
-               << to_string(this->getTileOp().getTileID())
-               << " targets same dst as another connect op; existing "
-                  "destinations: "
-               << llvm::join(llvm::map_range(
-                                 destset, [](auto &p) { return to_string(p); }),
-                             ", ");
-      }
-      destset.insert(dest);
-
-      if (connectOp.sourceIndex() < 0)
-        return connectOp.emitOpError("source index cannot be less than zero");
-
-      if (checkBound("source", connectOp.getSourceBundle(),
-                     connectOp.sourceIndex(),
-                     getNumSourceConnections(connectOp.getSourceBundle()))
-              .failed())
-        return failure();
-
-      if (connectOp.destIndex() < 0)
-        return connectOp.emitOpError("dest index cannot be less than zero");
-
-      if (checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
-                     getNumDestConnections(connectOp.getDestBundle()))
-              .failed())
-        return failure();
-
-      // Memtile stream switch connection constraints
-      if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, connectOp))
-        return connectOp.emitOpError(
-            "illegal memtile stream switch connection");
-
-      // Trace stream switch connection constraints
-      if (connectOp.getDestBundle() == WireBundle::Trace)
-        return connectOp.emitOpError("Trace port cannot be a destination");
-
-      if (connectOp.getSourceBundle() == WireBundle::Trace &&
-          !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                          connectOp.getDestBundle(),
-                                          connectOp.getDestChannel()))
-        return connectOp.emitOpError("illegal Trace destination");
-
-    } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
-      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
-      if (destset.count(dest))
-        return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
-               << " as another connect or masterset operation";
-      destset.insert(dest);
-
-      if (connectOp.destIndex() < 0)
-        return connectOp.emitOpError("dest index cannot be less than zero");
-
-      if (checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
-                     getNumDestConnections(connectOp.getDestBundle()))
-              .failed())
-        return failure();
-
-      int arbiter = -1;
-      for (auto val : connectOp.getAmsels()) {
-        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
-        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
-          return connectOp.emitOpError(
-              "a master port can only be tied to one arbiter");
-        arbiter = amsel.arbiterIndex();
-      }
-    } else if (auto connectOp = dyn_cast<PacketRulesOp>(ops)) {
-      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
-      if (sourceset.count(source))
-        return connectOp.emitOpError("packet switched source ")
-               << stringifyWireBundle(source.bundle) << source.channel
-               << " cannot match another connect or masterset operation";
-      sourceset.insert(source);
-
-    } else if (auto amselOp = dyn_cast<AMSelOp>(ops)) {
-      std::vector<MasterSetOp> mstrs;
-      std::vector<PacketRulesOp> slvs;
-      for (auto *user : amselOp.getResult().getUsers()) {
-        if (auto s = dyn_cast<PacketRuleOp>(user)) {
-          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
-          slvs.push_back(pktRules);
-        } else if (auto m = dyn_cast<MasterSetOp>(user))
-          mstrs.push_back(m);
-      }
-      for (auto m : mstrs) {
-        // Trace stream switch connection constraints
-        if (m.destPort().bundle == WireBundle::Trace)
-          return connectOp.emitOpError("Trace port cannot be a destination");
-        for (auto s : slvs) {
-          if (s.sourcePort().bundle == WireBundle::Trace &&
-              !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                              m.destPort().bundle,
-                                              m.destPort().channel))
-            return amselOp.emitOpError("illegal Trace destination");
-
-          // Memtile stream switch connection constraints
-          if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, m, s))
-            return amselOp->emitOpError(
-                "illegal memtile stream switch connection");
-        }
-      }
-    } else if (isa<EndOp>(ops)) {
-      // continue;
-    } else {
-      return ops.emitOpError("cannot be contained in a Switchbox op");
-    }
-  }
-
-  return success();
-}
+//===----------------------------------------------------------------------===//
+// ShimSwitchboxOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult ShimSwitchboxOp::verify() {
   Region &body = getConnections();
@@ -1108,6 +1028,10 @@ LogicalResult ShimSwitchboxOp::verify() {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// ShimMuxOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult ShimMuxOp::verify() {
   Region &body = getConnections();
@@ -1337,7 +1261,7 @@ LogicalResult MemTileDMAOp::verify() {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
 
-        // Move this code to the dialect
+        // TODO: Move this code to the dialect
         // Set of blocks found to be reachable within a given region.
         llvm::SmallSet<Block *, 16> reachable;
         SmallVector<Block *, 16> worklist;
@@ -1480,6 +1404,150 @@ Region *MemTileDMAOp::getCallableRegion() { return &getBody(); }
 //===----------------------------------------------------------------------===//
 // SwitchboxOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult SwitchboxOp::verify() {
+  Region &body = getConnections();
+  DenseSet<Port> sourceset;
+  DenseSet<Port> destset;
+  auto tile = getTileOp();
+  const auto &targetModel = getTargetModel(tile);
+  if (body.empty())
+    return emitOpError("should have non-empty body");
+  for (auto &ops : body.front()) {
+    // Would be simpler if this could be templatized.
+    auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
+                             int bound) -> LogicalResult {
+      if (index >= bound) {
+        if (bound > 0)
+          return ops.emitOpError("index ")
+                 << index << " for " << dir << " bundle "
+                 << stringifyWireBundle(bundle) << " must be less than "
+                 << bound;
+        return ops.emitOpError()
+               << dir << " bundle " << stringifyWireBundle(bundle)
+               << " not supported; index: " << index << ", bound: " << bound;
+      }
+      return success();
+    };
+
+    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
+      sourceset.insert(source);
+
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
+      if (destset.count(dest)) {
+        return connectOp.emitOpError()
+               << "; connecting " << to_string(source) << " to "
+               << to_string(dest) << " on "
+               << to_string(this->getTileOp().getTileID())
+               << " targets same dst as another connect op; existing "
+                  "destinations: "
+               << llvm::join(llvm::map_range(
+                                 destset, [](auto &p) { return to_string(p); }),
+                             ", ");
+      }
+      destset.insert(dest);
+
+      if (connectOp.sourceIndex() < 0)
+        return connectOp.emitOpError("source index cannot be less than zero");
+
+      if (checkBound("source", connectOp.getSourceBundle(),
+                     connectOp.sourceIndex(),
+                     getNumSourceConnections(connectOp.getSourceBundle()))
+              .failed())
+        return failure();
+
+      if (connectOp.destIndex() < 0)
+        return connectOp.emitOpError("dest index cannot be less than zero");
+
+      if (checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
+                     getNumDestConnections(connectOp.getDestBundle()))
+              .failed())
+        return failure();
+
+      // Memtile stream switch connection constraints
+      if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, connectOp))
+        return connectOp.emitOpError(
+            "illegal memtile stream switch connection");
+
+      // Trace stream switch connection constraints
+      if (connectOp.getDestBundle() == WireBundle::Trace)
+        return connectOp.emitOpError("Trace port cannot be a destination");
+
+      if (connectOp.getSourceBundle() == WireBundle::Trace &&
+          !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                          connectOp.getDestBundle(),
+                                          connectOp.getDestChannel()))
+        return connectOp.emitOpError("illegal Trace destination");
+
+    } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
+      if (destset.count(dest))
+        return connectOp.emitOpError("targets same destination ")
+               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
+               << " as another connect or masterset operation";
+      destset.insert(dest);
+
+      if (connectOp.destIndex() < 0)
+        return connectOp.emitOpError("dest index cannot be less than zero");
+
+      if (checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
+                     getNumDestConnections(connectOp.getDestBundle()))
+              .failed())
+        return failure();
+
+      int arbiter = -1;
+      for (auto val : connectOp.getAmsels()) {
+        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
+          return connectOp.emitOpError(
+              "a master port can only be tied to one arbiter");
+        arbiter = amsel.arbiterIndex();
+      }
+    } else if (auto connectOp = dyn_cast<PacketRulesOp>(ops)) {
+      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
+      if (sourceset.count(source))
+        return connectOp.emitOpError("packet switched source ")
+               << stringifyWireBundle(source.bundle) << source.channel
+               << " cannot match another connect or masterset operation";
+      sourceset.insert(source);
+
+    } else if (auto amselOp = dyn_cast<AMSelOp>(ops)) {
+      std::vector<MasterSetOp> mstrs;
+      std::vector<PacketRulesOp> slvs;
+      for (auto *user : amselOp.getResult().getUsers()) {
+        if (auto s = dyn_cast<PacketRuleOp>(user)) {
+          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
+          slvs.push_back(pktRules);
+        } else if (auto m = dyn_cast<MasterSetOp>(user))
+          mstrs.push_back(m);
+      }
+      for (auto m : mstrs) {
+        // Trace stream switch connection constraints
+        if (m.destPort().bundle == WireBundle::Trace)
+          return connectOp.emitOpError("Trace port cannot be a destination");
+        for (auto s : slvs) {
+          if (s.sourcePort().bundle == WireBundle::Trace &&
+              !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                              m.destPort().bundle,
+                                              m.destPort().channel))
+            return amselOp.emitOpError("illegal Trace destination");
+
+          // Memtile stream switch connection constraints
+          if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, m, s))
+            return amselOp->emitOpError(
+                "illegal memtile stream switch connection");
+        }
+      }
+    } else if (isa<EndOp>(ops)) {
+      // continue;
+    } else {
+      return ops.emitOpError("cannot be contained in a Switchbox op");
+    }
+  }
+
+  return success();
+}
 
 TileOp SwitchboxOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
@@ -1635,58 +1703,6 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestSwitchboxConnections(tile.getCol(),
                                                     tile.getRow(), bundle);
-}
-
-int TileOp::getNumSourceConnections(WireBundle bundle) {
-  const auto &targetModel = getTargetModel(*this);
-  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
-  // Note dest is correct here, since direction is reversed.
-  {
-    // Note dest is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
-      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
-                                                      bundle);
-    return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
-                                                      bundle);
-  }
-  return 0;
-}
-
-int TileOp::getNumDestConnections(WireBundle bundle) {
-  const auto &targetModel = getTargetModel(*this);
-  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
-  // Note source is correct here, since direction is reversed.
-  {
-    // Note source is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
-      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
-                                                      bundle);
-    return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
-                                                        bundle);
-  }
-  return 0;
-}
-
-bool TileOp::isMemTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isMemTile(getCol(), getRow());
-}
-
-bool TileOp::isShimNOCTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCTile(getCol(), getRow());
-}
-
-bool TileOp::isShimPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimPLTile(getCol(), getRow());
-}
-
-bool TileOp::isShimNOCorPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCorPLTile(getCol(), getRow());
 }
 
 WireBundle getConnectingBundle(WireBundle dir) {

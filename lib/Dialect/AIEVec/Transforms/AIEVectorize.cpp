@@ -37,6 +37,7 @@ using namespace xilinx;
 using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "aie-vect"
+
 static llvm::cl::opt<bool>
     unalignedLoadsCheck("unaligned-loads-check",
                         llvm::cl::desc("Enable the unaligned loads check"),
@@ -103,9 +104,13 @@ struct VectState {
   // with dupFactor=2.
   int32_t dupFactor;
 
+  bool unalignedLoadsCheck, aieml;
+
   // Constructors
-  VectState(MLIRContext *context, int8_t s, int32_t z, int32_t d)
-      : builder(context), shift(s), zeroOffset(z), dupFactor(d) {}
+  VectState(MLIRContext *context, int8_t s, int32_t z, int32_t d,
+            bool unalignedLoadsCheck, bool aieml)
+      : builder(context), shift(s), zeroOffset(z), dupFactor(d),
+        unalignedLoadsCheck(unalignedLoadsCheck), aieml(aieml) {}
 
   IntervalReuse *getIntervalForOperation(Operation *op);
 };
@@ -223,11 +228,11 @@ static std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
-  int32_t width = (lsize == 8 && rsize == 8)    ? (AIEML ? 256 : 128)
+  int32_t width = (lsize == 8 && rsize == 8)    ? (state->aieml ? 256 : 128)
                   : (lsize == 16 && rsize == 8) ? 64
                                                 : 32;
 
-  if (AIEML && getVectorSizeInBits(rtype) == 512) {
+  if (state->aieml && getVectorSizeInBits(rtype) == 512) {
     width *= 2;
   }
 
@@ -561,7 +566,8 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
 static aievec::UPSOp generateUPSOp(Value source, VectState *state,
                                    Location loc) {
   Type sourceType = source.getType();
-  Type accType = getVectorOpDestType(sourceType.cast<VectorType>(), AIEML);
+  Type accType =
+      getVectorOpDestType(sourceType.cast<VectorType>(), state->aieml);
   assert(!writesToAccumulator(source.getDefiningOp()) &&
          "ups source should not be accumulator");
 
@@ -856,7 +862,8 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
                    .isa<IntegerType>();
 
   Operation *xfmaOp;
-  if (AIEML && getVectorSizeInBits(rhs.getType().cast<VectorType>()) == 512) {
+  if (state->aieml &&
+      getVectorSizeInBits(rhs.getType().cast<VectorType>()) == 512) {
     if (!writesToAccumulator(acc.getDefiningOp())) {
       acc = generateUPSOp(acc, state, fmaOp->getLoc());
       LLVM_DEBUG(llvm::dbgs()
@@ -928,8 +935,8 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  Type opType =
-      getVectorOpDestType(mulOp.getType().template cast<VectorType>(), AIEML);
+  Type opType = getVectorOpDestType(mulOp.getType().template cast<VectorType>(),
+                                    state->aieml);
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
@@ -994,14 +1001,16 @@ generateUPDOp(TransferReadOp readOp,
   int32_t mid = interval.first + intervalWidth / 2;
   // Compute the (aligned) extent of interval that this read requires to be
   // loaded.
-  int32_t lb = intervalWidth <= (AIEML && elementSizeInBits == 8 ? 512 : 256) ||
-                       extent.first < mid
-                   ? interval.first
-                   : mid;
-  int32_t ub = intervalWidth <= (AIEML && elementSizeInBits == 8 ? 512 : 256) ||
-                       extent.second > mid
-                   ? interval.second
-                   : mid;
+  int32_t lb =
+      intervalWidth <= (state->aieml && elementSizeInBits == 8 ? 512 : 256) ||
+              extent.first < mid
+          ? interval.first
+          : mid;
+  int32_t ub =
+      intervalWidth <= (state->aieml && elementSizeInBits == 8 ? 512 : 256) ||
+              extent.second > mid
+          ? interval.second
+          : mid;
 
   // Find if we have already created upd op idx=0/idx=1 for this interval
   aievec::UPDOp updOp = nullptr;
@@ -1043,10 +1052,10 @@ generateUPDOp(TransferReadOp readOp,
   // If the extent <= 256 bits, we can directly copy data from mem into vector
   // without using a upd. So we try to chunk the interval into sub-intervals of
   // width >= 256 bits. For AIEML, the size should be doubled.
-  int width = AIEML ? elementSizeInBits == 8
-                          ? 512
-                          : std::max(256, getVectorSizeInBits(vecType))
-                    : 256;
+  int width = state->aieml ? elementSizeInBits == 8
+                                 ? 512
+                                 : std::max(256, getVectorSizeInBits(vecType))
+                           : 256;
   int32_t incr = std::max(width, intervalWidth / 2);
   int8_t idx = 1;
   for (int32_t start = interval.first; start < interval.second;
@@ -1474,7 +1483,8 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
   // not empty. For AIEML, i8xi8 scheme generates one MulConvOp or FMAConvOp for
   // each vector dialect mul/fma op.
   if (!nextStart.empty()) {
-    if (AIEML && scheme.lanes == 32 && scheme.xbits == 8 && scheme.zbits == 8) {
+    if (state->aieml && scheme.lanes == 32 && scheme.xbits == 8 &&
+        scheme.zbits == 8) {
       repOp = generateMulOrFMAConvOpForInt8(Op, opAttr, state);
       if (any_of(repOp->getUsers(), notMulOrFMAOp)) {
         Type i8Type =
@@ -1584,10 +1594,10 @@ static void computeZbuffAttr_i16xi16(
     int32_t accIncr,    // access change with each loop increment
     int32_t zeroOffset, // offset of 0 value in the filter
     int32_t colOffset,  // zbuff access distance between vector cols
-    AIEOpAttributes &opAttr) {
+    bool aieml, AIEOpAttributes &opAttr) {
   std::string offsetStr, offsetHiStr;
   // zstart must be 4b value.
-  assert(start < (AIEML ? 32 : 16) && "zstart must be 4b value");
+  assert(start < (aieml ? 32 : 16) && "zstart must be 4b value");
   std::string startStr = std::to_string(start);
 
   // If zbuff comes from splat, use default offsets
@@ -1867,14 +1877,14 @@ static void computeXbuffAttributes(
     int32_t colOffset, // xbuff access distance between vector cols
     int32_t accIncr,   // xbuff access incr with each loop increment
     int32_t dupFactor, // duplication factor for i8xi8 filter
-    AIEOpAttributes &opAttr) {
+    bool aieml, AIEOpAttributes &opAttr) {
   // Branch to different schemes
   // Case 1: 32x32 real
-  if ((scheme.lanes == 8 || (AIEML && scheme.lanes == 16)) &&
+  if ((scheme.lanes == 8 || (aieml && scheme.lanes == 16)) &&
       scheme.cols == 1 && scheme.xbits == 32 && scheme.zbits == 32)
     computeBuffAttr_i32xi32(scheme.lanes, start, accIncr, opAttr);
   // Case 2: 16x16 real
-  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+  else if ((scheme.lanes == 16 || (aieml && scheme.lanes == 32)) &&
            scheme.cols == 2 && scheme.xbits == 16 && scheme.zbits == 16) {
     // We only support a loop increment of <= 1
     assert((accIncr <= 1 || accIncr % 2 == 0) &&
@@ -1882,7 +1892,7 @@ static void computeXbuffAttributes(
     computeXbuffAttr_i16xi16(scheme.lanes, start, accIncr, colOffset, opAttr);
   }
   // Case 3: 8x8 real
-  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+  else if ((scheme.lanes == 16 || (aieml && scheme.lanes == 32)) &&
            scheme.cols == 8 && scheme.xbits == 8 && scheme.zbits == 8) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
@@ -1897,20 +1907,21 @@ static void computeXbuffAttributes(
 
 // Compute all the attributes for zbuff, based on the scheme.
 static void computeZbuffAttributes(
-    Scheme &scheme,         // vect scheme info
-    int32_t start,          // computed start in AIE vec
-    int32_t colOffset,      // zbuff access distance between vector cols
-    int32_t accIncr,        // zbuff access incr with each loop increment
-    int32_t zeroOffset,     // zero offset of filter for i16xi16 scheme
+    Scheme &scheme,     // vect scheme info
+    int32_t start,      // computed start in AIE vec
+    int32_t colOffset,  // zbuff access distance between vector cols
+    int32_t accIncr,    // zbuff access incr with each loop increment
+    int32_t zeroOffset, // zero offset of filter for i16xi16 scheme
+    bool aieml,
     std::string &nextStart, // start of mul/mac pair in i8xi8 scheme
     AIEOpAttributes &opAttr) {
   // Branch to different schemes
   // Case 1: 32x32 real
-  if ((scheme.lanes == 8 || (AIEML && scheme.lanes == 16)) &&
+  if ((scheme.lanes == 8 || (aieml && scheme.lanes == 16)) &&
       scheme.cols == 1 && scheme.xbits == 32 && scheme.zbits == 32)
     computeBuffAttr_i32xi32(scheme.lanes, start, accIncr, opAttr);
   // Case 2: 16x16 real
-  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+  else if ((scheme.lanes == 16 || (aieml && scheme.lanes == 32)) &&
            scheme.cols == 2 && scheme.xbits == 16 && scheme.zbits == 16) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
@@ -1919,10 +1930,10 @@ static void computeZbuffAttributes(
     zeroOffset = zeroOffset == 0 ? scheme.lanes
                                  : start + zeroOffset - (start % zeroOffset);
     computeZbuffAttr_i16xi16(scheme.lanes, start, accIncr, zeroOffset,
-                             colOffset, opAttr);
+                             colOffset, aieml, opAttr);
   }
   // Case 3: 8x8 real
-  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+  else if ((scheme.lanes == 16 || (aieml && scheme.lanes == 32)) &&
            scheme.cols == 8 && scheme.xbits == 8 && scheme.zbits == 8) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
@@ -2000,10 +2011,11 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
     // Compute the xbuff and zbuff attributes
     if (idx == 0)
       computeXbuffAttributes(scheme, start, colOffset.first, accIncr,
-                             state->dupFactor, opAttr);
+                             state->dupFactor, state->aieml, opAttr);
     else
       computeZbuffAttributes(scheme, start, colOffset.second, accIncr,
-                             state->zeroOffset, nextStart, opAttr);
+                             state->zeroOffset, state->aieml, nextStart,
+                             opAttr);
   }
   // And now generate the mul/fma op
   generateMulOrFMAOp(Op, scheme, opAttr, state, nextStart);
@@ -2505,7 +2517,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
       if (operand.getDefiningOp() == Op) {
         // Generate an AIE-ML cast op for the case that result vector width less
         // or equal that source vector width
-        if (AIEML && memRefType &&
+        if (state->aieml && memRefType &&
             Op->getOperand(0)
                     .getType()
                     .cast<VectorType>()
@@ -2556,7 +2568,8 @@ static void insertSRSOpsInFunc(func::FuncOp func, VectState *state) {
 // Set existing read/write op to in-bounds, indicating that it always reads
 // from/writes to a full buffer. We make this assumption for our vectorization
 // framework.
-template <typename TransferOp> static void setInBounds(TransferOp op) {
+template <typename TransferOp>
+static void setInBounds(TransferOp op) {
   if (op.getTransferRank() == 0)
     return;
   SmallVector<bool, 4> bools(op.getTransferRank(), true);
@@ -2790,8 +2803,8 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
   }
 
   auto vecType = readOp.getVector().getType().cast<VectorType>();
-  if (AIEML && (getVectorSizeInBits(vecType) == 512 ||
-                getElementSizeInBits(vecType) == 8)) {
+  if (state->aieml && (getVectorSizeInBits(vecType) == 512 ||
+                       getElementSizeInBits(vecType) == 8)) {
     minVecSize *= 2;
   }
 
@@ -2985,8 +2998,14 @@ void AIEVectorize::runOnOperation() {
   // Iterate over all the functions in this module, and vectorize them
   for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // Create a new global state
-    auto state =
-        new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
+    bool aieml = ::AIEML;
+    bool unallignedCheck = ::unalignedLoadsCheck;
+    if (this->unalignedLoadsCheck.hasValue())
+      unallignedCheck = this->unalignedLoadsCheck;
+    if (this->aieml.hasValue())
+      aieml = this->aieml;
+    auto *state = new VectState(func.getContext(), shiftParam, zeroOffset,
+                                dupFactor, unallignedCheck, aieml);
 
     // record the sext op and its operand's def op to sextTruncDefMap
     recordSextOps(func, state);
@@ -3000,7 +3019,7 @@ void AIEVectorize::runOnOperation() {
     }
 
     // Check whether there is any unalignment loads.
-    if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
+    if (state->unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
       func.emitError() << "Cannot apply aie-vectorize to " << func->getName()
                        << " because alignment check has failed.\n";
       return;
@@ -3042,7 +3061,7 @@ void AIEVectorize::runOnOperation() {
     insertUPDOpsInFunc(func, state);
     // Check for the opportunities of fusing Mul and FMA ops by Mul_Conv or
     // FMA_Conv.
-    if (AIEML)
+    if (state->aieml)
       fuseMulFMAOpsByMulFMAConv(func, state);
   }
 
