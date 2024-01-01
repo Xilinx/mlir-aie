@@ -6,7 +6,9 @@ _Vectorize the output of affine supervectorizer to AIE vector abstraction_
 
 #### Options
 ```
--shift       : Shift parameter for rounding and saturation
--zero-offset : Zero offset for indicating the location of zeroes in convolution filter (useful for 16x16 scheme)
--dup-factor  : Duplication factor for each value in convolution filter (useful for 8x8 scheme)
+-shift                 : Shift parameter for rounding and saturation
+-zero-offset           : Zero offset for indicating the location of zeroes in convolution filter (useful for 16x16 scheme)
+-dup-factor            : Duplication factor for each value in convolution filter (useful for 8x8 scheme)
+-unaligned-loads-check : Enable the unaligned loads check.
+-aieml                 : 
 ```
