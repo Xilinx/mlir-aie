@@ -68,8 +68,8 @@ def my_vector_scalar():
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
-                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, wraps=[1, 1, 1, N])
+                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, wraps=[1, 1, 1, N])
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)

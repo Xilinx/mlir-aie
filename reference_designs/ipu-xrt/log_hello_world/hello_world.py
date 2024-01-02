@@ -55,13 +55,13 @@ def printf():
             @FuncOp.from_py_func(memRef_ty, memRef_ty, memRef_ty)
             def sequence(in_mem, out_mem, logout):
                 ipu_dma_memcpy_nd(
-                    metadata="outOF", bd_id=0, mem=out_mem, lengths=[1, 1, 1, N]
+                    metadata="outOF", bd_id=0, mem=out_mem, wraps=[1, 1, 1, N]
                 )
                 ipu_dma_memcpy_nd(
-                    metadata="inOF", bd_id=1, mem=in_mem, lengths=[1, 1, 1, N]
+                    metadata="inOF", bd_id=1, mem=in_mem, wraps=[1, 1, 1, N]
                 )
                 ipu_dma_memcpy_nd(
-                    metadata="logoutOF", bd_id=2, mem=logout, lengths=[1, 1, 1, N]
+                    metadata="logoutOF", bd_id=2, mem=logout, wraps=[1, 1, 1, N]
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 

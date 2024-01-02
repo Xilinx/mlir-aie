@@ -138,14 +138,14 @@ def passThroughAIE2():
                         packet_type=0,
                         column=0,
                         column_num=1,
-                        d0_stepsize=0,
+                        d0_stride=0,
                         d0_wrap=0,
-                        d1_stepsize=0,
+                        d1_stride=0,
                         d1_wrap=0,
-                        d2_stepsize=0,
+                        d2_stride=0,
                         ddr_id=2,
                         iteration_current=0,
-                        iteration_stepsize=0,
+                        iteration_stride=0,
                         iteration_wrap=0,
                         lock_acq_enable=0,
                         lock_acq_id=0,
@@ -162,13 +162,13 @@ def passThroughAIE2():
                     metadata="in",
                     bd_id=1,
                     mem=inTensor,
-                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    wraps=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_dma_memcpy_nd(
                     metadata="out",
                     bd_id=0,
                     mem=outTensor,
-                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    wraps=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 

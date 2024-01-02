@@ -353,13 +353,13 @@ def edge_detect():
                     metadata="outOF_L2L3",
                     bd_id=0,
                     mem=O,
-                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    wraps=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_dma_memcpy_nd(
                     metadata="inOF_L3L2",
                     bd_id=1,
                     mem=I,
-                    lengths=[1, 1, 1, tensorSizeInInt32s],
+                    wraps=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 

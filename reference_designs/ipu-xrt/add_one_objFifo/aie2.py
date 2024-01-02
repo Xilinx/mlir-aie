@@ -68,10 +68,10 @@ def my_add_one_objFifo():
             @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
             def sequence(inTensor, notUsed, outTensor):
                 ipu_dma_memcpy_nd(
-                    metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
+                    metadata="out0", bd_id=0, mem=outTensor, wraps=[1, 1, 1, 64]
                 )
                 ipu_dma_memcpy_nd(
-                    metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64]
+                    metadata="in0", bd_id=1, mem=inTensor, wraps=[1, 1, 1, 64]
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
