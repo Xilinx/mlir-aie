@@ -118,13 +118,13 @@ def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
 def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   let mnemonic = "bd_dim_layout";
   let summary = [{
-    Tuple encoding the stride and wrap of one dimension in an AIE2 n-dimensional
+    Tuple encoding the stride and size of one dimension in an AIE2 n-dimensional
     buffer descriptor;
   }];
 
   let parameters = (ins
-    "uint16_t" : $wrap,
-    "uint32_t" : $step
+    "uint16_t" : $size,
+    "uint32_t" : $stride
   );
 
   let assemblyFormat = "`<` struct(params) `>`";

@@ -1388,25 +1388,25 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(dims.size()) << " dimensions).";
     }
     for (BDDimLayoutAttr dim : dims) {
-      maxIdx += dim.getStep() * (dim.getWrap() - 1);
-      if (0 == dim.getStep()) {
+      maxIdx += dim.getStride() * (dim.getSize() - 1);
+      if (0 == dim.getStride()) {
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       }
-      if (dim.getStep() > memrefSize) {
+      if (dim.getStride() > memrefSize) {
         return emitOpError()
-               << "Step size " << std::to_string(dim.getStep() * 4) << " "
+               << "Step size " << std::to_string(dim.getStride() * 4) << " "
                << "bytes exceeds memref size " << std::to_string(memrefSize);
       }
-      if (dim.getWrap() >= (1UL << 9) + 1) {
-        return emitOpError() << "Wrap may not exceed 1023.";
+      if (dim.getSize() >= (1UL << 9) + 1) {
+        return emitOpError() << "Size may not exceed 1023.";
       }
-      if (dim.getStep() >= (1UL << 19)) {
-        return emitOpError() << "Stepsize may not exceed " << (1 << 20);
+      if (dim.getStride() >= (1UL << 19)) {
+        return emitOpError() << "Stride may not exceed " << (1 << 20);
       }
     }
     if (memrefSize <= 4 * maxIdx) {
-      return emitOpError() << "Specified stepsize(s) and wrap(s) result in out "
+      return emitOpError() << "Specified stepsize(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << ", accessing at "
                            << std::to_string(4 * maxIdx)
