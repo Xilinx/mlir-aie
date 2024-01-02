@@ -22,8 +22,8 @@ aie.device(ipu) {
   memref.global "public" @toMem : memref<16xi32>
   memref.global "public" @fromMem : memref<16xi32>
   func.func @test0(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-    aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<16xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 16 : i32, 16 : i32], strides = [0 : i32, 0 : i32, 64 : i32],  metadata = @toMem, id = 1 : i32 }
-    aiex.ipu.dma_memcpy_nd(0, 1, %arg1 : memref<16xi32>) { offsets = [0 : i32, 0 : i32, 16 : i32, 16 : i32], lengths = [1 : i32, 1 : i32, 16 : i32, 16 : i32], strides = [0 : i32, 0 : i32, 64 : i32],  metadata = @fromMem, id = 0 : i32 }
+    aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<16xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 16, 16>, strides = array<i32: 0, 0, 64>,  metadata = @toMem, id = 1 : i32 }
+    aiex.ipu.dma_memcpy_nd(0, 1, %arg1 : memref<16xi32>) { offsets = array<i32: 0, 0, 16, 16>, lengths = array<i32: 1, 1, 16, 16>, strides = array<i32: 0, 0, 64>,  metadata = @fromMem, id = 0 : i32 }
     return
   }
   aie.shim_dma_allocation @fromMem (MM2S, 0, 0)

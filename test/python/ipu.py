@@ -90,8 +90,8 @@ Release = LockAction.Release
 # CHECK:       aie.end
 # CHECK:     } {link_with = "scale.o"}
 # CHECK:     func.func @sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<4096xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], metadata = @out, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<4096xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 4096 : i32], metadata = @in, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<4096xi32>) {id = 0 : i32, lengths = array<i32: 1, 1, 1, 4096>, metadata = @out, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<4096xi32>) {id = 1 : i32, lengths = array<i32: 1, 1, 1, 4096>, metadata = @in, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -201,11 +201,11 @@ def my_vector_scalar(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "mm.o"}
 # CHECK:     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) {id = 0 : i32, lengths = [2 : i32, 2 : i32, 64 : i32, 32 : i32], metadata = @outC, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [4096 : i32, 32 : i32, 64 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 1 : i32, lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], metadata = @inA, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 16 : i32, 64 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 2 : i32, lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], metadata = @inB, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [32 : i32, 2048 : i32, 64 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 3 : i32, lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], metadata = @inA, offsets = [0 : i32, 0 : i32, 0 : i32, 4096 : i32], strides = [0 : i32, 16 : i32, 64 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 4 : i32, lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], metadata = @inB, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [32 : i32, 2048 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) {id = 0 : i32, lengths = array<i32: 2, 2, 64, 32>, metadata = @outC, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 4096, 32, 64>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 1 : i32, lengths = array<i32: 2, 4, 64, 16>, metadata = @inA, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 16, 64>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 2 : i32, lengths = array<i32: 2, 4, 32, 32>, metadata = @inB, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 32, 2048, 64>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) {id = 3 : i32, lengths = array<i32: 2, 4, 64, 16>, metadata = @inA, offsets = array<i32: 0, 0, 0, 4096>, strides = array<i32: 0, 16, 64>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) {id = 4 : i32, lengths = array<i32: 2, 4, 32, 32>, metadata = @inB, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 32, 2048, 64>}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -523,8 +523,8 @@ def my_matmul(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "combined_gray2rgba_addWeighted.a"}
 # CHECK:     func.func @sequence(%arg0: memref<2304xi32>, %arg1: memref<2304xi32>, %arg2: memref<2304xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<2304xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], metadata = @outOF_L2L3, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 64 : i32]}
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<2304xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 36 : i32, 64 : i32], metadata = @inOF_L3L2, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 64 : i32]}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<2304xi32>) {id = 0 : i32, lengths = array<i32: 1, 1, 36, 64>, metadata = @outOF_L2L3, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 64>}
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<2304xi32>) {id = 1 : i32, lengths = array<i32: 1, 1, 36, 64>, metadata = @inOF_L3L2, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 64>}
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -888,8 +888,8 @@ def edge_detect(module):
 #       aie.end
 #     }
 #     func.func @sequence(%in : memref<64xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
-#       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @out0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
-#       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @in0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+#       aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 0 : i32, lengths = array<i32: 1, 1, 1, 64>, metadata = @out0, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
+#       aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 1 : i32, lengths = array<i32: 1, 1, 1, 64>, metadata = @in0, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
 #       aiex.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
 #       return
 #     }
@@ -1649,8 +1649,8 @@ def my_passthrough(module):
 # CHECK:    }
 # CHECK:    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
 # CHECK:    func.func @bobsyouruncle(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 0 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @objFifo_in0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 1 : i32, lengths = [1 : i32, 1 : i32, 1 : i32, 64 : i32], metadata = @objFifo_out0, offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], strides = [0 : i32, 0 : i32, 0 : i32]}
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<64xi32>) {id = 0 : i32, lengths = array<i32: 1, 1, 1, 64>, metadata = @objFifo_in0, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<64xi32>) {id = 1 : i32, lengths = array<i32: 1, 1, 1, 64>, metadata = @objFifo_out0, offsets = array<i32: 0, 0, 0, 0>, strides = array<i32: 0, 0, 0>}
 # CHECK:      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:      return
 # CHECK:    }

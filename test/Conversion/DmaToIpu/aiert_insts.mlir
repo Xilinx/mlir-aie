@@ -17,8 +17,8 @@ module {
     memref.global "public" @of_toMem : memref<32xi32>
     memref.global "public" @of_fromMem : memref<32xi32>
     func.func @sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
-      aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 32 : i32], strides = [0 : i32, 0 : i32, 0 : i32], metadata = @of_toMem, id = 1 : i32 }
-      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<4x2x8xi32>) { offsets = [0 : i32, 2 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 2 : i32, 2 : i32, 8 : i32], strides = [0 : i32, 16 : i32, 8 : i32], metadata = @of_fromMem, id = 0 : i32 }
+      aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<64xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 1, 32>, strides = array<i32: 0, 0, 0>, metadata = @of_toMem, id = 1 : i32 }
+      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<4x2x8xi32>) { offsets = array<i32: 0, 2, 0, 0>, lengths = array<i32: 1, 2, 2, 8>, strides = array<i32: 0, 16, 8>, metadata = @of_fromMem, id = 0 : i32 }
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)

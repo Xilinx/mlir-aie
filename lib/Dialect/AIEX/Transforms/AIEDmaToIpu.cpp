@@ -194,12 +194,12 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    SmallVector<uint32_t, 4> offsets(
-        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getOffsets())));
-    SmallVector<uint32_t, 4> lengths(
-        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getLengths())));
-    SmallVector<uint32_t, 3> strides(
-        llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(op.getStrides())));
+    SmallVector<int32_t, 4> offsets(op.getOffsets().rbegin(),
+                                    op.getOffsets().rend());
+    SmallVector<int32_t, 4> lengths(op.getLengths().rbegin(),
+                                    op.getLengths().rend());
+    SmallVector<int32_t, 3> strides(op.getStrides().rbegin(),
+                                    op.getStrides().rend());
 
     // column
     column = IntegerAttr::get(i32ty, col);
@@ -224,9 +224,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    uint32_t repeat_length = 0;
-    for (uint32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
-      for (uint32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
+    int32_t repeat_length = 0;
+    for (int32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
+      for (int32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
         repeat_length += lengths[0];
     buffer_length = IntegerAttr::get(i32ty, repeat_length);
 

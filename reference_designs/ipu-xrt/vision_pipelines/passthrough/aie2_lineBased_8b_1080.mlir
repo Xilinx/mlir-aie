@@ -51,8 +51,8 @@ module @passThroughLine_aie2 {
             //%tilewidth  = arith.constant 480 : i32  // in 32b words so tileWidth/4
 
             //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-            aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<518400xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @inOF, id = 1 : i32 }
-            aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<518400xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @outOF, id = 0 : i32 }
+            aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<518400xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @inOF, id = 1 : i32 }
+            aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<518400xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = [1 : i32, 1 : i32, 1080  : i32, 480  : i32], strides = [0 : i32, 0 : i32, 480  : i32],  metadata = @outOF, id = 0 : i32 }
             aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
             return
         }

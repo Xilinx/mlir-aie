@@ -469,9 +469,9 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
         I32Attr:$y,
         AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
-        ConfinedAttr<I32ArrayAttr, [ArrayCount<4>]>:$offsets,
-        ConfinedAttr<I32ArrayAttr, [ArrayCount<4>]>:$lengths,
-        ConfinedAttr<I32ArrayAttr, [ArrayCount<3>]>:$strides,
+        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<4>]>:$offsets,
+        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<4>]>:$lengths,
+        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<3>]>:$strides,
         FlatSymbolRefAttr:$metadata,
         I32Attr:$id
   );

@@ -41,8 +41,8 @@ module {
       aie.end
     }
     func.func @sequence(%in : memref<64xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
-      aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32,1 : i32,1 : i32,64 : i32], strides = [0 : i32, 0 : i32, 0 : i32], metadata = @objFifo_out0, id = 1 : i32 }
-      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<64xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32,1 : i32,1 : i32,64 : i32], strides = [0 : i32, 0 : i32, 0 : i32], metadata = @objFifo_in0, id = 0 : i32 }
+      aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<64xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 1, 64>, strides = array<i32: 0, 0, 0>, metadata = @objFifo_out0, id = 1 : i32 }
+      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<64xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 1, 64>, strides = array<i32: 0, 0, 0>, metadata = @objFifo_in0, id = 0 : i32 }
       aiex.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
       return
     }

@@ -120,11 +120,11 @@ module {
     } {link_with = "mm.o"}
     aie.shim_dma_allocation @inA(MM2S, 0, 0)
     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 2 : i32, 64 : i32, 32 : i32], strides = [4096 : i32, 32 : i32, 64 : i32], id = 0 : i32, metadata = @outC}
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], strides = [0 : i32, 16 : i32, 64 : i32], id = 1 : i32, metadata = @inA}
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], strides = [32 : i32, 2048 : i32, 64 : i32], id = 2 : i32, metadata = @inB}
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 4096 : i32, 4096 : i32], lengths = [2 : i32, 4 : i32, 64 : i32, 16 : i32], strides = [0 : i32, 16 : i32, 64 : i32], id = 3 : i32, metadata = @inA}
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [2 : i32, 4 : i32, 32 : i32, 32 : i32], strides = [32 : i32, 2048 : i32, 64 : i32], id = 4 : i32, metadata = @inB}
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg2 : memref<8192xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 2, 2, 64, 32>, strides = array<i32: 4096, 32, 64>, id = 0 : i32, metadata = @outC}
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 2, 4, 64, 16>, strides = array<i32: 0, 16, 64>, id = 1 : i32, metadata = @inA}
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 2, 4, 32, 32>, strides = array<i32: 32, 2048, 64>, id = 2 : i32, metadata = @inB}
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg0 : memref<8192xi32>) { offsets = array<i32: 0, 0, 4096, 4096>, lengths = array<i32: 2, 4, 64, 16>, strides = array<i32: 0, 16, 64>, id = 3 : i32, metadata = @inA}
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg1 : memref<8192xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 2, 4, 32, 32>, strides = array<i32: 32, 2048, 64>, id = 4 : i32, metadata = @inB}
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }

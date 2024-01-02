@@ -48,8 +48,8 @@ module @passThroughLine_aie2 {
 
         func.func @sequence(%in : memref<2073600xi32>, %arg1 : memref<1xi32>, %out : memref<2073600xi32>) {
             //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-            aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<2073600xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 2073600 : i32], strides = [0 : i32, 0 : i32, 0 : i32],  metadata = @inOF, id = 1 : i32 }
-            aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<2073600xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 1 : i32, 2073600 : i32], strides = [0 : i32, 0 : i32, 0 : i32],  metadata = @outOF, id = 0 : i32 }
+            aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<2073600xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 1, 2073600>, strides = array<i32: 0, 0, 0>,  metadata = @inOF, id = 1 : i32 }
+            aiex.ipu.dma_memcpy_nd(0, 0, %out : memref<2073600xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 1, 2073600>, strides = array<i32: 0, 0, 0>,  metadata = @outOF, id = 0 : i32 }
             aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
             return
         }

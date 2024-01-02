@@ -14,7 +14,7 @@ module {
   aie.device(ipu) {
     func.func @sequence(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
       // expected-error@+1 {{Stride 1 exceeds the [1:1M] range}}
-      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<8388608xi32>) { offsets = [0 : i32, 0 : i32, 0 : i32, 0 : i32], lengths = [1 : i32, 1 : i32, 2 : i32, 2 : i32], strides = [0 : i32, 0 : i32, 2097152 : i32],  metadata = @of_fromMem, id = 0 : i32 }
+      aiex.ipu.dma_memcpy_nd(0, 0, %in : memref<8388608xi32>) { offsets = array<i32: 0, 0, 0, 0>, lengths = array<i32: 1, 1, 2, 2>, strides = array<i32: 0, 0, 2097152>,  metadata = @of_fromMem, id = 0 : i32 }
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)

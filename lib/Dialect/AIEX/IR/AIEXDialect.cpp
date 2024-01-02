@@ -68,10 +68,10 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
-  llvm::SmallVector<uint32_t> strides(
-      llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(getStrides())));
-  llvm::SmallVector<uint32_t> lengths(
-      llvm::reverse(extractFromIntegerArrayAttr<uint32_t>(getLengths())));
+  llvm::SmallVector<int32_t> strides(getStrides().rbegin(),
+                                     getStrides().rend());
+  llvm::SmallVector<int32_t> lengths(getLengths().rbegin(),
+                                     getLengths().rend());
 
   if (lengths[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
