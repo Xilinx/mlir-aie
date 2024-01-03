@@ -1,18 +1,13 @@
+setuptools
 PyYAML>=5.3.1, <=6.0.1
 aiofiles
 cmake==3.27.9
 dataclasses>=0.6, <=0.8
-gurobipy
 lit
-matplotlib
-networkx[default]
 numpy>=1.19.5, <=1.26
-ortools
 psutil
 pybind11>=2.9.0, <=2.10.3
-pylint
 rich
 wheel
 
-# this is actually the aie branch of mlir-python-extras (see https://github.com/makslevental/mlir-python-extras/pull/33)
-aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/5055eeea7c1e275d55b435974742c108b5ba4535.zip
+-r aie-python-extras-req.txt

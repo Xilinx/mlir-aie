@@ -7,12 +7,9 @@ import os
 from collections import defaultdict
 from typing import List, Tuple, Dict, Set
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import networkx as nx
-
 
 def build_graph(max_cols, max_rows, target_model):
+    import networkx as nx
     from ._mlir_libs._aie_python_passes import WireBundle, Switchbox
 
     DG = nx.DiGraph()
@@ -262,6 +259,10 @@ def rgb2hex(r, g, b, a):
 
 
 def plot_paths(DG, src, paths):
+    import networkx as nx
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
     pos = dict((n, (n.col, n.row)) for n in DG.nodes())
     labels = dict((n, f"{n.col},{n.row}") for n in DG.nodes())
 
