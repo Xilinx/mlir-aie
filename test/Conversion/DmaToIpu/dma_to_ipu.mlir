@@ -26,8 +26,8 @@ aie.device(ipu) {
     %c64_i64 = arith.constant 64 : i64
     %c0_i64 = arith.constant 0 : i64
     %c1_i64 = arith.constant 1 : i64
-    aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i32, %c0_i32, %c0_i32, %c0_i32][%c1_i32, %c1_i32, %c16_i32, %c16_i32][%c0_i32, %c0_i32, %c64_i32]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
-    aiex.ipu.dma_memcpy_nd(0, 1, %arg1[%c0_i32, %c0_i32, %c0_i32, %c16_i32][%c1_i32, %c1_i32, %c16_i32, %c16_i32][%c0_i32, %c0_i32, %c64_i32]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
+    aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c16_i64, %c16_i64][%c0_i64, %c0_i64, %c64_i64]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+    aiex.ipu.dma_memcpy_nd(0, 1, %arg1[%c0_i64, %c0_i64, %c0_i64, %c16_i64][%c1_i64, %c1_i64, %c16_i64, %c16_i64][%c0_i64, %c0_i64, %c64_i64]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
     return
   }
   aie.shim_dma_allocation @fromMem (MM2S, 0, 0)

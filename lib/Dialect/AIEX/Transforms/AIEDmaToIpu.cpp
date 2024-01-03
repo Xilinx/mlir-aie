@@ -194,12 +194,15 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    SmallVector<int64_t, 4> offsets(op.getStaticOffsets().rbegin(),
-                                    op.getStaticOffsets().rend());
-    SmallVector<int64_t, 4> lengths(op.getStaticLengths().rbegin(),
-                                  op.getStaticLengths().rend());
-    SmallVector<int64_t, 3> strides(op.getStaticStrides().rbegin(),
-                                    op.getStaticStrides().rend());
+    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> lengths = llvm::map_to_vector(
+        llvm::reverse(op.getMixedSizes()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+        llvm::reverse(op.getMixedOffsets()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
     // column
     column = IntegerAttr::get(i32ty, col);
