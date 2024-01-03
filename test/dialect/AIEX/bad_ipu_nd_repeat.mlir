@@ -21,7 +21,7 @@ module {
       %c16 = arith.constant 16 : i64
       %c32 = arith.constant 32 : i64
       %c128 = arith.constant 128 : i64
-      // expected-error@+1 {{Length 3 exceeds the [1:64] range}}
+      // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
       aiex.ipu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
       return
     }
