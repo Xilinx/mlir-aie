@@ -68,16 +68,16 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
-  llvm::SmallVector<int32_t> strides(getStrides().rbegin(),
-                                     getStrides().rend());
-  llvm::SmallVector<int32_t> lengths(getLengths().rbegin(),
-                                     getLengths().rend());
+  llvm::SmallVector<int32_t> strides(getStaticStrides().rbegin(),
+                                     getStaticStrides().rend());
+  llvm::SmallVector<int32_t> wraps(getStaticWraps().rbegin(),
+                                   getStaticWraps().rend());
 
-  if (lengths[3] > 64)
+  if (wraps[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
-  if (strides[1] && lengths[1] > 0x3FF)
+  if (strides[1] && wraps[1] > 0x3FF)
     return emitOpError("Length 1 exceeds the [0:1023] range.");
-  if (strides[0] && lengths[0] > 0x3FF)
+  if (strides[0] && wraps[0] > 0x3FF)
     return emitOpError("Length 0 exceeds the [0:1023] range.");
   if (strides[2] > 0x100000)
     return emitOpError("Stride 3 exceeds the [1:1M] range.");

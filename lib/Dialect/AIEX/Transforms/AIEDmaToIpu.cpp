@@ -194,12 +194,12 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    SmallVector<int32_t, 4> offsets(op.getOffsets().rbegin(),
-                                    op.getOffsets().rend());
-    SmallVector<int32_t, 4> lengths(op.getLengths().rbegin(),
-                                    op.getLengths().rend());
-    SmallVector<int32_t, 3> strides(op.getStrides().rbegin(),
-                                    op.getStrides().rend());
+    SmallVector<int64_t, 4> offsets(op.getStaticOffsets().rbegin(),
+                                    op.getStaticOffsets().rend());
+    SmallVector<int64_t, 4> wraps(op.getStaticWraps().rbegin(),
+                                  op.getStaticWraps().rend());
+    SmallVector<int64_t, 3> strides(op.getStaticStrides().rbegin(),
+                                    op.getStaticStrides().rend());
 
     // column
     column = IntegerAttr::get(i32ty, col);
@@ -225,9 +225,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 
     // buffer_length
     int32_t repeat_length = 0;
-    for (int32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
-      for (int32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
-        repeat_length += lengths[0];
+    for (int32_t index_3d = 0; index_3d < wraps[2]; index_3d++)
+      for (int32_t index_2d = 0; index_2d < wraps[1]; index_2d++)
+        repeat_length += wraps[0];
     buffer_length = IntegerAttr::get(i32ty, repeat_length);
 
     // buffer_offset
@@ -253,14 +253,14 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 
     // d0_wrap
     if (strides[0])
-      d0_wrap = IntegerAttr::get(i32ty, lengths[0]);
+      d0_wrap = IntegerAttr::get(i32ty, wraps[0]);
 
     // d0_stepsize
     d0_stepsize = IntegerAttr::get(i32ty, 0);
 
     // d1_wrap
     if (strides[1])
-      d1_wrap = IntegerAttr::get(i32ty, lengths[1]);
+      d1_wrap = IntegerAttr::get(i32ty, wraps[1]);
 
     // d1_stepsize
     if (strides[0])
@@ -274,7 +274,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 
     // iteration_wrap
     if (strides[2])
-      iteration_wrap = IntegerAttr::get(i32ty, lengths[3] - 1);
+      iteration_wrap = IntegerAttr::get(i32ty, wraps[3] - 1);
 
     // iteration_stepsize
     if (strides[2])
@@ -302,7 +302,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     // lock_acq_id
 
     // repeat_count
-    repeat_count = IntegerAttr::get(i32ty, lengths[3] - 1);
+    repeat_count = IntegerAttr::get(i32ty, wraps[3] - 1);
 
     // issue_token
     if (!isMM2S)

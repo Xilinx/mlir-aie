@@ -19,6 +19,7 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 def AIEX_Dialect : Dialect {
   let name = "aiex";
@@ -462,26 +463,48 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
+def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
+    AttrSizedOperandSegments,
+    OffsetSizeAndStrideOpInterface,
+    DeclareOpInterfaceMethods<OffsetSizeAndStrideOpInterface, ["getSizes", "getStaticSizes"]>,
+  ]> {
   let summary = "half dma operator";
-  let arguments = (
-    ins I32Attr:$x,
-        I32Attr:$y,
-        AnyMemRef:$memref,
-        // NOTE: these are in reverse order: offset3, offset2, ...
-        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<4>]>:$offsets,
-        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<4>]>:$lengths,
-        ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<3>]>:$strides,
-        FlatSymbolRefAttr:$metadata,
-        I32Attr:$id
-  );
-  let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref `:` type($memref) `)` attr-dict
-  }];
-  let hasVerifier = 1;
+
   let description = [{
     nd half dma operator
   }];
+
+  let arguments = (
+    ins IndexAttr:$x,
+        IndexAttr:$y,
+        AnyMemRef:$memref,
+        // NOTE: these are in reverse order: offset3, offset2, ...
+        Variadic<Index>:$offsets,
+        Variadic<Index>:$wraps,
+        Variadic<Index>:$strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_wraps,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
+        FlatSymbolRefAttr:$metadata,
+        IndexAttr:$id
+  );
+
+  let assemblyFormat = [{
+    $x `,` $y `,` $memref ``
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($wraps, $static_wraps)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict `:` type($memref)
+  }];
+
+  let extraClassDefinition = [{
+    ::mlir::OperandRange $cppClass::getSizes() { return getWraps(); }
+    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticWraps(); }
+    unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
+  }];
+
+  let hasVerifier = 1;
 }
 
 // Write RTP
