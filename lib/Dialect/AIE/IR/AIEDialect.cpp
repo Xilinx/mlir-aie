@@ -1406,7 +1406,7 @@ LogicalResult DMABDOp::verify() {
       }
     }
     if (memrefSize <= 4 * maxIdx) {
-      return emitOpError() << "Specified stepsize(s) and size(s) result in out "
+      return emitOpError() << "Specified stride(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << ", accessing at "
                            << std::to_string(4 * maxIdx)
