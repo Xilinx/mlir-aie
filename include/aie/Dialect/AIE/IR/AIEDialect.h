@@ -47,8 +47,32 @@ struct HasValidDMAChannels
 class TileOp;
 } // namespace xilinx::AIE
 
+namespace xilinx::AIE {
+mlir::LogicalResult
+verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+} // namespace xilinx::AIE
+
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
+
+namespace xilinx::AIE {
+mlir::LogicalResult
+myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+template <typename ConcreteOp>
+struct MyOffsetSizeAndStrideOpInterfaceTrait
+    : public ::mlir::detail::OffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {
+  static ::mlir::LogicalResult verifyTrait(::mlir::Operation *op) {
+    return myVerifyOffsetSizeAndStrideOp(
+        ::mlir::cast<::mlir::OffsetSizeAndStrideOpInterface>(op));
+  }
+};
+
+struct MyOffsetSizeAndStrideOpInterface
+    : ::mlir::OffsetSizeAndStrideOpInterface {
+  template <typename ConcreteOp>
+  struct Trait : public MyOffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {};
+};
+} // namespace xilinx::AIE
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIE/IR/AIEDialect.h.inc"

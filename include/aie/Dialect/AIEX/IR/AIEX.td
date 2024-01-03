@@ -12,6 +12,7 @@
 #define AIEX_OPS
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
+include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -19,7 +20,6 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/Interfaces/ViewLikeInterface.td"
 
 def AIEX_Dialect : Dialect {
   let name = "aiex";
@@ -465,8 +465,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
 
 def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
-    OffsetSizeAndStrideOpInterface,
-    DeclareOpInterfaceMethods<OffsetSizeAndStrideOpInterface, ["getSizes", "getStaticSizes"]>,
+    MyOffsetSizeAndStrideOpInterface
   ]> {
   let summary = "half dma operator";
 
@@ -475,31 +474,38 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   }];
 
   let arguments = (
-    ins IndexAttr:$x,
-        IndexAttr:$y,
+    ins I64Attr:$x,
+        I64Attr:$y,
         AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
-        Variadic<Index>:$offsets,
-        Variadic<Index>:$wraps,
-        Variadic<Index>:$strides,
+        Variadic<I64>:$offsets,
+        Variadic<I64>:$lengths,
+        Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_wraps,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_lengths,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
-        IndexAttr:$id
+        I64Attr:$id
   );
 
   let assemblyFormat = [{
-    $x `,` $y `,` $memref ``
-    custom<DynamicIndexList>($offsets, $static_offsets)
-    custom<DynamicIndexList>($wraps, $static_wraps)
-    custom<DynamicIndexList>($strides, $static_strides)
+    `(` $x `,` $y `,` $memref ``
+    custom<DynamicIndexList>($offsets, $static_offsets) ``
+    custom<DynamicIndexList>($lengths, $static_lengths) ``
+    custom<DynamicIndexList>($strides, $static_strides) `)`
     attr-dict `:` type($memref)
   }];
 
+  let extraClassDeclaration = [{
+    ::mlir::OperandRange getSizes();
+    ::llvm::ArrayRef<int64_t> getStaticSizes();
+    static unsigned getOffsetSizeAndStrideStartOperandIndex();
+    static std::array<unsigned, 3> getArrayAttrMaxRanks();
+  }];
+
   let extraClassDefinition = [{
-    ::mlir::OperandRange $cppClass::getSizes() { return getWraps(); }
-    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticWraps(); }
+    ::mlir::OperandRange $cppClass::getSizes() { return getLengths(); }
+    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticLengths(); }
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
   }];

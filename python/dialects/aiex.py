@@ -5,6 +5,7 @@ from functools import partial
 
 from . import arith
 from ._aiex_ops_gen import *
+from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..ir import FlatSymbolRefAttr, IntegerType, IntegerAttr
@@ -21,24 +22,44 @@ ipu_sync = partial(ipu_sync, column_num=1, row_num=1)
 class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
     """Specialize IpuDmaMemcpyNdOp class constructor to take python integers"""
 
-    def __init__(self, metadata, bd_id, mem, offsets=None, lengths=None, strides=None):
-        if strides is None:
-            strides = [0] * 3
-        if lengths is None:
-            lengths = [0] * 4
-        if offsets is None:
-            offsets = [0] * 4
+    def __init__(
+        self,
+        metadata,
+        bd_id,
+        mem,
+        offsets: MixedValues = None,
+        lengths: MixedValues = None,
+        strides: MixedValues = None,
+    ):
         x = 0
         y = 0
+        if offsets is None:
+            offsets = [0] * 4
+        if lengths is None:
+            lengths = [0] * 4
+        if strides is None:
+            strides = [0] * 3
+        dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
+            offsets
+        )
+        dynamic_lengths, _packed_lengths, static_lengths = _dispatch_mixed_values(
+            lengths
+        )
+        dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
+            strides
+        )
         super().__init__(
-            metadata=metadata,
-            id=bd_id,
-            x=x,
-            y=y,
-            memref=mem,
-            offsets=offsets,
-            lengths=lengths,
-            strides=strides,
+            x,
+            y,
+            mem,
+            dynamic_offsets,
+            dynamic_lengths,
+            dynamic_strides,
+            static_offsets,
+            static_lengths,
+            static_strides,
+            metadata,
+            bd_id,
         )
 
 
