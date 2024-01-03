@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and Test across Python versions
 
 on:
   push:
@@ -17,7 +17,7 @@ concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
-  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  group: ci-build-test-pythons-cpp-linux-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -34,6 +34,7 @@ jobs:
       matrix:
         build_type: [ Assert, Release ]
         ubuntu_version: [ 20.04, 22.04 ]
+        python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
@@ -46,7 +47,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python_version }}
 
       - name: Install Python packages
         run: |

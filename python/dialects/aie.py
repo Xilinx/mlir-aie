@@ -270,8 +270,8 @@ class DMAStartOp(DMAStartOp):
         channel_dir,
         channel_index,
         *,
-        dest: Optional[Successor | Block] = None,
-        chain: Optional[Successor | Block] = None,
+        dest: Optional[Union[Successor, Block]] = None,
+        chain: Optional[Union[Successor, Block]] = None,
         loc=None,
         ip=None,
     ):
@@ -298,8 +298,8 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Successor | Block] = None,
-    chain: Optional[Successor | Block] = None,
+    dest: Optional[Union[Successor, Block]] = None,
+    chain: Optional[Union[Successor, Block]] = None,
     loc=None,
     ip=None,
 ):
@@ -309,7 +309,9 @@ def dma_start(
 
 @_cext.register_operation(_Dialect, replace=True)
 class NextBDOp(NextBDOp):
-    def __init__(self, dest: Optional[Successor | Block] = None, *, loc=None, ip=None):
+    def __init__(
+        self, dest: Optional[Union[Successor, Block]] = None, *, loc=None, ip=None
+    ):
         if isinstance(dest, Successor):
             dest = dest.block
         if dest is None:
@@ -323,5 +325,5 @@ class NextBDOp(NextBDOp):
         return Successor(self, [], self.successors[0], 0)
 
 
-def next_bd(dest: Optional[Successor | Block] = None, loc=None, ip=None):
+def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
