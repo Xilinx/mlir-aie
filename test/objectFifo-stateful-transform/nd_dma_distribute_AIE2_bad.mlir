@@ -18,7 +18,7 @@ module @ndDMAObjFifoAIE2 {
     %tile23 = aie.tile(2, 3)
 
     aie.objectfifo @of0 (%tile10, {%tile11 fromStream [<wrap = 32, stride = 16>,
-                                                       <wrap = 8,  step = 1>]},
+                                                       <wrap = 8, stride = 1>]},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
 
     aie.objectfifo @of1 (%tile11 toStream [<wrap = 4, stride = 64>,

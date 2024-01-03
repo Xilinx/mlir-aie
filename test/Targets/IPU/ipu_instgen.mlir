@@ -61,7 +61,7 @@ module {
                                   d0_wrap = 6 : i32,
                                   d1_stride = 7 : i32,
                                   d1_wrap = 8 : i32,
-                                  d2_stepsize = 9 : i32,
+                                  d2_stride = 9 : i32,
                                   ddr_id = 10 : i32,
                                   iteration_current = 11 : i32,
                                   iteration_stride = 12 : i32,
