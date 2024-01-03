@@ -31,6 +31,8 @@ public:
            int deviceIndex)
       : xclBin(std::make_unique<xrt::xclbin>(xclBinPath)),
         device(std::make_unique<xrt::device>(deviceIndex)) {
+    assert(device->get_info<xrt::info::device::name>() == "Phoenix" &&
+           "only Phoenix supported by xrt python bindings");
     device->register_xclbin(*xclBin);
     context = std::make_unique<xrt::hw_context>(*device, xclBin->get_uuid());
     kernel = std::make_unique<xrt::kernel>(*context, kernelName);
