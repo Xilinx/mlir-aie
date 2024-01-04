@@ -10,12 +10,12 @@
 #include "AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Target/LLVMIR/Import.h"
 
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -109,8 +109,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
            << ", /* Size */ " << std::to_string(dims[i].getSize()) << "};\n";
   }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
-         << tileDMAInstRefStr(col, row, bdNum) << ", "
-         << "&" << tensor << ", "
+         << tileDMAInstRefStr(col, row, bdNum) << ", " << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << " * " << bytesA << "));\n";
   // TODO: Probably need special handling for NOC
