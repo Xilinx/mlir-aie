@@ -7,7 +7,9 @@
 
 add_subdirectory(AIEVecToCpp)
 
-add_mlir_library(AIETargets
+set(LLVM_OPTIONAL_SOURCES AIETargetCDODirect.cpp)
+
+set(_sources
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDO.cpp
@@ -19,6 +21,14 @@ add_mlir_library(AIETargets
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp
+)
+
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  list(APPEND _sources AIETargetCDODirect.cpp)
+endif()
+
+add_mlir_library(AIETargets
+  ${_sources}
 
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
@@ -42,3 +52,35 @@ add_mlir_library(AIETargets
   AIEXUtils
   ADF
 )
+
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  include("${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aiert.cmake")
+  set(XAIE_SOURCE_DIR "${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aie-rt/driver/src")
+
+  add_aiert_headers(xaienginecdo
+    ${XAIE_SOURCE_DIR}
+    ${AIE_BINARY_DIR}/include
+    ${CMAKE_INSTALL_PREFIX}/include/xaiengine
+  )
+  add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR} STATIC)
+
+  # TODO: set RPATH correctly (and for XRTModule)
+  add_library(cdo_driver SHARED IMPORTED)
+  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
+  install(IMPORTED_RUNTIME_ARTIFACTS
+    cdo_driver
+    COMPONENT aie-translate-targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+  )
+
+  target_link_libraries(xaienginecdo PUBLIC cdo_driver)
+  target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
+
+  # just to make cmake happy since AIETargets will need to re-export
+  install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo)
+  install(EXPORT xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake)
+
+  target_link_libraries(AIETargets PUBLIC xaienginecdo)
+  add_dependencies(AIETargets xaienginecdo xaienginecdo-headers)
+  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()

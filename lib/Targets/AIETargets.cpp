@@ -263,6 +263,14 @@ void registerAIETranslations() {
         return AIETranslateToCDO(module, output);
       },
       registerDialects);
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+  TranslateFromMLIRRegistration registrationCDODirect(
+      "aie-generate-cdo-direct", "Generate libxaie for CDO directly",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToCDODirect(module, output);
+      },
+      registerDialects);
+#endif
   TranslateFromMLIRRegistration registrationIPU(
       "aie-ipu-instgen", "Generate instructions for IPU",
       [](ModuleOp module, raw_ostream &output) {
