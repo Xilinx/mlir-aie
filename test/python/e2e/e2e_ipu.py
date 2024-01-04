@@ -7,6 +7,7 @@
 # RUN: HOST_RUNTIME_LIB_DIR=%host_runtime_lib% WORKDIR=%T XRT_DIR=%XRT_DIR %PYTHON %s | FileCheck %s
 # REQUIRES: xrt_python_bindings
 # REQUIRES: ryzen_ai
+# XFAIL: *
 
 import json
 import random

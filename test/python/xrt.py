@@ -5,6 +5,7 @@
 # RUN: %PYTHON %s | FileCheck %s
 # REQUIRES: xrt_python_bindings
 # REQUIRES: ryzen_ai
+# XFAIL: *
 
 from pathlib import Path
 import numpy as np

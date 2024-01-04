@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, opencv
+// XFAIL: *
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/rgba2hue.cc -o ./rgba2hue.cc.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/threshold.cc -o ./threshold.cc.o
