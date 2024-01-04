@@ -47,6 +47,11 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
             bool DisableDITypeMap = false, bool NoVerify = false,
             bool Internalize = false, bool OnlyNeeded = false,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
+
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
+                                            llvm::raw_ostream &output);
+#endif
 } // namespace AIE
 
 namespace aievec {

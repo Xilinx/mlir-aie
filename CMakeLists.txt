@@ -154,6 +154,12 @@ cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
   "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL" OFF)
 
+find_library(CDO_DRIVER_LIBRARY cdo_driver
+  HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
+)
+cmake_dependent_option(AIE_ENABLE_GENERATE_CDO_DIRECT
+  "Enables building of direct bindings to libcdo." ON "CDO_DRIVER_LIBRARY" OFF)
+
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
 
