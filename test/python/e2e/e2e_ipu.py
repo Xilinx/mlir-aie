@@ -9,19 +9,18 @@
 # REQUIRES: ryzen_ai
 
 import json
-import random
 import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
-from pathlib import Path
-from textwrap import dedent
-
 from aie.extras.dialects.ext import memref, arith, func
-from aie.extras.runtime.passes import run_pipeline, Pipeline
-from aie.extras.util import find_ops, bb
+from aie.extras.runtime.passes import run_pipeline
+from aie.extras.util import bb
+
+import aie.extras.types as T
 from aie.compiler.aiecc.main import (
     generate_cores_list,
     emit_partition,
@@ -30,51 +29,26 @@ from aie.compiler.aiecc.main import (
     mem_topology,
     chesshack,
 )
-
-from aie.xrt import XCLBin
-
-import aie.extras.types as T
 from aie.dialects import aie
 from aie.dialects.aie import (
     AIEDevice,
-    Call,
-    CoreOp,
-    TileOp,
     DMAChannelDir,
     LockAction,
-    ObjectFifoPort,
-    ObjectFifoType,
     WireBundle,
-    acquire,
-    buffer,
-    core,
     device,
-    dma_bd,
-    dma_start,
-    end as end_,
-    external_func,
-    flow,
     generate_bcf,
     generate_cdo,
-    generate_xaie,
     ipu_instgen,
-    lock,
     mem,
     memtile_dma,
-    next_bd,
-    objectfifo,
-    objectfifo_link,
-    objectfifo_release,
     tile,
     translate_mlir_to_llvmir,
     aie_llvm_link,
-    use_lock,
 )
-from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd, ipu_dma_memcpy_nd_
-from aie.dialects.func import FuncOp
+from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
-from aie.ir import TypeAttr
+from aie.xrt import XCLBin
 from util import construct_and_print_module
 
 range_ = for_
@@ -226,26 +200,22 @@ def add_one_using_dma(module):
             arg1: T.memref(32, T.i32()),
             arg2: T.memref(64, T.i32()),
         ):
-            ipu_dma_memcpy_nd_(
-                0,
+            ipu_dma_memcpy_nd(
+                "objFifo_in0",
                 0,
                 arg0,
                 [0, 0, 0, 0],
                 [1, 1, 1, 64],
                 [0, 0, 0],
-                metadata="objFifo_in0",
-                id=0,
             )
 
-            ipu_dma_memcpy_nd_(
-                0,
-                0,
+            ipu_dma_memcpy_nd(
+                "objFifo_out0",
+                1,
                 arg2,
                 [0, 0, 0, 0],
                 [1, 1, 1, 64],
                 [0, 0, 0],
-                metadata="objFifo_out0",
-                id=1,
             )
             ipu_sync(channel=0, column=0, column_num=1, direction=0, row=0, row_num=1)
 
