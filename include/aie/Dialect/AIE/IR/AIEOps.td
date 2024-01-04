@@ -887,6 +887,25 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 }
 
+def AIE_DMAOp: AIE_Op<"dma", [
+    ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
+    NoTerminator,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs I1:$valid)> {
+
+  let summary = "An op to describe a set of DMA operations.";
+
+  let arguments = (
+    ins DMAChannelDir:$channelDir,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channelIndex
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    `(` $channelDir `,` $channelIndex `)` regions attr-dict
+  }];
+}
+
+
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
