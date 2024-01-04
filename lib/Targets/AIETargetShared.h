@@ -5,26 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Target/LLVMIR/Import.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/Passes.h"
-
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/TargetSelect.h"
-
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-
 #ifndef AIETargetShared_XAIEV2_CDO_H
 #define AIETargetShared_XAIEV2_CDO_H
+
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 namespace xilinx {
 namespace AIE {

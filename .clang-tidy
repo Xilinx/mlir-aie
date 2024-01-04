@@ -90,3 +90,6 @@ CheckOptions:
     value:           camelBack
   - key:             readability-identifier-naming.VariableCase
     value:           camelBack
+  # Ours
+  - key:             readability-identifier-naming.ConstantCase
+    value:           UPPER_CASE

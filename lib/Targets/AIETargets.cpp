@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Targets/AIETargets.h"
+#include "aie/Targets/cdo_driver.h"
+
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -25,7 +27,12 @@
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+
+#define DEBUG_TYPE "aie-targets"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -38,6 +45,18 @@ static llvm::cl::opt<int>
 static llvm::cl::opt<int>
     tileRow("tilerow", llvm::cl::desc("row coordinate of core to translate"),
             llvm::cl::init(0));
+
+static llvm::cl::opt<std::string>
+    workDirPath("work-dir-path", llvm::cl::Optional,
+                llvm::cl::desc("Absolute path to working directory"));
+
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+static llvm::cl::opt<byte_ordering> endianness(
+    "endianness", llvm::cl::init(byte_ordering::Little_Endian),
+    llvm::cl::desc("Endianness"),
+    llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
+    llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+#endif
 
 llvm::json::Value attrToJSON(Attribute &attr) {
   if (auto a = llvm::dyn_cast<StringAttr>(attr))
@@ -89,9 +108,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationMMap(
@@ -266,8 +284,17 @@ void registerAIETranslations() {
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   TranslateFromMLIRRegistration registrationCDODirect(
       "aie-generate-cdo-direct", "Generate libxaie for CDO directly",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToCDODirect(module, output);
+      [](ModuleOp module, raw_ostream &) {
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(),
+                                       endianness);
       },
       registerDialects);
 #endif
