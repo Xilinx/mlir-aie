@@ -221,7 +221,6 @@ def my_matmul():
                     ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
-    print(ctx.module.operation.verify())
 
 
 my_matmul()
