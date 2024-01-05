@@ -52,7 +52,8 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
 #include "cdo_driver.h"
 mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp &m,
                                             const std::string &workDirPath,
-                                            byte_ordering endianness);
+                                            byte_ordering endianness,
+                                            bool emitUnified);
 #endif
 } // namespace AIE
 
