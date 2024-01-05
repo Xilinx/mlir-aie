@@ -557,16 +557,30 @@ void generateCDOBinariesSeparately(AIEControl &ctl,
                     [&ctl, &targetOp] { ctl.addCoreEnableToCDO(targetOp); });
 }
 
+void generateCDOUnified(AIEControl &ctl, const std::string &workDirPath,
+                        DeviceOp &targetOp) {
+  generateCDOBinary(workDirPath + ps + "aie_cdo.bin",
+                    [&ctl, &targetOp, &workDirPath] {
+                      ctl.addErrorHandlingToCDO();
+                      ctl.addAieElfsToCDO(targetOp, workDirPath);
+                      ctl.addInitConfigToCDO(targetOp);
+                      ctl.addCoreEnableToCDO(targetOp);
+                    });
+}
+
 LogicalResult AIE::AIETranslateToCDODirect(ModuleOp &m,
                                            const std::string &workDirPath,
-                                           byte_ordering endianness) {
+                                           byte_ordering endianness,
+                                           bool emitUnified) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
-
   AIEControl ctl;
   initializeCDOGenerator(endianness);
-  generateCDOBinariesSeparately(ctl, workDirPath, targetOp);
+  if (emitUnified)
+    generateCDOUnified(ctl, workDirPath, targetOp);
+  else
+    generateCDOBinariesSeparately(ctl, workDirPath, targetOp);
   return success();
 }

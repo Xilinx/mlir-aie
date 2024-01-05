@@ -89,9 +89,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 void registerAIETranslations() {
   static llvm::cl::opt<int> tileCol(
@@ -111,6 +110,10 @@ void registerAIETranslations() {
       llvm::cl::desc("Endianness"),
       llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
       llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+
+  static llvm::cl::opt<bool> cdoUnified(
+      "cdo-unified", llvm::cl::init(false),
+      llvm::cl::desc("Emit unified CDO bin (or separate bins)"));
 #endif
 
   TranslateFromMLIRRegistration registrationMMap(
@@ -294,8 +297,8 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToCDODirect(module, workDirPath_.c_str(),
-                                       endianness);
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
+                                       cdoUnified);
       },
       registerDialects);
 #endif
