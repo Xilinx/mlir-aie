@@ -109,7 +109,8 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
            << ", /* Wrap */ " << std::to_string(dims[i].getWrap()) << "};\n";
   }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
-         << tileDMAInstRefStr(col, row, bdNum) << ", " << "&" << tensor << ", "
+         << tileDMAInstRefStr(col, row, bdNum) << ", "
+         << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << " * " << bytesA << "));\n";
   // TODO: Probably need special handling for NOC
