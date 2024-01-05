@@ -107,8 +107,9 @@ static const std::map<WireBundle, StrmSwPortType>
 };
 
 #define TRY_XAIE_API(API, ...)                                                 \
-  if (auto r = API(__VA_ARGS__))                                               \
-  report_fatal_error(llvm::Twine(#API " failed with ") + AIERCTOSTR.at(r))
+  if (auto r = API(__VA_ARGS__)) {                                             \
+    report_fatal_error(llvm::Twine(#API " failed with ") + AIERCTOSTR.at(r));  \
+  }
 
 auto ps = std::filesystem::path::preferred_separator;
 
@@ -217,8 +218,6 @@ struct AIEControl {
     }
 
     auto &targetModel = targetOp.getTargetModel();
-    // llvm::concat<Operation>(targetOp.getOps<MemOp>(),
-    //                         targetOp.getOps<MemTileDMAOp>());
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
     for (TileElement memOp : memOps) {
@@ -319,10 +318,10 @@ struct AIEControl {
           TRY_XAIE_API(XAie_DmaSetLock, &dmaTileBd,
                        XAie_LockInit(acqLockId, acqValue),
                        XAie_LockInit(relLockId, relValue));
-          if (!dims)
+          if (!dims) {
             TRY_XAIE_API(XAie_DmaSetAddrLen, &dmaTileBd, baseAddrA + offsetA,
                          lenA * bytesA);
-          else {
+          } else {
             XAie_DmaTensor dmaTileBdTensor = {};
             dmaTileBdTensor.NumDim = dims->size();
             dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
@@ -339,10 +338,10 @@ struct AIEControl {
               dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStep(),
                                                      dims.value()[i].getWrap()};
             }
-            TRY_XAIE_API(XAie_DmaSetMultiDimAddr, &dmaTileBd, &dmaTileBdTensor,
-                         baseAddrA + offsetA, lenA * bytesA);
             // TODO: Probably need special handling for NOC
             // TODO: Might need to adjust step sizes / wraps by -1
+            TRY_XAIE_API(XAie_DmaSetMultiDimAddr, &dmaTileBd, &dmaTileBdTensor,
+                         baseAddrA + offsetA, lenA * bytesA);
           }
 
           if (block.getNumSuccessors()) {
