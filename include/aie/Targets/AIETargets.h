@@ -50,7 +50,7 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 #include "cdo_driver.h"
-mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
+mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp &m,
                                             const std::string &workDirPath,
                                             byte_ordering endianness);
 #endif
