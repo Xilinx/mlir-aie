@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-cdo-direct %s | FileCheck %s
+// RUN: aie-translate --aie-generate-cdo-direct  %s -work-dir-path /home/mlevental/dev_projects/mlir-aie/test/Targets/AIEGenerateCDO | FileCheck %s
 // REQUIRES: cdo_direct_generation
 
 //CHECK: x = 0;
