@@ -39,25 +39,6 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static llvm::cl::opt<int>
-    tileCol("tilecol", llvm::cl::desc("column coordinate of core to translate"),
-            llvm::cl::init(0));
-static llvm::cl::opt<int>
-    tileRow("tilerow", llvm::cl::desc("row coordinate of core to translate"),
-            llvm::cl::init(0));
-
-static llvm::cl::opt<std::string>
-    workDirPath("work-dir-path", llvm::cl::Optional,
-                llvm::cl::desc("Absolute path to working directory"));
-
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-static llvm::cl::opt<byte_ordering> endianness(
-    "endianness", llvm::cl::init(byte_ordering::Little_Endian),
-    llvm::cl::desc("Endianness"),
-    llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
-    llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
-#endif
-
 llvm::json::Value attrToJSON(Attribute &attr) {
   if (auto a = llvm::dyn_cast<StringAttr>(attr))
     return {a.getValue().str()};
@@ -113,6 +94,25 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
          << '\n';
 }
 void registerAIETranslations() {
+  static llvm::cl::opt<int> tileCol(
+      "tilecol", llvm::cl::desc("column coordinate of core to translate"),
+      llvm::cl::init(0));
+  static llvm::cl::opt<int> tileRow(
+      "tilerow", llvm::cl::desc("row coordinate of core to translate"),
+      llvm::cl::init(0));
+
+  static llvm::cl::opt<std::string> workDirPath(
+      "work-dir-path", llvm::cl::Optional,
+      llvm::cl::desc("Absolute path to working directory"));
+
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+  static llvm::cl::opt<byte_ordering> endianness(
+      "endianness", llvm::cl::init(byte_ordering::Little_Endian),
+      llvm::cl::desc("Endianness"),
+      llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
+      llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+#endif
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {

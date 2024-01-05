@@ -10,7 +10,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -22,6 +21,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include <cassert>
@@ -55,7 +55,6 @@ extern "C" {
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-using namespace xilinx::AIEX;
 
 // So that we can use the pattern if(auto r = ...) { // r is nonzero }
 static_assert(XAIE_OK == 0);
@@ -107,18 +106,37 @@ static const std::map<WireBundle, StrmSwPortType>
 };
 
 #define TRY_XAIE_API(API, ...)                                                 \
-  if (auto r = API(__VA_ARGS__)) {                                             \
-    report_fatal_error(llvm::Twine(#API " failed with ") + AIERCTOSTR.at(r));  \
-  }
+  do {                                                                         \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    if (auto r = API(__VA_ARGS__))                                             \
+      report_fatal_error(llvm::Twine(#API " failed with ") +                   \
+                         AIERCTOSTR.at(r));                                    \
+  } while (0)
 
 auto ps = std::filesystem::path::preferred_separator;
 
+#define HW_GEN XAIE_DEV_GEN_AIEML
+#define XAIE_NUM_ROWS 6
+#define XAIE_NUM_COLS 5
+#define XAIE_BASE_ADDR 0x40000000
+#define XAIE_COL_SHIFT 25
+#define XAIE_ROW_SHIFT 20
+#define XAIE_SHIM_ROW 0
+#define XAIE_MEM_TILE_ROW_START 1
+#define XAIE_MEM_TILE_NUM_ROWS 1
+#define XAIE_AIE_TILE_ROW_START 2
+#define XAIE_AIE_TILE_NUM_ROWS 4
+#define XAIE_PARTITION_BASE_ADDR 0x0
+
+#define NPI_ADDR 0x0
 #define NUM_LOCKS 16
 #define EVEN_BD_NUM_START 0
 #define ODD_BD_NUM_START 24
 #define ACQ_LOCK_ID_INCR 64
 #define REL_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
+#define PARTITION_START_COL 1
+#define PARTITION_NUM_COLS 1
 
 namespace xilinx::AIE {
 
@@ -127,12 +145,18 @@ struct AIEControl {
   XAie_DevInst devInst;
 
   AIEControl(uint8_t hwGen = XAIE_DEV_GEN_AIEML,
-             uint64_t xaieBaseAddr = 0x40000000, uint8_t xaieColShift = 25,
-             uint8_t xaieRowShift = 20, uint8_t xaieNumCols = 5,
-             uint8_t xaieNumRows = 6, uint8_t xaieShimRow = 0,
-             uint8_t xaieMemTileRowStart = 1, uint8_t xaieMemTileNumRows = 1,
-             uint8_t xaieAieTileRowStart = 2, uint8_t xaieAieTileNumRows = 4,
-             uint64_t xaiePartitionBaseAddr = 0x0, uint64_t npiAddr = 0x0)
+             uint64_t xaieBaseAddr = XAIE_BASE_ADDR,
+             uint8_t xaieColShift = XAIE_COL_SHIFT,
+             uint8_t xaieRowShift = XAIE_ROW_SHIFT,
+             uint8_t xaieNumCols = XAIE_NUM_COLS,
+             uint8_t xaieNumRows = XAIE_NUM_ROWS,
+             uint8_t xaieShimRow = XAIE_SHIM_ROW,
+             uint8_t xaieMemTileRowStart = XAIE_MEM_TILE_ROW_START,
+             uint8_t xaieMemTileNumRows = XAIE_MEM_TILE_NUM_ROWS,
+             uint8_t xaieAieTileRowStart = XAIE_AIE_TILE_ROW_START,
+             uint8_t xaieAieTileNumRows = XAIE_AIE_TILE_NUM_ROWS,
+             uint64_t xaiePartitionBaseAddr = XAIE_PARTITION_BASE_ADDR,
+             uint64_t npiAddr = NPI_ADDR)
       : configPtr({
             .AieGen = hwGen,
             .BaseAddr = xaieBaseAddr,
@@ -150,12 +174,11 @@ struct AIEControl {
     // Quoting: The instance of a device must be always declared using this
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
-    XAie_InstDeclare(_devInst, &configPtr); // Declare global device instance
+    XAie_InstDeclare(_devInst, &configPtr);
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API(XAie_SetupPartitionConfig, &devInst, xaiePartitionBaseAddr,
-                 /*PartStartCol=*/1,
-                 /*PartNumCols=*/1);
+                 PARTITION_START_COL, PARTITION_NUM_COLS);
     TRY_XAIE_API(XAie_CfgInitialize, &devInst, &configPtr);
     TRY_XAIE_API(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_CDO);
     TRY_XAIE_API(XAie_UpdateNpiAddr, &devInst, npiAddr);
@@ -254,14 +277,8 @@ struct AIEControl {
       }
 
       for (Block &block : memOp.getOperation()->getRegion(0)) {
-        bool foundBdPacket = false;
-        int packetType = 0;
-        int packetID = 0;
         bool foundBd = false;
-        int lenA = 0;
-        int bytesA = 0;
-        int offsetA = 0;
-        int baseAddrA = 0;
+        int lenA = 0, bytesA = 0, offsetA = 0, baseAddrA = 0;
         // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
         std::optional<ArrayRef<BDDimLayoutAttr>> dims;
         for (auto op : block.getOps<DMABDOp>()) {
@@ -276,9 +293,7 @@ struct AIEControl {
           dims = op.getDimensions();
         }
 
-        int acqValue = 0, relValue = 0;
-        int acqLockId = 0;
-        int relLockId = 0;
+        int acqValue = 0, relValue = 0, acqLockId = 0, relLockId = 0;
         for (auto op : block.getOps<UseLockOp>()) {
           LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
           if (op.acquire() || op.acquireGE()) {
@@ -289,10 +304,8 @@ struct AIEControl {
           } else if (op.release()) {
             relLockId = lock.getLockIDValue();
             relValue = op.getLockValue();
-          } else {
-            op.emitOpError("unsupported lock action");
+          } else
             llvm::report_fatal_error("unsupported lock action");
-          }
         }
 
         if (targetModel.isMemTile(col, row)) {
@@ -301,6 +314,9 @@ struct AIEControl {
           baseAddrA += BASE_ADDR_A_INCR;
         }
 
+        bool foundBdPacket = false;
+        int packetType = 0;
+        int packetID = 0;
         for (auto op : block.getOps<DMABDPACKETOp>()) {
           foundBdPacket = true;
           packetType = op.getPacketType();
@@ -329,12 +345,14 @@ struct AIEControl {
             if (!dmaTileBdTensor.Dim)
               llvm::report_fatal_error(
                   "couldn't allocate array of XAie_DmaDimDesc");
+            // TODO(max): rethink this?
             for (size_t i = 0; i < dims->size(); i++) {
               // Pass down dimensions in reverse order; in the MLIR, this allows
               // us to specify step sizes/wraps in the same order as we would
               // access a multi-dim C array, with the highest dimension first.
               int j = dims->size() - i - 1;
               // Assume AIE-ML architecture; we assert this above
+              // TODO(max): no we don't
               dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStep(),
                                                      dims.value()[i].getWrap()};
             }
@@ -347,8 +365,7 @@ struct AIEControl {
           if (block.getNumSuccessors()) {
             assert(llvm::range_size(block.getSuccessors()) == 1 &&
                    "should have only one successor block");
-            Block *nextBlock =
-                block.getSuccessor(0); // should have only one successor block
+            Block *nextBlock = block.getSuccessor(0);
             int nextBdNum = blockMap[nextBlock];
             // TODO Check if br ^end: to disable this?
             TRY_XAIE_API(XAie_DmaSetNextBd, &dmaTileBd, nextBdNum,
@@ -381,77 +398,35 @@ struct AIEControl {
         }
     }
 
-    int x, y;
     // StreamSwitch (switchbox) configuration
     for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
-      Region &r = switchboxOp.getConnections();
-      Block &b = r.front();
-      bool isEmpty = b.getOps<ConnectOp>().empty() &&
-                     b.getOps<MasterSetOp>().empty() &&
-                     b.getOps<PacketRulesOp>().empty();
-      bool isParam = false;
-      if (isa<TileOp>(switchboxOp.getTile().getDefiningOp())) {
-        int col = switchboxOp.colIndex();
-        int row = switchboxOp.rowIndex();
-        if (!isEmpty) {
-          // Core Stream Switch column for col, row
-          x = col;
-          y = row;
-        }
-      } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
-                     switchboxOp.getTile().getDefiningOp())) {
-        // parameterize streamswitch's configuration
-        isParam = true;
-        HerdOp sourceHerd =
-            dyn_cast<HerdOp>(sel.getStartHerd().getDefiningOp());
-
-        IterOp iterX = dyn_cast<IterOp>(sel.getIterX().getDefiningOp());
-        IterOp iterY = dyn_cast<IterOp>(sel.getIterY().getDefiningOp());
-        int startXValue = iterX.getStartValue();
-        int endXValue = iterX.getEndValue();
-        int strideXValue = iterX.getStrideValue();
-        int startYValue = iterY.getStartValue();
-        int endYValue = iterY.getEndValue();
-        int strideYValue = iterY.getStrideValue();
-
-        llvm::report_fatal_error("HerdOp not supported");
-        // output << "for (x = " << startX << "; x < " << endX
-        //        << "; x += " << strideXValue << ") {\n";
-        // output << "for (y = " << startY << "; y < " << endY
-        //        << "; y += " << strideYValue << ") {\n";
-      }
-
+      XAie_LocType tileLoc = XAie_TileLoc(switchboxOp.getTileOp().getCol(),
+                                          switchboxOp.getTileOp().getRow());
       if (switchboxOp.rowIndex() == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
-        TRY_XAIE_API(XAie_StrmConnCctEnable, &devInst, XAie_TileLoc(x, y), CTRL,
-                     0, SOUTH, 0);
-        {
-          // configure DMA_<S2MM/MM2S>_<N>_Ctrl register
+        TRY_XAIE_API(XAie_StrmConnCctEnable, &devInst, tileLoc, CTRL,
+                     /*SlvPortNum*/ 0, SOUTH,
+                     /*MstrPortNum*/ 0);
+        // configure DMA_<S2MM/MM2S>_<chNum>_Ctrl register
+        for (int chNum = 0; chNum <= 1; ++chNum) {
           XAie_DmaChannelDesc dmaChannelDescInst;
           TRY_XAIE_API(XAie_DmaChannelDescInit, &devInst, &dmaChannelDescInst,
-                       XAie_TileLoc(x, y));
-          TRY_XAIE_API(XAie_DmaChannelSetControllerId, &dmaChannelDescInst, 0);
+                       tileLoc);
+          TRY_XAIE_API(XAie_DmaChannelSetControllerId, &dmaChannelDescInst,
+                       /*ControllerId*/ 0);
           TRY_XAIE_API(XAie_DmaWriteChannel, &devInst, &dmaChannelDescInst,
-                       XAie_TileLoc(x, y), 0, DMA_S2MM);
+                       tileLoc, chNum, DMA_S2MM);
         }
 
-        {
-          // configure DMA_<S2MM/MM2S>_<N>_Ctrl register
-          XAie_DmaChannelDesc dmaChannelDescInst;
-          TRY_XAIE_API(XAie_DmaChannelDescInit, &devInst, &dmaChannelDescInst,
-                       XAie_TileLoc(x, y));
-          TRY_XAIE_API(XAie_DmaChannelSetControllerId, &dmaChannelDescInst, 0);
-          TRY_XAIE_API(XAie_DmaWriteChannel, &devInst, &dmaChannelDescInst,
-                       XAie_TileLoc(x, y), 1, DMA_S2MM);
-        }
-        TRY_XAIE_API(XAie_AieToPlIntfEnable, &devInst, XAie_TileLoc(x, y), 0,
+        TRY_XAIE_API(XAie_AieToPlIntfEnable, &devInst, tileLoc, 0,
                      PLIF_WIDTH_32);
       }
 
+      Block &b = switchboxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API(
-            XAie_StrmConnCctEnable, &devInst, XAie_TileLoc(x, y),
+            XAie_StrmConnCctEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
             connectOp.sourceIndex(),
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
@@ -460,12 +435,14 @@ struct AIEControl {
       for (auto connectOp : b.getOps<MasterSetOp>()) {
         int mask = 0;
         int arbiter = -1;
+
         for (auto val : connectOp.getAmsels()) {
           AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
           arbiter = amsel.arbiterIndex();
           int msel = amsel.getMselValue();
           mask |= (1 << msel);
         }
+
         bool isdma = connectOp.getDestBundle() == WireBundle::DMA;
         // assume a connection going south from row zero gets wired to shimdma
         // by a shimmux. TODO: fix the assumption
@@ -474,7 +451,7 @@ struct AIEControl {
         // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
         isdma &= !connectOp->hasAttr("keep_pkt_header");
         TRY_XAIE_API(
-            XAie_StrmPktSwMstrPortEnable, &devInst, XAie_TileLoc(x, y),
+            XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
             connectOp.destIndex(),
             isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER,
@@ -490,12 +467,12 @@ struct AIEControl {
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
           TRY_XAIE_API(
-              XAie_StrmPktSwSlavePortEnable, &devInst, XAie_TileLoc(x, y),
+              XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
               connectOp.sourceIndex());
           // TODO Need to better define packet id,type used here
           TRY_XAIE_API(
-              XAie_StrmPktSwSlaveSlotEnable, &devInst, XAie_TileLoc(x, y),
+              XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
               connectOp.sourceIndex(), slot,
               XAie_PacketInit(slotOp.valueInt(), /*type*/ 0), slotOp.maskInt(),
@@ -503,44 +480,34 @@ struct AIEControl {
           slot++;
         }
       }
-
-      if (isParam)
-        llvm::report_fatal_error("HerdOp not supported");
     }
+
     for (auto op : targetOp.getOps<ShimMuxOp>()) {
-      Region &r = op.getConnections();
-      Block &b = r.front();
-      bool isEmpty = b.getOps<ConnectOp>().empty();
-
-      if (isa<TileOp>(op.getTile().getDefiningOp())) {
-        int col = op.colIndex();
-        int row = op.rowIndex();
-        if (!isEmpty) {
-          // NOTE ShimMux always connects from the south as directions are
-          // defined relative to the tile stream switch\n";
-          x = col;
-          y = row;
-        }
-      }
-
+      // NOTE ShimMux always connects from the south as directions are
+      // defined relative to the tile stream switch.
+      Block &b = op.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>()) {
         // demux!
         if (connectOp.getSourceBundle() == WireBundle::North)
-          TRY_XAIE_API(XAie_EnableAieToShimDmaStrmPort, &devInst,
-                       XAie_TileLoc(x, y), connectOp.sourceIndex());
+          TRY_XAIE_API(
+              XAie_EnableAieToShimDmaStrmPort, &devInst,
+              XAie_TileLoc(op.getTileOp().getCol(), op.getTileOp().getRow()),
+              connectOp.sourceIndex());
         // mux
         if (connectOp.getDestBundle() == WireBundle::North)
-          TRY_XAIE_API(XAie_EnableShimDmaToAieStrmPort, &devInst,
-                       XAie_TileLoc(x, y), connectOp.destIndex());
+          TRY_XAIE_API(
+              XAie_EnableShimDmaToAieStrmPort, &devInst,
+              XAie_TileLoc(op.getTileOp().getCol(), op.getTileOp().getRow()),
+              connectOp.destIndex());
       }
     }
 
     for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
       Block &b = switchboxOp.getConnections().front();
-      int col = switchboxOp.getCol();
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API(
-            XAie_StrmConnCctEnable, &devInst, XAie_TileLoc(col, 0),
+            XAie_StrmConnCctEnable, &devInst,
+            XAie_TileLoc(switchboxOp.getCol(), 0),
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
             connectOp.sourceIndex(),
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
