@@ -497,15 +497,11 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   }];
 
   let extraClassDeclaration = [{
-    ::mlir::OperandRange getSizes();
-    ::llvm::ArrayRef<int64_t> getStaticSizes();
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
   }];
 
   let extraClassDefinition = [{
-    ::mlir::OperandRange $cppClass::getSizes() { return getSizes(); }
-    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticSizes(); }
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
   }];
