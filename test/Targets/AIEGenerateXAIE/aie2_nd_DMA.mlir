@@ -44,7 +44,7 @@ module @aie_module  {
       %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<wrap = 2, stride = 1>, <wrap = 3, stride = 2>, <wrap = 2, stride = 4>, <wrap = 1, stride = 1>])
+      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>])
       aie.use_lock(%l01_1, "Release", 1)
       aie.next_bd ^bd0
     ^bd1:
