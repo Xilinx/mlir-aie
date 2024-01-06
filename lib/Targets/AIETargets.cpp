@@ -88,8 +88,9 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " " << "0x"
-         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
+  output << "_symbol " << bufName << " "
+         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
+         << '\n';
 }
 void registerAIETranslations() {
   static llvm::cl::opt<int> tileCol(
