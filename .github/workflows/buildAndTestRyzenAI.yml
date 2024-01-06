@@ -33,6 +33,9 @@ jobs:
 
       - name: Run commands
         run: |
+          
+            du -h -d 1 / 2>/dev/null
+            exit 1
 
             python -m venv aie-venv
             source aie-venv/bin/activate
