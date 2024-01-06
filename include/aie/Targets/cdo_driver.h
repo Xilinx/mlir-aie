@@ -3,6 +3,8 @@
 #ifndef _CDO_DRIVER_H_
 #define _CDO_DRIVER_H_
 
+#include <cstdint> // uint
+
 extern "C" {
 enum byte_ordering { Little_Endian, Big_Endian };
 void startCDOFileStream(const char *cdoFileName);

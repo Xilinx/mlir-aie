@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Targets/AIETargets.h"
-#include "aie/Targets/cdo_driver.h"
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -196,15 +195,6 @@ void registerAIETranslations() {
         return AIETranslateToLdScript(module, output, tileCol, tileRow);
       },
       registerDialects);
-
-  // _entry_point _main_init
-  // _symbol      _main _after _main_init
-  // _symbol      _main_init 0
-  // _reserved DMb      0x00000 0x20000
-  // _symbol   a        0x38000 0x2000
-  // _extern   a
-  // _stack    DM_stack 0x20000  0x400 //stack for core
-  // _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
 
   TranslateFromMLIRRegistration registrationBCF(
       "aie-generate-bcf", "Generate AIE bcf",

@@ -108,6 +108,10 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()
+
 ################################################################################
 # Extensions
 ################################################################################
