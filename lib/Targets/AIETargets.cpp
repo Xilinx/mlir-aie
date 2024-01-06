@@ -114,6 +114,8 @@ void registerAIETranslations() {
   static llvm::cl::opt<bool> cdoUnified(
       "cdo-unified", llvm::cl::init(false),
       llvm::cl::desc("Emit unified CDO bin (or separate bins)"));
+  static llvm::cl::opt<bool> axiDebug("cdo-axi-debug", llvm::cl::init(false),
+                                      llvm::cl::desc("Emit axi debug info"));
 #endif
 
   TranslateFromMLIRRegistration registrationMMap(
@@ -289,7 +291,7 @@ void registerAIETranslations() {
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
         return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
-                                       cdoUnified);
+                                       cdoUnified, axiDebug);
       },
       registerDialects);
 #endif

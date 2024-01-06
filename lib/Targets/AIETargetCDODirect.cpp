@@ -563,10 +563,10 @@ struct AIEControl {
 };
 } // namespace xilinx::AIE
 
-void initializeCDOGenerator(byte_ordering endianness) {
-#ifndef NDEBUG
-  EnAXIdebug(); // Enables AXI-MM prints for configs being added in CDO,
-#endif
+void initializeCDOGenerator(byte_ordering endianness, bool axiDebug) {
+  // Enables AXI-MM prints for configs being added in CDO
+  if (axiDebug)
+    EnAXIdebug();
   setEndianness(endianness);
 };
 
@@ -630,13 +630,13 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
 namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
-                                      bool emitUnified) {
+                                      bool emitUnified, bool axiDebug) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
   AIEControl ctl;
-  initializeCDOGenerator(endianness);
+  initializeCDOGenerator(endianness, axiDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp);
   return generateCDOBinariesSeparately(ctl, workDirPath, targetOp);
