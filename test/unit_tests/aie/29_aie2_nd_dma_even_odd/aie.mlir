@@ -12,7 +12,7 @@
 // buffer descriptors.
 // core 14 generates the sequence 0, 1, 2, 3, 4, ... 126, 127, which is pushed
 // onto the DMA stream towards core 34. The data is pushed onto the stream in
-// the following order, reading from the buffer with <stride, wrap>s as:
+// the following order, reading from the buffer with <stride, size>s as:
 //
 // [<2, 8>, <1, 2>, <16, 8>]
 //
