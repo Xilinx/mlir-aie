@@ -100,11 +100,11 @@ void registerAIETranslations() {
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
 
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
       llvm::cl::desc("Absolute path to working directory"));
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<byte_ordering> endianness(
       "endianness", llvm::cl::init(byte_ordering::Little_Endian),
       llvm::cl::desc("Endianness"),

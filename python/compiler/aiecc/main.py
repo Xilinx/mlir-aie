@@ -550,7 +550,8 @@ class FlowRunner:
                     self.prepend_tmp("cdo_main.out"),
                     "--work-dir-path",
                     self.tmpdirname + "/",
-                ],
+                ]
+                + (["--aximm-dump"] if self.opts.verbose else []),
             )
 
             await write_file_async(
