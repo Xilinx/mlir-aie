@@ -12,6 +12,7 @@
 #define AIEX_OPS
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
+include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -462,41 +463,54 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
+def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
+    AttrSizedOperandSegments,
+    MyOffsetSizeAndStrideOpInterface
+  ]> {
   let summary = "half dma operator";
-  let arguments = (
-    ins I32:$x,
-        I32:$y,
-        AnyMemRef:$memref,
-        I32:$offset3,
-        I32:$offset2,
-        I32:$offset1,
-        I32:$offset0,
-        I32:$length3,
-        I32:$length2,
-        I32:$length1,
-        I32:$length0,
-        I32:$stride3,
-        I32:$stride2,
-        I32:$stride1,
-        FlatSymbolRefAttr:$metadata,
-        I32Attr:$id
-  );
-  let results = (outs );
-  let assemblyFormat = [{
-    `(` $x `,`$y `,`$memref
-    `[` $offset3`,`$offset2`,`$offset1`,`$offset0 `]`
-    `[` $length3`,`$length2`,`$length1`,`$length0 `]`
-    `[` $stride3`,`$stride2`,`$stride1 `]` `)` attr-dict `:`
-    `(` type($x)`,`type($y)`,`type($memref)`,`
-    `[` type($offset3)`,`type($offset2)`,`type($offset1)`,` type($offset0) `]` `,`
-    `[` type($length3)`,`type($length2)`,`type($length1)`,` type($length0) `]` `,`
-    `[` type($stride3)`,`type($stride2)`,`type($stride1) `]` `)`
-  }];
-  let hasVerifier = 1;
+
   let description = [{
     nd half dma operator
   }];
+
+  let arguments = (
+    ins I64Attr:$x,
+        I64Attr:$y,
+        AnyMemRef:$memref,
+        // NOTE: these are in reverse order: offset3, offset2, ...
+        Variadic<I64>:$offsets,
+        Variadic<I64>:$lengths,
+        Variadic<I64>:$strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_lengths,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
+        FlatSymbolRefAttr:$metadata,
+        I64Attr:$id
+  );
+
+  let assemblyFormat = [{
+    `(` $x `,` $y `,` $memref ``
+    custom<DynamicIndexList>($offsets, $static_offsets) ``
+    custom<DynamicIndexList>($lengths, $static_lengths) ``
+    custom<DynamicIndexList>($strides, $static_strides) `)`
+    attr-dict `:` type($memref)
+  }];
+
+  let extraClassDeclaration = [{
+    ::mlir::OperandRange getSizes();
+    ::llvm::ArrayRef<int64_t> getStaticSizes();
+    static unsigned getOffsetSizeAndStrideStartOperandIndex();
+    static std::array<unsigned, 3> getArrayAttrMaxRanks();
+  }];
+
+  let extraClassDefinition = [{
+    ::mlir::OperandRange $cppClass::getSizes() { return getLengths(); }
+    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticLengths(); }
+    unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
+  }];
+
+  let hasVerifier = 1;
 }
 
 // Write RTP

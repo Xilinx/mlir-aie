@@ -92,21 +92,13 @@ jobs:
             echo "FIXES=true" | tee $GITHUB_OUTPUT
           fi
 
-      - name: Post clang-tidy requests
+      - name: Upload clang-tidy fixes
         if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
-        env:
-          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          PULL_REQUEST_ID="$(jq "if (.issue.number != null) then .issue.number else .number end" < "$GITHUB_EVENT_PATH")"
-          echo $PULL_REQUEST_ID
-          
-          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}  python utils/git/clang_tidy_pr.py \
-          --clang-tidy-fixes fixes.yml \
-          --pull-request-id "$PULL_REQUEST_ID" \
-          --repository "$GITHUB_REPOSITORY" \
-          --repository-root "$PWD" \
-          --request-changes "false" \
-          --suggestions-per-comment 10
+        uses: actions/upload-artifact@v3
+        with:
+          path: fixes.yml
+          name: clang-tidy-fixes.yml
+
 
   formatting:
 

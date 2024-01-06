@@ -194,32 +194,15 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    SmallVector<uint32_t, 4> offsets(4, 0);
-    SmallVector<uint32_t, 4> lengths(4, 1);
-    SmallVector<uint32_t, 3> strides(3, 0);
-
-    if (auto c = op.getOffset0().getDefiningOp<arith::ConstantIntOp>())
-      offsets[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset1().getDefiningOp<arith::ConstantIntOp>())
-      offsets[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset2().getDefiningOp<arith::ConstantIntOp>())
-      offsets[2] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getOffset3().getDefiningOp<arith::ConstantIntOp>())
-      offsets[3] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength0().getDefiningOp<arith::ConstantIntOp>())
-      lengths[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength1().getDefiningOp<arith::ConstantIntOp>())
-      lengths[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength2().getDefiningOp<arith::ConstantIntOp>())
-      lengths[2] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getLength3().getDefiningOp<arith::ConstantIntOp>())
-      lengths[3] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride1().getDefiningOp<arith::ConstantIntOp>())
-      strides[0] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride2().getDefiningOp<arith::ConstantIntOp>())
-      strides[1] = static_cast<uint32_t>(c.value());
-    if (auto c = op.getStride3().getDefiningOp<arith::ConstantIntOp>())
-      strides[2] = static_cast<uint32_t>(c.value());
+    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> lengths = llvm::map_to_vector(
+        llvm::reverse(op.getMixedSizes()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+        llvm::reverse(op.getMixedOffsets()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
     // column
     column = IntegerAttr::get(i32ty, col);
@@ -244,9 +227,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    uint32_t repeat_length = 0;
-    for (uint32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
-      for (uint32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
+    int32_t repeat_length = 0;
+    for (int32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
+      for (int32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
         repeat_length += lengths[0];
     buffer_length = IntegerAttr::get(i32ty, repeat_length);
 

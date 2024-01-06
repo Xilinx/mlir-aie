@@ -46,7 +46,7 @@ from aie.dialects.aie import (
     translate_mlir_to_llvmir,
     use_lock,
 )
-from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd, ipu_dma_memcpy_nd_
+from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
@@ -90,11 +90,8 @@ Release = LockAction.Release
 # CHECK:       aie.end
 # CHECK:     } {link_with = "scale.o"}
 # CHECK:     func.func @sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c1_i32 = arith.constant 1 : i32
-# CHECK:       %c4096_i32 = arith.constant 4096 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg2[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c1_i32, %c4096_i32] [%c0_i32, %c0_i32, %c0_i32]) {id = 0 : i32, metadata = @out} : (i32, i32, memref<4096xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg0[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c1_i32, %c4096_i32] [%c0_i32, %c0_i32, %c0_i32]) {id = 1 : i32, metadata = @in} : (i32, i32, memref<4096xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 0 : i64, metadata = @out} : memref<4096xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 1 : i64, metadata = @in} : memref<4096xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -204,19 +201,11 @@ def my_vector_scalar(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "mm.o"}
 # CHECK:     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
-# CHECK:       %c2048_i32 = arith.constant 2048 : i32
-# CHECK:       %c16_i32 = arith.constant 16 : i32
-# CHECK:       %c4_i32 = arith.constant 4 : i32
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c2_i32 = arith.constant 2 : i32
-# CHECK:       %c64_i32 = arith.constant 64 : i32
-# CHECK:       %c32_i32 = arith.constant 32 : i32
-# CHECK:       %c4096_i32 = arith.constant 4096 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg2[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c2_i32, %c2_i32, %c64_i32, %c32_i32] [%c4096_i32, %c32_i32, %c64_i32]) {id = 0 : i32, metadata = @outC} : (i32, i32, memref<8192xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg0[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c2_i32, %c4_i32, %c64_i32, %c16_i32] [%c0_i32, %c16_i32, %c64_i32]) {id = 1 : i32, metadata = @inA} : (i32, i32, memref<8192xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg1[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c2_i32, %c4_i32, %c32_i32, %c32_i32] [%c32_i32, %c2048_i32, %c64_i32]) {id = 2 : i32, metadata = @inB} : (i32, i32, memref<8192xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg0[%c0_i32, %c0_i32, %c0_i32, %c4096_i32] [%c2_i32, %c4_i32, %c64_i32, %c16_i32] [%c0_i32, %c16_i32, %c64_i32]) {id = 3 : i32, metadata = @inA} : (i32, i32, memref<8192xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg1[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c2_i32, %c4_i32, %c32_i32, %c32_i32] [%c32_i32, %c2048_i32, %c64_i32]) {id = 4 : i32, metadata = @inB} : (i32, i32, memref<8192xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][2, 2, 64, 32][4096, 32, 64]) {id = 0 : i64, metadata = @outC} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][2, 4, 64, 16][0, 16, 64]) {id = 1 : i64, metadata = @inA} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {id = 2 : i64, metadata = @inB} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 4096][2, 4, 64, 16][0, 16, 64]) {id = 3 : i64, metadata = @inA} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {id = 4 : i64, metadata = @inB} : memref<8192xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -534,12 +523,8 @@ def my_matmul(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "combined_gray2rgba_addWeighted.a"}
 # CHECK:     func.func @sequence(%arg0: memref<2304xi32>, %arg1: memref<2304xi32>, %arg2: memref<2304xi32>) {
-# CHECK:       %c0_i32 = arith.constant 0 : i32
-# CHECK:       %c1_i32 = arith.constant 1 : i32
-# CHECK:       %c36_i32 = arith.constant 36 : i32
-# CHECK:       %c64_i32 = arith.constant 64 : i32
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg2[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c36_i32, %c64_i32] [%c0_i32, %c0_i32, %c64_i32]) {id = 0 : i32, metadata = @outOF_L2L3} : (i32, i32, memref<2304xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:       aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg0[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c36_i32, %c64_i32] [%c0_i32, %c0_i32, %c64_i32]) {id = 1 : i32, metadata = @inOF_L3L2} : (i32, i32, memref<2304xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {id = 0 : i64, metadata = @outOF_L2L3} : memref<2304xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {id = 1 : i64, metadata = @inOF_L3L2} : memref<2304xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -906,8 +891,8 @@ def edge_detect(module):
 #       %c0 = arith.constant 0 : i32
 #       %c1 = arith.constant 1 : i32
 #       %c64 = arith.constant 64 : i32
-#       aiex.ipu.dma_memcpy_nd (%c0, %c0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_out0, id = 1 : i32 } : (i32, i32, memref<64xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
-#       aiex.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_in0, id = 0 : i32 } : (i32, i32, memref<64xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
+#       aiex.ipu.dma_memcpy_nd (%c0, %c0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_out0, id = 1 : i64 } : memref<64xi32>
+#       aiex.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<64xi32>
 #       aiex.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
 #       return
 #     }
@@ -1667,11 +1652,11 @@ def my_passthrough(module):
 # CHECK:    }
 # CHECK:    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
 # CHECK:    func.func @bobsyouruncle(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
-# CHECK:      %c0_i32 = arith.constant 0 : i32
-# CHECK:      %c1_i32 = arith.constant 1 : i32
-# CHECK:      %c64_i32 = arith.constant 64 : i32
-# CHECK:      aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg0[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c1_i32, %c64_i32] [%c0_i32, %c0_i32, %c0_i32]) {id = 0 : i32, metadata = @objFifo_in0} : (i32, i32, memref<64xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
-# CHECK:      aiex.ipu.dma_memcpy_nd(%c0_i32, %c0_i32, %arg2[%c0_i32, %c0_i32, %c0_i32, %c0_i32] [%c1_i32, %c1_i32, %c1_i32, %c64_i32] [%c0_i32, %c0_i32, %c0_i32]) {id = 1 : i32, metadata = @objFifo_out0} : (i32, i32, memref<64xi32>, [i32, i32, i32, i32], [i32, i32, i32, i32], [i32, i32, i32])
+# CHECK:      %c0_i64 = arith.constant 0 : i64
+# CHECK:      %c1_i64 = arith.constant 1 : i64
+# CHECK:      %c64_i64 = arith.constant 64 : i64
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64xi32>
+# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @objFifo_out0} : memref<64xi32>
 # CHECK:      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:      return
 # CHECK:    }
@@ -1889,30 +1874,26 @@ def add_one_using_dma(module):
             arg1: T.memref(32, T.i32()),
             arg2: T.memref(64, T.i32()),
         ):
-            c0_i32 = arith.constant(0)
-            c1_i32 = arith.constant(1)
-            c64_i32 = arith.constant(64)
+            c0_i64 = arith.constant(0, T.i64())
+            c1_i64 = arith.constant(1, T.i64())
+            c64_i64 = arith.constant(64, T.i64())
 
-            ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+            ipu_dma_memcpy_nd(
+                "objFifo_in0",
+                0,
                 arg0,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
-                metadata="objFifo_in0",
-                id=0,
+                [c0_i64, c0_i64, c0_i64, c0_i64],
+                [c1_i64, c1_i64, c1_i64, c64_i64],
+                [c0_i64, c0_i64, c0_i64],
             )
 
-            ipu_dma_memcpy_nd_(
-                c0_i32,
-                c0_i32,
+            ipu_dma_memcpy_nd(
+                "objFifo_out0",
+                1,
                 arg2,
-                *[c0_i32, c0_i32, c0_i32, c0_i32],
-                *[c1_i32, c1_i32, c1_i32, c64_i32],
-                *[c0_i32, c0_i32, c0_i32],
-                metadata="objFifo_out0",
-                id=1,
+                [c0_i64, c0_i64, c0_i64, c0_i64],
+                [c1_i64, c1_i64, c1_i64, c64_i64],
+                [c0_i64, c0_i64, c0_i64],
             )
             ipu_sync(channel=0, column=0, column_num=1, direction=0, row=0, row_num=1)
 

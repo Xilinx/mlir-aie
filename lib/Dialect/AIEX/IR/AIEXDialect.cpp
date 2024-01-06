@@ -68,29 +68,28 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
-  uint32_t strides[3]{0, 0, 0};
-  uint32_t lengths[4]{0, 0, 0, 0};
-  if (auto constOp = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[2] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[1] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
-    strides[0] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[3] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[2] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[1] = static_cast<uint32_t>(constOp.value());
-  }
-  if (auto constOp = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
-    lengths[0] = static_cast<uint32_t>(constOp.value());
-  }
+  if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+        return getConstantIntValue(s).has_value();
+      }))
+    llvm::report_fatal_error("Only constant strides currently supported.");
+  if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+        return getConstantIntValue(s).has_value();
+      }))
+    llvm::report_fatal_error("Only constant lengths currently supported.");
+  if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+        return getConstantIntValue(s).has_value();
+      }))
+    llvm::report_fatal_error("Only constant offsets currently supported.");
+
+  llvm::SmallVector<int64_t, 3> strides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> lengths =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+
   if (lengths[3] > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
   if (strides[1] && lengths[1] > 0x3FF)

@@ -71,6 +71,35 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
 
 namespace xilinx::AIE {
 
+LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
+  std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
+  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
+      op.getMixedOffsets().size() != op.getMixedSizes().size())
+    return op->emitError(
+               "expected mixed offsets rank to match mixed sizes rank (")
+           << op.getMixedOffsets().size() << " vs " << op.getMixedSizes().size()
+           << ") so the rank of the result type is well-formed.";
+  if (failed(verifyListOfOperandsOrIntegers(
+          op, "offset", maxRanks[0], op.getStaticOffsets(), op.getOffsets())))
+    return failure();
+  if (failed(verifyListOfOperandsOrIntegers(
+          op, "size", maxRanks[1], op.getStaticSizes(), op.getSizes())))
+    return failure();
+  if (failed(verifyListOfOperandsOrIntegers(
+          op, "stride", maxRanks[2], op.getStaticStrides(), op.getStrides())))
+    return failure();
+  for (int64_t offset : op.getStaticOffsets())
+    if (offset < 0 && !ShapedType::isDynamic(offset))
+      return op->emitError("expected offsets to be non-negative, but got ")
+             << offset;
+  for (int64_t size : op.getStaticSizes())
+    if (size < 0 && !ShapedType::isDynamic(size))
+      return op->emitError("expected sizes to be non-negative, but got ")
+             << size;
+
+  return success();
+}
+
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;

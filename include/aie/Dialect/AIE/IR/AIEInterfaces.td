@@ -133,5 +133,12 @@ def AIETarget : OpInterface<"AIETarget"> {
   ];
 }
 
+// def OffloadingTranslationAttrTrait :
+//    NativeTrait<"OffloadingTranslationAttrTrait", ""> {
+//   let cppNamespace = "::mlir::gpu";
+// }
+
+def MyOffsetSizeAndStrideOpInterface: OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {
+}
 
 #endif // AIE_INTERFACES
