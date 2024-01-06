@@ -281,44 +281,40 @@ _Half dma operator_
 Syntax:
 
 ```
-operation ::= `aiex.ipu.dma_memcpy_nd` `(` $x `,`$y `,`$memref
-              `[` $offset3`,`$offset2`,`$offset1`,`$offset0 `]`
-              `[` $length3`,`$length2`,`$length1`,`$length0 `]`
-              `[` $stride3`,`$stride2`,`$stride1 `]` `)` attr-dict `:`
-              `(` type($x)`,`type($y)`,`type($memref)`,`
-              `[` type($offset3)`,`type($offset2)`,`type($offset1)`,` type($offset0) `]` `,`
-              `[` type($length3)`,`type($length2)`,`type($length1)`,` type($length0) `]` `,`
-              `[` type($stride3)`,`type($stride2)`,`type($stride1) `]` `)`
+operation ::= `aiex.ipu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
+              custom<DynamicIndexList>($offsets, $static_offsets) ``
+              custom<DynamicIndexList>($lengths, $static_lengths) ``
+              custom<DynamicIndexList>($strides, $static_strides) `)`
+              attr-dict `:` type($memref)
 ```
 
 nd half dma operator
+
+Traits: `AttrSizedOperandSegments`
+
+Interfaces: `MyOffsetSizeAndStrideOpInterface`
 
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>x</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>static_lengths</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
 <tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `x` | 32-bit signless integer
-| `y` | 32-bit signless integer
 | `memref` | memref of any type values
-| `offset3` | 32-bit signless integer
-| `offset2` | 32-bit signless integer
-| `offset1` | 32-bit signless integer
-| `offset0` | 32-bit signless integer
-| `length3` | 32-bit signless integer
-| `length2` | 32-bit signless integer
-| `length1` | 32-bit signless integer
-| `length0` | 32-bit signless integer
-| `stride3` | 32-bit signless integer
-| `stride2` | 32-bit signless integer
-| `stride1` | 32-bit signless integer
+| `offsets` | variadic of 64-bit signless integer
+| `lengths` | variadic of 64-bit signless integer
+| `strides` | variadic of 64-bit signless integer
 
 
 ### `aiex.ipu.rtp_write` (::xilinx::AIEX::IpuWriteRTPOp)
