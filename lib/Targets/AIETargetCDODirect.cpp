@@ -419,7 +419,7 @@ struct AIEControl {
                        tileLoc, chNum, DMA_S2MM);
         }
 
-        TRY_XAIE_API(XAie_AieToPlIntfEnable, &devInst, tileLoc, 0,
+        TRY_XAIE_API(XAie_AieToPlIntfEnable, &devInst, tileLoc, /*PortNum*/ 0,
                      PLIF_WIDTH_32);
       }
 
@@ -475,8 +475,8 @@ struct AIEControl {
               XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
               connectOp.sourceIndex(), slot,
-              XAie_PacketInit(slotOp.valueInt(), /*type*/ 0), slotOp.maskInt(),
-              msel, arbiter);
+              XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0),
+              slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }
