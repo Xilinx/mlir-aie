@@ -1,11 +1,11 @@
 name: Build and Test with AIE tools on Ryzen AI
 
 on:
-  push:
-    branches:
-      - main
-      - test-ryzen-ai
-  pull_request:
+#  push:
+#    branches:
+#      - main
+#      - test-ryzen-ai
+#  pull_request:
   workflow_dispatch:
 
 defaults:
@@ -34,9 +34,6 @@ jobs:
       - name: Run commands
         run: |
           
-            du -h -d 1 / 2>/dev/null
-            exit 1
-
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install -r python/requirements.txt
