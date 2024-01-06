@@ -106,7 +106,8 @@ PYBIND11_MODULE(_aie, m) {
         aieTranslateToCDODirect(op, {workDirPath.data(), workDirPath.size()},
                                 endianness, emitUnified);
       },
-      "module"_a, "work_dir_path"_a, "endianness"_a, "emit_unified"_a);
+      "module"_a, "work_dir_path"_a,
+      "endianness"_a = byte_ordering::Little_Endian, "emit_unified"_a = false);
 #endif
 
   m.def(
