@@ -806,10 +806,10 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     implies
 
     ```
-    for(int i = 0; i < 8 /* size_2 */; i++)
-      for(int j = 0; j < 2 /* size_1 */; j++)
-        for(int k = 0; k < 8 /* size_0 */; k++)
-          // access/store element at/to index (i * 16 /* stride_2 */ + j * 1 /* stride_1 */ + k * 2 /* stride_0 */)
+    for(int i = 0; i < 8 /*size_2*/; i++)
+      for(int j = 0; j < 2 /*size_1*/; j++)
+        for(int k = 0; k < 8 /*size_0*/; k++)
+          // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
     ```
   }];
 
