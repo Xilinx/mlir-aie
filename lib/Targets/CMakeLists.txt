@@ -56,6 +56,7 @@ add_mlir_library(AIETargets
 )
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  message(STATUS "Building CDO direct")
   include("${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aiert.cmake")
   set(XAIE_SOURCE_DIR "${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aie-rt/driver/src")
 

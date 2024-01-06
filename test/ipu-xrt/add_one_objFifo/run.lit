@@ -7,3 +7,9 @@
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!
+
+// RUN: aie-translate --aie-generate-cdo-direct aie.mlir.prj/input_physical.mlir
+// RUN: cmp aie_cdo_elfs.bin aie.mlir.prj/aie_cdo_elfs.bin
+// RUN: cmp aie_cdo_enable.bin aie.mlir.prj/aie_cdo_enable.bin
+// RUN: cmp aie_cdo_error_handling.bin aie.mlir.prj/aie_cdo_error_handling.bin
+// RUN: cmp aie_cdo_init.bin aie.mlir.prj/aie_cdo_init.bin
