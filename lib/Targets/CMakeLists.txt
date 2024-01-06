@@ -72,7 +72,6 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
 
   target_link_libraries(xaienginecdo PUBLIC cdo_driver)
-  target_link_libraries(xaienginecdo PUBLIC elf)
   target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
 
   target_link_libraries(AIETargets PUBLIC xaienginecdo)
