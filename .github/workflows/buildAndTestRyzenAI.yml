@@ -1,11 +1,11 @@
 name: Build and Test with AIE tools on Ryzen AI
 
 on:
-#  push:
-#    branches:
-#      - main
-#      - test-ryzen-ai
-#  pull_request:
+  push:
+    branches:
+      - main
+      - test-ryzen-ai
+  pull_request:
   workflow_dispatch:
 
 defaults:
