@@ -162,13 +162,13 @@ def passThroughAIE2():
                     metadata="in",
                     bd_id=1,
                     mem=inTensor,
-                    wraps=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_dma_memcpy_nd(
                     metadata="out",
                     bd_id=0,
                     mem=outTensor,
-                    wraps=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 

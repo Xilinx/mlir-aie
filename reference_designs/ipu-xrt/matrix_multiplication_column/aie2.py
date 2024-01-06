@@ -218,7 +218,7 @@ def my_matmul():
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_row_offset_in_i32s],
-                        wraps=[num_tile_rows, N_div_n, m_x_n_cores, n_in_i32s_out],
+                        sizes=[num_tile_rows, N_div_n, m_x_n_cores, n_in_i32s_out],
                         strides=[
                             m_x_n_cores_x_N_in_i32s_out,
                             n_in_i32s_out,
@@ -239,14 +239,14 @@ def my_matmul():
                             bd_id=2 * tile_row + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_row_offset_in_i32s],
-                            wraps=[N_div_n, K_div_k, m_x_n_cores, k_in_i32s],
+                            sizes=[N_div_n, K_div_k, m_x_n_cores, k_in_i32s],
                             strides=[0, k_in_i32s, K_in_i32s],
                         )
                         ipu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
-                            wraps=[1, N_div_n, K, n_in_i32s],
+                            sizes=[1, N_div_n, K, n_in_i32s],
                             strides=[0, n_in_i32s, N_in_i32s],
                         )
 

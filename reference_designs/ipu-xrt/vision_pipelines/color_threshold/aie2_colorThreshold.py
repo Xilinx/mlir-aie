@@ -322,13 +322,13 @@ def color_threshold():
                     metadata="inOOB_L3L2",
                     bd_id=1,
                     mem=inTensor,
-                    wraps=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_dma_memcpy_nd(
                     metadata="outOOB_L2L3",
                     bd_id=0,
                     mem=outTensor,
-                    wraps=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
