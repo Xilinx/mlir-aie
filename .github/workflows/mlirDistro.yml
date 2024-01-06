@@ -62,11 +62,12 @@ jobs:
           
           if [ x"${{ inputs.LLVM_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            LLVM_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/llvm/llvm-project/commits/main | jq -r '.sha[:8]')
+            LLVM_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/llvm/llvm-project/commits/main | jq -r '.sha')
           else
             LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
           fi
-          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}" | tee -a $GITHUB_OUTPUT
+          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}"
+          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT:0:8}" | tee -a $GITHUB_OUTPUT
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
 
