@@ -108,9 +108,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
-endif()
 
 ################################################################################
 # Extensions
@@ -328,6 +325,10 @@ else ()
   )
 
 endif ()
+
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  target_compile_definitions(AIEPythonModules.extension._aie.dso PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
 set(_runtimes

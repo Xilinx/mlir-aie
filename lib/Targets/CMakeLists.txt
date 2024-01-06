@@ -25,7 +25,6 @@ set(_sources
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   list(APPEND _sources AIETargetCDODirect.cpp)
-  add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
 endif()
 
 add_mlir_library(AIETargets
@@ -85,4 +84,5 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
 
   target_link_libraries(AIETargets PUBLIC xaienginecdo)
   add_dependencies(AIETargets xaienginecdo xaienginecdo-headers)
+  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
 endif()
