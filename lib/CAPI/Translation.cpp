@@ -8,34 +8,43 @@
 #include "aie-c/Translation.h"
 #include "aie/Targets/AIETargets.h"
 
+#include "mlir-c/IR.h"
+#include "mlir-c/Support.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Target/LLVMIR/Export.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <cstdlib>
+#include <string>
+#include <vector>
 
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx::AIE;
 
-MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op, bool aieml) {
+MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aieml) {
   std::string cpp;
   llvm::raw_string_ostream os(cpp);
-  mlir::Operation *op_ = unwrap(op);
-  if (failed(xilinx::aievec::translateAIEVecToCpp(op_, aieml, os)))
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  if (failed(xilinx::aievec::translateAIEVecToCpp(mod, aieml, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(cpp.size()));
   cpp.copy(cStr, cpp.size());
   return mlirStringRefCreate(cStr, cpp.size());
 };
 
-MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op) {
+MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   std::string llvmir;
   llvm::raw_string_ostream os(llvmir);
-  Operation *op_ = unwrap(op);
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(op_, llvmContext);
+  auto llvmModule = translateModuleToLLVMIR(mod, llvmContext);
   if (!llvmModule)
     return mlirStringRefCreate(nullptr, 0);
   llvmModule->print(os, nullptr);
@@ -44,10 +53,10 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-MlirStringRef aieTranslateToCDO(MlirOperation op) {
+MlirStringRef aieTranslateToCDO(MlirOperation moduleOp) {
   std::string cdo;
   llvm::raw_string_ostream os(cdo);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToCDO(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(cdo.size()));
@@ -55,10 +64,20 @@ MlirStringRef aieTranslateToCDO(MlirOperation op) {
   return mlirStringRefCreate(cStr, cdo.size());
 }
 
-MlirStringRef aieTranslateToIPU(MlirOperation op) {
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+void aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
+                             byte_ordering endianness, bool emitUnified) {
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  (void)failed(AIETranslateToCDODirect(
+      mod, llvm::StringRef(workDirPath.data, workDirPath.length), endianness,
+      emitUnified));
+}
+#endif
+
+MlirStringRef aieTranslateToIPU(MlirOperation moduleOp) {
   std::string ipu;
   llvm::raw_string_ostream os(ipu);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToIPU(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(ipu.size()));
@@ -66,10 +85,10 @@ MlirStringRef aieTranslateToIPU(MlirOperation op) {
   return mlirStringRefCreate(cStr, ipu.size());
 }
 
-MlirStringRef aieTranslateToXAIEV2(MlirOperation op) {
+MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {
   std::string xaie;
   llvm::raw_string_ostream os(xaie);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToXAIEV2(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(xaie.size()));
@@ -77,10 +96,10 @@ MlirStringRef aieTranslateToXAIEV2(MlirOperation op) {
   return mlirStringRefCreate(cStr, xaie.size());
 }
 
-MlirStringRef aieTranslateToBCF(MlirOperation op, int col, int row) {
+MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row) {
   std::string bcf;
   llvm::raw_string_ostream os(bcf);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(op));
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToBCF(mod, os, col, row)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(bcf.size()));

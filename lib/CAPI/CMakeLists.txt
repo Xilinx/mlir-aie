@@ -1,6 +1,10 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()
+
 add_mlir_public_c_api_library(AIECAPI
   Dialects.cpp
   Registration.cpp

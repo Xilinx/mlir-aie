@@ -26,12 +26,12 @@
 
 #include <cassert>
 #include <cstddef> // size_t
+#include <cstdint> // uint
 #include <cstdlib> // calloc
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <optional>
-#include <stdint.h> // uint
 #include <string>
 
 #ifndef NDEBUG
@@ -55,9 +55,6 @@ extern "C" {
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-// So that we can use the pattern if(auto r = ...) { // r is nonzero }
-static_assert(XAIE_OK == 0);
 
 #define AIERC_STR(x) x, #x
 static const std::map<AieRC, std::string> AIERCTOSTR = {
@@ -104,6 +101,10 @@ static const std::map<WireBundle, StrmSwPortType>
         // missing NOC from WireBundle
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
+
+// So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
+// }
+static_assert(XAIE_OK == 0);
 
 #define TRY_XAIE_API(API, ...)                                                 \
   do {                                                                         \
@@ -188,21 +189,21 @@ struct AIEControl {
     TRY_XAIE_API(XAie_ErrorHandlingInit, &devInst);
   }
 
-  void addAieElfToCDO(uint8_t col, uint8_t row, const std::string &elfPath) {
+  void addAieElfToCDO(uint8_t col, uint8_t row, const StringRef elfPath) {
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
     bool loadSym = false;
     TRY_XAIE_API(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
-                 elfPath.c_str(), loadSym);
+                 elfPath.str().c_str(), loadSym);
   }
 
-  void addAieElfsToCDO(DeviceOp &targetOp, const std::string &workDirPath) {
-    for (auto tileOp : targetOp.getOps<TileOp>()) {
-      int col = tileOp.colIndex();
-      int row = tileOp.rowIndex();
+  void addAieElfsToCDO(DeviceOp &targetOp, const StringRef workDirPath) {
+    for (auto tileOp : targetOp.getOps<TileOp>())
       if (tileOp.isShimNOCorPLTile()) {
         // Resets no needed with V2 kernel driver
       } else {
+        int col = tileOp.colIndex();
+        int row = tileOp.rowIndex();
         if (auto coreOp = tileOp.getCoreOp()) {
           std::string fileName;
           if (auto fileAttr = coreOp.getElfFile())
@@ -210,10 +211,9 @@ struct AIEControl {
           else
             fileName = std::string("core_") + std::to_string(col) + "_" +
                        std::to_string(row) + ".elf";
-          addAieElfToCDO(col, row, workDirPath + ps + fileName);
+          addAieElfToCDO(col, row, workDirPath.str() + ps + fileName);
         }
       }
-    }
   }
 
   void addInitConfigToCDO(DeviceOp &targetOp) {
@@ -533,33 +533,32 @@ void initializeCDOGenerator(byte_ordering endianness) {
   setEndianness(endianness);
 };
 
-void generateCDOBinary(const std::string &outputPath,
-                       const std::function<void(void)> &cb) {
-  startCDOFileStream(outputPath.c_str());
+void generateCDOBinary(const StringRef outputPath,
+                       const std::function<void()> &cb) {
+  startCDOFileStream(outputPath.str().c_str());
   FileHeader();
   cb();
   configureHeader();
   endCurrentCDOFileStream();
 }
 
-void generateCDOBinariesSeparately(AIEControl &ctl,
-                                   const std::string &workDirPath,
+void generateCDOBinariesSeparately(AIEControl &ctl, const StringRef workDirPath,
                                    DeviceOp &targetOp) {
-  generateCDOBinary(workDirPath + ps + "aie_cdo_error_handling.bin",
+  generateCDOBinary(workDirPath.str() + ps + "aie_cdo_error_handling.bin",
                     std::bind(&AIEControl::addErrorHandlingToCDO, ctl));
-  generateCDOBinary(workDirPath + ps + "aie_cdo_elfs.bin",
+  generateCDOBinary(workDirPath.str() + ps + "aie_cdo_elfs.bin",
                     [&ctl, &targetOp, &workDirPath] {
                       ctl.addAieElfsToCDO(targetOp, workDirPath);
                     });
-  generateCDOBinary(workDirPath + ps + "aie_cdo_init.bin",
+  generateCDOBinary(workDirPath.str() + ps + "aie_cdo_init.bin",
                     [&ctl, &targetOp] { ctl.addInitConfigToCDO(targetOp); });
-  generateCDOBinary(workDirPath + ps + "aie_cdo_enable.bin",
+  generateCDOBinary(workDirPath.str() + ps + "aie_cdo_enable.bin",
                     [&ctl, &targetOp] { ctl.addCoreEnableToCDO(targetOp); });
 }
 
-void generateCDOUnified(AIEControl &ctl, const std::string &workDirPath,
+void generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
                         DeviceOp &targetOp) {
-  generateCDOBinary(workDirPath + ps + "aie_cdo.bin",
+  generateCDOBinary(workDirPath.str() + ps + "aie_cdo.bin",
                     [&ctl, &targetOp, &workDirPath] {
                       ctl.addErrorHandlingToCDO();
                       ctl.addAieElfsToCDO(targetOp, workDirPath);
@@ -568,10 +567,12 @@ void generateCDOUnified(AIEControl &ctl, const std::string &workDirPath,
                     });
 }
 
-LogicalResult AIE::AIETranslateToCDODirect(ModuleOp &m,
-                                           const std::string &workDirPath,
-                                           byte_ordering endianness,
-                                           bool emitUnified) {
+// Not sure why but defining this with xilinx::AIE will create a duplicate
+// symbol in libAIETargets.a that then doesn't actually match the header?
+namespace xilinx::AIE {
+LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+                                      byte_ordering endianness,
+                                      bool emitUnified) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -584,3 +585,4 @@ LogicalResult AIE::AIETranslateToCDODirect(ModuleOp &m,
     generateCDOBinariesSeparately(ctl, workDirPath, targetOp);
   return success();
 }
+} // namespace xilinx::AIE

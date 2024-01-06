@@ -9,12 +9,14 @@
 #ifndef AIE_TARGETS_AIETARGETS_H
 #define AIE_TARGETS_AIETARGETS_H
 
-#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
-
-#include "llvm/Support/raw_ostream.h"
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+#include "cdo_driver.h"
+#endif
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace xilinx {
 namespace AIE {
@@ -49,9 +51,8 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-#include "cdo_driver.h"
-mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp &m,
-                                            const std::string &workDirPath,
+mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
+                                            llvm::StringRef workDirPath,
                                             byte_ordering endianness,
                                             bool emitUnified);
 #endif
