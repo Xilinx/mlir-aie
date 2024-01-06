@@ -42,9 +42,7 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
-        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
-            sizes
-        )
+        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )

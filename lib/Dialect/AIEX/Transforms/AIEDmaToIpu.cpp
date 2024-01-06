@@ -310,10 +310,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     (void)rewriter.create<IpuWriteBdExShimTileOp>(
         op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
         buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
-        d0_size, d0_stride, d1_size, d1_stride, d2_stride,
-        iteration_current, iteration_size, iteration_stride, next_bd,
-        use_next_bd, valid_bd, lock_rel_val, lock_rel_id, lock_acq_enable,
-        lock_acq_val, lock_acq_id);
+        d0_size, d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        iteration_size, iteration_stride, next_bd, use_next_bd, valid_bd,
+        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
     rewriter.create<IpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
                                             issue_token, repeat_count, bd_id);
