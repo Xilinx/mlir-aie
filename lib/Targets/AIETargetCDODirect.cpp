@@ -240,6 +240,121 @@ struct AIEControl {
     return success();
   }
 
+  LogicalResult configureBdInBlock(Block &block,
+                                   const AIETargetModel &targetModel,
+                                   XAie_LocType &tileLoc, int bdNum,
+                                   std::optional<int> nextBdNum) {
+    assert(!block.getOps<UseLockOp>().empty() &&
+           "expected use_lock op in bb with dma_db op");
+    std::optional<int> acqValue, relValue, acqLockId, relLockId;
+    // switch (lock->getAc)
+    for (auto op : block.getOps<UseLockOp>()) {
+      // Only dyn_cast if you are going to check if it was of the type
+      // expected; if you aren't checking use cast instead as it will at
+      // least assert in debug mode with an easier to understand error than
+      // dereferencing.
+      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+      switch (op.getAction()) {
+      case LockAction::Acquire:
+      case LockAction::AcquireGreaterEqual:
+        acqLockId = lock.getLockIDValue();
+        acqValue = op.getLockValue();
+        if (op.acquireGE())
+          acqValue.value() = -acqValue.value();
+        break;
+      case LockAction::Release:
+        relLockId = lock.getLockIDValue();
+        relValue = op.getLockValue();
+        break;
+      }
+    }
+
+    assert(acqValue && relValue && acqLockId && relLockId &&
+           "expected both use_lock(acquire) and use_lock(release) with bd");
+
+    std::optional<int> packetType;
+    std::optional<int> packetID;
+    auto maybePacketOps = block.getOps<DMABDPACKETOp>();
+    if (!maybePacketOps.empty()) {
+      assert(llvm::range_size(maybePacketOps) == 1 &&
+             "expected only one dma_bd_packet");
+      auto packetOp = *maybePacketOps.begin();
+      packetType = packetOp.getPacketType();
+      packetID = packetOp.getPacketID();
+    }
+
+    // deref here because this is a const iter and the various getters below
+    // aren't const (even though they probably should be...)
+    auto bdOp = *block.getOps<DMABDOp>().begin();
+    // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+    ShapedType bufferType =
+        bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
+    int bytesA = bufferType.getElementTypeBitWidth() / 8;
+    int baseAddrA =
+        cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp()).address();
+    std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
+
+    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+      acqLockId.value() += ACQ_LOCK_ID_INCR;
+      relLockId.value() += REL_LOCK_ID_INCR;
+      baseAddrA += BASE_ADDR_A_INCR;
+    }
+
+    // TODO For now, we are going to name each dma desc with loc and bd
+    // which we assume is unique. This is strictly not enforced but in
+    // practice, this is true
+    XAie_DmaDesc dmaTileBd;
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaDescInit, &devInst, &dmaTileBd,
+                            tileLoc);
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetLock, &dmaTileBd,
+                            XAie_LockInit(acqLockId.value(), acqValue.value()),
+                            XAie_LockInit(relLockId.value(), relValue.value()));
+    if (!dims) {
+      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
+                              baseAddrA + bdOp.getOffset(),
+                              bdOp.getLen() * bytesA);
+    } else {
+      XAie_DmaTensor dmaTileBdTensor = {};
+      dmaTileBdTensor.NumDim = dims->size();
+      dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
+          calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
+      if (!dmaTileBdTensor.Dim)
+        return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
+      // TODO(max): rethink this?
+      for (size_t i = 0; i < dims->size(); i++) {
+        // Pass down dimensions in reverse order; in the MLIR, this allows
+        // us to specify step sizes/wraps in the same order as we would
+        // access a multi-dim C array, with the highest dimension first.
+        int j = dims->size() - i - 1;
+        // Assume AIE-ML architecture; we assert this above
+        // TODO(max): no we don't
+        dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStep(),
+                                               dims.value()[i].getWrap()};
+      }
+      // TODO: Probably need special handling for NOC
+      // TODO: Might need to adjust step sizes / wraps by -1
+      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
+                              &dmaTileBdTensor, baseAddrA + bdOp.getOffset(),
+                              bdOp.getLen() * bytesA);
+    }
+
+    if (nextBdNum)
+      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
+                              nextBdNum.value(),
+                              /* enableNextBd */ 1);
+
+    if (packetID) {
+      assert(packetType && "must have packetType with packetID");
+      TRY_XAIE_API_EMIT_ERROR(
+          bdOp, XAie_DmaSetPkt, &dmaTileBd,
+          XAie_PacketInit(packetID.value(), packetType.value()));
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &devInst, &dmaTileBd,
+                            tileLoc, bdNum);
+    return success();
+  };
+
   LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
     for (auto tileOp : targetOp.getOps<TileOp>()) {
       int col = tileOp.colIndex();
@@ -267,12 +382,27 @@ struct AIEControl {
           XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit()));
     }
 
-    auto &targetModel = targetOp.getTargetModel();
+    auto pushToBdQueueAndEnable = [this](Operation &op, XAie_LocType &tileLoc,
+                                         int chNum, DMAChannelDir &channelDir,
+                                         int bdNum) -> LogicalResult {
+      TRY_XAIE_API_EMIT_ERROR(
+          op, XAie_DmaChannelPushBdToQueue, &devInst, tileLoc, chNum,
+          // TODO hack until physical dialect changes
+          channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S, bdNum);
+      TRY_XAIE_API_EMIT_ERROR(
+          op, XAie_DmaChannelEnable, &devInst, tileLoc, chNum,
+          // TODO hack until physical dialect changes
+          channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S);
+      return success();
+    };
+
+    const AIETargetModel &targetModel = targetOp.getTargetModel();
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
+      auto tileLoc = XAie_TileLoc(col, row);
 
       DenseMap<Block *, int> blockMap;
       DenseMap<Block *, int> channelMap;
@@ -304,127 +434,31 @@ struct AIEControl {
       }
 
       for (Block &block : memOp.getOperation()->getRegion(0)) {
-        bool foundBd = false;
-        int lenA = 0, bytesA = 0, offsetA = 0, baseAddrA = 0;
-        // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-        std::optional<ArrayRef<BDDimLayoutAttr>> dims;
-        for (auto op : block.getOps<DMABDOp>()) {
-          foundBd = true;
-          ShapedType bufferType =
-              op.getBuffer().getType().cast<::mlir::MemRefType>();
-          baseAddrA =
-              cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
-          lenA = op.getLenValue();
-          bytesA = bufferType.getElementTypeBitWidth() / 8;
-          offsetA = op.getOffsetValue();
-          dims = op.getDimensions();
-        }
-
-        int acqValue = 0, relValue = 0, acqLockId = 0, relLockId = 0;
-        for (auto op : block.getOps<UseLockOp>()) {
-          LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-          if (op.acquire() || op.acquireGE()) {
-            acqLockId = lock.getLockIDValue();
-            acqValue = op.getLockValue();
-            if (op.acquireGE())
-              acqValue = -acqValue;
-          } else if (op.release()) {
-            relLockId = lock.getLockIDValue();
-            relValue = op.getLockValue();
-          } else
-            return memOp.emitError("unsupported lock action");
-        }
-
-        if (targetModel.isMemTile(col, row)) {
-          acqLockId += ACQ_LOCK_ID_INCR;
-          relLockId += REL_LOCK_ID_INCR;
-          baseAddrA += BASE_ADDR_A_INCR;
-        }
-
-        bool foundBdPacket = false;
-        int packetType = 0;
-        int packetID = 0;
-        for (auto op : block.getOps<DMABDPACKETOp>()) {
-          foundBdPacket = true;
-          packetType = op.getPacketType();
-          packetID = op.getPacketID();
-        }
-
+        if (block.getOps<DMABDOp>().empty())
+          continue;
         int bdNum = blockMap[&block];
-        if (foundBd) {
-          // TODO For now, we are going to name each dma desc with loc and bd
-          // which we assume is unique. This is strictly not enforced but in
-          // practice, this is true
-          XAie_DmaDesc dmaTileBd;
-          TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaDescInit, &devInst, &dmaTileBd,
-                                  XAie_TileLoc(col, row));
-          TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaSetLock, &dmaTileBd,
-                                  XAie_LockInit(acqLockId, acqValue),
-                                  XAie_LockInit(relLockId, relValue));
-          if (!dims) {
-            TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                                    baseAddrA + offsetA, lenA * bytesA);
-          } else {
-            XAie_DmaTensor dmaTileBdTensor = {};
-            dmaTileBdTensor.NumDim = dims->size();
-            dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-                calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
-            if (!dmaTileBdTensor.Dim)
-              return memOp.emitError(
-                  "couldn't allocate array of XAie_DmaDimDesc");
-            // TODO(max): rethink this?
-            for (size_t i = 0; i < dims->size(); i++) {
-              // Pass down dimensions in reverse order; in the MLIR, this allows
-              // us to specify step sizes/wraps in the same order as we would
-              // access a multi-dim C array, with the highest dimension first.
-              int j = dims->size() - i - 1;
-              // Assume AIE-ML architecture; we assert this above
-              // TODO(max): no we don't
-              dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStep(),
-                                                     dims.value()[i].getWrap()};
-            }
-            // TODO: Probably need special handling for NOC
-            // TODO: Might need to adjust step sizes / wraps by -1
-            TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                                    &dmaTileBdTensor, baseAddrA + offsetA,
-                                    lenA * bytesA);
-          }
 
-          if (block.getNumSuccessors()) {
-            assert(llvm::range_size(block.getSuccessors()) == 1 &&
-                   "should have only one successor block");
-            Block *nextBlock = block.getSuccessor(0);
-            int nextBdNum = blockMap[nextBlock];
-            // TODO Check if br ^end: to disable this?
-            TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaSetNextBd, &dmaTileBd,
-                                    nextBdNum,
-                                    /* enableNextBd */ 1);
-          }
-
-          if (foundBdPacket)
-            TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaSetPkt, &dmaTileBd,
-                                    XAie_PacketInit(packetID, packetType));
-          TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaEnableBd, &dmaTileBd);
-          TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaWriteBd, &devInst, &dmaTileBd,
-                                  XAie_TileLoc(col, row), bdNum);
+        std::optional<int> nextBdNum;
+        if (block.getNumSuccessors()) {
+          assert(llvm::range_size(block.getSuccessors()) == 1 &&
+                 "should have only one successor block");
+          Block *nextBlock = block.getSuccessor(0);
+          nextBdNum = blockMap[nextBlock];
         }
+
+        if (failed(configureBdInBlock(block, targetModel, tileLoc, bdNum,
+                                      nextBdNum)))
+          return failure();
       }
 
       for (Block &block : memOp.getOperation()->getRegion(0))
         for (auto op : block.getOps<DMAStartOp>()) {
           int bdNum = blockMap[op.getDest()];
           int chNum = op.getChannelIndex();
-          TRY_XAIE_API_EMIT_ERROR(
-              memOp, XAie_DmaChannelPushBdToQueue, &devInst,
-              XAie_TileLoc(col, row), chNum,
-              // TODO hack until physical dialect changes
-              op.getChannelDir() == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S,
-              bdNum);
-          TRY_XAIE_API_EMIT_ERROR(
-              memOp, XAie_DmaChannelEnable, &devInst, XAie_TileLoc(col, row),
-              chNum,
-              // TODO hack until physical dialect changes
-              op.getChannelDir() == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S);
+          auto channelDir = op.getChannelDir();
+          if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc, chNum,
+                                            channelDir, bdNum)))
+            return failure();
         }
     }
 
