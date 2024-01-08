@@ -27,7 +27,7 @@ from util import construct_and_print_module
 # CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_2_2, %tile_2_3}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
 # CHECK:      aie.objectfifo.link [@of0] -> [@of1]()
-# CHECK:      aie.objectfifo @of2(%tile_1_2 toStream [<wrap = 1, step = 2>], {%tile_2_2 fromStream [<wrap = 1, step = 2>], %tile_2_3 fromStream [<wrap = 1, step = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
+# CHECK:      aie.objectfifo @of2(%tile_1_2 toStream [<size = 1, stride = 2>], {%tile_2_2 fromStream [<size = 1, stride = 2>], %tile_2_3 fromStream [<size = 1, stride = 2>]}, [2 : i32, 2 : i32, 7 : i32]) : !aie.objectfifo<memref<256xui8>>
 # CHECK:    }
 # CHECK:  }
 @construct_and_print_module
@@ -66,6 +66,6 @@ def link_example():
             [T0, T1],
             [2, 2, 7],
             TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
-            [bd_dim_layout(wrap=1, step=2)],
-            [[bd_dim_layout(wrap=1, step=2)], [bd_dim_layout(wrap=1, step=2)]],
+            [bd_dim_layout(size=1, stride=2)],
+            [[bd_dim_layout(size=1, stride=2)], [bd_dim_layout(size=1, stride=2)]],
         )

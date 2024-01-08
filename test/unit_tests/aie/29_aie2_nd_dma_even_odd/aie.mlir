@@ -12,7 +12,7 @@
 // buffer descriptors.
 // core 14 generates the sequence 0, 1, 2, 3, 4, ... 126, 127, which is pushed
 // onto the DMA stream towards core 34. The data is pushed onto the stream in
-// the following order, reading from the buffer with <stride, wrap>s as:
+// the following order, reading from the buffer with <stride, size>s as:
 //
 // [<2, 8>, <1, 2>, <16, 8>]
 //
@@ -83,7 +83,7 @@ module @tutorial_2b {
           ^bd0:
             aie.use_lock(%lock14_done, "AcquireGreaterEqual", 1)
                                                              ////////// new //////////
-            aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<wrap = 8, step = 16>, <wrap = 2, step = 1>, <wrap = 8, step = 2>])
+            aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 8, stride = 16>, <size = 2, stride = 1>, <size = 8, stride = 2>])
                                                             // w, s    w, s    w,  s
                                                             // dim 2,  dim 1,  dim 0
             aie.use_lock(%lock14_sent, "Release", 1)

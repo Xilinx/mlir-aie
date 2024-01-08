@@ -104,19 +104,19 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
   words[4] |= (op.getPacketType() & 0x7) << 16;
 
   // TODO: Secure Access
-  words[5] |= (op.getD0Wrap() & 0x3ff) << 20;
-  words[5] |= op.getD0Stepsize() & 0xfffff;
+  words[5] |= (op.getD0Size() & 0x3ff) << 20;
+  words[5] |= op.getD0Stride() & 0xfffff;
 
   words[6] = 0x80000000; // burst length;
-  words[6] |= (op.getD1Wrap() & 0x3ff) << 20;
-  words[6] |= op.getD1Stepsize() & 0xfffff;
+  words[6] |= (op.getD1Size() & 0x3ff) << 20;
+  words[6] |= op.getD1Stride() & 0xfffff;
 
   // TODO: SIMID, AxCache, AXQoS
-  words[7] = op.getD2Stepsize() & 0xfffff;
+  words[7] = op.getD2Stride() & 0xfffff;
 
   words[8] |= (op.getIterationCurrent() & 0x3f) << 26;
-  words[8] |= (op.getIterationWrap() & 0x3f) << 20;
-  words[8] |= op.getIterationStepsize() & 0xfffff;
+  words[8] |= (op.getIterationSize() & 0x3f) << 20;
+  words[8] |= op.getIterationStride() & 0xfffff;
 
   // TODO: TLAST Suppress
   words[9] |= (op.getNextBd() & 0xf) << 27;

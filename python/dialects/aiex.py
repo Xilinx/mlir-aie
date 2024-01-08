@@ -28,23 +28,21 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
         bd_id,
         mem,
         offsets: MixedValues = None,
-        lengths: MixedValues = None,
+        sizes: MixedValues = None,
         strides: MixedValues = None,
     ):
         x = 0
         y = 0
         if offsets is None:
             offsets = [0] * 4
-        if lengths is None:
-            lengths = [0] * 4
+        if sizes is None:
+            sizes = [0] * 4
         if strides is None:
             strides = [0] * 3
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
-        dynamic_lengths, _packed_lengths, static_lengths = _dispatch_mixed_values(
-            lengths
-        )
+        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
@@ -53,10 +51,10 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
             y,
             mem,
             dynamic_offsets,
-            dynamic_lengths,
+            dynamic_sizes,
             dynamic_strides,
             static_offsets,
-            static_lengths,
+            static_sizes,
             static_strides,
             metadata,
             bd_id,

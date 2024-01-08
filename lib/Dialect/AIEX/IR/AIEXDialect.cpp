@@ -75,7 +75,7 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
-    llvm::report_fatal_error("Only constant lengths currently supported.");
+    llvm::report_fatal_error("Only constant sizes currently supported.");
   if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
@@ -85,17 +85,17 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  llvm::SmallVector<int64_t, 4> lengths =
+  llvm::SmallVector<int64_t, 4> sizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
 
-  if (lengths[3] > 64)
-    return emitOpError("Length 3 exceeds the [1:64] range.");
-  if (strides[1] && lengths[1] > 0x3FF)
-    return emitOpError("Length 1 exceeds the [0:1023] range.");
-  if (strides[0] && lengths[0] > 0x3FF)
-    return emitOpError("Length 0 exceeds the [0:1023] range.");
+  if (sizes[3] > 64)
+    return emitOpError("Size 3 exceeds the [1:64] range.");
+  if (strides[1] && sizes[1] > 0x3FF)
+    return emitOpError("Size 1 exceeds the [0:1023] range.");
+  if (strides[0] && sizes[0] > 0x3FF)
+    return emitOpError("Size 0 exceeds the [0:1023] range.");
   if (strides[2] > 0x100000)
     return emitOpError("Stride 3 exceeds the [1:1M] range.");
   if (strides[1] > 0x100000)
@@ -120,19 +120,19 @@ LogicalResult AIEX::IpuWriteBdExShimTileOp::verify() {
   auto numBds = targetModel.getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getD0Wrap() > 0x3FF)
-    return emitOpError("D0 Wrap exceeds the [0:1023] range.");
-  if (getD0Stepsize() > 0xFFFFF)
-    return emitOpError("D0 Stepsize exceeds the [0:1M-1] range.");
-  if (getD1Wrap() > 0x3FF)
-    return emitOpError("D1 Wrap exceeds the [0:1023] range.");
-  if (getD1Stepsize() > 0xFFFFF)
-    return emitOpError("D1 Stepsize exceeds the [0:1M-1] range.");
-  if (getD2Stepsize() > 0xFFFFF)
-    return emitOpError("D2 Stepsize exceeds the [0:1M-1] range.");
-  if (getIterationWrap() > 0x3F)
-    return emitOpError("Iteration Wrap exceeds the [0:63] range.");
-  if (getIterationStepsize() > 0xFFFFF)
-    return emitOpError("Iteration Stepsize exceeds the [0:1M-1] range.");
+  if (getD0Size() > 0x3FF)
+    return emitOpError("D0 Size exceeds the [0:1023] range.");
+  if (getD0Stride() > 0xFFFFF)
+    return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
+  if (getD1Size() > 0x3FF)
+    return emitOpError("D1 Size exceeds the [0:1023] range.");
+  if (getD1Stride() > 0xFFFFF)
+    return emitOpError("D1 Stride exceeds the [0:1M-1] range.");
+  if (getD2Stride() > 0xFFFFF)
+    return emitOpError("D2 Stride exceeds the [0:1M-1] range.");
+  if (getIterationSize() > 0x3F)
+    return emitOpError("Iteration Size exceeds the [0:63] range.");
+  if (getIterationStride() > 0xFFFFF)
+    return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
   return success();
 }

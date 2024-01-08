@@ -479,10 +479,10 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
         AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
-        Variadic<I64>:$lengths,
+        Variadic<I64>:$sizes,
         Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_lengths,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id
@@ -491,21 +491,17 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   let assemblyFormat = [{
     `(` $x `,` $y `,` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
-    custom<DynamicIndexList>($lengths, $static_lengths) ``
+    custom<DynamicIndexList>($sizes, $static_sizes) ``
     custom<DynamicIndexList>($strides, $static_strides) `)`
     attr-dict `:` type($memref)
   }];
 
   let extraClassDeclaration = [{
-    ::mlir::OperandRange getSizes();
-    ::llvm::ArrayRef<int64_t> getStaticSizes();
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
   }];
 
   let extraClassDefinition = [{
-    ::mlir::OperandRange $cppClass::getSizes() { return getLengths(); }
-    ::llvm::ArrayRef<int64_t> $cppClass::getStaticSizes() { return getStaticLengths(); }
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
   }];
@@ -602,14 +598,14 @@ def AIE_IpuWriteBdExShimTileOp: AIEX_Op<"ipu.writebd_shimtile", []> {
         I32Attr:$out_of_order_id,
         I32Attr:$packet_id,
         I32Attr:$packet_type,
-        I32Attr:$d0_wrap,
-        I32Attr:$d0_stepsize,
-        I32Attr:$d1_wrap,
-        I32Attr:$d1_stepsize,
-        I32Attr:$d2_stepsize,
+        I32Attr:$d0_size,
+        I32Attr:$d0_stride,
+        I32Attr:$d1_size,
+        I32Attr:$d1_stride,
+        I32Attr:$d2_stride,
         I32Attr:$iteration_current,
-        I32Attr:$iteration_wrap,
-        I32Attr:$iteration_stepsize,
+        I32Attr:$iteration_size,
+        I32Attr:$iteration_stride,
         I32Attr:$next_bd,
         I32Attr:$use_next_bd,
         I32Attr:$valid_bd,

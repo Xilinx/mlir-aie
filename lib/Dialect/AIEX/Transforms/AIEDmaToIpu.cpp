@@ -174,14 +174,14 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto out_of_order_id = zero;
     auto packet_id = zero;
     auto packet_type = zero;
-    auto d0_wrap = zero;
-    auto d0_stepsize = zero;
-    auto d1_wrap = zero;
-    auto d1_stepsize = zero;
-    auto d2_stepsize = zero;
+    auto d0_size = zero;
+    auto d0_stride = zero;
+    auto d1_size = zero;
+    auto d1_stride = zero;
+    auto d2_stride = zero;
     auto iteration_current = zero;
-    auto iteration_wrap = zero;
-    auto iteration_stepsize = zero;
+    auto iteration_size = zero;
+    auto iteration_stride = zero;
     auto next_bd = zero;
     auto use_next_bd = zero;
     auto valid_bd = zero;
@@ -197,7 +197,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> lengths = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
         llvm::reverse(op.getMixedSizes()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
@@ -228,9 +228,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 
     // buffer_length
     int32_t repeat_length = 0;
-    for (int32_t index_3d = 0; index_3d < lengths[2]; index_3d++)
-      for (int32_t index_2d = 0; index_2d < lengths[1]; index_2d++)
-        repeat_length += lengths[0];
+    for (int32_t index_3d = 0; index_3d < sizes[2]; index_3d++)
+      for (int32_t index_2d = 0; index_2d < sizes[1]; index_2d++)
+        repeat_length += sizes[0];
     buffer_length = IntegerAttr::get(i32ty, repeat_length);
 
     // buffer_offset
@@ -254,42 +254,38 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 
     // packet_type
 
-    // d0_wrap
+    // d0_size
     if (strides[0])
-      d0_wrap = IntegerAttr::get(i32ty, lengths[0]);
+      d0_size = IntegerAttr::get(i32ty, sizes[0]);
 
-    // d0_stepsize
-    d0_stepsize = IntegerAttr::get(i32ty, 0);
+    // d0_stride
+    d0_stride = IntegerAttr::get(i32ty, 0);
 
-    // d1_wrap
+    // d1_size
     if (strides[1])
-      d1_wrap = IntegerAttr::get(i32ty, lengths[1]);
+      d1_size = IntegerAttr::get(i32ty, sizes[1]);
 
-    // d1_stepsize
+    // d1_stride
     if (strides[0])
-      d1_stepsize = IntegerAttr::get(i32ty, strides[0] - 1);
+      d1_stride = IntegerAttr::get(i32ty, strides[0] - 1);
 
-    // d2_stepsize
+    // d2_stride
     if (strides[1])
-      d2_stepsize = IntegerAttr::get(i32ty, strides[1] - 1);
+      d2_stride = IntegerAttr::get(i32ty, strides[1] - 1);
 
     // iteration_current
 
-    // iteration_wrap
+    // iteration_size
     if (strides[2])
-      iteration_wrap = IntegerAttr::get(i32ty, lengths[3] - 1);
+      iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
 
-    // iteration_stepsize
+    // iteration_stride
     if (strides[2])
-      iteration_stepsize = IntegerAttr::get(i32ty, strides[2] - 1);
+      iteration_stride = IntegerAttr::get(i32ty, strides[2] - 1);
 
-    //// next_bd
-    // if (lengths[3] > 1)
-    //  next_bd = IntegerAttr::get(i32ty, op.getId());
+    // next_bd
 
-    //// use_next_bd
-    // if (lengths[3] > 1)
-    //  use_next_bd = IntegerAttr::get(i32ty, 1);
+    // use_next_bd
 
     // valid_bd
     valid_bd = IntegerAttr::get(i32ty, 1);
@@ -305,7 +301,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     // lock_acq_id
 
     // repeat_count
-    repeat_count = IntegerAttr::get(i32ty, lengths[3] - 1);
+    repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
 
     // issue_token
     if (!isMM2S)
@@ -314,10 +310,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     (void)rewriter.create<IpuWriteBdExShimTileOp>(
         op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
         buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
-        d0_wrap, d0_stepsize, d1_wrap, d1_stepsize, d2_stepsize,
-        iteration_current, iteration_wrap, iteration_stepsize, next_bd,
-        use_next_bd, valid_bd, lock_rel_val, lock_rel_id, lock_acq_enable,
-        lock_acq_val, lock_acq_id);
+        d0_size, d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        iteration_size, iteration_stride, next_bd, use_next_bd, valid_bd,
+        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
     rewriter.create<IpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
                                             issue_token, repeat_count, bd_id);

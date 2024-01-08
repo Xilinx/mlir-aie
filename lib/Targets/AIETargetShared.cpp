@@ -100,13 +100,13 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
          << "}\n";
   for (int i = 0; i < ndims; i++) {
     // Pass down dimensions in reverse order; in the MLIR, this allows us
-    // to specify step sizes/wraps in the same order as we would access a
+    // to specify strides/sizes in the same order as we would access a
     // multi-dim C array, with the highest dimension first.
     int j = ndims - i - 1;
     // Assume AIE-ML architecture; we assert this above
     output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
-           << " = { /* StepSize */ " << std::to_string(dims[i].getStep())
-           << ", /* Wrap */ " << std::to_string(dims[i].getWrap()) << "};\n";
+           << " = { /* StepSize */ " << std::to_string(dims[i].getStride())
+           << ", /* Size */ " << std::to_string(dims[i].getSize()) << "};\n";
   }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
          << tileDMAInstRefStr(col, row, bdNum) << ", "
@@ -114,7 +114,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << " * " << bytesA << "));\n";
   // TODO: Probably need special handling for NOC
-  // TODO: Might need to adjust step sizes / wraps by -1
+  // TODO: Might need to adjust strides / sizes by -1
 }
 
 } // namespace xilinx::AIE

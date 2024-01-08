@@ -766,31 +766,30 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ## DMA Data Layout Transformations on AIE-ML Devices
 
     AIE-ML devices can apply data layout transformations at the buffer
-    descriptor level. These transformation are described by strides (also called
-    stepsizes) and wraps (also called lengths) in up to three dimensions (four
-    dimensions on memtiles). Strides and wraps can be supplied to the `dma_bd`
-    through an optional argument, an array of tuples `<wrap, stride>`.
+    descriptor level. These transformation are described by strides and sizes in up to three dimensions (four
+    dimensions on memtiles). Strides and sizes can be supplied to the `dma_bd`
+    through an optional argument, an array of tuples `<size, stride>`.
 
     The first element of this array gives the _highest-dimension_ stride and
-    wrap, the last element of the array gives the lowest-dimension.
+    size, the last element of the array gives the lowest-dimension.
 
     Strides are always expressed in units of `i32`s; this is an architectural
     requirement, as data is moved by the DMA at this fundamental size.
 
-    We can model the access pattern strides and wraps generate by a series of
-    nested loops. In general, a set of strides and wraps like this...
+    We can model the access pattern strides and sizes generate by a series of
+    nested loops. In general, a set of strides and sizes like this...
 
     ```
-    [<wrap_2, stride_2>, <wrap_1, stride_1>, <wrap_0, stride_0>]
+    [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
     ```
 
     ...translates to an access pattern that can be epxressed like this:
 
     ```
     int *buffer;  // i32
-    for(int i = 0; i < wrap_2; i++)
-      for(int j = 0; j < wrap_1; j++)
-        for(int k = 0; k < wrap_0; k++)
+    for(int i = 0; i < size_2; i++)
+      for(int j = 0; j < size_1; j++)
+        for(int k = 0; k < size_0; k++)
           // access/store element at/to buffer[  i * stride_2
           //                                   + j * stride_1
           //                                   + k * stride_0]
@@ -802,6 +801,15 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
     ```
     aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+    ```
+
+    implies
+
+    ```
+    for(int i = 0; i < 8 /*size_2*/; i++)
+      for(int j = 0; j < 2 /*size_1*/; j++)
+        for(int k = 0; k < 8 /*size_0*/; k++)
+          // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
     ```
   }];
 
@@ -1421,7 +1429,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     can be applied for an objectFifo: one on the producer side, given by a
     `toStream` attribute, and one transformation on the consumer side, given by
     a `fromStream` attribute. See the `DMABDOp` documentation for a description
-    of strides and wraps. The `toStream` and `fromStream` optional attributes
+    of strides and sizes. The `toStream` and `fromStream` optional attributes
     are given directly following the producer or consumer tile declaration.
     Different transformations can be specified for each consumer. See example
     below.
@@ -1435,7 +1443,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     i.e. 16 bytes.
 
     The following example shows an objectFifo which transposes a 16x16 matrix of
-    `i32`s on the producer side using strides and wraps. No transformation is
+    `i32`s on the producer side using strides and sizes. No transformation is
     applied on the consumer side of %tile13 (in this case the `fromStream`
     attribute may also be left off), and a transformation on %tile23 first gives
     all even indices from the stream, followed by all odd indices:

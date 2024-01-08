@@ -5,7 +5,6 @@
 
 from typing import List, Optional, Union, Tuple
 
-from aie.ir import _typeAttr
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
@@ -31,6 +30,7 @@ from ..ir import (
     InsertionPoint,
     IntegerAttr,
     IntegerType,
+    _typeAttr,
     TypeAttr,
     _i32ArrayAttr,
 )
@@ -73,8 +73,8 @@ class Call(CallOp):
             )
 
 
-def bd_dim_layout(wrap, step):
-    return Attribute.parse(f"#aie.bd_dim_layout<{wrap=}, {step=}>")
+def bd_dim_layout(size, stride):
+    return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
