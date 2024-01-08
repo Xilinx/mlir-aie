@@ -1192,8 +1192,10 @@ LogicalResult BufferOp::verify() {
 // FIXME: make address assignment for buffers explicit and move this function to
 // an interface
 uint64_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
-  if (auto buf = dyn_cast<BufferOp>(bufOp))
-    return buf.address();
+  if (auto buf = dyn_cast<BufferOp>(bufOp)) {
+    assert(buf.getAddress().has_value() && "buffer must have address assigned");
+    return buf.getAddress().value();
+  }
   if (isa_and_nonnull<ExternalBufferOp>(bufOp))
     llvm::report_fatal_error(
         "External buffer addresses are assigned at runtime.");

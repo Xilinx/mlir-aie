@@ -1162,7 +1162,8 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-    OptionalAttr<StrAttr>:$sym_name
+    OptionalAttr<StrAttr>:$sym_name,
+    OptionalAttr<AIEI64Attr>:$address
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1182,14 +1183,6 @@ def AIE_BufferOp: AIE_Op<"buffer", [
       emitOpError("does not have '")
           << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
-    }
-
-    // Return the address of this buffer
-    int64_t address() {
-      if (auto attr = getOperation()->getAttrOfType<mlir::IntegerAttr>("address"))
-        return attr.getInt();
-      emitOpError("does not have 'address' attribute specified");
-      llvm::report_fatal_error("couldn't address");
     }
 
     // Return the number of bytes that need to be allocated for this buffer.

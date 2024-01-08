@@ -337,8 +337,10 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         foundBd = true;
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
-        BaseAddrA =
-            cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
+        auto bufferOp = cast<AIE::BufferOp>(op.getBuffer().getDefiningOp());
+        assert(bufferOp.getAddress().has_value() &&
+               "buffer needs to have an address");
+        BaseAddrA = bufferOp.getAddress().value();
         lenA = op.getLenValue();
         bytesA = bufferType.getElementTypeBitWidth() / 8;
         offsetA = op.getOffsetValue();
@@ -518,8 +520,10 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         foundBd = true;
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
-        BaseAddrA =
-            cast<AIE::BufferOp>(op.getBuffer().getDefiningOp()).address();
+        auto bufferOp = cast<AIE::BufferOp>(op.getBuffer().getDefiningOp());
+        assert(bufferOp.getAddress().has_value() &&
+               "buffer op must have address assigned");
+        BaseAddrA = bufferOp.getAddress().value();
         lenA = op.getLenValue();
         bytesA = bufferType.getElementTypeBitWidth() / 8;
         offsetA = op.getOffsetValue();
