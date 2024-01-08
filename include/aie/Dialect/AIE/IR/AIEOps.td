@@ -1163,7 +1163,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   let arguments = (
     ins Index:$tile,
     OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<AIEI64Attr>:$address
+    OptionalAttr<AIEI32Attr>:$address
   );
 
   let results = (outs AnyMemRef:$buffer);
