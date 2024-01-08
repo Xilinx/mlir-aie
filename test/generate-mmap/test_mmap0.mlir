@@ -123,13 +123,13 @@ module @test_mmap0 {
   %t43 = aie.tile(4, 3)
   %t45 = aie.tile(4, 5)
 
-  %buf44_0 = aie.buffer(%t44) { sym_name = "a", address = 0x0 } : memref<4xi32>
-  %buf44_1 = aie.buffer(%t44) { sym_name = "b", address = 0x10  } : memref<16xi32>
-  %buf44_2 = aie.buffer(%t44) { sym_name = "c", address = 0x50 } : memref<256xi32>
-  %buf34_0 = aie.buffer(%t34) { sym_name = "x", address = 0x0 } : memref<8xi32>
-  %buf54_0 = aie.buffer(%t54) { sym_name = "y", address = 0x0 } : memref<8xi32>
-  %buf43_0 = aie.buffer(%t43) { sym_name = "z", address = 0x0 } : memref<8xi32>
-  %buf45_0 = aie.buffer(%t45) { sym_name = "t", address = 0x0 } : memref<8xi32>
+  %buf44_0 = aie.buffer(%t44) { sym_name = "a", address = 0x0 : i32 } : memref<4xi32>
+  %buf44_1 = aie.buffer(%t44) { sym_name = "b", address = 0x10 : i32  } : memref<16xi32>
+  %buf44_2 = aie.buffer(%t44) { sym_name = "c", address = 0x50 : i32 } : memref<256xi32>
+  %buf34_0 = aie.buffer(%t34) { sym_name = "x", address = 0x0 : i32 } : memref<8xi32>
+  %buf54_0 = aie.buffer(%t54) { sym_name = "y", address = 0x0 : i32 } : memref<8xi32>
+  %buf43_0 = aie.buffer(%t43) { sym_name = "z", address = 0x0 : i32 } : memref<8xi32>
+  %buf45_0 = aie.buffer(%t45) { sym_name = "t", address = 0x0 : i32 } : memref<8xi32>
 
   aie.core(%t44) {
     aie.end

@@ -104,7 +104,9 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       ShapedType bufferType =
           op.getBuffer().getType().template cast<::mlir::MemRefType>();
       if (!targetModel.isShimNOCTile(col, row)) {
-        BaseAddrA = op.getBufferOp().address();
+        assert(op.getBufferOp().getAddress() &&
+               "buffer must have address assigned");
+        BaseAddrA = op.getBufferOp().getAddress().value();
         int bufferCol = op.getBufferOp().getTileOp().colIndex();
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
 
@@ -797,9 +799,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                << ";\n";
         return; // Unsupported type
       }
-
-      output << "const int " << bufName << "_offset = " << buf.address()
-             << ";\n";
+      assert(buf.getAddress().has_value() && "buffer must have address");
+      output << "const int " << bufName
+             << "_offset = " << buf.getAddress().value() << ";\n";
       output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p
              << ", int index) {\n";
       output << "u32 value; auto rc = XAie_DataMemRdWord(" << deviceInstRef

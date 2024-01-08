@@ -253,7 +253,7 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   mlir::Attribute dimensions);
 
-uint64_t getBufferBaseAddress(mlir::Operation *bufOp);
+int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 } // namespace xilinx::AIE
 

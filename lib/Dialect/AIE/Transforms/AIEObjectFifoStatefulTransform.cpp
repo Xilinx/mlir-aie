@@ -385,7 +385,8 @@ struct AIEObjectFifoStatefulTransformPass
         auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
-                                  std::to_string(of_elem_index)));
+                                  std::to_string(of_elem_index)),
+            nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;

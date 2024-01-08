@@ -43,8 +43,11 @@ struct RtpToIpuPattern : OpConversionPattern<IpuWriteRTPOp> {
 
     if (auto buffer = device.lookupSymbol<AIE::BufferOp>(op.getBufferSymName()))
       if (AIE::TileOp tile = buffer.getTileOp();
-          tile.colIndex() == c && tile.rowIndex() == r)
-        rtp_buffer_addr = static_cast<uint32_t>(buffer.address());
+          tile.colIndex() == c && tile.rowIndex() == r) {
+        assert(buffer.getAddress().has_value() &&
+               "buffer must have address assigned");
+        rtp_buffer_addr = static_cast<uint32_t>(buffer.getAddress().value());
+      }
 
     if (rtp_buffer_addr == UINT_MAX)
       return op.emitOpError("RTP buffer address cannot be found. Has an RTP "

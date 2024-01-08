@@ -100,9 +100,12 @@ struct AIEAssignBufferAddressesPass
         else
           error << "(no stack allocated)\n";
 
-        for (auto buffer : buffers)
-          printbuffer(buffer.name(), buffer.address(),
+        for (auto buffer : buffers) {
+          assert(buffer.getAddress().has_value() &&
+                 "buffer must have address assigned");
+          printbuffer(buffer.name(), buffer.getAddress().value(),
                       buffer.getAllocationSize());
+        }
         return signalPassFailure();
       }
     }
