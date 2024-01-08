@@ -283,7 +283,7 @@ Syntax:
 ```
 operation ::= `aiex.ipu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
               custom<DynamicIndexList>($offsets, $static_offsets) ``
-              custom<DynamicIndexList>($lengths, $static_lengths) ``
+              custom<DynamicIndexList>($sizes, $static_sizes) ``
               custom<DynamicIndexList>($strides, $static_strides) `)`
               attr-dict `:` type($memref)
 ```
@@ -301,7 +301,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>x</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
-<tr><td><code>static_lengths</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
 <tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
@@ -313,7 +313,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 | :-----: | ----------- |
 | `memref` | memref of any type values
 | `offsets` | variadic of 64-bit signless integer
-| `lengths` | variadic of 64-bit signless integer
+| `sizes` | variadic of 64-bit signless integer
 | `strides` | variadic of 64-bit signless integer
 
 
@@ -443,14 +443,14 @@ writebd_shimtile operator
 <tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>packet_type</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d0_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d0_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d1_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d1_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d2_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d2_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>iteration_current</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>iteration_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>iteration_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>use_next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>valid_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
