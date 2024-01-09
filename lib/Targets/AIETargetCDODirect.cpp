@@ -290,8 +290,9 @@ struct AIEControl {
     ShapedType bufferType =
         bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
     int bytesA = bufferType.getElementTypeBitWidth() / 8;
-    int baseAddrA =
-        cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp()).address();
+    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    assert(bufferOp.getAddress().has_value() && "buffer must have address");
+    int baseAddrA = bufferOp.getAddress().value();
     std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
 
     if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
@@ -328,8 +329,8 @@ struct AIEControl {
         int j = dims->size() - i - 1;
         // Assume AIE-ML architecture; we assert this above
         // TODO(max): no we don't
-        dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStep(),
-                                               dims.value()[i].getWrap()};
+        dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride(),
+                                               dims.value()[i].getSize()};
       }
       // TODO: Probably need special handling for NOC
       // TODO: Might need to adjust step sizes / wraps by -1
