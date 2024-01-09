@@ -108,7 +108,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
-
 ################################################################################
 # Extensions
 ################################################################################
@@ -327,6 +326,7 @@ else ()
 endif ()
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
   target_compile_definitions(AIEPythonModules.extension._aie.dso PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
 endif()
 
