@@ -67,11 +67,11 @@ MlirStringRef aieTranslateToCDO(MlirOperation moduleOp) {
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 void aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
                              byte_ordering endianness, bool emitUnified,
-                             bool axiDebug) {
+                             bool axiDebug, bool aieSim) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   (void)failed(AIETranslateToCDODirect(
       mod, llvm::StringRef(workDirPath.data, workDirPath.length), endianness,
-      emitUnified, axiDebug));
+      emitUnified, axiDebug, aieSim));
 }
 #endif
 

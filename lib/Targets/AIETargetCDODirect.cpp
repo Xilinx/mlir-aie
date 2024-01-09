@@ -14,6 +14,7 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -24,6 +25,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef> // size_t
 #include <cstdint> // uint
@@ -161,8 +163,8 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(uint8_t hwGen = XAIE_DEV_GEN_AIEML,
-             uint64_t xaieBaseAddr = XAIE_BASE_ADDR,
+  AIEControl(uint8_t partitionNumCols, bool aieSim = false,
+             uint8_t hwGen = HW_GEN, uint64_t xaieBaseAddr = XAIE_BASE_ADDR,
              uint8_t xaieColShift = XAIE_COL_SHIFT,
              uint8_t xaieRowShift = XAIE_ROW_SHIFT,
              uint8_t xaieNumCols = XAIE_NUM_COLS,
@@ -196,9 +198,12 @@ struct AIEControl {
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                              xaiePartitionBaseAddr, PARTITION_START_COL,
-                             PARTITION_NUM_COLS);
+                             partitionNumCols);
     TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
-    TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_CDO);
+    if (aieSim) {
+      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
+                               XAIE_IO_BACKEND_CDO);
+    }
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, npiAddr);
   }
 
@@ -208,17 +213,16 @@ struct AIEControl {
   }
 
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
-                               const StringRef elfPath) {
+                               const StringRef elfPath, bool aieSim) {
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
-    bool loadSym = false;
     TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
-                                elfPath.str().c_str(), loadSym);
+                                elfPath.str().c_str(), /*loadSym*/ aieSim);
     return success();
   }
 
-  LogicalResult addAieElfsToCDO(DeviceOp &targetOp,
-                                const StringRef workDirPath) {
+  LogicalResult addAieElfsToCDO(DeviceOp &targetOp, const StringRef workDirPath,
+                                bool aieSim) {
     for (auto tileOp : targetOp.getOps<TileOp>())
       if (tileOp.isShimNOCorPLTile()) {
         // Resets no needed with V2 kernel driver
@@ -232,8 +236,8 @@ struct AIEControl {
           else
             fileName = std::string("core_") + std::to_string(col) + "_" +
                        std::to_string(row) + ".elf";
-          if (failed(
-                  addAieElfToCDO(col, row, workDirPath.str() + ps + fileName)))
+          if (failed(addAieElfToCDO(col, row, workDirPath.str() + ps + fileName,
+                                    aieSim)))
             return failure();
         }
       }
@@ -373,15 +377,16 @@ struct AIEControl {
     }
 
     // Set locks with explicit initializers
-    for (auto lockOp : targetOp.getOps<LockOp>()) {
-      auto tileOp = lockOp.getTileOp();
-      assert(lockOp.getLockID() && lockOp.getInit() &&
-             "locks must be fully initialized");
-      TRY_XAIE_API_EMIT_ERROR(
-          lockOp, XAie_LockSetValue, &devInst,
-          XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex()),
-          XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit()));
-    }
+    for (auto lockOp : targetOp.getOps<LockOp>())
+      if (lockOp.getLockID() && lockOp.getInit())
+        TRY_XAIE_API_EMIT_ERROR(
+            lockOp, XAie_LockSetValue, &devInst,
+            XAie_TileLoc(lockOp.getTileOp().colIndex(),
+                         lockOp.getTileOp().rowIndex()),
+            XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit()));
+      else
+        LLVM_DEBUG(llvm::dbgs()
+                   << "lock op missing either id or init" << lockOp << "\n");
 
     auto pushToBdQueueAndEnable = [this](Operation &op, XAie_LocType &tileLoc,
                                          int chNum, DMAChannelDir &channelDir,
@@ -415,6 +420,8 @@ struct AIEControl {
           Block *dest = op.getDest();
           while (dest) {
             channelMap[dest] = chNum;
+            if (dest->hasNoSuccessors())
+              break;
             dest = dest->getSuccessors()[0];
             if (channelMap.count(dest))
               dest = nullptr;
@@ -618,16 +625,17 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
 
 LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
-                                            DeviceOp &targetOp) {
+                                            DeviceOp &targetOp, bool aieSim) {
   if (failed(generateCDOBinary(
           workDirPath.str() + ps + "aie_cdo_error_handling.bin",
           std::bind(&AIEControl::addErrorHandlingToCDO, ctl))))
     return failure();
 
-  if (failed(generateCDOBinary(workDirPath.str() + ps + "aie_cdo_elfs.bin",
-                               [&ctl, &targetOp, &workDirPath] {
-                                 return ctl.addAieElfsToCDO(targetOp,
-                                                            workDirPath);
+  if (!targetOp.getOps<CoreOp>().empty() &&
+      failed(generateCDOBinary(workDirPath.str() + ps + "aie_cdo_elfs.bin",
+                               [&ctl, &targetOp, &workDirPath, &aieSim] {
+                                 return ctl.addAieElfsToCDO(
+                                     targetOp, workDirPath, aieSim);
                                })))
     return failure();
 
@@ -636,7 +644,8 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
-  if (failed(generateCDOBinary(
+  if (!targetOp.getOps<CoreOp>().empty() &&
+      failed(generateCDOBinary(
           workDirPath.str() + ps + "aie_cdo_enable.bin",
           [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
     return failure();
@@ -645,16 +654,19 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
 }
 
 LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp) {
+                                 DeviceOp &targetOp, bool aieSim) {
   return generateCDOBinary(
-      workDirPath.str() + ps + "aie_cdo.bin", [&ctl, &targetOp, &workDirPath] {
+      workDirPath.str() + ps + "aie_cdo.bin",
+      [&ctl, &targetOp, &workDirPath, &aieSim] {
         if (failed(ctl.addErrorHandlingToCDO()))
           return failure();
-        if (failed(ctl.addAieElfsToCDO(targetOp, workDirPath)))
+        if (!targetOp.getOps<CoreOp>().empty() &&
+            failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
           return failure();
         if (failed(ctl.addInitConfigToCDO(targetOp)))
           return failure();
-        if (failed(ctl.addCoreEnableToCDO(targetOp)))
+        if (!targetOp.getOps<CoreOp>().empty() &&
+            failed(ctl.addCoreEnableToCDO(targetOp)))
           return failure();
         return success();
       });
@@ -665,15 +677,21 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
 namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
-                                      bool emitUnified, bool axiDebug) {
+                                      bool emitUnified, bool axiDebug,
+                                      bool aieSim) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
-  AIEControl ctl;
+  int maxCol = 0, minCol = 0;
+  for (auto tileOp : targetOp.getOps<TileOp>()) {
+    minCol = std::min(tileOp.getCol(), minCol);
+    maxCol = std::max(tileOp.getCol(), maxCol);
+  }
+  AIEControl ctl(maxCol - minCol + 1, aieSim);
   initializeCDOGenerator(endianness, axiDebug);
   if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp);
+    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim);
+  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim);
 }
 } // namespace xilinx::AIE

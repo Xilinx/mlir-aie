@@ -54,7 +54,8 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
 mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
                                             llvm::StringRef workDirPath,
                                             byte_ordering endianness,
-                                            bool emitUnified, bool axiDebug);
+                                            bool emitUnified, bool axiDebug,
+                                            bool aieSim);
 #endif
 } // namespace AIE
 

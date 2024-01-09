@@ -198,7 +198,9 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path):
+def emit_design_bif(root_path, has_cores=True):
+    elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
+    enable_file = f"file={root_path}/aie_cdo_enable.bin" if has_cores else ""
     return dedent(
         f"""\
         all:
@@ -210,9 +212,9 @@ def emit_design_bif(root_path):
             name=aie_image, id=0x1c000000
             {{ type=cdo
                file={root_path}/aie_cdo_error_handling.bin
-               file={root_path}/aie_cdo_elfs.bin
+               {elf_file}
                file={root_path}/aie_cdo_init.bin
-               file={root_path}/aie_cdo_enable.bin
+               {enable_file}
             }}
           }}
         }}
@@ -499,7 +501,7 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_xclbin_gen(self, aie_target):
+    async def process_xclbin_gen(self, aie_target, has_cores):
         async with self.limit:
             if self.stopall:
                 return
@@ -527,15 +529,21 @@ class FlowRunner:
             xaiengine_lib_path = os.path.join(runtime_xaiengine_path)
 
             for elf in glob.glob("*.elf"):
-                shutil.copy(elf, self.tmpdirname)
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
             for elf_map in glob.glob("*.elf.map"):
-                shutil.copy(elf_map, self.tmpdirname)
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
 
             # fmt: off
-            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
-            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
+            p0 = self.do_call(task, ["g++", "-Wl,--no-as-needed", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
+            p1 = self.do_call(task, ["g++", "-Wl,--no-as-needed", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
             await asyncio.gather(p0, p1)
-            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
+            await self.do_call(task, ["g++", "-Wl,--no-as-needed", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
             # fmt: on
 
             ld_paths = [
@@ -577,7 +585,8 @@ class FlowRunner:
             )
 
             await write_file_async(
-                emit_design_bif(self.tmpdirname), self.prepend_tmp("design.bif")
+                emit_design_bif(self.tmpdirname, has_cores),
+                self.prepend_tmp("design.bif"),
             )
 
             # fmt: off
@@ -1026,7 +1035,7 @@ class FlowRunner:
 
             # Must have elfs, before we build the final binary assembly
             if opts.cdo:
-                processes = [self.process_xclbin_gen(aie_target)]
+                processes = [self.process_xclbin_gen(aie_target, bool(len(cores)))]
                 await asyncio.gather(*processes)
 
     def dumpprofile(self):

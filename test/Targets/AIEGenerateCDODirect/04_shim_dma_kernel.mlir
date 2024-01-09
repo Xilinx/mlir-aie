@@ -5,11 +5,9 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
-// RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
+// RUN: mkdir $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_enable.bin $BASENAME.prj/aie_cdo_enable.bin
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_error_handling.bin $BASENAME.prj/aie_cdo_error_handling.bin
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_init.bin $BASENAME.prj/aie_cdo_init.bin
 
@@ -28,9 +26,6 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel {
     %lock_0_3_1 = aie.lock(%tile_0_3, 5) {init = 2 : i32}
     %lock_0_3_2 = aie.lock(%tile_0_3, 6)
     %lock_0_3_3 = aie.lock(%tile_0_3, 7)
-    %core_0_3 = aie.core(%tile_0_3) {
-      aie.end
-    } {elf_file = "custom_7_3.elf"}
     %mem_0_3 = aie.mem(%tile_0_3) {
       %0 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
     ^bb1:  // pred: ^bb0

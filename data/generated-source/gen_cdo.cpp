@@ -44,17 +44,19 @@ void generateCDOBinariesSeparately(const std::string &workDirPath,
   if (AXIdebug)
     std::cout << "DONE: Error Handling Configuration\n\n";
 
-  // aie_cdo_elfs.bin
-  const std::string elfsCDOFilePath = workDirPath + "aie_cdo_elfs.bin";
-  if (AXIdebug)
-    std::cout << "START: AIE ELF Configuration\n";
-  startCDOFileStream(elfsCDOFilePath.c_str());
-  FileHeader();
-  addAieElfsToCDO(workDirPath);
-  configureHeader();
-  endCurrentCDOFileStream();
-  if (AXIdebug)
-    std::cout << "DONE: AIE ELF Configuration\n\n";
+  if (hasCoreElfFiles()) {
+    // aie_cdo_elfs.bin
+    const std::string elfsCDOFilePath = workDirPath + "aie_cdo_elfs.bin";
+    if (AXIdebug)
+      std::cout << "START: AIE ELF Configuration\n";
+    startCDOFileStream(elfsCDOFilePath.c_str());
+    FileHeader();
+    addAieElfsToCDO(workDirPath);
+    configureHeader();
+    endCurrentCDOFileStream();
+    if (AXIdebug)
+      std::cout << "DONE: AIE ELF Configuration\n\n";
+  }
 
   // aie_cdo_init.bin
   const std::string initCfgCDOFilePath = workDirPath + "aie_cdo_init.bin";
@@ -68,15 +70,18 @@ void generateCDOBinariesSeparately(const std::string &workDirPath,
   if (AXIdebug)
     std::cout << "DONE: Initial Configuration (SHIM and AIE Array)\n\n";
 
-  // aie_cdo_enable.bin
-  const std::string coreEnableCDOFilePath = workDirPath + "aie_cdo_enable.bin";
-  if (AXIdebug)
-    std::cout << "START: Core Enable Configuration\n";
-  startCDOFileStream(coreEnableCDOFilePath.c_str());
-  FileHeader();
-  addCoreEnableToCDO();
-  configureHeader();
-  endCurrentCDOFileStream();
-  if (AXIdebug)
-    std::cout << "DONE: Core Enable Configuration\n\n";
+  if (hasCoreElfFiles()) {
+    // aie_cdo_enable.bin
+    const std::string coreEnableCDOFilePath =
+        workDirPath + "aie_cdo_enable.bin";
+    if (AXIdebug)
+      std::cout << "START: Core Enable Configuration\n";
+    startCDOFileStream(coreEnableCDOFilePath.c_str());
+    FileHeader();
+    addCoreEnableToCDO();
+    configureHeader();
+    endCurrentCDOFileStream();
+    if (AXIdebug)
+      std::cout << "DONE: Core Enable Configuration\n\n";
+  }
 }

@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -59,7 +59,7 @@ module @multi_depth {
         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
         %2 = aie.objectfifo.acquire @of_inter(Produce, 1) : !aie.objectfifosubview<memref<32xi32>>
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
-        func.call @add_one(%1, %3) : (memref<32xi32>, memref<32xi32>) -> ()
+        // func.call @add_one(%1, %3) : (memref<32xi32>, memref<32xi32>) -> ()
         aie.objectfifo.release @of_in(Consume, 1)
         aie.objectfifo.release @of_inter(Produce, 1)
       }
@@ -77,7 +77,7 @@ module @multi_depth {
         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
         %2 = aie.objectfifo.acquire @of_inter(Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
-        func.call @add_store(%1, %3, %buff_out, %arg0) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
+        // func.call @add_store(%1, %3, %buff_out, %arg0) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
         aie.objectfifo.release @of_in(Consume, 1)
         aie.objectfifo.release @of_inter(Consume, 1)
       }

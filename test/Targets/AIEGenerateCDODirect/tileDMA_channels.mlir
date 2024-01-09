@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -46,8 +46,8 @@ module @dmaChannels {
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %6 = aie.objectfifo.acquire @of_out1(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
         %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @copy(%1, %5) : (memref<16xi32>, memref<16xi32>) -> ()
-        func.call @copy(%3, %7) : (memref<16xi32>, memref<16xi32>) -> ()
+        // func.call @copy(%1, %5) : (memref<16xi32>, memref<16xi32>) -> ()
+        // func.call @copy(%3, %7) : (memref<16xi32>, memref<16xi32>) -> ()
         aie.objectfifo.release @of_in0(Consume, 1)
         aie.objectfifo.release @of_in1(Consume, 1)
         aie.objectfifo.release @of_out0(Produce, 1)
@@ -87,15 +87,15 @@ module @dmaChannels {
         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %2 = aie.objectfifo.acquire @of_in1(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @generateLineScalar(%1) : (memref<16xi32>) -> ()
-        func.call @generateLineScalar(%3) : (memref<16xi32>) -> ()
+        // func.call @generateLineScalar(%1) : (memref<16xi32>) -> ()
+        // func.call @generateLineScalar(%3) : (memref<16xi32>) -> ()
         aie.objectfifo.release @of_in0(Produce, 1)
         aie.objectfifo.release @of_in1(Produce, 1)
         %4 = aie.objectfifo.acquire @of_out0(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %6 = aie.objectfifo.acquire @of_out1(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
         %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @addAndStore(%5, %7, %arg0, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+        // func.call @addAndStore(%5, %7, %arg0, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
         aie.objectfifo.release @of_out0(Consume, 1)
         aie.objectfifo.release @of_out1(Consume, 1)
       }

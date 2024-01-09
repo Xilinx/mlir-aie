@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -28,7 +28,7 @@ module @test_chess_05_shim_dma_core_function {
     %lock_0_3_1 = aie.lock(%tile_0_3, 5) {init = 2 : i32}
     %lock_0_3_2 = aie.lock(%tile_0_3, 6)
     %lock_0_3_3 = aie.lock(%tile_0_3, 7)
-    func.func private @func(memref<16xi32>, memref<16xi32>)
+    // func.func private @func(memref<16xi32>, memref<16xi32>)
     %core_0_3 = aie.core(%tile_0_3) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -36,17 +36,17 @@ module @test_chess_05_shim_dma_core_function {
       scf.for %arg0 = %c0 to %c1 step %c1_4 {
         aie.use_lock(%lock_0_3_0, AcquireGreaterEqual, 1)
         aie.use_lock(%lock_0_3_1, AcquireGreaterEqual, 1)
-        func.call @func(%a_ping, %b_ping) : (memref<16xi32>, memref<16xi32>) -> ()
+        // func.call @func(%a_ping, %b_ping) : (memref<16xi32>, memref<16xi32>) -> ()
         aie.use_lock(%lock_0_3, Release, 1)
         aie.use_lock(%lock_0_3_2, Release, 1)
         aie.use_lock(%lock_0_3_0, AcquireGreaterEqual, 1)
         aie.use_lock(%lock_0_3_1, AcquireGreaterEqual, 1)
-        func.call @func(%a_pong, %b_pong) : (memref<16xi32>, memref<16xi32>) -> ()
+        // func.call @func(%a_pong, %b_pong) : (memref<16xi32>, memref<16xi32>) -> ()
         aie.use_lock(%lock_0_3, Release, 1)
         aie.use_lock(%lock_0_3_2, Release, 1)
       }
       aie.end
-    } {link_with = "kernel.o"}
+    } // {link_with = "kernel.o"}
     %mem_0_3 = aie.mem(%tile_0_3) {
       %0 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
     ^bb1:  // pred: ^bb0

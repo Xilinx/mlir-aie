@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -15,11 +15,11 @@
 
 module {
   aie.device(ipu) {
-    // func.func private @rgba2grayLine(memref<7680xui8>, memref<1920xui8>, i32)
-    // func.func private @filter2dLine(memref<1920xui8>, memref<1920xui8>, memref<1920xui8>, memref<1920xui8>, i32, memref<3x3xi16>)
-    // func.func private @thresholdLine(memref<1920xui8>, memref<1920xui8>, i32, i16, i16, i8)
-    // func.func private @gray2rgbaLine(memref<1920xui8>, memref<7680xui8>, i32)
-    // func.func private @addWeightedLine(memref<7680xui8>, memref<7680xui8>, memref<7680xui8>, i32, i16, i16, i8)
+    // // func.func private @rgba2grayLine(memref<7680xui8>, memref<1920xui8>, i32)
+    // // func.func private @filter2dLine(memref<1920xui8>, memref<1920xui8>, memref<1920xui8>, memref<1920xui8>, i32, memref<3x3xi16>)
+    // // func.func private @thresholdLine(memref<1920xui8>, memref<1920xui8>, i32, i16, i16, i8)
+    // // func.func private @gray2rgbaLine(memref<1920xui8>, memref<7680xui8>, i32)
+    // // func.func private @addWeightedLine(memref<7680xui8>, memref<7680xui8>, memref<7680xui8>, i32, i16, i16, i8)
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)

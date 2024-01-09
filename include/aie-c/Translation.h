@@ -30,8 +30,8 @@ MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
 MLIR_CAPI_EXPORTED void aieTranslateToCDODirect(MlirOperation moduleOp,
                                                 MlirStringRef workDirPath,
                                                 byte_ordering endianness,
-                                                bool emitUnified,
-                                                bool axiDebug);
+                                                bool emitUnified, bool axiDebug,
+                                                bool aieSim);
 #endif
 
 #ifdef __cplusplus

@@ -102,13 +102,14 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "generate_cdo_direct",
       [](MlirOperation op, const std::string &workDirPath,
-         byte_ordering endianness, bool emitUnified, bool axiDebug) {
+         byte_ordering endianness, bool emitUnified, bool axiDebug,
+         bool aieSim) {
         aieTranslateToCDODirect(op, {workDirPath.data(), workDirPath.size()},
-                                endianness, emitUnified, axiDebug);
+                                endianness, emitUnified, axiDebug, aieSim);
       },
       "module"_a, "work_dir_path"_a,
       "endianness"_a = byte_ordering::Little_Endian, "emit_unified"_a = false,
-      "axi_debug"_a = false);
+      "axi_debug"_a = false, "aiesim"_a = false);
 #endif
 
   m.def(

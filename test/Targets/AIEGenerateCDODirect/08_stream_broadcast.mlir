@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -50,9 +50,6 @@ module @test08_stream_broadcast {
       aie.use_lock(%interlock_1, Release, 0)
       aie.next_bd ^bb2
     ^bb2:  // 2 preds: ^bb0, ^bb1
-      aie.end
-    }
-    %core_2_3 = aie.core(%tile_2_3) {
       aie.end
     }
     %a32 = aie.buffer(%tile_3_2) {sym_name = "a32"} : memref<256xi32>

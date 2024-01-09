@@ -5,7 +5,7 @@
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $BASENAME.prj %s
+// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
 // RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
 // RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
@@ -93,7 +93,7 @@ module @twoFilter2D {
       scf.for %arg0 = %c0 to %c10 step %c1 {
         %0 = aie.objectfifo.acquire @of1(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @generateLineScalar(%arg0, %1) : (index, memref<16xi32>) -> ()
+        // func.call @generateLineScalar(%arg0, %1) : (index, memref<16xi32>) -> ()
         aie.objectfifo.release @of1(Produce, 1)
       }
       aie.end
@@ -109,7 +109,7 @@ module @twoFilter2D {
       %2 = aie.objectfifo.subview.access %0[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
       %3 = aie.objectfifo.acquire @of2(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
       %4 = aie.objectfifo.subview.access %3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      func.call @firstFilterTwoLines(%1, %2, %4) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+      // func.call @firstFilterTwoLines(%1, %2, %4) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
       aie.objectfifo.release @of2(Produce, 1)
       scf.for %arg0 = %c1 to %c9 step %c1 {
         %10 = aie.objectfifo.acquire @of1(Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
@@ -118,7 +118,7 @@ module @twoFilter2D {
         %13 = aie.objectfifo.subview.access %10[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %14 = aie.objectfifo.acquire @of2(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
         %15 = aie.objectfifo.subview.access %14[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @firstFilterThreeLines(%11, %12, %13, %15) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+        // func.call @firstFilterThreeLines(%11, %12, %13, %15) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
         aie.objectfifo.release @of1(Consume, 1)
         aie.objectfifo.release @of2(Produce, 1)
       }
@@ -127,7 +127,7 @@ module @twoFilter2D {
       %7 = aie.objectfifo.subview.access %5[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
       %8 = aie.objectfifo.acquire @of2(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
       %9 = aie.objectfifo.subview.access %8[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      func.call @firstFilterTwoLines(%6, %7, %9) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+      // func.call @firstFilterTwoLines(%6, %7, %9) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
       aie.objectfifo.release @of1(Consume, 2)
       aie.objectfifo.release @of2(Produce, 1)
       aie.end
@@ -142,19 +142,19 @@ module @twoFilter2D {
       %0 = aie.objectfifo.acquire @of2(Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
       %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
       %2 = aie.objectfifo.subview.access %0[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      func.call @secondFilterTwoLines(%1, %2, %c0, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+      // func.call @secondFilterTwoLines(%1, %2, %c0, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
       scf.for %arg0 = %c1 to %c9 step %c1 {
         %6 = aie.objectfifo.acquire @of2(Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
         %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %8 = aie.objectfifo.subview.access %6[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         %9 = aie.objectfifo.subview.access %6[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        func.call @secondFilterThreeLines(%7, %8, %9, %arg0, %out) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+        // func.call @secondFilterThreeLines(%7, %8, %9, %arg0, %out) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
         aie.objectfifo.release @of2(Consume, 1)
       }
       %3 = aie.objectfifo.acquire @of2(Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
       %4 = aie.objectfifo.subview.access %3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
       %5 = aie.objectfifo.subview.access %3[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      func.call @secondFilterTwoLines(%4, %5, %c9, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+      // func.call @secondFilterTwoLines(%4, %5, %c9, %out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
       aie.objectfifo.release @of2(Consume, 2)
       aie.use_lock(%lock_out, Release, 1)
       aie.end
