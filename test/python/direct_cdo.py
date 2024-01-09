@@ -74,8 +74,8 @@ def my_passthrough(module):
 
         @func.func(emit=True)
         def sequence(A: tensor_ty, B: tensor_ty, C: tensor_ty):
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, lengths=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
     pass_pipeline = ",".join(
