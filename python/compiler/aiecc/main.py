@@ -540,10 +540,10 @@ class FlowRunner:
                     pass
 
             # fmt: off
-            p0 = self.do_call(task, ["g++", "-Wl,--no-as-needed", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
-            p1 = self.do_call(task, ["g++", "-Wl,--no-as-needed", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
+            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
+            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
             await asyncio.gather(p0, p1)
-            await self.do_call(task, ["g++", "-Wl,--no-as-needed", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
+            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
             # fmt: on
 
             ld_paths = [
