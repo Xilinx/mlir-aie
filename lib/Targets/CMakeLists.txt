@@ -56,34 +56,8 @@ add_mlir_library(AIETargets
 )
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  message(STATUS "Building CDO direct")
-  include("${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aiert.cmake")
-  set(XAIE_SOURCE_DIR "${AIE_SOURCE_DIR}/runtime_lib/xaiengine/aie-rt/driver/src")
-
-  add_aiert_headers(xaienginecdo
-    ${XAIE_SOURCE_DIR}
-    ${AIE_BINARY_DIR}/include
-    ${CMAKE_INSTALL_PREFIX}/include/xaiengine
-  )
-  add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR} STATIC)
-
-  # TODO: set RPATH correctly (and for XRTModule)
-  add_library(cdo_driver SHARED IMPORTED)
-  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
-
-  target_link_libraries(xaienginecdo PUBLIC cdo_driver)
-  target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
-
   target_link_libraries(AIETargets PUBLIC xaienginecdo)
+  target_include_directories(AIETargets PUBLIC ${VITIS_AIETOOLS_DIR}/include)
   add_dependencies(AIETargets xaienginecdo xaienginecdo-headers)
   target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
-
-  # just to make cmake happy since AIETargets will need to re-export
-  install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo)
-  install(EXPORT xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake)
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    cdo_driver
-    COMPONENT aie-translate-targets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-  )
 endif()

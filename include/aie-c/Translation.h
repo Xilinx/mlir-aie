@@ -26,7 +26,7 @@ MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, int col,
 MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
                                              int nModules);
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-#include "aie/Targets/cdo_driver.h"
+#include "cdo_driver.h"
 MLIR_CAPI_EXPORTED void aieTranslateToCDODirect(MlirOperation moduleOp,
                                                 MlirStringRef workDirPath,
                                                 byte_ordering endianness,

@@ -10,7 +10,9 @@
 #define AIE_TARGETS_AIETARGETS_H
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+extern "C" {
 #include "cdo_driver.h"
+}
 #endif
 
 #include "mlir/IR/BuiltinOps.h"

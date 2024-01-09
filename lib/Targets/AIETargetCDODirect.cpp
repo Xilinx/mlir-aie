@@ -5,8 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Targets/AIETargets.h"
-#include "aie/Targets/cdo_driver.h"
+extern "C" {
+#include "cdo_driver.h"
+}
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
@@ -134,9 +137,6 @@ static_assert(XAIE_OK == 0);
 
 auto ps = std::filesystem::path::preferred_separator;
 
-#define HW_GEN XAIE_DEV_GEN_AIEML
-#define XAIE_NUM_ROWS 6
-#define XAIE_NUM_COLS 5
 #define XAIE_BASE_ADDR 0x40000000
 #define XAIE_COL_SHIFT 25
 #define XAIE_ROW_SHIFT 20
@@ -163,33 +163,23 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(uint8_t partitionNumCols, bool aieSim = false,
-             uint8_t hwGen = HW_GEN, uint64_t xaieBaseAddr = XAIE_BASE_ADDR,
-             uint8_t xaieColShift = XAIE_COL_SHIFT,
-             uint8_t xaieRowShift = XAIE_ROW_SHIFT,
-             uint8_t xaieNumCols = XAIE_NUM_COLS,
-             uint8_t xaieNumRows = XAIE_NUM_ROWS,
-             uint8_t xaieShimRow = XAIE_SHIM_ROW,
-             uint8_t xaieMemTileRowStart = XAIE_MEM_TILE_ROW_START,
-             uint8_t xaieMemTileNumRows = XAIE_MEM_TILE_NUM_ROWS,
-             uint8_t xaieAieTileRowStart = XAIE_AIE_TILE_ROW_START,
-             uint8_t xaieAieTileNumRows = XAIE_AIE_TILE_NUM_ROWS,
-             uint64_t xaiePartitionBaseAddr = XAIE_PARTITION_BASE_ADDR,
-             uint64_t npiAddr = NPI_ADDR)
-      : configPtr({
-            .AieGen = hwGen,
-            .BaseAddr = xaieBaseAddr,
-            .ColShift = xaieColShift,
-            .RowShift = xaieRowShift,
-            .NumRows = xaieNumRows,
-            .NumCols = xaieNumCols,
-            .ShimRowNum = xaieShimRow,
-            .MemTileRowStart = xaieMemTileRowStart,
-            .MemTileNumRows = xaieMemTileNumRows,
-            .AieTileRowStart = xaieAieTileRowStart,
-            .AieTileNumRows = xaieAieTileNumRows,
-            .PartProp = {},
-        }) {
+  AIEControl(uint8_t partitionNumCols, bool aieSim, const AIETargetModel &tm) {
+    configPtr = XAie_Config{
+        .AieGen = XAIE_DEV_GEN_AIEML,
+        .BaseAddr = XAIE_BASE_ADDR,
+        .ColShift = XAIE_COL_SHIFT,
+        .RowShift = XAIE_ROW_SHIFT,
+        .NumRows = static_cast<uint8_t>(tm.rows()),
+        .NumCols = static_cast<uint8_t>(tm.columns()),
+        .ShimRowNum = XAIE_SHIM_ROW,
+        .MemTileRowStart = XAIE_MEM_TILE_ROW_START,
+        .MemTileNumRows = static_cast<uint8_t>(tm.getNumMemTileRows()),
+        .AieTileRowStart = static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START +
+                                                tm.getNumMemTileRows()),
+        .AieTileNumRows =
+            static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
+        .PartProp = {},
+    };
     // Quoting: The instance of a device must be always declared using this
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
@@ -197,14 +187,14 @@ struct AIEControl {
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
-                             xaiePartitionBaseAddr, PARTITION_START_COL,
+                             XAIE_PARTITION_BASE_ADDR, PARTITION_START_COL,
                              partitionNumCols);
     TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
     if (aieSim) {
       TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
                                XAIE_IO_BACKEND_CDO);
     }
-    TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, npiAddr);
+    TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
   }
 
   LogicalResult addErrorHandlingToCDO() {
@@ -688,7 +678,8 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
     minCol = std::min(tileOp.getCol(), minCol);
     maxCol = std::max(tileOp.getCol(), maxCol);
   }
-  AIEControl ctl(maxCol - minCol + 1, aieSim);
+  AIEControl ctl(/*partitionNumCols*/ maxCol - minCol + 1, aieSim,
+                 targetOp.getTargetModel());
   initializeCDOGenerator(endianness, axiDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp, aieSim);
