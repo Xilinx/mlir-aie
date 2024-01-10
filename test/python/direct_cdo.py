@@ -3,6 +3,7 @@
 
 # RUN: WORKDIR=%T %PYTHON %s | FileCheck %s
 # REQUIRES: cdo_direct_generation
+# REQUIRES: ryzen_ai
 
 import os
 import re

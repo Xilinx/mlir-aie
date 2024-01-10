@@ -126,22 +126,22 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   include("xaiengine/aiert.cmake")
   set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
 
-  add_aiert_headers(xaienginecdo
+  add_aiert_headers(xaienginecdo_static
           ${XAIE_SOURCE_DIR}
           ${AIE_BINARY_DIR}/include
           ${CMAKE_INSTALL_PREFIX}/include/xaiengine
   )
-  add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR} STATIC)
+  add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
   add_library(cdo_driver SHARED IMPORTED)
   set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
 
-  target_link_libraries(xaienginecdo PUBLIC cdo_driver)
-  target_compile_definitions(xaienginecdo PRIVATE -D__AIECDO__)
+  target_link_libraries(xaienginecdo_static PUBLIC cdo_driver)
+  target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
 
   # just to make cmake happy since AIETargets will need to re-export
-  install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo)
-  install(EXPORT xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake)
+  install(TARGETS xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo_static)
+  install(EXPORT xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake)
   install(IMPORTED_RUNTIME_ARTIFACTS
           cdo_driver
           COMPONENT aie-translate-targets
