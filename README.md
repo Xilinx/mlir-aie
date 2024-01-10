@@ -1,15 +1,6 @@
 # MLIR-based AI Engine toolchain
 
-[![Build and Test](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTest.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTest.yml)
-
-[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
-
-[![Build and Test with AIE tools](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestAieTools.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestAieTools.yml)
-
-[![Build and Test with AIE tools on Ryzen AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml)
-
-[![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
-
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/Xilinx/mlir-aie/buildAndTest.yml?branch=main)
 ![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)
 
 ![](https://mlir.llvm.org//mlir-logo.png)

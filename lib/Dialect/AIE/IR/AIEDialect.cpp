@@ -1349,19 +1349,6 @@ LogicalResult MemTileDMAOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// DMAOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DMAOp::verify() {
-  auto *parentOp = getOperation()->getParentOp();
-  if (parentOp->getRegion(0).getBlocks().size() > 1)
-    return emitOpError("DMA op can only appear in single block region");
-  if (!parentOp->getRegion(0).getOps<DMAStartOp>().empty())
-    return emitOpError("DMA op is not compatible with DMAStart ops");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // DMABDOp
 //===----------------------------------------------------------------------===//
 
