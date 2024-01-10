@@ -888,7 +888,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
+    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
     NoTerminator,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs I1:$valid)> {
@@ -903,6 +903,7 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let assemblyFormat = [{
     `(` $channelDir `,` $channelIndex `)` regions attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 

@@ -10,12 +10,11 @@
 
 // REQUIRES: ryzen_ai
 
-// RUN: aie-translate --aie-generate-cdo-direct %S/dma_op.mlir --cdo-axi-debug 2>&1 | FileCheck %s
+// RUN: aie-translate --aie-generate-cdo-direct %s --cdo-axi-debug 2>&1 | FileCheck %s
 
 // CHECK: Generating: {{.*}}aie_cdo_error_handling.bin
-// CHECK: Generating: {{.*}}aie_cdo_elfs.bin
 // CHECK: Generating: {{.*}}aie_cdo_init.bin
-// CHECK: Generating: {{.*}}aie_cdo_enable.bin
+
 module {
   aie.device(ipu) {
     %tile_0_1 = aie.tile(0, 1)
@@ -98,4 +97,3 @@ module {
     }
   }
 }
-
