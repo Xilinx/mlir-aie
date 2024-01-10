@@ -9,10 +9,23 @@
 #include "aie-c/Registration.h"
 #include "aie-c/Translation.h"
 
+#include "mlir-c/IR.h"
+#include "mlir-c/Support.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
 
-namespace py = pybind11;
+#include <pybind11/cast.h>
+#include <pybind11/detail/common.h>
+#include <pybind11/pybind11.h>
+
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
+#include <unicodeobject.h>
+#include <vector>
+
 using namespace mlir::python::adaptors;
+namespace py = pybind11;
+using namespace py::literals;
 
 PYBIND11_MODULE(_aie, m) {
 
@@ -28,7 +41,7 @@ PYBIND11_MODULE(_aie, m) {
         mlirDialectHandleInsertDialect(aiexHandle, registry);
         mlirDialectHandleInsertDialect(aievecHandle, registry);
       },
-      py::arg("registry"));
+      "registry"_a);
 
   // AIE types bindings
   mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)
@@ -38,7 +51,7 @@ PYBIND11_MODULE(_aie, m) {
             return cls(aieObjectFifoTypeGet(type));
           },
           "Get an instance of ObjectFifoType with given element type.",
-          py::arg("self"), py::arg("type") = py::none());
+          "self"_a, "type"_a = py::none());
 
   mlir_type_subclass(m, "ObjectFifoSubviewType", aieTypeIsObjectFifoSubviewType)
       .def_classmethod(
@@ -47,7 +60,7 @@ PYBIND11_MODULE(_aie, m) {
             return cls(aieObjectFifoSubviewTypeGet(type));
           },
           "Get an instance of ObjectFifoSubviewType with given element type.",
-          py::arg("self"), py::arg("type") = py::none());
+          "self"_a, "type"_a = py::none());
 
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
@@ -80,6 +93,24 @@ PYBIND11_MODULE(_aie, m) {
         return stealCStr(aieTranslateToCDO(op));
       },
       "module"_a);
+
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+  py::enum_<byte_ordering>(m, "byte_ordering")
+      .value("Little_Endian", byte_ordering::Little_Endian)
+      .value("Big_Endian", byte_ordering::Big_Endian);
+
+  m.def(
+      "generate_cdo_direct",
+      [](MlirOperation op, const std::string &workDirPath,
+         byte_ordering endianness, bool emitUnified, bool axiDebug,
+         bool aieSim) {
+        aieTranslateToCDODirect(op, {workDirPath.data(), workDirPath.size()},
+                                endianness, emitUnified, axiDebug, aieSim);
+      },
+      "module"_a, "work_dir_path"_a,
+      "endianness"_a = byte_ordering::Little_Endian, "emit_unified"_a = false,
+      "axi_debug"_a = false, "aiesim"_a = false);
+#endif
 
   m.def(
       "ipu_instgen",

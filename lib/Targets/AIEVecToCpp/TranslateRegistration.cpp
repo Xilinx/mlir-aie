@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"

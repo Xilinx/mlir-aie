@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Targets/AIETargets.h"
+
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -25,19 +26,17 @@
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+
+#define DEBUG_TYPE "aie-targets"
 
 using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-static llvm::cl::opt<int>
-    tileCol("tilecol", llvm::cl::desc("column coordinate of core to translate"),
-            llvm::cl::init(0));
-static llvm::cl::opt<int>
-    tileRow("tilerow", llvm::cl::desc("row coordinate of core to translate"),
-            llvm::cl::init(0));
 
 llvm::json::Value attrToJSON(Attribute &attr) {
   if (auto a = llvm::dyn_cast<StringAttr>(attr))
@@ -94,6 +93,34 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
          << '\n';
 }
 void registerAIETranslations() {
+  static llvm::cl::opt<int> tileCol(
+      "tilecol", llvm::cl::desc("column coordinate of core to translate"),
+      llvm::cl::init(0));
+  static llvm::cl::opt<int> tileRow(
+      "tilerow", llvm::cl::desc("row coordinate of core to translate"),
+      llvm::cl::init(0));
+
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+  static llvm::cl::opt<std::string> workDirPath(
+      "work-dir-path", llvm::cl::Optional,
+      llvm::cl::desc("Absolute path to working directory"));
+
+  static llvm::cl::opt<byte_ordering> endianness(
+      "endianness", llvm::cl::init(byte_ordering::Little_Endian),
+      llvm::cl::desc("Endianness"),
+      llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
+      llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+
+  static llvm::cl::opt<bool> cdoUnified(
+      "cdo-unified", llvm::cl::init(false),
+      llvm::cl::desc("Emit unified CDO bin (or separate bins)"));
+  static llvm::cl::opt<bool> axiDebug("cdo-axi-debug", llvm::cl::init(false),
+                                      llvm::cl::desc("Emit axi debug info"));
+  static llvm::cl::opt<bool> cdoAieSim(
+      "cdo-aiesim", llvm::cl::init(false),
+      llvm::cl::desc("AIESIM target cdo generation"));
+#endif
+
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
@@ -175,15 +202,6 @@ void registerAIETranslations() {
       },
       registerDialects);
 
-  // _entry_point _main_init
-  // _symbol      _main _after _main_init
-  // _symbol      _main_init 0
-  // _reserved DMb      0x00000 0x20000
-  // _symbol   a        0x38000 0x2000
-  // _extern   a
-  // _stack    DM_stack 0x20000  0x400 //stack for core
-  // _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
-
   TranslateFromMLIRRegistration registrationBCF(
       "aie-generate-bcf", "Generate AIE bcf",
       [](ModuleOp module, raw_ostream &output) {
@@ -263,6 +281,23 @@ void registerAIETranslations() {
         return AIETranslateToCDO(module, output);
       },
       registerDialects);
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+  TranslateFromMLIRRegistration registrationCDODirect(
+      "aie-generate-cdo-direct", "Generate libxaie for CDO directly",
+      [](ModuleOp module, raw_ostream &) {
+        SmallString<128> workDirPath_;
+        if (workDirPath.getNumOccurrences() == 0) {
+          if (llvm::sys::fs::current_path(workDirPath_))
+            llvm::report_fatal_error(
+                "couldn't get cwd to use as work-dir-path");
+        } else
+          workDirPath_ = workDirPath.getValue();
+        LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
+                                       cdoUnified, axiDebug, cdoAieSim);
+      },
+      registerDialects);
+#endif
   TranslateFromMLIRRegistration registrationIPU(
       "aie-ipu-instgen", "Generate instructions for IPU",
       [](ModuleOp module, raw_ostream &output) {

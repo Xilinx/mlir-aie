@@ -156,6 +156,7 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
   output << "std::string work_dir = (work_path.empty() ?  \"Work\" : "
             "work_path);\n";
 
+  bool hasCoreElfFiles = false;
   // Load the corresponding ELF file, if necessary.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -166,6 +167,7 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
       // Resets no needed with V2 kernel driver
     } else {
       if (auto coreOp = tileOp.getCoreOp()) {
+        hasCoreElfFiles = true;
         std::string fileName;
         if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr->str();
@@ -187,6 +189,7 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
   }
   output << "    return true;\n";
   output << "} // ppgraph_load_elf\n\n";
+  output << "bool hasCoreElfFiles() { return " << hasCoreElfFiles << ";}\n";
 
   //---------------------------------------------------------------------------
   // ppgraph_core_enable
@@ -295,6 +298,8 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         auto dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
+          if (dest->hasNoSuccessors())
+            break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))
             dest = nullptr;
@@ -478,6 +483,8 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         auto dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
+          if (dest->hasNoSuccessors())
+            break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))
             dest = nullptr;

@@ -15,6 +15,8 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
                         COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
                         DEPENDS ${file})
     endforeach()
+
+    set(_subheader_targets)
     foreach(file ${libheadersSub})
         cmake_path(GET file FILENAME basefile)
         # message("basefile: ${basefile}")
@@ -23,7 +25,9 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
         add_custom_command(OUTPUT ${dest}
                         COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
                         DEPENDS ${file})
+        list(APPEND _subheader_targets ${TARGET}-${basefile})
     endforeach()
+    add_custom_target(${TARGET}-headers ALL DEPENDS ${_subheader_targets})
 
     # Install too
     install(FILES ${libheaders} DESTINATION ${INSTALLPATH})
@@ -32,6 +36,16 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
 endfunction()
 
 function(add_aiert_library TARGET XAIE_SOURCE)
+    cmake_parse_arguments(ARG
+      "STATIC"
+      ""
+      ""
+      ${ARGN})
+    if (ARG_STATIC)
+        set(LIBTYPE STATIC)
+    else()
+        set(LIBTYPE SHARED)
+    endif()
 
     file(GLOB libsources ${XAIE_SOURCE}/*/*.c ${XAIE_SOURCE}/*/*/*.c)
 
@@ -61,7 +75,7 @@ function(add_aiert_library TARGET XAIE_SOURCE)
         ${XAIE_SOURCE}/util
     )
 
-    add_library(${TARGET} SHARED ${libsources})
+    add_library(${TARGET} ${LIBTYPE} ${libsources})
     target_compile_options(${TARGET} PRIVATE -fPIC -Wno-gnu-designator)
 
 endfunction()

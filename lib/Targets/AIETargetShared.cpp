@@ -10,12 +10,12 @@
 #include "AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Target/LLVMIR/Import.h"
 
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
 
 using namespace mlir;
 using namespace xilinx;
