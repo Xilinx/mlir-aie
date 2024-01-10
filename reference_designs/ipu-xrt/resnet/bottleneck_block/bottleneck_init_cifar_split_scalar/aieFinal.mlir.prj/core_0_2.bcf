@@ -1,0 +1,53 @@
+_entry_point _main_init
+_symbol core_0_2 _after _main_init
+_symbol      _main_init 0
+_reserved DMb      0x00000 0x40000 //Don't put data in code memory
+_reserved DMb 0x40000 0x10000  // No tile with memory exists to the south.
+_reserved DMb 0x50000 0x10000  // No tile with memory exists to the west.
+_symbol act_3_5_buff_0 0x6B400 0x400
+_extern act_3_5_buff_0
+_reserved DMb 0x6B400 0x400
+_symbol act_3_5_buff_1 0x6B800 0x400
+_extern act_3_5_buff_1
+_reserved DMb 0x6B800 0x400
+_symbol act_2_3_4_0_cons_buff_0 0x69400 0x800
+_extern act_2_3_4_0_cons_buff_0
+_reserved DMb 0x69400 0x800
+_symbol act_2_3_4_0_cons_buff_1 0x69C00 0x800
+_extern act_2_3_4_0_cons_buff_1
+_reserved DMb 0x69C00 0x800
+_symbol act_2_3_4_0_cons_buff_2 0x6A400 0x800
+_extern act_2_3_4_0_cons_buff_2
+_reserved DMb 0x6A400 0x800
+_symbol act_2_3_4_0_cons_buff_3 0x6AC00 0x800
+_extern act_2_3_4_0_cons_buff_3
+_reserved DMb 0x6AC00 0x800
+_symbol wts_buf_01_0_cons_buff_0 0x60400 0x9000
+_extern wts_buf_01_0_cons_buff_0
+_reserved DMb 0x60400 0x9000
+_symbol rtp3 0x6BC00 0x40
+_extern rtp3
+_reserved DMb 0x6BC00 0x40
+_reserved DMb 0x60000 0x10000  // Don't allocate variables outside of local memory.
+_symbol act_2_3_4_buff_0 0x71400 0x800
+_extern act_2_3_4_buff_0
+_reserved DMb 0x71400 0x800
+_symbol act_2_3_4_buff_1 0x71C00 0x800
+_extern act_2_3_4_buff_1
+_reserved DMb 0x71C00 0x800
+_symbol wts_buf_00_cons_buff_0 0x70400 0x1000
+_extern wts_buf_00_cons_buff_0
+_reserved DMb 0x70400 0x1000
+_symbol inOF_act_L3L2_0_cons_buff_0 0x72400 0x800
+_extern inOF_act_L3L2_0_cons_buff_0
+_reserved DMb 0x72400 0x800
+_symbol inOF_act_L3L2_0_cons_buff_1 0x72C00 0x800
+_extern inOF_act_L3L2_0_cons_buff_1
+_reserved DMb 0x72C00 0x800
+_symbol rtp2 0x73400 0x40
+_extern rtp2
+_reserved DMb 0x73400 0x40
+_stack    DM_stack 0x70000  0x400 //stack for core
+_reserved DMb 0x80000 0x80000 // And everything else the core can't see
+_include _file conv2dk1.o
+_resolve _main core_0_2
