@@ -1,0 +1,15 @@
+all:
+{
+  id_code = 0x14ca8093
+  extended_id_code = 0x01
+  image
+  {
+    name=aie_image, id=0x1c000000
+    { type=cdo
+       file=/proj/xcohdstaff1/gagandee/mlir-aie/reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_init_cifar_split_scalar/aieFinal.mlir.prj/aie_cdo_error_handling.bin
+       file=/proj/xcohdstaff1/gagandee/mlir-aie/reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_init_cifar_split_scalar/aieFinal.mlir.prj/aie_cdo_elfs.bin
+       file=/proj/xcohdstaff1/gagandee/mlir-aie/reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_init_cifar_split_scalar/aieFinal.mlir.prj/aie_cdo_init.bin
+       file=/proj/xcohdstaff1/gagandee/mlir-aie/reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_init_cifar_split_scalar/aieFinal.mlir.prj/aie_cdo_enable.bin
+    }
+  }
+}
