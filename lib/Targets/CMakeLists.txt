@@ -56,8 +56,8 @@ add_mlir_library(AIETargets
 )
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  target_link_libraries(AIETargets PUBLIC xaienginecdo)
+  target_link_libraries(AIETargets PUBLIC xaienginecdo_static)
   target_include_directories(AIETargets PUBLIC ${VITIS_AIETOOLS_DIR}/include)
-  add_dependencies(AIETargets xaienginecdo xaienginecdo-headers)
+  add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
   target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
 endif()
