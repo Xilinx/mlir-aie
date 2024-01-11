@@ -413,7 +413,7 @@ struct AIEControl {
             if (dest->hasNoSuccessors())
               break;
             dest = dest->getSuccessors()[0];
-            if (channelMap.count(dest))
+            if (channelMap.contains(dest))
               dest = nullptr;
           }
         }
@@ -424,7 +424,7 @@ struct AIEControl {
       for (Block &block : memOp.getOperation()->getRegion(0)) {
         if (block.getOps<DMABDOp>().empty())
           continue;
-        assert(channelMap.count(&block));
+        assert(channelMap.contains(&block));
         if (targetModel.isMemTile(col, row) && (channelMap[&block] & 1))
           blockMap[&block] = oddBdNum++;
         else
@@ -434,6 +434,7 @@ struct AIEControl {
       for (Block &block : memOp.getOperation()->getRegion(0)) {
         if (block.getOps<DMABDOp>().empty())
           continue;
+        assert(blockMap.contains(&block));
         int bdNum = blockMap[&block];
 
         std::optional<int> nextBdNum;
@@ -441,6 +442,7 @@ struct AIEControl {
           assert(llvm::range_size(block.getSuccessors()) == 1 &&
                  "should have only one successor block");
           Block *nextBlock = block.getSuccessor(0);
+          assert(blockMap.contains(&block));
           nextBdNum = blockMap[nextBlock];
         }
 
@@ -451,6 +453,7 @@ struct AIEControl {
 
       for (Block &block : memOp.getOperation()->getRegion(0))
         for (auto op : block.getOps<DMAStartOp>()) {
+          assert(blockMap.contains(&block));
           int bdNum = blockMap[op.getDest()];
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
