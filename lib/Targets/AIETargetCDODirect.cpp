@@ -432,88 +432,85 @@ struct AIEControl {
               return failure();
           }
         }
-        continue;
-      }
-
-      DenseMap<Block *, int> blockChannelMap;
-      // Assign each block a BD number
-      for (Block &block : memOp.getOperation()->getRegion(0))
-        for (auto op : block.getOps<DMAStartOp>()) {
-          int chNum = op.getChannelIndex();
-          blockChannelMap[&block] = chNum;
-          Block *dest = op.getDest();
-          while (dest) {
-            blockChannelMap[dest] = chNum;
-            if (dest->hasNoSuccessors())
-              break;
-            dest = dest->getSuccessors()[0];
-            if (blockChannelMap.contains(dest))
-              dest = nullptr;
-          }
-        }
-
-      // Assign each block a BD number
-      int evenBdNum = EVEN_BD_NUM_START;
-      int oddBdNum = ODD_BD_NUM_START;
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
-          continue;
-        assert(blockChannelMap.count(&block));
-        if (isOddBd(col, row, blockChannelMap[&block]))
-          blockBdNumMap[&block] = oddBdNum++;
-        else
-          blockBdNumMap[&block] = evenBdNum++;
-      }
-
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
-          continue;
-        assert(blockBdNumMap.contains(&block));
-        int bdNum = blockBdNumMap[&block];
-
-        std::optional<int> nextBdNum;
-        if (block.getNumSuccessors()) {
-          assert(llvm::range_size(block.getSuccessors()) == 1 &&
-                 "should have only one successor block");
-          Block *nextBlock = block.getSuccessor(0);
-          if (!blockBdNumMap.contains(nextBlock))
-            assert(nextBlock->getOperations().size() == 1 &&
-                   isa<EndOp>(nextBlock->getOperations().front()) &&
-                   "bb that's not in blockMap can only have aie.end");
-          else
-            nextBdNum = blockBdNumMap[nextBlock];
-        }
-
-        if (failed(configureBdInBlock(block, targetModel, tileLoc, bdNum,
-                                      nextBdNum)))
-          return failure();
-      }
-
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        // handle DMA ops separately
-        if (!dmaOps.empty()) {
-          for (auto dmaOp : dmaOps) {
-            for (auto &bdRegion : dmaOp.getBds()) {
-              auto &block = bdRegion.getBlocks().front();
-              if (failed(pushToBdQueueAndEnable(
-                      *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
-                      dmaOp.getChannelDir(), blockBdNumMap[&block])))
-                return failure();
+      } else {
+        DenseMap<Block *, int> blockChannelMap;
+        // Assign each block a BD number
+        for (Block &block : memOp.getOperation()->getRegion(0))
+          for (auto op : block.getOps<DMAStartOp>()) {
+            int chNum = op.getChannelIndex();
+            blockChannelMap[&block] = chNum;
+            Block *dest = op.getDest();
+            while (dest) {
+              blockChannelMap[dest] = chNum;
+              if (dest->hasNoSuccessors())
+                break;
+              dest = dest->getSuccessors()[0];
+              if (blockChannelMap.contains(dest))
+                dest = nullptr;
             }
           }
-          continue;
+
+        // Assign each block a BD number
+        int evenBdNum = EVEN_BD_NUM_START;
+        int oddBdNum = ODD_BD_NUM_START;
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          if (block.getOps<DMABDOp>().empty())
+            continue;
+          assert(blockChannelMap.count(&block));
+          if (isOddBd(col, row, blockChannelMap[&block]))
+            blockBdNumMap[&block] = oddBdNum++;
+          else
+            blockBdNumMap[&block] = evenBdNum++;
         }
 
-        for (auto op : block.getOps<DMAStartOp>()) {
-          assert(blockBdNumMap.contains(op.getDest()));
-          int bdNum = blockBdNumMap[op.getDest()];
-          int chNum = op.getChannelIndex();
-          auto channelDir = op.getChannelDir();
-          if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc, chNum,
-                                            channelDir, bdNum)))
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          if (block.getOps<DMABDOp>().empty())
+            continue;
+          assert(blockBdNumMap.contains(&block));
+          int bdNum = blockBdNumMap[&block];
+
+          std::optional<int> nextBdNum;
+          if (block.getNumSuccessors()) {
+            assert(llvm::range_size(block.getSuccessors()) == 1 &&
+                   "should have only one successor block");
+            Block *nextBlock = block.getSuccessor(0);
+            if (!blockBdNumMap.contains(nextBlock))
+              assert(nextBlock->getOperations().size() == 1 &&
+                     isa<EndOp>(nextBlock->getOperations().front()) &&
+                     "bb that's not in blockMap can only have aie.end");
+            else
+              nextBdNum = blockBdNumMap[nextBlock];
+          }
+
+          if (failed(configureBdInBlock(block, targetModel, tileLoc, bdNum,
+                                        nextBdNum)))
             return failure();
         }
       }
+
+      if (!dmaOps.empty())
+        for (auto dmaOp : dmaOps) {
+          for (auto &bdRegion : dmaOp.getBds()) {
+            auto &block = bdRegion.getBlocks().front();
+            assert(blockBdNumMap.contains(&block));
+            if (failed(pushToBdQueueAndEnable(
+                    *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
+                    dmaOp.getChannelDir(), blockBdNumMap[&block])))
+              return failure();
+          }
+        }
+      else
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          for (auto op : block.getOps<DMAStartOp>()) {
+            assert(blockBdNumMap.contains(op.getDest()));
+            int bdNum = blockBdNumMap[op.getDest()];
+            int chNum = op.getChannelIndex();
+            auto channelDir = op.getChannelDir();
+            if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc,
+                                              chNum, channelDir, bdNum)))
+              return failure();
+          }
+        }
     }
 
     // StreamSwitch (switchbox) configuration
