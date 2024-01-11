@@ -442,8 +442,12 @@ struct AIEControl {
           assert(llvm::range_size(block.getSuccessors()) == 1 &&
                  "should have only one successor block");
           Block *nextBlock = block.getSuccessor(0);
-          assert(blockMap.contains(&block));
-          nextBdNum = blockMap[nextBlock];
+          if (!blockMap.contains(nextBlock))
+            assert(nextBlock->getOperations().size() == 1 &&
+                   isa<EndOp>(nextBlock->getOperations().front()) &&
+                   "bb that's not in blockMap can only have aie.end");
+          else
+            nextBdNum = blockMap[nextBlock];
         }
 
         if (failed(configureBdInBlock(block, targetModel, tileLoc, bdNum,
@@ -453,7 +457,7 @@ struct AIEControl {
 
       for (Block &block : memOp.getOperation()->getRegion(0))
         for (auto op : block.getOps<DMAStartOp>()) {
-          assert(blockMap.contains(&block));
+          assert(blockMap.contains(op.getDest()));
           int bdNum = blockMap[op.getDest()];
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();

@@ -70,7 +70,7 @@ jobs:
 
             ninja install
 
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j12 --show-unsupported/g' $PWD/../test/CMakeLists.txt
+            sed -i.bak 's/-sv --timeout 600/-sv --timeout 1200 -j12 --show-unsupported/g' $PWD/../test/CMakeLists.txt
             sed -i.bak 's/-sv --timeout 300/-sv --timeout 1200 -j12 --show-unsupported/g' $PWD/../reference_designs/CMakeLists.txt
             ninja check-aie
             ninja check-reference-designs

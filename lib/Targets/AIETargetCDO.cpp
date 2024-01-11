@@ -399,10 +399,9 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         packetID = op.getPacketID();
       }
 
-      assert(blockMap.contains(&block));
-      int bdNum = blockMap[&block];
       if (foundBd) {
-
+        assert(blockMap.contains(&block));
+        int bdNum = blockMap[&block];
         // TODO For now, we are going to name each dma desc with loc and bd
         // which we assume is unique. This is strictly not enforced but in
         // practice, this is true
@@ -427,13 +426,18 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         if (block.getNumSuccessors() > 0) {
           Block *nextBlock = block.getSuccessors()[0]; // should have only one
                                                        // successor block
-          assert(blockMap.contains(nextBlock));
-          int nextBdNum = blockMap[nextBlock];
-          output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
-                 << ", "
-                 << " /* nextbd */ " << nextBdNum << ", "
-                 << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
-                                                 // disable this?
+          if (!blockMap.contains(nextBlock)) {
+            assert(nextBlock->getOperations().size() == 1 &&
+                   isa<EndOp>(nextBlock->getOperations().front()) &&
+                   "bb that's not in blockMap can only have aie.end");
+
+          } else {
+            int nextBdNum = blockMap[nextBlock];
+            output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
+                   << ", "
+                   << " /* nextbd */ " << nextBdNum << ", "
+                   << " /* enableNextBd */ 1);\n";
+          }
         }
         if (foundBdPacket) {
           output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
@@ -588,10 +592,9 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         packetID = op.getPacketID();
       }
 
-      assert(blockMap.contains(&block));
-      int bdNum = blockMap[&block];
       if (foundBd) {
-
+        assert(blockMap.contains(&block));
+        int bdNum = blockMap[&block];
         // TODO For now, we are going to name each dma desc with loc and bd
         // which we assume is unique. This is strictly not enforced but in
         // practice, this is true
@@ -617,13 +620,19 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         if (block.getNumSuccessors() > 0) {
           Block *nextBlock = block.getSuccessors()[0]; // should have only one
                                                        // successor block
-          assert(blockMap.contains(nextBlock));
-          int nextBdNum = blockMap[nextBlock];
-          output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
-                 << ", "
-                 << " /* nextbd */ " << nextBdNum << ", "
-                 << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
-                                                 // disable this?
+          if (!blockMap.contains(nextBlock)) {
+            assert(nextBlock->getOperations().size() == 1 &&
+                   isa<EndOp>(nextBlock->getOperations().front()) &&
+                   "bb that's not in blockMap can only have aie.end");
+
+          } else {
+            int nextBdNum = blockMap[nextBlock];
+            output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
+                   << ", "
+                   << " /* nextbd */ " << nextBdNum << ", "
+                   << " /* enableNextBd */ 1);\n";
+          }
+          // disable this?
         }
         if (foundBdPacket) {
           output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
