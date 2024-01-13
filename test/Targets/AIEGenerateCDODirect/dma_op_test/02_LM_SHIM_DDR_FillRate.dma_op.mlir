@@ -12,6 +12,7 @@
 // RUN: mkdir $BASENAME.dma_op.prj && pushd $BASENAME.dma_op.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %s && popd
 // RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj -debug
 
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
 // RUN: cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
 
 module @benchmark_02_LM2DDR {
@@ -26,15 +27,6 @@ module @benchmark_02_LM2DDR {
         aie.use_lock(%lock_0_2, Acquire, 0)
         aie.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
         aie.use_lock(%lock_0_2, Release, 1)
-      }]
-      aie.end
-    }
-    %shim_dma_0_0 = aie.shim_dma(%tile_0_0) {
-      %lock_0_0 = aie.lock(%tile_0_0, 2)
-      %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_0, Acquire, 1)
-        aie.dma_bd(%buffer : memref<7168xi32>, 0, 7168)
-        aie.use_lock(%lock_0_0, Release, 0)
       }]
       aie.end
     }

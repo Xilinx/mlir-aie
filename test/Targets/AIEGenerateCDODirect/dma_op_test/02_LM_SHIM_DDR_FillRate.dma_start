@@ -18,17 +18,6 @@ module @benchmark_02_LM2DDR {
     ^bb2:  // 2 preds: ^bb0, ^bb1
       aie.end
     }
-    %shim_dma_0_0 = aie.shim_dma(%tile_0_0) {
-      %lock_0_0 = aie.lock(%tile_0_0, 2)
-      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-    ^bb1:  // 2 preds: ^bb0, ^bb1
-      aie.use_lock(%lock_0_0, Acquire, 1)
-      aie.dma_bd(%buffer : memref<7168xi32>, 0, 7168)
-      aie.use_lock(%lock_0_0, Release, 0)
-      aie.next_bd ^bb1
-    ^bb2:  // pred: ^bb0
-      aie.end
-    }
     %switchbox_0_2 = aie.switchbox(%tile_0_2) {
       aie.connect<DMA : 1, South : 2>
     }
