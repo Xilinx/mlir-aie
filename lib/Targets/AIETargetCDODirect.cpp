@@ -421,12 +421,16 @@ struct AIEControl {
                                         ? oddBdNum++
                                         : evenBdNum++;
             std::optional<int> nextBdNum;
-            if (++bdRegionIt != bdRegions.end())
+            if (++bdRegionIt != bdRegions.end()) {
               nextBdNum = isOddBd(col, row, dmaOp.getChannelIndex())
                               ? oddBdNum
                               : evenBdNum;
-            else if (dmaOp.getLoop())
+            } else if (dmaOp.getLoop()) {
+              assert(blockBdNumMap.contains(
+                  &bdRegions.front().getBlocks().front()));
               nextBdNum = blockBdNumMap[&bdRegions.front().getBlocks().front()];
+            }
+            assert(blockBdNumMap.contains(&block));
             if (failed(configureBdInBlock(block, targetModel, tileLoc,
                                           blockBdNumMap[&block], nextBdNum)))
               return failure();
@@ -490,14 +494,12 @@ struct AIEControl {
 
       if (!dmaOps.empty())
         for (auto dmaOp : dmaOps) {
-          for (auto &bdRegion : dmaOp.getBds()) {
-            auto &block = bdRegion.getBlocks().front();
-            assert(blockBdNumMap.contains(&block));
-            if (failed(pushToBdQueueAndEnable(
-                    *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
-                    dmaOp.getChannelDir(), blockBdNumMap[&block])))
-              return failure();
-          }
+          auto &block = dmaOp.getBds().front().getBlocks().front();
+          assert(blockBdNumMap.contains(&block));
+          if (failed(pushToBdQueueAndEnable(
+                  *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
+                  dmaOp.getChannelDir(), blockBdNumMap[&block])))
+            return failure();
         }
       else
         for (Block &block : memOp.getOperation()->getRegion(0)) {

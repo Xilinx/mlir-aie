@@ -7,13 +7,15 @@
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.dma_op.prj $BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_start.prj && pushd $BASENAME.dma_start.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %S/$BASENAME.dma_start && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_op.prj && pushd $BASENAME.dma_op.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %s && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj
 
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_elfs.bin $BASENAME.dma_start.prj/aie_cdo_elfs.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_enable.bin $BASENAME.dma_start.prj/aie_cdo_enable.bin
 
 module @test_chess_05_shim_dma_core_function {
   aie.device(ipu) {
@@ -50,30 +52,24 @@ module @test_chess_05_shim_dma_core_function {
       aie.end
     } // {link_with = "kernel.o"}
     %mem_0_3 = aie.mem(%tile_0_3) {
-      %0 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
-    ^bb1:  // pred: ^bb0
-      %1 = aie.dma_start(MM2S, 1, ^bb4, ^bb6)
-    ^bb2:  // 2 preds: ^bb0, ^bb3
-      aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
-      aie.dma_bd(%a_ping : memref<16xi32>, 0, 16)
-      aie.use_lock(%lock_0_3_0, Release, 1)
-      aie.next_bd ^bb3
-    ^bb3:  // pred: ^bb2
-      aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
-      aie.dma_bd(%a_pong : memref<16xi32>, 0, 16)
-      aie.use_lock(%lock_0_3_0, Release, 1)
-      aie.next_bd ^bb2
-    ^bb4:  // 2 preds: ^bb1, ^bb5
-      aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%b_ping : memref<16xi32>, 0, 16)
-      aie.use_lock(%lock_0_3_1, Release, 1)
-      aie.next_bd ^bb5
-    ^bb5:  // pred: ^bb4
-      aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%b_pong : memref<16xi32>, 0, 16)
-      aie.use_lock(%lock_0_3_1, Release, 1)
-      aie.next_bd ^bb4
-    ^bb6:  // pred: ^bb1
+      aie.dma(S2MM, 0) [{
+        aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
+        aie.dma_bd(%a_ping : memref<16xi32>, 0, 16)
+        aie.use_lock(%lock_0_3_0, Release, 1)
+      }, {
+        aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
+        aie.dma_bd(%a_pong : memref<16xi32>, 0, 16)
+        aie.use_lock(%lock_0_3_0, Release, 1)
+      }]
+      aie.dma(MM2S, 1) [{
+        aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
+        aie.dma_bd(%b_ping : memref<16xi32>, 0, 16)
+        aie.use_lock(%lock_0_3_1, Release, 1)
+      }, {
+        aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
+        aie.dma_bd(%b_pong : memref<16xi32>, 0, 16)
+        aie.use_lock(%lock_0_3_1, Release, 1)
+      }]
       aie.end
     }
   }

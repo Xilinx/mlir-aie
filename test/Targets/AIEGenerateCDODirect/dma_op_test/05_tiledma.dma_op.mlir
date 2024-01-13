@@ -7,13 +7,15 @@
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.dma_op.prj $BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_start.prj && pushd $BASENAME.dma_start.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %S/$BASENAME.dma_start && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_op.prj && pushd $BASENAME.dma_op.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %s && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj
 
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_elfs.bin $BASENAME.dma_start.prj/aie_cdo_elfs.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_enable.bin $BASENAME.dma_start.prj/aie_cdo_enable.bin
 
 module @test05_tiledma {
   aie.device(ipu) {
@@ -68,23 +70,19 @@ module @test05_tiledma {
       aie.end
     }
     %mem_1_3 = aie.mem(%tile_1_3) {
-      %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-    ^bb1:  // pred: ^bb0
-      aie.use_lock(%interlock1, Acquire, 1)
-      aie.dma_bd(%b13 : memref<256xi32>, 0, 256)
-      aie.use_lock(%interlock1, Release, 0)
-      aie.next_bd ^bb2
-    ^bb2:  // 2 preds: ^bb0, ^bb1
+      aie.dma(MM2S, 0, loop = false) [{
+        aie.use_lock(%interlock1, Acquire, 1)
+        aie.dma_bd(%b13 : memref<256xi32>, 0, 256)
+        aie.use_lock(%interlock1, Release, 0)
+      }]
       aie.end
     }
     %mem_3_3 = aie.mem(%tile_3_3) {
-      %0 = aie.dma_start(S2MM, 1, ^bb1, ^bb2)
-    ^bb1:  // pred: ^bb0
-      aie.use_lock(%interlock2, Acquire, 0)
-      aie.dma_bd(%a33 : memref<256xi32>, 0, 256)
-      aie.use_lock(%interlock2, Release, 1)
-      aie.next_bd ^bb2
-    ^bb2:  // 2 preds: ^bb0, ^bb1
+      aie.dma(S2MM, 1, loop = false) [{
+        aie.use_lock(%interlock2, Acquire, 0)
+        aie.dma_bd(%a33 : memref<256xi32>, 0, 256)
+        aie.use_lock(%interlock2, Release, 1)
+      }]
       aie.end
     }
   }

@@ -7,13 +7,13 @@
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.dma_op.prj $BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_start.prj && pushd $BASENAME.dma_start.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %S/$BASENAME.dma_start && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_start.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_start.prj
 
 // RUN: mkdir $BASENAME.dma_op.prj && pushd $BASENAME.dma_op.prj && %python aiecc.py --no-compile-host --tmpdir $PWD %s && popd
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj -debug
+// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.dma_op.prj/input_physical.mlir --work-dir-path=$BASENAME.dma_op.prj
 
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
-// RUN: not cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_error_handling.bin $BASENAME.dma_start.prj/aie_cdo_error_handling.bin
+// RUN: cmp $BASENAME.dma_op.prj/aie_cdo_init.bin $BASENAME.dma_start.prj/aie_cdo_init.bin
 
 module @test04_tile_tiledma {
   aie.device(ipu) {
@@ -28,13 +28,11 @@ module @test04_tile_tiledma {
       aie.connect<South : 1, DMA : 1>
     }
     %mem_1_3 = aie.mem(%tile_1_3) {
-      %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-    ^bb1:  // pred: ^bb0
-      aie.use_lock(%input_lock, Acquire, 1)
-      aie.dma_bd(%a13 : memref<512xi32>, 0, 512)
-      aie.use_lock(%input_lock, Release, 0)
-      aie.next_bd ^bb2
-    ^bb2:  // 2 preds: ^bb0, ^bb1
+      aie.dma(MM2S, 0, loop = false) [{
+        aie.use_lock(%input_lock, Acquire, 1)
+        aie.dma_bd(%a13 : memref<512xi32>, 0, 512)
+        aie.use_lock(%input_lock, Release, 0)
+      }]
       aie.end
     }
     %lock_1_4 = aie.lock(%tile_1_4, 6)
@@ -42,13 +40,11 @@ module @test04_tile_tiledma {
     %a14 = aie.buffer(%tile_1_4) {sym_name = "a14"} : memref<512xi32>
     %b14 = aie.buffer(%tile_1_4) {sym_name = "b14"} : memref<256xi32>
     %mem_1_4 = aie.mem(%tile_1_4) {
-      %0 = aie.dma_start(S2MM, 1, ^bb1, ^bb2)
-    ^bb1:  // pred: ^bb0
-      aie.use_lock(%lock_1_4, Acquire, 0)
-      aie.dma_bd(%a14 : memref<512xi32>, 0, 512)
-      aie.use_lock(%lock_1_4, Release, 1)
-      aie.next_bd ^bb2
-    ^bb2:  // 2 preds: ^bb0, ^bb1
+      aie.dma(S2MM, 1, loop = false) [{
+        aie.use_lock(%lock_1_4, Acquire, 0)
+        aie.dma_bd(%a14 : memref<512xi32>, 0, 512)
+        aie.use_lock(%lock_1_4, Release, 1)
+      }]
       aie.end
     }
   }
