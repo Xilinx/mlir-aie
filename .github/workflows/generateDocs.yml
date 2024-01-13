@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-#  pull_request:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -98,7 +98,7 @@ jobs:
           echo "}" > build_release/docs/build_info.json
 
       - name: Publish to GitHub-Pages
-        if: github.event_name != 'pull_request'
+#        if: github.event_name != 'pull_request'
         # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
         uses: peaceiris/actions-gh-pages@v3.9.3
         with:
