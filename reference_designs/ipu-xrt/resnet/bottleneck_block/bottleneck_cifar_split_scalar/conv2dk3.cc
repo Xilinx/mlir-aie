@@ -37,7 +37,9 @@ enum region{top,middle,bottom};
         int sum_srs;
         int wts_indx_0=0,wts_indx_1=0,wts_indx_2=0;
         int in_indx_0=0;
-        for (oc = (0+channel_offset)/8; oc < (output_channels+channel_offset)/8; oc++) {  
+        // for (oc = (0+channel_offset)/8; oc < (output_channels+channel_offset)/8; oc++) {  
+        for (oc = 0; oc < output_channels/8; oc++) {
+            int oc_ofst = oc + (channel_offset/8);
         for (oc8 = 0; oc8 < 8; oc8++) {  
 
             // left border
@@ -51,9 +53,9 @@ enum region{top,middle,bottom};
                     // wts_indx_0=0*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                     // wts_indx_1=1*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                     // wts_indx_2=2*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc; 
-                    int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                    int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                    int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
                     
                     if(ki==0) {                          
                         // in_indx_0=0+ki+input_width*ic;
@@ -86,9 +88,9 @@ enum region{top,middle,bottom};
                     // wts_indx_0=0*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                     // wts_indx_1=1*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                     // wts_indx_2=2*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
-                    int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                    int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                    int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                    int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
                                             
                     if(ki!=2) {
                         // in_indx_0=input_width-2+ki+input_width*ic;
@@ -123,9 +125,9 @@ enum region{top,middle,bottom};
                             // int wts_indx_0=0*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                             // int wts_indx_1=1*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
                             // int wts_indx_2=2*3 + ki + 3*kernel_width*ic + 3*kernel_width*input_channels*oc;
-                            int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                            int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
-                            int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc*(input_channels/8)*3*kernel_width*64) + oc8;
+                            int wts_indx_0 = (0*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                            int wts_indx_1 = (1*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
+                            int wts_indx_2 = (2*3*64) + (ki*64) + (ic*3*kernel_width*64) + (ic8*8) + (oc_ofst*(input_channels/8)*3*kernel_width*64) + oc8;
                             
                             // int in_indx_0=x-1+ki+input_width*ic;
                             int in_indx_0 = (x-1+ki)*8 + ((ic*input_width*8)+ic8);

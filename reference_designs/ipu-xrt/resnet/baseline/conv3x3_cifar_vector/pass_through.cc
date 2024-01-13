@@ -41,7 +41,7 @@ extern "C" {
             {
                 for (oc8b = 0; oc8b < 8; oc8b++) {
                         for (x = 0; x < input_width; x++) { // col of output image
-                            int val2 = input1[(oc*input_width*8) + (x*8) + oc8b];
+                            int val2 = input1[((oc-(output_channels/16))*input_width*8) + (x*8) + oc8b];
                             output[(oc*input_width*8) + (x*8) + oc8b] = val2;                      
                             }
                         }

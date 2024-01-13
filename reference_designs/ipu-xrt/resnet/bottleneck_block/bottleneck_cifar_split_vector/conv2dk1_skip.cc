@@ -59,12 +59,13 @@ extern "C" {
                             sum += val * k;
                         }
                     }
-                    for (ic2 = input_channels/16; ic2 < input_channels/8; ic2++) {                
+                    // for (ic2 = input_channels/16; ic2 < input_channels/8; ic2++) {                
+                    for (ic2 = 0; ic2 < input_channels/16; ic2++) {                
                         for (ic8b = 0; ic8b < 8; ic8b++) {
                             // int val2 = input1[ic2 * input_width + x];
                             int val2 = input1[(ic2*input_width*8) + (x*8) + ic8b]; // TODO ic2 should be shifted?
                             // int k2 = kernels[oc * input_channels + ic2];
-                            int k2 = kernels[(oc*(input_channels/8)*64) + (ic2*64) + (ic8b*8) + oc8];
+                            int k2 = kernels[(oc*(input_channels/8)*64) + ((ic2+(input_channels/16))*64) + (ic8b*8) + oc8];
                             sum += val2 * k2;
                         }
                     }
