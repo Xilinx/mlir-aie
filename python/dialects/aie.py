@@ -128,11 +128,6 @@ def _objectFifo_depth_attr(x, context):
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
 
 
-@register_attribute_builder("MemRefTypeAttr")
-def _memref_type_attr(x, context):
-    return _typeAttr(x, context)
-
-
 #### AIE Wrappers ####
 
 Device = DeviceOp
