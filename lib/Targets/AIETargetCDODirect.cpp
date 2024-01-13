@@ -306,8 +306,8 @@ struct AIEControl {
                             XAie_LockInit(relLockId.value(), relValue.value()));
     if (!dims) {
       TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                              baseAddrA + bdOp.getOffset(),
-                              bdOp.getLen() * bytesA);
+                              baseAddrA + bdOp.getOffsetValue(),
+                              bdOp.getLenValue() * bytesA);
     } else {
       XAie_DmaTensor dmaTileBdTensor = {};
       dmaTileBdTensor.NumDim = dims->size();
@@ -328,9 +328,9 @@ struct AIEControl {
       }
       // TODO: Probably need special handling for NOC
       // TODO: Might need to adjust step sizes / wraps by -1
-      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                              &dmaTileBdTensor, baseAddrA + bdOp.getOffset(),
-                              bdOp.getLen() * bytesA);
+      TRY_XAIE_API_EMIT_ERROR(
+          bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd, &dmaTileBdTensor,
+          baseAddrA + bdOp.getOffsetValue(), bdOp.getLenValue() * bytesA);
     }
 
     if (nextBdNum)
