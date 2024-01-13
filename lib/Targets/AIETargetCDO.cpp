@@ -346,9 +346,9 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         assert(bufferOp.getAddress().has_value() &&
                "buffer needs to have an address");
         BaseAddrA = bufferOp.getAddress().value();
-        lenA = op.getLenValue();
         bytesA = bufferType.getElementTypeBitWidth() / 8;
-        offsetA = op.getOffsetValue();
+        lenA = op.getLen().value_or(bufferType.getNumElements());
+        offsetA = op.getOffset();
         bufA = "XAIEDMA_TILE_BD_ADDRA";
         hasA = true;
 
@@ -539,9 +539,9 @@ mlir::LogicalResult AIETranslateToCDO(ModuleOp m, raw_ostream &output) {
         assert(bufferOp.getAddress().has_value() &&
                "buffer op must have address assigned");
         BaseAddrA = bufferOp.getAddress().value();
-        lenA = op.getLenValue();
         bytesA = bufferType.getElementTypeBitWidth() / 8;
-        offsetA = op.getOffsetValue();
+        lenA = op.getLen().value_or(bufferType.getNumElements());
+        offsetA = op.getOffset();
         bufA = "XAIEDMA_TILE_BD_ADDRA";
         hasA = true;
 

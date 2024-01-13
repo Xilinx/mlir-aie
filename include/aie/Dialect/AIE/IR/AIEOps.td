@@ -815,29 +815,33 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        AIEI32Attr:$offset,
-        AIEI32Attr:$len,
+        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
+        OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) `,` $offset `,` $len (`,` $dimensions^ )? `)` attr-dict
+    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
-    int getOffsetValue() { return getOffset(); }
-    int getLenValue() { return getLen(); }
   }];
 
   let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
-      odsState.addOperands(buffer);
-      odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
-      odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
     }]>
   ];
 }

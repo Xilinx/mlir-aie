@@ -121,9 +121,9 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         }
       }
 
-      lenA = op.getLenValue();
       bytesA = bufferType.getElementTypeBitWidth() / 8;
-      offsetA = op.getOffsetValue() * bytesA;
+      lenA = op.getLen().value_or(bufferType.getNumElements());
+      offsetA = op.getOffset() * bytesA;
       hasA = true;
 
       if (op.getDimensions()) {
@@ -542,7 +542,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           blockMap[&block] = bdNum;
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
-            offset = op.getOffsetValue();
+            offset = op.getOffset();
             auto buffer =
                 cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
 
