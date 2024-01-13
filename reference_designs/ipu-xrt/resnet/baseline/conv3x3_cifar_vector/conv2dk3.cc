@@ -27,7 +27,7 @@
 extern "C" {
 enum region{top,middle,bottom};
 
-
+    // Takes 3 input lines and computes 1 output line
     void conv2dk3(int8_t *line0, int8_t *line1,int8_t *line2,int8_t *wts, uint8_t *output,  const int32_t  input_width,  const int32_t  input_channels, const int32_t  output_channels,
                         const int32_t  kernel_width,  const int32_t  kernel_height,  const int32_t  check,const int scale, const int channel_offset)
      {
@@ -52,16 +52,20 @@ enum region{top,middle,bottom};
         aie::vector<int8, 64> in_a;
         aie::vector<int8, 64> prev_a[3], tmp_a;
         aie::vector<int8, 64> in_b;
-        int8_t * restrict line[3];
+        // int8_t * restrict line[3];
+        int8_t * line[3];
         line[0] = line0;
         line[1] = line1;
         line[2] = line2;
 
-        int8_t * restrict wtsLine[3];
+        // int8_t * restrict wtsLine[3];
+        int8_t * wtsLine[3];
         // oc,ic,ky,kx,ic8,oc8
         wtsLine[0] = wts + (channel_offset/8)*(input_channels/8)*kernel_height*kernel_width*64;
-        wtsLine[1] = wts + (channel_offset/8)*(input_channels/8)*kernel_height*kernel_width*64 + kernel_width*64;   // next kernel line is always 8*8 away
-        wtsLine[2] = wts + (channel_offset/8)*(input_channels/8)*kernel_height*kernel_width*64 + 2*kernel_width*64; // next kernel line is always 8*8 away
+        wtsLine[1] = wts + (channel_offset/8)*(input_channels/8)*kernel_height*kernel_width*64
+                         + kernel_width*64;   // next kernel line is always 8*8 away
+        wtsLine[2] = wts + (channel_offset/8)*(input_channels/8)*kernel_height*kernel_width*64 
+                         + 2*kernel_width*64; // next kernel line is always 8*8 away
 
         aie::vector<int8, 32> tmp_a1, tmp_a2;
 
@@ -88,7 +92,7 @@ enum region{top,middle,bottom};
         // const int iw_32_rem = ((32/4)-2) % 8;
         const int iw_32_rem = 6;
 
-        output += (channel_offset*iw); // channel_offset/8*iw*8
+        // output += (channel_offset*iw); // channel_offset/8*iw*8
 
         int kernel_height_start;
         int kernel_height_end;
@@ -99,14 +103,14 @@ enum region{top,middle,bottom};
         kernel_height_end   = kernel_height;
         // constexpr int kernel_height_start = 0;
         // constexpr int kernel_height_end   = kernel_height;
-    #else
+    #else // Zero border for 3x3
         // constexpr int kernel_height_start = 0;
         // constexpr int kernel_height_end   = kernel_height-1;
 
         // if(check == top)
         //     idx_adj = 1;
 
-
+        // We skip top or bottom row for zero border
         switch(check) {
             case top:
                 kernel_height_start = 1;
@@ -123,7 +127,15 @@ enum region{top,middle,bottom};
         }   
     #endif
 
-        // Left pattern
+        // --------------------------------------------------------------------
+        // Leftmost pattern
+        // --------------------------------------------------------------------
+        // Computes leftmost 4 inputs for all input/output channels.
+        // This shifts the leftmost input data by 1 (x8 channels) for 3x3 to 
+        // account for border. Border replicate copies the leftmost input while 
+        // 0 border shifts in 0's. If we need to support larger than 3x3, the 
+        // replicate logic would need to be changed.
+        // --------------------------------------------------------------------
         {
             // in_b = aie::load_v<64>(wtsLine[kernel_height_start]); wtsLine[kernel_height_start] +=64;       // wts ic0..7(oc0..7)
 
@@ -135,8 +147,9 @@ enum region{top,middle,bottom};
                         chess_prepare_for_pipelining chess_loop_range(2,)    
                         // chess_unroll_loop()
                     {
-                        tmp_a1    = aie::load_v<32>(line[i]); line[i]+=32; // act 0..7(ic0..7) -- but only use 0..3
-                        tmp_a2    = aie::load_v<32>(line[i]);
+                        // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position has data for 8 channels
+                        tmp_a1    = aie::load_v<32>(line[i]); line[i]+=32; // act 0..3 (ic0..7 for each)
+                        tmp_a2    = aie::load_v<32>(line[i]);              // act 4..7 (ic0..7 for each) 
                         in_a      = aie::concat(tmp_a1, tmp_a2);
 
     #ifdef BORDER_REPLICATE 
@@ -145,11 +158,18 @@ enum region{top,middle,bottom};
     #else
                         tmp_a     = aie::zeros<int8, 64>();
     #endif
+                        // Shift right 1 input (8 channels) [- a0 a1 a2 a3 a4 a5 a6] where - is either a0 or 0's
                         in_a      = aie::shuffle_up_fill(in_a, tmp_a, 8);
+
+                        // Previous buffer stores shifted data, [- - - - a0 a1 a2 a3]
+                        // where - is 
                         // prev_a[i] = aie::shuffle_up(in_a, 24); // Shift right (4-1)*8
                         prev_a[i] = in_a;
                         prev_a[i] = aie::shuffle_up(prev_a[i], 24); // Shift right (4-1)*8
 
+                        // For kernel width, we load 64 weights (8 ics x 8 ocs) and multiply it 
+                        // with the act buffer. acc[32] += in_a[32] * wts[64]
+                        // We then shift the buffer left by 1 data position (8 channels).
                         for(int j=0; j<kernel_width; j++)
                         // chess_unroll_loop()
                         {
@@ -158,8 +178,11 @@ enum region{top,middle,bottom};
                             // Shift input A by 1 row (1x8) which is by 1 (the 8 is the ic=8)
                             in_a = aie::shuffle_down(in_a, 8);
                         }
-                        wtsLine[i] -= (kernel_width*64); // Reset previous wegiht pointer to beginning
-                    }
+                        wtsLine[i] -= (kernel_width*64); // Reset weight pointer for this line
+                        // wtsLine[i] += ((kernel_height-1)*kernel_width*64); // Move to next ic/8 position
+                        // No need to load next set of weights because next row of weights immediately follows
+                        // line[i] += (iw*4)*8; // Increment to next ic/8 position (reset at end of outermost loop)
+                    } // for(int i=kernel_height_start; i<kernel_height_end; i++)
 
                     // Reset weights and input pointer for next ic/8
                     for(int i=kernel_height_start; i<kernel_height_end; i++) {
@@ -168,19 +191,23 @@ enum region{top,middle,bottom};
                     }
                 } // for(int ic=0; ic<(input_channels/8); ic++) {
 
+                // SRS results to uint8 and store 
                 aie::vector<uint8,32> o1 = acc1.to_vector<uint8>(scale);
                 aie::store_v(output, o1); 
                 output += iw*8; // Shift to next oc/8 offset for left side
 
                 acc1 = aie::zeros<acc32,32>();            
                 
+                // Shift back to beginning of input
                 for(int i=kernel_height_start; i<kernel_height_end; i++) {
-                    line[i]    -= (input_channels/8)*(iw*8); // shift back to beginning of this section
+                    line[i]    -= (input_channels/8)*(iw*8); 
                 }
 
             } // for(int oc=0; oc<(output_channels/8); oc++) {
 
-            // Reset output, wts, line pointers
+            // Reset output to beginning, then add 4*8
+            // Reset wts to beginning of wts
+            // Reset line to beginning of input, then add 4*8
             output -= (output_channels/8)*(iw*8)-32;
             for(int i=kernel_height_start; i<kernel_height_end; i++) {
                 wtsLine[i] -= (output_channels/8)*(input_channels/8)*kernel_width*kernel_height*64; // kernel_width*kernel_height*8*8
@@ -189,13 +216,21 @@ enum region{top,middle,bottom};
             }
         }
 
-
-        // H,W,C8
+        // --------------------------------------------------------------------
         // Middle pattern
+        // --------------------------------------------------------------------
+        // The middle seciton algorithm is different because we want to minimize 
+        // the reloading of weights and activations. So instead, we use up to 8
+        // accumulators to store partial products with activations being shifted.
+        // Then for the next kernel position, we reload weights.
+        //
+        // H,W,C8
+        // --------------------------------------------------------------------
 
-        if(iw_32 > 0) {
 
         // Main loop for when input_width/4-2 > 8
+        if(iw_32 > 0) {
+
         for(int oc=0; oc<(output_channels/8); oc++) {
             for(int iw_32c=0; iw_32c<iw_32; iw_32c++) {
                 for(int ic=0; ic<(input_channels/8); ic++) {
@@ -255,9 +290,9 @@ enum region{top,middle,bottom};
 
         } // if(iw_32 > 0)
 
+        // Secondary loop for input_width remainder (iw_32_rem < 8)
         if (iw_32_rem > 0) {
 
-        // Secondary loop for input_width remainder (iw_32_rem < 8)
         for(int oc=0; oc<(output_channels/8); oc++) {
             for(int ic=0; ic<(input_channels/8); ic++) {            
                 for(int i=kernel_height_start; i<kernel_height_end; i++) { // 1 to 3
@@ -269,13 +304,13 @@ enum region{top,middle,bottom};
                         auto curr = aie::load_v<32>((line[i])); line[i]+=32;
                         auto next = aie::load_v<32>((line[i])); line[i]+=32;
 
-                        for(int x=0; x<iw_32_rem; x++) 
+                        for(int x=0; x<iw_32_rem; x++) // remainder input width < 8
                             // chess_unroll_loop()
                         {
                             auto tmp1   = aie::concat(curr,next);
                             auto tprev  = aie::concat(zero32, prev);
                             auto tmp2   = aie::shuffle_up_fill(tmp1, tprev, 8); // curr      = x3..x6(ci0..ci7)
-                            auto tmp3   = aie::shuffle_down(tmp2, j*8);         // curr      = x4..x7(ci0..ci7) to x5..x8(ci0..ci7)ss
+                            auto tmp3   = aie::shuffle_down(tmp2, j*8);         // curr      = x3..x6(ci0..ci7) to x5..x8(ci0..ci7)ss
 
                             prev = curr;
                             curr = next;
@@ -288,7 +323,8 @@ enum region{top,middle,bottom};
                     wtsLine[i] += ((kernel_height-1)*kernel_width*64); // Move to next ic/8 position
                     line[i] += (iw*8); // Increment to next ic/8 position (reset at end of outermost loop)
                 } // for(int i=kernel_height_start; i<kernel_height_end; i++)
-                // For next 8 input channels, line buffer and weights are automatically incremented to the right offset
+                // For next 8 input channels, line buffer and weights are automatically incremented 
+                // to the right offset
             } // for(int ic=0; ic<(input_channels/8); ic++)
             // Write output from accumulator 
             for(int x=0; x<iw_32_rem; x++) {
@@ -296,10 +332,11 @@ enum region{top,middle,bottom};
                 aie::store_v(output, o1); output += 32;
                 acc_tmp[x] = aie::zeros<acc32,32>();   // Reset accumulators
             }
-            // Output ptr should be in the right place (next oc/8)
+            // Reset line ptr to beginning of input
             for(int i=kernel_height_start; i<kernel_height_end; i++) {
-                line[i]    -= (input_channels/8)*(iw*8); // shift back to beginning of this section
+                line[i]    -= (input_channels/8)*(iw*8);
             }
+            // Output ptr should be in the right place (next oc/8)
             output += (iw*8) - (iw_32_rem*32); // 32 = 4*8, shift to next oc/8
         } // for(int oc=0; oc<(output_channels/8); oc++)
         // Reset weights and line buffers for right side
@@ -307,12 +344,16 @@ enum region{top,middle,bottom};
             wtsLine[i] -= (output_channels/8)*(input_channels/8)*kernel_width*kernel_height*64; // kernel_width*kernel_height*8*8
             line[i]    += iw_32_rem*32; // shift to beginnign of right data, iw_32_rem*4*8
         }
-        // TODO
-        output -= (output_channels/8)*(iw*8)-(iw_32_rem*32); // shift back so we're aligned with beginning of first oc/8 right
+        // shift back so we're aligned with beginning of first oc/8 (rightmost 4 data)
+        output -= (output_channels/8)*(iw*8)-(iw_32_rem*32); 
 
         } // if (iw_32_rem > 0) {
 
+        // --------------------------------------------------------------------
         // Right patterns
+        // --------------------------------------------------------------------
+        // 
+        // --------------------------------------------------------------------
         {
             MMUL4x8x8 acc1 = aie::zeros<acc32,32>();
             for(int oc=0; oc<(output_channels/8); oc++) {
@@ -324,8 +365,8 @@ enum region{top,middle,bottom};
                         // Load next set of data for input A (matrix row), need stride info or line1/2/3 pointer
                         // TODO, did not store previous so need to load it again
                         // in_a   = aie::load_v<64>(line[i]-32);
-                        tmp_a1 = aie::load_v<32>(line[i]-32);
-                        tmp_a2 = aie::load_v<32>(line[i]);
+                        tmp_a1 = aie::load_v<32>(line[i]-32); // act 24..27 (ic0..7 for each)
+                        tmp_a2 = aie::load_v<32>(line[i]);    // act 28..31 (ic0..7 for each)
                         in_a   = aie::concat(tmp_a1, tmp_a2);
     #ifdef BORDER_REPLICATE 
                         tmp_a2    = aie::shuffle_down(tmp_a2, 24);
@@ -333,7 +374,8 @@ enum region{top,middle,bottom};
     #else
                         tmp_a     = aie::zeros<int8, 64>();
     #endif
-                        in_a      = aie::shuffle_down_fill(in_a, tmp_a, 24); // shift by 32-8 (fill 32 then shift up by 8)
+                        // shift by 32-8 (fill 32 then shift up by 8)
+                        in_a      = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
                     
                         for(int j=0; j<kernel_width; j++)
                             // chess_unroll_loop()
@@ -347,13 +389,15 @@ enum region{top,middle,bottom};
                         // No need to load next set of weights because next row of weights immediately follows
                         line[i] += (iw*8); // Increment to next ic/8 position (reset at end of outermost loop)
                     } // for(int i=kernel_height_start; i<kernel_height_end; i++)
+
                 } // for(int ic=0; ic<(input_channels/8); ic++) {
 
                 // Write output 4 outputs, 8 channels
                 aie::vector<uint8,32> o1 = acc1.to_vector<uint8>(scale);
                 aie::store_v(output, o1); 
-                acc1 = aie::zeros<acc32,32>();
                 output += iw*8; // Shift to next oc/8
+
+                acc1 = aie::zeros<acc32,32>();
 
                 for(int i=kernel_height_start; i<kernel_height_end; i++) {
                     line[i]    -= (input_channels/8)*(iw*8); // shift back to beginning of this section

@@ -39,12 +39,11 @@ aie.device(ipu) {
   aie.objectfifo @act_4_5(%tile04, {%tile05}, 2 : i32) : !aie.objectfifo<memref<32x1x32xui8>> //32x1x32
 
   // Final output OF
-  aie.objectfifo @outOFL2L3(%tile05, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32x1x64xi8>> //32x1x64
+  aie.objectfifo @outOFL2L3(%tile05, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32x1x64xui8>> //32x1x64
   
   func.func private @conv2dk3(memref<32x1x64xi8>,memref<32x1x64xi8>, memref<32x1x64xi8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
-  func.func private @pass_through(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32x1x64xi8>,i32,i32,i32) -> ()
+  func.func private @pass_through(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32x1x64xui8>,i32,i32,i32) -> ()
 
-  // 3x3 conv
   // 3x3 conv
   aie.core(%tile03) {
     %c0 = arith.constant 0 : index
@@ -127,7 +126,6 @@ aie.device(ipu) {
       // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
     aie.end
   } { link_with="conv2dk3.o" }
-
 
  // 3x3 conv
   aie.core(%tile04) {
@@ -232,11 +230,11 @@ aie.device(ipu) {
         %subviewIn1 = aie.objectfifo.acquire @act_4_5(Consume, 1) : !aie.objectfifosubview<memref<32x1x32xui8>>
         %elemIn1 = aie.objectfifo.subview.access %subviewIn1[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>   
 
-        %subviewOut = aie.objectfifo.acquire @outOFL2L3(Produce, 1) : !aie.objectfifosubview<memref<32x1x64xi8>>
-        %elemOut0 = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<32x1x64xi8>> -> memref<32x1x64xi8>
+        %subviewOut = aie.objectfifo.acquire @outOFL2L3(Produce, 1) : !aie.objectfifosubview<memref<32x1x64xui8>>
+        %elemOut0 = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<32x1x64xui8>> -> memref<32x1x64xui8>
 
   
-        func.call @pass_through(%elemIn0,%elemIn1,%elemOut0,%x_dim,%ci,%co) : (memref<32x1x32xui8>,memref<32x1x32xui8>,  memref<32x1x64xi8>,i32,i32,i32) -> ()
+        func.call @pass_through(%elemIn0,%elemIn1,%elemOut0,%x_dim,%ci,%co) : (memref<32x1x32xui8>,memref<32x1x32xui8>,  memref<32x1x64xui8>,i32,i32,i32) -> ()
 
         aie.objectfifo.release @outOFL2L3(Produce, 1)
         aie.objectfifo.release @act_3_5(Consume, 1)
@@ -264,9 +262,11 @@ aie.device(ipu) {
       // aiex.ipu.dma_memcpy_nd (%c0, %c0, %wts0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%total_wts][%c0,%c0,%c0]) { metadata = @inOF_wts_0_L3L2, id = 1 : i32 } : (i32, i32, memref<9216xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
       // // aiex.ipu.dma_memcpy_nd (%c0, %c0, %wts0[%c0,%c0,%c0,%Ci1_Co1_align1][%c1,%c1,%c1,%Ci2_Co2_align1][%c0,%c0,%c0]) { metadata = @inOF_wts_0_L3L2, id = 1 : i32 } : (i32, i32, memref<13312xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
 
+
       aiex.ipu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
       aiex.ipu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<16384xi32>
       aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 2 : i64, metadata = @inOF_wts_0_L3L2} : memref<9216xi32>
+
 
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
