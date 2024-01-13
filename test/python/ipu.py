@@ -1606,10 +1606,6 @@ def my_passthrough(module):
 # CHECK:    %objFifo_in1_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_in1_cons_buff_1"} : memref<8xi32>
 # CHECK:    %objFifo_out1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_0"} : memref<8xi32>
 # CHECK:    %objFifo_out1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_1"} : memref<8xi32>
-# CHECK:    %objFifo_in0_prod_lock = aie.lock(%tile_0_0, 0) {init = 0 : i32, sym_name = "objFifo_in0_prod_lock"}
-# CHECK:    %objFifo_in0_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_lock"}
-# CHECK:    %objFifo_out0_cons_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "objFifo_out0_cons_prod_lock"}
-# CHECK:    %objFifo_out0_cons_cons_lock = aie.lock(%tile_0_0, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_cons_lock"}
 # CHECK:    %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "objFifo_in0_cons_prod_lock"}
 # CHECK:    %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_cons_lock"}
 # CHECK:    %objFifo_out0_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "objFifo_out0_prod_lock"}
