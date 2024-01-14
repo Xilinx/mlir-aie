@@ -39,11 +39,15 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 
 int main(int argc, const char *argv[]) {
   std::vector<uint32_t> instr_v = load_instr_sequence("insts.txt");
+
   // Start the XRT test code
   // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
+
+  // Load the xclbin
   auto xclbin = xrt::xclbin("aie.xclbin");
+
   std::string Node = "MLIR_AIE";
 
   // Get the kernel from the xclbin
@@ -57,7 +61,11 @@ int main(int argc, const char *argv[]) {
   auto kernelName = xkernel.get_name();
 
   device.register_xclbin(xclbin);
+
+  // get a hardware context
   xrt::hw_context context(device, xclbin.get_uuid());
+
+  // get a kernel handle
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
@@ -96,17 +104,16 @@ int main(int argc, const char *argv[]) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
       errors++;
-    } else {
+    } else
       std::cout << "Correct output " << *(bufOut + i) << " == " << ref
                 << std::endl;
-    }
   }
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
-  } else {
-    std::cout << "\nfailed.\n\n";
-    return 1;
   }
+
+  std::cout << "\nfailed.\n\n";
+  return 1;
 }
