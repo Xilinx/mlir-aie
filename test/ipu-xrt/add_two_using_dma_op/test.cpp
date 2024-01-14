@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -22,21 +21,6 @@
 
 constexpr int IN_SIZE = 64;
 constexpr int OUT_SIZE = 64;
-
-namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   std::ifstream instr_file(instr_path);
@@ -54,57 +38,13 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 }
 
 int main(int argc, const char *argv[]) {
-
-  // Program arguments parsing
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-  po::variables_map vm;
-
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-
-  std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
-
-  int verbosity = vm["verbosity"].as<int>();
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
-
+  std::vector<uint32_t> instr_v = load_instr_sequence("insts.txt");
   // Start the XRT test code
   // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
-
-  // Load the xclbin
-  if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
-  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-
-  if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
-  std::string Node = vm["kernel"].as<std::string>();
+  auto xclbin = xrt::xclbin("aie.xclbin");
+  std::string Node = "MLIR_AIE";
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
@@ -116,20 +56,8 @@ int main(int argc, const char *argv[]) {
                                });
   auto kernelName = xkernel.get_name();
 
-  if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
-              << "\n";
-
   device.register_xclbin(xclbin);
-
-  // get a hardware context
-  if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
-
-  // get a kernel handle
-  if (verbosity >= 1)
-    std::cout << "Getting handle to kernel:" << kernelName << "\n";
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
@@ -140,9 +68,6 @@ int main(int argc, const char *argv[]) {
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-
-  if (verbosity >= 1)
-    std::cout << "Writing data into buffer objects.\n";
 
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
@@ -156,8 +81,6 @@ int main(int argc, const char *argv[]) {
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
   auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
   run.wait();
 
