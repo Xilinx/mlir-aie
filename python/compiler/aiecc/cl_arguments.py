@@ -216,6 +216,14 @@ def parse_args(args=None):
         help="Generate libxaie v2 for CDO",
     )
     parser.add_argument(
+        "--aie-generate-xclbin",
+        dest="xcl",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate xclbin",
+    )
+    parser.add_argument(
         "--xclbin-name",
         dest="xclbin_name",
         default="final.xclbin",
