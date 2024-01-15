@@ -44,7 +44,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c2_i32 = arith.constant 2 : i32
+      %c2_i32 = arith.constant 314 : i32
       %c2 = arith.constant 2 : index
       scf.for %arg0 = %c0 to %c8 step %c2 {
         aie.use_lock(%objFifo_in1_cons_cons_lock, AcquireGreaterEqual, 1)
