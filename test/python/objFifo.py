@@ -8,9 +8,7 @@ from aie.dialects.aie import (
     AIEDevice,
     ObjectFifoPort,
     ObjectFifoType,
-    acquire,
     objectfifo,
-    objectfifo_release,
     tile,
     Device,
     Core,
@@ -46,22 +44,13 @@ def objFifo_example():
         S = tile(0, 2)
         T_ = tile(1, 2)
 
-        objectfifo(
-            "of0",
-            S,
-            [T_],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
-            [],
-            [],
-        )
+        of = objectfifo("of0", S, T_, 2, T.memref(256, T.i32()))
 
         C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            elem0 = acquire(
-                ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32())
-            ).acquired_elem()
+            elem0 = of.acquire(ObjectFifoPort.Consume, 1)
             memref.store(arith.constant(10), elem0.result, [0])
-            objectfifo_release(ObjectFifoPort.Consume, "of0", 1)
+            of.release(ObjectFifoPort.Consume, 1)
             end()
+

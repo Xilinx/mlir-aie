@@ -9,13 +9,11 @@ from aie.dialects.aie import (
     Call,
     ObjectFifoPort,
     ObjectFifoType,
-    acquire,
     core,
     device,
     external_func,
     objectfifo,
     objectfifo_link,
-    objectfifo_release,
     tile,
 )
 from aie.dialects.scf import for_, yield_
@@ -58,32 +56,14 @@ def codeRegion():
         M = tile(1, 2)
         N = tile(3, 3)
 
-        objectfifo(
-            "of0",
-            S,
-            [M],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "of1",
-            M,
-            [N],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
-            [],
-            [],
-        )
+        of0 = objectfifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of1 = objectfifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
         objectfifo_link(["of0"], ["of1"])
 
         @core(N, "test.o")
         def core_body():
             for _ in range_(10):
-                elem0 = acquire(
-                    ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
-                ).acquired_elem()
+                elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
                 res = Call("test_func", [elem0], [T.i32()])
-                objectfifo_release(ObjectFifoPort.Consume, "of1", 1)
+                of1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
