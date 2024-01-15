@@ -1,20 +1,20 @@
 include ../../../makefile-common
 
-#mlirFileName = bottlenck4AIEs
-# mlirFileName = aieWithTrace
 mlirFileName = aieFinal
-# mlirFileName = aieDemo
-all: conv2dk1.o conv2dk3.o conv2dk1_skip.o final.xclbin
+VPATH := ../../kernels
+
+all: conv2dk1_i8.o conv2dk3_ui8.o conv2dk1_skip_i8.o final.xclbin
 
 insts.txt: ${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=$@ $<
 
-conv2dk1.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
-conv2dk3.o: conv2dk3.cc
+conv2dk1_i8.o: scalar_conv2dk1_i8.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
 
-conv2dk1_skip.o: conv2dk1_skip.cc
+conv2dk3_ui8.o: scalar_conv2dk3_ui8.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+
+conv2dk1_skip_i8.o: scalar_conv2dk1_skip_i8.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
 
 final.xclbin: ${mlirFileName}.mlir 
