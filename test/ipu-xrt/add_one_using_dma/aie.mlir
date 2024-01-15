@@ -8,15 +8,6 @@
 
 module {
   aie.device(ipu) {
-    memref.global "public" @objFifo_in0 : memref<16xi32>
-    memref.global "public" @objFifo_in0_cons : memref<16xi32>
-    memref.global "public" @objFifo_in1 : memref<8xi32>
-    memref.global "public" @objFifo_in1_cons : memref<8xi32>
-    memref.global "public" @objFifo_out0 : memref<16xi32>
-    memref.global "public" @objFifo_out0_cons : memref<16xi32>
-    memref.global "public" @objFifo_out1 : memref<8xi32>
-    memref.global "public" @objFifo_out1_cons : memref<8xi32>
-
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -85,14 +76,14 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
-
     func.func @bobsyouruncle(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
+      %objFifo_in0 = aie.shim_dma_allocation(MM2S, 0, 0)
+      %objFifo_out0 = aie.shim_dma_allocation(S2MM, 0, 0)
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @objFifo_out0} : memref<64xi32>
+      aiex.ipu.dma_memcpy_nd(%objFifo_in0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64]) {bd_id = 0 : i64} : memref<64xi32>
+      aiex.ipu.dma_memcpy_nd(%objFifo_out0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64]) {bd_id = 1 : i64} : memref<64xi32>
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
@@ -149,7 +140,6 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
 
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)

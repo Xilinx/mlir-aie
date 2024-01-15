@@ -1153,6 +1153,23 @@ LogicalResult PacketFlowOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ShimDMAAllocationOp
+//===----------------------------------------------------------------------===//
+
+// The reason for the ceremony is because we would not want to mark
+// shim_dma_allocation "pure" (neither hasSideEffects = 0) as it clearly
+// should/does and in the future the semantics might actually employ that (at
+// which point this canonicalizer will change).
+LogicalResult ShimDMAAllocationOp::canonicalize(ShimDMAAllocationOp op,
+                                                PatternRewriter &rewriter) {
+  if (op.use_empty()) {
+    rewriter.eraseOp(op);
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // CoreOp
 //===----------------------------------------------------------------------===//
 

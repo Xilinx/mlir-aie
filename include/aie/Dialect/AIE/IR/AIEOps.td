@@ -1363,7 +1363,7 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation">, Results<(outs Index:$index)> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -1387,17 +1387,17 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 
   let arguments = (
-    ins FlatSymbolRefAttr:$sym_name,
-        DMAChannelDir:$channelDir,
+    ins DMAChannelDir:$channelDir,
         AIEI64Attr:$channelIndex,
         AIEI64Attr:$col
   );
 
-  let results = (outs);
+  let results = (outs Index);
 
   let assemblyFormat = [{
-    $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+    `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
   }];
+  let hasCanonicalizeMethod = 1;
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {

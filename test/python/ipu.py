@@ -90,8 +90,8 @@ Release = LockAction.Release
 # CHECK:       aie.end
 # CHECK:     } {link_with = "scale.o"}
 # CHECK:     func.func @sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 0 : i64, metadata = @out} : memref<4096xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 1 : i64, metadata = @in} : memref<4096xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%out, %arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {bd_id = 0 : i64} : memref<4096xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%in, %arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {bd_id = 1 : i64} : memref<4096xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -201,11 +201,11 @@ def my_vector_scalar(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "mm.o"}
 # CHECK:     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][2, 2, 64, 32][4096, 32, 64]) {id = 0 : i64, metadata = @outC} : memref<8192xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][2, 4, 64, 16][0, 16, 64]) {id = 1 : i64, metadata = @inA} : memref<8192xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {id = 2 : i64, metadata = @inB} : memref<8192xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 4096][2, 4, 64, 16][0, 16, 64]) {id = 3 : i64, metadata = @inA} : memref<8192xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {id = 4 : i64, metadata = @inB} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%outC, %arg2[0, 0, 0, 0][2, 2, 64, 32][4096, 32, 64]) {bd_id = 0 : i64} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%inA, %arg0[0, 0, 0, 0][2, 4, 64, 16][0, 16, 64]) {bd_id = 1 : i64} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%inB, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {bd_id = 2 : i64} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%inA, %arg0[0, 0, 0, 4096][2, 4, 64, 16][0, 16, 64]) {bd_id = 3 : i64} : memref<8192xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%inB, %arg1[0, 0, 0, 0][2, 4, 32, 32][32, 2048, 64]) {bd_id = 4 : i64} : memref<8192xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -523,8 +523,8 @@ def my_matmul(module):
 # CHECK:       aie.end
 # CHECK:     } {link_with = "combined_gray2rgba_addWeighted.a"}
 # CHECK:     func.func @sequence(%arg0: memref<2304xi32>, %arg1: memref<2304xi32>, %arg2: memref<2304xi32>) {
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {id = 0 : i64, metadata = @outOF_L2L3} : memref<2304xi32>
-# CHECK:       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {id = 1 : i64, metadata = @inOF_L3L2} : memref<2304xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%outOF_L2L3, %arg2[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {bd_id = 0 : i64} : memref<2304xi32>
+# CHECK:       aiex.ipu.dma_memcpy_nd(%inOF_L3L2, %arg0[0, 0, 0, 0][1, 1, 36, 64][0, 0, 64]) {bd_id = 1 : i64} : memref<2304xi32>
 # CHECK:       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:       return
 # CHECK:     }
@@ -1646,13 +1646,13 @@ def my_passthrough(module):
 # CHECK:      }
 # CHECK:      aie.end
 # CHECK:    }
-# CHECK:    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
+# CHECK:    %objFifo_in0 = aie.shim_dma_allocation(MM2S, 0, 0)
 # CHECK:    func.func @bobsyouruncle(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
 # CHECK:      %c0_i64 = arith.constant 0 : i64
 # CHECK:      %c1_i64 = arith.constant 1 : i64
 # CHECK:      %c64_i64 = arith.constant 64 : i64
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64xi32>
-# CHECK:      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @objFifo_out0} : memref<64xi32>
+# CHECK:      aiex.ipu.dma_memcpy_nd(%objFifo_in0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {bd_id = 0 : i64} : memref<64xi32>
+# CHECK:      aiex.ipu.dma_memcpy_nd(%objFifo_out0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {bd_id = 1 : i64} : memref<64xi32>
 # CHECK:      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 # CHECK:      return
 # CHECK:    }
@@ -1707,7 +1707,7 @@ def my_passthrough(module):
 # CHECK:    ^bb12:  // pred: ^bb9
 # CHECK:      aie.end
 # CHECK:    }
-# CHECK:    aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
+# CHECK:    %objFifo_out0 = aie.shim_dma_allocation(S2MM, 0, 0)
 # CHECK:    %mem_0_2 = aie.mem(%tile_0_2) {
 # CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 # CHECK:    ^bb1:  // 2 preds: ^bb0, ^bb2

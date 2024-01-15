@@ -13,14 +13,14 @@
 module {
   aie.device(ipu) {
     func.func @sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
+      %of_fromMem = aie.shim_dma_allocation(MM2S, 0, 0)
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c1920 = arith.constant 1920 : i64
       %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
-      aiex.ipu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
+      aiex.ipu.dma_memcpy_nd (%of_fromMem, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920]) { bd_id = 0 : i64 } : memref<1920x1080xi32>
       return
     }
-    aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
   }
 }

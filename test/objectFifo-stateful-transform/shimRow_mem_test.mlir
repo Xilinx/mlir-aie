@@ -38,7 +38,7 @@
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, 0)
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @objfifo(MM2S, 0, 7)
+// CHECK:           %objfifo = aie.shim_dma_allocation(MM2S, 0, 7)
 // CHECK:           %[[VAL_16:.*]] = aie.shim_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1

@@ -67,20 +67,6 @@ struct RtpToIpuPattern : OpConversionPattern<IpuWriteRTPOp> {
   }
 };
 
-std::optional<AIE::ShimDMAAllocationOp>
-getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
-  auto sym = dev.lookupSymbol(sym_name);
-  if (!sym)
-    return std::nullopt;
-
-  auto uses = SymbolTable::getSymbolUses(sym, dev);
-  for (auto use : *uses)
-    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-      return infoOp;
-
-  return std::nullopt;
-}
-
 struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -96,29 +82,20 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
     auto ui32ty =
         IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
     bool send_tct = op.getIssueToken();
-    uint32_t channel_num = 0;
 
     // initialize fields to zero
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
       return failure();
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
-      return failure();
-
-    auto channelDir = infoOp->getChannelDir();
-    bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    channel_num += infoOp->getChannelIndex();
-
-    IntegerAttr column = IntegerAttr::get(i32ty, infoOp->getCol());
-
     uint32_t queue_offset;
-    if (isMM2S)
+    auto shimDmaAllocOp = cast<AIE::ShimDMAAllocationOp>(
+        adaptor.getShimDmaAllocation().getDefiningOp());
+    if (shimDmaAllocOp.getChannelDir() == AIE::DMAChannelDir::MM2S)
       queue_offset = 0x1D214;
     else
       queue_offset = 0x1D204;
-    if (channel_num == 1)
+    if (shimDmaAllocOp.getChannelIndex() == 1)
       queue_offset += 0x8;
     IntegerAttr address = IntegerAttr::get(ui32ty, queue_offset);
 
@@ -132,8 +109,9 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
       cmd |= 0x80000000;
     IntegerAttr value = IntegerAttr::get(ui32ty, cmd);
 
-    rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
-                                  address.getUInt(), value.getUInt());
+    rewriter.create<IpuWrite32Op>(op->getLoc(), shimDmaAllocOp.getCol(),
+                                  zero.getInt(), address.getUInt(),
+                                  value.getUInt());
 
     rewriter.eraseOp(op);
     return success();
@@ -152,25 +130,15 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     auto ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
-    auto memref = adaptor.getMemref();
 
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
       return failure();
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
-      return failure();
-
-    auto channelDir = infoOp->getChannelDir();
-    bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp->getCol();
-
     // initialize fields to zero
     auto column = zero;
     auto column_num = zero;
     auto ddr_id = zero;
-    auto bd_id = zero;
     auto buffer_length = zero;
     auto buffer_offset = zero;
     auto enable_packet = zero;
@@ -207,27 +175,14 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
         llvm::reverse(op.getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
-    // column
-    column = IntegerAttr::get(i32ty, col);
-
     // column_num
     column_num = IntegerAttr::get(i32ty, 1);
 
     // ddr_id
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
-    int arg_idx = -1;
-    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
-      if (entryBB.getArgument(i) == memref) {
-        arg_idx = i;
-        break;
-      }
-    }
-    if (arg_idx < 0)
-      return failure();
-    ddr_id = IntegerAttr::get(i32ty, arg_idx);
-
-    // bd_id
-    bd_id = IntegerAttr::get(i32ty, op.getId());
+    auto memref = op.getMemref();
+    assert(memref.isa<BlockArgument>() && "memref needs to be block args");
+    ddr_id =
+        IntegerAttr::get(i32ty, cast<BlockArgument>(memref).getArgNumber());
 
     // buffer_length
     int32_t repeat_length = 0;
@@ -239,10 +194,9 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     // buffer_offset
     size_t stride = 1;
     size_t offset = 0;
-    MemRefType my_memref = op.getMemref().getType();
-    auto shape = my_memref.getShape();
+    auto shape = memref.getType().getShape();
     size_t R = shape.size();
-    size_t S = my_memref.getElementType().getIntOrFloatBitWidth() / 8;
+    size_t S = memref.getType().getElementType().getIntOrFloatBitWidth() / 8;
     for (size_t i = 0; i < R; i++) {
       offset += offsets[i] * stride * S;
       stride *= shape[R - i - 1];
@@ -307,9 +261,12 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
 
     // issue_token
-    if (!isMM2S)
-      issue_token = BoolAttr::get(ctx, true);
+    auto shimDmaAllocOp = cast<AIE::ShimDMAAllocationOp>(
+        adaptor.getShimDmaAllocation().getDefiningOp());
+    issue_token = BoolAttr::get(ctx, shimDmaAllocOp.getChannelDir() !=
+                                         AIE::DMAChannelDir::MM2S);
 
+    auto bd_id = IntegerAttr::get(i32ty, op.getBdId());
     (void)rewriter.create<IpuWriteBdExShimTileOp>(
         op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
         buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
@@ -317,7 +274,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
         iteration_size, iteration_stride, next_bd, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    rewriter.create<IpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
+    rewriter.create<IpuShimTilePushQueueOp>(op->getLoc(), shimDmaAllocOp,
                                             issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);

@@ -174,16 +174,19 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         for (auto d : module.getOps<DeviceOp>()) {
           llvm::json::Object moduleJSON;
-          for (auto shimDMAMeta : d.getOps<ShimDMAAllocationOp>()) {
+          for (auto shimDMAOp : d.getOps<ShimDMAAllocationOp>()) {
             llvm::json::Object shimJSON;
-            auto channelDir = shimDMAMeta.getChannelDirAttr();
+            auto channelDir = shimDMAOp.getChannelDirAttr();
             shimJSON["channelDir"] = attrToJSON(channelDir);
-            auto channelIndex = shimDMAMeta.getChannelIndexAttr();
+            auto channelIndex = shimDMAOp.getChannelIndexAttr();
             shimJSON["channelIndex"] = attrToJSON(channelIndex);
-            auto col = shimDMAMeta.getColAttr();
+            auto col = shimDMAOp.getColAttr();
             shimJSON["col"] = attrToJSON(col);
-            moduleJSON[shimDMAMeta.getSymName()] =
-                llvm::json::Value(std::move(shimJSON));
+            std::string shimName;
+            llvm::raw_string_ostream os(shimName);
+            OpPrintingFlags flags;
+            shimDMAOp.getResult().printAsOperand(os, flags);
+            moduleJSON[shimName] = llvm::json::Value(std::move(shimJSON));
           }
           llvm::json::Value topv(std::move(moduleJSON));
           std::string ret;

@@ -49,7 +49,7 @@
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 1, %[[VAL_3]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 2, %[[VAL_4]], DMA : 0)
 // CHECK:           %[[VAL_23:.*]] = aie.external_buffer {sym_name = "ext_buffer_in"} : memref<48xi32>
-// CHECK:           aie.shim_dma_allocation @link1(MM2S, 0, 2)
+// CHECK:           %link1 = aie.shim_dma_allocation(MM2S, 0, 2)
 // CHECK:           %[[VAL_24:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_25:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1

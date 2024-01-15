@@ -28,8 +28,8 @@ module {
       aie.end
     }
     func.func @sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 0 : i64, metadata = @out} : memref<4096xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {id = 1 : i64, metadata = @in} : memref<4096xi32>
+      aiex.ipu.dma_memcpy_nd(%out, %arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {bd_id = 0 : i64} : memref<4096xi32>
+      aiex.ipu.dma_memcpy_nd(%in, %arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0]) {bd_id = 1 : i64} : memref<4096xi32>
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }

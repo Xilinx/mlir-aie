@@ -180,7 +180,7 @@
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @link5(S2MM, 0, 2)
+// CHECK:           %link5 = aie.shim_dma_allocation(S2MM, 0, 2)
 // CHECK:           %[[VAL_43:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_44:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1

@@ -1160,10 +1160,9 @@ struct AIEObjectFifoStatefulTransformPass
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo, int colIndex,
-                                      DMAChannelDir channelDir,
+                                      int colIndex, DMAChannelDir channelDir,
                                       int channelIndex) {
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
+    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex));
@@ -1317,9 +1316,8 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
-            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel);
+            builder, ctx, producer.getProducerTileOp().colIndex(),
+            producerChan.direction, producerChan.channel);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
@@ -1333,7 +1331,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
-              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
+              builder, ctx,
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
               consumerChan.channel);
 
@@ -1571,19 +1569,6 @@ struct AIEObjectFifoStatefulTransformPass
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
-    }
-
-    // make global symbols to replace the to be erased ObjectFifoCreateOps
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(&device.getBodyRegion().front());
-      auto sym_name = createOp.getName();
-      createOp->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType =
-          createOp.getElemType().cast<AIEObjectFifoType>().getElementType();
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
-                                       builder.getStringAttr("public"),
-                                       memrefType, nullptr, false, nullptr);
     }
 
     //===------------------------------------------------------------------===//

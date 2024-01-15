@@ -38,7 +38,7 @@
 // CHECK:           func.func @matmul_scalar_i16_i16(%[[VAL_21:.*]]: memref<16x8xi16>, %[[VAL_22:.*]]: memref<8x16xi16>, %[[VAL_23:.*]]: memref<16x16xi16>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 0)
+// CHECK:           %inA = aie.shim_dma_allocation(MM2S, 0, 0)
 // CHECK:           %[[VAL_24:.*]] = aie.core(%[[VAL_1]]) {
 // CHECK:             %[[VAL_25:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_26:.*]] = arith.constant 1 : index
@@ -83,8 +83,8 @@
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inB(MM2S, 1, 0)
-// CHECK:           aie.shim_dma_allocation @outC(S2MM, 0, 0)
+// CHECK:           %inB = aie.shim_dma_allocation(MM2S, 1, 0)
+// CHECK:           %outC = aie.shim_dma_allocation(S2MM, 0, 0)
 // CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

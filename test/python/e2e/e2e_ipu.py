@@ -194,16 +194,15 @@ def add_one_using_dma(module):
 
                 yield_([])
 
-        aie.shim_dma_allocation("objFifo_in0", MM2S, 0, 0)
-
         @func.func(emit=True)
         def bobsyouruncle(
             arg0: T.memref(64, T.i32()),
             arg1: T.memref(32, T.i32()),
             arg2: T.memref(64, T.i32()),
         ):
+            objFifo_in0 = aie.shim_dma_allocation(MM2S, 0, 0)
             ipu_dma_memcpy_nd(
-                "objFifo_in0",
+                objFifo_in0,
                 0,
                 arg0,
                 [0, 0, 0, 0],
@@ -211,8 +210,9 @@ def add_one_using_dma(module):
                 [0, 0, 0],
             )
 
+            objFifo_out0 = aie.shim_dma_allocation(S2MM, 0, 0)
             ipu_dma_memcpy_nd(
-                "objFifo_out0",
+                objFifo_out0,
                 1,
                 arg2,
                 [0, 0, 0, 0],
@@ -272,8 +272,6 @@ def add_one_using_dma(module):
                 aie.next_bd(bb10)
             with bb(bb12):  # pred: bb9
                 aie.end()
-
-        aie.shim_dma_allocation("objFifo_out0", S2MM, 0, 0)
 
         @mem(tile_0_2)
         def mem_0_2():

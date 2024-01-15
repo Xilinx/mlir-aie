@@ -157,9 +157,9 @@ module {
       aie.end
     } // {link_with = "mm.o"}
     func.func @sequence(%arg0: memref<16384xi32>, %arg1: memref<8192xi32>, %arg2: memref<16384xi32>) {
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 2, 256, 32][16384, 32, 64]) {id = 0 : i64, metadata = @outC} : memref<16384xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][2, 4, 256, 16][0, 16, 64]) {id = 1 : i64, metadata = @inA} : memref<16384xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 2, 128, 32][0, 32, 64]) {id = 2 : i64, metadata = @inB} : memref<8192xi32>
+      aiex.ipu.dma_memcpy_nd(%outC, %arg2[0, 0, 0, 0][1, 2, 256, 32][16384, 32, 64]) {bd_id = 0 : i64} : memref<16384xi32>
+      aiex.ipu.dma_memcpy_nd(%inA, %arg0[0, 0, 0, 0][2, 4, 256, 16][0, 16, 64]) {bd_id = 1 : i64} : memref<16384xi32>
+      aiex.ipu.dma_memcpy_nd(%inB, %arg1[0, 0, 0, 0][1, 2, 128, 32][0, 32, 64]) {bd_id = 2 : i64} : memref<8192xi32>
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }

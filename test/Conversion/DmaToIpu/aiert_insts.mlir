@@ -14,9 +14,9 @@
 
 module {
   aie.device(ipu) {
-    memref.global "public" @of_toMem : memref<32xi32>
-    memref.global "public" @of_fromMem : memref<32xi32>
     func.func @sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
+      %of_fromMem = aie.shim_dma_allocation(MM2S, 0, 0)
+      %of_toMem = aie.shim_dma_allocation(S2MM, 0, 0)
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -24,11 +24,9 @@ module {
       %c8 = arith.constant 8 : i64
       %c16 = arith.constant 16 : i64
       %c32 = arith.constant 32 : i64
-      aiex.ipu.dma_memcpy_nd(0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c32][%c0,%c0,%c0]) { metadata = @of_toMem, id = 1 : i64 } : memref<64xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %in[%c0,%c2,%c0,%c0][%c1,%c2,%c2,%c8][%c0,%c16,%c8]) { metadata = @of_fromMem, id = 0 : i64 } : memref<4x2x8xi32>
+      aiex.ipu.dma_memcpy_nd(%of_toMem, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c32][%c0,%c0,%c0]) { bd_id = 1 : i64 } : memref<64xi32>
+      aiex.ipu.dma_memcpy_nd(%of_fromMem, %in[%c0,%c2,%c0,%c0][%c1,%c2,%c2,%c8][%c0,%c16,%c8]) { bd_id = 0 : i64 } : memref<4x2x8xi32>
       return
     }
-    aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
-    aie.shim_dma_allocation @of_toMem (S2MM, 0, 0)
   }
 }

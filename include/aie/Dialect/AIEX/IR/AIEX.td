@@ -474,8 +474,7 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   }];
 
   let arguments = (
-    ins I64Attr:$x,
-        I64Attr:$y,
+    ins Index:$shim_dma_allocation,
         AnyMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
@@ -484,15 +483,16 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
-        FlatSymbolRefAttr:$metadata,
-        I64Attr:$id
+        I64Attr:$bd_id
   );
 
   let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref ``
-    custom<DynamicIndexList>($offsets, $static_offsets) ``
-    custom<DynamicIndexList>($sizes, $static_sizes) ``
-    custom<DynamicIndexList>($strides, $static_strides) `)`
+    `(`
+        $shim_dma_allocation `,` $memref ``
+        custom<DynamicIndexList>($offsets, $static_offsets) ``
+        custom<DynamicIndexList>($sizes, $static_sizes) ``
+        custom<DynamicIndexList>($strides, $static_strides)
+    `)`
     attr-dict `:` type($memref)
   }];
 
@@ -531,14 +531,14 @@ def AIE_IpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
 def AIE_IpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (
-    ins FlatSymbolRefAttr:$metadata,
+    ins Index:$shim_dma_allocation,
         BoolAttr:$issue_token,
         I32Attr:$repeat_count,
         I32Attr:$bd_id
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` operands `)` attr-dict
   }];
   let hasVerifier = 1;
   let description = [{

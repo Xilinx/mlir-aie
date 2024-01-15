@@ -30,8 +30,6 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#pragma clang diagnostic error "-Wswitch-enum"
-
 static StringRef getArchIntrinsicString(AIEArch arch) {
   switch (arch) {
   case AIEArch::AIE1:
@@ -129,7 +127,8 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   llvm::report_fatal_error("unsupported arch");
 }
 
-template <typename MyAIEOp> struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
+template <typename MyAIEOp>
+struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
   using OpAdaptor = typename MyAIEOp::Adaptor;
   ModuleOp &module;
@@ -480,7 +479,8 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
 };
 
 // Move all the ops with OpTy inside device, to just before the device.
-template <typename OpTy> void outlineOps(DeviceOp device) {
+template <typename OpTy>
+void outlineOps(DeviceOp device) {
   SmallVector<OpTy, 16> ops;
   for (const auto &op : device.getOps<OpTy>())
     ops.push_back(op);
@@ -573,11 +573,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     outlineOps<func::FuncOp>(device);
 
     RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<
-        AIEOpRemoval<DeviceOp>, AIEOpRemoval<TileOp>, AIEOpRemoval<FlowOp>,
-        AIEOpRemoval<MemOp>, AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
-        AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>, AIEOpRemoval<BufferOp>,
-        AIEOpRemoval<ExternalBufferOp>, AIEOpRemoval<ShimDMAAllocationOp>>(
+    removepatterns.add<AIEOpRemoval<DeviceOp>, AIEOpRemoval<TileOp>,
+                       AIEOpRemoval<FlowOp>, AIEOpRemoval<MemOp>,
+                       AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
+                       AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>,
+                       AIEOpRemoval<BufferOp>, AIEOpRemoval<ExternalBufferOp>>(
         m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))

@@ -26,6 +26,7 @@ void AIEXDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
+
       >();
 }
 
@@ -65,6 +66,11 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 }
 
 LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
+  if (!dyn_cast_or_null<AIE::ShimDMAAllocationOp>(
+          getShimDmaAllocation().getDefiningOp()))
+    return emitOpError("first operands (shim_dma_allocation) of dma_memcpy_nd "
+                       "must be the result of a shim_dma_allocation op.");
+
   MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
@@ -106,6 +112,10 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
 }
 
 LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
+  if (!dyn_cast_or_null<AIE::ShimDMAAllocationOp>(
+          getShimDmaAllocation().getDefiningOp()))
+    return emitOpError("first operands (shim_dma_allocation) of dma_memcpy_nd "
+                       "must be the result of a shim_dma_allocation op.");
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)

@@ -51,7 +51,7 @@
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_3]], DMA : 1)
-// CHECK:           aie.shim_dma_allocation @link1(MM2S, 0, 2)
+// CHECK:           %link1 = aie.shim_dma_allocation(MM2S, 0, 2)
 // CHECK:           %[[VAL_27:.*]] = aie.memtile_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_28:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
