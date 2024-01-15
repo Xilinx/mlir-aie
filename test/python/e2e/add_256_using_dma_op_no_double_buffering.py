@@ -4,7 +4,9 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=%VITIS WORKDIR=%T XRT_DIR=%XRT_DIR %PYTHON %s | FileCheck %s
+# RUN: export BASENAME=$(basename %s)
+# RUN: rm -rf $BASENAME && mkdir $BASENAME && cd $BASENAME
+# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 # REQUIRES: xrt_python_bindings
 # REQUIRES: ryzen_ai
 
