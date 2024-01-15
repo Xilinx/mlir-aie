@@ -104,8 +104,10 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
       return failure();
 
     auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
+    if (!infoOp) {
+      op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
+    }
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
@@ -159,8 +161,10 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
       return failure();
 
     auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
+    if (!infoOp) {
+      op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
+    }
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
