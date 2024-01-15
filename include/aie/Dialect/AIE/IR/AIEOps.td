@@ -1137,21 +1137,21 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
 
   let arguments = (
     ins Index:$lock,
-        AIEI32Attr:$value,
         LockAction:$action,
+        OptionalAttr<AIEI32Attr>:$value,
         OptionalAttr<LockBlocking>:$blocking
   );
 
   let assemblyFormat = [{
-    `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
+    `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
   }];
 
   let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
-                   "int32_t":$value,
-                   "xilinx::AIE::LockAction":$action), [{
-      build($_builder, $_state, lock, value, action, nullptr);
+                   "xilinx::AIE::LockAction":$action,
+                   "int32_t":$value), [{
+      build($_builder, $_state, lock, action, $_builder.getI32IntegerAttr(value), nullptr);
     }]>
   ];
 
@@ -1159,7 +1159,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     bool acquire() { return (getAction() == LockAction::Acquire); }
     bool acquireGE() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
-    int getLockValue() { return getValue(); }
+    int getLockValue() { return getValue().value_or(1); }
     int getTimeout() {
       // LockBlocking is an EnumAttr.
       if (auto val = getBlocking())
@@ -1167,7 +1167,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
       return 1;
     }
     LockOp getLockOp() {
-      return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
+      return llvm::cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
     }
   }];
 }

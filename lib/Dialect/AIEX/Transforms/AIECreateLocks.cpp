@@ -63,8 +63,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       for (auto acqLock : acqLocks[op]) {
         Value lockFromPair = acqLock.first;
         int lockValueFromPair = acqLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Acquire);
+        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair,
+                                   LockAction::Acquire, lockValueFromPair);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from pair " << lockFromPair
                                 << " with " << lockValueFromPair << "\n");
       }
@@ -78,7 +78,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
           continue;
 
         rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   lockValueFromChain, LockAction::Acquire);
+                                   LockAction::Acquire, lockValueFromChain);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from chain " << lockFromChain
                                 << " with " << lockValueFromChain << "\n");
       }
@@ -88,8 +88,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       for (auto relLock : relLocks[op]) {
         Value lockFromPair = relLock.first;
         int lockValueFromPair = relLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Release);
+        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair,
+                                   LockAction::Release, lockValueFromPair);
         LLVM_DEBUG(llvm::dbgs() << "Release from pair " << lockFromPair
                                 << " with " << lockValueFromPair << "\n");
       }
@@ -103,7 +103,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
           continue;
 
         rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   lockValueFromChain, LockAction::Release);
+                                   LockAction::Release, lockValueFromChain);
         LLVM_DEBUG(llvm::dbgs() << "Release from chain " << lockFromChain
                                 << " with " << lockValueFromChain << "\n");
       }
