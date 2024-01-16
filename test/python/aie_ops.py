@@ -170,7 +170,9 @@ def objFifoSubviewAccess():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = objectfifo_acquire(ObjectFifoSubviewType.get(T.memref(12, T.f16())), "of0", 1)
+            acq = objectfifo_acquire(
+                ObjectFifoSubviewType.get(T.memref(12, T.f16())), "of0", 1
+            )
             subview = objectfifo_subview_access(
                 T.memref(12, T.f16()), subview=acq, index=0
             )
