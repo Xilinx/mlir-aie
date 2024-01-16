@@ -39,7 +39,7 @@ def simple_with_bindings_example():
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
         tile_a = tile(1, 4)
-        buff = buffer(tile=tile_a, size=(256,), datatype=T.i32())
+        buff = buffer(T.memref(256, T.i32()), tile_a)
 
         C = Core(tile_a)
         bb = Block.create_at_start(C.body)

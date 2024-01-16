@@ -144,13 +144,6 @@ class Core(CoreOp):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
-# Create an aie buffer of (size x datatype) on given tile.
-# size examples: [256], [256, 256], [256, 256,]
-class buffer(BufferOp):
-    def __init__(self, tile, size, datatype, name=None):
-        super().__init__(buffer=T.memref(*size, datatype), tile=tile, sym_name=name)
-
-
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
 class external_buffer(ExternalBufferOp):
@@ -200,7 +193,7 @@ class objectfifo(ObjectFifoCreateOp):
                 self.datatype, acq.subview, acq.size.value - 1
             )
         for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(acq.datatype, acq.subview, i))
+            objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
         return objects
 
     def release(self, num_elem):
