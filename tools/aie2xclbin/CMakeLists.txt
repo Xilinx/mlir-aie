@@ -33,7 +33,7 @@ target_link_libraries(aie2xclbin
   AIETargets
   AIEX
   AIEXTransforms
-  MLIRAIEVec)
+  MLIRAIEVecDialect)
 
 install(TARGETS aie2xclbin
   EXPORT AIE2XCLBIN

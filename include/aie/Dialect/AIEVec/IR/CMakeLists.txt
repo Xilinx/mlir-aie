@@ -7,3 +7,8 @@
 
 add_mlir_dialect(AIEVecOps aievec)
 add_mlir_doc(AIEVecOps AIEVecDialect ./ -gen-dialect-doc -dialect=aievec)
+
+set(LLVM_TARGET_DEFINITIONS AIEVecLLVMIntrOp.td)
+mlir_tablegen(AIEVecConversions.inc -gen-llvmir-conversions)
+add_public_tablegen_target(MLIRAIEVecConversionsIncGen)
+

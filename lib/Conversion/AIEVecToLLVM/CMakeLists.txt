@@ -11,7 +11,7 @@ add_mlir_conversion_library(MLIRAIEVecToLLVM
   Core
 
   LINK_LIBS PUBLIC
-  MLIRAIEVec
+  MLIRAIEVecDialect
   MLIRLLVMCommonConversion
   MLIRLLVMDialect
   MLIRTransforms

@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
-add_mlir_dialect_library(MLIRAIEVec
+add_mlir_dialect_library(MLIRAIEVecDialect
   AIEVecOps.cpp
   AIEVecTypes.cpp
 
