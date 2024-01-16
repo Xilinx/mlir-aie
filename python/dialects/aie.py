@@ -190,9 +190,9 @@ class objectfifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
         )
 
-    def acquire(self, port, num_elem):
+    def acquire(self, num_elem):
         subview_t = ObjectFifoSubviewType.get(self.datatype)
-        acq = ObjectFifoAcquireOp(subview_t, port, self.sym_name.value, num_elem)
+        acq = ObjectFifoAcquireOp(subview_t, self.sym_name.value, num_elem)
 
         objects = []
         if acq.size.value == 1:
@@ -203,8 +203,8 @@ class objectfifo(ObjectFifoCreateOp):
             objects.append(ObjectFifoSubviewAccessOp(acq.datatype, acq.subview, i))
         return objects
 
-    def release(self, port, num_elem):
-        return objectfifo_release(port, self.sym_name.value, num_elem)
+    def release(self, num_elem):
+        return objectfifo_release(self.sym_name.value, num_elem)
 
 
 # Create a flow between source and destination tile ports.

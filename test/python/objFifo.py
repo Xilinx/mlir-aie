@@ -6,8 +6,6 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    ObjectFifoPort,
-    ObjectFifoType,
     objectfifo,
     tile,
     Device,
@@ -49,8 +47,8 @@ def objFifo_example():
         C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            elem0 = of.acquire(ObjectFifoPort.Consume, 1)
+            elem0 = of.acquire(1)
             memref.store(arith.constant(10), elem0.result, [0])
-            of.release(ObjectFifoPort.Consume, 1)
+            of.release(1)
             end()
 
