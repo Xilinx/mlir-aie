@@ -51,7 +51,7 @@ def external_func(name, inputs, outputs=None, visibility="private"):
 
 
 # Wrapper for func CallOp.
-class Call(CallOp):
+class call(CallOp):
     """Specialize CallOp class constructor to take python integers"""
 
     def __init__(self, calleeOrResults, inputs=[], input_types=[]):
@@ -146,14 +146,14 @@ class Core(CoreOp):
 
 # Create an aie buffer of (size x datatype) on given tile.
 # size examples: [256], [256, 256], [256, 256,]
-class Buffer(BufferOp):
+class buffer(BufferOp):
     def __init__(self, tile, size, datatype, name=None):
         super().__init__(buffer=T.memref(*size, datatype), tile=tile, sym_name=name)
 
 
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
-class ExternalBuffer(ExternalBufferOp):
+class external_buffer(ExternalBufferOp):
     def __init__(self, size, datatype, name=None):
         super().__init__(buffer=T.memref(*size, datatype), sym_name=name)
 
@@ -172,7 +172,7 @@ class objectfifo(ObjectFifoCreateOp):
         dimensionsFromStreamPerConsumer=None,
     ):
         self.datatype = datatype
-        if consumerTiles is not List:
+        if not hasattr(consumerTiles, "__len__"):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
@@ -207,25 +207,8 @@ class objectfifo(ObjectFifoCreateOp):
         return objectfifo_release(self.sym_name.value, num_elem)
 
 
-# Create a flow between source and destination tile ports.
-class Flow(FlowOp):
-    """Specialize FlowOp class constructor to take python integers"""
-
-    def __init__(
-        self, source, source_port, source_channel, dest, dest_port, dest_channel
-    ):
-        super().__init__(
-            source=source,
-            sourceBundle=source_port,
-            sourceChannel=source_channel,
-            dest=dest,
-            destBundle=dest_port,
-            destChannel=dest_channel,
-        )
-
-
 # Create a packet flow between source and destination tile ports.
-class PacketFlow(PacketFlowOp):
+class packet_flow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(

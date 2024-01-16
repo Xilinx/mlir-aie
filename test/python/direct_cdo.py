@@ -19,7 +19,6 @@ from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
-    ObjectFifoType,
     WireBundle,
     core,
     device,
@@ -56,7 +55,7 @@ def extract_input_files(core_bcf):
 @construct_and_print_module
 def my_passthrough(module):
     N = 4096
-    ofifo_mem_ref_ty = TypeAttr.get(ObjectFifoType.get(T.memref(1024, T.i32())))
+    ofifo_mem_ref_ty = T.memref(1024, T.i32())
     tensor_ty = T.memref(N, T.i32())
 
     @device(AIEDevice.ipu)
@@ -66,8 +65,8 @@ def my_passthrough(module):
         compute_tile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        objectfifo("in", shim_tile, [compute_tile2], 2, ofifo_mem_ref_ty, [], [])
-        objectfifo("out", compute_tile2, [shim_tile], 2, ofifo_mem_ref_ty, [], [])
+        of_in = objectfifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
+        of_out = objectfifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
         objectfifo_link(["in"], ["out"])
 
         @core(compute_tile2)

@@ -6,9 +6,7 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    Call,
-    ObjectFifoPort,
-    ObjectFifoType,
+    call,
     core,
     device,
     external_func,
@@ -63,7 +61,7 @@ def codeRegion():
         @core(N, "test.o")
         def core_body():
             for _ in range_(10):
-                elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
-                res = Call("test_func", [elem0], [T.i32()])
-                of1.release(ObjectFifoPort.Consume, 1)
+                elem0 = of1.acquire(1)
+                res = call("test_func", [elem0], [T.i32()])
+                of1.release(1)
                 yield_([])

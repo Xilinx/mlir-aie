@@ -15,14 +15,11 @@ import aie.extras.types as T
 from aie.dialects import aie
 from aie.dialects.aie import (
     AIEDevice,
-    Call,
+    call,
     CoreOp,
     DMAChannelDir,
     LockAction,
-    ObjectFifoPort,
-    ObjectFifoType,
     WireBundle,
-    acquire,
     buffer,
     core,
     device,
@@ -41,7 +38,6 @@ from aie.dialects.aie import (
     next_bd,
     objectfifo,
     objectfifo_link,
-    objectfifo_release,
     tile,
     translate_mlir_to_llvmir,
     use_lock,
@@ -116,24 +112,8 @@ def my_vector_scalar(module):
         S = tile(0, 0)
         M = tile(0, 2)
 
-        objectfifo(
-            "in",
-            S,
-            [M],
-            buffer_depth,
-            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "out",
-            M,
-            [S],
-            buffer_depth,
-            TypeAttr.get(ObjectFifoType.get(T.memref(n, T.i32()))),
-            [],
-            [],
-        )
+        of_in = objectfifo("in", S, M, buffer_depth, T.memref(n, T.i32()))
+        of_out = objectfifo("out", M, S, buffer_depth, T.memref(n, T.i32()))
 
         @core(M, "scale.o")
         def core_body():
@@ -141,15 +121,11 @@ def my_vector_scalar(module):
             for _ in range_(0xFFFFFFFF):
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
-                    elem_out = acquire(
-                        ObjectFifoPort.Produce, "out", 1, T.memref(n, T.i32())
-                    ).acquired_elem()
-                    elem_in = acquire(
-                        ObjectFifoPort.Consume, "in", 1, T.memref(n, T.i32())
-                    ).acquired_elem()
-                    Call(scale_int32, [elem_in, elem_out])
-                    objectfifo_release(ObjectFifoPort.Consume, "in", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "out", 1)
+                    elem_out = of_out.acquire(1)
+                    elem_in = of_in.acquire(1)
+                    call(scale_int32, [elem_in, elem_out])
+                    of_in.release(1)
+                    of_out.release(1)
                     yield_([])
                 yield_([])
 
