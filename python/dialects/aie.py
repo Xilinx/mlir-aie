@@ -144,13 +144,6 @@ class Core(CoreOp):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
-# Create an aie external buffer of (size x datatype).
-# size examples: [256], [256, 256], [256, 256,]
-class external_buffer(ExternalBufferOp):
-    def __init__(self, size, datatype, name=None):
-        super().__init__(buffer=T.memref(*size, datatype), sym_name=name)
-
-
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
 class objectfifo(ObjectFifoCreateOp):
@@ -198,6 +191,22 @@ class objectfifo(ObjectFifoCreateOp):
 
     def release(self, num_elem):
         return objectfifo_release(self.sym_name.value, num_elem)
+
+
+# Create an aie objectFifo_link between input and output objectFifos.
+class objectfifo_link(ObjectFifoLinkOp):
+    """Specialize ObjectFifoLinkOp class constructor to take python variables"""
+    def __init__(
+        self,
+        fifoIns,
+        fifoOuts,
+    ):
+        fifoInRefs = (i.sym_name.value for i in fifoIns)
+        fifoOutRefs = (i.sym_name.value for i in fifoOuts)
+        super().__init__(
+            fifoIns=fifoInRefs,
+            fifoOuts=fifoOutRefs,
+        )
 
 
 # Create a packet flow between source and destination tile ports.

@@ -67,7 +67,7 @@ def my_passthrough(module):
         # AIE-array data movement with object fifos
         of_in = objectfifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
         of_out = objectfifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
-        objectfifo_link(["in"], ["out"])
+        objectfifo_link([of_in], [of_out])
 
         @core(compute_tile2)
         def core_body():
