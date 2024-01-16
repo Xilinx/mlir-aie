@@ -188,7 +188,6 @@ class objectfifo(ObjectFifoCreateOp):
         for i in range(acq.size.value):
             objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
         return objects
-
     def release(self, num_elem):
         return objectfifo_release(self.sym_name.value, num_elem)
 
