@@ -158,7 +158,7 @@ class objectfifo(ObjectFifoCreateOp):
         dimensionsFromStreamPerConsumer=None,
     ):
         self.datatype = datatype
-        if not hasattr(consumerTiles, "__len__"):
+        if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
@@ -201,9 +201,9 @@ class objectfifo_link(ObjectFifoLinkOp):
         fifoIns,
         fifoOuts,
     ):
-        if not hasattr(fifoIns, "__len__"):
+        if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
-        if not hasattr(fifoOuts, "__len__"):
+        if not isinstance(fifoOuts, List):
             fifoOuts = [fifoOuts]
         fifoInRefs = (i.sym_name.value for i in fifoIns)
         fifoOutRefs = (i.sym_name.value for i in fifoOuts)
