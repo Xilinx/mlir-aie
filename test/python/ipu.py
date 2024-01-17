@@ -535,11 +535,11 @@ def edge_detect(module):
         inOF_L2L1 = objectfifo(
             "inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8())
         )
-        objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
+        objectfifo_link(inOF_L3L2, inOF_L2L1)
 
         outOF_L2L3 = objectfifo("outOF_L2L3", M, S, 2, T.memref(256, T.ui8()))
         outOF_L1L2 = objectfifo("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8()))
-        objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
+        objectfifo_link(outOF_L1L2, outOF_L2L3)
 
         OF_2to3 = objectfifo("OF_2to3", T2, T3, 4, T.memref(64, T.ui8()))
         OF_3to4 = objectfifo("OF_3to4", T3, T4, 2, T.memref(64, T.ui8()))
@@ -761,11 +761,11 @@ def my_add_one_objFifo(module):
 
         of_in0 = objectfifo("in0", shim_tile, mem_tile, 2, T.memref(16, T.i32()))
         of_in1 = objectfifo("in1", mem_tile, compute_tile2, 2, T.memref(8, T.i32()))
-        objectfifo_link(["in0"], ["in1"])
+        objectfifo_link(of_in0, of_in1)
 
         of_out0 = objectfifo("out0", mem_tile, shim_tile, 2, T.memref(8, T.i32()))
         of_out1 = objectfifo("out1", compute_tile2, mem_tile, 2, T.memref(16, T.i32()))
-        objectfifo_link(["out1"], ["out0"])
+        objectfifo_link(of_out1, of_out0)
 
         @core(compute_tile2)
         def core_body():
@@ -812,7 +812,7 @@ def my_passthrough(module):
         # AIE-array data movement with object fifos
         of_in = objectfifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
         of_out = objectfifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
-        objectfifo_link(["in"], ["out"])
+        objectfifo_link(of_in, of_out)
 
         @core(compute_tile2)
         def core_body():

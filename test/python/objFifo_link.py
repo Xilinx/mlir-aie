@@ -41,7 +41,7 @@ def link_example():
 
         of0 = objectfifo("of0", S, M, 2, T.memref(256, T.i32()))
         of1 = objectfifo("of1", M, [T0, T1], 2, T.memref(64, T.i32()))
-        objectfifo_link([of0], [of1])
+        objectfifo_link(of0, of1)
 
         objectfifo(
             "of2",

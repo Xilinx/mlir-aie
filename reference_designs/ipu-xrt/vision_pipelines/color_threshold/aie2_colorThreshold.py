@@ -67,8 +67,8 @@ def color_threshold():
             inOOB_L2L1_3 = objectfifo(
                 "inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty
             )
-            inOOB_L2L1_3 = objectfifo_link(
-                [inOOB_L3L2],
+            objectfifo_link(
+                inOOB_L3L2,
                 [inOOB_L2L1_0, inOOB_L2L1_1, inOOB_L2L1_2, inOOB_L2L1_3],
             )
 
@@ -90,14 +90,14 @@ def color_threshold():
             )
             objectfifo_link(
                 [outOOB_L1L2_0, outOOB_L1L2_1, outOOB_L1L2_2, outOOB_L1L2_3],
-                [outOOB_L2L3],
+                outOOB_L2L3,
             )
 
             # Runtime parameters
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile2 = buffer(T.memref(16, T.i32()), ComputeTile2, sym_name="rtpComputeTile2")
+            rtpComputeTile3 = buffer(T.memref(16, T.i32()), ComputeTile3, sym_name="rtpComputeTile3")
+            rtpComputeTile4 = buffer(T.memref(16, T.i32()), ComputeTile4, sym_name="rtpComputeTile4")
+            rtpComputeTile5 = buffer(T.memref(16, T.i32()), ComputeTile5, sym_name="rtpComputeTile5")
 
             # Set up compute tiles
 

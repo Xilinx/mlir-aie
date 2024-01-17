@@ -201,6 +201,10 @@ class objectfifo_link(ObjectFifoLinkOp):
         fifoIns,
         fifoOuts,
     ):
+        if not hasattr(fifoIns, "__len__"):
+            fifoIns = [fifoIns]
+        if not hasattr(fifoOuts, "__len__"):
+            fifoOuts = [fifoOuts]
         fifoInRefs = (i.sym_name.value for i in fifoIns)
         fifoOutRefs = (i.sym_name.value for i in fifoOuts)
         super().__init__(

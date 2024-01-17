@@ -90,7 +90,7 @@ def my_matmul():
                     (s * word_size_in // 4, 1),
                 ],
             )
-            objectfifo_link([inA], [memA])
+            objectfifo_link(inA, memA)
 
             # Input B
             inB = objectfifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
@@ -107,7 +107,7 @@ def my_matmul():
                     (t * word_size_in // 4, 1),
                 ],
             )
-            objectfifo_link([inB], [memB])
+            objectfifo_link(inB, memB)
 
             # Output C
             memC = objectfifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
@@ -124,7 +124,7 @@ def my_matmul():
                     (t * word_size_out // 4, 1),
                 ],
             )
-            objectfifo_link([memC], [outC])
+            objectfifo_link(memC, outC)
 
             # Set up compute tiles
 

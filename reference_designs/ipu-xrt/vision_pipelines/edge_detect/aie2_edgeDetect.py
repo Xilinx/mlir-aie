@@ -90,7 +90,7 @@ def edge_detect():
                 7,
                 line_bytes_ty,
             )
-            objectfifo_link([inOF_L3L2], [inOF_L2L1])
+            objectfifo_link(inOF_L3L2, inOF_L2L1)
 
             # Output
             outOF_L2L3 = objectfifo(
@@ -107,7 +107,7 @@ def edge_detect():
                 2,
                 line_bytes_ty,
             )
-            objectfifo_link([outOF_L1L2], [outOF_L2L3])
+            objectfifo_link(outOF_L1L2, outOF_L2L3)
 
             # Intermediate
             OF_2to3 = objectfifo(

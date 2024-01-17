@@ -77,7 +77,7 @@ def color_detect():
             inOF_L2L1 = objectfifo(
                 "inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty
             )
-            objectfifo_link([inOF_L3L2], [inOF_L2L1])
+            objectfifo_link(inOF_L3L2, inOF_L2L1)
 
             # Output
             outOF_L2L3 = objectfifo(
@@ -86,7 +86,7 @@ def color_detect():
             outOF_L1L2 = objectfifo(
                 "outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty
             )
-            objectfifo_link([outOF_L1L2], [outOF_L2L3])
+            objectfifo_link(outOF_L1L2, outOF_L2L3)
 
             # Intermediate
             OF_2to34 = objectfifo(

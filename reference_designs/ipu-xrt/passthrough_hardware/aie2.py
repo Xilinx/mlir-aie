@@ -34,7 +34,7 @@ def my_passthrough():
             # AIE-array data movement with object fifos
             of_in = objectfifo("in", ShimTile, [ComputeTile2], 2, memRef_ty)
             of_out = objectfifo("out", ComputeTile2, [ShimTile], 2, memRef_ty)
-            objectfifo_link([of_in], [of_out])
+            objectfifo_link(of_in, of_out)
 
             # Set up compute tiles
 

@@ -56,7 +56,7 @@ def codeRegion():
 
         of0 = objectfifo("of0", S, M, 2, T.memref(256, T.i32()))
         of1 = objectfifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
-        objectfifo_link([of0], [of1])
+        objectfifo_link(of0, of1)
 
         @core(N, "test.o")
         def core_body():
