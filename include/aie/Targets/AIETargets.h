@@ -59,6 +59,9 @@ mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
                                             bool emitUnified, bool axiDebug,
                                             bool aieSim);
 #endif
+
+mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
+                                             llvm::raw_ostream &output);
 } // namespace AIE
 
 namespace aievec {
