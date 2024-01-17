@@ -19,8 +19,6 @@ def my_add_one_objFifo():
         def device_body():
             memRef_16_ty = T.memref(16, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
-            ofifo_memRef_16_ty = TypeAttr.get(ObjectFifoType.get(memRef_16_ty))
-            ofifo_memRef_8_ty = TypeAttr.get(ObjectFifoType.get(memRef_8_ty))
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -29,14 +27,14 @@ def my_add_one_objFifo():
 
             # AIE-array data movement with object fifos
             # Input
-            objectfifo("in0", ShimTile, [MemTile], 2, ofifo_memRef_16_ty, [], [])
-            objectfifo("in1", MemTile, [ComputeTile2], 2, ofifo_memRef_8_ty, [], [])
-            objectfifo_link(["in0"], ["in1"])
+            of_in0 = objectfifo("in0", ShimTile, MemTile, 2, memRef_16_ty)
+            of_in1 = objectfifo("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
+            objectfifo_link([of_in0], [of_in1])
 
             # Output
-            objectfifo("out0", MemTile, [ShimTile], 2, ofifo_memRef_16_ty, [], [])
-            objectfifo("out1", ComputeTile2, [MemTile], 2, ofifo_memRef_8_ty, [], [])
-            objectfifo_link(["out1"], ["out0"])
+            of_out0 = objectfifo("out0", MemTile, ShimTile, 2, memRef_16_ty)
+            of_out1 = objectfifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
+            objectfifo_link([of_out0], [of_out1])
 
             # Set up compute tiles
 
@@ -45,19 +43,15 @@ def my_add_one_objFifo():
             def core_body():
                 # Effective while(1)
                 for _ in for_(8):
-                    elem_in = acquire(
-                        ObjectFifoPort.Consume, "in1", 1, memRef_8_ty
-                    ).acquired_elem()
-                    elem_out = acquire(
-                        ObjectFifoPort.Produce, "out1", 1, memRef_8_ty
-                    ).acquired_elem()
+                    elem_in = of_in1.acquire(1)
+                    elem_out = of_out1.acquire(1)
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
                         yield_([])
-                    objectfifo_release(ObjectFifoPort.Consume, "in1", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "out1", 1)
+                    of_in1.release(1)
+                    of_out1.release(1)
                     yield_([])
 
             # To/from AIE-array data movement

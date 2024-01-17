@@ -33,7 +33,6 @@ def passThroughAIE2():
         def device_body():
             # define types
             line_ty = T.memref(lineWidthInBytes, T.ui8())
-            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
 
             # AIE Core Function declarations
             passThroughLine = external_func(
@@ -45,11 +44,11 @@ def passThroughAIE2():
             ComputeTile2 = tile(0, 2)
 
             if enableTrace:
-                Flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
+                flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
-            objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_line_ty, [], [])
-            objectfifo("out", ComputeTile2, [ShimTile], 2, ofifo_line_ty, [], [])
+            of_in = objectfifo("in", ShimTile, ComputeTile2, 2, line_ty)
+            of_out = objectfifo("out", ComputeTile2, ShimTile, 2, line_ty)
 
             # Set up compute tiles
 
@@ -58,15 +57,11 @@ def passThroughAIE2():
             def core_body():
                 for _ in for_(sys.maxsize):
                     for _ in for_(height):
-                        elemOut = acquire(
-                            ObjectFifoPort.Produce, "out", 1, line_ty
-                        ).acquired_elem()
-                        elemIn = acquire(
-                            ObjectFifoPort.Consume, "in", 1, line_ty
-                        ).acquired_elem()
-                        Call(passThroughLine, [elemIn, elemOut, width])
-                        objectfifo_release(ObjectFifoPort.Consume, "in", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "out", 1)
+                        elemOut = of_out.acquire(1)
+                        elemIn = of_in.acquire(1)
+                        call(passThroughLine, [elemIn, elemOut, width])
+                        of_in.release(1)
+                        of_out.release(1)
                         yield_([])
                     yield_([])
 
