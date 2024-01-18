@@ -15,7 +15,8 @@ aie.device(ipu) {
   //memtiles
   %tile01 = aie.tile(0, 1)
   %tile11 = aie.tile(1, 1)
-  
+  %tile21 = aie.tile(2, 1)
+
   %tile02 = aie.tile(0, 2)
   %tile03 = aie.tile(0, 3)
   %tile04 = aie.tile(0, 5)
@@ -68,8 +69,8 @@ aie.device(ipu) {
   aie.objectfifo.link[@inOF_wts_1_L3L2]-> [@wts_buf_10,@wts_buf_11,@wts_buf_12] ()
 
     //initial activation for 1x1
-  aie.objectfifo @act_05_12(%tile05, {%tile12,%tile11},[2,2,4]): !aie.objectfifo<memref<32x1x256xui8>> // from shim broadcast to core2 and memtile
-  aie.objectfifo @skip_buf2(%tile11, {%tile14}, 2: i32): !aie.objectfifo<memref<32x1x256xui8>> // link the skip buffer in memtile to conv1_skip in tile4
+  aie.objectfifo @act_05_12(%tile05, {%tile12,%tile21},[2,2,4]): !aie.objectfifo<memref<32x1x256xui8>> // from shim broadcast to core2 and memtile
+  aie.objectfifo @skip_buf2(%tile21, {%tile14}, 2: i32): !aie.objectfifo<memref<32x1x256xui8>> // link the skip buffer in memtile to conv1_skip in tile4
   aie.objectfifo.link[@act_05_12]-> [@skip_buf2] ()
   
     // OF for intermediate ofm between 1x1 and 3x3
