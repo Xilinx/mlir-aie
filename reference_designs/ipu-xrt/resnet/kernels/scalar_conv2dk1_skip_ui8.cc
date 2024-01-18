@@ -30,7 +30,7 @@ const int32_t MAX=127;
 const int32_t UMAX=255;
 extern "C" {
   // NOTE: Assumes input_channels >= 16
-    void conv2dk1_skip_i8(uint8_t *input0,uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
+    void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, uint8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
     {
         event0();
 
@@ -46,10 +46,10 @@ extern "C" {
                 for (x = 0; x < input_width; x++) { // col of output image
                     int sum = 0;
                     int sum_srs=0;
-                    int64_t skip_sum=0;
+                    int skip_sum=0;
                     int skip_sum_srs_final=0;
                     int skip_sum_srs_final_out=0;
-                    int skip_temp=0;
+                    uint8_t skip_temp=0;
                     for (ic = 0; ic < input_channels/16; ic++) {
                         for (ic8 = 0; ic8 < 8; ic8++) {
                             // int val = input0[ic * input_width + x];
@@ -72,12 +72,11 @@ extern "C" {
                     // scale for convolution
                     sum_srs=(sum+(1<<(scaleT-1))) >> scaleT;
                     sum_srs = (sum_srs > MAX) ? MAX : (sum_srs < -MIN) ? -MIN : sum_srs; //clip
-                    // sum_srs = (sum_srs > UMAX) ? UMAX : (sum_srs < 0) ? 0 : sum_srs; //clip
                                         
                     // scale for residual
-                    // skip_temp=skip[oc * input_width + x];
-                    skip_temp=skip[(oc*input_width*8) + (x*8) + oc8] ;
-                    skip_sum= sum_srs+ skip_temp;
+                    // skip_temp=skip[(oc*input_width*8) + (x*8) + oc8] ;
+                    // skip_sum= sum_srs+ skip_temp;
+                    skip_sum= sum_srs+ skip[(oc*input_width*8) + (x*8) + oc8];
                     // skip_sum= sum_srs;
 
                     skip_sum_srs_final= (skip_sum+(1<<(skip_scaleT-1))) >> skip_scaleT;

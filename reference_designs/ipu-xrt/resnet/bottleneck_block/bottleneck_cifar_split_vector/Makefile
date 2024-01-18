@@ -1,8 +1,8 @@
 include ../../../makefile-common
 
 #mlirFileName = bottlenck4AIEs
-# mlirFileName = aieWithTrace
-mlirFileName = aieFinal
+mlirFileName = aieWithTrace
+# mlirFileName = aieFinal
 # mlirFileName = aieDemo
 all: conv2dk1.o conv2dk3.o conv2dk1_skip.o final.xclbin
 
