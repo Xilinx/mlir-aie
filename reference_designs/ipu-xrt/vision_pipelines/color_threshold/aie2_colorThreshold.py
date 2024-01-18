@@ -94,10 +94,18 @@ def color_threshold():
             )
 
             # Runtime parameters
-            rtpComputeTile2 = buffer(T.memref(16, T.i32()), ComputeTile2, sym_name="rtpComputeTile2")
-            rtpComputeTile3 = buffer(T.memref(16, T.i32()), ComputeTile3, sym_name="rtpComputeTile3")
-            rtpComputeTile4 = buffer(T.memref(16, T.i32()), ComputeTile4, sym_name="rtpComputeTile4")
-            rtpComputeTile5 = buffer(T.memref(16, T.i32()), ComputeTile5, sym_name="rtpComputeTile5")
+            rtpComputeTile2 = buffer(
+                T.memref(16, T.i32()), ComputeTile2, sym_name="rtpComputeTile2"
+            )
+            rtpComputeTile3 = buffer(
+                T.memref(16, T.i32()), ComputeTile3, sym_name="rtpComputeTile3"
+            )
+            rtpComputeTile4 = buffer(
+                T.memref(16, T.i32()), ComputeTile4, sym_name="rtpComputeTile4"
+            )
+            rtpComputeTile5 = buffer(
+                T.memref(16, T.i32()), ComputeTile5, sym_name="rtpComputeTile5"
+            )
 
             # Set up compute tiles
 
