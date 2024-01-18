@@ -35,10 +35,10 @@ range_ = for_
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index
 # CHECK:        scf.for %arg0 = %c0 to %c10 step %c1 {
-# CHECK:          %0 = aie.objectfifo.acquire @of1(Consume, 1) : !aie.objectfifosubview<memref<8x8xi32>>
+# CHECK:          %0 = aie.objectfifo.acquire @of1( 1) : !aie.objectfifosubview<memref<8x8xi32>>
 # CHECK:          %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<8x8xi32>> -> memref<8x8xi32>
 # CHECK:          %2 = func.call @test_func(%1) : (memref<8x8xi32>) -> i32
-# CHECK:          aie.objectfifo.release @of1(Consume, 1)
+# CHECK:          aie.objectfifo.release @of1( 1)
 # CHECK:        }
 # CHECK:        aie.end
 # CHECK:      } {link_with = "test.o"}
