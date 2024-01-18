@@ -129,7 +129,7 @@ def objFifoLink():
         tile2 = tile(col=7, row=7)
         of0 = objectfifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         of1 = objectfifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
-        objectfifo_link("of0", "of1")
+        objectfifo_link(of0, of1)
         end()
 
 

@@ -205,8 +205,8 @@ class objectfifo_link(ObjectFifoLinkOp):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
             fifoOuts = [fifoOuts]
-        fifoInRefs = (i.sym_name.value for i in fifoIns)
-        fifoOutRefs = (i.sym_name.value for i in fifoOuts)
+        fifoInRefs = map(lambda i: i if isinstance(i, str) else i.sym_name.value, fifoIns)
+        fifoOutRefs = map(lambda i: i if isinstance(i, str) else i.sym_name.value, fifoOuts)
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
