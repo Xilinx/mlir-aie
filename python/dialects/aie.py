@@ -200,8 +200,12 @@ class objectfifo_link(ObjectFifoLinkOp):
         self,
         fifoIns,
         fifoOuts,
-    ):
-        if not isinstance(fifoIns, List):
+        fifoInRefs = map(
+            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoIns
+        )
+        fifoOutRefs = map(
+            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoOuts
+        )
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
             fifoOuts = [fifoOuts]
