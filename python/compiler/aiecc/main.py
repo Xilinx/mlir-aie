@@ -501,19 +501,17 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_xclbin_gen(self, aie_target, has_cores):
+    async def process_cdo(self, aie_target):
         async with self.limit:
             if self.stopall:
                 return
 
             if opts.progress:
                 task = self.progress_bar.add_task(
-                    "[yellow] XCLBIN generation ", total=10, command="starting"
+                    "[yellow] CDO generation ", total=10, command="starting"
                 )
             else:
                 task = None
-
-            buffers = ["in", "tmp", "out"]
 
             install_path = aie.compiler.aiecc.configure.install_path()
             data_path = os.path.join(install_path, "data")
@@ -562,37 +560,44 @@ class FlowRunner:
                 + (["--aximm-dump"] if self.opts.verbose else []),
             )
 
-            await write_file_async(
-                json.dumps(mem_topology, indent=2),
-                self.prepend_tmp("mem_topology.json"),
+    async def process_xclbin_gen(self, has_cores):
+        if opts.progress:
+            task = self.progress_bar.add_task(
+                "[yellow] XCLBIN generation ", total=10, command="starting"
             )
+        else:
+            task = None
 
-            await write_file_async(
-                json.dumps(
-                    emit_partition(self.mlir_module_str, opts.kernel_id), indent=2
+        buffers = ["in", "tmp", "out"]
+        await write_file_async(
+            json.dumps(mem_topology, indent=2),
+            self.prepend_tmp("mem_topology.json"),
+        )
+
+        await write_file_async(
+            json.dumps(emit_partition(self.mlir_module_str, opts.kernel_id), indent=2),
+            self.prepend_tmp("aie_partition.json"),
+        )
+
+        await write_file_async(
+            json.dumps(
+                emit_design_kernel_json(
+                    opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
                 ),
-                self.prepend_tmp("aie_partition.json"),
-            )
+                indent=2,
+            ),
+            self.prepend_tmp("kernels.json"),
+        )
 
-            await write_file_async(
-                json.dumps(
-                    emit_design_kernel_json(
-                        opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
-                    ),
-                    indent=2,
-                ),
-                self.prepend_tmp("kernels.json"),
-            )
+        await write_file_async(
+            emit_design_bif(self.tmpdirname, has_cores),
+            self.prepend_tmp("design.bif"),
+        )
 
-            await write_file_async(
-                emit_design_bif(self.tmpdirname, has_cores),
-                self.prepend_tmp("design.bif"),
-            )
-
-            # fmt: off
-            await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
-            await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
-            # fmt: on
+        # fmt: off
+        await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
+        await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
+        # fmt: on
 
     async def process_host_cgen(self, aie_target, file_with_addresses):
         async with self.limit:
@@ -1035,8 +1040,10 @@ class FlowRunner:
 
             # Must have elfs, before we build the final binary assembly
             if opts.cdo:
-                processes = [self.process_xclbin_gen(aie_target, bool(len(cores)))]
+                processes = [self.process_cdo(aie_target)]
                 await asyncio.gather(*processes)
+            if opts.cdo or opts.xcl:
+                await self.process_xclbin_gen(bool(len(cores)))
 
     def dumpprofile(self):
         sortedruntimes = sorted(

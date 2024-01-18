@@ -13,9 +13,10 @@
 ##===----------------------------------------------------------------------===##
 
 # The LLVM commit to use.
-LLVM_PROJECT_COMMIT=6e1ecd100d7663a91135b1cf6c4a603681b7385b
-DATETIME=2024010621
+LLVM_PROJECT_COMMIT=850f713e80426f1706c0d3dad143c330ca872d5d
+DATETIME=2024011316
 WHEEL_VERSION=18.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
+
 ############################################################################################
 # The way to bump `LLVM_PROJECT_COMMIT`
 #   1. Find the hash you want (`git rev-parse --short=8 HEAD` or just copy paste from github);

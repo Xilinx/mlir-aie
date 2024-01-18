@@ -815,29 +815,35 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        AIEI32Attr:$offset,
-        AIEI32Attr:$len,
+        OptionalAttr<AIEI32Attr>:$offset,
+        OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
   );
 
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) `,` $offset `,` $len (`,` $dimensions^ )? `)` attr-dict
+    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
-    int getOffsetValue() { return getOffset(); }
-    int getLenValue() { return getLen(); }
+    int getOffsetValue() { return getOffset().value_or(0); }
+    int getLenValue() { return getLen().value_or(getBuffer().getType().getNumElements()); }
   }];
 
   let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
-      odsState.addOperands(buffer);
-      odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
-      odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
     }]>
   ];
 }
@@ -886,6 +892,27 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
 }
+
+def AIE_DMAOp: AIE_Op<"dma", [
+    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
+    NoTerminator,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs I1:$valid)> {
+
+  let summary = "An op to describe a set of DMA operations.";
+
+  let arguments = (
+    ins DMAChannelDir:$channelDir,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channelIndex,
+        DefaultValuedAttr<BoolAttr, "true">:$loop
+  );
+  let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
+  let assemblyFormat = [{
+    `(` $channelDir `,` $channelIndex (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
@@ -1017,7 +1044,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
 }
 
 def AIE_LockOp: AIE_Op<"lock", [
-    TileElement,
+    TileElement, Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
@@ -1110,21 +1137,21 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
 
   let arguments = (
     ins Index:$lock,
-        AIEI32Attr:$value,
         LockAction:$action,
+        OptionalAttr<AIEI32Attr>:$value,
         OptionalAttr<LockBlocking>:$blocking
   );
 
   let assemblyFormat = [{
-    `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
+    `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
   }];
 
   let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
-                   "int32_t":$value,
-                   "xilinx::AIE::LockAction":$action), [{
-      build($_builder, $_state, lock, value, action, nullptr);
+                   "xilinx::AIE::LockAction":$action,
+                   "int32_t":$value), [{
+      build($_builder, $_state, lock, action, $_builder.getI32IntegerAttr(value), nullptr);
     }]>
   ];
 
@@ -1132,7 +1159,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     bool acquire() { return (getAction() == LockAction::Acquire); }
     bool acquireGE() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
-    int getLockValue() { return getValue(); }
+    int getLockValue() { return getValue().value_or(1); }
     int getTimeout() {
       // LockBlocking is an EnumAttr.
       if (auto val = getBlocking())
@@ -1140,7 +1167,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
       return 1;
     }
     LockOp getLockOp() {
-      return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
+      return llvm::cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
     }
   }];
 }

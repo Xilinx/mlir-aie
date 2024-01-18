@@ -92,6 +92,20 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
          << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
          << '\n';
 }
+
+LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
+  AIEArch arch = AIEArch::AIE1;
+  if (!module.getOps<DeviceOp>().empty()) {
+    DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+    arch = targetOp.getTargetModel().getTargetArch();
+  }
+  if (arch == AIEArch::AIE1)
+    output << "AIE\n";
+  else
+    output << stringifyEnum(arch) << "\n";
+  return success();
+}
+
 void registerAIETranslations() {
   static llvm::cl::opt<int> tileCol(
       "tilecol", llvm::cl::desc("column coordinate of core to translate"),
@@ -211,19 +225,7 @@ void registerAIETranslations() {
 
   TranslateFromMLIRRegistration registrationTargetArch(
       "aie-generate-target-arch", "Get the target architecture",
-      [](ModuleOp module, raw_ostream &output) {
-        AIEArch arch = AIEArch::AIE1;
-        if (!module.getOps<DeviceOp>().empty()) {
-          DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
-          arch = targetOp.getTargetModel().getTargetArch();
-        }
-        if (arch == AIEArch::AIE1)
-          output << "AIE\n";
-        else
-          output << stringifyEnum(arch) << "\n";
-        return success();
-      },
-      registerDialects);
+      AIETranslateToTargetArch, registerDialects);
 
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",

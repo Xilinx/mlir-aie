@@ -35,6 +35,7 @@ extern "C" {
 #include <cstdlib> // calloc
 #include <filesystem>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <string>
@@ -107,13 +108,51 @@ static const std::map<WireBundle, StrmSwPortType>
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
 
+// https://stackoverflow.com/a/32230306
+
+template <typename H1>
+raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
+  return out << label << "=" << std::forward<H1>(value);
+}
+
+template <typename H1, typename... T>
+raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
+                      T &&...rest) {
+  const char *pcomma = strchr(label, ',');
+  return showArgs(out.write(label, pcomma - label)
+                      << "=" << std::forward<H1>(value) << ',',
+                  pcomma + 1, std::forward<T>(rest)...);
+}
+
+#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
+  os << "XAie_LocType(col: " << std::to_string(loc.Col)
+     << ", row: " << std::to_string(loc.Row) << ")";
+  return os;
+}
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
+  os << "XAie_Lock(id: " << std::to_string(lock.LockId)
+     << ", val: " << std::to_string(lock.LockVal) << ")";
+  return os;
+}
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
+  os << "XAie_Packet(id: " << std::to_string(packet.PktId)
+     << ", type: " << std::to_string(packet.PktType) << ")";
+  return os;
+}
+
 // So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
 // }
 static_assert(XAIE_OK == 0);
 
 #define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       report_fatal_error(llvm::Twine(#API " failed with ") +                   \
                          AIERCTOSTR.at(r));                                    \
@@ -121,14 +160,18 @@ static_assert(XAIE_OK == 0);
 
 #define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
   } while (0)
 
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__)) {                                           \
       llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
       return failure();                                                        \
@@ -158,6 +201,129 @@ auto ps = std::filesystem::path::preferred_separator;
 #define PARTITION_NUM_COLS 1
 
 namespace xilinx::AIE {
+
+LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
+                                      const AIETargetModel &targetModel,
+                                      XAie_LocType &tileLoc) {
+  assert(!block.getOps<UseLockOp>().empty() &&
+         "expected use_lock op in bb with dma_db op");
+  std::optional<int> acqValue, relValue, acqLockId, relLockId;
+  // switch (lock->getAc)
+  for (auto op : block.getOps<UseLockOp>()) {
+    // Only dyn_cast if you are going to check if it was of the type
+    // expected; if you aren't checking use cast instead as it will at
+    // least assert in debug mode with an easier to understand error than
+    // dereferencing.
+    LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+    switch (op.getAction()) {
+    case LockAction::Acquire:
+    case LockAction::AcquireGreaterEqual:
+      acqLockId = lock.getLockIDValue();
+      acqValue = op.getLockValue();
+      if (op.acquireGE())
+        acqValue.value() = -acqValue.value();
+      break;
+    case LockAction::Release:
+      relLockId = lock.getLockIDValue();
+      relValue = op.getLockValue();
+      break;
+    }
+  }
+
+  assert(acqValue && relValue && acqLockId && relLockId &&
+         "expected both use_lock(acquire) and use_lock(release) with bd");
+
+  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+    if (acqLockId)
+      acqLockId.value() += ACQ_LOCK_ID_INCR;
+    if (relLockId)
+      relLockId.value() += REL_LOCK_ID_INCR;
+  }
+
+  auto acqLockInit = XAie_LockInit(acqLockId.value(), acqValue.value());
+  auto relLockIinit = XAie_LockInit(relLockId.value(), relValue.value());
+  TRY_XAIE_API_EMIT_ERROR((*block.getOps<UseLockOp>().begin()), XAie_DmaSetLock,
+                          &dmaTileBd, acqLockInit, relLockIinit);
+  return success();
+}
+
+LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
+                                 Block &block,
+                                 const AIETargetModel &targetModel,
+                                 XAie_LocType &tileLoc, int bdNum,
+                                 std::optional<int> nextBdNum) {
+  assert(!block.getOps<DMABDOp>().empty() && "expected bd ops in block");
+
+  std::optional<int> packetType;
+  std::optional<int> packetID;
+  auto maybePacketOps = block.getOps<DMABDPACKETOp>();
+  if (!maybePacketOps.empty()) {
+    assert(llvm::range_size(maybePacketOps) == 1 &&
+           "expected only one dma_bd_packet");
+    auto packetOp = *maybePacketOps.begin();
+    packetType = packetOp.getPacketType();
+    packetID = packetOp.getPacketID();
+  }
+
+  // deref here because this is a const iter and the various getters below
+  // aren't const (even though they probably should be...)
+  auto bdOp = *block.getOps<DMABDOp>().begin();
+  // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+  ShapedType bufferType = bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
+  int bytesA = bufferType.getElementTypeBitWidth() / 8;
+  auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+  assert(bufferOp.getAddress().has_value() && "buffer must have address");
+
+  int baseAddrA = bufferOp.getAddress().value();
+  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
+    baseAddrA += BASE_ADDR_A_INCR;
+
+  std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
+  if (!dims) {
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
+                            baseAddrA + bdOp.getOffsetValue(),
+                            bdOp.getLenValue() * bytesA);
+  } else {
+    XAie_DmaTensor dmaTileBdTensor = {};
+    dmaTileBdTensor.NumDim = dims->size();
+    dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
+        calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
+    if (!dmaTileBdTensor.Dim)
+      return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
+    // TODO(max): rethink this?
+    for (size_t i = 0; i < dims->size(); i++) {
+      // Pass down dimensions in reverse order; in the MLIR, this allows
+      // us to specify step sizes/wraps in the same order as we would
+      // access a multi-dim C array, with the highest dimension first.
+      int j = dims->size() - i - 1;
+      // Assume AIE-ML architecture; we assert this above
+      // TODO(max): no we don't
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride(),
+                                             dims.value()[i].getSize()};
+    }
+    // TODO: Probably need special handling for NOC
+    // TODO: Might need to adjust step sizes / wraps by -1
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
+                            &dmaTileBdTensor, baseAddrA + bdOp.getOffsetValue(),
+                            bdOp.getLenValue() * bytesA);
+  }
+
+  if (nextBdNum)
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
+                            nextBdNum.value(),
+                            /* enableNextBd */ 1);
+
+  if (packetID) {
+    assert(packetType && "must have packetType with packetID");
+    TRY_XAIE_API_EMIT_ERROR(
+        bdOp, XAie_DmaSetPkt, &dmaTileBd,
+        XAie_PacketInit(packetID.value(), packetType.value()));
+  }
+  TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
+  TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &devInst, &dmaTileBd, tileLoc,
+                          bdNum);
+  return success();
+};
 
 struct AIEControl {
   XAie_Config configPtr;
@@ -234,229 +400,184 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult configureBdInBlock(Block &block,
-                                   const AIETargetModel &targetModel,
-                                   XAie_LocType &tileLoc, int bdNum,
-                                   std::optional<int> nextBdNum) {
-    assert(!block.getOps<UseLockOp>().empty() &&
-           "expected use_lock op in bb with dma_db op");
-    std::optional<int> acqValue, relValue, acqLockId, relLockId;
-    // switch (lock->getAc)
-    for (auto op : block.getOps<UseLockOp>()) {
-      // Only dyn_cast if you are going to check if it was of the type
-      // expected; if you aren't checking use cast instead as it will at
-      // least assert in debug mode with an easier to understand error than
-      // dereferencing.
-      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
-      switch (op.getAction()) {
-      case LockAction::Acquire:
-      case LockAction::AcquireGreaterEqual:
-        acqLockId = lock.getLockIDValue();
-        acqValue = op.getLockValue();
-        if (op.acquireGE())
-          acqValue.value() = -acqValue.value();
-        break;
-      case LockAction::Release:
-        relLockId = lock.getLockIDValue();
-        relValue = op.getLockValue();
-        break;
-      }
-    }
-
-    assert(acqValue && relValue && acqLockId && relLockId &&
-           "expected both use_lock(acquire) and use_lock(release) with bd");
-
-    std::optional<int> packetType;
-    std::optional<int> packetID;
-    auto maybePacketOps = block.getOps<DMABDPACKETOp>();
-    if (!maybePacketOps.empty()) {
-      assert(llvm::range_size(maybePacketOps) == 1 &&
-             "expected only one dma_bd_packet");
-      auto packetOp = *maybePacketOps.begin();
-      packetType = packetOp.getPacketType();
-      packetID = packetOp.getPacketID();
-    }
-
-    // deref here because this is a const iter and the various getters below
-    // aren't const (even though they probably should be...)
-    auto bdOp = *block.getOps<DMABDOp>().begin();
-    // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-    ShapedType bufferType =
-        bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
-    int bytesA = bufferType.getElementTypeBitWidth() / 8;
-    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
-    assert(bufferOp.getAddress().has_value() && "buffer must have address");
-    int baseAddrA = bufferOp.getAddress().value();
-    std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-      acqLockId.value() += ACQ_LOCK_ID_INCR;
-      relLockId.value() += REL_LOCK_ID_INCR;
-      baseAddrA += BASE_ADDR_A_INCR;
-    }
-
-    // TODO For now, we are going to name each dma desc with loc and bd
-    // which we assume is unique. This is strictly not enforced but in
-    // practice, this is true
-    XAie_DmaDesc dmaTileBd;
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaDescInit, &devInst, &dmaTileBd,
-                            tileLoc);
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetLock, &dmaTileBd,
-                            XAie_LockInit(acqLockId.value(), acqValue.value()),
-                            XAie_LockInit(relLockId.value(), relValue.value()));
-    if (!dims) {
-      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                              baseAddrA + bdOp.getOffset(),
-                              bdOp.getLen() * bytesA);
-    } else {
-      XAie_DmaTensor dmaTileBdTensor = {};
-      dmaTileBdTensor.NumDim = dims->size();
-      dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-          calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
-      if (!dmaTileBdTensor.Dim)
-        return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
-      // TODO(max): rethink this?
-      for (size_t i = 0; i < dims->size(); i++) {
-        // Pass down dimensions in reverse order; in the MLIR, this allows
-        // us to specify step sizes/wraps in the same order as we would
-        // access a multi-dim C array, with the highest dimension first.
-        int j = dims->size() - i - 1;
-        // Assume AIE-ML architecture; we assert this above
-        // TODO(max): no we don't
-        dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride(),
-                                               dims.value()[i].getSize()};
-      }
-      // TODO: Probably need special handling for NOC
-      // TODO: Might need to adjust step sizes / wraps by -1
-      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                              &dmaTileBdTensor, baseAddrA + bdOp.getOffset(),
-                              bdOp.getLen() * bytesA);
-    }
-
-    if (nextBdNum)
-      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
-                              nextBdNum.value(),
-                              /* enableNextBd */ 1);
-
-    if (packetID) {
-      assert(packetType && "must have packetType with packetID");
-      TRY_XAIE_API_EMIT_ERROR(
-          bdOp, XAie_DmaSetPkt, &dmaTileBd,
-          XAie_PacketInit(packetID.value(), packetType.value()));
-    }
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
-    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &devInst, &dmaTileBd,
-                            tileLoc, bdNum);
-    return success();
-  };
-
   LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
     for (auto tileOp : targetOp.getOps<TileOp>()) {
-      int col = tileOp.colIndex();
-      int row = tileOp.rowIndex();
+      auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &devInst,
-                                XAie_TileLoc(col, row));
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &devInst,
-                                XAie_TileLoc(col, row));
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &devInst, tileLoc);
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &devInst, tileLoc);
         // Set locks to zero
-        for (uint8_t l = 0; l < NUM_LOCKS; l++)
-          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue, &devInst,
-                                  XAie_TileLoc(col, row), XAie_LockInit(l, 0));
+        for (uint8_t l = 0; l < NUM_LOCKS; l++) {
+          auto locInit = XAie_LockInit(l, 0);
+          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue, &devInst, tileLoc,
+                                  locInit);
+        }
       }
     }
 
     // Set locks with explicit initializers
     for (auto lockOp : targetOp.getOps<LockOp>())
-      if (lockOp.getLockID() && lockOp.getInit())
-        TRY_XAIE_API_EMIT_ERROR(
-            lockOp, XAie_LockSetValue, &devInst,
-            XAie_TileLoc(lockOp.getTileOp().colIndex(),
-                         lockOp.getTileOp().rowIndex()),
-            XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit()));
-      else
+      if (lockOp.getLockID() && lockOp.getInit()) {
+        auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
+                                    lockOp.getTileOp().rowIndex());
+        auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
+        TRY_XAIE_API_EMIT_ERROR(lockOp, XAie_LockSetValue, &devInst, tileLoc,
+                                locInit);
+      } else
         LLVM_DEBUG(llvm::dbgs()
                    << "lock op missing either id or init" << lockOp << "\n");
 
-    auto pushToBdQueueAndEnable = [this](Operation &op, XAie_LocType &tileLoc,
-                                         int chNum, DMAChannelDir &channelDir,
-                                         int bdNum) -> LogicalResult {
-      TRY_XAIE_API_EMIT_ERROR(
-          op, XAie_DmaChannelPushBdToQueue, &devInst, tileLoc, chNum,
-          // TODO hack until physical dialect changes
-          channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S, bdNum);
-      TRY_XAIE_API_EMIT_ERROR(
-          op, XAie_DmaChannelEnable, &devInst, tileLoc, chNum,
-          // TODO hack until physical dialect changes
-          channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S);
+    auto pushToBdQueueAndEnable =
+        [this](Operation &op, XAie_LocType &tileLoc, int chNum,
+               const DMAChannelDir &channelDir, int bdNum) -> LogicalResult {
+      XAie_DmaDirection direction =
+          channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelPushBdToQueue, &devInst,
+                              tileLoc, chNum,
+                              // TODO hack until physical dialect changes
+                              direction, bdNum);
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc,
+                              chNum,
+                              // TODO hack until physical dialect changes
+                              direction);
       return success();
     };
 
     const AIETargetModel &targetModel = targetOp.getTargetModel();
+    auto isOddBd = [&targetModel](int col, int row, int channelIndex) {
+      return targetModel.isMemTile(col, row) && channelIndex & 1;
+    };
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
       auto tileLoc = XAie_TileLoc(col, row);
+      DenseMap<Block *, int> blockBdNumMap;
 
-      DenseMap<Block *, int> blockMap;
-      DenseMap<Block *, int> channelMap;
-
-      for (Block &block : memOp.getOperation()->getRegion(0))
-        for (auto op : block.getOps<DMAStartOp>()) {
-          int chNum = op.getChannelIndex();
-          channelMap[&block] = chNum;
-          Block *dest = op.getDest();
-          while (dest) {
-            channelMap[dest] = chNum;
-            if (dest->hasNoSuccessors())
-              break;
-            dest = dest->getSuccessors()[0];
-            if (channelMap.count(dest))
-              dest = nullptr;
+      // handle DMA ops separately
+      auto dmaOps = llvm::to_vector_of<DMAOp>(
+          memOp.getOperation()->getRegion(0).getOps<DMAOp>());
+      if (!dmaOps.empty()) {
+        int oddBdNum = ODD_BD_NUM_START;
+        int evenBdNum = EVEN_BD_NUM_START;
+        for (auto dmaOp : dmaOps) {
+          auto bdRegions = dmaOp.getBds();
+          for (auto *bdRegionIt = bdRegions.begin();
+               bdRegionIt != bdRegions.end();) {
+            auto &block = bdRegionIt->getBlocks().front();
+            blockBdNumMap[&block] = isOddBd(col, row, dmaOp.getChannelIndex())
+                                        ? oddBdNum++
+                                        : evenBdNum++;
+            std::optional<int> nextBdNum;
+            if (++bdRegionIt != bdRegions.end()) {
+              nextBdNum = isOddBd(col, row, dmaOp.getChannelIndex())
+                              ? oddBdNum
+                              : evenBdNum;
+            } else if (dmaOp.getLoop()) {
+              assert(blockBdNumMap.contains(
+                  &bdRegions.front().getBlocks().front()));
+              nextBdNum = blockBdNumMap[&bdRegions.front().getBlocks().front()];
+            }
+            assert(blockBdNumMap.contains(&block));
+            XAie_DmaDesc dmaTileBd;
+            TRY_XAIE_API_EMIT_ERROR(dmaOp, XAie_DmaDescInit, &devInst,
+                                    &dmaTileBd, tileLoc);
+            if (!block.getOps<UseLockOp>().empty() &&
+                failed(configureLocksInBdBlock(dmaTileBd, block, targetModel,
+                                               tileLoc)))
+              return failure();
+            if (!block.getOps<DMABDOp>().empty() &&
+                failed(configureBdInBlock(devInst, dmaTileBd, block,
+                                          targetModel, tileLoc,
+                                          blockBdNumMap[&block], nextBdNum)))
+              return failure();
           }
         }
+      } else {
+        DenseMap<Block *, int> blockChannelMap;
+        // Assign each block a BD number
+        for (Block &block : memOp.getOperation()->getRegion(0))
+          for (auto op : block.getOps<DMAStartOp>()) {
+            int chNum = op.getChannelIndex();
+            blockChannelMap[&block] = chNum;
+            Block *dest = op.getDest();
+            while (dest) {
+              blockChannelMap[dest] = chNum;
+              if (dest->hasNoSuccessors())
+                break;
+              dest = dest->getSuccessors()[0];
+              if (blockChannelMap.contains(dest))
+                dest = nullptr;
+            }
+          }
 
-      // Assign each block a BD number
-      int evenBdNum = EVEN_BD_NUM_START;
-      int oddBdNum = ODD_BD_NUM_START;
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
-          continue;
-        assert(channelMap.count(&block));
-        if (targetModel.isMemTile(col, row) && (channelMap[&block] & 1))
-          blockMap[&block] = oddBdNum++;
-        else
-          blockMap[&block] = evenBdNum++;
-      }
-
-      for (Block &block : memOp.getOperation()->getRegion(0)) {
-        if (block.getOps<DMABDOp>().empty())
-          continue;
-        int bdNum = blockMap[&block];
-
-        std::optional<int> nextBdNum;
-        if (block.getNumSuccessors()) {
-          assert(llvm::range_size(block.getSuccessors()) == 1 &&
-                 "should have only one successor block");
-          Block *nextBlock = block.getSuccessor(0);
-          nextBdNum = blockMap[nextBlock];
+        // Assign each block a BD number
+        int evenBdNum = EVEN_BD_NUM_START;
+        int oddBdNum = ODD_BD_NUM_START;
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          if (block.getOps<DMABDOp>().empty())
+            continue;
+          assert(blockChannelMap.count(&block));
+          if (isOddBd(col, row, blockChannelMap[&block]))
+            blockBdNumMap[&block] = oddBdNum++;
+          else
+            blockBdNumMap[&block] = evenBdNum++;
         }
 
-        if (failed(configureBdInBlock(block, targetModel, tileLoc, bdNum,
-                                      nextBdNum)))
-          return failure();
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          if (block.getOps<DMABDOp>().empty())
+            continue;
+          assert(blockBdNumMap.contains(&block));
+          int bdNum = blockBdNumMap[&block];
+
+          std::optional<int> nextBdNum;
+          if (block.getNumSuccessors()) {
+            assert(llvm::range_size(block.getSuccessors()) == 1 &&
+                   "should have only one successor block");
+            Block *nextBlock = block.getSuccessor(0);
+            if (!blockBdNumMap.contains(nextBlock))
+              assert(nextBlock->getOperations().size() == 1 &&
+                     isa<EndOp>(nextBlock->getOperations().front()) &&
+                     "bb that's not in blockMap can only have aie.end");
+            else
+              nextBdNum = blockBdNumMap[nextBlock];
+          }
+
+          XAie_DmaDesc dmaTileBd;
+          TRY_XAIE_API_EMIT_ERROR(memOp, XAie_DmaDescInit, &devInst, &dmaTileBd,
+                                  tileLoc);
+          if (!block.getOps<UseLockOp>().empty() &&
+              failed(configureLocksInBdBlock(dmaTileBd, block, targetModel,
+                                             tileLoc)))
+            return failure();
+          if (!block.getOps<DMABDOp>().empty() &&
+              failed(configureBdInBlock(devInst, dmaTileBd, block, targetModel,
+                                        tileLoc, bdNum, nextBdNum)))
+            return failure();
+        }
       }
 
-      for (Block &block : memOp.getOperation()->getRegion(0))
-        for (auto op : block.getOps<DMAStartOp>()) {
-          int bdNum = blockMap[op.getDest()];
-          int chNum = op.getChannelIndex();
-          auto channelDir = op.getChannelDir();
-          if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc, chNum,
-                                            channelDir, bdNum)))
+      if (!dmaOps.empty())
+        for (auto dmaOp : dmaOps) {
+          auto &block = dmaOp.getBds().front().getBlocks().front();
+          assert(blockBdNumMap.contains(&block));
+          if (failed(pushToBdQueueAndEnable(
+                  *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
+                  dmaOp.getChannelDir(), blockBdNumMap[&block])))
             return failure();
+        }
+      else
+        for (Block &block : memOp.getOperation()->getRegion(0)) {
+          for (auto op : block.getOps<DMAStartOp>()) {
+            assert(blockBdNumMap.contains(op.getDest()));
+            int bdNum = blockBdNumMap[op.getDest()];
+            int chNum = op.getChannelIndex();
+            auto channelDir = op.getChannelDir();
+            if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc,
+                                              chNum, channelDir, bdNum)))
+              return failure();
+          }
         }
     }
 
@@ -467,18 +588,18 @@ struct AIEControl {
       if (switchboxOp.rowIndex() == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
+        auto slvPortNum = 0;
+        auto mstrPortNum = 0;
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL,
-                                /*SlvPortNum*/ 0, SOUTH,
-                                /*MstrPortNum*/ 0);
+                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
         // configure DMA_<S2MM/MM2S>_<chNum>_Ctrl register
         for (int chNum = 0; chNum <= 1; ++chNum) {
           XAie_DmaChannelDesc dmaChannelDescInst;
+          auto controllerId = 0;
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelDescInit,
                                   &devInst, &dmaChannelDescInst, tileLoc);
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelSetControllerId,
-                                  &dmaChannelDescInst,
-                                  /*ControllerId*/ 0);
+                                  &dmaChannelDescInst, controllerId);
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaWriteChannel, &devInst,
                                   &dmaChannelDescInst, tileLoc, chNum,
                                   DMA_S2MM);
@@ -515,12 +636,12 @@ struct AIEControl {
           isdma = connectOp.getDestBundle() == WireBundle::South;
         // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
         isdma &= !connectOp->hasAttr("keep_pkt_header");
+        auto dropHeader =
+            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
             connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(),
-            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER,
-            arbiter, mask);
+            connectOp.destIndex(), dropHeader, arbiter, mask);
       }
 
       for (auto connectOp : b.getOps<PacketRulesOp>()) {
@@ -535,13 +656,13 @@ struct AIEControl {
               connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
               connectOp.sourceIndex());
+          auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
           TRY_XAIE_API_EMIT_ERROR(
               connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot,
-              XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0),
-              slotOp.maskInt(), msel, arbiter);
+              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
+              arbiter);
           slot++;
         }
       }
@@ -550,31 +671,27 @@ struct AIEControl {
     for (auto muxOp : targetOp.getOps<ShimMuxOp>()) {
       // NOTE ShimMux always connects from the south as directions are
       // defined relative to the tile stream switch.
+      auto tileLoc =
+          XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
       Block &b = muxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>()) {
         // demux!
         if (connectOp.getSourceBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableAieToShimDmaStrmPort,
-                                  &devInst,
-                                  XAie_TileLoc(muxOp.getTileOp().getCol(),
-                                               muxOp.getTileOp().getRow()),
-                                  connectOp.sourceIndex());
+                                  &devInst, tileLoc, connectOp.sourceIndex());
         // mux
         if (connectOp.getDestBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableShimDmaToAieStrmPort,
-                                  &devInst,
-                                  XAie_TileLoc(muxOp.getTileOp().getCol(),
-                                               muxOp.getTileOp().getRow()),
-                                  connectOp.destIndex());
+                                  &devInst, tileLoc, connectOp.destIndex());
       }
     }
 
     for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
       Block &b = switchboxOp.getConnections().front();
+      auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
-            switchboxOp, XAie_StrmConnCctEnable, &devInst,
-            XAie_TileLoc(switchboxOp.getCol(), 0),
+            switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
             connectOp.sourceIndex(),
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
@@ -585,14 +702,15 @@ struct AIEControl {
 
   LogicalResult addCoreEnableToCDO(DeviceOp &targetOp) {
     // Start execution of all the cores.
-    for (auto tileOp : targetOp.getOps<TileOp>())
+    for (auto tileOp : targetOp.getOps<TileOp>()) {
+      auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp())
-        TRY_XAIE_API_EMIT_ERROR(
-            targetOp, XAie_CoreEnable, &devInst,
-            XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex()));
+        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &devInst, tileLoc);
+    }
     return success();
   }
 };
+
 } // namespace xilinx::AIE
 
 void initializeCDOGenerator(byte_ordering endianness, bool axiDebug) {

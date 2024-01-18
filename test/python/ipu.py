@@ -1424,10 +1424,6 @@ def my_passthrough(module):
 # CHECK:    %objFifo_in1_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_in1_cons_buff_1"} : memref<8xi32>
 # CHECK:    %objFifo_out1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_0"} : memref<8xi32>
 # CHECK:    %objFifo_out1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_1"} : memref<8xi32>
-# CHECK:    %objFifo_in0_prod_lock = aie.lock(%tile_0_0, 0) {init = 0 : i32, sym_name = "objFifo_in0_prod_lock"}
-# CHECK:    %objFifo_in0_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_lock"}
-# CHECK:    %objFifo_out0_cons_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "objFifo_out0_cons_prod_lock"}
-# CHECK:    %objFifo_out0_cons_cons_lock = aie.lock(%tile_0_0, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_cons_lock"}
 # CHECK:    %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "objFifo_in0_cons_prod_lock"}
 # CHECK:    %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_cons_lock"}
 # CHECK:    %objFifo_out0_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "objFifo_out0_prod_lock"}
@@ -1657,9 +1653,8 @@ def add_one_using_dma(module):
         def core():
             c1_i32 = arith.constant(1)
             for i in range_(0, 8, 2):
-                # TODO(max): fix the ordering in the asm to match the ordering in the `ins`
-                aie.use_lock(objFifo_in1_cons_cons_lock, 1, AcquireGreaterEqual)
-                aie.use_lock(objFifo_out1_prod_lock, 1, AcquireGreaterEqual)
+                aie.use_lock(objFifo_in1_cons_cons_lock, AcquireGreaterEqual, value=1)
+                aie.use_lock(objFifo_out1_prod_lock, AcquireGreaterEqual, value=1)
 
                 for arg1 in range_(0, 8, 1):
                     v0 = memref.load(objFifo_in1_cons_buff_0, [arg1])
@@ -1667,11 +1662,11 @@ def add_one_using_dma(module):
                     memref.store(v1, objFifo_out1_buff_0, [arg1])
                     yield_([])
 
-                aie.use_lock(objFifo_in1_cons_prod_lock, 1, Release)
-                aie.use_lock(objFifo_out1_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in1_cons_prod_lock, Release, value=1)
+                aie.use_lock(objFifo_out1_cons_lock, Release, value=1)
 
-                aie.use_lock(objFifo_in1_cons_cons_lock, 1, AcquireGreaterEqual)
-                aie.use_lock(objFifo_out1_prod_lock, 1, AcquireGreaterEqual)
+                aie.use_lock(objFifo_in1_cons_cons_lock, AcquireGreaterEqual, value=1)
+                aie.use_lock(objFifo_out1_prod_lock, AcquireGreaterEqual, value=1)
 
                 for arg1 in range_(0, 8, 1):
                     v0 = memref.load(objFifo_in1_cons_buff_1, [arg1])
@@ -1679,8 +1674,8 @@ def add_one_using_dma(module):
                     memref.store(v1, objFifo_out1_buff_1, [arg1])
                     yield_([])
 
-                aie.use_lock(objFifo_in1_cons_prod_lock, 1, Release)
-                aie.use_lock(objFifo_out1_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in1_cons_prod_lock, Release, value=1)
+                aie.use_lock(objFifo_out1_cons_lock, Release, value=1)
 
                 yield_([])
 
@@ -1719,50 +1714,50 @@ def add_one_using_dma(module):
         def memtile_dma_0_1():
             bb1, bb3 = aie.dma_start(S2MM, 0)
             with bb(bb1):  # 2 preds: bb0, bb2
-                aie.use_lock(objFifo_in0_cons_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in0_cons_buff_0, 0, 16)
-                aie.use_lock(objFifo_in0_cons_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in0_cons_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in0_cons_buff_0, offset=0, len=16)
+                aie.use_lock(objFifo_in0_cons_cons_lock, Release, value=1)
                 bb2 = aie.next_bd()
             with bb(bb2):  # pred: bb1
-                aie.use_lock(objFifo_in0_cons_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in0_cons_buff_1, 0, 16)
-                aie.use_lock(objFifo_in0_cons_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in0_cons_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in0_cons_buff_1, offset=0, len=16)
+                aie.use_lock(objFifo_in0_cons_cons_lock, Release, value=1)
                 aie.next_bd(bb1)
             with bb(bb3):  # pred: bb0
                 bb4, bb6 = aie.dma_start(MM2S, 0)
             with bb(bb4):  # 2 preds: bb3, bb5
-                aie.use_lock(objFifo_in0_cons_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in0_cons_buff_0, 0, 16)
-                aie.use_lock(objFifo_in0_cons_prod_lock, 1, Release)
+                aie.use_lock(objFifo_in0_cons_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in0_cons_buff_0, offset=0, len=16)
+                aie.use_lock(objFifo_in0_cons_prod_lock, Release, value=1)
                 bb5 = aie.next_bd()
             with bb(bb5):  # pred: bb4
-                aie.use_lock(objFifo_in0_cons_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in0_cons_buff_1, 0, 16)
-                aie.use_lock(objFifo_in0_cons_prod_lock, 1, Release)
+                aie.use_lock(objFifo_in0_cons_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in0_cons_buff_1, offset=0, len=16)
+                aie.use_lock(objFifo_in0_cons_prod_lock, Release, value=1)
                 aie.next_bd(bb4)
             with bb(bb6):  # pred: bb3
                 bb7, bb9 = aie.dma_start(MM2S, 1)
             with bb(bb7):  # 2 preds: bb6, bb8
-                aie.use_lock(objFifo_out0_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out0_buff_0, 0, 16)
-                aie.use_lock(objFifo_out0_prod_lock, 1, Release)
+                aie.use_lock(objFifo_out0_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out0_buff_0, offset=0, len=16)
+                aie.use_lock(objFifo_out0_prod_lock, Release, value=1)
                 bb8 = aie.next_bd()
             with bb(bb8):  # pred: bb7
-                aie.use_lock(objFifo_out0_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out0_buff_1, 0, 16)
-                aie.use_lock(objFifo_out0_prod_lock, 1, Release)
+                aie.use_lock(objFifo_out0_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out0_buff_1, offset=0, len=16)
+                aie.use_lock(objFifo_out0_prod_lock, Release, value=1)
                 aie.next_bd(bb7)
             with bb(bb9):  # pred: bb6
                 bb10, bb12 = aie.dma_start(S2MM, 1)
             with bb(bb10):  # 2 preds: bb9, bb11
-                aie.use_lock(objFifo_out0_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out0_buff_0, 0, 16)
-                aie.use_lock(objFifo_out0_cons_lock, 1, Release)
+                aie.use_lock(objFifo_out0_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out0_buff_0, offset=0, len=16)
+                aie.use_lock(objFifo_out0_cons_lock, Release, value=1)
                 bb11 = aie.next_bd()
             with bb(bb11):  # pred: bb10
-                aie.use_lock(objFifo_out0_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out0_buff_1, 0, 16)
-                aie.use_lock(objFifo_out0_cons_lock, 1, Release)
+                aie.use_lock(objFifo_out0_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out0_buff_1, offset=0, len=16)
+                aie.use_lock(objFifo_out0_cons_lock, Release, value=1)
                 aie.next_bd(bb10)
             with bb(bb12):  # pred: bb9
                 aie.end()
@@ -1773,26 +1768,26 @@ def add_one_using_dma(module):
         def mem_0_2():
             bb1, bb3 = aie.dma_start(S2MM, 0)
             with bb(bb1):  # 2 preds: bb0, bb2
-                aie.use_lock(objFifo_in1_cons_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in1_cons_buff_0, 0, 8)
-                aie.use_lock(objFifo_in1_cons_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in1_cons_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in1_cons_buff_0, offset=0, len=8)
+                aie.use_lock(objFifo_in1_cons_cons_lock, Release, value=1)
                 bb2 = aie.next_bd()
             with bb(bb2):  # pred: bb1
-                aie.use_lock(objFifo_in1_cons_prod_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_in1_cons_buff_1, 0, 8)
-                aie.use_lock(objFifo_in1_cons_cons_lock, 1, Release)
+                aie.use_lock(objFifo_in1_cons_prod_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_in1_cons_buff_1, offset=0, len=8)
+                aie.use_lock(objFifo_in1_cons_cons_lock, Release, value=1)
                 aie.next_bd(bb1)
             with bb(bb3):  # pred: bb0
                 bb4, bb6 = aie.dma_start(MM2S, 0)
             with bb(bb4):  # 2 preds: bb3, bb5
-                aie.use_lock(objFifo_out1_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out1_buff_0, 0, 8)
-                aie.use_lock(objFifo_out1_prod_lock, 1, Release)
+                aie.use_lock(objFifo_out1_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out1_buff_0, offset=0, len=8)
+                aie.use_lock(objFifo_out1_prod_lock, Release, value=1)
                 bb5 = aie.next_bd()
             with bb(bb5):  # pred: bb4
-                aie.use_lock(objFifo_out1_cons_lock, 1, AcquireGreaterEqual)
-                aie.dma_bd(objFifo_out1_buff_1, 0, 8)
-                aie.use_lock(objFifo_out1_prod_lock, 1, Release)
+                aie.use_lock(objFifo_out1_cons_lock, AcquireGreaterEqual, value=1)
+                aie.dma_bd(objFifo_out1_buff_1, offset=0, len=8)
+                aie.use_lock(objFifo_out1_prod_lock, Release, value=1)
                 aie.next_bd(bb4)
             with bb(bb6):  # pred: bb3
                 aie.end()

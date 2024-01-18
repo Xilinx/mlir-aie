@@ -20,7 +20,7 @@ from .._mlir_libs._aie import (
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
-from ..extras.util import Successor, get_user_code_loc
+from ..extras.util import Successor, get_user_code_loc, region_adder
 from ..ir import (
     ArrayAttr,
     Attribute,
@@ -126,11 +126,6 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
-
-
-@register_attribute_builder("MemRefTypeAttr")
-def _memref_type_attr(x, context):
-    return _typeAttr(x, context)
 
 
 #### AIE Wrappers ####
@@ -239,6 +234,26 @@ shim_dma = region_op(
 memtile_dma = region_op(
     lambda tile, *, loc=None, ip=None: MemTileDMAOp(T.index(), tile, loc=loc, ip=ip)
 )
+
+
+@region_op
+def dma(channel_dir, channel_index, *, num_bds=1, loop=None, loc=None, ip=None):
+    return DMAOp(
+        valid=T.bool(),
+        channelDir=channel_dir,
+        channelIndex=channel_index,
+        num_bds=num_bds,
+        loop=loop,
+        loc=loc,
+        ip=ip,
+    )
+
+
+@region_adder()
+def another_bd(dma_op):
+    for r in dma_op.regions:
+        if len(r.blocks[0].operations) == 0:
+            return r
 
 
 @_cext.register_operation(_Dialect, replace=True)
