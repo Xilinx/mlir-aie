@@ -28,8 +28,6 @@ aie.device(ipu) {
   %tile15 = aie.tile(1, 5)
 
 
-
-
   %rtp2 = aie.buffer(%tile02) {sym_name = "rtp2"} : memref<16xi32>
   %rtp3 = aie.buffer(%tile03) {sym_name = "rtp3"} : memref<16xi32>
   %rtp4 = aie.buffer(%tile04) {sym_name = "rtp4"} : memref<16xi32>
@@ -622,7 +620,7 @@ aie.device(ipu) {
       aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<35840xi32>
       aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<35840xi32>
 
-      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      aiex.ipu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
 
