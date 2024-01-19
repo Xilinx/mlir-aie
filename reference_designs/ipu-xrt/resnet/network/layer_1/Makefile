@@ -2,6 +2,8 @@ include ../../../makefile-common
 
 # mlirFileName = aieDemo2x
 mlirFileName = aieFinalx2
+# mlirFileName = aieFinalx2_inverted
+
 # mlirFileName = aieFinalx1+conv1
 # mlirFileName = aieFinalx1+conv1_conv3
 
