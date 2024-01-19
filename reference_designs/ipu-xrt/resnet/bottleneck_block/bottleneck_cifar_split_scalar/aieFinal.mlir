@@ -45,7 +45,7 @@ aie.device(ipu) {
   
   func.func private @conv2dk1_i8(memref<32x1x256xi8>, memref<16384xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
   func.func private @conv2dk3_ui8(memref<32x1x64xui8>,memref<32x1x64xui8>, memref<32x1x64xui8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
-  func.func private @conv2dk1_skip_i8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xi8>,i32,i32,i32,i32,i32) -> ()
+  func.func private @conv2dk1_skip_ui8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xi8>,i32,i32,i32,i32,i32) -> ()
   
   // 1x1 conv
   aie.core(%tile02) {
@@ -82,7 +82,7 @@ aie.device(ipu) {
       aie.objectfifo.release @wts_buf_00(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_i8.o" }
+  } { link_with="conv2dk1.o" }
 
   // 3x3 conv
   aie.core(%tile03) {
@@ -165,7 +165,7 @@ aie.device(ipu) {
     }
       // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
     aie.end
-  } { link_with="conv2dk3_ui8.o" }
+  } { link_with="conv2dk3.o" }
 
  // 3x3 conv
   aie.core(%tile04) {
@@ -247,7 +247,7 @@ aie.device(ipu) {
        }
       aie.end
    
-  } { link_with="conv2dk3_ui8.o" }
+  } { link_with="conv2dk3.o" }
      // 1x1 conv with skip
   aie.core(%tile05) {
     %c0 = arith.constant 0 : index
@@ -284,7 +284,7 @@ aie.device(ipu) {
 
         
         // %skip_scale = arith.constant 0 : i32
-        func.call @conv2dk1_skip_i8(%elemIn0,%elemIn1,%elemWts, %elemOut0,%elemSkip,%x_dim,%ci,%co,%scale,%skip_scale) : (memref<32x1x32xui8>,memref<32x1x32xui8>,  memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xi8>,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk1_skip_ui8(%elemIn0,%elemIn1,%elemWts, %elemOut0,%elemSkip,%x_dim,%ci,%co,%scale,%skip_scale) : (memref<32x1x32xui8>,memref<32x1x32xui8>,  memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xi8>,i32,i32,i32,i32,i32) -> ()
 
         aie.objectfifo.release @outOFL2L3(Produce, 1)
         aie.objectfifo.release @act_3_5(Consume, 1)
@@ -295,7 +295,7 @@ aie.device(ipu) {
       aie.objectfifo.release @wts_buf_02(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_skip_i8.o" }
+  } { link_with="conv2dk1_skip.o" }
  
   func.func @sequence(%in0 : memref<65536xi32>, %wts0 : memref<17408xi32>, %out : memref<65536xi32>) {
     aiex.ipu.rtp_write(0, 2, 0,  10) { buffer_sym_name = "rtp2" }  // scale 11 || 6
