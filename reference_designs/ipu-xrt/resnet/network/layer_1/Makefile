@@ -1,11 +1,6 @@
 include ../../../makefile-common
 
-# mlirFileName = aieDemo2x
-mlirFileName = aieFinalx2
-# mlirFileName = aieFinalx2_inverted
-
-# mlirFileName = aieFinalx1+conv1
-# mlirFileName = aieFinalx1+conv1_conv3
+mlirFileName = aieFinal
 
 all: build/conv2dk1.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
 VPATH := ../../kernels
