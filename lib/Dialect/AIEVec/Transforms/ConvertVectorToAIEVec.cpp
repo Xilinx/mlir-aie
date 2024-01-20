@@ -60,7 +60,7 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
 
     SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
     auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
-    rewriter.updateRootInPlace(writeOrReadOp, [&]() {
+    rewriter.modifyOpInPlace(writeOrReadOp, [&]() {
       writeOrReadOp->setAttr(writeOrReadOp.getInBoundsAttrName(), inBoundsAttr);
     });
     return success();
