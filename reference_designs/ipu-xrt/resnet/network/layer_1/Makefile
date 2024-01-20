@@ -7,26 +7,26 @@ mlirFileName = aieFinalx2
 # mlirFileName = aieFinalx1+conv1
 # mlirFileName = aieFinalx1+conv1_conv3
 
-all: build/conv2dk1_init_i8.o build/conv2dk1_skip_init_i8.o build/conv2dk3_ui8.o build/conv2dk1_ui8.o build/conv2dk1_skip_ui8.o build/final.xclbin
+all: build/conv2dk1.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
 VPATH := ../../kernels
 
 insts.txt: ${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=$@ $<
 
-build/conv2dk1_init_i8.o: scalar_conv2dk1_init_i8.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+build/conv2dk1.o: conv2dk1.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -INT8_ACT -c $< -o $@
 
-build/conv2dk3_ui8.o: scalar_conv2dk3_ui8.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+build/conv2dk3.o: conv2dk3.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -UINT8_ACT -c $< -o $@
 
-build/conv2dk1_skip_init_i8.o: scalar_conv2dk1_skip_init_i8.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -INT8_ACT -c $< -o $@
 
-build/conv2dk1_ui8.o: scalar_conv2dk1_ui8.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+build/conv2dk1.o: conv2dk1.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -UINT8_ACT -c $< -o $@
 
-build/conv2dk1_skip_ui8.o: scalar_conv2dk1_skip_ui8.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -c $< -o $@
+build/conv2dk1_skip.o: conv2dk1_skip.cc
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -UINT8_ACT -c $< -o $@
 
 build/final.xclbin: ${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \

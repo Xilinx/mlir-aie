@@ -36,7 +36,7 @@ module {
   aie.objectfifo @outOFL2L3(%tile01, {%tile00}, 2 : i32) : !aie.objectfifo<memref<4096xui8>> //2048
   aie.objectfifo.link[@out_02_L2]-> [@outOFL2L3] ()
 
-  func.func private @conv2dk1(memref<2048xi8>, memref<4096xi8>, memref<2048xui8>,i32,i32,i32,i32) -> ()
+  func.func private @conv2dk1_i8(memref<2048xi8>, memref<4096xi8>, memref<2048xui8>,i32,i32,i32,i32) -> ()
 
   // 1x1 conv
   aie.core(%tile02) {
@@ -64,7 +64,7 @@ module {
         %elemOut0 = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<2048xui8>> -> memref<2048xui8>
 
         
-        func.call @conv2dk1(%elemIn,%elemWts,  %elemOut0,%x_dim,%ci,%co,%scale) : (memref<2048xi8>,memref<4096xi8>, memref<2048xui8>,i32,i32,i32,i32) -> ()
+        func.call @conv2dk1_i8(%elemIn,%elemWts,  %elemOut0,%x_dim,%ci,%co,%scale) : (memref<2048xi8>,memref<4096xi8>, memref<2048xui8>,i32,i32,i32,i32) -> ()
 
         aie.objectfifo.release @act_L2_02(Consume, 1)
         aie.objectfifo.release @out_02_L2(Produce, 1)

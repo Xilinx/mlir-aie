@@ -71,7 +71,7 @@ aie.device(ipu) {
   aie.objectfifo @outOFL2L3(%tile15, {%tile10}, 1 : i32) : !aie.objectfifo<memref<32x1x64xui8>> //32x1x64
  
   
-  func.func private @conv2dk1_init_i8(memref<32x1x64xi8>, memref<4096xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
+  func.func private @conv2dk1_i8(memref<32x1x64xi8>, memref<4096xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
   func.func private @conv2dk3_ui8(memref<32x1x64xui8>,memref<32x1x64xui8>, memref<32x1x64xui8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
   func.func private @conv2dk1_skip_init_i8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32768xi8>,memref<32x1x256xui8>,memref<32x1x64xi8>,i32,i32,i32,i32,i32,i32,i32) -> ()
   func.func private @conv2dk1_ui8(memref<32x1x256xui8>, memref<16384xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
@@ -111,7 +111,7 @@ aie.device(ipu) {
       aie.objectfifo.release @wts_buf_00(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_init_i8.o" }
+  } { link_with="conv2dk1.o" }
 
   // 3x3 conv
   aie.core(%tile03) {
@@ -194,7 +194,7 @@ aie.device(ipu) {
     }
       // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
     aie.end
-  } { link_with="conv2dk3_ui8.o" }
+  } { link_with="conv2dk3.o" }
 
  // 3x3 conv
   aie.core(%tile04) {
@@ -276,7 +276,7 @@ aie.device(ipu) {
        }
       aie.end
    
-  } { link_with="conv2dk3_ui8.o" }
+  } { link_with="conv2dk3.o" }
      // 1x1 conv with skip
   aie.core(%tile05) {
     %c0 = arith.constant 0 : index
@@ -326,7 +326,7 @@ aie.device(ipu) {
       aie.objectfifo.release @wts_buf_02(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_skip_init_i8.o" }
+  } { link_with="conv2dk1_skip_init.o" }
  
   // ___________________________Bottleneck 2___________________________
            // 1x1 conv
@@ -364,7 +364,7 @@ aie.device(ipu) {
             aie.objectfifo.release @wts_buf_10(Consume, 1)
           }
           aie.end
-        } { link_with="conv2dk1_ui8.o" }
+        } { link_with="conv2dk1.o" }
 
 
   // func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<22528xi32>, %out : memref<65536xi32>) {

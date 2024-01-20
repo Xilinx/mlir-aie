@@ -41,7 +41,7 @@ aie.device(ipu) {
   // Final output OF
   aie.objectfifo @outOFL2L3(%tile05, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32x1x64xui8>> //32x1x64
   
-  func.func private @conv2dk3(memref<32x1x64xi8>,memref<32x1x64xi8>, memref<32x1x64xi8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+  func.func private @conv2dk3_i8(memref<32x1x64xi8>,memref<32x1x64xi8>, memref<32x1x64xi8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
   func.func private @pass_through(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32x1x64xui8>,i32,i32,i32) -> ()
 
   // 3x3 conv
@@ -84,7 +84,7 @@ aie.device(ipu) {
         
         
         
-        func.call @conv2dk3(%elemIn0,%elemIn0,%elemIn1,%elemWts, %elemOut,%x_dim,%ci,%co,%kx_dim,%ky_dim,%top,%scale,%co_offset  ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk3_i8(%elemIn0,%elemIn0,%elemIn1,%elemWts, %elemOut,%x_dim,%ci,%co,%kx_dim,%ky_dim,%top,%scale,%co_offset  ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
         
     
         aie.objectfifo.release @act_3_5(Produce, 1)
@@ -99,7 +99,7 @@ aie.device(ipu) {
           %subviewOut1 = aie.objectfifo.acquire @act_3_5(Produce, 1) : !aie.objectfifosubview<memref<32x1x32xui8>>
           %elemOut1 = aie.objectfifo.subview.access %subviewOut1[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>
        
-          func.call @conv2dk3(%elemIn1_0,%elemIn1_1,%elemIn1_2,%elemWts, %elemOut1,%x_dim,%ci,%co,%kx_dim,%ky_dim,%middle,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+          func.call @conv2dk3_i8(%elemIn1_0,%elemIn1_1,%elemIn1_2,%elemWts, %elemOut1,%x_dim,%ci,%co,%kx_dim,%ky_dim,%middle,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
 
           aie.objectfifo.release @act_3_5(Produce, 1)
           aie.objectfifo.release @act_buf(Consume, 1)
@@ -114,7 +114,7 @@ aie.device(ipu) {
         %elemOut2 = aie.objectfifo.subview.access %subviewOut2[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>
         
     
-        func.call @conv2dk3(%elemIn2_0,%elemIn2_1,%elemIn2_1,%elemWts, %elemOut2,%x_dim,%ci,%co,%kx_dim,%ky_dim,%bottom,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk3_i8(%elemIn2_0,%elemIn2_1,%elemIn2_1,%elemWts, %elemOut2,%x_dim,%ci,%co,%kx_dim,%ky_dim,%bottom,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
         
 
         aie.objectfifo.release @act_3_5(Produce, 1)
@@ -165,7 +165,7 @@ aie.device(ipu) {
         %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>
         
         
-        func.call @conv2dk3(%elemIn0,%elemIn0,%elemIn1,%elemWts, %elemOut,%x_dim,%ci,%co,%kx_dim,%ky_dim,%top,%scale,%co_offset  ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk3_i8(%elemIn0,%elemIn0,%elemIn1,%elemWts, %elemOut,%x_dim,%ci,%co,%kx_dim,%ky_dim,%top,%scale,%co_offset  ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
         
     
         aie.objectfifo.release @act_4_5(Produce, 1)
@@ -180,7 +180,7 @@ aie.device(ipu) {
           %subviewOut1 = aie.objectfifo.acquire @act_4_5(Produce, 1) : !aie.objectfifosubview<memref<32x1x32xui8>>
           %elemOut1 = aie.objectfifo.subview.access %subviewOut1[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>
      
-        func.call @conv2dk3(%elemIn1_0,%elemIn1_1,%elemIn1_2,%elemWts, %elemOut1,%x_dim,%ci,%co,%kx_dim,%ky_dim,%middle,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk3_i8(%elemIn1_0,%elemIn1_1,%elemIn1_2,%elemWts, %elemOut1,%x_dim,%ci,%co,%kx_dim,%ky_dim,%middle,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
 
           aie.objectfifo.release @act_4_5(Produce, 1)
           aie.objectfifo.release @act_buf(Consume, 1)
@@ -195,7 +195,7 @@ aie.device(ipu) {
         %elemOut2 = aie.objectfifo.subview.access %subviewOut2[0] : !aie.objectfifosubview<memref<32x1x32xui8>> -> memref<32x1x32xui8>
         
    
-        func.call @conv2dk3(%elemIn2_0,%elemIn2_1,%elemIn2_1,%elemWts, %elemOut2,%x_dim,%ci,%co,%kx_dim,%ky_dim,%bottom,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
+        func.call @conv2dk3_i8(%elemIn2_0,%elemIn2_1,%elemIn2_1,%elemWts, %elemOut2,%x_dim,%ci,%co,%kx_dim,%ky_dim,%bottom,%scale,%co_offset ) : (memref<32x1x64xi8>, memref<32x1x64xi8>, memref<32x1x64xi8>, memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
         
 
         aie.objectfifo.release @act_4_5(Produce, 1)
