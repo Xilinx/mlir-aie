@@ -13,14 +13,14 @@
 ##===----------------------------------------------------------------------===##
 
 # The LLVM commit to use.
-LLVM_PROJECT_COMMIT=850f713e80426f1706c0d3dad143c330ca872d5d
-DATETIME=2024011316
+LLVM_PROJECT_COMMIT=0f80f5e362fb43a9335bd154c5f7976a96e32cfc
+DATETIME=2024012016
 WHEEL_VERSION=18.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
 
 ############################################################################################
 # The way to bump `LLVM_PROJECT_COMMIT`
-#   1. Find the hash you want (`git rev-parse --short=8 HEAD` or just copy paste from github);
-#   2. Go to mlir-aie github actions and launch an MLIR Distro workflow to build against that hash (see docs/Dev.md);
+#   1. (Optional) If you want a particular hash of LLVM, get it (`git rev-parse --short=8 HEAD` or just copy paste the short hash from github);
+#   2. Go to mlir-aie github actions and launch an MLIR Distro workflow to build LLVM wheels (see docs/Dev.md);
 #   3. Look under the Get latest LLVM commit job -> Get llvm-project commit step -> DATETIME;
 #   4. Record it here and push up a PR; the PR will fail until MLIR Distro workflow.
 ############################################################################################
