@@ -46,7 +46,7 @@ from aie.dialects.aie import (
     tile,
     translate_mlir_to_llvmir,
     aie_llvm_link,
-    dma_bd,
+    dma,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
 from aie.dialects.scf import for_
