@@ -192,7 +192,8 @@ class objectfifo(ObjectFifoCreateOp):
 class objectfifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(
+
+
         self,
         fifoIns,
         fifoOuts,
