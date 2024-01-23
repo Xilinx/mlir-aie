@@ -11,3 +11,2064 @@ switch is referred to as `switchbox` to avoid confusion with the
 
 [TOC]
 
+## Operations
+
+### `aie.amsel` (::xilinx::AIE::AMSelOp)
+
+_Declare an arbiter of a switchbox with a master select value (arbiter + msel)_
+
+
+Syntax:
+
+```
+operation ::= `aie.amsel` `<` $arbiterID `>` `(` $msel `)` attr-dict
+```
+
+A combination of arbiter ID and master select (msel) value.
+This op is used as a pointer to select the arbiter for routing a packet-switched flow
+
+Example:
+```
+    %a0_0 = aie.amsel<5>(3)
+    %m1 = aie.masterset("East" : 0, %a0_0 )
+    aie.packet_rules("South" : 0) {
+      aie.rule(0x1F, 0x10, %a0_0)
+    }
+```
+This code associates arbiter 5 with msel=3.  A packet-switched connection is made routing
+traffic from the South:0 port to the East:0 port using this arbiter.
+There are 6 arbiters per switchbox and 4 possible master select values.
+See also [MasterSetOp](#aiemasterset-aiemastersetop),
+[PacketRulesOp](#aiepacketrules-aiepacketrulesop), and
+[PacketRuleOp](#aierule-aiepacketruleop) for more information.
+
+Traits: `HasParent<SwitchboxOp>`
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>arbiterID</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose minimum value is 0 whose maximum value is 5</td></tr>
+<tr><td><code>msel</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose minimum value is 0 whose maximum value is 3</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.buffer` (::xilinx::AIE::BufferOp)
+
+_Declare a buffer_
+
+
+Syntax:
+
+```
+operation ::= `aie.buffer` `(` $tile `)` attr-dict `:` type($buffer)
+```
+
+This operation instantiates a buffer that belongs to a Memory Module of a tile.
+
+Example:
+```
+  %tile33 = aie.tile(3, 3)
+  %buf = aie.buffer(%tile33) : memref<256xi64>
+```
+This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+Interfaces: `OpAsmOpInterface`, `TileElement`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `buffer` | memref of any type values
+
+
+### `aie.connect` (::xilinx::AIE::ConnectOp)
+
+_A circuit-switched connection inside a switchbox_
+
+
+Syntax:
+
+```
+operation ::= `aie.connect` `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
+```
+
+This operation represents a programmed circuit-switched connection in a stream switch.
+It associates a source bundle and source channel with a destination bundle and a destination channel.
+This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` operation.
+All of the `aie.connect` operations in a switchbox must have a different destinations.
+All of the `aie.connect` operations must also have a destination which is different from all
+of the `aie.masterset` operations in the same switchbox.
+
+Example:
+```
+%tile = aie.tile(1, 1)
+aie.switchbox(%tile) {
+  aie.connect<"West" : 0, "Core" : 1>
+}
+```
+
+Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+
+### `aie.core` (::xilinx::AIE::CoreOp)
+
+_Declare a core module_
+
+
+Syntax:
+
+```
+operation ::= `aie.core` `(` $tile `)` regions attr-dict
+```
+
+This operation represents an AIEngine processor core belonging to a tile.
+The region of a CoreOp contains code that gets run on the AIE core.  This code will
+typically be outlined into the LLVM dialect, eventually resulting in a binary file
+for each core.  The name of this file can be be specified using the `elf_file`
+attribute.
+
+This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
+reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
+are always stored in the local core memory, to avoid conflicts with static data allocations
+in other cores.
+
+Examples:
+```
+%tile = aie.tile(1, 1)
+%lock11_8 = aie.lock(%tile, 8)
+aie.core(%tile) {
+  aie.use_lock(%lock11_8, "Acquire", 1)
+  aie.use_lock(%lock11_8, "Release", 0)
+  aie.end
+}
+```
+```
+%tile = aie.tile(3, 3)
+aie.core(%tile) {
+  aie.end
+} { stackSize = 2048 : i32, elf_file = "core_33.elf" }
+```
+
+Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>stackSize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.debug` (::xilinx::AIE::DebugOp)
+
+_Capture a value for debugging_
+
+
+Syntax:
+
+```
+operation ::= `aie.debug` `(` $arg `:` type($arg) `)` attr-dict
+```
+
+Output the given value for debugging.  This is primarily used for simulation.
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `arg` | any type
+
+
+### `aie.device` (::xilinx::AIE::DeviceOp)
+
+_Define an AIE design targetting a complete device_
+
+
+Syntax:
+
+```
+operation ::= `aie.device` `(` $device `)` regions attr-dict
+```
+
+This operation describes a design that executes on a particular AIEngine device.
+It exists at the toplevel of a design; although currently it does not replace the
+default toplevel module in MLIR, the intention is that this could be the case
+in the future.
+
+When using this operation, all resources in a physical device are available and
+the design does not need to be concerned with other potential users of a physical
+device.  In addition, within an `aie.device` operation, tile addresses are absolute
+coordinates and are not intended to describe a relocatable design.  To describe
+a portion of a device which may be relocatable, the intention would be to provide another
+operation, for instance maybe `aie.segment`.
+The design itself is described using a region of code contained by the device
+operation.
+
+Example:
+```
+aie.device(xcvc1902) {
+  %tile = aie.tile(1, 1)
+  %CORE = aie.core(%tile) { ... }
+}
+```
+
+Traits: `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `NoTerminator`, `SingleBlock`, `SymbolTable`
+
+Interfaces: `AIETarget`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td><details><summary>AIE Device</summary>{{% markdown %}}Enum cases:
+* xcvc1902 (`xcvc1902`)
+* xcve2302 (`xcve2302`)
+* xcve2802 (`xcve2802`)
+* ipu (`ipu`){{% /markdown %}}</details></td></tr>
+</table>
+
+
+### `aie.dma` (::xilinx::AIE::DMAOp)
+
+_An op to describe a set of DMA operations._
+
+
+Syntax:
+
+```
+operation ::= `aie.dma` `(` $channelDir `,` $channelIndex (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+```
+
+
+Traits: `HasParent<MemOp, MemTileDMAOp, ShimDMAOp>`, `NoTerminator`
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+* S2MM (`S2MM`)
+* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `valid` | 1-bit signless integer
+
+
+### `aie.dma_bd` (::xilinx::AIE::DMABDOp)
+
+_Declare a dma block descriptor op_
+
+
+Syntax:
+
+```
+operation ::= `aie.dma_bd` `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
+```
+
+This operation describes a block descriptor for DMA operations. In particular, it specifies
+what buffer addresss to use, the transfer length, and the buffer type (A or B).
+
+This operation must be used in an MLIR block that lives inside a MemOp's region.
+The block descriptor specifies what lock to use and the buffer configuration.
+
+Example:
+```
+  // this defines a BD that uses lock %lck0 and buffer %buf0
+  ^bd5:
+    aie.use_lock(%lck, "Acquire", 0)
+    aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+    aie.use_lock(%lck, "Release", 1)
+    br ^bd6 // point to the next Block, which is also a different Block Descriptor
+
+  ...
+
+  // this defines a BD that does not use any lock
+  ^bd8:
+    aie.dma_bd(<$buf1 : memref<64xi32>, 0, 64>, 0)
+```
+A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
+There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
+
+## DMA Data Layout Transformations on AIE-ML Devices
+
+AIE-ML devices can apply data layout transformations at the buffer
+descriptor level. These transformation are described by strides and sizes in up to three dimensions (four
+dimensions on memtiles). Strides and sizes can be supplied to the `dma_bd`
+through an optional argument, an array of tuples `<size, stride>`.
+
+The first element of this array gives the _highest-dimension_ stride and
+size, the last element of the array gives the lowest-dimension.
+
+Strides are always expressed in units of `i32`s; this is an architectural
+requirement, as data is moved by the DMA at this fundamental size.
+
+We can model the access pattern strides and sizes generate by a series of
+nested loops. In general, a set of strides and sizes like this...
+
+```
+[<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
+```
+
+...translates to an access pattern that can be epxressed like this:
+
+```
+int *buffer;  // i32
+for(int i = 0; i < size_2; i++)
+  for(int j = 0; j < size_1; j++)
+    for(int k = 0; k < size_0; k++)
+      // access/store element at/to buffer[  i * stride_2
+      //                                   + j * stride_1
+      //                                   + k * stride_0]
+```
+
+The following example shows an access pattern that corresponds to
+alternating between even and odd elements of the buffer/stream every 8
+elements:
+
+```
+aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+```
+
+implies
+
+```
+for(int i = 0; i < 8 /*size_2*/; i++)
+  for(int j = 0; j < 2 /*size_1*/; j++)
+    for(int k = 0; k < 8 /*size_0*/; k++)
+      // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
+```
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>len</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>dimensions</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `buffer` | memref of any type values
+
+
+### `aie.dma_bd_packet` (::xilinx::AIE::DMABDPACKETOp)
+
+_Enable packet headers for a dma block descriptor_
+
+
+Syntax:
+
+```
+operation ::= `aie.dma_bd_packet` `(` $packet_type `,` $packet_id `)` attr-dict
+```
+
+This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
+the packet type (3-bits) and packet ID (5-bits).
+
+This operation must be used in an MLIR block that lives inside a MemOp's region, and before aie.dma_bd.
+The block descriptor specifies what lock to use and the buffer configuration.
+
+Example:
+```
+  // this defines a BD that uses lock %lck0 and buffer %buf0
+  ^bd5:
+    aie.use_lock(%lck, "Acquire", 0)
+    aie.dma_bd_packet(0x4, 0xD)
+    aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+    aie.use_lock(%lck, "Release", 1)
+    br ^bd6 // point to the next Block, which is also a different Block Descriptor
+```
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>packet_type</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aie.dma_start` (::xilinx::AIE::DMAStartOp)
+
+_An op to start DMA_
+
+
+Syntax:
+
+```
+operation ::= `aie.dma_start` `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
+```
+
+This operation declares a DMA channel to be used for data transfer. It usually exists inside
+either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a MemTile),
+or in a ShimDMAOp (representing a ShimDMA).
+A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
+
+Example:
+```
+    aie.dma_start("MM2S", 0, ^bd0, ^end)
+  ^bd0:
+    aie.use_lock(%lock0, "Acquire", 0)
+    aie.dma_bd(%buffer : memref<16 x f32>, 0, 16)
+    aie.use_lock(%lock0, "Release", 1)
+    br ^bd0
+  ^end:
+    aie.end
+```
+
+Conceptually, the aie.dma_start operation is a terminator that either passes
+control to a basic block containing DMA operations (through its first successor)
+or to a basic block for another dma_start, to an aie.end operation.
+
+Traits: `HasParent<MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp>`, `Terminator`
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+* S2MM (`S2MM`)
+* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `valid` | 1-bit signless integer
+
+#### Successors:
+
+| Successor | Description |
+| :-------: | ----------- |
+| `dest` | any successor
+| `chain` | any successor
+
+
+### `aie.end` (::xilinx::AIE::EndOp)
+
+_End op_
+
+
+Syntax:
+
+```
+operation ::= `aie.end` attr-dict
+```
+
+A generic terminator operation for AIE ops' regions.
+
+Traits: `Terminator`
+
+
+### `aie.event` (::xilinx::AIE::EventOp)
+
+_Event instruction_
+
+
+Syntax:
+
+```
+operation ::= `aie.event` `(` $val `)` attr-dict
+```
+
+Event instruction.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1</td></tr>
+</table>
+
+
+### `aie.external_buffer` (::xilinx::AIE::ExternalBufferOp)
+
+_Declare a buffer in external memory_
+
+
+Syntax:
+
+```
+operation ::= `aie.external_buffer` attr-dict `:` type($buffer)
+```
+
+This operation represents a buffer that exists in some physical
+location in a device, most likely external memory. The exact address
+of the external buffer is passed by the mlir_aie_external_set_addr()
+and mlir_aie_external_set_addr_myBuffer_ functions in the associated
+.cpp test file.
+
+These external buffers are used within the buffer descriptors of a
+shim_dma, i.e., within AIE_DMABdOp operations of a AIE_ShimDMAOp.
+
+Example:
+```
+  %buf = aie.external_buffer : memref<256xi64>
+```
+This operation represents an external buffer.
+
+Interfaces: `OpAsmOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `buffer` | memref of any type values
+
+
+### `aie.flow` (::xilinx::AIE::FlowOp)
+
+_A logical circuit-switched connection between cores_
+
+
+Syntax:
+
+```
+operation ::= `aie.flow` `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+```
+
+The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
+`aie.tile` operations.  During routing, this is replaced by `aie.connect` operations which represent
+the programmed connections inside a switchbox, along with `aie.wire` operations which represent
+physical connections between switchboxes and other components.
+
+Example:
+```
+  %00 = aie.tile(0, 0)
+  %11 = aie.tile(1, 1)
+  %01 = aie.tile(0, 1)
+  aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+```
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | index
+| `dest` | index
+
+
+### `aie.get_cascade` (::xilinx::AIE::GetCascadeOp)
+
+_An op to read from a cascading stream from a neighboring core_
+
+
+Syntax:
+
+```
+operation ::= `aie.get_cascade` `(` `)` attr-dict `:` type($cascadeValue)
+```
+
+An op to read from a cascading stream from a neighboring core.
+The result type of this operation must have a size that matches the cascade size,
+which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
+
+Traits: `HasParent<CoreOp>`
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `cascadeValue` | any type
+
+
+### `aie.get_stream` (::xilinx::AIE::GetStreamOp)
+
+_An op to read from a stream channel/port of a switchbox_
+
+
+Syntax:
+
+```
+operation ::= `aie.get_stream` `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
+```
+
+An op to read from a stream channel/port of a switchbox.
+
+Traits: `HasParent<CoreOp>`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `channel` | integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+
+
+### `aie.lock` (::xilinx::AIE::LockOp)
+
+_Declare a physical lock_
+
+
+Syntax:
+
+```
+operation ::= `aie.lock` `(` $tile (`,` $lockID^ )? `)` attr-dict
+```
+
+This operation creates a physical lock. For this operation the lockID variable is optional.
+However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass.
+
+Example:
+```
+  %tile33 = aie.tile(3, 3)
+  %lck = aie.lock(%tile33, 7)
+```
+This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
+Case when LockID is not assigned:
+  Before AIEAssignLockIDs: %tile33 = aie.tile(3)
+  After AIEAssignLockIDs: %tile33 = aie.tile(3, $assigned_value)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`, `TileElement`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>lockID</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>init</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.masterset` (::xilinx::AIE::MasterSetOp)
+
+_Packet switched input connection_
+
+
+Syntax:
+
+```
+operation ::= `aie.masterset` `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
+```
+
+A Packet switched connection inside a switchbox.
+This operation specifies the configuration for a master port.
+
+Example:
+  %a0_m2 = aie.amsel<0>(2)
+  aie.masterset("Core" : 0, %a0_m2)
+
+The code will configure the master port <"Core" : 0> to use arbiter 0 with msel 2
+(see AMSelOp for more details regarding AMSel)
+
+In the current architecture, a master port can only be associated with one arbiter. However,
+a master port can be activated by different msels from one arbiter
+
+Example:
+  %a1_0 = aie.amsel<1>(0)
+  %a1_1 = aie.amsel<1>(1)
+  %a2_3 = aie.amsel<2>(3)
+
+  aie.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
+  aie.masterset("West" : 3, %a1_0, %a1_1) // this is OK
+
+Traits: `HasParent<SwitchboxOp>`
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `amsels` | variadic of index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.mem` (::xilinx::AIE::MemOp)
+
+_Declare a memory op_
+
+
+Syntax:
+
+```
+operation ::= `aie.mem` `(` $tile `)` regions attr-dict
+```
+
+This operation creates a Memory module that belongs to a tile.
+The region of a MemOp is used to setup the DMAs and Block Descriptors.
+See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+Example:
+```
+  m73 = aie.mem(%t73) {
+      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      aie.use_lock(%lock, "Acquire", 0)
+      aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+      aie.use_lock(%lock, "Release", 1)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+  }
+```
+Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+
+Traits: `HasValidBDs`, `HasValidDMAChannels`
+
+Interfaces: `CallableOpInterface`, `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.memtile_dma` (::xilinx::AIE::MemTileDMAOp)
+
+_Declare a memtile_dma op_
+
+
+Syntax:
+
+```
+operation ::= `aie.memtile_dma` `(` $tile `)` regions attr-dict
+```
+
+This operation describes a DMA inside an AIE2 MemTile.
+The region of the op is used to setup the DMAs and Block Descriptors.
+See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+This operation is restricted to certain compatible tiles in AIE2 devices:
+xcve2302: row 1
+xcve2802: row 1 and 2
+
+Example:
+```
+  m73 = aie.memtile_dma(%t71) {
+      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      aie.use_lock(%lock, "Acquire", 0)
+      aie.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
+      aie.use_lock(%lock, "Release", 1)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+  }
+```
+Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+
+Traits: `HasValidBDs`, `HasValidDMAChannels`
+
+Interfaces: `CallableOpInterface`, `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.next_bd` (::xilinx::AIE::NextBDOp)
+
+_The next buffer descriptor_
+
+
+Syntax:
+
+```
+operation ::= `aie.next_bd` $dest attr-dict
+```
+
+This operation terminates the basic block describing a buffer descriptor inside
+a tile or shim DMA operation.  It references a single following buffer descriptor.
+Note that unlike other terminators (like cf.br), canonicalization should not remove
+the `next_bd` terminator, since it would result in invalid buffer descriptors.
+
+Example:
+```
+  m73 = aie.mem(%t73) {
+      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      aie.use_lock(%lock, "Acquire", 0)
+      aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+      aie.use_lock(%lock, "Release", 1)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+  }
+```
+
+Traits: `HasParent<MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp>`, `Terminator`
+
+#### Successors:
+
+| Successor | Description |
+| :-------: | ----------- |
+| `dest` | any successor
+
+
+### `aie.objectfifo` (::xilinx::AIE::ObjectFifoCreateOp)
+
+_Create a circular buffer or channel between two tiles_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo` $sym_name
+              `(`
+              custom<ObjectFifoProducerTile>($producerTile, $dimensionsToStream) `,`
+              `{`
+              custom<ObjectFifoConsumerTiles>($consumerTiles, $dimensionsFromStreamPerConsumer)
+              `}`
+              `,`
+              $elemNumber
+              `)` attr-dict `:` $elemType
+```
+
+The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
+more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of
+buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after
+lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or,
+more specifically, of its object pool.
+
+For the producer and for each consumer, a different size (i.e., element number) can be specified as an
+array of integer values. This will take effect in the case of consumers placed on tiles non-adjacent to
+the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be
+applied to both producer and consumers.
+
+This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated
+`aie.locks`. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+not adjacent.
+
+1-to-1 tile example:
+```
+  aie.objectfifo @of1 (%tile12, { %tile23 }, 4 : i32) : !aie.objectfifo<memref<16xi32>>
+```
+This operation creates an `objectFifo` between `%tile12` and `%tile23` of 4 elements, each a buffer of 16 32-bit integers.
+Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`,
+then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
+highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
+
+1-to-2 tiles broadcast example:
+```
+  aie.objectfifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !aie.objectfifo<memref<16xi32>>
+```
+This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16
+32-bit integers.
+
+1-to-2 tiles broadcast with explicit sizes example:
+```
+  aie.objectfifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !aie.objectfifo<memref<16xi32>>
+```
+This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool
+at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis
+specified in the first example.
+
+## Data Layout Transformations on AIE-ML devices
+
+On AIE-ML devices, objectFifos can also apply data layout transformations by
+using the DMAs n-dimensional address generation scheme. Two transformations
+can be applied for an objectFifo: one on the producer side, given by a
+`toStream` attribute, and one transformation on the consumer side, given by
+a `fromStream` attribute. See the `DMABDOp` documentation for a description
+of strides and sizes. The `toStream` and `fromStream` optional attributes
+are given directly following the producer or consumer tile declaration.
+Different transformations can be specified for each consumer. See example
+below.
+
+Note that using data layout transformations will cause the DMA be used even
+between adjacent tiles whose objectFifos would otherwise use shared memory.
+
+Further note that data layout transforms always apply at a granularity of
+`i32`s, irrespective of the used `memref` data type. This is an
+architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s,
+i.e. 16 bytes.
+
+The following example shows an objectFifo which transposes a 16x16 matrix of
+`i32`s on the producer side using strides and sizes. No transformation is
+applied on the consumer side of %tile13 (in this case the `fromStream`
+attribute may also be left off), and a transformation on %tile23 first gives
+all even indices from the stream, followed by all odd indices:
+
+```
+  aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+                       {%tile13 fromStream [],
+                        %tile23 fromStream [<2, 1>, <128, 2>]},
+                       2 : i32
+                      ) : !aie.objectfifo<memref<256xi32>>
+```
+
+Traits: `HasParent<DeviceOp>`
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>elemNumber</code></td><td>::mlir::Attribute</td><td>32-bit signless integer attribute whose minimum value is 0 or array attribute</td></tr>
+<tr><td><code>elemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of AIE objectFifo type</td></tr>
+<tr><td><code>dimensionsToStream</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
+<tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `producerTile` | index
+| `consumerTiles` | variadic of index
+
+
+### `aie.objectfifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
+
+_Acquire operation to lock and return objects of an ObjectFifo_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+```
+
+The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
+of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port
+(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
+the acquired objects which can be used to access them.
+
+This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations on
+the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
+new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
+to be released by the same process, then performing another acquire operation on the same `objectFifo`
+within the same process of size two or less will not result in any new use_lock operations (and for size
+greater than two, only (size - 2) use_lock operations will be performed).
+
+Example:
+```
+  %subview = aie.objectfifo.acquire @of1 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+```
+This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
+port and returns a subview of the acquired objects.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
+* Produce (`Produce`)
+* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `subview` | AIE ObjectFifoSubview type
+
+
+### `aie.objectfifo.link` (::xilinx::AIE::ObjectFifoLinkOp)
+
+_Links two objectFifos through an intermediary tile's DMA_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.link` $fifoIns `->` $fifoOuts `(` `)` attr-dict
+```
+
+The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
+one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
+be less memory elements generated at the link point as the two `objectFifos` can share.
+
+The two `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
+In L1, only `objectFifos` of same size may be linked. In L2, different sized objectFifos can be linked.
+
+Example:
+```
+  aie.objectfifo @of1 (%t70, { %t72 }, 2) : !aie.objectfifo<memref<64xi16>>
+  aie.objectfifo @of2 (%t72, { %t74 }, 2) : !aie.objectfifo<memref<64xi16>>
+  aie.objectfifo.link [@of1] -> [@of2] ()
+```
+This operation links two `objectFifos` which have tile `%t72` as a link point.
+
+To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
+To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
+parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they
+were given in the LinkOp.
+The join pattern is the exact inverse of the distribute one.
+
+Traits: `HasParent<DeviceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>fifoIns</code></td><td>::mlir::ArrayAttr</td><td>symbol ref array attribute</td></tr>
+<tr><td><code>fifoOuts</code></td><td>::mlir::ArrayAttr</td><td>symbol ref array attribute</td></tr>
+</table>
+
+
+### `aie.objectfifo.register_external_buffers` (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)
+
+_Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.register_external_buffers` attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+```
+
+The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
+to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
+generated for those shim tiles will use the registered external buffers. This is currently done because
+external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
+same `objectFifos`.
+
+Example:
+```
+  aie.objectfifo @of1 (%t70, %t73, 2) : !aie.objectfifo<memref<64xi16>>
+  %buffer_in_0  = aie.external_buffer : memref<512 x i16>
+  %buffer_in_1  = aie.external_buffer : memref<512 x i16>
+  aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+```
+This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shim_dma of shimTile %t70.
+
+Traits: `HasParent<DeviceOp>`
+
+Interfaces: `OpAsmOpInterface`, `TileElement`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+| `externalBuffers` | variadic of memref of any type values
+
+
+### `aie.objectfifo.register_process` (::xilinx::AIE::ObjectFifoRegisterProcessOp)
+
+_Operation that produces the acquire/release patterns for a process registered to an objectFifo_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.register_process` attr-dict $objFifo_name `(`
+              $port `,`
+              $acquirePatternTensor `:` type($acquirePatternTensor) `,`
+              $releasePatternTensor `:` type($releasePatternTensor) `,`
+              $callee `,` $length
+              `)`
+```
+
+The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
+acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
+on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case
+of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop.
+This may result in multiple for loops of different sizes being generated. If there is no repetition, then no
+loops will be generated.
+
+Example:
+```
+  aie.objectfifo @of1 (%t72, %t73, 2) : !aie.objectfifo<memref<16xi32>>
+  %length = arith.constant 10 : index
+  %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
+  %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
+  func @producer_work(%input : !aie.objectfifosubview<memref<16xi32>>) -> () { ... }
+
+  aie.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+```
+This operation registers function @producer_work and associated patterns to the produce end of @of1.
+@producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
+
+If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+If the input patterns are cyclo-static then they must be of the same size.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
+* Produce (`Produce`)
+* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>callee</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `acquirePatternTensor` | tensor of 32-bit signless integer values
+| `releasePatternTensor` | tensor of 32-bit signless integer values
+| `length` | index
+
+
+### `aie.objectfifo.release` (::xilinx::AIE::ObjectFifoReleaseOp)
+
+_Release operation for object locks in an ObjectFifo_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.release` attr-dict $objFifo_name `(` $port `,` $size `)`
+```
+
+The `aie.objectFifo.release` operation releases the locks of the given number of objects
+in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
+(producer: release for read, consumer: release for write).
+
+This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations.
+
+Example:
+```
+  aie.objectfifo.release @of1 (Produce, 1)
+```
+This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td><details><summary>Ports of an object FIFO</summary>{{% markdown %}}Enum cases:
+* Produce (`Produce`)
+* Consume (`Consume`){{% /markdown %}}</details></td></tr>
+<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+
+### `aie.objectfifo.subview.access` (::xilinx::AIE::ObjectFifoSubviewAccessOp)
+
+_ObjectFifoSubview type accessor method_
+
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.subview.access` $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+```
+
+Access the Nth element of a value of `ObjectFifoSubview` type.
+
+Example:
+```
+  %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
+  %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+```
+In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
+the `objectFifo` if other acquire operations took place beforehand.
+
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `subview` | AIE ObjectFifoSubview type
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `output` | memref of any type values
+
+
+### `aie.packet_dest` (::xilinx::AIE::PacketDestOp)
+
+_A destination port_
+
+
+Syntax:
+
+```
+operation ::= `aie.packet_dest` `<` $tile `,` $bundle `:` $channel `>` attr-dict
+```
+
+A object representing the destination of a packet-switched flow. This must exist
+within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation. The destination
+Must be unique within a design.
+
+See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+
+Traits: `HasParent<PacketFlowOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+
+### `aie.packet_flow` (::xilinx::AIE::PacketFlowOp)
+
+_Packet switched flow_
+
+
+Syntax:
+
+```
+operation ::= `aie.packet_flow` `(` $ID `)` regions attr-dict
+```
+
+A logical packet-switched flow between tiles.  During place and
+route, this is replaced by MasterSets and PacketRules inside
+switchboxes.
+
+Example:
+```
+  %01 = aie.tile(0, 1)
+  aie.packet_flow(0x10) {
+    aie.packet_source<%01, "Core" : 0>
+    aie.packet_dest<%01, "Core" : 0>
+  }
+```
+
+Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>ID</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aie.packet_rules` (::xilinx::AIE::PacketRulesOp)
+
+_Packet switched routing rules_
+
+
+Syntax:
+
+```
+operation ::= `aie.packet_rules` `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict
+```
+
+This operation defines packet-switched routing configuration for packets entering a switchbox.
+It references a port of the containing swithcbox, which be unique among other packetRules
+operations and [aie.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
+It contains a region of up to 4 [aie.rule](#aierule-aiepacketruleop) operations.
+
+See [aie.rule](#aierule-aiepacketruleop) for an example.
+
+Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+
+### `aie.packet_source` (::xilinx::AIE::PacketSourceOp)
+
+_A sourceport_
+
+
+Syntax:
+
+```
+operation ::= `aie.packet_source` `<` $tile `,` $bundle `:` $channel `>` attr-dict
+```
+
+A object representing the destination of a packet-switched flow. This must exist
+within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation.
+
+See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+
+Traits: `HasParent<PacketFlowOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+
+### `aie.plio` (::xilinx::AIE::PLIOOp)
+
+_Declare an interface to the PL_
+
+
+Syntax:
+
+```
+operation ::= `aie.plio` `(` $col `)` attr-dict
+```
+
+An interface to the PL.
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.put_stream` (::xilinx::AIE::PutStreamOp)
+
+_An op to write to a stream channel/port of a switchbox_
+
+
+Syntax:
+
+```
+operation ::= `aie.put_stream` `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
+```
+
+An op to write to a stream channel/port of a switchbox.
+
+Traits: `HasParent<CoreOp>`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `channel` | integer
+| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+
+
+### `aie.putCascade` (::xilinx::AIE::PutCascadeOp)
+
+_An op to write to a cascading stream from a neighboring core_
+
+
+Syntax:
+
+```
+operation ::= `aie.putCascade` `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
+```
+
+An op to write to a cascading stream from a neighboring core.
+The argument type of this operation must have a size that matches the cascade size,
+which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
+
+Traits: `HasParent<CoreOp>`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `cascadeValue` | any type
+
+
+### `aie.rule` (::xilinx::AIE::PacketRuleOp)
+
+_Packet switched routing rule_
+
+
+Syntax:
+
+```
+operation ::= `aie.rule` `(` $mask `,` $value `,` $amsel `)` attr-dict
+```
+
+This operation defines a matching rule and a destination for packet-switched
+connections in a switchbox.  Routing is based on the ID field of packet arriving on the
+matching port of the containing [aie.packetRules](#aiepacketrules-aiepacketrulesop).
+The ID is first bitwise-AND'd with the mask and then checked for equality with the given ID.
+It is routed to arbiter and master set associated with the first matching entry.
+
+Example:
+  LUT ID  |  Mask     | ID          | Arbiter | Msel
+  ---     | ---       | ---         | ---     | ---
+  0       |  5'b11111 | 5'b00010    | 4       | 1
+  1       |  5'b11011 | 5'b00001    | 3       | 2
+  2       |           |             |         |
+  3       |           |             |         |
+
+If a packet flow that has an ID of 2, it will be directed to the arbiter 4 with msel 1,
+If a packet flow that has an ID of 1 or 5, it will be directed to the arbiter 3 with msel 2,
+
+We encapsulate the configuration table as follows:
+Example:
+```
+  %a4_1 = aie.amsel<4>(1)
+  %a3_2 = aie.amsel<3>(2)
+
+  aie.packet_rules("Core" : 0) {
+    aie.rule(0x1F, 0x2, %a4_1)
+    aie.rule(0x1B, 0x1, %a3_2)
+  }
+```
+
+Traits: `HasParent<PacketRulesOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `amsel` | index
+
+
+### `aie.shim_dma` (::xilinx::AIE::ShimDMAOp)
+
+_Declare a DMA in the PL shim_
+
+
+Syntax:
+
+```
+operation ::= `aie.shim_dma` `(` $tile `)` regions attr-dict
+```
+
+This operation creates a DMA that belongs to a shim tile.
+The region of a ShimDMAOp is used to setup the DMAs and Block Descriptors.
+
+Example:
+```
+  %buf = aie.external_buffer : memref<256xi64>
+  %lock1 = aie.lock(%t70, 1)
+
+  %dma = aie.shim_dma(%t70) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+    ^bd0:
+      aie.use_lock(%lock1, Acquire, 1)
+      aie.dma_bd(%buf : memref<512 x i16>, 0, 512)
+      aie.use_lock(%lock1, Release, 0)
+      aie.next_bd ^bd0
+    ^end:
+      aie.end
+  }
+```
+Create the shim_dma for tile %t70 and setup one DMA channel and one Buffer Descriptor.
+
+Traits: `HasValidBDs`, `HasValidDMAChannels`
+
+Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.shim_dma_allocation` (::xilinx::AIE::ShimDMAAllocationOp)
+
+_Runtime allocation information for a single shim DMA_
+
+
+Syntax:
+
+```
+operation ::= `aie.shim_dma_allocation` $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+```
+
+This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
+and hence there is no appropriate dma_start operation to indicate which channel is being
+used and on which column the shim_dma is.
+
+It contains attributes for the sym_name of an operation which generated the shim DMA,
+for the DMAChannelDir and channel index, and for the column of the shim tile to which
+the originating operation was mapped.
+
+Example:
+```
+  %tile00 = aie.tile(0, 0)
+  %tile02 = aie.tile(0, 2)
+  aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo<memref<64xi16>>
+```
+could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+```
+  aie.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
+```
+
+Traits: `HasParent<DeviceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+* S2MM (`S2MM`)
+* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aie.shim_mux` (::xilinx::AIE::ShimMuxOp)
+
+_Declare a switch in the PL shim_
+
+
+Syntax:
+
+```
+operation ::= `aie.shim_mux` `(` $tile `)` regions attr-dict
+```
+
+This operation represents the additional interconnect that is part of a shim interface tile.
+Like the `aie.switchbox` operation, `aie.shim_mux` is configured
+by code in its region, but can only contain connect operations
+
+Example:
+```
+%tile = aie.tile(1, 1)
+aie.shim_mux(%tile) {
+  aie.connect<"North" : 0, "DMA" : 1>
+}
+```
+
+Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+Interfaces: `InferTypeOpInterface`, `Interconnect`, `OpAsmOpInterface`, `TileElement`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.shim_switchbox` (::xilinx::AIE::ShimSwitchboxOp)
+
+_Declare a switch in the PL shim_
+
+
+Syntax:
+
+```
+operation ::= `aie.shim_switchbox` `(` $col `)` regions attr-dict
+```
+
+A switch in the Shim.
+AXI-Stream Master Ports AXI-Stream Slave Ports
+6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
+4 Ports to West 4 Ports from West
+4 Ports to East 4 Ports from East
+6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
+2 Ports to FIFOs 2 Ports from FIFOs
+1 Port for control packet for Shim register access
+1 Port for response to access for Shim registers
+1 Port for trace packet from Shim
+
+
+Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+Interfaces: `InferTypeOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+
+### `aie.switchbox` (::xilinx::AIE::SwitchboxOp)
+
+_Declare a switch_
+
+
+Syntax:
+
+```
+operation ::= `aie.switchbox` `(` $tile `)` regions attr-dict
+```
+
+This operation represents the switchbox that is part of a tile.  A switchbox is configured
+by code in its region, representing various connections
+
+Example:
+```
+%tile = aie.tile(1, 1)
+aie.switchbox(%tile) {
+  aie.connect<"West" : 0, "Core" : 1>
+}
+```
+
+Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+Interfaces: `InferTypeOpInterface`, `Interconnect`, `OpAsmOpInterface`, `TileElement`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | index
+
+
+### `aie.tile` (::xilinx::AIE::TileOp)
+
+_Declare an AIE tile_
+
+
+Syntax:
+
+```
+operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
+```
+
+This operation creates an AIE tile in the AIE array. We specify what the column and the row of the tile.
+
+A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
+memory buffer (BufferOp), and lock (LockOp).
+
+A tile is a logical abstraction. We use a tile to establish an ownership of a hardware entity
+to it.
+Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
+the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
+
+Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | index
+
+
+### `aie.use_lock` (::xilinx::AIE::UseLockOp)
+
+_Acquire/release lock op_
+
+
+Syntax:
+
+```
+operation ::= `aie.use_lock` `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
+```
+
+This operation uses a lock. In AIE1, a lock can be acquired with a value,
+or released with a value. This should be understood as a "blocking"
+operation. In AIE2, locks are counting semaphores without inherent
+acquired/release characteristic. This lock must appear in a parent op where
+the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
+MemTileDMAOp).
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td><details><summary>lock acquire/release</summary>{{% markdown %}}Enum cases:
+* Acquire (`Acquire`)
+* AcquireGreaterEqual (`AcquireGreaterEqual`)
+* Release (`Release`){{% /markdown %}}</details></td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>blocking</code></td><td>xilinx::AIE::LockBlockingAttr</td><td><details><summary>lock operation is blocking</summary>{{% markdown %}}Enum cases:
+* NonBlocking (`NonBlocking`)
+* Blocking (`Blocking`){{% /markdown %}}</details></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lock` | index
+
+
+### `aie.wire` (::xilinx::AIE::WireOp)
+
+_A bundle of physical wires between components_
+
+
+Syntax:
+
+```
+operation ::= `aie.wire` `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
+```
+
+The `aie.wire` operation represents a physical set of connections between components in a Versal device.
+Typically, these components are switches, represented by an `aie.switchbox` operation, and tiles,
+represented by an [aie.tile](#aietile-aietileop) operation.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | index
+| `dest` | index
+
+
+## Attributes
+
+### BDDimLayoutArrayArrayAttr
+
+
+
+Syntax:
+
+```
+#aie.bd_dim_layout_arr_arr<
+  ::llvm::ArrayRef<BDDimLayoutArrayAttr>   # value
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| value | `::llvm::ArrayRef<BDDimLayoutArrayAttr>` |  |
+
+### BDDimLayoutArrayAttr
+
+
+
+Syntax:
+
+```
+#aie.bd_dim_layout_arr<
+  ::llvm::ArrayRef<BDDimLayoutAttr>   # value
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| value | `::llvm::ArrayRef<BDDimLayoutAttr>` |  |
+
+### BDDimLayoutAttr
+
+
+    Tuple encoding the stride and size of one dimension in an AIE2 n-dimensional
+    buffer descriptor;
+  
+
+Syntax:
+
+```
+#aie.bd_dim_layout<
+  uint16_t,   # size
+  uint32_t   # stride
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| size | `uint16_t` |  |
+| stride | `uint32_t` |  |
+
+## Type constraints
+
+### AIE ObjectFifoSubview type
+
+
+
+### AIE objectFifo type
+
+
+
