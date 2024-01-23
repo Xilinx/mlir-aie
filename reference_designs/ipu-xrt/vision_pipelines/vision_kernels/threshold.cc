@@ -16,9 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 enum _threshold_type {
   XF_THRESHOLD_TYPE_BINARY = 0,
   XF_THRESHOLD_TYPE_BINARY_INV = 1,

@@ -14,9 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
 const int32_t SRS_SHIFT = 15;

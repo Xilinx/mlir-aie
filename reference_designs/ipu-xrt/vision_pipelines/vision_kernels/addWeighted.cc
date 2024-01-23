@@ -16,9 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 // #include <imgproc/xf_addweighted_aie.hpp> // NOTE: use of float2fix not
 //  supported in aie2
 #include <aie_api/aie.hpp>

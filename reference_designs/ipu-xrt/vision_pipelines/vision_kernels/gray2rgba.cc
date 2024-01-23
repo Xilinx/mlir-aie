@@ -14,9 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
 ::aie::vector<uint8, 64> vector_broadcast(::aie::vector<uint8, 16> e) {
