@@ -269,7 +269,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
           aie.end
       }
     ```
-    Create the shim_dma for tile %t70 and setup one DMA channel and one Buffer Descriptor.
+    Create the shim_dma for tile `%t70` and setup one DMA channel and one Buffer Descriptor.
   }];
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
@@ -504,8 +504,10 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     This operation specifies the configuration for a master port.
 
     Example:
+    ```
       %a0_m2 = aie.amsel<0>(2)
       aie.masterset("Core" : 0, %a0_m2)
+    ```
 
     The code will configure the master port <"Core" : 0> to use arbiter 0 with msel 2
     (see AMSelOp for more details regarding AMSel)
@@ -514,12 +516,14 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     a master port can be activated by different msels from one arbiter
 
     Example:
+    ```
       %a1_0 = aie.amsel<1>(0)
       %a1_1 = aie.amsel<1>(1)
       %a2_3 = aie.amsel<2>(3)
 
       aie.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
       aie.masterset("West" : 3, %a1_0, %a1_1) // this is OK
+    ```
   }];
 
   let assemblyFormat = [{
@@ -991,7 +995,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           aie.end
       }
     ```
-    Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+    Create a description for tile `%t73` and setup one DMA channel and one Buffer Descriptor.
   }];
 
   let arguments = (ins Index:$tile);
@@ -1060,8 +1064,8 @@ def AIE_LockOp: AIE_Op<"lock", [
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
 
     Case when LockID is not assigned:
-      Before AIEAssignLockIDs: %tile33 = aie.tile(3)
-      After AIEAssignLockIDs: %tile33 = aie.tile(3, $assigned_value)
+      Before AIEAssignLockIDs: `%tile33 = aie.tile(3)`
+      After AIEAssignLockIDs: `%tile33 = aie.tile(3, $assigned_value)`
   }];
 
   let arguments = (
@@ -1464,15 +1468,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 
     The following example shows an objectFifo which transposes a 16x16 matrix of
     `i32`s on the producer side using strides and sizes. No transformation is
-    applied on the consumer side of %tile13 (in this case the `fromStream`
-    attribute may also be left off), and a transformation on %tile23 first gives
+    applied on the consumer side of `%tile13` (in this case the `fromStream`
+    attribute may also be left off), and a transformation on `%tile23` first gives
     all even indices from the stream, followed by all odd indices:
 
     ```
       aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
-                           {%tile13 fromStream [],
-                            %tile23 fromStream [<2, 1>, <128, 2>]},
-                           2 : i32
+                           {
+                            %tile13 fromStream [],
+                            %tile23 fromStream [<2, 1>, <128, 2>]
+                           }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
   }];
@@ -1609,7 +1614,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
       %buffer_in_1  = aie.external_buffer : memref<512 x i16>
       aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
-    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shim_dma of shimTile %t70.
+    This operation registers external buffers `%buffer_in_0` and `%buffer_in_1` to use in the shim_dma of shimTile `%t70`.
   }];
 
   let arguments = (
@@ -1719,7 +1724,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
       %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
       %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
     ```
-    In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
+    In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
     the `objectFifo` if other acquire operations took place beforehand.
 
   }];
@@ -1766,7 +1771,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
     This operation registers function @producer_work and associated patterns to the produce end of @of1.
     @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
 
-    If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+    If the input patterns are static (only one element) then the length of the produced for loop will be that of the input `%length`.
     If the input patterns are cyclo-static then they must be of the same size.
   }];
 
