@@ -31,7 +31,7 @@ const int32_t MIN=128;
 const int32_t MAX=127;
 const int32_t UMAX=255;
 
-void conv2dk1_skip_i8_scalar(int8_t *input0, int8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
+void conv2dk1_skip_i8_scalar(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
 {
     event0();
 
@@ -102,7 +102,7 @@ void conv2dk1_skip_i8_scalar(int8_t *input0, int8_t *input1,  int8_t *kernels, u
 }
 
 // NOTE: Assumes input_channels >= 16
-void conv2dk1_skip_ui8_scalar(uint8_t *input0,uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
+void conv2dk1_skip_ui8_scalar(uint8_t *input0,uint8_t *input1,  int8_t *kernels, uint8_t *output, uint8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
 {
 event0();
 
@@ -173,7 +173,7 @@ event0();
 
 #else // Vector
 
-void conv2dk1_skip_ui8_vector(uint8_t *input0,uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
+void conv2dk1_skip_i8_vector(uint8_t *input0,uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )                    
 {
     event0();
 
@@ -382,26 +382,26 @@ extern "C" {
 
 #ifdef SCALAR
 
-void conv2dk1_skip_i8(int8_t *input0, int8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )  
+void conv2dk1_skip_i8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )  
 {
     conv2dk1_skip_i8_scalar(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
 }
 
-void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale ) 
+void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, uint8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale ) 
 {
     conv2dk1_skip_ui8_scalar(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
 }
 
 #else // Vector
 
-void conv2dk1_skip_i8(int8_t *input0, int8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale ) 
+void conv2dk1_skip_i8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale ) 
 {
-    // conv2dk1_skip_i8_vector(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
+    conv2dk1_skip_i8_vector(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
 }
 
-void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, int8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )
+void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1,  int8_t *kernels, uint8_t *output, uint8_t *skip, const int32_t  input_width, const int32_t  input_channels,const int32_t  output_channels,const int scale,const int skip_scale )
 {
-    conv2dk1_skip_ui8_vector(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
+    // conv2dk1_skip_ui8_vector(input0, input1, kernels, output, skip, input_width, input_channels, output_channels, scale, skip_scale);  
 }
 
 #endif
