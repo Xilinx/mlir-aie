@@ -1,15 +1,15 @@
 include ../../../makefile-common
 
-# mlirFileName = aieFinal
-mlirFileName = aieDemo
+mlirFileName = aieFinal
+#mlirFileName = aieDemo
 
-all: build/conv2dk1.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
+all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 VPATH := ../../kernels
 
 insts.txt: ${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=$@ $<
 
-build/conv2dk1.o: conv2dk1.cc
+build/conv2dk1_i8.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -INT8_ACT -c $< -o $@
 
 build/conv2dk3.o: conv2dk3.cc
@@ -18,7 +18,7 @@ build/conv2dk3.o: conv2dk3.cc
 build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -INT8_ACT -c $< -o $@
 
-build/conv2dk1.o: conv2dk1.cc
+build/conv2dk1_ui8.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -UINT8_ACT -c $< -o $@
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
