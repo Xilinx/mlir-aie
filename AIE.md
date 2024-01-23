@@ -787,8 +787,10 @@ A Packet switched connection inside a switchbox.
 This operation specifies the configuration for a master port.
 
 Example:
+```
   %a0_m2 = aie.amsel<0>(2)
   aie.masterset("Core" : 0, %a0_m2)
+```
 
 The code will configure the master port <"Core" : 0> to use arbiter 0 with msel 2
 (see AMSelOp for more details regarding AMSel)
@@ -797,12 +799,14 @@ In the current architecture, a master port can only be associated with one arbit
 a master port can be activated by different msels from one arbiter
 
 Example:
+```
   %a1_0 = aie.amsel<1>(0)
   %a1_1 = aie.amsel<1>(1)
   %a2_3 = aie.amsel<2>(3)
 
   aie.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
   aie.masterset("West" : 3, %a1_0, %a1_1) // this is OK
+```
 
 Traits: `HasParent<SwitchboxOp>`
 
@@ -918,7 +922,7 @@ Example:
       aie.end
   }
 ```
-Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+Create a description for tile `%t73` and setup one DMA channel and one Buffer Descriptor.
 
 Traits: `HasValidBDs`, `HasValidDMAChannels`
 
@@ -1206,7 +1210,7 @@ Example:
   %buffer_in_1  = aie.external_buffer : memref<512 x i16>
   aie.objectfifo.register_external_buffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
 ```
-This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shim_dma of shimTile %t70.
+This operation registers external buffers `%buffer_in_0` and `%buffer_in_1` to use in the shim_dma of shimTile `%t70`.
 
 Traits: `HasParent<DeviceOp>`
 
@@ -1263,7 +1267,7 @@ Example:
 This operation registers function @producer_work and associated patterns to the produce end of @of1.
 @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
 
-If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+If the input patterns are static (only one element) then the length of the produced for loop will be that of the input `%length`.
 If the input patterns are cyclo-static then they must be of the same size.
 
 #### Attributes:
@@ -1339,7 +1343,7 @@ Example:
   %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
   %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 ```
-In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
+In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
 the `objectFifo` if other acquire operations took place beforehand.
 
 
@@ -1686,7 +1690,7 @@ Example:
       aie.end
   }
 ```
-Create the shim_dma for tile %t70 and setup one DMA channel and one Buffer Descriptor.
+Create the shim_dma for tile `%t70` and setup one DMA channel and one Buffer Descriptor.
 
 Traits: `HasValidBDs`, `HasValidDMAChannels`
 
