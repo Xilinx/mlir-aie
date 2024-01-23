@@ -430,10 +430,22 @@ struct AIEControl {
                const DMAChannelDir &channelDir, int bdNum) -> LogicalResult {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+      // FIXME
+      // const auto &target_model = xilinx::AIE::getTargetModel(op);
+      // if (target_model.getTargetArch() == AIEArch::AIE1) {
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelPushBdToQueue, &devInst,
                               tileLoc, chNum,
                               // TODO hack until physical dialect changes
                               direction, bdNum);
+      //} else {
+      //  int rep = 1;
+      //  if (auto r = op.getRepeatCount())
+      //    rep = *r;
+      //  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
+      //                          tileLoc, chNum,
+      //                          // TODO hack until physical dialect changes
+      //                          direction, bdNum, rep, XAIE_DISABLE);
+      //}
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc,
                               chNum,
                               // TODO hack until physical dialect changes
