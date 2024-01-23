@@ -1065,9 +1065,9 @@ attribute may also be left off), and a transformation on `%tile23` first gives
 all even indices from the stream, followed by all odd indices:
 
 ```
-  aie.objectfifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>],
-                       {%tile13 fromStream [],
-                        %tile23 fromStream [<2, 1>, <128, 2>]},
+  aie.objectfifo @of4 (tile12 toStream [<16, 1>, <16, 16>, <1,1>],
+                       {tile13 fromStream [],
+                        tile23 fromStream [<2, 1>, <128, 2>]},
                        2 : i32
                       ) : !aie.objectfifo<memref<256xi32>>
 ```
