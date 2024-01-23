@@ -741,8 +741,8 @@ Example:
 This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
 
 Case when LockID is not assigned:
-  Before AIEAssignLockIDs: %tile33 = aie.tile(3)
-  After AIEAssignLockIDs: %tile33 = aie.tile(3, $assigned_value)
+  Before AIEAssignLockIDs: `%tile33 = aie.tile(3)`
+  After AIEAssignLockIDs: `%tile33 = aie.tile(3, $assigned_value)`
 
 Traits: `AlwaysSpeculatableImplTrait`
 
@@ -1056,8 +1056,8 @@ i.e. 16 bytes.
 
 The following example shows an objectFifo which transposes a 16x16 matrix of
 `i32`s on the producer side using strides and sizes. No transformation is
-applied on the consumer side of %tile13 (in this case the `fromStream`
-attribute may also be left off), and a transformation on %tile23 first gives
+applied on the consumer side of `%tile13` (in this case the `fromStream`
+attribute may also be left off), and a transformation on `%tile23` first gives
 all even indices from the stream, followed by all odd indices:
 
 ```
