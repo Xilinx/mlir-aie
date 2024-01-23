@@ -56,7 +56,7 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
-  for (int j = 0; (j < (width * height) / 32); j += 1)
+  for (int j = 0; (j < (width * height) >> 5); j += 1)
     chess_prepare_for_pipelining {
       xf_extract_rgb(rgba_in, r, g, b);
 
