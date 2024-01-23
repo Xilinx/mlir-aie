@@ -20,6 +20,7 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -299,6 +300,14 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             }
             return false;
           })
+          // skip op 5: ignore casts between index and integer types.
+          .Case<arith::IndexCastOp, arith::IndexCastUIOp, index::CastSOp,
+                index::CastUOp>([&](auto idxCastOp) {
+            Value source = idxCastOp->getOperand(0);
+            StringRef srcName = emitter.getOrCreateName(source);
+            emitter.setName(idxCastOp->getResult(0), srcName);
+            return true;
+          })
           .Default([&](Operation *) { return false; });
 
   // Ops whose strong liveness must be determined
@@ -462,14 +471,38 @@ static std::pair<bool, int64_t> getStep(scf::ForOp forOp) {
 // Return the operator string of the SCF dialect binary operator
 template <typename T>
 static StringRef getOperator(T binOp) {
-  if (isa<arith::AddIOp, arith::AddFOp>(binOp))
+  if (isa<arith::AddIOp>(binOp) || isa<arith::AddFOp>(binOp))
     return " + ";
-  if (isa<arith::MulIOp, arith::MulFOp>(binOp))
+  if (isa<arith::MulIOp>(binOp) || isa<arith::MulFOp>(binOp))
     return " * ";
-  if (isa<arith::SubIOp, arith::SubFOp>(binOp))
+  if (isa<arith::SubIOp>(binOp) || isa<arith::SubFOp>(binOp))
     return " - ";
-  if (isa<arith::DivFOp, arith::DivUIOp, arith::DivSIOp>(binOp))
+  if (isa<arith::DivFOp>(binOp) || isa<arith::DivUIOp>(binOp) ||
+      isa<arith::DivSIOp>(binOp))
     return " / ";
+  if (isa<arith::RemSIOp>(binOp))
+    return " % ";
+  if (isa<arith::CmpIOp>(binOp)) {
+    auto cmpOp = cast<arith::CmpIOp>(binOp);
+    switch (cmpOp.getPredicate()) {
+    case arith::CmpIPredicate::eq:
+      return " == ";
+    case arith::CmpIPredicate::ne:
+      return " != ";
+    case arith::CmpIPredicate::sge:
+    case arith::CmpIPredicate::uge:
+      return " >= ";
+    case arith::CmpIPredicate::sgt:
+    case arith::CmpIPredicate::ugt:
+      return " > ";
+    case arith::CmpIPredicate::sle:
+    case arith::CmpIPredicate::ule:
+      return " <= ";
+    case arith::CmpIPredicate::slt:
+    case arith::CmpIPredicate::ult:
+      return " < ";
+    }
+  }
   llvm_unreachable("Cannot print the operation of binary operator");
 }
 
@@ -488,6 +521,29 @@ static LogicalResult printOperation(CppEmitter &emitter, T binOp) {
   if (!emitter.hasValueInScope(rhs))
     return failure();
   os << emitter.getOrCreateName(rhs);
+
+  return success();
+}
+
+// Print the ternary operation
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    arith::SelectOp selectOp) {
+  if (failed(emitter.emitAssignPrefix(*selectOp)))
+    return failure();
+
+  auto cond = selectOp.getCondition();
+  if (!emitter.hasValueInScope(cond))
+    return failure();
+  auto tVal = selectOp.getTrueValue();
+  if (!emitter.hasValueInScope(tVal))
+    return failure();
+  auto fVal = selectOp.getFalseValue();
+  if (!emitter.hasValueInScope(fVal))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+  os << emitter.getOrCreateName(cond) << " ? " << emitter.getOrCreateName(tVal)
+     << " : " << emitter.getOrCreateName(fVal);
 
   return success();
 }
@@ -3121,6 +3177,31 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           //  Arith ops.
           .Case<arith::AddIOp>(
               [&](auto op) { return printOperation<arith::AddIOp>(*this, op); })
+          .Case<arith::AddFOp>(
+              [&](auto op) { return printOperation<arith::AddFOp>(*this, op); })
+          .Case<arith::MulIOp>(
+              [&](auto op) { return printOperation<arith::MulIOp>(*this, op); })
+          .Case<arith::MulFOp>(
+              [&](auto op) { return printOperation<arith::MulFOp>(*this, op); })
+          .Case<arith::SubIOp>(
+              [&](auto op) { return printOperation<arith::SubIOp>(*this, op); })
+          .Case<arith::SubFOp>(
+              [&](auto op) { return printOperation<arith::SubFOp>(*this, op); })
+          .Case<arith::DivSIOp>([&](auto op) {
+            return printOperation<arith::DivSIOp>(*this, op);
+          })
+          .Case<arith::DivUIOp>([&](auto op) {
+            return printOperation<arith::DivUIOp>(*this, op);
+          })
+          .Case<arith::DivFOp>(
+              [&](auto op) { return printOperation<arith::DivFOp>(*this, op); })
+          .Case<arith::RemSIOp>([&](auto op) {
+            return printOperation<arith::RemSIOp>(*this, op);
+          })
+          .Case<arith::CmpIOp>(
+              [&](auto op) { return printOperation<arith::CmpIOp>(*this, op); })
+          .Case<arith::SelectOp>(
+              [&](auto op) { return printOperation(*this, op); })
           // Vector ops.
           .Case<vector::TransferWriteOp>(
               [&](auto op) { return printOperation(*this, op); })
