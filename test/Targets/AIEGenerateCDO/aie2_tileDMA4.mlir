@@ -1,0 +1,45 @@
+//===- aie2_tileDMA4.mlir --------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-translate --aie-generate-cdo %s | FileCheck %s
+
+// CHECK: XAie_DmaDesc [[bd0:.*]];
+// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,3));
+// CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(3,-1),XAie_LockInit(4,1));
+// CHECK: XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 256 * 4);
+// CHECK: XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 0,  /* enableNextBd */ 0);
+// CHECK: XAie_DmaEnableBd(&([[bd0]]));
+// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,3),  /* bd */ 0);
+// CHECK: XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(2,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM, /* BdNum */ 0, /* Repeat */ 4, /* EnToken */ XAIE_DISABLE);
+// CHECK: XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(2,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM);
+
+module @aie_module  {
+  AIE.device(ipu) {
+    %t23 = AIE.tile(2, 3)
+
+    %buf_a_ping = AIE.buffer(%t23) {address = 1824 : i32, sym_name = "a_ping" } : memref<256xi32>
+
+    %lock_a_write = AIE.lock(%t23, 3) { init = 1 : i32 }
+    %lock_a_read = AIE.lock(%t23, 4)
+
+    // Tile DMA
+    %m23 = AIE.mem(%t23) {
+        %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end, 4)
+      ^bd0:
+        // Note: acquire and release are different locks.
+        AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
+        AIE.dmaBd(%buf_a_ping : memref<256xi32>, 0, 256)
+        AIE.useLock(%lock_a_read, Release, 1)
+        AIE.nextBd ^end
+      ^end:
+        AIE.end
+    }
+ }
+}
