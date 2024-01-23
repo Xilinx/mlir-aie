@@ -35,6 +35,7 @@ extern "C" {
 #include <cstdlib> // calloc
 #include <filesystem>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <string>
@@ -107,13 +108,51 @@ static const std::map<WireBundle, StrmSwPortType>
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
 
+// https://stackoverflow.com/a/32230306
+
+template <typename H1>
+raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
+  return out << label << "=" << std::forward<H1>(value);
+}
+
+template <typename H1, typename... T>
+raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
+                      T &&...rest) {
+  const char *pcomma = strchr(label, ',');
+  return showArgs(out.write(label, pcomma - label)
+                      << "=" << std::forward<H1>(value) << ',',
+                  pcomma + 1, std::forward<T>(rest)...);
+}
+
+#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
+  os << "XAie_LocType(col: " << std::to_string(loc.Col)
+     << ", row: " << std::to_string(loc.Row) << ")";
+  return os;
+}
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
+  os << "XAie_Lock(id: " << std::to_string(lock.LockId)
+     << ", val: " << std::to_string(lock.LockVal) << ")";
+  return os;
+}
+
+raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
+  os << "XAie_Packet(id: " << std::to_string(packet.PktId)
+     << ", type: " << std::to_string(packet.PktType) << ")";
+  return os;
+}
+
 // So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
 // }
 static_assert(XAIE_OK == 0);
 
 #define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       report_fatal_error(llvm::Twine(#API " failed with ") +                   \
                          AIERCTOSTR.at(r));                                    \
@@ -121,14 +160,18 @@ static_assert(XAIE_OK == 0);
 
 #define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
       return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
   } while (0)
 
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
   do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << "\n");           \
+    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__)) {                                           \
       llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
       return failure();                                                        \
@@ -197,10 +240,10 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
       relLockId.value() += REL_LOCK_ID_INCR;
   }
 
+  auto acqLockInit = XAie_LockInit(acqLockId.value(), acqValue.value());
+  auto relLockIinit = XAie_LockInit(relLockId.value(), relValue.value());
   TRY_XAIE_API_EMIT_ERROR((*block.getOps<UseLockOp>().begin()), XAie_DmaSetLock,
-                          &dmaTileBd,
-                          XAie_LockInit(acqLockId.value(), acqValue.value()),
-                          XAie_LockInit(relLockId.value(), relValue.value()));
+                          &dmaTileBd, acqLockInit, relLockIinit);
   return success();
 }
 
@@ -359,29 +402,28 @@ struct AIEControl {
 
   LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
     for (auto tileOp : targetOp.getOps<TileOp>()) {
-      int col = tileOp.colIndex();
-      int row = tileOp.rowIndex();
+      auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &devInst,
-                                XAie_TileLoc(col, row));
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &devInst,
-                                XAie_TileLoc(col, row));
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &devInst, tileLoc);
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &devInst, tileLoc);
         // Set locks to zero
-        for (uint8_t l = 0; l < NUM_LOCKS; l++)
-          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue, &devInst,
-                                  XAie_TileLoc(col, row), XAie_LockInit(l, 0));
+        for (uint8_t l = 0; l < NUM_LOCKS; l++) {
+          auto locInit = XAie_LockInit(l, 0);
+          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue, &devInst, tileLoc,
+                                  locInit);
+        }
       }
     }
 
     // Set locks with explicit initializers
     for (auto lockOp : targetOp.getOps<LockOp>())
-      if (lockOp.getLockID() && lockOp.getInit())
-        TRY_XAIE_API_EMIT_ERROR(
-            lockOp, XAie_LockSetValue, &devInst,
-            XAie_TileLoc(lockOp.getTileOp().colIndex(),
-                         lockOp.getTileOp().rowIndex()),
-            XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit()));
-      else
+      if (lockOp.getLockID() && lockOp.getInit()) {
+        auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
+                                    lockOp.getTileOp().rowIndex());
+        auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
+        TRY_XAIE_API_EMIT_ERROR(lockOp, XAie_LockSetValue, &devInst, tileLoc,
+                                locInit);
+      } else
         LLVM_DEBUG(llvm::dbgs()
                    << "lock op missing either id or init" << lockOp << "\n");
 
@@ -546,18 +588,18 @@ struct AIEControl {
       if (switchboxOp.rowIndex() == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
+        auto slvPortNum = 0;
+        auto mstrPortNum = 0;
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL,
-                                /*SlvPortNum*/ 0, SOUTH,
-                                /*MstrPortNum*/ 0);
+                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
         // configure DMA_<S2MM/MM2S>_<chNum>_Ctrl register
         for (int chNum = 0; chNum <= 1; ++chNum) {
           XAie_DmaChannelDesc dmaChannelDescInst;
+          auto controllerId = 0;
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelDescInit,
                                   &devInst, &dmaChannelDescInst, tileLoc);
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelSetControllerId,
-                                  &dmaChannelDescInst,
-                                  /*ControllerId*/ 0);
+                                  &dmaChannelDescInst, controllerId);
           TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaWriteChannel, &devInst,
                                   &dmaChannelDescInst, tileLoc, chNum,
                                   DMA_S2MM);
@@ -594,12 +636,12 @@ struct AIEControl {
           isdma = connectOp.getDestBundle() == WireBundle::South;
         // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
         isdma &= !connectOp->hasAttr("keep_pkt_header");
+        auto dropHeader =
+            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
             connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(),
-            isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER,
-            arbiter, mask);
+            connectOp.destIndex(), dropHeader, arbiter, mask);
       }
 
       for (auto connectOp : b.getOps<PacketRulesOp>()) {
@@ -614,13 +656,13 @@ struct AIEControl {
               connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
               connectOp.sourceIndex());
+          auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
           TRY_XAIE_API_EMIT_ERROR(
               connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
               WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot,
-              XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0),
-              slotOp.maskInt(), msel, arbiter);
+              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
+              arbiter);
           slot++;
         }
       }
@@ -629,31 +671,27 @@ struct AIEControl {
     for (auto muxOp : targetOp.getOps<ShimMuxOp>()) {
       // NOTE ShimMux always connects from the south as directions are
       // defined relative to the tile stream switch.
+      auto tileLoc =
+          XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
       Block &b = muxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>()) {
         // demux!
         if (connectOp.getSourceBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableAieToShimDmaStrmPort,
-                                  &devInst,
-                                  XAie_TileLoc(muxOp.getTileOp().getCol(),
-                                               muxOp.getTileOp().getRow()),
-                                  connectOp.sourceIndex());
+                                  &devInst, tileLoc, connectOp.sourceIndex());
         // mux
         if (connectOp.getDestBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableShimDmaToAieStrmPort,
-                                  &devInst,
-                                  XAie_TileLoc(muxOp.getTileOp().getCol(),
-                                               muxOp.getTileOp().getRow()),
-                                  connectOp.destIndex());
+                                  &devInst, tileLoc, connectOp.destIndex());
       }
     }
 
     for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
       Block &b = switchboxOp.getConnections().front();
+      auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
-            switchboxOp, XAie_StrmConnCctEnable, &devInst,
-            XAie_TileLoc(switchboxOp.getCol(), 0),
+            switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
             connectOp.sourceIndex(),
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
@@ -664,11 +702,11 @@ struct AIEControl {
 
   LogicalResult addCoreEnableToCDO(DeviceOp &targetOp) {
     // Start execution of all the cores.
-    for (auto tileOp : targetOp.getOps<TileOp>())
+    for (auto tileOp : targetOp.getOps<TileOp>()) {
+      auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp())
-        TRY_XAIE_API_EMIT_ERROR(
-            targetOp, XAie_CoreEnable, &devInst,
-            XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex()));
+        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &devInst, tileLoc);
+    }
     return success();
   }
 };

@@ -13,7 +13,11 @@ defaults:
     shell: bash
 
 concurrency:
-  group: ci-build-test-ryzenai
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
 
 env:
   DEBIAN_FRONTEND: noninteractive
