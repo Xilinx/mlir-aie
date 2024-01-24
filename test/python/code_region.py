@@ -10,8 +10,8 @@ from aie.dialects.aie import (
     core,
     device,
     external_func,
-    objectfifo,
-    objectfifo_link,
+    object_fifo,
+    object_fifo_link,
     tile,
 )
 from aie.dialects.scf import for_, yield_
@@ -54,9 +54,9 @@ def codeRegion():
         M = tile(1, 2)
         N = tile(3, 3)
 
-        of0 = objectfifo("of0", S, M, 2, T.memref(256, T.i32()))
-        of1 = objectfifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
-        objectfifo_link(of0, of1)
+        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of1 = object_fifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
+        object_fifo_link(of0, of1)
 
         @core(N, "test.o")
         def core_body():

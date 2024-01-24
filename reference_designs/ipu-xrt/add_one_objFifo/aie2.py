@@ -27,14 +27,14 @@ def my_add_one_objFifo():
 
             # AIE-array data movement with object fifos
             # Input
-            of_in0 = objectfifo("in0", ShimTile, MemTile, 2, memRef_16_ty)
-            of_in1 = objectfifo("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
-            objectfifo_link(of_in0, of_in1)
+            of_in0 = object_fifo("in0", ShimTile, MemTile, 2, memRef_16_ty)
+            of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
+            object_fifo_link(of_in0, of_in1)
 
             # Output
-            of_out0 = objectfifo("out0", MemTile, ShimTile, 2, memRef_16_ty)
-            of_out1 = objectfifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
-            objectfifo_link(of_out0, of_out1)
+            of_out0 = object_fifo("out0", MemTile, ShimTile, 2, memRef_16_ty)
+            of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
+            object_fifo_link(of_out0, of_out1)
 
             # Set up compute tiles
 

@@ -92,9 +92,9 @@ def my_matmul():
 
             # AIE-array data movement with object fifos
             # Input A
-            inA = objectfifo("inA", ShimTile, MemTile, 2, memRef_inA_ty)
+            inA = object_fifo("inA", ShimTile, MemTile, 2, memRef_inA_ty)
             for i in range(n_cores):
-                inA_fifos[inA_fifo_names[i]] = objectfifo(
+                inA_fifos[inA_fifo_names[i]] = object_fifo(
                     inA_fifo_names[i],
                     MemTile,
                     cores[i],
@@ -107,11 +107,11 @@ def my_matmul():
                         (s * word_size_in // 4, 1),
                     ],
                 )
-            objectfifo_link(inA, inA_fifo_names[0:n_cores])
+            object_fifo_link(inA, inA_fifo_names[0:n_cores])
 
             # Input B
-            inB = objectfifo("inB", ShimTile, MemTile, 2, memRef_inB_ty)
-            inB_fifos[inB_fifo_names[0]] = objectfifo(
+            inB = object_fifo("inB", ShimTile, MemTile, 2, memRef_inB_ty)
+            inB_fifos[inB_fifo_names[0]] = object_fifo(
                 inB_fifo_names[0],
                 MemTile,
                 cores[0:n_cores],
@@ -124,14 +124,14 @@ def my_matmul():
                     (t * word_size_in // 4, 1),
                 ],
             )
-            objectfifo_link(inB, [inB_fifo_names[0]])
+            object_fifo_link(inB, [inB_fifo_names[0]])
 
             # Output C
             for i in range(n_cores):
-                outC_fifos[outC_fifo_names[i]] = objectfifo(
+                outC_fifos[outC_fifo_names[i]] = object_fifo(
                     outC_fifo_names[i], cores[i], MemTile, 2, memRef_C_ty
                 )
-            outC = objectfifo(
+            outC = object_fifo(
                 "outC",
                 MemTile,
                 ShimTile,
@@ -144,7 +144,7 @@ def my_matmul():
                     (t * word_size_out // 4, 1),
                 ],
             )
-            objectfifo_link(outC_fifo_names[0:n_cores], outC)
+            object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
             # Set up compute tiles
             for i in range(n_cores):

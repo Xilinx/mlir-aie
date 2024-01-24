@@ -35,10 +35,10 @@ def my_vector_scalar():
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
-            of_in = objectfifo(
+            of_in = object_fifo(
                 "in", ShimTile, ComputeTile2, buffer_depth, memRef_ty
             )
-            of_out = objectfifo(
+            of_out = object_fifo(
                 "out", ComputeTile2, ShimTile, buffer_depth, memRef_ty
             )
 

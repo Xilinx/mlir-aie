@@ -76,8 +76,8 @@ def my_matmul():
 
             # AIE-array data movement with object fifos
             # Input A
-            inA = objectfifo("inA", shim_tile, mem_tile, 2, memref_a_ty)
-            memA = objectfifo(
+            inA = object_fifo("inA", shim_tile, mem_tile, 2, memref_a_ty)
+            memA = object_fifo(
                 "memA",
                 mem_tile,
                 compute_tile2,
@@ -90,11 +90,11 @@ def my_matmul():
                     (s * word_size_in // 4, 1),
                 ],
             )
-            objectfifo_link(inA, memA)
+            object_fifo_link(inA, memA)
 
             # Input B
-            inB = objectfifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
-            memB = objectfifo(
+            inB = object_fifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
+            memB = object_fifo(
                 "memB",
                 mem_tile,
                 compute_tile2,
@@ -107,11 +107,11 @@ def my_matmul():
                     (t * word_size_in // 4, 1),
                 ],
             )
-            objectfifo_link(inB, memB)
+            object_fifo_link(inB, memB)
 
             # Output C
-            memC = objectfifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
-            outC = objectfifo(
+            memC = object_fifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
+            outC = object_fifo(
                 "outC",
                 mem_tile,
                 shim_tile,
@@ -124,7 +124,7 @@ def my_matmul():
                     (t * word_size_out // 4, 1),
                 ],
             )
-            objectfifo_link(memC, outC)
+            object_fifo_link(memC, outC)
 
             # Set up compute tiles
 

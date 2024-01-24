@@ -14,9 +14,9 @@ from aie.dialects.aie import (
     external_buffer,
     bd_dim_layout,
     end,
-    objectfifo,
+    object_fifo,
     objectfifo_acquire,
-    objectfifo_link,
+    object_fifo_link,
     objectfifo_subview_access,
     tile,
 )
@@ -100,7 +100,7 @@ def objFifo():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectfifo(
+        object_fifo(
             "of0",
             tile0,
             tile1,
@@ -127,9 +127,9 @@ def objFifoLink():
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
         tile2 = tile(col=7, row=7)
-        of0 = objectfifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
-        of1 = objectfifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
-        objectfifo_link(of0, of1)
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
+        object_fifo_link(of0, of1)
         end()
 
 
@@ -145,7 +145,7 @@ def objFifoAcquire():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        of0 = objectfifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
@@ -166,7 +166,7 @@ def objFifoSubviewAccess():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        of0 = objectfifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
@@ -191,7 +191,7 @@ def objFifoRelease():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        of0 = objectfifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile0)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):

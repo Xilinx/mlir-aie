@@ -67,43 +67,43 @@ def color_detect():
             # AIE-array data movement with object fifos
 
             # Input
-            inOF_L3L2 = objectfifo(
+            inOF_L3L2 = object_fifo(
                 "inOF_L3L2",
                 ShimTile,
                 [ComputeTile2, MemTile],
                 [2, 2, 6],
                 line_bytes_ty,
             )
-            inOF_L2L1 = objectfifo("inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty)
-            objectfifo_link(inOF_L3L2, inOF_L2L1)
+            inOF_L2L1 = object_fifo("inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty)
+            object_fifo_link(inOF_L3L2, inOF_L2L1)
 
             # Output
-            outOF_L2L3 = objectfifo("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
-            outOF_L1L2 = objectfifo(
+            outOF_L2L3 = object_fifo("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
+            outOF_L1L2 = object_fifo(
                 "outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty
             )
-            objectfifo_link(outOF_L1L2, outOF_L2L3)
+            object_fifo_link(outOF_L1L2, outOF_L2L3)
 
             # Intermediate
-            OF_2to34 = objectfifo(
+            OF_2to34 = object_fifo(
                 "OF_2to34", ComputeTile2, [ComputeTile3, ComputeTile4], 2, line_ty
             )
-            OF_3to3 = objectfifo(
+            OF_3to3 = object_fifo(
                 "OF_3to3", ComputeTile3, ComputeTile3, 1, line_ty
             )
-            OF_3to5 = objectfifo(
+            OF_3to5 = object_fifo(
                 "OF_3to5", ComputeTile3, ComputeTile5, 2, line_ty
             )
-            OF_4to4 = objectfifo(
+            OF_4to4 = object_fifo(
                 "OF_4to4", ComputeTile4, ComputeTile4, 1, line_ty
             )
-            OF_4to5 = objectfifo(
+            OF_4to5 = object_fifo(
                 "OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty
             )
-            OF_5to5a = objectfifo(
+            OF_5to5a = object_fifo(
                 "OF_5to5a", ComputeTile5, ComputeTile5, 1, line_ty
             )
-            OF_5to5b = objectfifo(
+            OF_5to5b = object_fifo(
                 "OF_5to5b", ComputeTile5, ComputeTile5, 1, line_bytes_ty
             )
 

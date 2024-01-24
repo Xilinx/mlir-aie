@@ -35,8 +35,8 @@ from aie.dialects.aie import (
     mem,
     memtile_dma,
     next_bd,
-    objectfifo,
-    objectfifo_link,
+    object_fifo,
+    object_fifo_link,
     tile,
     translate_mlir_to_llvmir,
     use_lock,
@@ -111,8 +111,8 @@ def my_vector_scalar(module):
         S = tile(0, 0)
         M = tile(0, 2)
 
-        of_in = objectfifo("in", S, M, buffer_depth, T.memref(n, T.i32()))
-        of_out = objectfifo("out", M, S, buffer_depth, T.memref(n, T.i32()))
+        of_in = object_fifo("in", S, M, buffer_depth, T.memref(n, T.i32()))
+        of_out = object_fifo("out", M, S, buffer_depth, T.memref(n, T.i32()))
 
         @core(M, "scale.o")
         def core_body():
@@ -249,9 +249,9 @@ def my_matmul(module):
         S = tile(0, 0)
         M = tile(0, 2)
 
-        of_inA = objectfifo("inA", S, M, 2, T.memref(m, k, T.i16()))
-        of_inB = objectfifo("inB", S, M, 2, T.memref(k, n, T.i16()))
-        of_outC = objectfifo("outC", M, S, 2, T.memref(m, n, T.i16()))
+        of_inA = object_fifo("inA", S, M, 2, T.memref(m, k, T.i16()))
+        of_inB = object_fifo("inB", S, M, 2, T.memref(k, n, T.i16()))
+        of_outC = object_fifo("outC", M, S, 2, T.memref(m, n, T.i16()))
 
         @core(M, "mm.o")
         def core_body():
@@ -531,20 +531,20 @@ def edge_detect(module):
         T4 = tile(0, 4)
         T5 = tile(0, 5)
 
-        inOF_L3L2 = objectfifo("inOF_L3L2", S, M, 2, T.memref(256, T.ui8()))
-        inOF_L2L1 = objectfifo(
+        inOF_L3L2 = object_fifo("inOF_L3L2", S, M, 2, T.memref(256, T.ui8()))
+        inOF_L2L1 = object_fifo(
             "inOF_L2L1", M, [T2, T5], [2, 2, 7], T.memref(256, T.ui8())
         )
-        objectfifo_link(inOF_L3L2, inOF_L2L1)
+        object_fifo_link(inOF_L3L2, inOF_L2L1)
 
-        outOF_L2L3 = objectfifo("outOF_L2L3", M, S, 2, T.memref(256, T.ui8()))
-        outOF_L1L2 = objectfifo("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8()))
-        objectfifo_link(outOF_L1L2, outOF_L2L3)
+        outOF_L2L3 = object_fifo("outOF_L2L3", M, S, 2, T.memref(256, T.ui8()))
+        outOF_L1L2 = object_fifo("outOF_L1L2", T5, M, 2, T.memref(256, T.ui8()))
+        object_fifo_link(outOF_L1L2, outOF_L2L3)
 
-        OF_2to3 = objectfifo("OF_2to3", T2, T3, 4, T.memref(64, T.ui8()))
-        OF_3to4 = objectfifo("OF_3to4", T3, T4, 2, T.memref(64, T.ui8()))
-        OF_4to5 = objectfifo("OF_4to5", T4, T5, 2, T.memref(64, T.ui8()))
-        OF_5to5 = objectfifo("OF_5to5", T5, T5, 1, T.memref(256, T.ui8()))
+        OF_2to3 = object_fifo("OF_2to3", T2, T3, 4, T.memref(64, T.ui8()))
+        OF_3to4 = object_fifo("OF_3to4", T3, T4, 2, T.memref(64, T.ui8()))
+        OF_4to5 = object_fifo("OF_4to5", T4, T5, 2, T.memref(64, T.ui8()))
+        OF_5to5 = object_fifo("OF_5to5", T5, T5, 1, T.memref(256, T.ui8()))
 
         @core(T2, "rgba2gray.cc.o")
         def core_body():
@@ -759,13 +759,13 @@ def my_add_one_objFifo(module):
         mem_tile = tile(0, 1)
         compute_tile2 = tile(0, 2)
 
-        of_in0 = objectfifo("in0", shim_tile, mem_tile, 2, T.memref(16, T.i32()))
-        of_in1 = objectfifo("in1", mem_tile, compute_tile2, 2, T.memref(8, T.i32()))
-        objectfifo_link(of_in0, of_in1)
+        of_in0 = object_fifo("in0", shim_tile, mem_tile, 2, T.memref(16, T.i32()))
+        of_in1 = object_fifo("in1", mem_tile, compute_tile2, 2, T.memref(8, T.i32()))
+        object_fifo_link(of_in0, of_in1)
 
-        of_out0 = objectfifo("out0", mem_tile, shim_tile, 2, T.memref(8, T.i32()))
-        of_out1 = objectfifo("out1", compute_tile2, mem_tile, 2, T.memref(16, T.i32()))
-        objectfifo_link(of_out1, of_out0)
+        of_out0 = object_fifo("out0", mem_tile, shim_tile, 2, T.memref(8, T.i32()))
+        of_out1 = object_fifo("out1", compute_tile2, mem_tile, 2, T.memref(16, T.i32()))
+        object_fifo_link(of_out1, of_out0)
 
         @core(compute_tile2)
         def core_body():
@@ -810,9 +810,9 @@ def my_passthrough(module):
         compute_tile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = objectfifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
-        of_out = objectfifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
-        objectfifo_link(of_in, of_out)
+        of_in = object_fifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
+        of_out = object_fifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
+        object_fifo_link(of_in, of_out)
 
         @core(compute_tile2)
         def core_body():

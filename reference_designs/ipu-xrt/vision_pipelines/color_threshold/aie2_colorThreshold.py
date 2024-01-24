@@ -52,43 +52,43 @@ def color_threshold():
             # AIE-array data movement with object fifos
 
             # Input RGBA broadcast + memtile for skip
-            inOOB_L3L2 = objectfifo(
+            inOOB_L3L2 = object_fifo(
                 "inOOB_L3L2", ShimTile, MemTile, 2, line_channels_ty
             )
-            inOOB_L2L1_0 = objectfifo(
+            inOOB_L2L1_0 = object_fifo(
                 "inOOB_L2L1_0", MemTile, ComputeTile2, 2, line_ty
             )
-            inOOB_L2L1_1 = objectfifo(
+            inOOB_L2L1_1 = object_fifo(
                 "inOOB_L2L1_1", MemTile, ComputeTile3, 2, line_ty
             )
-            inOOB_L2L1_2 = objectfifo(
+            inOOB_L2L1_2 = object_fifo(
                 "inOOB_L2L1_2", MemTile, ComputeTile4, 2, line_ty
             )
-            inOOB_L2L1_3 = objectfifo(
+            inOOB_L2L1_3 = object_fifo(
                 "inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty
             )
-            objectfifo_link(
+            object_fifo_link(
                 inOOB_L3L2,
                 [inOOB_L2L1_0, inOOB_L2L1_1, inOOB_L2L1_2, inOOB_L2L1_3],
             )
 
             # Output RGBA
-            outOOB_L2L3 = objectfifo(
+            outOOB_L2L3 = object_fifo(
                 "outOOB_L2L3", MemTile, ShimTile, 2, line_channels_ty
             )
-            outOOB_L1L2_0 = objectfifo(
+            outOOB_L1L2_0 = object_fifo(
                 "outOOB_L1L2_0", ComputeTile2, MemTile, 2, line_ty
             )
-            outOOB_L1L2_1 = objectfifo(
+            outOOB_L1L2_1 = object_fifo(
                 "outOOB_L1L2_1", ComputeTile3, MemTile, 2, line_ty
             )
-            outOOB_L1L2_2 = objectfifo(
+            outOOB_L1L2_2 = object_fifo(
                 "outOOB_L1L2_2", ComputeTile4, MemTile, 2, line_ty
             )
-            outOOB_L1L2_3 = objectfifo(
+            outOOB_L1L2_3 = object_fifo(
                 "outOOB_L1L2_3", ComputeTile5, MemTile, 2, line_ty
             )
-            objectfifo_link(
+            object_fifo_link(
                 [outOOB_L1L2_0, outOOB_L1L2_1, outOOB_L1L2_2, outOOB_L1L2_3],
                 outOOB_L2L3,
             )

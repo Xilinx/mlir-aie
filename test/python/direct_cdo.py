@@ -26,8 +26,8 @@ from aie.dialects.aie import (
     generate_cdo,
     generate_cdo_direct,
     byte_ordering,
-    objectfifo,
-    objectfifo_link,
+    object_fifo,
+    object_fifo_link,
     tile,
     translate_mlir_to_llvmir,
     aie_llvm_link,
@@ -65,9 +65,9 @@ def my_passthrough(module):
         compute_tile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = objectfifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
-        of_out = objectfifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
-        objectfifo_link(of_in, of_out)
+        of_in = object_fifo("in", shim_tile, compute_tile2, 2, ofifo_mem_ref_ty)
+        of_out = object_fifo("out", compute_tile2, shim_tile, 2, ofifo_mem_ref_ty)
+        object_fifo_link(of_in, of_out)
 
         @core(compute_tile2)
         def core_body():

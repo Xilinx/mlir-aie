@@ -6,7 +6,7 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    objectfifo,
+    object_fifo,
     tile,
     Device,
     Core,
@@ -42,7 +42,7 @@ def objFifo_example():
         S = tile(0, 2)
         T_ = tile(1, 2)
 
-        of = objectfifo("of0", S, T_, 2, T.memref(256, T.i32()))
+        of = object_fifo("of0", S, T_, 2, T.memref(256, T.i32()))
 
         C = Core(T_)
         bb = Block.create_at_start(C.body)

@@ -27,9 +27,9 @@ def printf():
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
-            inOF = objectfifo("inOF", ShimTile, ComputeTile2, 2, memRef_ty)
-            outOF = objectfifo("outOF", ComputeTile2, ShimTile, 2, memRef_ty)
-            logoutOF = objectfifo("logoutOF", ComputeTile2, ShimTile, 2, memRef_ty)
+            inOF = object_fifo("inOF", ShimTile, ComputeTile2, 2, memRef_ty)
+            outOF = object_fifo("outOF", ComputeTile2, ShimTile, 2, memRef_ty)
+            logoutOF = object_fifo("logoutOF", ComputeTile2, ShimTile, 2, memRef_ty)
 
             # Set up compute tiles
 

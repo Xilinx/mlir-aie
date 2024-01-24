@@ -47,8 +47,8 @@ def passThroughAIE2():
                 flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
-            of_in = objectfifo("in", ShimTile, ComputeTile2, 2, line_ty)
-            of_out = objectfifo("out", ComputeTile2, ShimTile, 2, line_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
 
             # Set up compute tiles
 

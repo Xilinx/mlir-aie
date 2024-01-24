@@ -141,7 +141,7 @@ class Core(CoreOp):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
-class objectfifo(ObjectFifoCreateOp):
+class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
         name,
@@ -189,7 +189,7 @@ class objectfifo(ObjectFifoCreateOp):
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
-class objectfifo_link(ObjectFifoLinkOp):
+class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
     def __init__(
         self,
@@ -213,7 +213,7 @@ class objectfifo_link(ObjectFifoLinkOp):
 
 
 # Create a packet flow between source and destination tile ports.
-class packet_flow(PacketFlowOp):
+class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(
