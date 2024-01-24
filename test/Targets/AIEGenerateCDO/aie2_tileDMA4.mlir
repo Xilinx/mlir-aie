@@ -21,25 +21,25 @@
 // CHECK: XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(2,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM);
 
 module @aie_module  {
-  AIE.device(ipu) {
-    %t23 = AIE.tile(2, 3)
+  aie.device(ipu) {
+    %t23 = aie.tile(2, 3)
 
-    %buf_a_ping = AIE.buffer(%t23) {address = 1824 : i32, sym_name = "a_ping" } : memref<256xi32>
+    %buf_a_ping = aie.buffer(%t23) {address = 1824 : i32, sym_name = "a_ping" } : memref<256xi32>
 
-    %lock_a_write = AIE.lock(%t23, 3) { init = 1 : i32 }
-    %lock_a_read = AIE.lock(%t23, 4)
+    %lock_a_write = aie.lock(%t23, 3) { init = 1 : i32 }
+    %lock_a_read = aie.lock(%t23, 4)
 
     // Tile DMA
-    %m23 = AIE.mem(%t23) {
-        %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end, 4)
+    %m23 = aie.mem(%t23) {
+        %srcDma = aie.dmaStart("S2MM", 0, ^bd0, ^end, 4)
       ^bd0:
         // Note: acquire and release are different locks.
-        AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
-        AIE.dmaBd(%buf_a_ping : memref<256xi32>, 0, 256)
-        AIE.useLock(%lock_a_read, Release, 1)
-        AIE.nextBd ^end
+        aie.useLock(%lock_a_write, AcquireGreaterEqual, 1)
+        aie.dmaBd(%buf_a_ping : memref<256xi32>, 0, 256)
+        aie.useLock(%lock_a_read, Release, 1)
+        aie.nextBd ^end
       ^end:
-        AIE.end
+        aie.end
     }
  }
 }

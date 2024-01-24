@@ -22,26 +22,26 @@
 // CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 128 * 4));
 
 module @aie_module  {
- AIE.device(ipu) {
-  %t01 = AIE.tile(2, 1)
-  %buf01_0 = AIE.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
-  %buf01_1 = AIE.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
+ aie.device(ipu) {
+  %t01 = aie.tile(2, 1)
+  %buf01_0 = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
+  %buf01_1 = aie.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
 
   %trhesholdValue = arith.constant 100      : i16
 
-  %l01_0 = AIE.lock(%t01, 0) { init = 1 : i32 }
-  %l01_1 = AIE.lock(%t01, 1)
-  %l01_2 = AIE.lock(%t01, 2) { init = 1 : i32 }
-  %l01_3 = AIE.lock(%t01, 3)
+  %l01_0 = aie.lock(%t01, 0) { init = 1 : i32 }
+  %l01_1 = aie.lock(%t01, 1)
+  %l01_2 = aie.lock(%t01, 2) { init = 1 : i32 }
+  %l01_3 = aie.lock(%t01, 3)
 
-  %m01 = AIE.memTileDMA(%t01) {
-      %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^dma0)
+  %m01 = aie.memTileDMA(%t01) {
+      %srcDma = aie.dmaStart(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      %memSrcDma = AIE.dmaStart(MM2S, 1, ^bd1, ^dma1)
+      %memSrcDma = aie.dmaStart(MM2S, 1, ^bd1, ^dma1)
     ^dma1:
-      %memDstDma = AIE.dmaStart(S2MM, 1, ^bd2, ^dma2)
+      %memDstDma = aie.dmaStart(S2MM, 1, ^bd2, ^dma2)
     ^dma2:
-      %dstDma = AIE.dmaStart(MM2S, 0, ^bd3, ^end)
+      %dstDma = aie.dmaStart(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
       aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>])
@@ -63,7 +63,7 @@ module @aie_module  {
       aie.use_lock(%l01_2, "Release", 1)
       aie.next_bd ^bd3
     ^end:
-      AIE.end
+      aie.end
   }
  }
 }
