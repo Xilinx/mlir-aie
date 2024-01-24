@@ -148,7 +148,6 @@ prepend_path(peano_tools_dir)
 # Certainly the prepend works but I would rather be explicit
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
 
-prepend_path(config.peano_tools_dir)
 prepend_path(config.aie_tools_dir)
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]

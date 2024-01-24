@@ -628,8 +628,17 @@ class FlowRunner:
             )
 
             if opts.airbin:
-                file_airbin = self.prepend_tmp('air.bin')
-                await self.do_call(task, ['aie-translate', '--aie-generate-airbin', file_physical, '-o', file_airbin])
+                file_airbin = self.prepend_tmp("air.bin")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-airbin",
+                        file_physical,
+                        "-o",
+                        file_airbin,
+                    ],
+                )
             else:
                 file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
                 await self.do_call(

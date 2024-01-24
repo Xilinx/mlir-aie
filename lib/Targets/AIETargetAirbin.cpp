@@ -21,6 +21,7 @@
 #include <gelf.h>
 #include <iostream>
 #include <libelf.h>
+#include <set>
 #include <sys/stat.h>
 #include <unistd.h> // read
 #include <utility>  // pair
@@ -596,23 +597,14 @@ static BDInfo getBDInfo(Block &block) {
     bdInfo.foundBD = true;
     auto bufferType = op.getBuffer().getType().cast<::mlir::MemRefType>();
 
-    if (op.isA()) {
-      bdInfo.baseAddrA = op.getBufferOp().address();
-      bdInfo.lenA = op.getLenValue();
-      bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
-      bdInfo.offsetA = op.getOffsetValue();
-      bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
-      bdInfo.hasA = true;
-    }
-
-    if (op.isB()) {
-      bdInfo.baseAddrB = op.getBufferOp().address();
-      bdInfo.lenB = op.getLenValue();
-      bdInfo.bytesB = bufferType.getElementTypeBitWidth() / 8u;
-      bdInfo.offsetB = op.getOffsetValue();
-      bdInfo.bufB = "XAIEDMA_TILE_BD_ADDRB";
-      bdInfo.hasB = true;
-    }
+    assert(op.getBufferOp().getAddress().has_value() &&
+           "buffer op should have address");
+    bdInfo.baseAddrA = op.getBufferOp().getAddress().value();
+    bdInfo.lenA = op.getLenValue();
+    bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
+    bdInfo.offsetA = op.getOffsetValue();
+    bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
+    bdInfo.hasA = true;
   }
   return bdInfo;
 }
