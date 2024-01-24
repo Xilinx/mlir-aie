@@ -51,4 +51,3 @@ def objFifo_example():
             memref.store(arith.constant(10), elem0.result, [0])
             of.release(1)
             end()
-            
