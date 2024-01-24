@@ -215,6 +215,7 @@ class objectfifo_link(ObjectFifoLinkOp):
 # Create a packet flow between source and destination tile ports.
 class packet_flow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
+
     def __init__(
         self, pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel
     ):
