@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 source /opt/xilinx/xrt/setup.sh
-echo "wtfbbq"
 echo $PWD
 
 for f in "$@"; do
