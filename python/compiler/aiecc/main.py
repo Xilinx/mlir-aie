@@ -626,17 +626,31 @@ class FlowRunner:
                     file_physical,
                 ],
             )
-            file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
-            await self.do_call(
-                task,
-                [
-                    "aie-translate",
-                    "--aie-generate-xaie",
-                    file_physical,
-                    "-o",
-                    file_inc_cpp,
-                ],
-            )
+
+            if opts.airbin:
+                file_airbin = self.prepend_tmp("air.bin")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-airbin",
+                        file_physical,
+                        "-o",
+                        file_airbin,
+                    ],
+                )
+            else:
+                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-xaie",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
 
             # Optionally generate aie_control.cpp for CDO to XCLBIN backend
             file_control_cpp = self.prepend_tmp("aie_control.cpp")

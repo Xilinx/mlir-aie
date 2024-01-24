@@ -37,6 +37,7 @@ config.suffixes = [".mlir", ".py"]
 config.test_source_root = os.path.dirname(__file__)
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
+config.substitutions.append(("%AIE_SRC_ROOT", config.aie_src_root))
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -144,6 +145,9 @@ if config.vitis_root:
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 prepend_path(config.llvm_tools_dir)
 prepend_path(peano_tools_dir)
+# Certainly the prepend works but I would rather be explicit
+config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+
 prepend_path(config.aie_tools_dir)
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
