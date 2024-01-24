@@ -27,7 +27,8 @@ jobs:
   build-repo:
     name: Build and Test
 
-    runs-on: amd7940hs
+#    runs-on: amd7940hs
+    runs-on: mlevental-F7BSC
 
     steps:
 
