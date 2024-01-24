@@ -120,6 +120,6 @@ set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 add_lit_testsuite(check-aie-ipu "Running the aie ipu regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --filter \"(python/e2e|ipu-xrt)\" -j2 --time-tests"
+  ARGS "-av --filter \"(python/e2e|ipu-xrt)\" -j2 --time-tests"
 )
 set_target_properties(check-aie-ipu PROPERTIES FOLDER "Tests")
