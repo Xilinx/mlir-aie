@@ -17,7 +17,7 @@
  // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 0,  /* enableNextBd */ 0));
  // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
  // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3),  /* bd */ 0));
- // CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 4, /* EnToken */ Xaie_DISABLE));
+ // CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 4, /* EnToken */ Xaie_DISABLE));
  // CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM));
 
  module @aie_module  {
@@ -31,13 +31,13 @@
 
      // Tile DMA
      %m73 = aie.mem(%t73) {
-         %srcDma = aie.dmaStart("S2MM", 0, ^bd0, ^end, 4)
+         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, 4)
        ^bd0:
          // Note: acquire and release are different locks.
-         aie.useLock(%lock_a_write, AcquireGreaterEqual, 1)
-         aie.dmaBd(%buf_a_ping : memref<256xi32>, 0, 256)
-         aie.useLock(%lock_a_read, Release, 1)
-         aie.nextBd ^end
+         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
+         aie.dma_bd(%buf_a_ping : memref<256xi32>, 0, 256)
+         aie.use_lock(%lock_a_read, Release, 1)
+         aie.next_bd ^end
        ^end:
          aie.end
      }

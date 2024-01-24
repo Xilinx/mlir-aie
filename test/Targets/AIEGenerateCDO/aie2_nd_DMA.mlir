@@ -35,13 +35,13 @@ module @aie_module  {
   %l01_3 = aie.lock(%t01, 3)
 
   %m01 = aie.memTileDMA(%t01) {
-      %srcDma = aie.dmaStart(S2MM, 0, ^bd0, ^dma0)
+      %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      %memSrcDma = aie.dmaStart(MM2S, 1, ^bd1, ^dma1)
+      %memSrcDma = aie.dma_start(MM2S, 1, ^bd1, ^dma1)
     ^dma1:
-      %memDstDma = aie.dmaStart(S2MM, 1, ^bd2, ^dma2)
+      %memDstDma = aie.dma_start(S2MM, 1, ^bd2, ^dma2)
     ^dma2:
-      %dstDma = aie.dmaStart(MM2S, 0, ^bd3, ^end)
+      %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
       aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>])

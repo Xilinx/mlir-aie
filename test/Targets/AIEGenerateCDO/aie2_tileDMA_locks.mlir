@@ -40,24 +40,24 @@ module @aie_module  {
     
     // Tile DMA
     %m23 = aie.mem(%t23) {
-        %srcDma = aie.dmaStart("S2MM", 0, ^bd0, ^end)
+        %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
-        aie.useLock(%lock_l1, AcquireGreaterEqual, 1)
-        aie.dmaBd(%buf_l : memref<256xi32>, 0, 256)
-        aie.useLock(%lock_l2, Release, 1)
-        aie.nextBd ^bd1
+        aie.use_lock(%lock_l1, AcquireGreaterEqual, 1)
+        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.use_lock(%lock_l2, Release, 1)
+        aie.next_bd ^bd1
       ^bd1:
-        aie.dmaBd(%buf_l : memref<256xi32>, 0, 256)
-        aie.useLock(%lock_l1, Release, 1)
-        aie.nextBd ^bd2
+        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.use_lock(%lock_l1, Release, 1)
+        aie.next_bd ^bd2
       ^bd2:
-        aie.dmaBd(%buf_l : memref<256xi32>, 0, 256)
-        aie.useLock(%lock_l1, Release, 1)
-        aie.nextBd ^bd3
+        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.use_lock(%lock_l1, Release, 1)
+        aie.next_bd ^bd3
       ^bd3:
-        aie.dmaBd(%buf_l : memref<256xi32>, 0, 256)
-        aie.useLock(%lock_l1, Release, 1)
-        aie.nextBd ^end
+        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.use_lock(%lock_l1, Release, 1)
+        aie.next_bd ^end
       ^end:
         aie.end
     }
