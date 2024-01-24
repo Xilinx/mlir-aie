@@ -75,6 +75,6 @@ jobs:
             ninja install
 
             sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
-            ninja check-aie
+            LIT_FILTER=ipu-xrt ninja check-aie
             sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
-            ninja check-reference-designs
+            LIT_FILTER=ipu-xrt ninja check-reference-designs
