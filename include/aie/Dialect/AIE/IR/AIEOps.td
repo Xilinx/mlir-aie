@@ -885,24 +885,17 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        OptionalAttr<AIEI32Attr>:$repeat_count
+        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain ( `,` $repeat_count^ )? `)` attr-dict
+    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
-
-  let builders = [
-    OpBuilder<(ins "DMAChannelDir":$channelDir, "int32_t":$channelIndex, "mlir::Block *":$dest, "mlir::Block *":$chain),
-    [{
-      build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, nullptr, dest, chain);
-    }]>
-  ];
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
@@ -916,11 +909,12 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<BoolAttr, "true">:$loop
+        DefaultValuedAttr<BoolAttr, "true">:$loop,
+        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? (`,` `repeat_count` `=` $repeat_count^)? `)` `[`regions`]` attr-dict
   }];
   let hasVerifier = 1;
 }

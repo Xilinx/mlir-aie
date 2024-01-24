@@ -427,29 +427,15 @@ struct AIEControl {
 
     auto pushToBdQueueAndEnable =
         [this](Operation &op, XAie_LocType &tileLoc, int chNum,
-               const DMAChannelDir &channelDir, int bdNum) -> LogicalResult {
+               const DMAChannelDir &channelDir, int bdNum,
+               int repeatCount) -> LogicalResult {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
-      // FIXME
-      // const auto &target_model = xilinx::AIE::getTargetModel(op);
-      // if (target_model.getTargetArch() == AIEArch::AIE1) {
-      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelPushBdToQueue, &devInst,
-                              tileLoc, chNum,
-                              // TODO hack until physical dialect changes
-                              direction, bdNum);
-      //} else {
-      //  int rep = 1;
-      //  if (auto r = op.getRepeatCount())
-      //    rep = *r;
-      //  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
-      //                          tileLoc, chNum,
-      //                          // TODO hack until physical dialect changes
-      //                          direction, bdNum, rep, XAIE_DISABLE);
-      //}
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
+                              tileLoc, chNum, direction, bdNum, repeatCount,
+                              /*EnTokenIssue*/ XAIE_DISABLE);
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc,
-                              chNum,
-                              // TODO hack until physical dialect changes
-                              direction);
+                              chNum, direction);
       return success();
     };
 
@@ -574,7 +560,7 @@ struct AIEControl {
           assert(blockBdNumMap.contains(&block));
           if (failed(pushToBdQueueAndEnable(
                   *dmaOp.getOperation(), tileLoc, dmaOp.getChannelIndex(),
-                  dmaOp.getChannelDir(), blockBdNumMap[&block])))
+                  dmaOp.getChannelDir(), blockBdNumMap[&block], 1)))
             return failure();
         }
       else
@@ -585,7 +571,7 @@ struct AIEControl {
             int chNum = op.getChannelIndex();
             auto channelDir = op.getChannelDir();
             if (failed(pushToBdQueueAndEnable(*op.getOperation(), tileLoc,
-                                              chNum, channelDir, bdNum)))
+                                              chNum, channelDir, bdNum, 1)))
               return failure();
           }
         }
