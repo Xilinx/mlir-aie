@@ -88,21 +88,11 @@ def color_detect():
             OF_2to34 = object_fifo(
                 "OF_2to34", ComputeTile2, [ComputeTile3, ComputeTile4], 2, line_ty
             )
-            OF_3to3 = object_fifo(
-                "OF_3to3", ComputeTile3, ComputeTile3, 1, line_ty
-            )
-            OF_3to5 = object_fifo(
-                "OF_3to5", ComputeTile3, ComputeTile5, 2, line_ty
-            )
-            OF_4to4 = object_fifo(
-                "OF_4to4", ComputeTile4, ComputeTile4, 1, line_ty
-            )
-            OF_4to5 = object_fifo(
-                "OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty
-            )
-            OF_5to5a = object_fifo(
-                "OF_5to5a", ComputeTile5, ComputeTile5, 1, line_ty
-            )
+            OF_3to3 = object_fifo("OF_3to3", ComputeTile3, ComputeTile3, 1, line_ty)
+            OF_3to5 = object_fifo("OF_3to5", ComputeTile3, ComputeTile5, 2, line_ty)
+            OF_4to4 = object_fifo("OF_4to4", ComputeTile4, ComputeTile4, 1, line_ty)
+            OF_4to5 = object_fifo("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
+            OF_5to5a = object_fifo("OF_5to5a", ComputeTile5, ComputeTile5, 1, line_ty)
             OF_5to5b = object_fifo(
                 "OF_5to5b", ComputeTile5, ComputeTile5, 1, line_bytes_ty
             )
