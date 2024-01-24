@@ -1,4 +1,5 @@
 # ./python/aie/dialects/aie/__init__.py -*- Python -*-
+import inspect
 
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -259,12 +260,12 @@ memtile_dma = region_op(
 
 
 @region_op
-def dma(channel_dir, channel_index, *, num_bds=1, loop=None, loc=None, ip=None):
+def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
     return DMAOp(
         valid=T.bool(),
         channelDir=channel_dir,
         channelIndex=channel_index,
-        num_bds=num_bds,
+        num_bds=num_blocks,
         loop=loop,
         loc=loc,
         ip=ip,
@@ -274,8 +275,12 @@ def dma(channel_dir, channel_index, *, num_bds=1, loop=None, loc=None, ip=None):
 @region_adder()
 def another_bd(dma_op):
     for r in dma_op.regions:
+        if len(r.blocks) == 0:
+            r.blocks.append()
         if len(r.blocks[0].operations) == 0:
             return r
+
+    raise Exception("couldn't find empty region to add to.")
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -342,3 +347,43 @@ class NextBDOp(NextBDOp):
 
 def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
+
+
+_buffer = buffer
+
+
+def _get_sym_name(previous_frame, check_func_call):
+    try:
+        with open(inspect.getfile(previous_frame)) as src_file:
+            src_lines = src_file.readlines()
+            src_line = src_lines[previous_frame.f_lineno - 1].strip()
+            ident, func_call = map(lambda x: x.strip(), src_line.split("=", maxsplit=1))
+            assert check_func_call in func_call
+        return ident
+    except:
+        return None
+
+
+def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
+    return _buffer(
+        buffer,
+        tile,
+        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "buffer"),
+        address=address,
+        loc=loc,
+        ip=ip,
+    )
+
+
+_lock = lock
+
+
+def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
+    return _lock(
+        tile,
+        lock_id=lock_id,
+        init=init,
+        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "lock"),
+        loc=loc,
+        ip=ip,
+    )

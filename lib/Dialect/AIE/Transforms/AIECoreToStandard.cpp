@@ -129,7 +129,8 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   llvm::report_fatal_error("unsupported arch");
 }
 
-template <typename MyAIEOp> struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
+template <typename MyAIEOp>
+struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
   using OpAdaptor = typename MyAIEOp::Adaptor;
   ModuleOp &module;
@@ -140,9 +141,7 @@ template <typename MyAIEOp> struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   LogicalResult
   matchAndRewrite(MyAIEOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -158,8 +157,6 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
   LogicalResult
   matchAndRewrite(DebugOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
     std::string funcName = "debug_i32";
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
     if (!func)
@@ -168,7 +165,7 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -184,7 +181,6 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
   LogicalResult
   matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -215,7 +211,7 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
           rewriter.getI32IntegerAttr(0))); // tlast
     }
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -272,7 +268,6 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
   LogicalResult
   matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -292,7 +287,7 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
           rewriter.getI32IntegerAttr(1))); // enable
 
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -440,14 +435,13 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   matchAndRewrite(CoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    Operation *Op = op.getOperation();
     int col = op.colIndex();
     int row = op.rowIndex();
 
     // Only pull code for the indicated function
     if ((tileRow != row && tileRow != -1) ||
         (tileCol != col && tileCol != -1)) {
-      rewriter.eraseOp(Op);
+      rewriter.eraseOp(op);
       return success();
     }
 
@@ -474,13 +468,14 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       }
     });
 
-    rewriter.eraseOp(Op);
+    rewriter.eraseOp(op);
     return success();
   }
 };
 
 // Move all the ops with OpTy inside device, to just before the device.
-template <typename OpTy> void outlineOps(DeviceOp device) {
+template <typename OpTy>
+void outlineOps(DeviceOp device) {
   SmallVector<OpTy, 16> ops;
   for (const auto &op : device.getOps<OpTy>())
     ops.push_back(op);

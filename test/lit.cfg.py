@@ -88,6 +88,7 @@ if config.xrt_lib_dir:
         pass
 else:
     print("xrt not found")
+
 config.substitutions.append(("%run_on_ipu", run_on_ipu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))

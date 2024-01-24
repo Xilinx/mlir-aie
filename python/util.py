@@ -466,3 +466,42 @@ class Router:
 
     def is_legal(self):
         return True
+
+
+def tiling_calculator_tile_sizes(*matrix_dims, tile_n_cols=4, tile_n_rows=4):
+    rows, cols = matrix_dims
+    n_tiles_row = rows // tile_n_rows
+    n_tiles_col = cols // tile_n_cols
+
+    sizes_strides = [
+        [n_tiles_row, cols * tile_n_rows],
+        [n_tiles_col, tile_n_cols],
+        [tile_n_rows, cols],
+        [tile_n_cols, 1],
+    ]
+
+    return sizes_strides
+
+
+def tiling_calculator_n_tiles(*matrix_dims, n_tile_rows=4, n_tile_cols=4):
+    rows, cols = matrix_dims
+    tile_n_rows = rows // n_tile_rows
+    tile_n_cols = cols // n_tile_cols
+
+    sizes_strides = [
+        [n_tile_rows, cols * tile_n_rows],
+        [n_tile_cols, tile_n_cols],
+        [tile_n_rows, cols],
+        [tile_n_cols, 1],
+    ]
+
+    return sizes_strides
+
+
+def _to_js(sizes_strides):
+    # plug into https://andreroesti.com/data-layout-viz/data_layout.html
+    return f"""
+    set_transforms([
+        {sizes_strides}
+    ])
+    """
