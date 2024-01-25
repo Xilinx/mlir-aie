@@ -74,8 +74,7 @@ jobs:
 
             ninja install
 
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 1200 -j12 --show-unsupported/g' $PWD/../test/CMakeLists.txt
-            # contention somewhere makes multiple workers much slower than single for ipu-xrt tests
-            sed -i.bak 's/-sv --timeout 300/-sv --timeout 1200 -j1 --show-unsupported/g' $PWD/../reference_designs/CMakeLists.txt
+            sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
             ninja check-aie
+            sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
             ninja check-reference-designs

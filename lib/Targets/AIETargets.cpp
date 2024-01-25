@@ -114,6 +114,19 @@ void registerAIETranslations() {
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
 
+#ifdef AIE_ENABLE_AIRBIN
+  static llvm::cl::opt<std::string> outputFilename(
+      "airbin-output-filepath",
+      llvm::cl::desc("Output airbin file path (including filename)"),
+      llvm::cl::value_desc("airbin-output-filepath"),
+      llvm::cl::init("airbin.elf"));
+
+  static llvm::cl::opt<std::string> coreFilesDir(
+      "airbin-aux-core-dir-path",
+      llvm::cl::desc("Auxiliary core elf files dir path"),
+      llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
+#endif
+
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
@@ -257,6 +270,14 @@ void registerAIETranslations() {
         registry.insert<xilinx::ADF::ADFDialect>();
         registerDialects(registry);
       });
+#ifdef AIE_ENABLE_AIRBIN
+  TranslateFromMLIRRegistration registrationAirbin(
+      "aie-generate-airbin", "Generate configuration binary blob",
+      [](ModuleOp module, raw_ostream &) {
+        return AIETranslateToAirbin(module, outputFilename, coreFilesDir);
+      },
+      registerDialects);
+#endif
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
