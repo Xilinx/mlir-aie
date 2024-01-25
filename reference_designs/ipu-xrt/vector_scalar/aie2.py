@@ -25,7 +25,6 @@ def my_vector_scalar():
         @device(AIEDevice.ipu)
         def device_body():
             memRef_ty = T.memref(n, T.i32())
-            memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
             # AIE Core Function declarations
             scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
