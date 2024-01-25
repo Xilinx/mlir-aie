@@ -47,8 +47,7 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DenseMap<TileOp, TileLockOps> tileToLocks;
 
     // Construct data structure storing locks by tile.
-    for (LockOp lockOp : device.getOps<LockOp>()) {
-
+    device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
       TileOp tileOp = lockOp.getTileOp();
       if (lockOp.getLockID().has_value()) {
         auto lockID = lockOp.getLockID().value();
@@ -73,7 +72,7 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
         else
           iter->second.unassigned.push_back(lockOp);
       }
-    }
+    });
 
     // IR mutation: assign locks to all unassigned lock ops.
     for (auto [tileOp, locks] : tileToLocks) {

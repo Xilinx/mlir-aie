@@ -30,31 +30,12 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
 
-    %inA_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "inA_cons_buff_0"} : memref<64x32xi16>
-    %inA_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "inA_cons_buff_1"} : memref<64x32xi16>
-    %inB_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "inB_cons_buff_0"} : memref<32x64xi16>
-    %inB_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "inB_cons_buff_1"} : memref<32x64xi16>
-
     %memA_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "memA_cons_buff_0"} : memref<64x32xi16>
     %memA_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "memA_cons_buff_1"} : memref<64x32xi16>
     %memB_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "memB_cons_buff_0"} : memref<32x64xi16>
     %memB_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "memB_cons_buff_1"} : memref<32x64xi16>
     %memC_buff_0 = aie.buffer(%tile_0_2) {sym_name = "memC_buff_0"} : memref<64x64xi16>
     %memC_buff_1 = aie.buffer(%tile_0_2) {sym_name = "memC_buff_1"} : memref<64x64xi16>
-    %memC_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_0"} : memref<64x64xi16>
-    %memC_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_1"} : memref<64x64xi16>
-
-    %inA_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "inA_cons_lock"}
-    %inA_prod_lock = aie.lock(%tile_0_0, 0) {init = 0 : i32, sym_name = "inA_prod_lock"}
-    %inB_cons_lock = aie.lock(%tile_0_0, 3) {init = 0 : i32, sym_name = "inB_cons_lock"}
-    %inB_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "inB_prod_lock"}
-
-    %inA_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
-    %inA_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
-    %inB_cons_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
-    %inB_cons_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
-    %outC_cons_cons_lock = aie.lock(%tile_0_0, 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
-    %outC_cons_prod_lock = aie.lock(%tile_0_0, 4) {init = 0 : i32, sym_name = "outC_cons_prod_lock"}
 
     %memA_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "memA_cons_cons_lock"}
     %memA_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "memA_cons_prod_lock"}
@@ -118,7 +99,9 @@ module {
       }
       aie.end
     } {link_with = "mm.o"}
+
     aie.shim_dma_allocation @inA(MM2S, 0, 0)
+
     func.func @sequence(%arg0: memref<8192xi32>, %arg1: memref<8192xi32>, %arg2: memref<8192xi32>) {
       %c2048_i64 = arith.constant 2048 : i64
       %c16_i64 = arith.constant 16 : i64
@@ -136,7 +119,18 @@ module {
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
+
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+      %inA_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "inA_cons_buff_0"} : memref<64x32xi16>
+      %inA_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "inA_cons_buff_1"} : memref<64x32xi16>
+      %inB_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "inB_cons_buff_0"} : memref<32x64xi16>
+      %inB_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "inB_cons_buff_1"} : memref<32x64xi16>
+      %memC_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_0"} : memref<64x64xi16>
+      %memC_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_1"} : memref<64x64xi16>
+      %inA_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
+      %inA_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
+      %inB_cons_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
+      %inB_cons_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%inA_cons_prod_lock, AcquireGreaterEqual)
