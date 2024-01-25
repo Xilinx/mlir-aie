@@ -66,8 +66,8 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
-  if (!buffer.getElementType().isInteger(32))
-    return emitOpError("must be used with memref type i32.");
+  if (buffer.getElementTypeBitWidth() != 32)
+    return emitOpError("must be used with memref type with element width 32.");
   if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
