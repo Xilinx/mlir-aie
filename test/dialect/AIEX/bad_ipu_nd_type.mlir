@@ -17,7 +17,7 @@ module {
       %c1 = arith.constant 1 : i64
       %c1920 = arith.constant 1920 : i64
       %c1080 = arith.constant 1080 : i64
-      // expected-error@+1 {{must be used with memref type i32.}}
+      // expected-error@+1 {{must be used with memref type with element width 32.}}
       aiex.ipu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi8>
       return
     }
