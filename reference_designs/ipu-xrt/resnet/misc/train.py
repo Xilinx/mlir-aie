@@ -18,7 +18,7 @@ from utils import ImageNetKaggle
 today = date.today()
 name_append = today.strftime("%m_%d_%Y")
 
-project="SingleBottleneck_x1_plain_with_bn"
+project="SingleBottleneck_x3_projected_with_bn"
 dataset_name="CIFAR"
 
 
@@ -59,10 +59,11 @@ net=resnet_projected.Complete_SingleBottleneckModel3x_projected_NOQUANT(num_clas
 # net=resnet_projected.Complete_SingleConvModel1x_projected_NOQUANT(num_classes).to(device)
 
 
-net=resnet_projected.SingleBottleneck_x2_projected_with_bn(num_classes).to(device)
 net=resnet_projected.SingleBottleneck_x1_projected_with_bn(num_classes).to(device)
 net=resnet_projected.SingleBottleneck_x1_plain_with_bn(num_classes).to(device)
+net=resnet_projected.SingleBottleneck_x2_projected_with_bn(num_classes).to(device)
 
+net=resnet_projected.SingleBottleneck_x3_projected_with_bn(num_classes).to(device)
 
 
 workdir="weights_"+dataset_name+"_"+project+"_"+str(lr_rate)+"_"+str(name_append)
