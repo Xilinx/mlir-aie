@@ -141,13 +141,6 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 600 --filter-out ipu-xrt"
+  ARGS "-sv --timeout 600"
 )
 set_target_properties(check-reference-designs PROPERTIES FOLDER "Tutorials")
-
-add_lit_testsuite(check-reference-designs-ipu "Running the aie ipu reference designs"
-  ${CMAKE_CURRENT_BINARY_DIR}
-  DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --filter ipu-xrt -j2 --time-tests"
-)
-set_target_properties(check-reference-designs-ipu PROPERTIES FOLDER "Tutorials")
