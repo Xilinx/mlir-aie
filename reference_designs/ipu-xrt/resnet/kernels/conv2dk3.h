@@ -1,4 +1,5 @@
-//===- conv2dk3.h -------------------------------------------------*- C++ -*-===//
+//===- conv2dk3.h -------------------------------------------------*- C++
+//-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,11 +14,19 @@
 
 extern "C" {
 
-void conv2dk3_i8(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, uint8_t *output,  const int32_t  input_width,  const int32_t  input_channels, const int32_t  output_channels,
-                        const int32_t  kernel_width,  const int32_t  kernel_height,  const int32_t  check,const int scale, const int  channel_offset)    ;
+void conv2dk3_i8(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                 uint8_t *output, const int32_t input_width,
+                 const int32_t input_channels, const int32_t output_channels,
+                 const int32_t kernel_width, const int32_t kernel_height,
+                 const int32_t check, const int scale,
+                 const int channel_offset);
 
-void conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts, uint8_t *output,  const int32_t  input_width,  const int32_t  input_channels, const int32_t  output_channels,
-                        const int32_t  kernel_width,  const int32_t  kernel_height,  const int32_t  check,const int scale, const int  channel_offset)    ;
+void conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
+                  uint8_t *output, const int32_t input_width,
+                  const int32_t input_channels, const int32_t output_channels,
+                  const int32_t kernel_width, const int32_t kernel_height,
+                  const int32_t check, const int scale,
+                  const int channel_offset);
 
 } // extern "C"
 

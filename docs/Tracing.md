@@ -4,13 +4,8 @@
 - [1. Manually setting up trace configuration in a given design](#1.-Manually-setting-up-trace-configuration-in-a-given-design)
 - [2. Configuring host code/ XRT to write trace values in hex format into a text file](#2.-Configuring-host-code/-XRT-to-write-trace-values-in-hex-format-into-a-text-file)
 - [3. Parse text file to generate a tracing json file](#3.-Parse-text-file-to-generate-a-tracing-json-file)
-- [4. Open json file in a visualization tool like https://ui.perfetto.dev/](#4.-Open-json-file-in-a-visualization-tool-like-https://ui.perfetto.dev/)
+- [4. Open json file in a visualization tool like Perfetto](#4.-Open-json-file-in-a-visualization-tool-like-Perfetto)
 
-The current methodology for enabling tracing invovles 4 main steps.
-1. Manually setting up trace configuration in a given design
-2. Configuring host code/ XRT to write trace values in hex format into a text file
-3. Parse text file to generate a tracing json file
-4. Open json file in a visualization tool like https://ui.perfetto.dev/
 
 ## 1. Manually setting up trace configuration in a given design
 
@@ -25,11 +20,12 @@ It is important to consider how many streams this routing will take and whether 
 
 ***Insert packet switch routing example***
 
-Within the `func.func @sequence` block, we add a set of `aiex.ipu.write32` to configure the tile trace settings, the shimDMA, 
+Within the `func.func @sequence` block, we add a set of configuration register writes (`aiex.ipu.write32`) to configure the tile trace units and the shimDMA. 
 
 ### <u>Configure tile trace settings</u>
-For a give AIE2 tile, we configure the trace control for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace behavior. 2 are for configuring the trace general control and the other 2 are to specify which events our tile's trace hardware is monitoring.
+For a give AIE2 tile, we configure the trace control for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
+The table below describes the general trace control registers.
 
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
@@ -44,6 +40,7 @@ For a give AIE2 tile, we configure the trace control for the tile core and tile 
 // Start event = 1, Stop event = 0, Mode = event-time
 aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
 ```
+The table below describes which events the trace hardware monitors.
 
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
@@ -56,13 +53,13 @@ aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, va
 | Trace Event Group 0 | 0x340E0 | Trace Event 1 | [14:8], 0x----NN-- | 0 | 2nd trace event to monitor |
 | Trace Event Group 0 | 0x340E0 | Trace Event 0 | [6:0], 0x------NN | 0 | 1st trace event to monitor |
 
-There's is an extensive lists of trace events but we will describe a few key ones here.
+There is an extensive lists of trace events but here, we will only describe a few key ones.
 | Some common events | event ID | dec value |
 |--------------------|----------|-----------|
-| Ture                       |0x01| 1 |
+| True                       |0x01| 1 |
 | Stream stalls              |0x18| 24 |
-| Core Instruction Events 1  |0x22| 34 |
-| Core Instruction Events 0  |0x21| 33|
+| Core Instruction - Event 0  |0x21| 33|
+| Core Instruction - Event 1  |0x22| 34 |
 | Vector Instructions (e.g. VMAC, VADD, VCMP) |0x25|  37 |
 | Lock acquire requests      |0x2C|  44 |
 | Lock release requests      |0x2D|  45 | 
@@ -70,14 +67,21 @@ There's is an extensive lists of trace events but we will describe a few key one
 | Core Port Running 1        |0x4F|  79 |
 | Core Port Running 0        |0x4B|  75 | 
 
+<u>NOTE</u>: The "Core Instruction - Event 0/1" are special intrinsics you can add to your kernel code to trigger an event during the running of your core program. Within the kernel code, they look like:
+```
+event0();
+...
+event1();
+```
+This can be placed at the beginning and end of your code block to estimate the total execution time of your kernel program.
 
 <u>Example</u>
 ```
 // Events 0-3 monitored
 // ------------------------
 // Vector instrucitons (0x25)
-// Core Instruction Events 0 (0x21)
-// Core Instruction Events 1 (0x22)
+// Core Instruction - Event 0 (0x21)
+// Core Instruction - Event 1 (0x22)
 // Core Port Running 0 (0x4B) 
 aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
 
@@ -91,7 +95,7 @@ aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, va
 ```
 
 
-Some configurations like the Port Running 0/1 events are further configured by a secondary configuration register. In this case, we route the port activity from the stream switch to 0 or 1.
+Some configurations like the Port Running 0/1 events are further configured by a secondary configuration register. In this case, we route the port activity from the stream switch to Port running 0 or 1. 
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
 | Stream Switch Event Port Selection 1 | 0x3FF04 | Port 7 Master/Slave | [29], 0xN------- | 0 | Master or slave for port 7, 1=master, 0=slave |
@@ -121,10 +125,10 @@ aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, va
 
 ### <u>Configure shimDMA</u>
 
-The shimDMA needs to be configured to write the trace stream data to a valid location in DDR memory to be picked up by the host code. In the case of Ryzen AI, we can use a template like the following where the main parameters that get updated is the `buffer_length` and `buffer_offset`. 
+The shimDMA needs to be configured to write the trace stream data to a valid location in DDR memory to be read by the host code. In the case of Ryzen AI, we can use a template like the following where the main parameters that need to be defined are the `buffer_length` and `buffer_offset`. 
 
-* The `buffer_length` is the expected trace buffer size in bytes.
-* The `buffer_offset` occurs after the output buffer in bytes. If the output buffer size in words is 65,536, then the buffer offset would be 4*65,536 = 262,144 bytes.
+* The `buffer_length` is the expected trace buffer size in bytes and should match what's expected from the host code when reading the trace buffer.
+* The `buffer_offset` specifies in bytes where the trace buffer starts in the output buffer and occurs after the main output buffer ends. If the output buffer size in words is 65,536, then the buffer offset would be 4*65,536 = 262,144 bytes.
 * `packet_id` - TODO for packet routing?
 * `packet_type` - TODO for packet routing?`
 * `column` - TODO shim tile column value?
@@ -170,11 +174,11 @@ The shimDMA needs to be configured to write the trace stream data to a valid loc
 
 ## 2. Configuring host code/ XRT to write trace values in hex format into a text file
 
-Once the trace hardware is configured, we want the host code to read the trace data in DDR and write it out to a text file for post-run processing. In the case of a python code in a jupyter notebook, we can do this with a few python calls.
+Once the trace hardware is configured, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. In the case of a python code in a jupyter notebook, we can do this with a few python calls.
 
 
 ### Extracting trace from output buffer and writing values out to a text file
-This section of code that runs application and reads the output buffer into `output`. We call helper functions to extract the trace data and write it out to a file. One parameter is the trace buffer size (`trace_size`) which we declare here and should match the [shimDMA `buffer_length` above](#configure-shimdma).
+This section of code runs the application and reads the output buffer into the variable `output`. We call some helper functions to extract the trace data and write it out to a file. One parameter that is important to define is the trace buffer size (`trace_size`) which we declare here and should match the shimDMA `buffer_length` [above](#configure-shimdma).
 ```
 trace_size = 16384    # in bytes
 
@@ -187,7 +191,7 @@ if enable_trace:
     write_out_trace(trace, trace_file)
 ```
 ### Modification for `setup_aie` to update output buffer shape (`out_buf_shape`)
-Since `out_buf_shape` is used during extraction, we modify the output buffer size by the `trace_size`
+Since `out_buf_shape` is used during `extract_trace`, we modify the output buffer size by the `trace_size`
 ```
 def setup_aie(xclbin_path, insts_path, 
               in_0_shape, in_0_dtype,
@@ -207,9 +211,9 @@ def setup_aie(xclbin_path, insts_path,
 ```
 
 
-### Extract Trace Helper Function
-Extract trace data from output buffer data where trace data is appended after the output buffer. 
-* `trace_size` - Must specify this in bytes so we extract the right amount of data
+### "Extract Trace" helper function
+This helper function extracts trace data from the output buffer where the trace data is appended after the output buffer. 
+* `trace_size` - Defined earlier (in bytes) and needs to be specified outside the function so we extract the right amount of data
 ```
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype):
     trace_size_words = trace_size//4
@@ -218,8 +222,8 @@ def extract_trace(out_buf, out_buf_shape, out_buf_dtype):
     trace_suffix = out_buf_flat[-trace_size_words:]
     return output_prefix, trace_suffix
 ```
-### Write Trace Out Helper Function
-Write each trace packet as a hex string, one per line.
+### "Write Trace Out" helper function
+This helper function writes each trace packet as a hex string, one per line, out to a text file.
 ```
 def write_out_trace(trace, file_name):
     out_str = "\n".join(f"{i:0{8}x}" 
@@ -232,38 +236,41 @@ def write_out_trace(trace, file_name):
 
 ## 3. Parse text file to generate a tracing json file
 
-Once the trace data is stored in a text file, we want to parse it to generate waveform. There are two paths for this at the moment, one is a custom parser `parse_trace.py` that will generate a .json file which we can open in Perfetto to view and navigate the waveforms. The other is to use the emitIR parser `parse_eventiR.py` which will also generate a .json file. In order to use this parser, we must first convert our trace data into eventIR format using the Vitis hwfrontend parser which is used by aiesimulator. Both flows are described below:
+Once the trace data is stored in a text file, we want to parse it to generate waveform json file. There are 2 flows to do this at the moment, one is a custom parser `parse_trace.py` that will generate a .json file which we can open in Perfetto to view the waveforms. The other is to use the eventIR parser `parse_eventiR.py` which will also generate a .json file. In order to use this second parser, we must first convert our trace data into eventIR format using the Vitis hwfrontend parser which is used by aiesimulator. The goal of this second flow is to leverage the existing trace packet parsing from aiesimulator. Both flows are described below:
 
 ### a) Custom trace data parser --> .json
 To call our custom parser, we need the following files:
-* trace data text file - Generated during the running of our python host code/ jupyter notebook
-* source mlir - This is needed to parse what events and tiles were are monitoring to generate labels for our waveform visualizer
-* column shift - This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is targeting column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the column location of the mlir source with the column of the generated trace data. Usually 2 is the right value. NOTE - the underlying tools currently default to at column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
+* `trace data text file` - This is generated during the running of our python host code/ jupyter notebook
+* `source mlir` - This is needed to parse what events and tiles we are monitoring to generate labels for our waveform visualizer
+* `column shift` - This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. Usually 2 is the right value. NOTE - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 
 From the notebook folder, where the resnet designs are run, we should make sure we have a trace output folder created (by default, we use `traces`). Then we can run the following command.
 ```
-../../../utils/parse_trace.py --filename traces/bottleneck_cifar_split_vector.txt --mlir ../bottleneck_block/bottleneck_cifar_split_vector/aieWithTrace.mlir --colshift 2 |& tee mytrace.json
+../../../utils/parse_trace.py --filename traces/bottleneck_cifar_split_vector.txt --mlir ../bottleneck_block/bottleneck_cifar_split_vector/aieWithTrace.mlir --colshift 2 > trace.json
 ```
 
 ### b) Vitis hwfrontend + parser --> .json
 
-1. Create a dummy file (`.target`) in the current directory with the content 'hw'
+NOTE: This flow is still being developed and many of the required steps at this moment should likely be rolled into the script directly. For now, it's probably better to just use the custom parser flow and only use this flow to compare results.
+
+1. Create a dummy file (`.target`) in the current directory with the file content 'hw'
 2. Create a template json with the matching tile position and events - <custom config>.json
 3. Prepend 0x in front of all event trace packet in trace text file - <0x trace text file>
-4. Modify trace text file of possible bugs (see below)
-5. Run Vitis frontend parser to generate event IR.
+4. Modify trace text file to workaround possible bugs (see below)
+5. Run Vitis frontend parser to generate an event IR text file.
 6. Run custom eventIR-to-json parser script (`parse_eventIR.py`)
 
-After step #1, we need a template json file that matches the position and event list of our trace. This file should ideally be auto-generated but an example version of this file can be found in reference_designs/ipu-xrt/resnet/notebook/traces/
-```
-hwfrontend --trace <0x trace text file> --trace_config <custom config>.json --pkg-dir . --outfile <output text file>
-```
-#### <u>NOTE</u>: Some errors that have cropped up. 
-<u>Bug 1</u>: For case where start event is 1. The trace output seems to have a few packets with just `0xdbffdbff` data. These seem to give the following error and needs to have those packets deleted up to the start packet.
+Step #1 is needed by the `hwfrontend` tool and is just a hidden file that has `hw` in the first line. 
+
+For step #2, we need a template json file that matches the position and event list of our trace. This file should ideally be auto-generated but an example version of this file can be found in `reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_cifar_split_vector/traces/bottleneck_cifar_split_vector.json`
+
+In step #3, we need to prepend the trace text file data with `0x` because that's what `hwfrontend` expects. Then in step #4, there are currently a few bugs that we may need to work around by editing the trace text file further as described below.
+
+<u>Workaround 1</u>: For case where the start event is 1 or maybe in general, the trace output might have a few packets with just `0xdbffdbff` data. These seem to give the following error and needs to have those packets deleted up to an actual valid event packet.
 ```
 CRITICAL WARNING: [hwanalyze 77-5570] trace_out_hex3:1 Start Frame for Tile(2, 4) Module: cm looks to be missing as trace configuration is not available.
 ```
-<u>Bug 2</u>: If the start timer value is too large, it reports an error:
+<u>Workaround 2</u>: If the start timer value is too large, it reports an error:
 ```
 WARNING: [hwanalyze 77-5569] trace_out_hex2:1 Overrun Tile(2, 4) Module: cm. Hence further decoding of this particular module will be skipped.
 ```
@@ -271,17 +278,23 @@ So reducing the start frame from something like:
 ```
 0xf4000000
 0x00a93c62
-to 
+```
+to
+```
 0xf0000000
 0x0005d0f7
 ```
 which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
-
-5. Run eventIR parse script to generate json file for waveforms
+Step #5 is running the aiesimulator frontend parser which generates the eventIR text file.
 ```
-../../../utils/parse_eventIR.py --filename <output text file> --mlir ../bottleneck_block/bottleneck_cifar_split_vector/aieWithTrace.mlir --colshift 2 |& tee mytrace.json
+hwfrontend --trace <0x trace text file> --trace_config <custom config>.json --pkg-dir . --outfile <output text file>
 ```
 
+Step #6 is running the custom eventIR-to-json parser script (`parse_eventIR.py`) to generate the json file.
+```
+../../../utils/parse_eventIR.py --filename <output text file> --mlir ../bottleneck_block/bottleneck_cifar_split_vector/aieWithTrace.mlir --colshift 2 > trace_eventIR.json
+```
+Note that there is a sample of these steps for both the custom parser and the eventIR parser in the Makefile for bottleneck_cifar_split_vector located at `reference_designs/ipu-xrt/resnet/bottleneck_block/bottleneck_cifar_split_vector/traces/Makefile`. It doesn't have commands for step 3 and 4 which would need to be done by hand.
 
-## 4. Open json file in a visualization tool like https://ui.perfetto.dev/
-Open the https://ui.perfetto.dev in your browser and then open up the trace that was generated in the previous step. 
+## 4. Open json file in a visualization tool like Perfetto
+Open the https://ui.perfetto.dev in your browser and then open up the trace that was generated in the previous steps. You can zoom in the waveform visualizer with a,s,w,d keys. 
