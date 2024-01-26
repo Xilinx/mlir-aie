@@ -897,6 +897,22 @@ class AIELayerOffload2(nn.Module):
         # print("after",out.size())
         return out  
 
+class AIELayerOffload3(nn.Module):
+    def __init__(self, block, num_blocks):
+        super(AIELayerOffload3, self).__init__()
+        self.in_planes = 64
+        self.layer1 = block(in_planes=64,planes=64)
+        self.layer2 = block(in_planes=256,planes=64)
+        self.layer3 = block(in_planes=256,planes=64)
+
+    def forward(self, x):
+        # print("before",x.size())
+        out = self.layer1(x)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        # print("after",out.size())
+        return out  
+
 class AIELayerOffload32(nn.Module):
     def __init__(self, block, num_blocks):
         super(AIELayerOffload32, self).__init__()
@@ -1246,7 +1262,12 @@ def SingleBottleneck_x1_projected_with_bn(num_classes):
 
 # 2024.1.16
 def SingleBottleneck_x2_projected_with_bn(num_classes):
-    return CombinedModel(NonAIELayerInitial(),AIELayerOffload2(Bottleneck_projected, [2,]), \
+    return CombinedModel(NonAIELayerInitial(),AIELayerOffload2(Bottleneck_projected, [1,]), \
+                        #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
+                              NonAIELayerPost(num_classes))
+
+def SingleBottleneck_x3_projected_with_bn(num_classes):
+    return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected, [1,]), \
                         #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
                               NonAIELayerPost(num_classes))
 # _________________________________________________________
