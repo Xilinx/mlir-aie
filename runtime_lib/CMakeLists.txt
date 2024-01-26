@@ -141,7 +141,7 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
 
   # just to make cmake happy since AIETargets will need to re-export
   install(TARGETS xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo_static)
-  install(EXPORT xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake)
+  install(EXPORT xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake/aie)
   install(IMPORTED_RUNTIME_ARTIFACTS
           cdo_driver
           COMPONENT aie-translate-targets
