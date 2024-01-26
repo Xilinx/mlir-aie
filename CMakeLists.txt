@@ -151,8 +151,10 @@ cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
 cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
+find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
+find_library(UUID uuid)
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
-  "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL" OFF)
+  "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL;UUID" OFF)
 
 find_library(CDO_DRIVER_LIBRARY cdo_driver
   HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
@@ -230,8 +232,12 @@ if(AIE_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
   mlir_configure_python_dev_packages()
 
+  if(NOT AIE_PYTHON_INSTALL_DIR)
+    set(AIE_PYTHON_INSTALL_DIR "python")
+  endif()
+
   if(NOT AIE_PYTHON_PACKAGES_DIR)
-    set(AIE_PYTHON_PACKAGES_DIR "${AIE_BINARY_DIR}/python")
+    set(AIE_PYTHON_PACKAGES_DIR "${AIE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}")
   endif()
 endif()
 

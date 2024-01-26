@@ -28,10 +28,6 @@ endif()
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
-if(NOT AIE_PYTHON_INSTALL_DIR)
-  set(AIE_PYTHON_INSTALL_DIR "python")
-endif()
-
 ################################################################################
 # Sources
 ################################################################################
@@ -106,6 +102,14 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     SOURCES
       xrt.py
   )
+  add_library(xrt_coreutil SHARED IMPORTED)
+  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+  install(IMPORTED_RUNTIME_ARTIFACTS
+    xrt_coreutil
+    COMPONENT xrt_coreutil
+    LIBRARY
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+  )
 endif()
 
 ################################################################################
@@ -170,7 +174,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil)
+    list(APPEND _py_libs xrt_coreutil uuid)
   endif()
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
@@ -289,6 +293,7 @@ else ()
       PRIVATE_LINK_LIBS
         LLVMSupport
         xrt_coreutil
+        uuid
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
@@ -357,7 +362,8 @@ foreach(r ${_runtimes})
   install(IMPORTED_RUNTIME_ARTIFACTS
     ${r}
     COMPONENT aie-python
-    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    LIBRARY
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()
 

@@ -13,7 +13,7 @@ from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
-    return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
+    return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
 class CMakeExtension(Extension):
@@ -33,7 +33,7 @@ def get_exe_suffix():
 def get_cross_cmake_args():
     cmake_args = {}
 
-    CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
+    CIBW_ARCHS = os.getenv("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
         ARCH = cmake_args["LLVM_TARGETS_TO_BUILD"] = "AArch64"
     elif CIBW_ARCHS in {"x86_64", "AMD64"}:
@@ -60,16 +60,24 @@ class CMakeBuild(build_ext):
         install_dir = extdir
         cfg = "Release"
 
-        cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
+        cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
 
-        MLIR_AIE_INSTALL_ABS_PATH = (
-            Path(__file__).parent
-            / ("mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti")
+        MLIR_AIE_INSTALL_ABS_PATH = Path(
+            os.getenv(
+                "MLIR_AIE_INSTALL_ABS_PATH",
+                Path(__file__).parent
+                / ("mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti"),
+            )
         ).absolute()
-        MLIR_INSTALL_ABS_PATH = (
-            Path(__file__).parent
-            / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+
+        MLIR_INSTALL_ABS_PATH = Path(
+            os.getenv(
+                "MLIR_INSTALL_ABS_PATH",
+                Path(__file__).parent
+                / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"),
+            )
         ).absolute()
+
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
             if not Path("/tmp/a").exists():
@@ -93,6 +101,14 @@ class CMakeBuild(build_ext):
             "-DCMAKE_C_VISIBILITY_PRESET=hidden",
             "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
         ]
+
+        if os.getenv("CMAKE_MODULE_PATH"):
+            cmake_module_path = f"{Path(os.getenv('CMAKE_MODULE_PATH')).absolute()}"
+            cmake_args.append(f"-DCMAKE_MODULE_PATH={cmake_module_path}")
+        if os.getenv("XRT_ROOT"):
+            xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
+            cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
+
         if platform.system() == "Windows":
             cmake_args += [
                 "-DCMAKE_C_COMPILER=cl",
@@ -104,7 +120,7 @@ class CMakeBuild(build_ext):
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
 
         if "CMAKE_ARGS" in os.environ:
-            cmake_args += [item for item in os.environ["CMAKE_ARGS"].split(" ") if item]
+            cmake_args += [item for item in os.getenv("CMAKE_ARGS").split(" ") if item]
 
         build_args = []
         if self.compiler.compiler_type != "msvc":
@@ -140,14 +156,14 @@ class CMakeBuild(build_ext):
         if sys.platform.startswith("darwin"):
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=11.6"]
             # Cross-compile support for macOS - respect ARCHFLAGS if set
-            archs = re.findall(r"-arch (\S+)", os.environ.get("ARCHFLAGS", ""))
+            archs = re.findall(r"-arch (\S+)", os.getenv("ARCHFLAGS", ""))
             if archs:
                 cmake_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(";".join(archs))]
 
         if "PARALLEL_LEVEL" not in os.environ:
             build_args += [f"-j{str(2 * os.cpu_count())}"]
         else:
-            build_args += [f"-j{os.environ.get('PARALLEL_LEVEL')}"]
+            build_args += [f"-j{os.getenv('PARALLEL_LEVEL')}"]
 
         build_temp = Path(self.build_temp) / ext.name
         if not build_temp.exists():
@@ -155,6 +171,9 @@ class CMakeBuild(build_ext):
 
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
+
+        if platform.system() == "Windows":
+            cmake_args = [c.replace("\\", "\\\\") for c in cmake_args]
 
         subprocess.run(
             ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
@@ -166,8 +185,17 @@ class CMakeBuild(build_ext):
         )
 
 
+aie_req = list(
+    filter(
+        lambda l: not l.startswith("#"),
+        open("aie-python-extras-req.txt").readlines(),
+    )
+)
+assert len(aie_req) == 1
+aie_req = aie_req[0].strip()
+
 setup(
-    version=os.environ.get("MLIR_AIE_WHEEL_VERSION", "0.0.1"),
+    version=os.getenv("MLIR_AIE_WHEEL_VERSION", "0.0.1"),
     author="",
     name="aie",
     include_package_data=True,
@@ -181,4 +209,5 @@ setup(
             "aiecc=aie.compiler.aiecc.main:main",
         ],
     },
+    install_requires=[aie_req],
 )

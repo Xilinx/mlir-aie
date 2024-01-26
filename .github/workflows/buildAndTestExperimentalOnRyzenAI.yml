@@ -1,0 +1,132 @@
+name: Build and Test Experimental features on Ryzen AI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-experimental-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+
+jobs:
+  build-repo:
+    name: Build and Test
+
+    runs-on: amd7940hs
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+
+      - uses: actions/checkout@v3
+        with:
+          submodules: "true"
+
+      - name: Build mlir-aie distro
+        run: |
+          
+          pip cache purge
+          
+          python -m venv aie-venv
+          source aie-venv/bin/activate
+          pip install -r python/requirements.txt
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          
+          mkdir build
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          cmake -G Ninja \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_INSTALL_PREFIX=$PWD/mlir_aie \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DMLIR_DIR=$PWD/mlir/lib/cmake/mlir \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DAIE_ENABLE_GENERATE_CDO_DIRECT=ON \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
+            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+            -DXRT_ROOT=/opt/xilinx/xrt \
+            -S $PWD -B $PWD/build
+          
+          cmake --build build --target install
+
+      - name: Build mlir-aie python bindings
+        run: |
+          
+          source aie-venv/bin/activate
+          
+          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+          export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
+          export WHEELHOUSE_DIR=$PWD/wheelhouse
+          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export XRT_ROOT=/opt/xilinx/xrt
+          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
+          
+          pushd utils/mlir_aie_wheels/python_bindings
+          
+          pip install wheel auditwheel patchelf
+          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          # boost dep in xrt...
+          # auditwheel repair -w $WHEELHOUSE_DIR $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64 --exclude libmlir_float16_utils.so
+          
+          popd
+
+      - name: Build mlir-aie python bindings
+        run: |
+          
+          source aie-venv/bin/activate
+          pip install wheelhouse/aie-*.whl
+          
+          export VITIS_DIR=/opt/Xilinx/Vitis/2023.2
+          export XRT_ROOT=/opt/xilinx/xrt
+          export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
+          export LD_LIBRARY_PATH=/opt/xilinx/xrt/lib:$LD_LIBRARY_PATH
+          
+          for f in test/ipu-xrt/e2e/*.py; do python $f; done
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v3
+        with:
+          path: wheelhouse/aie-*.whl
+          name: ryzen_ai_wheel
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheelhouse/aie-*.whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
