@@ -1,6 +1,7 @@
 include ../../../makefile-common
 
-mlirFileName = aieFinal
+# mlirFileName = aieFinal
+mlirFileName = aieWithTrace
 # mlirFileName = aieDemo
 
 VPATH := ../../kernels

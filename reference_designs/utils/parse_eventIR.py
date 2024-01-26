@@ -14,7 +14,8 @@ NUM_EVENTS    = 8 # number of events we can view per trace
 
 rowoffset = 1 # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
 
-DEBUG = True
+# DEBUG = True
+DEBUG = False
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -528,7 +529,8 @@ def parse_mlir_trace_events(lines):
     # TODO Need to check if this line is commented out, check for // ? (harder to check of /* */)
     # TODO Need to support value in hex with 0x or decimal
     # pattern = r"AIEX.ipu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"
-    pattern = r"AIEX.ipu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+    # pattern = r"AIEX.ipu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+    pattern = r"aiex.ipu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
 
     pid_events = list()
     for t in range(NumTraceTypes):
@@ -804,7 +806,8 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
             result = re.search(time_pattern, line)
             if result: # match found
                 curr_time = result.group(1)
-                print("DEBUG: matching time line in "+str(i)+". time value is "+str(curr_time))
+                if DEBUG:
+                    print("DEBUG: matching time line in "+str(i)+". time value is "+str(curr_time))
                 check_time = False
             else:
                 errors += 1
@@ -820,7 +823,8 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                 event = int(result.group(4))
                 tt = 0 # TODO set to 0 for now. What values in eventIR indicate type?
                 loc = str(row) + ',' + str(col)
-                print("DEBUG: grp(1):"+str(asserted)+",grp(2):"+str(col)+",grp(3):"+str(row)+",grp(4):"+str(event))
+                if DEBUG:
+                    print("DEBUG: grp(1):"+str(asserted)+",grp(2):"+str(col)+",grp(3):"+str(row)+",grp(4):"+str(event))
                 try: # TODO if matching event (how to deal with start even 161)
                     # trace_event = {'name':lookup_event_name_by_type(tt, pid_events[tt][loc][event])}
                     trace_event = {'name':lookup_event_name_by_type(tt, event)}
@@ -832,7 +836,9 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                     trace_event['args'] = {}
                     trace_events.append(trace_event)
                 except ValueError:
-                    print("ERROR: event "+str(event)+" not found.")
+                    # TODO Need to check this becuase we get this for event 161
+                    if DEBUG:
+                        print("ERROR: event "+str(event)+" not found.")
                 check_time = True
             else:
                 error += 1
