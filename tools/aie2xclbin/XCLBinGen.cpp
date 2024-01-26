@@ -23,8 +23,6 @@
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
-#include "mlir/Dialect/Affine/Passes.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -39,7 +37,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <regex>
-#include <stdlib.h>
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 extern "C" {
@@ -280,151 +277,6 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
                                           byte_ordering::Little_Endian, false,
                                           false, false))) {
     return moduleOp.emitOpError("failed to emit CDO");
-  }
-#else
-  // Generate aie_inc.cpp file.
-  SmallString<64> incFile(TK.TempDir);
-  sys::path::append(incFile, "aie_inc.cpp");
-  {
-    auto inc_output = openOutputFile(incFile, &errorMessage);
-    if (!inc_output) {
-      return moduleOp.emitOpError(errorMessage);
-    }
-    if (failed(AIE::AIETranslateToXAIEV2(copy, inc_output->os()))) {
-      return moduleOp.emitOpError("failed translation to XAIEV2");
-    }
-    inc_output->keep();
-  }
-
-  // Generate aie_control.cpp
-  SmallString<64> controlFile(TK.TempDir);
-  sys::path::append(controlFile, "aie_control.cpp");
-  {
-    auto ctrl_output = openOutputFile(controlFile, &errorMessage);
-    if (!ctrl_output) {
-      return moduleOp.emitOpError(errorMessage);
-    }
-    if (failed(AIE::AIETranslateToCDO(copy, ctrl_output->os()))) {
-      return moduleOp.emitOpError("failed translation to CDO");
-    }
-    ctrl_output->keep();
-  }
-
-  // Invoke clang++ commands to generate the final XCL bin
-  std::string incWorkDir("-I");
-  incWorkDir += TK.TempDir;
-
-  size_t dash = TK.HostArch.find('-');
-  if (dash == std::string::npos)
-    dash = TK.HostArch.size();
-  SmallString<64> cdoIncludeDir(TK.InstallDir);
-  sys::path::append(cdoIncludeDir, "runtime_lib", TK.HostArch.substr(0, dash));
-  sys::path::append(cdoIncludeDir, "xaiengine", "cdo", "include");
-  std::string cdoIncludes("-I");
-  cdoIncludes += cdoIncludeDir;
-
-  SmallString<64> aietoolsIncludeDir(TK.AIEToolsDir);
-  sys::path::append(aietoolsIncludeDir, "include");
-  std::string aietoolsIncludes("-I");
-  aietoolsIncludes += aietoolsIncludeDir;
-
-  SmallString<64> clangppBin(TK.PeanoDir);
-  sys::path::append(clangppBin, "bin", "clang++");
-
-  // Generate gen_cdo.o
-  SmallString<64> genCdoObj(TK.TempDir);
-  sys::path::append(genCdoObj, "gen_cdo.o");
-  {
-    SmallVector<std::string, 15> flags = {"-fPIC",
-                                          "-c",
-                                          "-std=c++17",
-                                          "-D__AIESIM__",
-                                          "-D__CDO__",
-                                          "-D__PS_INIT_AIE__",
-                                          "-D__LOCK_FENCE_MODE__=2",
-                                          "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR",
-                                          "-DAIE2_FP32_EMULATION_ACCURACY_FAST",
-                                          "-Wno-deprecated-declarations"};
-    aieTargetDefines(flags, TK.TargetArch);
-    flags.push_back(incWorkDir);
-    flags.push_back(cdoIncludes);
-    flags.push_back(aietoolsIncludes);
-    SmallString<64> inputFilePath(TK.InstallDir);
-    sys::path::append(inputFilePath, "data", "generated-source", "gen_cdo.cpp");
-    flags.emplace_back(inputFilePath);
-    flags.push_back("-o");
-    flags.emplace_back(genCdoObj);
-    if (runTool(clangppBin, flags, TK.Verbose) != 0) {
-      return moduleOp.emitOpError("failed to compile gen_cdo.o");
-    }
-  }
-
-  // Generate cdo_main.
-  SmallString<64> cdoMainObj(TK.TempDir);
-  sys::path::append(cdoMainObj, "cdo_main.o");
-  {
-    SmallVector<std::string> flags = {"-fPIC", "-c", "-std=c++17"};
-    flags.push_back(incWorkDir);
-    flags.push_back(cdoIncludes);
-    flags.push_back(aietoolsIncludes);
-    SmallString<64> inputFilePath(TK.InstallDir);
-    sys::path::append(inputFilePath, "data", "generated-source",
-                      "cdo_main.cpp");
-    flags.emplace_back(inputFilePath);
-    flags.push_back("-o");
-    flags.emplace_back(cdoMainObj);
-    if (runTool(clangppBin, flags, TK.Verbose) != 0) {
-      return moduleOp.emitOpError("failed to compile gen_cdo.o");
-    }
-  }
-
-  // Generate cdo_main.out
-  SmallString<64> cdoBinary(TK.TempDir);
-  sys::path::append(cdoBinary, "cdo_main");
-  std::string libraryPath = "LD_LIBRARY_PATH=";
-  {
-    SmallVector<std::string> flags;
-
-    std::string cdoLibPathString("-L");
-    SmallString<64> cdoLibPath(TK.InstallDir);
-    sys::path::append(cdoLibPath, "runtime_lib", "x86_64", "xaiengine", "cdo");
-    cdoLibPathString += cdoLibPath;
-    flags.push_back(cdoLibPathString);
-
-    std::string aietoolLibPathString("-L");
-    SmallString<64> aietoolLibPath(TK.AIEToolsDir);
-    sys::path::append(aietoolLibPath, "lib", "lnx64.o");
-    aietoolLibPathString += aietoolLibPath;
-    flags.push_back(aietoolLibPathString);
-
-    flags.push_back("-lxaienginecdo");
-    flags.push_back("-lcdo_driver");
-
-    libraryPath += cdoLibPath;
-    libraryPath += sys::EnvPathSeparator;
-    libraryPath += aietoolLibPath;
-
-    flags.emplace_back(genCdoObj);
-    flags.emplace_back(cdoMainObj);
-    flags.push_back("-o");
-    flags.emplace_back(cdoBinary);
-
-    if (runTool(clangppBin, flags, TK.Verbose) != 0) {
-      return moduleOp.emitOpError("failed to generate cdo_binary");
-    }
-  }
-
-  // Execute the cdo_main binary.
-  {
-    SmallVector<std::string> flags;
-    flags.push_back("--work-dir-path");
-    // CDO tool doesn't join paths correctly :/
-    std::string workDir = TK.TempDir + "/";
-    flags.push_back(workDir);
-    if (runTool(cdoBinary, flags, TK.Verbose,
-                ArrayRef<StringRef>{libraryPath})) {
-      return moduleOp.emitOpError("failed to execute cdo_main binary");
-    }
   }
 #endif
 

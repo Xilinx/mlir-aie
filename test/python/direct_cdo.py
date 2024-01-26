@@ -25,7 +25,6 @@ from aie.dialects.aie import (
     device,
     generate_bcf,
     generate_cdo,
-    generate_cdo_direct,
     byte_ordering,
     objectfifo,
     objectfifo_link,
@@ -222,10 +221,7 @@ def my_passthrough(module):
     ]
     r = subprocess.run(cmd, capture_output=True, cwd=WORKDIR, env=ENV)
 
-    aie_control = generate_cdo(input_physical.operation)
-    print(aie_control)
-
-    generate_cdo_direct(
+    generate_cdo(
         input_physical.operation, str(WORKDIR), byte_ordering.Little_Endian, True
     )
 

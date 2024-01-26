@@ -53,17 +53,6 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-MlirStringRef aieTranslateToCDO(MlirOperation moduleOp) {
-  std::string cdo;
-  llvm::raw_string_ostream os(cdo);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToCDO(mod, os)))
-    return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(cdo.size()));
-  cdo.copy(cStr, cdo.size());
-  return mlirStringRefCreate(cStr, cdo.size());
-}
-
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 void aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
                              byte_ordering endianness, bool emitUnified,
