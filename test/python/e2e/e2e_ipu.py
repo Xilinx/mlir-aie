@@ -39,7 +39,6 @@ from aie.dialects.aie import (
     device,
     generate_bcf,
     generate_cdo,
-    generate_cdo_direct,
     ipu_instgen,
     mem,
     memtile_dma,
@@ -796,7 +795,7 @@ def add_one_using_dma(module):
 
     subprocess.run(cmd, check=True, cwd=WORKDIR, env=env)
 
-    generate_cdo_direct(input_physical.operation, str(WORKDIR))
+    generate_cdo(input_physical.operation, str(WORKDIR))
 
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)

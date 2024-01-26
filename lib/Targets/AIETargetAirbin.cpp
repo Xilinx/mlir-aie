@@ -1167,13 +1167,6 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   char strTabName[] = ".shstrtab";
   std::vector<Section *> sections;
 
-  DenseMap<std::pair<int, int>, Operation *> tiles;
-  DenseMap<Operation *, CoreOp> cores;
-  DenseMap<Operation *, MemOp> mems;
-  DenseMap<std::pair<Operation *, int>, LockOp> locks;
-  DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-  DenseMap<Operation *, SwitchboxOp> switchboxes;
-
   if (module.getOps<DeviceOp>().empty()) {
     LLVM_DEBUG(llvm::dbgs() << "no device ops found");
     return success();

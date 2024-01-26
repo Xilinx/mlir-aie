@@ -39,7 +39,7 @@ from aie.dialects.aie import (
     WireBundle,
     device,
     generate_bcf,
-    generate_cdo_direct,
+    generate_cdo,
     ipu_instgen,
     mem,
     memtile_dma,
@@ -348,7 +348,7 @@ def add_256_using_dma_op_no_double_buffering(module):
     ]
     subprocess.run(cmd, check=True, cwd=WORKDIR, env=ENV)
 
-    generate_cdo_direct(input_physical.operation, str(WORKDIR))
+    generate_cdo(input_physical.operation, str(WORKDIR))
 
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)

@@ -501,31 +501,15 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_cdo(self, aie_target):
-        async with self.limit:
-            if self.stopall:
-                return
-
-            if opts.progress:
-                task = self.progress_bar.add_task(
-                    "[yellow] CDO generation ", total=10, command="starting"
-                )
-            else:
-                task = None
-
-            install_path = aie.compiler.aiecc.configure.install_path()
-            data_path = os.path.join(install_path, "data")
-
-            runtime_xaiengine_path = os.path.join(
-                install_path,
-                "runtime_lib",
-                opts.host_target.split("-")[0],
-                "xaiengine",
-                "cdo",
+    async def process_cdo(self):
+        try:
+            from aie.dialects.aie import generate_cdo
+        except ImportError:
+            raise Exception(
+                "cdo generation not supported, recompile with AIE_ENABLE_GENERATE_CDO_DIRECT"
             )
-            xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
-            xaiengine_lib_path = os.path.join(runtime_xaiengine_path)
 
+        with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
                 try:
                     shutil.copy(elf, self.tmpdirname)
@@ -536,29 +520,10 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-
-            # fmt: off
-            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
-            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
-            await asyncio.gather(p0, p1)
-            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
-            # fmt: on
-
-            ld_paths = [
-                os.getenv("LD_LIBRARY_PATH"),
-                xaiengine_lib_path,
-                os.path.join(opts.aietools_path, "lib", "lnx64.o"),
-            ]
-            os.environ["LD_LIBRARY_PATH"] = ":".join(list(filter(None, ld_paths)))
-            await self.do_call(
-                task,
-                [
-                    self.prepend_tmp("cdo_main.out"),
-                    "--work-dir-path",
-                    self.tmpdirname + "/",
-                ]
-                + (["--aximm-dump"] if self.opts.verbose else []),
+            input_physical = Module.parse(
+                await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
+            generate_cdo(input_physical.operation, self.tmpdirname)
 
     async def process_xclbin_gen(self, has_cores):
         if opts.progress:
@@ -649,20 +614,6 @@ class FlowRunner:
                         file_physical,
                         "-o",
                         file_inc_cpp,
-                    ],
-                )
-
-            # Optionally generate aie_control.cpp for CDO to XCLBIN backend
-            file_control_cpp = self.prepend_tmp("aie_control.cpp")
-            if opts.cdo:
-                await self.do_call(
-                    task,
-                    [
-                        "aie-translate",
-                        "--aie-generate-cdo",
-                        file_physical,
-                        "-o",
-                        file_control_cpp,
                     ],
                 )
 
@@ -1054,8 +1005,7 @@ class FlowRunner:
 
             # Must have elfs, before we build the final binary assembly
             if opts.cdo:
-                processes = [self.process_cdo(aie_target)]
-                await asyncio.gather(*processes)
+                await self.process_cdo()
             if opts.cdo or opts.xcl:
                 await self.process_xclbin_gen(bool(len(cores)))
 

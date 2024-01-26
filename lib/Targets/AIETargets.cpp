@@ -152,11 +152,7 @@ void registerAIETranslations() {
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
         DenseMap<TileID, Operation *> tiles;
-        DenseMap<Operation *, CoreOp> cores;
-        DenseMap<Operation *, MemOp> mems;
-        DenseMap<std::pair<Operation *, int>, LockOp> locks;
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-        DenseMap<Operation *, SwitchboxOp> switchboxes;
 
         if (module.getOps<DeviceOp>().empty()) {
           module.emitOpError("expected AIE.device operation at toplevel");
@@ -298,15 +294,9 @@ void registerAIETranslations() {
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
-  TranslateFromMLIRRegistration registrationCDO(
-      "aie-generate-cdo", "Generate libxaie for CDO",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToCDO(module, output);
-      },
-      registerDialects);
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   TranslateFromMLIRRegistration registrationCDODirect(
-      "aie-generate-cdo-direct", "Generate libxaie for CDO directly",
+      "aie-generate-cdo", "Generate libxaie for CDO directly",
       [](ModuleOp module, raw_ostream &) {
         SmallString<128> workDirPath_;
         if (workDirPath.getNumOccurrences() == 0) {
