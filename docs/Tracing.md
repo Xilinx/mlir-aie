@@ -14,7 +14,7 @@ The current methodology for enabling tracing invovles 4 main steps.
 
 ## 1. Manually setting up trace configuration in a given design
 
-Enabling tracing means configuring the trace hardware in the AIE array to monitor particular events and then routing those events through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-run processing. This configuration coccurs within the .mlir source file (or .py source if using python bindings TODO).
+Enabling tracing means configuring the trace hardware in the AIE array to monitor particular events and then routing those events through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-run processing. This configuration occurs within the .mlir source file (or .py source if using python bindings TODO).
 
 ### <u>Define trace event flows from tile to shimDMA</u>
 Trace event packets can be circuit switch routed or packet switch routed from the tiles to the shimDMA. An example of a simple circuit switch routing for the trace events from a single tile in column 0, row 5 (`tile05`) to the shimDMA in column 0 would be:
@@ -187,7 +187,7 @@ if enable_trace:
     write_out_trace(trace, trace_file)
 ```
 ### Modification for `setup_aie` to update output buffer shape (`out_buf_shape`)
-Since `out_buf_shape`` is used during extraction, we modify the output buffer size by the `trace_size`
+Since `out_buf_shape` is used during extraction, we modify the output buffer size by the `trace_size`
 ```
 def setup_aie(xclbin_path, insts_path, 
               in_0_shape, in_0_dtype,
