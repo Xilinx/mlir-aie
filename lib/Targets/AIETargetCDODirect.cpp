@@ -416,16 +416,16 @@ struct AIEControl {
     }
 
     // Set locks with explicit initializers
-    for (auto lockOp : targetOp.getOps<LockOp>())
+    targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
       if (lockOp.getLockID() && lockOp.getInit()) {
         auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
                                     lockOp.getTileOp().rowIndex());
         auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
-        TRY_XAIE_API_EMIT_ERROR(lockOp, XAie_LockSetValue, &devInst, tileLoc,
-                                locInit);
+        TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, &devInst, tileLoc, locInit);
       } else
         LLVM_DEBUG(llvm::dbgs()
                    << "lock op missing either id or init" << lockOp << "\n");
+    });
 
     auto pushToBdQueueAndEnable =
         [this](Operation &op, XAie_LocType &tileLoc, int chNum,

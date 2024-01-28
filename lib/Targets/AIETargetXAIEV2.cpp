@@ -575,7 +575,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "int mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
-  for (auto lock : targetOp.getOps<LockOp>()) {
+  targetOp.walk<WalkOrder::PreOrder>([&](LockOp lock) {
     TileOp tile = lock.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
@@ -585,7 +585,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       output << "__mlir_aie_try(XAie_LockSetValue(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", "
              << "XAie_LockInit(" << lockID << ", " << *init << ")));\n";
-  }
+  });
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_initialize_locks\n";
 
@@ -857,8 +857,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     output << "}\n";
   };
 
-  for (auto lock : targetOp.getOps<LockOp>())
-    lockAccessor(lock);
+  targetOp.walk<WalkOrder::PreOrder>([&](LockOp lock) { lockAccessor(lock); });
 
   return success();
 }

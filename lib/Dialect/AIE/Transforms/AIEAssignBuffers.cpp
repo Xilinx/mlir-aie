@@ -33,14 +33,14 @@ struct AIEAssignBufferAddressesPass
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // Make sure all the buffers have a name
     int counter = 0;
-    for (auto buffer : device.getOps<BufferOp>()) {
+    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (!buffer.hasName()) {
         std::string name = "_anonymous";
         name += std::to_string(counter++);
         buffer->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr(name));
       }
-    }
+    });
 
     for (auto tile : device.getOps<TileOp>()) {
       const auto &targetModel = getTargetModel(tile);
@@ -51,9 +51,10 @@ struct AIEAssignBufferAddressesPass
         maxDataMemorySize = targetModel.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
-      for (auto buffer : device.getOps<BufferOp>())
+      device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
         if (buffer.getTileOp() == tile)
           buffers.push_back(buffer);
+      });
       // Sort by allocation size.
       std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
         return a.getAllocationSize() > b.getAllocationSize();
