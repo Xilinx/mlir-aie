@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
 from pathlib import Path
 
 from aie.extras.runtime.passes import Pipeline
@@ -19,16 +18,8 @@ from aie.compiler.aiecc.main import (
     emit_partition,
     emit_design_kernel_json,
 )
-from aie.dialects import aiex, aie
-from aie.dialects.aie import aie_llvm_link, DMAChannelDir, WireBundle, LockAction
+from aie.dialects.aie import aie_llvm_link
 from aie.ir import Context, Location, Module, InsertionPoint
-
-DMA = WireBundle.DMA
-S2MM = DMAChannelDir.S2MM
-MM2S = DMAChannelDir.MM2S
-Acquire = LockAction.Acquire
-AcquireGreaterEqual = LockAction.AcquireGreaterEqual
-Release = LockAction.Release
 
 WORKDIR = Path(
     os.getenv(
@@ -100,7 +91,6 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
     .add_pass("aie.device(aie-assign-lock-ids,aie-assign-buffer-addresses)")
     .convert_scf_to_cf()
 )
-
 
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
@@ -340,136 +330,10 @@ def make_xclbin(module, name="final"):
 
 def setup_xclbin_firmware(xclbin_path):
     cmd = [
-        "/opt/xilinx/xrt/amdaie/setup_xclbin_firmware.sh",
+        str(XRT_DIR / "amdaie/setup_xclbin_firmware.sh"),
         "-dev",
         "Phoenix",
         "-xclbin",
         xclbin_path,
     ]
     _run_command(cmd)
-
-
-# from runtime_lib/xaiengine/aie-rt/driver/src/global/xaiemlgbl_params.h
-# these aren't completely correct - right values but not necessarily the right names?
-XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE = 0x0001D214
-XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE = 0x0001D204
-XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK = 0x80000000
-XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
-
-
-def ipu_write32(channel_dir, channel_index, col, bd_id, repeats=0):
-    if channel_dir == DMAChannelDir.MM2S:
-        address = XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE
-    else:
-        address = XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE
-    if channel_index == 1:
-        address += 0x8
-    value = bd_id & XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK
-    value |= (repeats & 0xFF) << 16
-    if channel_dir == DMAChannelDir.S2MM:
-        # issue token
-        value |= XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK
-    aiex.ipu_write32(address=address, column=col, row=0, value=value)
-
-
-def ipu_writebd_shimtile(
-    bd_id,
-    buffer_length,
-    offset,
-    ddr_id,
-    d2_stride=1,
-    d1_size=None,
-    d1_stride=1,
-    d0_size=None,
-    d0_stride=1,
-    iteration_size=0,
-    iteration_stride=0,
-    iteration_current=0,
-    lock_acq_enable=0,
-    lock_acq_id=0,
-    lock_acq_val=0,
-    lock_rel_id=0,
-    lock_rel_val=0,
-    next_bd=0,
-    use_next_bd=0,
-    data_width=32,
-):
-    d2_stride -= 1
-    d1_stride -= 1
-    d0_stride -= 1
-    assert d2_stride >= 0 and d1_stride >= 0 and d0_stride >= 0
-    # byte offset
-    offset *= data_width // 8
-    # None means do not wrap which is 0 on the arch
-    if d1_size is None:
-        d1_size = 0
-    # None means do not wrap which is 0 on the arch
-    if d0_size is None:
-        d0_size = 0
-
-    return aiex.ipu_writebd_shimtile(
-        bd_id=bd_id,
-        buffer_length=buffer_length,
-        buffer_offset=offset,
-        column=0,
-        column_num=1,
-        d0_size=d0_size,
-        d0_stride=d0_stride,
-        d1_size=d1_size,
-        d1_stride=d1_stride,
-        d2_stride=d2_stride,
-        ddr_id=ddr_id,
-        enable_packet=0,
-        iteration_current=iteration_current,
-        iteration_size=iteration_size,
-        iteration_stride=iteration_stride,
-        lock_acq_enable=lock_acq_enable,
-        lock_acq_id=lock_acq_id,
-        lock_acq_val=lock_acq_val,
-        lock_rel_id=lock_rel_id,
-        lock_rel_val=lock_rel_val,
-        next_bd=next_bd,
-        out_of_order_id=0,
-        packet_id=0,
-        packet_type=0,
-        use_next_bd=use_next_bd,
-        valid_bd=1,
-    )
-
-
-def process_bd(
-    acq_lock,
-    buffer,
-    rel_lock,
-    acq_action=aie.LockAction.AcquireGreaterEqual,
-    rel_action=aie.LockAction.Release,
-    acq_val=None,
-    rel_val=None,
-):
-    aie.use_lock(acq_lock, acq_action, value=acq_val)
-    aie.dma_bd(buffer)
-    aie.use_lock(rel_lock, rel_action, value=rel_val)
-
-
-def forward_bd(tile, channel_idx, buffer, read_in_lock=None, write_out_lock=None):
-    if read_in_lock is None:
-        read_in_lock = aie.lock(tile, init=1)
-    if write_out_lock is None:
-        write_out_lock = aie.lock(tile, init=0)
-
-    @aie.dma(S2MM, channel_idx)
-    def dma_incoming():
-        process_bd(read_in_lock, buffer, write_out_lock)
-
-    @aie.dma(MM2S, channel_idx)
-    def dma_outgoing():
-        process_bd(write_out_lock, buffer, read_in_lock)
-
-
-@contextmanager
-def hold_lock(acq_lock, rel_lock):
-    aie.use_lock(acq_lock, AcquireGreaterEqual)
-    try:
-        yield
-    finally:
-        aie.use_lock(rel_lock, Release)

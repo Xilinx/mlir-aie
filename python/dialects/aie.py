@@ -1,23 +1,20 @@
-# ./python/aie/dialects/aie/__init__.py -*- Python -*-
-import inspect
-
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import inspect
 from typing import List, Optional, Union, Tuple
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
+from ._ods_common import _cext
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from .._mlir_libs._aie import (
     ObjectFifoType,
-    translate_aie_vec_to_cpp,
     ObjectFifoSubviewType,
 )
-
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
@@ -31,11 +28,10 @@ from ..ir import (
     InsertionPoint,
     IntegerAttr,
     IntegerType,
-    _typeAttr,
     TypeAttr,
     _i32ArrayAttr,
 )
-from ._ods_common import _cext
+from ..util import _get_sym_name
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -350,18 +346,6 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
 
 
 _buffer = buffer
-
-
-def _get_sym_name(previous_frame, check_func_call):
-    try:
-        with open(inspect.getfile(previous_frame)) as src_file:
-            src_lines = src_file.readlines()
-            src_line = src_lines[previous_frame.f_lineno - 1].strip()
-            ident, func_call = map(lambda x: x.strip(), src_line.split("=", maxsplit=1))
-            assert check_func_call in func_call
-        return ident
-    except:
-        return None
 
 
 def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):

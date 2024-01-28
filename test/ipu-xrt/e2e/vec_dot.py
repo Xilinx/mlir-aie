@@ -56,12 +56,15 @@ from util import (
     setup_xclbin_firmware,
     CREATE_PATH_FINDER_FLOWS,
     DMA_TO_IPU,
+    link_with_chess_intrinsic_wrapper,
+)
+
+from aie.dialects.aiex import (
     ipu_writebd_shimtile,
     ipu_write32,
-    link_with_chess_intrinsic_wrapper,
-    hold_lock,
     forward_bd,
     process_bd,
+    hold_lock,
 )
 
 range_ = for_

@@ -36,7 +36,6 @@ from aie.dialects.aie import (
     translate_mlir_to_llvmir,
     dma,
     another_bd,
-    bd_dim_layout,
 )
 from aie.dialects.aiex import ipu_sync
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill
@@ -53,15 +52,17 @@ from util import (
     setup_xclbin_firmware,
     CREATE_PATH_FINDER_FLOWS,
     DMA_TO_IPU,
+    link_with_chess_intrinsic_wrapper,
+)
+
+from aie.dialects.aiex import (
     ipu_writebd_shimtile,
     ipu_write32,
-    link_with_chess_intrinsic_wrapper,
     forward_bd,
     process_bd,
     hold_lock,
 )
 
-bd_dim_layout = lambda *args: bd_dim_layout(*args)
 range_ = for_
 
 DMA = WireBundle.DMA
