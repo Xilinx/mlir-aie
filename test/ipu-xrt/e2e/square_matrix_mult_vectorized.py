@@ -58,18 +58,21 @@ from aie.dialects.transform.structured import structured_match
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
 from util import (
-    INPUT_WITH_ADDRESSES_PIPELINE,
-    AIE_LOWER_TO_LLVM,
     chess_compile,
     make_core_elf,
     make_design_pdi,
     make_xclbin,
     setup_xclbin_firmware,
-    CREATE_PATH_FINDER_FLOWS,
-    DMA_TO_IPU,
     chess_compile_cpp_to_ll,
     chess_llvm_link,
     construct_and_print_module,
+)
+
+from aie.compiler.aiecc.main import (
+    INPUT_WITH_ADDRESSES_PIPELINE,
+    AIE_LOWER_TO_LLVM,
+    CREATE_PATH_FINDER_FLOWS,
+    DMA_TO_IPU,
 )
 
 from aie.dialects.aiex import (

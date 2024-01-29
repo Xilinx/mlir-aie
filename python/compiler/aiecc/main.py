@@ -23,6 +23,7 @@ import tempfile
 from textwrap import dedent
 
 import aiofiles
+from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
 
 from aie.passmanager import PassManager
@@ -35,20 +36,59 @@ import aie.compiler.aiecc.configure
 import rich.progress as progress
 import re
 
-aie_opt_lower_to_llvm_passes = [
-    "--canonicalize",
-    "--cse",
-    "--convert-vector-to-llvm",
-    "--expand-strided-metadata",
-    "--lower-affine",
-    "--convert-math-to-llvm",
-    "--convert-arith-to-llvm",
-    "--finalize-memref-to-llvm",
-    "--convert-func-to-llvm=use-bare-ptr-memref-call-conv",
-    "--convert-cf-to-llvm",
-    "--canonicalize",
-    "--cse",
-]
+
+INPUT_WITH_ADDRESSES_PIPELINE = (
+    Pipeline()
+    .convert_linalg_to_affine_loops()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Context(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass("aie-objectFifo-stateful-transform")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-create-packet-flows")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-buffer-addresses"),
+    )
+    .convert_scf_to_cf()
+)
+
+LOWER_TO_LLVM_PIPELINE = (
+    Pipeline()
+    .canonicalize()
+    .cse()
+    .convert_vector_to_llvm()
+    .expand_strided_metadata()
+    .lower_affine()
+    .convert_math_to_llvm()
+    .convert_arith_to_llvm()
+    .finalize_memref_to_llvm()
+    .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
+    .convert_cf_to_llvm()
+    .canonicalize()
+    .cse()
+)
+
+AIE_LOWER_TO_LLVM = (
+    Pipeline()
+    .Context(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-localize-locks")
+        .add_pass("aie-normalize-address-spaces"),
+    )
+    .add_pass("aie-standard-lowering")
+    .add_pass("aiex-standard-lowering")
+)
+AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
+
+CREATE_PATH_FINDER_FLOWS = Pipeline().Context(
+    "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
+)
+DMA_TO_IPU = Pipeline().Context("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -451,7 +491,7 @@ class FlowRunner:
                 file_core = corefile(self.tmpdirname, core, "mlir")
                 await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", file_with_addresses, "-o", file_core])
                 file_opt_core = corefile(self.tmpdirname, core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", *aie_opt_lower_to_llvm_passes, file_core, "-o", file_opt_core])
+                await self.do_call(task, ["aie-opt", f"--pass-pipeline={LOWER_TO_LLVM_PIPELINE}", file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -962,7 +1002,7 @@ class FlowRunner:
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, file_with_addresses, "-o", file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM}", file_with_addresses, "-o", file_opt_with_addresses])
 
                 file_llvmir = self.prepend_tmp("input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])

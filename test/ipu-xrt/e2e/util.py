@@ -9,7 +9,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-from aie.extras.runtime.passes import Pipeline
 
 from aie.compiler.aiecc.main import (
     chesshack,
@@ -82,44 +81,6 @@ XCHESS_ARGS = lambda: [
     "+w",
     str(WORKDIR),
 ]
-
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    Pipeline()
-    .convert_linalg_to_affine_loops()
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .add_pass("aie.device(aie-assign-lock-ids,aie-assign-buffer-addresses)")
-    .convert_scf_to_cf()
-)
-
-LOWER_TO_LLVM_PIPELINE = (
-    Pipeline()
-    .canonicalize()
-    .cse()
-    .convert_vector_to_llvm()
-    .expand_strided_metadata()
-    .lower_affine()
-    .convert_math_to_llvm()
-    .convert_arith_to_llvm()
-    .finalize_memref_to_llvm()
-    .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
-    .convert_cf_to_llvm()
-    .canonicalize()
-    .cse()
-)
-
-AIE_LOWER_TO_LLVM = (
-    Pipeline()
-    .add_pass("aie.device(aie-localize-locks,aie-normalize-address-spaces)")
-    .add_pass("aie-standard-lowering")
-    .add_pass("aiex-standard-lowering")
-)
-AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
-
-CREATE_PATH_FINDER_FLOWS = Pipeline().add_pass(
-    "aie.device(aie-create-pathfinder-flows)"
-)
-DMA_TO_IPU = Pipeline().add_pass("aie.device(aie-dma-to-ipu)")
 
 
 def maybe_make_workdir():

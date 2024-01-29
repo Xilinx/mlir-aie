@@ -43,16 +43,19 @@ from aie.dialects.scf import for_
 from aie.xrt import XCLBin
 from util import (
     construct_and_print_module,
-    INPUT_WITH_ADDRESSES_PIPELINE,
-    AIE_LOWER_TO_LLVM,
     chess_compile,
     make_core_elf,
     make_design_pdi,
     make_xclbin,
     setup_xclbin_firmware,
+    link_with_chess_intrinsic_wrapper,
+)
+
+from aie.compiler.aiecc.main import (
+    INPUT_WITH_ADDRESSES_PIPELINE,
+    AIE_LOWER_TO_LLVM,
     CREATE_PATH_FINDER_FLOWS,
     DMA_TO_IPU,
-    link_with_chess_intrinsic_wrapper,
 )
 
 from aie.dialects.aiex import (

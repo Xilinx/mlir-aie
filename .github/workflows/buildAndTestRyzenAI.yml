@@ -78,3 +78,5 @@ jobs:
             ninja check-aie
             sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
             ninja check-reference-designs
+          
+          /opt/xilinx/xrt/amdaie/setup_xclbin_firmware.sh -clean
