@@ -29,6 +29,10 @@ const int32_t MIN = 128;
 const int32_t MAX = 127;
 const int32_t UMAX = 255;
 
+//*****************************************************************************
+// conv2d 1x1 skip - scalar
+// act: uint8, wts: int8, skip: int8, out: uint8
+//*****************************************************************************
 void conv2dk1_skip_i8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                              uint8_t *output, int8_t *skip,
                              const int32_t input_width,
@@ -114,7 +118,11 @@ void conv2dk1_skip_i8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   event1();
 }
 
-// NOTE: Assumes input_channels >= 16
+
+//*****************************************************************************
+// conv2d 1x1 skip - scalar
+// act: uint8, wts: int8, skip: uint8, out: uint8
+//*****************************************************************************
 void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                               uint8_t *output, uint8_t *skip,
                               const int32_t input_width,
@@ -149,7 +157,6 @@ void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
             sum += val * k;
           }
         }
-        // for (ic2 = input_channels/16; ic2 < input_channels/8; ic2++) {
         for (ic2 = 0; ic2 < input_channels / 16; ic2++) {
           for (ic8b = 0; ic8b < 8; ic8b++) {
             // int val2 = input1[ic2 * input_width + x];
@@ -200,6 +207,20 @@ void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
 #else // Vector
 
+
+//*****************************************************************************
+// conv2d 1x1 skip - vector
+// act: uint8, wts: int8, skip: int8, out: uint8
+//
+// Assume IC >= 16 as that gives ideal inner loop schedule
+// 
+// TODO - Restricting input_width is mutiple of 32
+// Because each VMAC works on 4 inputs at a time and we store intermediate
+// results in 8 accumulators, having input_width be a multiple of 4*8=32 is
+// ideal. However, we should be able to support input_width that is only a
+// multiple of 4 but there is some strange scheduling happening now so for 
+// now, we do not.
+//*****************************************************************************
 void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                              uint8_t *output, int8_t *skip,
                              const int32_t input_width,
@@ -214,9 +235,8 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   ::aie::set_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
-  uint8_t * /*restrict*/ out_ptr = output;
+  uint8_t * restrict out_ptr = output;
   int8_t *i_out_ptr = (int8_t *)output;
-  // uint8_t * restrict skip_ptr = skip;
   int8_t *restrict skip_ptr = skip;
 
   const int scaleT = scale;
@@ -226,8 +246,11 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
   const int iw_32 = (input_width / 4) / 8;
   const int iw = input_width;
-  const int iw_32_rem =
-      (input_width / 4) % 8; // TODO Change if input_width changes
+  // const int iw_32_rem = (input_width / 4) % 8;
+  assert ((input_width / 4) % 8 == 0);
+  const int iw_32_rem = 0; // TODO - See restriction
+
+  assert ((input_channels / 8) > 2); // Assume IC >= 16
 
   int input_offset1 = 0;
   int input_offset2 = 0;
@@ -240,21 +263,14 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
         for (int i = 0; i < NUM_ACC; i++) {
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
-        for (int ic = 0; ic < (input_channels / 16); ic++) {
-          // For ic = oc = 8, we can load all the weights in 1x 512b vec reg (2x
-          // 256b loads) For ic > 8, we would load the next 64 weights that are
-          // ic8..15(oc0..7) For oc > 8, we would load the next 64 weights after
-          // all the ic weights {OC}{IC}{IC8}{OC8}
+        for (int ic = 0; ic < (input_channels / 16); ic++) 
+          chess_prepare_for_pipelining 
+          chess_loop_range(2,)
+        {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
 
           for (int x8 = 0; x8 < NUM_ACC; x8++)
-          // chess_prepare_for_pipelining //chess_loop_range(7, )
-          // e.g. 28/4 = 7
-          // 13 cycles delay for vload.
-          // 7 gives us 3 cycle inner loop.
-          // 13 gave 1 cycle inner loop before partial load, not it only gets 2
-          // cycles (not sure why?)
           {
             aie::vector<uint8, 32> in_a =
                 aie::load_v<32>(input0 + input_offset1);
@@ -265,21 +281,14 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
               (iw * 8) -
               256; // Move to next ic/8 position. 256 = 32 input * 8 ic
         }
-        for (int ic = 0; ic < (input_channels / 16); ic++) {
-          // For ic = oc = 8, we can load all the weights in 1x 512b vec reg (2x
-          // 256b loads) For ic > 8, we would load the next 64 weights that are
-          // ic8..15(oc0..7) For oc > 8, we would load the next 64 weights after
-          // all the ic weights {OC}{IC}{IC8}{OC8}
+        for (int ic = 0; ic < (input_channels / 16); ic++) 
+          chess_prepare_for_pipelining 
+          chess_loop_range(2,)
+        {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
 
           for (int x8 = 0; x8 < NUM_ACC; x8++)
-          // chess_prepare_for_pipelining //chess_loop_range(7, )
-          // e.g. 28/4 = 7
-          // 13 cycles delay for vload.
-          // 7 gives us 3 cycle inner loop.
-          // 13 gave 1 cycle inner loop before partial load, not it only gets 2
-          // cycles (not sure why?)
           {
             aie::vector<uint8, 32> in_a =
                 aie::load_v<32>(input1 + input_offset2);
@@ -449,6 +458,9 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
 #endif
 
+//*****************************************************************************
+// conv2d 1x1 skip wrappers
+//*****************************************************************************
 extern "C" {
 
 #ifdef SCALAR

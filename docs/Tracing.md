@@ -12,13 +12,47 @@
 Enabling tracing means configuring the trace hardware in the AIE array to monitor particular events and then routing those events through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-run processing. This configuration occurs within the .mlir source file (or .py source if using python bindings TODO).
 
 ### <u>Define trace event flows from tile to shimDMA</u>
+#### <u> Circuit switched flows </u>
+
 Trace event packets can be circuit switch routed or packet switch routed from the tiles to the shimDMA. An example of a simple circuit switch routing for the trace events from a single tile in column 0, row 5 (`tile05`) to the shimDMA in column 0 would be:
 
 `aie.flow(%tile05, "Trace" : 0, %tile00, "DMA" : 1)`
 
 It is important to consider how many streams this routing will take and whether designs may experience stream routing congestion or not. While capturing trace events are non-intrusive (does not affect the performance of the AIE cores), the routing of these events are not and need to be balanced to prevent congestion.
 
-***Insert packet switch routing example***
+#### <u> Packet switched flows </u>
+To support packet switched flows, we need to delcare packet flows and attach both an packet ID and packet type to the packets. This is needed to distinguish packets from different tiles cores and tile memories. The designation of IDs and types are somewhat aribtrary but we can use the following for types:
+
+| AIE trace block | packet type |
+|-----------------|-------------|
+| Tile core       | 0           |
+| Tile memory     | 1           |
+| Interface       | 2           |
+| MemTile         | 3           |
+
+The packet IDs can be anything you want as long as they are globally unique to distinguish routes from one trace control from another. An example is shown below for two tiles with core and memory trace units routed. Note the flow ID used after the `packet_flow` keyword. Also note that we want to set `keep_pkt_header = true` as we would like to keep the packet headers when they are moved to DDR so we can distinguish the packets during post-run parsing.
+```
+aie.packet_flow(1) { 
+    aie.packet_source<%tile02, Trace : 0> // core trace
+    aie.packet_dest<%tile00, DMA : 1>
+} {keep_pkt_header = "true"}
+
+aie.packet_flow(2) { 
+    aie.packet_source<%tile02, Trace : 1> // memory trace
+    aie.packet_dest<%tile00, DMA : 1>
+} {keep_pkt_header = "true"}
+
+aie.packet_flow(3) { 
+    aie.packet_source<%tile03, Trace : 0> // core trace
+    aie.packet_dest<%tile00, DMA : 1>
+} {keep_pkt_header = "true"}
+
+aie.packet_flow(4) { 
+    aie.packet_source<%tile03, Trace : 1> // memory trace
+    aie.packet_dest<%tile00, DMA : 1>
+} {keep_pkt_header = "true"}
+```
+The second necessary component to support packet routing is in the trace contorl configuration which we will highlight in the next section.
 
 Within the `func.func @sequence` block, we add a set of configuration register writes (`aiex.ipu.write32`) to configure the tile trace units and the shimDMA. 
 
@@ -32,8 +66,10 @@ The table below describes the general trace control registers.
 | Trace Control 0 | 0x340D0 | Stop Event | [30:24], 0xNN------ | 0 | Event to stop trace capture | 
 | Trace Control 0 | 0x340D0 | Start Event | [22:16], 0x--NN---- | 0 | Event to start trace capture |
 | Trace Control 0 | 0x340D0 | Mode | [1:0], 0x-------N | 0 | Trace mode. 00=event-time, 01=event-PC, 10=execution |
-| Trace Control 1 | 0x340D4 | Dest Packet Type | [14:12], 0x----N--- | 0 | Detination trace packet - packet type |
-| Trace Control 1 | 0x340D4 | Dest Packet ID | [4:0], 0x------NN | 0 | Detination trace packet - packet ID |
+| Trace Control 1 | 0x340D4 | Packet Type | [14:12], 0x----N--- | 0 | Detination trace packet - packet type |
+| Trace Control 1 | 0x340D4 | Packet ID | [4:0], 0x------NN | 0 | Detination trace packet - packet ID |
+
+Note that Trace Control 0 is all you need for circuit switched flows. For packet switched flows, however, you will also need to configure Trace Control 1. Here, the packet type matches the types we defined above (generally, 0 for core and 1 for memory). The ID is arbitrary but must match the packet flows you define or else the packets will not get routed.
 
 <u>Example</u>
 ```
@@ -123,6 +159,7 @@ Some configurations like the Port Running 0/1 events are further configured by a
 aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
 ```
 
+
 ### <u>Configure shimDMA</u>
 
 The shimDMA needs to be configured to write the trace stream data to a valid location in DDR memory to be read by the host code. In the case of Ryzen AI, we can use a template like the following where the main parameters that need to be defined are the `buffer_length` and `buffer_offset`. 
@@ -136,40 +173,42 @@ The shimDMA needs to be configured to write the trace stream data to a valid loc
 
 <u>Example</u>
 ```
- aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
-                                  buffer_length = 16384 : i32,
-                                  buffer_offset = 262144 : i32,
-                                  enable_packet = 0 : i32,
-                                  out_of_order_id = 0 : i32,
-                                  packet_id = 0 : i32,
-                                  packet_type = 0 : i32,
-                                  column = 0 : i32,
-                                  column_num = 1 : i32,
-                                  d0_stepsize = 0 : i32,
-                                  d0_size = 0 : i32,
-                                  d0_stride = 0 : i32, 
-                                  d0_wrap = 0 : i32,
-                                  d1_stepsize = 0 : i32,
-                                  d1_wrap = 0 : i32,
-                                  d1_size = 0 : i32,
-                                  d1_stride = 0 : i32, 
-                                  d2_stepsize = 0 : i32,
-                                  d2_size = 0 : i32,
-                                  d2_stride = 0 : i32, 
-                                  ddr_id = 2 : i32,
-                                  iteration_current = 0 : i32,
-                                  iteration_stepsize = 0 : i32,
-                                  iteration_wrap = 0 : i32,
-                                  iteration_size = 0 : i32,
-                                  iteration_stride = 0 : i32,
-                                  lock_acq_enable = 0 : i32,
-                                  lock_acq_id = 0 : i32,
-                                  lock_acq_val = 0 : i32,
-                                  lock_rel_id = 0 : i32,
-                                  lock_rel_val = 0 : i32,
-                                  next_bd = 0 : i32,
-                                  use_next_bd = 0 : i32,
-                                  valid_bd = 1 : i32}
+aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
+                            buffer_length = 16384 : i32,
+                            buffer_offset = 262144 : i32,
+                            enable_packet = 0 : i32,
+                            out_of_order_id = 0 : i32,
+                            packet_id = 0 : i32,
+                            packet_type = 0 : i32,
+                            column = 0 : i32,
+                            column_num = 1 : i32,
+                            d0_stepsize = 0 : i32,
+                            d0_size = 0 : i32,
+                            d0_stride = 0 : i32, 
+                            d0_wrap = 0 : i32,
+                            d1_stepsize = 0 : i32,
+                            d1_wrap = 0 : i32,
+                            d1_size = 0 : i32,
+                            d1_stride = 0 : i32, 
+                            d2_stepsize = 0 : i32,
+                            d2_size = 0 : i32,
+                            d2_stride = 0 : i32, 
+                            ddr_id = 2 : i32,
+                            iteration_current = 0 : i32,
+                            iteration_stepsize = 0 : i32,
+                            iteration_wrap = 0 : i32,
+                            iteration_size = 0 : i32,
+                            iteration_stride = 0 : i32,
+                            lock_acq_enable = 0 : i32,
+                            lock_acq_id = 0 : i32,
+                            lock_acq_val = 0 : i32,
+                            lock_rel_id = 0 : i32,
+                            lock_rel_val = 0 : i32,
+                            next_bd = 0 : i32,
+                            use_next_bd = 0 : i32,
+                            valid_bd = 1 : i32}
+// Set start BD to our shim bd_Id (3)
+aiex.ipu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
 ```
 
 ## 2. Configuring host code/ XRT to write trace values in hex format into a text file
