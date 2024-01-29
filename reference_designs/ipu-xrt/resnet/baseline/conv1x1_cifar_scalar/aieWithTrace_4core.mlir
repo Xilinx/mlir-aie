@@ -15,6 +15,8 @@ module {
   %tile03 = aie.tile(0, 3)
   %tile04 = aie.tile(0, 4)
   %tile05 = aie.tile(0, 5)
+  //Trace: add flow 
+  aie.flow(%tile05, "Trace" : 0, %tile00, "DMA" : 1)
 
   %rtp2 = aie.buffer(%tile02) {sym_name = "rtp2"} : memref<16xi32>
   %rtp3 = aie.buffer(%tile03) {sym_name = "rtp3"} : memref<16xi32>
@@ -201,6 +203,97 @@ module {
 
 
   func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<1024xi32>, %out : memref<16384xi32>) {
+                // Trace output
+
+      // Trace_Event0, Trace_Event1: Select which events to trace.
+      // Note that the event buffers only appear to be transferred to DDR in
+      // bursts of 256 bytes. If less than 256 bytes are written, you may not
+      // see trace output, or only see it on the next iteration of your 
+      // kernel invocation, as the buffer gets filled up. Note that, even
+      // though events are encoded as 4 byte words, it may take more than 64 
+      // events to fill the buffer to 256 bytes and cause a flush, since
+      // multiple repeating events can be 'compressed' by the trace mechanism.
+      // In order to always generate sufficient events, we add the "assert 
+      // TRUE" event to one slot, which fires every cycle, and thus fills our
+      // buffer quickly.
+
+      // Some events:
+      // TRUE                       (0x01)
+      // STREAM_STALL               (0x18)
+      // LOCK_STALL                 (0x1A)
+      // EVENTS_CORE_INSTR_EVENT_1  (0x22)
+      // EVENTS_CORE_INSTR_EVENT_0  (0x21)
+      // INSTR_VECTOR               (0x25)  Core executes a vecotr MAC, ADD or compare instruction
+      // INSTR_LOCK_ACQUIRE_REQ     (0x2C)  Core executes a lock acquire instruction
+      // INSTR_LOCK_RELEASE_REQ     (0x2D)  Core executes a lock release instruction
+      // EVENTS_CORE_PORT_RUNNING_1 (0x4F)
+      // EVENTS_CORE_PORT_RUNNING_0 (0x4B)
+
+
+      // Trace_Event0  (4 slots)
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+      // Trace_Event1  (4 slots)
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+
+      // Event slots as configured above:
+      // 0: Kernel executes vector instruction
+      // 1: Event 0 -- Kernel starts
+      // 2: Event 1 -- Kernel done
+      // 3: Port_Running_0
+      // 4: Port_Running_1
+      // 5: Lock Stall
+      // 6: Lock Acquire Instr
+      // 7: Lock Release Instr
+
+      // Stream_Switch_Event_Port_Selection_0
+      // This is necessary to capture the Port_Running_0 and Port_Running_1 events
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+
+      // Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+
+      // Start trace copy out.
+      aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
+                                  buffer_length = 16384 : i32,
+                                  buffer_offset = 262144 : i32,
+                                  enable_packet = 0 : i32,
+                                  out_of_order_id = 0 : i32,
+                                  packet_id = 0 : i32,
+                                  packet_type = 0 : i32,
+                                  column = 0 : i32,
+                                  column_num = 1 : i32,
+                                  d0_stepsize = 0 : i32,
+                                  d0_size = 0 : i32,
+                                  d0_stride = 0 : i32, 
+                                  d0_wrap = 0 : i32,
+                                  d1_stepsize = 0 : i32,
+                                  d1_wrap = 0 : i32,
+                                  d1_size = 0 : i32,
+                                  d1_stride = 0 : i32, 
+                                  d2_stepsize = 0 : i32,
+                                  d2_size = 0 : i32,
+                                  d2_stride = 0 : i32, 
+                                  ddr_id = 2 : i32,
+                                  iteration_current = 0 : i32,
+                                  iteration_stepsize = 0 : i32,
+                                  iteration_wrap = 0 : i32,
+                                  iteration_size = 0 : i32,
+                                  iteration_stride = 0 : i32,
+                                  lock_acq_enable = 0 : i32,
+                                  lock_acq_id = 0 : i32,
+                                  lock_acq_val = 0 : i32,
+                                  lock_rel_id = 0 : i32,
+                                  lock_rel_val = 0 : i32,
+                                  next_bd = 0 : i32,
+                                  use_next_bd = 0 : i32,
+                                  valid_bd = 1 : i32}
+      aiex.ipu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
+
+    //End trace dump
+
+      
+
+    
     aiex.ipu.rtp_write(0, 2, 0,  9) { buffer_sym_name = "rtp2" }  // scale 11 || 6
     aiex.ipu.rtp_write(0, 3, 0,  9) { buffer_sym_name = "rtp3" }  // scale 11 || 6
     aiex.ipu.rtp_write(0, 4, 0,  9) { buffer_sym_name = "rtp4" }  // scale 11 || 6

@@ -154,7 +154,7 @@ aie.device(ipu) {
         aie.objectfifo.release @wts_buf_00(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1.o" }
+    } { link_with="conv2dk1_i8.o" }
 
     // 3x3 conv
     aie.core(%tile03) {
@@ -408,7 +408,7 @@ aie.device(ipu) {
         aie.objectfifo.release @wts_buf_10(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1.o" }
+    } { link_with="conv2dk1_ui8.o" }
 
     // 3x3 conv
     aie.core(%tile12) {
@@ -661,7 +661,7 @@ aie.device(ipu) {
         aie.objectfifo.release @wts_buf_20(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1.o" }
+    } { link_with="conv2dk1_ui8.o" }
 
     // 3x3 conv
     aie.core(%tile23) {
