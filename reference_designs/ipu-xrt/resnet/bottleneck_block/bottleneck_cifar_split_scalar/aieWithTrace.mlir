@@ -17,7 +17,7 @@ aie.device(ipu) {
   %tile05 = aie.tile(0, 4)
 
   //Trace: add flow 
-  aie.flow(%tile03, "Trace" : 0, %tile00, "DMA" : 1)
+  aie.flow(%tile05, "Trace" : 0, %tile00, "DMA" : 1)
 
   %rtp2 = aie.buffer(%tile02) {sym_name = "rtp2"} : memref<16xi32>
   %rtp3 = aie.buffer(%tile03) {sym_name = "rtp3"} : memref<16xi32>
@@ -301,7 +301,7 @@ aie.device(ipu) {
   } { link_with="conv2dk1_skip.o" }
  
   func.func @sequence(%in0 : memref<65536xi32>, %wts0 : memref<17408xi32>, %out : memref<65536xi32>) {
-      // Trace output
+        // Trace output
 
       // Trace_Event0, Trace_Event1: Select which events to trace.
       // Note that the event buffers only appear to be transferred to DDR in
@@ -329,9 +329,9 @@ aie.device(ipu) {
 
 
       // Trace_Event0  (4 slots)
-      aiex.ipu.write32 { column = 0 : i32, row = 3 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
       // Trace_Event1  (4 slots)
-      aiex.ipu.write32 { column = 0 : i32, row = 3 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
 
       // Event slots as configured above:
       // 0: Kernel executes vector instruction
@@ -345,10 +345,10 @@ aie.device(ipu) {
 
       // Stream_Switch_Event_Port_Selection_0
       // This is necessary to capture the Port_Running_0 and Port_Running_1 events
-      aiex.ipu.write32 { column = 0 : i32, row = 3 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
 
       // Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-      aiex.ipu.write32 { column = 0 : i32, row = 3 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
 
       // Start trace copy out.
       aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
@@ -388,28 +388,27 @@ aie.device(ipu) {
       aiex.ipu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
 
     //End trace dump
-
-      
+    
       aiex.ipu.rtp_write(0, 2, 0,  10) { buffer_sym_name = "rtp2" }  // scale 11 || 6
       aiex.ipu.rtp_write(0, 3, 0,  11) { buffer_sym_name = "rtp3" }  // scale 11 || 8
       aiex.ipu.rtp_write(0, 5, 0,  11) { buffer_sym_name = "rtp4" }  // scale 11 || 8
       aiex.ipu.rtp_write(0, 4, 0,  11)  { buffer_sym_name = "rtp5" }  // scale: 10 || 8 conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
       aiex.ipu.rtp_write(0, 4, 1,  -1)  { buffer_sym_name = "rtp5" }  // skip_scale 0 || -1
 
-      %c0 = arith.constant 0 : i32
-      %c1 = arith.constant 1 : i32
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
 
       %act_in= arith.constant  65536 : i64 
       %act_out= arith.constant  65536 : i64 
       %total_wts = arith.constant  17408 : i64 
 
-      //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
+      // //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
       // aiex.ipu.dma_memcpy_nd (%c0, %c0, %in0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%act_in][%c0,%c0,%c0]) { metadata = @inOF_act_L3L2, id = 0 : i32 } : (i32, i32, memref<65536xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
       // aiex.ipu.dma_memcpy_nd (%c0, %c0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%act_out][%c0,%c0,%c0]) { metadata = @outOFL2L3, id = 2 : i32 } : (i32, i32, memref<65536xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])  
       // aiex.ipu.dma_memcpy_nd (%c0, %c0, %wts0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%total_wts][%c0,%c0,%c0]) { metadata = @inOF_wts_0_L3L2, id = 1 : i32 } : (i32, i32, memref<17408xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
       aiex.ipu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<65536xi32>
       aiex.ipu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 2 : i64, metadata = @inOF_wts_0_L3L2} : memref<17408xi32>
+      aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<17408xi32>
 
       aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return

@@ -27,6 +27,10 @@
 
 const int32_t UMAX = 255;
 
+//*****************************************************************************
+// conv2d 1x1 - scalar
+// act: int8, wts: int8, out: uint8
+//*****************************************************************************
 void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, uint8_t *output,
                         const int32_t input_width, const int32_t input_channels,
                         const int32_t output_channels, const int scale) {
@@ -61,6 +65,11 @@ void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, uint8_t *output,
   event1();
 }
 
+
+//*****************************************************************************
+// conv2d 1x1 - scalar
+// act: uint8, wts: int8, out: uint8
+//*****************************************************************************
 void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, uint8_t *output,
                          const int32_t input_width,
                          const int32_t input_channels,
@@ -98,9 +107,24 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, uint8_t *output,
 
 #else // Vector
 
+//*****************************************************************************
+// conv2d 1x1 - vector
+// act: int8, wts: int8, out: uint8
+// 
+// Assume IC >= 16 as that gives ideal inner loop schedule
+// 
+// TODO - Restricting input_width is mutiple of 32
+// Because each VMAC works on 4 inputs at a time and we store intermediate
+// results in 8 accumulators, having input_width be a multiple of 4*8=32 is
+// ideal. However, we should be able to support input_width that is only a
+// multiple of 4 but there is some strange scheduling happening now so for 
+// now, we do not.
+//*****************************************************************************
 void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
                         const int32_t input_width, const int32_t input_channels,
                         const int32_t output_channels, const int scale) {
+  event0();
+
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
   ::aie::set_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
@@ -116,38 +140,29 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     acc_tmp[x] = aie::zeros<acc32, 32>();
   }
 
-  // const int iw_32     = (input_width/4)/8;
-  const int iw_32 = (32 / 4) / 8;
-  // const int iw_32_rem = (input_width/4)%8;
-  // const int iw        = input_width;
-  const int iw = 32;
+  // TODO Keeping this variable gives a wrong behavior and bad schedule!
+  const int iw        = input_width;
+  const int iw_32     = (input_width / 4) / 8;
 
-  // const int iw_32_rem = (iw/4)%8;
+  // const int iw_32_rem = (input_width / 4) % 8;
+  // const int iw_32_rem = (32 / 4) % 8;
+  assert ((input_width / 4) % 8 == 0);
+  const int iw_32_rem = 0; // TODO - See restriction
 
-  // const int iw_32     = (28/4)/8;
-  const int iw_32_rem = (32 / 4) % 8; // TODO Change if input_width changes
-  // const int iw_32_rem = (iw/4) - (iw_32*8);
-  // const int iw        = 28;
+  assert ((input_channels / 8) > 2); // Assume IC >= 16
 
   if (iw_32 > 0) {
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
-        for (int ic = 0; ic < (input_channels / 8); ic++) {
-          // For ic = oc = 8, we can load all the weights in 1x 512b vec reg (2x
-          // 256b loads) For ic > 8, we would load the next 64 weights that are
-          // ic8..15(oc0..7) For oc > 8, we would load the next 64 weights after
-          // all the ic weights {OC}{IC}{IC8}{OC8}
+        for (int ic = 0; ic < (input_channels / 8); ic++) 
+          chess_prepare_for_pipelining 
+          chess_loop_range(2,)
+        {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
 
           for (int x = 0; x < 8; x++)
-          // chess_prepare_for_pipelining //chess_loop_range(7, )
-          // e.g. 28/4 = 7
-          // 13 cycles delay for vload.
-          // 7 gives us 3 cycle inner loop.
-          // 13 gave 1 cycle inner loop before partial load, not it only gets 2
-          // cycles (not sure why?)
           {
             aie::vector<int8, 32> in_a = aie::load_v<32>(input);
             input += 32; // act oc0..3(ic0..7)
@@ -156,14 +171,9 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
           input += (iw * 8) - 256; // Move to next ic/8 position
         }
         // input ptr just moves to next section
-        for (int xx = 0; xx < 8; xx++) {
+        for (int xx = 0; xx < 8; xx++) 
+        {
           aie::vector<uint8, 32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
-          // aie::vector<uint8,32> o1 = aie::zeros<uint8,32>();
-          // aie::vector<uint8,32> o1;
-          // for(int i=0; i<32;i++) {
-          //     o1[i] = i + (oc+1)*8;
-          // }
-          // aie::vector<uint8,32> o1 = aie::load_v<32>(input-256);
           aie::store_v(out_ptr, o1);
           out_ptr += 32;
           acc_tmp[xx] = aie::zeros<acc32, 32>();
@@ -187,21 +197,14 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
-      for (int ic = 0; ic < (ics / 8); ic++) {
-        // For ic = oc = 8, we can load all the weights in 1x 512b vec reg (2x
-        // 256b loads) For ic > 8, we would load the next 64 weights that are
-        // ic8..15(oc0..7) For oc > 8, we would load the next 64 weights after
-        // all the ic weights {OC}{IC}{IC8}{OC8}
+      for (int ic = 0; ic < (ics / 8); ic++) 
+        chess_prepare_for_pipelining 
+        chess_loop_range(2,)
+      {
         aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
         kernels += 64; // wts ic0..7(oc0..7)
 
         for (int x = 0; x < iw_32_rem; x++)
-        // chess_prepare_for_pipelining //chess_loop_range(7, )
-        // e.g. 28/4 = 7
-        // 13 cycles delay for vload.
-        // 7 gives us 3 cycle inner loop.
-        // 13 gave 1 cycle inner loop before partial load, not it only gets 2
-        // cycles (not sure why?)
         {
           aie::vector<int8, 32> in_a = aie::load_v<32>(input);
           input += 32; // act oc0..3(ic0..7)
@@ -226,10 +229,15 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     }
 
   } // if(iw_32_rem > 0)
+
+  event1();
 }
 
 #endif
 
+//*****************************************************************************
+// conv2d 1x1 wrappers
+//*****************************************************************************
 extern "C" {
 
 #ifdef SCALAR
