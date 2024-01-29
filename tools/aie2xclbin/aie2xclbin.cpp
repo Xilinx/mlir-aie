@@ -79,6 +79,9 @@ cl::opt<std::string>
 cl::opt<std::string> XCLBinKernelID("xclbin-kernel-id",
                                     cl::desc("Kernel id in xclbin file"),
                                     cl::init("0x901"), cl::cat(AIE2XCLBinCat));
+cl::opt<std::string> InstallDir("install-dir",
+                                cl::desc("Root of mlir-aie installation"),
+                                cl::init(INSTALL_DIR), cl::cat(AIE2XCLBinCat));
 
 int main(int argc, char *argv[]) {
   registerAsmPrinterCLOptions();
@@ -99,7 +102,7 @@ int main(int argc, char *argv[]) {
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
   }
 
-  TK.InstallDir = INSTALL_DIR;
+  TK.InstallDir = InstallDir;
   TK.PeanoDir = Peano.getValue();
   if (!sys::fs::is_directory(TK.PeanoDir)) {
     llvm::errs() << "Peano path " << TK.PeanoDir << " is invalid\n";
