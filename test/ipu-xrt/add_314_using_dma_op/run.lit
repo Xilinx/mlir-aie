@@ -4,7 +4,7 @@
 // REQUIRES: ryzen_ai
 //
 // RUN: %python aiecc.py %S/aie.mlir
-// RUN: aie-translate --aie-generate-cdo-direct aie.mlir.prj/input_physical.mlir
+// RUN: aie-translate --aie-generate-cdo aie.mlir.prj/input_physical.mlir
 // RUN: cp *.elf aie.mlir.prj/
 // RUN: cp *.bin aie.mlir.prj/
 // RUN: %python aiecc.py --no-aiesim --aie-generate-ipu --aie-generate-xclbin --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %S/aie.mlir

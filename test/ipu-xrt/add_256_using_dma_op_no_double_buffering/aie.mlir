@@ -15,11 +15,6 @@ module {
     %buffer_0_2 = aie.buffer(%tile_0_2) : memref<16xi32>
     %buffer_0_2_1 = aie.buffer(%tile_0_2) : memref<16xi32>
 
-    %lock_0_1_0 = aie.lock(%tile_0_1, 0) {init = 1 : i32}
-    %lock_0_1_1 = aie.lock(%tile_0_1, 1) {init = 0 : i32}
-    %lock_0_1_2 = aie.lock(%tile_0_1, 2) {init = 1 : i32}
-    %lock_0_1_3 = aie.lock(%tile_0_1, 3) {init = 0 : i32}
-    
     %lock_0_2_0 = aie.lock(%tile_0_2, 0) {init = 1 : i32}
     %lock_0_2_1 = aie.lock(%tile_0_2, 1) {init = 0 : i32}
     %lock_0_2_2 = aie.lock(%tile_0_2, 2) {init = 1 : i32}
@@ -50,10 +45,14 @@ module {
       aie.end
     }
 
-    %buffer_0_1 = aie.buffer(%tile_0_1) : memref<16xi32>
-    %buffer_0_1_0 = aie.buffer(%tile_0_1) : memref<16xi32>
-
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+      %buffer_0_1 = aie.buffer(%tile_0_1) : memref<16xi32>
+      %buffer_0_1_0 = aie.buffer(%tile_0_1) : memref<16xi32>
+      %lock_0_1_0 = aie.lock(%tile_0_1, 0) {init = 1 : i32}
+      %lock_0_1_1 = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+      %lock_0_1_2 = aie.lock(%tile_0_1, 2) {init = 1 : i32}
+      %lock_0_1_3 = aie.lock(%tile_0_1, 3) {init = 0 : i32}
+
       // forward
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1_0, AcquireGreaterEqual, 1)

@@ -1412,6 +1412,9 @@ BufferOp DMABDOp::getBufferOp() {
 }
 
 LogicalResult DMABDOp::verify() {
+  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+    return emitOpError(
+        "BDs only support BufferOp or ExternalBufferOp operands.");
   if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
     if (auto bufferOp = getBufferOp();
         bufferOp.getTileOp().colIndex() != memOp.colIndex() ||

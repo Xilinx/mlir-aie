@@ -6,12 +6,6 @@
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
 // RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
-// RUN: mkdir $BASENAME.cdo_direct && cp $BASENAME.prj/*.elf $BASENAME.cdo_direct
-// RUN: aie-translate --aie-generate-cdo-direct $BASENAME.prj/input_physical.mlir --work-dir-path=$BASENAME.cdo_direct
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_elfs.bin $BASENAME.prj/aie_cdo_elfs.bin
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_enable.bin $BASENAME.prj/aie_cdo_enable.bin
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_error_handling.bin $BASENAME.prj/aie_cdo_error_handling.bin
-// RUN: cmp $BASENAME.cdo_direct/aie_cdo_init.bin $BASENAME.prj/aie_cdo_init.bin
 
 module {
   aie.device(ipu) {
@@ -51,26 +45,26 @@ module {
     %memC_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_0"} : memref<64x64xi16>
     %memC_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "memC_cons_buff_1"} : memref<64x64xi16>
 
-    %inA_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "inA_cons_lock"}
     %inA_prod_lock = aie.lock(%tile_0_0, 0) {init = 0 : i32, sym_name = "inA_prod_lock"}
-    %inB_cons_lock = aie.lock(%tile_0_0, 3) {init = 0 : i32, sym_name = "inB_cons_lock"}
+    %inA_cons_lock = aie.lock(%tile_0_0, 1) {init = 0 : i32, sym_name = "inA_cons_lock"}
     %inB_prod_lock = aie.lock(%tile_0_0, 2) {init = 0 : i32, sym_name = "inB_prod_lock"}
-
-    %inA_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
-    %inA_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
-    %inB_cons_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
-    %inB_cons_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
-    %outC_cons_cons_lock = aie.lock(%tile_0_0, 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
+    %inB_cons_lock = aie.lock(%tile_0_0, 3) {init = 0 : i32, sym_name = "inB_cons_lock"}
     %outC_cons_prod_lock = aie.lock(%tile_0_0, 4) {init = 0 : i32, sym_name = "outC_cons_prod_lock"}
+    %outC_cons_cons_lock = aie.lock(%tile_0_0, 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
 
-    %memA_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "memA_cons_cons_lock"}
-    %memA_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "memA_cons_prod_lock"}
-    %memB_cons_cons_lock = aie.lock(%tile_0_2, 3) {init = 0 : i32, sym_name = "memB_cons_cons_lock"}
-    %memB_cons_prod_lock = aie.lock(%tile_0_2, 2) {init = 2 : i32, sym_name = "memB_cons_prod_lock"}
-    %memC_cons_cons_lock = aie.lock(%tile_0_1, 5) {init = 0 : i32, sym_name = "memC_cons_cons_lock"}
-    %memC_cons_lock = aie.lock(%tile_0_2, 5) {init = 0 : i32, sym_name = "memC_cons_lock"}
+    %inA_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
+    %inA_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
+    %inB_cons_prod_lock = aie.lock(%tile_0_1, 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
+    %inB_cons_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
     %memC_cons_prod_lock = aie.lock(%tile_0_1, 4) {init = 2 : i32, sym_name = "memC_cons_prod_lock"}
+    %memC_cons_cons_lock = aie.lock(%tile_0_1, 5) {init = 0 : i32, sym_name = "memC_cons_cons_lock"}
+
+    %memA_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "memA_cons_prod_lock"}
+    %memA_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "memA_cons_cons_lock"}
+    %memB_cons_prod_lock = aie.lock(%tile_0_2, 2) {init = 2 : i32, sym_name = "memB_cons_prod_lock"}
+    %memB_cons_cons_lock = aie.lock(%tile_0_2, 3) {init = 0 : i32, sym_name = "memB_cons_cons_lock"}
     %memC_prod_lock = aie.lock(%tile_0_2, 4) {init = 2 : i32, sym_name = "memC_prod_lock"}
+    %memC_cons_lock = aie.lock(%tile_0_2, 5) {init = 0 : i32, sym_name = "memC_cons_lock"}
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)

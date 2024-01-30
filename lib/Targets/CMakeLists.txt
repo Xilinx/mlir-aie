@@ -12,7 +12,6 @@ set(LLVM_OPTIONAL_SOURCES AIETargetCDODirect.cpp AIETargetAirbin.cpp)
 set(_sources
   AIETargets.cpp
   AIETargetBCF.cpp
-  AIETargetCDO.cpp
   AIETargetIPU.cpp
   AIETargetLdScript.cpp
   AIETargetXAIEV2.cpp

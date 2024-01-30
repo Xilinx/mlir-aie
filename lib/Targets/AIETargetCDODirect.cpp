@@ -56,7 +56,7 @@ extern "C" {
 #include "xaiengine/xaiegbl_defs.h"
 }
 
-#define DEBUG_TYPE "aie-generate-cdo-direct"
+#define DEBUG_TYPE "aie-generate-cdo"
 
 using namespace mlir;
 using namespace xilinx;
@@ -154,8 +154,8 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__))                                             \
-      report_fatal_error(llvm::Twine(#API " failed with ") +                   \
-                         AIERCTOSTR.at(r));                                    \
+      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +             \
+                               AIERCTOSTR.at(r));                              \
   } while (0)
 
 #define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
@@ -194,8 +194,7 @@ auto ps = std::filesystem::path::preferred_separator;
 #define NUM_LOCKS 16
 #define EVEN_BD_NUM_START 0
 #define ODD_BD_NUM_START 24
-#define ACQ_LOCK_ID_INCR 64
-#define REL_LOCK_ID_INCR 64
+#define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
 #define PARTITION_START_COL 1
 #define PARTITION_NUM_COLS 1
@@ -235,9 +234,9 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
 
   if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
     if (acqLockId)
-      acqLockId.value() += ACQ_LOCK_ID_INCR;
+      acqLockId.value() += MEM_TILE_LOCK_ID_INCR;
     if (relLockId)
-      relLockId.value() += REL_LOCK_ID_INCR;
+      relLockId.value() += MEM_TILE_LOCK_ID_INCR;
   }
 
   auto acqLockInit = XAie_LockInit(acqLockId.value(), acqValue.value());
@@ -308,10 +307,11 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             bdOp.getLenValue() * bytesA);
   }
 
-  if (nextBdNum)
+  if (nextBdNum) {
+    auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
-                            nextBdNum.value(),
-                            /* enableNextBd */ 1);
+                            nextBdNum.value(), enableNextBd);
+  }
 
   if (packetID) {
     assert(packetType && "must have packetType with packetID");
@@ -416,16 +416,16 @@ struct AIEControl {
     }
 
     // Set locks with explicit initializers
-    for (auto lockOp : targetOp.getOps<LockOp>())
+    targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
       if (lockOp.getLockID() && lockOp.getInit()) {
         auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
                                     lockOp.getTileOp().rowIndex());
         auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
-        TRY_XAIE_API_EMIT_ERROR(lockOp, XAie_LockSetValue, &devInst, tileLoc,
-                                locInit);
+        TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, &devInst, tileLoc, locInit);
       } else
         LLVM_DEBUG(llvm::dbgs()
                    << "lock op missing either id or init" << lockOp << "\n");
+    });
 
     auto pushToBdQueueAndEnable =
         [this](Operation &op, XAie_LocType &tileLoc, int chNum,

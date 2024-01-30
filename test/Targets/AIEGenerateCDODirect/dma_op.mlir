@@ -10,7 +10,7 @@
 
 // REQUIRES: ryzen_ai
 
-// RUN: aie-translate --aie-generate-cdo-direct %s --cdo-axi-debug 2>&1 | FileCheck %s
+// RUN: aie-translate --aie-generate-cdo %s --cdo-axi-debug 2>&1 | FileCheck %s
 
 // CHECK: Generating: {{.*}}aie_cdo_error_handling.bin
 // CHECK: Generating: {{.*}}aie_cdo_init.bin
