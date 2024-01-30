@@ -686,7 +686,7 @@ aie.device(ipu) {
       // %subviewWts = aie.objectfifo.acquire<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1) : !aie.objectfifosubview<memref<32x32x3x3xi32>>
       // %scale = memref.load %rtp3[%c0] : memref<16xi32>
 
-      %scale = arith.constant 10 : i32
+      %scale = arith.constant 9 : i32
       %intmax = arith.constant 0xFFFFFFFF : index
       scf.for %arg3 = %c0 to %intmax step %c1 {
         %subviewWts = aie.objectfifo.acquire @wts_buf_21(Consume, 1) : !aie.objectfifosubview<memref<36864xi8>>
@@ -767,7 +767,7 @@ aie.device(ipu) {
       %co_offset = arith.constant 32 : i32
       %intmax = arith.constant 0xFFFFFFFF : index
       // %scale = memref.load %rtp4[%c0] : memref<16xi32>
-      %scale = arith.constant 10 : i32
+      %scale = arith.constant 9 : i32
       scf.for %arg3 = %c0 to %intmax step %c1 {
         // acquire wts once
         // %subviewWts = aie.objectfifo.acquire<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1) : !aie.objectfifosubview<memref<32x32x3x3xi32>>
@@ -893,9 +893,9 @@ aie.device(ipu) {
       aiex.ipu.rtp_write(1, 3, 1,  0)  { buffer_sym_name = "rtp13" }  
 
       aiex.ipu.rtp_write(2, 2, 0,  9) { buffer_sym_name = "rtp22" }  
-      aiex.ipu.rtp_write(2, 3, 0,  10) { buffer_sym_name = "rtp23" }  
-      aiex.ipu.rtp_write(2, 5, 0,  10) { buffer_sym_name = "rtp25" }  
-      aiex.ipu.rtp_write(2, 4, 0,  11)  { buffer_sym_name = "rtp24" }  
+      aiex.ipu.rtp_write(2, 3, 0,  9) { buffer_sym_name = "rtp23" }  
+      aiex.ipu.rtp_write(2, 5, 0,  9) { buffer_sym_name = "rtp25" }  
+      aiex.ipu.rtp_write(2, 4, 0,  12)  { buffer_sym_name = "rtp24" }  
       aiex.ipu.rtp_write(2, 4, 1,  0)  { buffer_sym_name = "rtp24" } 
 
       %c0 = arith.constant 0 : i32
