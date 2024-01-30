@@ -16,7 +16,7 @@ module {
   %tile04 = aie.tile(0, 4)
   %tile05 = aie.tile(0, 5)
   //Trace: add flow 
-  aie.flow(%tile05, "Trace" : 0, %tile00, "DMA" : 1)
+  aie.flow(%tile02, "Trace" : 0, %tile00, "DMA" : 1)
 
   %rtp2 = aie.buffer(%tile02) {sym_name = "rtp2"} : memref<16xi32>
   %rtp3 = aie.buffer(%tile03) {sym_name = "rtp3"} : memref<16xi32>
@@ -83,7 +83,7 @@ module {
       aie.objectfifo.release @inOF_wts_0_L3L2(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_i8.o" }
+  } { link_with="conv2dk1.o" }
 
   
   // 1x1 conv
@@ -121,7 +121,7 @@ module {
       aie.objectfifo.release @inOF_wts_0_L3L2(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_i8.o" }
+  } { link_with="conv2dk1.o" }
 
 
   
@@ -160,7 +160,7 @@ module {
       aie.objectfifo.release @inOF_wts_0_L3L2(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_i8.o" }
+  } { link_with="conv2dk1.o" }
 
 
   
@@ -199,7 +199,7 @@ module {
       aie.objectfifo.release @inOF_wts_0_L3L2(Consume, 1)
     }
     aie.end
-  } { link_with="conv2dk1_i8.o" }
+  } { link_with="conv2dk1.o" }
 
 
   func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<1024xi32>, %out : memref<16384xi32>) {
@@ -231,9 +231,9 @@ module {
 
 
       // Trace_Event0  (4 slots)
-      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 2 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
       // Trace_Event1  (4 slots)
-      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 2 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
 
       // Event slots as configured above:
       // 0: Kernel executes vector instruction
@@ -247,15 +247,15 @@ module {
 
       // Stream_Switch_Event_Port_Selection_0
       // This is necessary to capture the Port_Running_0 and Port_Running_1 events
-      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 2 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
 
       // Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-      aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+      aiex.ipu.write32 { column = 0 : i32, row = 2 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
 
       // Start trace copy out.
       aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
                                   buffer_length = 16384 : i32,
-                                  buffer_offset = 262144 : i32,
+                                  buffer_offset = 65536 : i32,
                                   enable_packet = 0 : i32,
                                   out_of_order_id = 0 : i32,
                                   packet_id = 0 : i32,
