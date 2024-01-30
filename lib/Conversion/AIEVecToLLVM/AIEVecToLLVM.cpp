@@ -829,13 +829,6 @@ class MatMulOpConversion
   matchAndRewrite(aievec::MatMulOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto decodedMatMulOp = decodeMatMulOp(adaptor);
-    std::string intrinsicName;
-    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I32)
-      intrinsicName = "llvm.aie2.i512.i512.acc1024.acc32.mac.conf";
-    else if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I64)
-      intrinsicName = "llvm.aie2.i512.i512.acc1024.acc64.mac.conf";
-    else
-      intrinsicName = "llvm.aie2.bf.mac16.conf";
 
     Location loc = op.getLoc();
     // Flatten the inputs
@@ -852,6 +845,40 @@ class MatMulOpConversion
     decodedMatMulOp.acc = rewriter.create<vector::ShapeCastOp>(
         loc, accFlattenedVecTy, decodedMatMulOp.acc);
 
+    if (decodedMatMulOp.kind != DecodedMatMulOp::Kind::BF16) {
+      decodedMatMulOp.lhs =
+          rewriter
+              .create<LLVM::BitcastOp>(
+                  loc, VectorType::get({64}, rewriter.getI8Type()),
+                  decodedMatMulOp.lhs)
+              .getResult();
+      decodedMatMulOp.rhs =
+          rewriter
+              .create<LLVM::BitcastOp>(
+                  loc, VectorType::get({16}, rewriter.getI32Type()),
+                  decodedMatMulOp.rhs)
+              .getResult();
+      decodedMatMulOp.acc =
+          rewriter
+              .create<LLVM::BitcastOp>(
+                  loc, VectorType::get({16}, rewriter.getI64Type()),
+                  decodedMatMulOp.acc)
+              .getResult();
+    } else
+      decodedMatMulOp.acc =
+          rewriter
+              .create<LLVM::BitcastOp>(
+                  loc, VectorType::get({8}, rewriter.getI64Type()),
+                  decodedMatMulOp.acc)
+              .getResult();
+    std::string intrinsicName;
+    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I32)
+      intrinsicName = "llvm.aie2.I512.I512.ACC1024.acc32.mac.conf";
+    else if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I64)
+      intrinsicName = "llvm.aie2.I512.I512.ACC1024.acc64.mac.conf";
+    else
+      intrinsicName = "llvm.aie2.bf.mac16.conf";
+
     // If the intrinsic declaration doesn't exist, create it
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
@@ -864,9 +891,10 @@ class MatMulOpConversion
       rewriter.setInsertionPointToStart(module.getBody());
       func = rewriter.create<LLVM::LLVMFuncOp>(
           rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(accFlattenedVecTy,
-                                      {lhsFlattenedVecTy, rhsFlattenedVecTy,
-                                       accFlattenedVecTy, i32ty}));
+          LLVM::LLVMFunctionType::get(decodedMatMulOp.acc.getType(),
+                                      {decodedMatMulOp.lhs.getType(),
+                                       decodedMatMulOp.rhs.getType(),
+                                       decodedMatMulOp.acc.getType(), i32ty}));
     }
 
     auto confCst = rewriter.create<arith::ConstantOp>(
@@ -875,8 +903,10 @@ class MatMulOpConversion
         loc, func,
         ValueRange{decodedMatMulOp.lhs, decodedMatMulOp.rhs,
                    decodedMatMulOp.acc, confCst});
+    auto castFromAcc = rewriter.create<LLVM::BitcastOp>(loc, accFlattenedVecTy,
+                                                        callOp.getResult());
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
-                                                     callOp.getResult());
+                                                     castFromAcc);
 
     return success();
   }
