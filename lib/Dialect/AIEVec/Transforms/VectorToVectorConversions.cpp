@@ -20,6 +20,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -253,6 +254,149 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
   }
 };
 
+static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
+                                                      Location loc, int numDims,
+                                                      ValueRange indices,
+                                                      ArrayRef<int64_t> shape,
+                                                      AffineMap layout) {
+  // TODO: Don't assume trivial layout
+  assert(layout.isMinorIdentity() &&
+         "dimension collapse in non-identity layout is not implemented");
+  auto newIdxExpr = b.getAffineDimExpr(numDims - 1);
+  int64_t stride = 1;
+  for (int64_t dim = numDims - 2; dim >= 0; dim--) {
+    stride *= shape[shape.size() - (numDims - dim - 1)];
+    newIdxExpr = newIdxExpr + b.getAffineDimExpr(dim) * stride;
+  }
+  auto newIndexMap = AffineMap::get(numDims, 0, newIdxExpr);
+  Value newInnerMostIdxValue =
+      b.create<affine::AffineApplyOp>(loc, newIndexMap,
+                                      indices.take_back(numDims))
+          .getResult();
+  SmallVector<Value> newIdxRange;
+  for (auto idx : indices.drop_back(numDims))
+    newIdxRange.push_back(idx);
+  newIdxRange.push_back(newInnerMostIdxValue);
+  return newIdxRange;
+}
+
+static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
+                                        int numDims, Value val) {
+  auto memRefTy = cast<MemRefType>(val.getType());
+  auto shape = memRefTy.getShape();
+  int64_t newInnerMostDim = std::accumulate(shape.end() - numDims, shape.end(),
+                                            1, std::multiplies<>());
+  SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
+  newShape[shape.size() - numDims] = newInnerMostDim;
+  auto newMemRefTy = MemRefType::get(newShape, memRefTy.getElementType());
+  auto reassocIndices = getReassociationIndicesForCollapse(
+                            memRefTy.getShape(), newMemRefTy.getShape())
+                            .value();
+  return b
+      .create<memref::CollapseShapeOp>(loc, newMemRefTy, val, reassocIndices)
+      .getResult();
+}
+
+// This pattern flatten multidimensional `vector.transfer_read` operations
+// replacing them with a `memref.collapse_shape`, a 1D `vector.transfer_read`,
+// and a `vector.shape_cast`.
+struct FlattenMultDimTransferReadPattern
+    : public OpConversionPattern<vector::TransferReadOp> {
+  using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // We can only deal with unmasked transfer ops with an identity permutation
+    // map.
+    if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
+      return failure();
+    VectorType vectorTy = readOp.getVector().getType();
+    // TODO: support beyond rank 2
+    if (vectorTy.getRank() != 2)
+      return failure();
+    // Work only on bufferized reads
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    if (!memRefTy)
+      return failure();
+    auto memRefShape = memRefTy.getShape();
+    auto vecShape = vectorTy.getShape();
+    // For the conversion to be valid, the n-1 innermost dimensions of the
+    // memref must to match the n-1 innermost dimensions of the n-D vector
+    if (!std::equal(memRefShape.end() - vecShape.size() + 1, memRefShape.end(),
+                    vecShape.begin() + 1, vecShape.end()))
+      return failure();
+
+    auto newVectorTy =
+        VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
+                                         std::multiplies<>())},
+                        vectorTy.getElementType());
+    AffineMap layout = memRefTy.getLayout().getAffineMap();
+    auto newIndices =
+        collapseInnerMostDimIndices(rewriter, readOp.getLoc(), 2,
+                                    adaptor.getIndices(), memRefShape, layout);
+    auto newSource = collapseInnerMostShapeDims(rewriter, readOp.getLoc(), 2,
+                                                adaptor.getSource());
+    auto newVector = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), newVectorTy, newSource, newIndices);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(readOp, vectorTy,
+                                                     newVector);
+
+    return success();
+  }
+};
+
+// This pattern flatten multidimensional `vector.transfer_write` operations
+// replacing them with a `memref.collapse_shape`, a `vector.shape_cast`, and a
+// 1D `vector.transfer_write`,
+struct FlattenMultDimTransferWritePattern
+    : public OpConversionPattern<vector::TransferWriteOp> {
+  using OpConversionPattern<vector::TransferWriteOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransferWriteOp writeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // We can only deal with unmasked transfer ops with an identity permutation
+    // map.
+    if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
+      return failure();
+    VectorType vectorTy = cast<VectorType>(adaptor.getVector().getType());
+    // TODO: support beyond rank 2
+    if (vectorTy.getRank() < 2)
+      return failure();
+    // Work only on bufferized reads
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    if (!memRefTy)
+      return failure();
+    auto memRefShape = memRefTy.getShape();
+    auto vecShape = vectorTy.getShape();
+    // For the conversion to be valid, the n-1 innermost dimensions of the
+    // memref must to match the n-1 innermost dimensions of the n-D vector
+    if (!std::equal(memRefShape.end() - vecShape.size() + 1, memRefShape.end(),
+                    vecShape.begin() + 1, vecShape.end()))
+      return failure();
+
+    auto newVectorTy =
+        VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
+                                         std::multiplies<>())},
+                        vectorTy.getElementType());
+    AffineMap layout = memRefTy.getLayout().getAffineMap();
+    auto newVector = rewriter
+                         .create<vector::ShapeCastOp>(
+                             writeOp.getLoc(), newVectorTy, adaptor.getVector())
+                         .getResult();
+    auto newIndices =
+        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), 2,
+                                    adaptor.getIndices(), memRefShape, layout);
+    auto newSource = collapseInnerMostShapeDims(rewriter, writeOp.getLoc(), 2,
+                                                adaptor.getSource());
+    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(writeOp, newVector,
+                                                         newSource, newIndices);
+
+    return success();
+  }
+};
+
 //============================================================================//
 //============ AIEML canonicalization conversion patterns ===============//
 //============================================================================//
@@ -300,7 +444,12 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
                getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
-                       .value_or(0) == 0;
+                       .value_or(0) == 0 &&
+               op.getVector().getType().getRank() < 2;
+      });
+  target.addDynamicallyLegalOp<vector::TransferWriteOp>(
+      [](vector::TransferWriteOp op) {
+        return cast<VectorType>(op.getVector().getType()).getRank() < 2;
       });
 }
 
@@ -308,6 +457,8 @@ static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
+  patterns.add<FlattenMultDimTransferReadPattern,
+               FlattenMultDimTransferWritePattern>(patterns.getContext());
 }
 
 //============================================================================//
