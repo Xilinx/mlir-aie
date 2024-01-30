@@ -107,7 +107,7 @@ aie.device(ipu) {
     // %subviewWts = aie.objectfifo.acquire<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1) : !aie.objectfifosubview<memref<32x32x3x3xi32>>
     // %scale = memref.load %rtp3[%c0] : memref<16xi32>
 
-    %scale = arith.constant 10 : i32
+    %scale = arith.constant 11 : i32
     %intmax = arith.constant 0xFFFFFFFF : index
     scf.for %arg3 = %c0 to %intmax step %c1 {
       %subviewWts = aie.objectfifo.acquire @wts_buf_01(Consume, 1) : !aie.objectfifosubview<memref<36864xi8>>
@@ -188,7 +188,7 @@ aie.device(ipu) {
     %co_offset = arith.constant 32 : i32
     %intmax = arith.constant 0xFFFFFFFF : index
     // %scale = memref.load %rtp4[%c0] : memref<16xi32>
-    %scale = arith.constant 10 : i32
+    %scale = arith.constant 11 : i32
     scf.for %arg3 = %c0 to %intmax step %c1 {
       // acquire wts once
       // %subviewWts = aie.objectfifo.acquire<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1) : !aie.objectfifosubview<memref<32x32x3x3xi32>>
@@ -302,11 +302,11 @@ aie.device(ipu) {
  
   func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<18432xi32>, %out : memref<65536xi32>) {
       aiex.ipu.rtp_write(0, 2, 0,  7) { buffer_sym_name = "rtp2" }  // scale 11 || 6
-      aiex.ipu.rtp_write(0, 3, 0,  10) { buffer_sym_name = "rtp3" }  // scale 11 || 8
-      aiex.ipu.rtp_write(0, 5, 0,  10) { buffer_sym_name = "rtp4" }  // scale 11 || 8
-      aiex.ipu.rtp_write(0, 4, 0,  11)  { buffer_sym_name = "rtp5" }  // scale: 10 || 8 conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
+      aiex.ipu.rtp_write(0, 3, 0,  11) { buffer_sym_name = "rtp3" }  // scale 11 || 8
+      aiex.ipu.rtp_write(0, 5, 0,  11) { buffer_sym_name = "rtp4" }  // scale 11 || 8
+      aiex.ipu.rtp_write(0, 4, 0,  9)  { buffer_sym_name = "rtp5" }  // scale: 10 || 8 conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
       aiex.ipu.rtp_write(0, 4, 1,  0)  { buffer_sym_name = "rtp5" }  // skip_scale 0 || -1
-      aiex.ipu.rtp_write(0, 4, 2,  8)  { buffer_sym_name = "rtp5" }  // skip_scale 0 || -1
+      aiex.ipu.rtp_write(0, 4, 2,  9)  { buffer_sym_name = "rtp5" }  // skip_scale 0 || -1
 
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
