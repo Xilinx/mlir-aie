@@ -1,7 +1,9 @@
 include ../../../makefile-common
 
-mlirFileName = aieFinal
-#mlirFileName = aieDemo
+# mlirFileName = aieFinal
+# mlirFileName = aieDemo
+mlirFileName = aieResnet
+# mlirFileName = aieFinalWithTrace
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 VPATH := ../../kernels
@@ -29,9 +31,13 @@ build/final.xclbin: ${mlirFileName}.mlir
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
 clean:
-	rm -rf build *.elf* *.lst *.bif *.mlir.prj *.xclbin sim \
-		chess* *.o insts.txt \
-		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.xclbin build/sim \
+		build/chess* build/insts.txt \
+		build/*.log build/aie_partition.json build/*.bin build/BOOT.BIN _x build/test.exe
+# clean:
+# 	rm -rf build *.elf* *.lst *.bif *.mlir.prj *.xclbin sim \
+# 		chess* *.o insts.txt \
+# 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
 build/test.exe: test.cpp
 	$(CXX) $(LD_FLAGS) $< -o $@ $(CFLAGS) $(INC) $(LD_PATHS) 
