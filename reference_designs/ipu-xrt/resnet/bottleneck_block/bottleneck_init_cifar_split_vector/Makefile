@@ -16,7 +16,8 @@ build/conv2dk3.o: conv2dk3.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
 
 build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
+	#xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
 
 build/final.xclbin: ${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \
