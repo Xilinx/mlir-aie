@@ -5,15 +5,6 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-cmake_minimum_required(VERSION 3.21)
-project(aie2xclbin)
-
-find_package(LLVM REQUIRED CONFIG)
-find_package(MLIR REQUIRED CONFIG)
-
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-
 set(_aie2xclbin_srcs aie2xclbin.cpp XCLBinGen.cpp)
 
 add_executable(aie2xclbin ${_aie2xclbin_srcs})
@@ -29,10 +20,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 configure_file(configure.h.in configure.h)
 target_include_directories(aie2xclbin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  target_compile_definitions(aie2xclbin PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
-endif()
+target_compile_definitions(aie2xclbin PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
 
 target_link_libraries(aie2xclbin
   ${dialect_libs}
