@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - test-ryzen-ai
-#  pull_request:
+  pull_request:
   workflow_dispatch:
 
 defaults:

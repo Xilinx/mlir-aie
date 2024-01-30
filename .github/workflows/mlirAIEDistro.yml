@@ -1,9 +1,9 @@
 name: MLIR AIE Distro
 
 on:
-  push:
-    branches:
-      - test-build-mlir-aie-wheels
+  pull_request:
+    paths:
+      - '.github/workflows/mlirAIEDistro.yml'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:
@@ -34,7 +34,6 @@ on:
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-#  pull_request:
 
 jobs:
 

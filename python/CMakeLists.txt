@@ -348,18 +348,21 @@ foreach(r ${_runtime_deps})
     set(HAS_MLIR_RUNTIME_LIBRARIES OFF PARENT_SCOPE)
     break()
   endif()
+  # build dir lib/
   add_custom_command(
     TARGET AIEPythonModules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     $<TARGET_FILE:${r}>
     "${CMAKE_BINARY_DIR}/lib"
   )
+  # build dir aie/_mlir_libs
   add_custom_command(
     TARGET AIEPythonModules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     $<TARGET_FILE:${r}>
     "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs"
   )
+  # install dir
   install(IMPORTED_RUNTIME_ARTIFACTS
     ${r}
     COMPONENT aie-python
@@ -383,7 +386,8 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     "${XRT_COREUTIL}"
     COMPONENT xrt_coreutil
     DESTINATION "${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    RENAME libxrt_coreutil.so
+    # hack
+    RENAME libxrt_coreutil.so.2
   )
 endif()
 

@@ -2,6 +2,8 @@ name: Build and Test Experimental features on Ryzen AI
 
 on:
   pull_request:
+    paths:
+      - '.github/workflows/buildAndTestExperimentalOnRyzenAI.yml'
   workflow_dispatch:
 
 defaults:
@@ -21,7 +23,7 @@ env:
 
 jobs:
   build-repo:
-    name: Build and Test
+    name: Build and Test and upload wheels
 
     runs-on: amd7940hs
 
@@ -89,40 +91,42 @@ jobs:
           export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           export XRT_ROOT=/opt/xilinx/xrt
+          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
+          export DATETIME=$(date +"%Y%m%d%H")
+          
+          cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
           cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
           
           pushd utils/mlir_aie_wheels/python_bindings
           
           pip install wheel auditwheel patchelf
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          # boost dep in xrt...
-          # auditwheel repair -w $WHEELHOUSE_DIR $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64 --exclude libmlir_float16_utils.so
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64
           
           popd
 
-      - name: Build mlir-aie python bindings
+      - name: Install and test mlir-aie python bindings
         run: |
           
           source aie-venv/bin/activate
-          pip install wheelhouse/aie-*.whl
+          pip install wheelhouse/repaired_wheel/aie-*.whl --force-reinstall
           
           export VITIS_DIR=/opt/Xilinx/Vitis/2023.2
           export XRT_ROOT=/opt/xilinx/xrt
           export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
-          export LD_LIBRARY_PATH=/opt/xilinx/xrt/lib:$LD_LIBRARY_PATH
           
           for f in test/ipu-xrt/e2e/*.py; do python $f; done
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
         with:
-          path: wheelhouse/aie-*.whl
+          path: wheelhouse/repaired_wheel/aie-*.whl
           name: ryzen_ai_wheel
 
       - name: Release current commit
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: wheelhouse/aie-*.whl
+          artifacts: wheelhouse/repaired_wheel/aie-*.whl
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
           name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}

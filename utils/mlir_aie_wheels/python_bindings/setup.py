@@ -4,10 +4,12 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 from typing import Union
 
+from pip._internal.req import parse_requirements
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
@@ -92,6 +94,11 @@ class CMakeBuild(build_ext):
             f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
             f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
+            # get rid of that annoying af git on the end of .17git of libAIEAggregateCAPI.so
+            "-DLLVM_VERSION_SUFFIX=",
+            # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
+            # causes pure duplication of various shlibs for Python wheels.
+            "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
             f"-DPython3_EXECUTABLE={sys.executable}",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
@@ -185,17 +192,16 @@ class CMakeBuild(build_ext):
         )
 
 
-aie_req = list(
-    filter(
-        lambda l: not l.startswith("#"),
-        open("aie-python-extras-req.txt").readlines(),
-    )
+commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
+release_version = "0.0.1"
+now = datetime.now()
+datetime = os.environ.get(
+    "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
 )
-assert len(aie_req) == 1
-aie_req = aie_req[0].strip()
+version = f"{release_version}.{datetime}+{commit_hash}"
 
 setup(
-    version=os.getenv("MLIR_AIE_WHEEL_VERSION", "0.0.1"),
+    version=os.getenv("MLIR_AIE_WHEEL_VERSION", version),
     author="",
     name="aie",
     include_package_data=True,
@@ -209,5 +215,8 @@ setup(
             "aiecc=aie.compiler.aiecc.main:main",
         ],
     },
-    install_requires=[aie_req],
+    install_requires=[
+        str(ir.requirement)
+        for ir in parse_requirements("requirements.txt", session="hack")
+    ],
 )

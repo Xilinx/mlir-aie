@@ -77,6 +77,18 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   # for cdo_driver.h
   find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
   include_directories(${VITIS_AIETOOLS_DIR}/include)
+  find_library(CDO_DRIVER_LIBRARY cdo_driver
+    HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
+  )
+  add_library(cdo_driver SHARED IMPORTED)
+  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
+endif()
+
+if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  find_package(XRT)
+  find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
+  add_library(xrt_coreutil SHARED IMPORTED)
+  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
 endif()
 
 set(_sources
@@ -88,20 +100,6 @@ set(_sources
   AIEPythonSources
   AIEPythonSources.Compiler
 )
-
-if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  find_package(XRT)
-  list(APPEND _sources AIEPythonExtensions.XRT)
-  find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
-  add_library(xrt_coreutil SHARED IMPORTED)
-  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    xrt_coreutil
-    COMPONENT xrt_coreutil
-    LIBRARY
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
-  )
-endif()
 
 add_mlir_python_common_capi_library(AIEAggregateCAPI
   INSTALL_COMPONENT AIEPythonModules
@@ -125,22 +123,6 @@ if(NOT LLVM_ENABLE_IDE)
                            aie-python-sources COMPONENT aie-python-sources)
 endif()
 
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  find_library(CDO_DRIVER_LIBRARY cdo_driver
-    HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
-  )
-
-  # TODO(max): this is not DRY - should be able to fetch it from mlir_aie_install/lib
-  add_library(cdo_driver SHARED IMPORTED)
-  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    cdo_driver
-    COMPONENT aie-python-cdo
-    LIBRARY
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
-  )
-endif()
-
 file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/compiler/aiecc"
   TYPE FILE
   FILES "${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc/configure.py"
@@ -157,3 +139,43 @@ add_mlir_python_modules(AIEMLIRPythonModules
   COMMON_CAPI_LINK_LIBS
     AIEAggregateCAPI
 )
+
+# TODO(max): this is not DRY - should be able to fetch it from mlir_aie_install/lib
+if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  # for build dir (superfluous here because setup.py builds the wheel from the install dir but good for sanity checking)
+  add_custom_command(
+    TARGET AIEAggregateCAPI PRE_BUILD
+    COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
+    DEPENDS "${XRT_COREUTIL}"
+    COMMAND "${CMAKE_COMMAND}" -E copy
+    "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
+  )
+  # for install
+  install(FILES
+    "${XRT_COREUTIL}"
+    COMPONENT xrt_coreutil
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
+    # hack
+    RENAME libxrt_coreutil.so.2
+  )
+endif()
+
+# TODO(max): this is not DRY - should be able to fetch it from mlir_aie_install/lib
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  # for build dir (superfluous here because setup.py builds the wheel from the install dir but good for sanity checking)
+  add_custom_command(
+    TARGET AIEAggregateCAPI PRE_BUILD
+    COMMENT "Copying libcdo_driver into _mlir_libs during build"
+    DEPENDS "${CDO_DRIVER_LIBRARY}"
+    COMMAND "${CMAKE_COMMAND}" -E copy
+    "${CDO_DRIVER_LIBRARY}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libcdo_driver.so"
+  )
+  # for install
+  install(IMPORTED_RUNTIME_ARTIFACTS
+    cdo_driver
+    COMPONENT aie-python-cdo
+    LIBRARY
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
+  )
+endif()
+

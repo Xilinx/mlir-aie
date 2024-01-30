@@ -133,6 +133,9 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   )
   add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
+  target_link_libraries(xaienginecdo_static PUBLIC cdo_driver)
+  target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
+
   # just to make cmake happy since AIETargets will need to re-export
   install(TARGETS xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib EXPORT xaienginecdo_static)
   install(EXPORT xaienginecdo_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake/aie)
@@ -142,7 +145,4 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
     LIBRARY
     DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
   )
-
-  target_link_libraries(xaienginecdo_static PUBLIC cdo_driver)
-  target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
 endif()
