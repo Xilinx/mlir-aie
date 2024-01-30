@@ -34,7 +34,7 @@ def my_add_one_objFifo():
             # Output
             of_out0 = object_fifo("out0", MemTile, ShimTile, 2, memRef_16_ty)
             of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
-            object_fifo_link(of_out0, of_out1)
+            object_fifo_link(of_out1, of_out0)
 
             # Set up compute tiles
 
