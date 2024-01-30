@@ -18,8 +18,8 @@ from aie.dialects.aie import (
     core,
     device,
     external_func,
-    objectfifo,
-    objectfifo_link,
+    object_fifo,
+    object_fifo_link,
     tile,
 )
 from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
