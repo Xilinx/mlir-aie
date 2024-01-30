@@ -1,6 +1,8 @@
 include ../../../makefile-common
 
-mlirFileName = aie_1core
+#mlirFileName = aie_1core
+mlirFileName = aieWithTrace_1core
+#mlirFileName = aieWithTrace_4core
 #mlirFileName = aie_128_1core
 VPATH := ../../kernels
 
@@ -10,7 +12,7 @@ insts.txt: ${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=$@ $<
 
 build/conv2dk1.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
 
 build/final.xclbin: ${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \

@@ -5,7 +5,7 @@
 - [2. Configuring host code/ XRT to write trace values in hex format into a text file](#2.-Configuring-host-code/-XRT-to-write-trace-values-in-hex-format-into-a-text-file)
 - [3. Parse text file to generate a tracing json file](#3.-Parse-text-file-to-generate-a-tracing-json-file)
 - [4. Open json file in a visualization tool like Perfetto](#4.-Open-json-file-in-a-visualization-tool-like-Perfetto)
-
+- [Debug Hints](Debug-Hints)
 
 ## 1. Manually setting up trace configuration in a given design
 
@@ -337,3 +337,9 @@ Note that there is a sample of these steps for both the custom parser and the ev
 
 ## 4. Open json file in a visualization tool like Perfetto
 Open the https://ui.perfetto.dev in your browser and then open up the trace that was generated in the previous steps. You can zoom in the waveform visualizer with a,s,w,d keys. 
+
+## <u>Debug Hints</u>
+* If you are getting 0's in your trace outputs. Check these things:
+    * Buffer offset for the DMA is the right size (based on output buffer size)
+    * The correct tile is being routed to the the correct shim DMA. It's easy in a multi core design to route the wrong tile, espeicall if the tile symbols/ names are very similar or confusing.
+    * Check matching packet IDs for packet-routed flows. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed.
