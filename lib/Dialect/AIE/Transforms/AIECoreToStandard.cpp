@@ -30,8 +30,6 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#pragma clang diagnostic error "-Wswitch-enum"
-
 static StringRef getArchIntrinsicString(AIEArch arch) {
   switch (arch) {
   case AIEArch::AIE1:
