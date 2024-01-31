@@ -9,11 +9,12 @@ trace_output := ../../../notebook/traces/conv1x1_cifar_vector.txt
 # 3. Replace start timer with smaller value usch as 0x0005d0f7
 trace_output_IR := conv1x1_cifar_vector_IR.txt
 
-mlir_src := ../aieWithTrace_1core.mlir
+mlir_src := ../build/aieWithTrace_1core.mlir
 trace_config := conv1x1_cifar_vector.json
+colshift := 1
 
 trace.json: $(trace_output) $(mlir_src)
-	../../../../../utils/parse_trace.py --filename $< --mlir $(word 2,$^) --colshift 2 > $@
+	../../../../../utils/parse_trace.py --filename $< --mlir $(word 2,$^) --colshift $(colshift) > $@
 
 $(trace_output_IR): $(trace_output)
 	cp $(trace_output) ./$(trace_output_IR)
@@ -23,5 +24,5 @@ eventIR.txt: $(trace_output_IR) $(trace_config)
 	hwfrontend --trace $< --trace_config $(word 2,$^) --pkg-dir . --outfile $@
 
 trace_eventIR.json: eventIR.txt $(mlir_src)
-	../../../../../utils/parse_eventIR.py --filename $< --mlir $(word 2,$^) --colshift 2 > $@
+	../../../../../utils/parse_eventIR.py --filename $< --mlir $(word 2,$^) --colshift $(colshift) > $@
 
