@@ -43,15 +43,15 @@ def my_add_one_objFifo():
             def core_body():
                 # Effective while(1)
                 for _ in for_(8):
-                    elem_in = of_in1.acquire(1)
-                    elem_out = of_out1.acquire(1)
+                    elem_in = of_in1.acquire(1, port=ObjectFifoPort.Consume)
+                    elem_out = of_out1.acquire(1, port=ObjectFifoPort.Produce)
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
                         yield_([])
-                    of_in1.release(1)
-                    of_out1.release(1)
+                    of_in1.release(1, ObjectFifoPort.Consume)
+                    of_out1.release(1, ObjectFifoPort.Produce)
                     yield_([])
 
             # To/from AIE-array data movement

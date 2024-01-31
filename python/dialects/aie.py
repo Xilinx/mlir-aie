@@ -168,9 +168,9 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
         )
 
-    def acquire(self, num_elem):
+    def acquire(self, num_elem, port=None):
         subview_t = ObjectFifoSubviewType.get(self.datatype)
-        acq = ObjectFifoAcquireOp(subview_t, self.sym_name.value, num_elem)
+        acq = ObjectFifoAcquireOp(subview_t, self.sym_name.value, num_elem, port=port)
 
         objects = []
         if acq.size.value == 1:
@@ -181,8 +181,8 @@ class object_fifo(ObjectFifoCreateOp):
             objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
         return objects
 
-    def release(self, num_elem):
-        return objectfifo_release(self.sym_name.value, num_elem)
+    def release(self, num_elem, port=None):
+        return objectfifo_release(self.sym_name.value, num_elem, port=port)
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
