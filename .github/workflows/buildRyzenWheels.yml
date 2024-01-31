@@ -23,9 +23,13 @@ env:
 
 jobs:
   build-repo:
-    name: Build and upload wheels
+    name: Build and upload mlir_aie wheels
 
     runs-on: amd7940hs
+
+    permissions:
+      id-token: write
+      contents: write
 
     steps:
 
@@ -55,37 +59,43 @@ jobs:
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
           
-          mkdir build
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
-          cmake -G Ninja \
-            -DPython3_EXECUTABLE=$(which python) \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_INSTALL_PREFIX=$PWD/mlir_aie \
-            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx \
-            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DMLIR_DIR=$PWD/mlir/lib/cmake/mlir \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DAIE_ENABLE_GENERATE_CDO_DIRECT=ON \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
-            -DXRT_ROOT=/opt/xilinx/xrt \
-            -S $PWD -B $PWD/build
+          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+          export MLIR_AIE_SOURCE_DIR=$PWD
+          export WHEELHOUSE_DIR=$PWD/wheelhouse
+          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+          export XRT_ROOT=/opt/xilinx/xrt
+          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
+          export DATETIME=$(date +"%Y%m%d%H")
           
-          cmake --build build --target install
+          pushd utils/mlir_aie_wheels
+          
+          pip install wheel auditwheel patchelf importlib_metadata
+          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          
+          popd
+          
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+          WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
+          mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp38-cp38/py3-none/"`"
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v3
         with:
-          path: mlir_aie
+          path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
 
   build-wheel:
     name: Build wheel
@@ -117,7 +127,7 @@ jobs:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
           name: mlir_aie
-          path: mlir_aie
+          path: .
 
       - name: Build mlir-aie python bindings
         run: |
@@ -131,6 +141,9 @@ jobs:
           # That means wheels have file with time stamps in the future which makes ninja loop
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          
+          unzip -q mlir_aie-*.whl
+          find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
           
           python -m venv aie-venv
           source aie-venv/bin/activate
@@ -153,9 +166,10 @@ jobs:
           
           pip install wheel auditwheel patchelf
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64
           
           popd
+          
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*whl --plat manylinux_2_35_x86_64
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
