@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - test-ryzen-ai
-  pull_request:
+#  pull_request:
   workflow_dispatch:
 
 defaults:
@@ -58,6 +58,7 @@ jobs:
 
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           cmake .. -G Ninja \
+            -DPython3_EXECUTABLE=$(which python) \
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -121,4 +122,6 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
           
-          ls test/ipu-xrt/e2e/*.py | parallel -j12 "python {}"
+          wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
+          chmod +x parallel
+          ls test/ipu-xrt/e2e/*.py | ./parallel -j12 "python {}"

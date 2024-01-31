@@ -27,15 +27,15 @@ jobs:
 
     runs-on: amd7940hs
 
-    permissions:
-      id-token: write
-      contents: write
-
     steps:
 
       - uses: actions/checkout@v3
         with:
           submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
 
       - name: Build mlir-aie distro
         run: |
@@ -58,6 +58,7 @@ jobs:
           mkdir build
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           cmake -G Ninja \
+            -DPython3_EXECUTABLE=$(which python) \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
@@ -79,10 +80,61 @@ jobs:
             -S $PWD -B $PWD/build
           
           cmake --build build --target install
-          
+
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@v3
+        with:
+          path: mlir_aie
+          name: mlir_aie
+
+  build-wheel:
+    name: Build wheel
+
+    runs-on: amd7940hs
+
+    permissions:
+      id-token: write
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          # unpacks default artifact into dist/
+          # if `name: artifact` is omitted, the action will create extra parent dir
+          name: mlir_aie
+          path: mlir_aie
+
       - name: Build mlir-aie python bindings
         run: |
+
+          # faster to do this twice instead of upload the directory with ~4000 files in it...
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
           
+          python -m venv aie-venv
+          source aie-venv/bin/activate
+          pip install -r python/requirements.txt
           source aie-venv/bin/activate
           
           export MLIR_INSTALL_ABS_PATH=$PWD/mlir

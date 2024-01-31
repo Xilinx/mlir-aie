@@ -209,7 +209,7 @@ setup(
     ext_modules=[CMakeExtension("_aie", sourcedir=Path(__file__).parent.absolute())],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-    python_requires=">=3.10",
+    python_requires=">=3.8",
     entry_points={
         "console_scripts": [
             "aiecc=aie.compiler.aiecc.main:main",

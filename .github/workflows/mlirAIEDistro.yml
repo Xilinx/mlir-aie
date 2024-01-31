@@ -1,9 +1,9 @@
 name: MLIR AIE Distro
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/mlirAIEDistro.yml'
+#  pull_request:
+#    paths:
+#      - '.github/workflows/mlirAIEDistro.yml'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:

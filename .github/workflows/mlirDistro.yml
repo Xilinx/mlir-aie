@@ -1,9 +1,9 @@
 name: MLIR Distro
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/mlirDistro.yml'
+#  pull_request:
+#    paths:
+#      - '.github/workflows/mlirDistro.yml'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:
