@@ -1,9 +1,9 @@
-name: Build and Test Experimental features on Ryzen AI
+name: Build wheels on/for Ryzen AI
 
 on:
   pull_request:
     paths:
-      - '.github/workflows/buildAndTestExperimentalOnRyzenAI.yml'
+      - '.github/workflows/buildRyzenWheels.yml'
   workflow_dispatch:
 
 defaults:
@@ -23,7 +23,7 @@ env:
 
 jobs:
   build-repo:
-    name: Build and Test and upload wheels
+    name: Build and upload wheels
 
     runs-on: amd7940hs
 
@@ -80,19 +80,6 @@ jobs:
           
           cmake --build build --target install
           
-          pushd build
-          
-          # hack: timed out tests aren't fails...
-          LIT_PATH=$(python -c "import lit; from pathlib import Path; print(Path(lit.__file__).parent)")
-          sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
-
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
-          ninja check-aie
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
-          ninja check-reference-designs
-          
-          popd
-
       - name: Build mlir-aie python bindings
         run: |
           
@@ -117,18 +104,6 @@ jobs:
           auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64
           
           popd
-
-      - name: Install and test mlir-aie python bindings
-        run: |
-          
-          source aie-venv/bin/activate
-          pip install wheelhouse/repaired_wheel/aie-*.whl --force-reinstall
-          
-          export VITIS_DIR=/opt/Xilinx/Vitis/2023.2
-          export XRT_ROOT=/opt/xilinx/xrt
-          export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
-          
-          for f in test/ipu-xrt/e2e/*.py; do python $f; done
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
