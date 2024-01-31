@@ -38,11 +38,9 @@
 
 #include <regex>
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 extern "C" {
 #include "cdo_driver.h"
 }
-#endif
 
 #ifdef _WIN32
 #define setenv(name, var, ignore) _putenv_s(name, var)
@@ -267,18 +265,13 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   passManager.addNestedPass<AIE::DeviceOp>(
       AIE::createAIERoutePacketFlowsPass());
   passManager.addNestedPass<AIE::DeviceOp>(AIEX::createAIELowerMulticastPass());
-  if (failed(passManager.run(copy))) {
+  if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
-  }
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-  if (failed(AIE::AIETranslateToCDODirect(copy, TK.TempDir,
-                                          byte_ordering::Little_Endian, false,
-                                          false, false))) {
+  if (failed(AIE::AIETranslateToCDODirect(
+          copy, TK.TempDir, byte_ordering::Little_Endian, false, false, false)))
     return moduleOp.emitOpError("failed to emit CDO");
-  }
-#endif
 
   copy->erase();
   return success();
