@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 from textwrap import dedent
+from typing import Union
 
 from importlib_metadata import files
 from setuptools import Extension, setup
@@ -15,13 +16,21 @@ from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
-    return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
+    return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
 class CMakeExtension(Extension):
-    def __init__(self, name: str, sourcedir: str = "") -> None:
+    def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
         self.sourcedir = os.fspath(Path(sourcedir).resolve())
+
+
+def get_exe_suffix():
+    if platform.system() == "Windows":
+        suffix = ".exe"
+    else:
+        suffix = ""
+    return suffix
 
 
 def get_cross_cmake_args():
@@ -55,7 +64,7 @@ def get_cross_cmake_args():
         os.remove(mlir_pdll_target)
         shutil.copy(mlir_pdll_host, mlir_pdll_target)
 
-    CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
+    CIBW_ARCHS = os.getenv("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
         ARCH = cmake_args["LLVM_TARGETS_TO_BUILD"] = "AArch64"
     elif CIBW_ARCHS in {"x86_64", "AMD64"}:
@@ -89,14 +98,6 @@ def get_cross_cmake_args():
     return cmake_args
 
 
-def get_exe_suffix():
-    if platform.system() == "Windows":
-        suffix = ".exe"
-    else:
-        suffix = ""
-    return suffix
-
-
 class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
@@ -106,27 +107,36 @@ class CMakeBuild(build_ext):
         )
         cfg = "Release"
 
-        cmake_generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
-        cmake_module_path = f"-DCMAKE_MODULE_PATH={Path(__file__).parent.absolute() / 'cmake' / 'modulesXilinx'}"
-        if platform.system() == "Windows":
-            cmake_module_path = cmake_module_path.replace("\\", "\\\\")
+        cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
 
-        MLIR_INSTALL_ABS_PATH = (
-            Path(__file__).parent
-            / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+        MLIR_INSTALL_ABS_PATH = Path(
+            os.getenv(
+                "MLIR_INSTALL_ABS_PATH",
+                Path(__file__).parent
+                / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"),
+            )
         ).absolute()
+
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
-            shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
+            if not Path("/tmp/m").exists():
+                shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
             MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
 
         cmake_args = [
             f"-G {cmake_generator}",
-            cmake_module_path,
+            f"-DCMAKE_MODULE_PATH={MLIR_AIE_SOURCE_DIR / 'cmake' / 'modulesXilinx'}",
+            f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
+            f"-DCMAKE_INSTALL_PREFIX={install_dir}",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DCMAKE_BUILD_TYPE={cfg}",
+            # prevent symbol collision that leads to multiple pass registration and such
+            "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
+            "-DCMAKE_C_VISIBILITY_PRESET=hidden",
+            "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
             "-DBUILD_SHARED_LIBS=OFF",
             # get rid of that annoying af git on the end of .17git
             "-DLLVM_VERSION_SUFFIX=",
-            f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
             # causes pure duplication of various shlibs for Python wheels.
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
@@ -134,17 +144,14 @@ class CMakeBuild(build_ext):
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
-            f"-DCMAKE_INSTALL_PREFIX={install_dir}",
-            f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
-            f"-DPython3_EXECUTABLE={sys.executable}",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
-            f"-DCMAKE_BUILD_TYPE={cfg}",
-            # prevent symbol collision that leads to multiple pass registration and such
-            "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
-            "-DCMAKE_C_VISIBILITY_PRESET=hidden",
-            "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
         ]
+
+        if os.getenv("XRT_ROOT"):
+            xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
+            cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
+
         if platform.system() == "Windows":
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
@@ -162,7 +169,7 @@ class CMakeBuild(build_ext):
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
 
         if "CMAKE_ARGS" in os.environ:
-            cmake_args += [item for item in os.environ["CMAKE_ARGS"].split(" ") if item]
+            cmake_args += [item for item in os.getenv("CMAKE_ARGS").split(" ") if item]
 
         build_args = []
         if self.compiler.compiler_type != "msvc":
@@ -198,21 +205,20 @@ class CMakeBuild(build_ext):
         if sys.platform.startswith("darwin"):
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=11.6"]
             # Cross-compile support for macOS - respect ARCHFLAGS if set
-            archs = re.findall(r"-arch (\S+)", os.environ.get("ARCHFLAGS", ""))
+            archs = re.findall(r"-arch (\S+)", os.getenv("ARCHFLAGS", ""))
             if archs:
                 cmake_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(";".join(archs))]
 
-        if "PARALLEL_LEVEL" not in os.environ:
-            build_args += [f"-j{str(2 * os.cpu_count())}"]
-        else:
-            build_args += [f"-j{os.environ.get('PARALLEL_LEVEL')}"]
-
+        build_args += [f"-j{os.getenv('PARALLEL_LEVEL', 2 * os.cpu_count())}"]
         build_temp = Path(self.build_temp) / ext.name
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
 
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
+
+        if platform.system() == "Windows":
+            cmake_args = [c.replace("\\", "\\\\") for c in cmake_args]
 
         subprocess.run(
             ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
@@ -231,6 +237,13 @@ datetime = os.environ.get(
     "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
 )
 version = f"{release_version}.{datetime}+{commit_hash}"
+
+MLIR_AIE_SOURCE_DIR = Path(
+    os.getenv(
+        "MLIR_AIE_SOURCE_DIR",
+        Path(__file__).parent / "mlir-aie",
+    )
+).absolute()
 
 setup(
     version=version,
@@ -252,8 +265,8 @@ setup(
     long_description_content_type="text/markdown",
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
-    ext_modules=[CMakeExtension("_mlir_aie", sourcedir="mlir-aie")],
+    ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-    python_requires=">=3.10",
+    python_requires=">=3.8",
 )

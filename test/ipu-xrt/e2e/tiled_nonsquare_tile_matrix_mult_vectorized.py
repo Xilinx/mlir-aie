@@ -115,7 +115,7 @@ def matmul_i32_i32(
 
 # CHECK-LABEL: tiled_nonsquare_tile_matrix_mult_vectorized
 @construct_and_print_module
-def tiled_nonsquare_tile_matrix_mult_vectorized():
+def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
     (
         _,
         _,
@@ -497,7 +497,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized():
 
 # CHECK-LABEL: tiled_nonsquare_tile_matrix_mult_vectorized_sugar
 @construct_and_print_module
-def tiled_nonsquare_tile_matrix_mult_vectorized_sugar():
+def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
     (
         _,
         _,
