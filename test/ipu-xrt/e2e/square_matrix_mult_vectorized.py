@@ -106,7 +106,7 @@ def matmul_i32_i32(
 
 # CHECK-LABEL: square_matrix_mult_vectorized
 @construct_and_print_module
-def square_matrix_mult_vectorized():
+def square_matrix_mult_vectorized(_module):
     mod_aie = ExplicitlyManagedModule()
 
     @device(AIEDevice.ipu)

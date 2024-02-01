@@ -28,10 +28,6 @@ endif()
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
-if(NOT AIE_PYTHON_INSTALL_DIR)
-  set(AIE_PYTHON_INSTALL_DIR "python")
-endif()
-
 ################################################################################
 # Sources
 ################################################################################
@@ -170,7 +166,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil)
+    list(APPEND _py_libs xrt_coreutil uuid)
   endif()
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
@@ -289,6 +285,7 @@ else ()
       PRIVATE_LINK_LIBS
         LLVMSupport
         xrt_coreutil
+        uuid
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
@@ -331,7 +328,7 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
 endif()
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
-set(_runtimes
+set(_runtime_deps
   mlir_async_runtime
   mlir_c_runner_utils
   mlir_float16_utils
@@ -339,27 +336,60 @@ set(_runtimes
 )
 
 if (TARGET mlir_rocm_runtime)
-  list(APPEND _runtimes mlir_rocm_runtime)
+  list(APPEND _runtime_deps mlir_rocm_runtime)
+endif()
+if (TARGET cdo_driver)
+  list(APPEND _runtime_deps cdo_driver)
 endif()
 
 set(HAS_MLIR_RUNTIME_LIBRARIES ON PARENT_SCOPE)
-foreach(r ${_runtimes})
+foreach(r ${_runtime_deps})
   if(NOT TARGET ${r})
     set(HAS_MLIR_RUNTIME_LIBRARIES OFF PARENT_SCOPE)
     break()
   endif()
+  # build dir lib/
   add_custom_command(
     TARGET AIEPythonModules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     $<TARGET_FILE:${r}>
-    ${CMAKE_BINARY_DIR}/lib
+    "${CMAKE_BINARY_DIR}/lib"
   )
+  # build dir aie/_mlir_libs
+  add_custom_command(
+    TARGET AIEPythonModules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    $<TARGET_FILE:${r}>
+    "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs"
+  )
+  # install dir
   install(IMPORTED_RUNTIME_ARTIFACTS
     ${r}
     COMPONENT aie-python
-    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    LIBRARY
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()
+
+# libxrt_coreutil has to be handled differentled because it's versioned...
+if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  # for build dir
+  add_custom_command(
+    TARGET AIEPythonModules.extension._xrt.dso PRE_BUILD
+    COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
+    DEPENDS "${XRT_COREUTIL}"
+    COMMAND "${CMAKE_COMMAND}" -E copy
+    "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
+  )
+  # for install
+  install(FILES
+    "${XRT_COREUTIL}"
+    COMPONENT xrt_coreutil
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    # hack
+    RENAME libxrt_coreutil.so.2
+  )
+endif()
 
 # during build
 add_custom_command(
