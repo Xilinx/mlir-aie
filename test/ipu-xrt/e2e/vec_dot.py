@@ -327,6 +327,7 @@ def vec_dot(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: vec_dot_sugar
@@ -527,3 +528,4 @@ def vec_dot_sugar(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False

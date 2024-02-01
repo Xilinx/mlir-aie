@@ -316,6 +316,7 @@ def vec_add(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: vec_add_sugar
@@ -506,3 +507,4 @@ def vec_add_sugar(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False

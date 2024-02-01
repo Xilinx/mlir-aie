@@ -493,6 +493,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_matrix_mult_vectorized_sugar
@@ -833,3 +834,4 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False

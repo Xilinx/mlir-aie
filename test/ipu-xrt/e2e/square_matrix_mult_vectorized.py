@@ -10,18 +10,18 @@
 
 from __future__ import annotations
 
+import random
 import sys
 from pathlib import Path
 
-import numpy as np
-from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
-from aie.extras.runtime.passes import run_pipeline, Pipeline
-from aie.extras.util import find_ops
-from filelock import FileLock
-
 import aie.extras.types as T
-import util
+import numpy as np
+from aie.compiler.aiecc.main import (
+    INPUT_WITH_ADDRESSES_PIPELINE,
+    AIE_LOWER_TO_LLVM,
+    CREATE_PATH_FINDER_FLOWS,
+    DMA_TO_IPU,
+)
 from aie.compiler.aiecc.main import (
     generate_cores_list,
     chesshack,
@@ -45,8 +45,19 @@ from aie.dialects.aie import (
     another_bd,
 )
 from aie.dialects.aiex import ipu_sync
+from aie.dialects.aiex import (
+    ipu_writebd_shimtile,
+    ipu_write32,
+    forward_bd,
+    process_bd,
+    hold_lock,
+)
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill
 from aie.dialects.scf import for_
+from aie.dialects.transform import (
+    apply_cse,
+    apply_licm,
+)
 from aie.dialects.transform import (
     get_parent_op,
     apply_registered_pass,
@@ -54,9 +65,22 @@ from aie.dialects.transform import (
 )
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
+from aie.dialects.transform.structured import MatchInterfaceEnum
 from aie.dialects.transform.structured import structured_match
+from aie.extras.context import ExplicitlyManagedModule
+from aie.extras.dialects.ext import arith, func, linalg, memref
+from aie.extras.dialects.ext.transform import (
+    match,
+    tile_to_scf_for,
+    structured_vectorize,
+)
+from aie.extras.runtime.passes import run_pipeline, Pipeline
+from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
+from filelock import FileLock
+
+import util
 from util import (
     chess_compile,
     make_core_elf,
@@ -66,21 +90,6 @@ from util import (
     chess_compile_cpp_to_ll,
     chess_llvm_link,
     construct_and_print_module,
-)
-
-from aie.compiler.aiecc.main import (
-    INPUT_WITH_ADDRESSES_PIPELINE,
-    AIE_LOWER_TO_LLVM,
-    CREATE_PATH_FINDER_FLOWS,
-    DMA_TO_IPU,
-)
-
-from aie.dialects.aiex import (
-    ipu_writebd_shimtile,
-    ipu_write32,
-    forward_bd,
-    process_bd,
-    hold_lock,
 )
 
 range_ = for_
@@ -310,25 +319,6 @@ def square_matrix_mult_vectorized(_module):
             # for i32 this has to be 8? something to do with 256 alignment for v16int32 loads...
             loop_unroll(loop, 8)
 
-        @named_sequence("affine_super_vectorize", [any_op_t()], [])
-        def super_vectorize(target: any_op_t()):
-            func = structured_match(any_op_t(), target, ops=["func.func"])
-            func = apply_registered_pass(
-                any_op_t(),
-                func,
-                "affine-super-vectorize",
-                options="virtual-vector-size=16",
-            )
-            func = apply_registered_pass(any_op_t(), func, "affine-scalrep")
-            func = apply_registered_pass(any_op_t(), func, "canonicalize")
-            func = apply_registered_pass(any_op_t(), func, "cse")
-            mod = apply_registered_pass(
-                any_op_t(),
-                target,
-                "convert-vector-to-aievec",
-                options="aie-target=aieml",
-            )
-
     mod_aievec.finish()
 
     print(mod_aie)
@@ -347,22 +337,19 @@ def square_matrix_mult_vectorized(_module):
     print(affine_loops)
 
     super_vec = run_pipeline(
-        affine_loops,
+        find_ops(
+            affine_loops.operation,
+            lambda x: "transform.target_tag" in x.attributes
+            and x.attributes["transform.target_tag"].value == "payload",
+            single=True,
+        ),
         Pipeline()
-        .transform_interpreter(
-            entry_point="affine_super_vectorize",
-            debug_payload_root_tag="payload",
-        )
+        .Func(Pipeline().affine_super_vectorize(virtual_vector_size=[16]))
+        .add_pass("convert-vector-to-aievec", **{"aie-target": "aieml"})
         .lower_affine(),
     )
-    print(super_vec)
 
-    mod_aievecc = find_ops(
-        super_vec.operation,
-        lambda x: "transform.target_tag" in x.attributes,
-        single=True,
-    )
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievecc.operation, aieml=True)
+    aievec_cpp = translate_aie_vec_to_cpp(super_vec.operation, aieml=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
     print(aievec_cpp)
 
@@ -429,6 +416,7 @@ def square_matrix_mult_vectorized(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: square_matrix_mult_vectorized_sugar
@@ -574,7 +562,7 @@ def square_matrix_mult_vectorized_sugar(_module):
                 ),
             ):
                 fill(arith.constant(0), outs=[buffer_0_2_c])
-                linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+                matmul_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
@@ -597,25 +585,6 @@ def square_matrix_mult_vectorized_sugar(_module):
             # for i32 this has to be 8? something to do with 256 alignment for v16int32 loads...
             loop_unroll(loop, 8)
 
-        @named_sequence("affine_super_vectorize", [any_op_t()], [])
-        def super_vectorize(target: any_op_t()):
-            func = structured_match(any_op_t(), target, ops=["func.func"])
-            func = apply_registered_pass(
-                any_op_t(),
-                func,
-                "affine-super-vectorize",
-                options="virtual-vector-size=16",
-            )
-            func = apply_registered_pass(any_op_t(), func, "affine-scalrep")
-            func = apply_registered_pass(any_op_t(), func, "canonicalize")
-            func = apply_registered_pass(any_op_t(), func, "cse")
-            mod = apply_registered_pass(
-                any_op_t(),
-                target,
-                "convert-vector-to-aievec",
-                options="aie-target=aieml",
-            )
-
     mod_aievec.finish()
 
     print(mod_aie)
@@ -634,22 +603,19 @@ def square_matrix_mult_vectorized_sugar(_module):
     print(affine_loops)
 
     super_vec = run_pipeline(
-        affine_loops,
+        find_ops(
+            affine_loops.operation,
+            lambda x: "transform.target_tag" in x.attributes
+            and x.attributes["transform.target_tag"].value == "payload",
+            single=True,
+        ),
         Pipeline()
-        .transform_interpreter(
-            entry_point="affine_super_vectorize",
-            debug_payload_root_tag="payload",
-        )
+        .Func(Pipeline().affine_super_vectorize(virtual_vector_size=[16]))
+        .add_pass("convert-vector-to-aievec", **{"aie-target": "aieml"})
         .lower_affine(),
     )
-    print(super_vec)
 
-    mod_aievecc = find_ops(
-        super_vec.operation,
-        lambda x: "transform.target_tag" in x.attributes,
-        single=True,
-    )
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievecc.operation, aieml=True)
+    aievec_cpp = translate_aie_vec_to_cpp(super_vec.operation, aieml=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
     print(aievec_cpp)
 
@@ -716,3 +682,295 @@ def square_matrix_mult_vectorized_sugar(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
+
+
+# CHECK-LABEL: square_matrix_mult_vectorized_sugar_transform_tiling
+@construct_and_print_module
+def square_matrix_mult_vectorized_sugar_transform_tiling(_module):
+    RANDOM_NUMBER = random.randint(0, 100)
+    mod_aie = ExplicitlyManagedModule()
+
+    @func.func(sym_visibility="private")
+    def matmul_i32_i32(
+        A: T.memref(M, N, T.i32()),
+        B: T.memref(M, N, T.i32()),
+        C: T.memref(M, N, T.i32()),
+    ):
+        linalg.matmul(A, B, C)
+
+    @device(AIEDevice.ipu)
+    def ipu():
+        matmul_i32_i32.emit(decl=True)
+        tile_0_0 = tile(0, 0)
+        tile_0_1 = tile(0, 1)
+        tile_0_2 = tile(0, 2)
+
+        # in
+        buffer_0_2_a = aie.buffer(T.memref(M, N, T.i32()), tile_0_2)
+        buffer_0_2_b = aie.buffer(T.memref(M, N, T.i32()), tile_0_2)
+        # out
+        buffer_0_2_c = aie.buffer(T.memref(M, N, T.i32()), tile_0_2)
+
+        # input
+        lock_0_1_read_in_a = aie.lock(tile_0_1, lock_id=0, init=1)
+        lock_0_1_write_out_a = aie.lock(tile_0_1, lock_id=1, init=0)
+
+        lock_0_2_read_in_a = aie.lock(tile_0_2, lock_id=0, init=1)
+        lock_0_2_use_a = aie.lock(tile_0_2, lock_id=1, init=0)
+        lock_0_2_read_in_b = aie.lock(tile_0_2, lock_id=2, init=1)
+        lock_0_2_use_b = aie.lock(tile_0_2, lock_id=3, init=0)
+        lock_0_2_use_c = aie.lock(tile_0_2, lock_id=4, init=1)
+        lock_0_2_write_out_c = aie.lock(tile_0_2, lock_id=5, init=0)
+
+        # input flow
+        # a
+        aie.flow(tile_0_0, DMA, 0, tile_0_1, DMA, 0)
+        aie.flow(tile_0_1, DMA, 0, tile_0_2, DMA, 0)
+        # b
+        aie.flow(tile_0_0, DMA, 1, tile_0_1, DMA, 1)
+        aie.flow(tile_0_1, DMA, 1, tile_0_2, DMA, 1)
+        # output flow
+        aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
+        aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
+
+        @func.func(emit=True)
+        def bobsyouruncle():
+            # in A
+            channel_index = 0
+            col = 0
+            ddr_id = 0
+            bd_id = 0
+            ipu_writebd_shimtile(
+                bd_id,
+                buffer_length=M * N,
+                offset=0,
+                ddr_id=ddr_id,
+            )
+            ipu_write32(MM2S, channel_index, col, bd_id)
+
+            # in B
+            channel_index = 1
+            col = 0
+            ddr_id = 1
+            bd_id += 1
+            ipu_writebd_shimtile(
+                bd_id,
+                buffer_length=M * N,
+                offset=0,
+                ddr_id=ddr_id,
+            )
+            ipu_write32(MM2S, channel_index, col, bd_id)
+
+            # out C
+            channel_index = 0
+            col = 0
+            ddr_id = 2
+            bd_id += 1
+            ipu_writebd_shimtile(
+                bd_id,
+                buffer_length=M * N,
+                offset=0,
+                ddr_id=ddr_id,
+            )
+            ipu_write32(S2MM, channel_index, col, bd_id)
+            ipu_sync(
+                channel=0,
+                column=0,
+                column_num=1,
+                direction=0,
+                row=0,
+                row_num=1,
+            )
+
+        @memtile_dma(tile_0_1)
+        def memtile_dma_0_1():
+            # input flow
+            buffer_0_1_a = aie.buffer(T.memref(M, N, T.i32()), tile_0_1)
+            buffer_0_1_b = aie.buffer(T.memref(M, N, T.i32()), tile_0_1)
+            # output flow
+            buffer_0_1_c = aie.buffer(T.memref(M, N, T.i32()), tile_0_1)
+
+            @dma(S2MM, 0)
+            def dma1():
+                process_bd(lock_0_1_read_in_a, buffer_0_1_a, lock_0_1_write_out_a)
+
+            @dma(MM2S, 0, num_blocks=2)
+            def dma2():
+                process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_write_out_a)
+
+            @another_bd(dma2)
+            def dma2point5():
+                process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
+
+            forward_bd(tile_0_1, 1, buffer_0_1_b)
+            forward_bd(tile_0_1, 2, buffer_0_1_c)
+
+            aie.end()
+
+        @mem(tile_0_2)
+        def mem_0_2():
+            # input
+            @dma(S2MM, 0)
+            def dma1():
+                process_bd(lock_0_2_read_in_a, buffer_0_2_a, lock_0_2_use_a)
+
+            @dma(S2MM, 1)
+            def dma2():
+                process_bd(lock_0_2_read_in_b, buffer_0_2_b, lock_0_2_use_b)
+
+            # output
+            @dma(MM2S, 0)
+            def dma3():
+                process_bd(lock_0_2_write_out_c, buffer_0_2_c, lock_0_2_use_c)
+
+            aie.end()
+
+        @aie.core(tile_0_2)
+        def core():
+            with (
+                hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
+                hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
+                hold_lock(
+                    lock_0_2_use_c,
+                    lock_0_2_write_out_c,
+                ),
+            ):
+                matmul_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+                output = memref.alloc((M, N), T.i32())
+                fill(arith.constant(RANDOM_NUMBER), outs=[output])
+                linalg.add(buffer_0_2_c, output, buffer_0_2_c)
+
+    mod_aie.finish()
+    print(mod_aie)
+    mod_aievec = ExplicitlyManagedModule()
+
+    @builtin.module(attrs={"transform.target_tag": StringAttr.get("payload")})
+    def payload():
+        matmul_i32_i32.emit(force=True)
+
+    @builtin.module(attrs={"transform.with_named_sequence": UnitAttr.get()})
+    def mod_transform():
+        @named_sequence("main", [any_op_t()], [])
+        def main(target: any_op_t()):
+            matmul = match(target, ops=["linalg.matmul"])
+            tiled_matmul, (_, _, inner_loop) = tile_to_scf_for(matmul, sizes=[1, 1, 16])
+            structured_vectorize(tiled_matmul, [])
+            all_loops = match(target, interface=MatchInterfaceEnum.LoopLikeInterface)
+            apply_licm(all_loops)
+            apply_cse(target)
+            # apply_registered_pass(
+            #     any_op_t(),
+            #     target,
+            #     "convert-vector-to-aievec",
+            #     options="aie-target=aieml",
+            # )
+
+    mod_aievec.finish()
+
+    vectorized = run_pipeline(
+        mod_aievec,
+        Pipeline().transform_interpreter(
+            entry_point="main",
+            debug_payload_root_tag="payload",
+        ),
+    )
+    # CHECK: #map = affine_map<(d0, d1) -> (d0, 0, d1)>
+    # CHECK: #map1 = affine_map<(d0, d1) -> (0, d1, d0)>
+    # CHECK:    func.func private @matmul_i32_i32(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {
+    # CHECK:      %c0 = arith.constant 0 : index
+    # CHECK:      %c16 = arith.constant 16 : index
+    # CHECK:      %c1 = arith.constant 1 : index
+    # CHECK:      %c0_i32 = arith.constant 0 : i32
+    # CHECK:      scf.for %arg3 = %c0 to %c16 step %c1 {
+    # CHECK:        scf.for %arg4 = %c0 to %c16 step %c1 {
+    # CHECK:          %subview = memref.subview %arg2[%arg3, %arg4] [1, 1] [1, 1] : memref<16x16xi32> to memref<1x1xi32, strided<[16, 1], offset: ?>>
+    # CHECK:          scf.for %arg5 = %c0 to %c16 step %c16 {
+    # CHECK:            %subview_0 = memref.subview %arg0[%arg3, %arg5] [1, 16] [1, 1] : memref<16x16xi32> to memref<1x16xi32, strided<[16, 1], offset: ?>>
+    # CHECK:            %subview_1 = memref.subview %arg1[%arg5, %arg4] [16, 1] [1, 1] : memref<16x16xi32> to memref<16x1xi32, strided<[16, 1], offset: ?>>
+    # CHECK:            %0 = vector.transfer_read %subview_0[%c0, %c0], %c0_i32 {permutation_map = #map} : memref<1x16xi32, strided<[16, 1], offset: ?>>, vector<1x1x16xi32>
+    # CHECK:            %1 = vector.transfer_read %subview_1[%c0, %c0], %c0_i32 {permutation_map = #map1} : memref<16x1xi32, strided<[16, 1], offset: ?>>, vector<1x1x16xi32>
+    # CHECK:            %2 = vector.transfer_read %subview[%c0, %c0], %c0_i32 : memref<1x1xi32, strided<[16, 1], offset: ?>>, vector<1x1xi32>
+    # CHECK:            %3 = arith.muli %0, %1 : vector<1x1x16xi32>
+    # CHECK:            %4 = vector.multi_reduction <add>, %3, %2 [2] : vector<1x1x16xi32> to vector<1x1xi32>
+    # CHECK:            vector.transfer_write %4, %subview[%c0, %c0] : vector<1x1xi32>, memref<1x1xi32, strided<[16, 1], offset: ?>>
+    # CHECK:          }
+    # CHECK:        }
+    # CHECK:      }
+    # CHECK:      return
+    # CHECK:    }
+    # CHECK:  }
+    print(vectorized)
+
+    # mod_aievecc = find_ops(
+    #     vectorized.operation,
+    #     lambda x: "transform.target_tag" in x.attributes,
+    #     single=True,
+    # )
+    # aievec_cpp = translate_aie_vec_to_cpp(mod_aievecc.operation, aieml=True)
+    # aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
+    # print(aievec_cpp)
+    #
+    # input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
+    # input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
+    # input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
+    # aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
+    #
+    # aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, debug=True)
+    # # this is wonky because it's already on disk but oh well...
+    # with open(
+    #     Path(__file__).parent / "chess_intrinsic_wrapper.ll"
+    # ) as chess_intrinsic_wrapper_ll:
+    #     fullylinked_ll = chess_llvm_link(
+    #         chesshack(aie_ll),
+    #         aievec_ll,
+    #         chess_intrinsic_wrapper_ll.read(),
+    #         input_prefixes=["aie_input", "aievec_input", "chess_intrinsic_wrapper"],
+    #     )
+    #
+    # chess_compile(fullylinked_ll)
+    #
+    # generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
+    #
+    # [(col, row, _)] = generate_cores_list(str(input_with_addresses))
+    # core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+    # make_core_elf(core_bcf)
+    #
+    # # _GlobalDebug.flag = True
+    # generate_cdo(input_physical.operation, str(util.WORKDIR))
+    # # _GlobalDebug.flag = False
+    # make_design_pdi()
+    #
+    # xclbin_path = make_xclbin(mod_aie)
+    #
+    # ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+    # with FileLock("/tmp/ipu.lock"):
+    #     setup_xclbin_firmware(xclbin_path)
+    #
+    #     xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+    #     xclbin.load_ipu_instructions(ipu_insts)
+    #     inps, outps = xclbin.mmap_buffers([(M, N), (M, N)], [(M, N)], np.int32)
+    #
+    #     wrap_A = np.asarray(inps[0])
+    #     wrap_B = np.asarray(inps[1])
+    #     wrap_C = np.asarray(outps[0])
+    #
+    #     A = np.random.randint(0, 10, (M, N), dtype=np.int32)
+    #     B = np.random.randint(0, 10, (M, N), dtype=np.int32)
+    #     # B = np.identity(M, dtype=np.int32)
+    #     C = np.zeros((M, N), dtype=np.int32)
+    #
+    #     np.copyto(wrap_A, A, casting="no")
+    #     np.copyto(wrap_B, B, casting="no")
+    #     np.copyto(wrap_C, C, casting="no")
+    #
+    #     xclbin.sync_buffers_to_device()
+    #     xclbin.run()
+    #     print("Running kernel")
+    #     xclbin.wait(30)
+    #     xclbin.sync_buffers_from_device()
+    #
+    #     if not np.array_equal(A @ B + RANDOM_NUMBER, wrap_C):
+    #         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+    #             print(A @ B)
+    #             print(wrap_C); assert False
