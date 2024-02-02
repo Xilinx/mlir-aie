@@ -144,4 +144,15 @@ def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
     /*eltName*/BDDimLayoutArrayAttr.cppClassName
 >;
 
+def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
+  [
+    I32EnumAttrCase<"South", 0>,
+    I32EnumAttrCase<"West", 1>,
+    I32EnumAttrCase<"North", 2>,
+    I32EnumAttrCase<"East", 3>
+  ]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
 #endif // AIE_ATTRS

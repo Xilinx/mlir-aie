@@ -1343,6 +1343,30 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   }];
 }
 
+def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
+  let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
+  let description = [{
+    An operation to configure the cascade on a single tile in both the input and the output 
+    directions.
+
+    Example:
+    ```
+      %tile00 = aie.tile(1, 3)
+      aie.configure_cascade(%tile00, West, East)
+    ```
+    Configures the input cascade port of %tile00 to the West direction, and the output port to the East direction.
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        CascadeDir:$inputDir,
+        CascadeDir:$outputDir
+  );
+  let results = (outs);
+  let hasVerifier = 1;
+  let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
+}
+
 def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{

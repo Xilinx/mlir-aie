@@ -766,6 +766,22 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   output << "} // mlir_aie_configure_switchboxes\n\n";
 
   //---------------------------------------------------------------------------
+  // mlir_aie_configure_cascade
+  //---------------------------------------------------------------------------
+  output << "int mlir_aie_configure_cascade(" << ctx_p << ") {\n";
+  for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+    TileOp tile = dyn_cast<TileOp>(configOp.getTile().getDefiningOp());
+    int col = tile.colIndex();
+    int row = tile.rowIndex();
+    output << "XAie_CoreConfigAccumulatorControl(" << deviceInstRef << ", "
+           << "XAie_TileLoc(" << col << ", " << row << "), "
+           << stringifyCascadeDir(configOp.getInputDir()).upper() << ", "
+           << stringifyCascadeDir(configOp.getOutputDir()).upper() << ");\n";
+  }
+  output << "return XAIE_OK;\n";
+  output << "} // mlir_aie_configure_cascade\n\n";
+
+  //---------------------------------------------------------------------------
   // Output Buffer Accessors
   //---------------------------------------------------------------------------
   for (auto tile : tiles) {
