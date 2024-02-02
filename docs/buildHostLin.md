@@ -114,6 +114,14 @@ Note that your design of interest might need an adapted CMakelists.txt file. Als
     .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
     ```
 
+### FAQ Resetting the NPU:
+
+    It is possible to hang the NPU in an unstable state. To reset the NPU:
+    ```
+    sudo rmmod amdxdna.ko
+    sudo insmod <pathToYourXDNA-DriverRepo>/Release/bins/driver/amdxdna.ko
+    ```
+
 -----
 
 <p align="center">Copyright&copy; 2019-2024 AMD</p>
