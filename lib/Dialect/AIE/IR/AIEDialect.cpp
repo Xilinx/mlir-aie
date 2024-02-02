@@ -920,8 +920,9 @@ LogicalResult ConfigureCascadeOp::verify() {
            << stringifyAIEArch(targetModel.getTargetArch());
     }
     if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
-      return emitOpError("output direction of cascade must be South or East on ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+      return emitOpError(
+                 "output direction of cascade must be South or East on ")
+             << stringifyAIEArch(targetModel.getTargetArch());
     }
   } else {
     return emitOpError("cascade not supported in ")
