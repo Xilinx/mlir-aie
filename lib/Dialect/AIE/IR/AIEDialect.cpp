@@ -917,7 +917,7 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (targetModel.getTargetArch() == AIEArch::AIE2) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+             << stringifyAIEArch(targetModel.getTargetArch());
     }
     if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
       return emitOpError(
