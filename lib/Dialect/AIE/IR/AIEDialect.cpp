@@ -865,6 +865,30 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 }
 
 //===----------------------------------------------------------------------===//
+// ConfigureCascadeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConfigureCascadeOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
+  CascadeDir inputDir = getInputDir();
+  CascadeDir outputDir = getOutputDir();
+  if (targetModel.getTargetArch() == AIEArch::AIE2) {
+    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
+      return emitOpError("input direction of cascade must be North or West on ")
+           << stringifyAIEArch(targetModel.getTargetArch());
+    }
+    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
+      return emitOpError("output direction of cascade must be South or East on ")
+           << stringifyAIEArch(targetModel.getTargetArch());
+    }
+  } else {
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(targetModel.getTargetArch());
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // PutCascadeOp
 //===----------------------------------------------------------------------===//
 
