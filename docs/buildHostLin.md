@@ -81,9 +81,10 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
 1. Prepare your enviroment with the mlir-aie tools (build during Prerequisites part of this guide)
 
     ```
-    cd <yourPathToDesignsWithMLIR-AIE>
+    cd <yourPathToBuildMLIR-AIE>
     source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
     source yourVitisSetupScript (example shown above)
+    source /opt/xilinx/xrt/setup.sh
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
     ```
 1. Goto the design of interest and run `make`
