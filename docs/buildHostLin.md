@@ -5,6 +5,9 @@
 ### MLIR-AIE tools: Ubuntu 22.04
 
 1. Prepare your Ubuntu 22.04 machine
+    - Prepare the BIOS:
+        * Turn off SecureBoot (Allows for unsigned drivers to be installed)
+        * BIOS → Security → Secure boot → Disable
     - Install packages (after apt-get update):
       ``` 
         flex bison libssl-dev libelf-dev
@@ -84,6 +87,17 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
     ```
 1. Goto the design of interest and run `make`
+
+1. Signing your array configuration binary aka. XCLBIN
+    ```
+    sudo bash
+    source /opt/xilinx/xrt/setup.sh
+    # Assume adding an unsigned xclbin on Phoenix, run
+    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
+
+    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
+    # When xrt_plugin package is removed, it will automatically cleanup.
+    ```
 
 ### Build and run host part:
 
