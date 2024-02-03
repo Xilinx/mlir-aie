@@ -3,7 +3,7 @@
 # (c) Copyright 2023 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-FIRMWARE_DIR=/lib/firmware/amdaie/Phoenix
+FIRMWARE_DIR=/lib/firmware/amdipu/1502
 XRT_DIR=/opt/xilinx/xrt
 source $XRT_DIR/setup.sh
 
@@ -31,7 +31,7 @@ for f in "$@"; do
     extension="${f##*.}"
     if [ x"$extension" = x"xclbin" ]; then
       XCLBIN_FN="$filename"
-      $XRT_DIR/amdaie/setup_xclbin_firmware.sh -dev Phoenix -xclbin $XCLBIN_FN
+      $XRT_DIR/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin $XCLBIN_FN
     fi
   fi
 done
