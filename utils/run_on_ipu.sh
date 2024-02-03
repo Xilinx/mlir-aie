@@ -3,7 +3,7 @@
 # (c) Copyright 2023 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-FIRMWARE_DIR=/lib/firmware/amdaie/Phoenix
+FIRMWARE_DIR=/lib/firmware/amdipu/1502
 XRT_DIR=/opt/xilinx/xrt
 source $XRT_DIR/setup.sh
 
