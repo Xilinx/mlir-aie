@@ -74,7 +74,7 @@ if config.xrt_lib_dir:
             [xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         result = result.stdout.decode("utf-8").split("\n")
-        p = re.compile("\[.+:.+:.+\].+Phoenix.+Yes")
+        p = re.compile("\[.+:.+:.+\].+Phoenix")
         for l in result:
             m = p.match(l)
             if m:
