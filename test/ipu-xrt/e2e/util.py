@@ -291,7 +291,7 @@ def make_xclbin(module, name="final"):
 
 def setup_xclbin_firmware(xclbin_path):
     cmd = [
-        str(XRT_DIR / "amdaie/setup_xclbin_firmware.sh"),
+        str(XRT_DIR / "amdxdna/setup_xclbin_firmware.sh"),
         "-dev",
         "Phoenix",
         "-xclbin",
