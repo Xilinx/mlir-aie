@@ -709,12 +709,11 @@ struct AIEControl {
     // Cascade configuration
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
       TileOp tile = dyn_cast<TileOp>(configOp.getTile().getDefiningOp());
-      auto tileLoc =
-          XAie_TileLoc(tile.getCol(), tile.getRow());
-      TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreConfigAccumulatorControl,
-                              &devInst, tileLoc, 
-                              CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getInputDir()), 
-                              CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getOutputDir()));
+      auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
+      TRY_XAIE_API_EMIT_ERROR(
+          targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
+          CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getInputDir()),
+          CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getOutputDir()));
     }
 
     return success();
