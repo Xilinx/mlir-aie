@@ -108,6 +108,14 @@ static const std::map<WireBundle, StrmSwPortType>
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
 
+static const std::map<CascadeDir, StrmSwPortType>
+    CASCADE_DIR_TO_STRM_SW_PORT_TYPE = {
+        {CascadeDir::South, StrmSwPortType::SOUTH},
+        {CascadeDir::West, StrmSwPortType::WEST},
+        {CascadeDir::North, StrmSwPortType::NORTH},
+        {CascadeDir::East, StrmSwPortType::EAST},
+};
+
 // https://stackoverflow.com/a/32230306
 
 template <typename H1>
@@ -697,6 +705,18 @@ struct AIEControl {
             WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
             connectOp.destIndex());
     }
+
+    // Cascade configuration
+    for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+      TileOp tile = dyn_cast<TileOp>(configOp.getTile().getDefiningOp());
+      auto tileLoc =
+          XAie_TileLoc(tile.getCol(), tile.getRow());
+      TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreConfigAccumulatorControl,
+                              &devInst, tileLoc, 
+                              CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getInputDir()), 
+                              CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getOutputDir()));
+    }
+
     return success();
   }
 
