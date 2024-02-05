@@ -24,6 +24,8 @@ This project is primarily intended to support the open-source community, particu
 
 [Getting Started and Running on Windows Ryzen™ AI](docs/buildHostWin.md)
 
+[Getting Started and Running on Linux Ryzen™ AI](docs/buildHostLin.md)
+
 [Full Documentation](https://xilinx.github.io/mlir-aie/)
 
 -----
