@@ -108,14 +108,6 @@ static const std::map<WireBundle, StrmSwPortType>
         {WireBundle::Trace, StrmSwPortType::TRACE},
 };
 
-static const std::map<CascadeDir, StrmSwPortType>
-    CASCADE_DIR_TO_STRM_SW_PORT_TYPE = {
-        {CascadeDir::South, StrmSwPortType::SOUTH},
-        {CascadeDir::West, StrmSwPortType::WEST},
-        {CascadeDir::North, StrmSwPortType::NORTH},
-        {CascadeDir::East, StrmSwPortType::EAST},
-};
-
 // https://stackoverflow.com/a/32230306
 
 template <typename H1>
@@ -656,8 +648,7 @@ struct AIEControl {
         int slot = 0;
         Block &block = connectOp.getRules().front();
         for (auto slotOp : block.getOps<PacketRuleOp>()) {
-          AMSelOp amselOp =
-              cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
+          AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
           TRY_XAIE_API_EMIT_ERROR(
@@ -712,8 +703,8 @@ struct AIEControl {
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
       TRY_XAIE_API_EMIT_ERROR(
           targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-          CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getInputDir()),
-          CASCADE_DIR_TO_STRM_SW_PORT_TYPE.at(configOp.getOutputDir()));
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(static_cast<WireBundle>(configOp.getInputDir())),
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(static_cast<WireBundle>(configOp.getOutputDir())));
     }
 
     return success();

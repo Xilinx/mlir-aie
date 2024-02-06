@@ -39,19 +39,29 @@ def AIEI64Attr : AIETypedSignlessIntegerAttrBase<
 // AIE attributes.
 //===----------------------------------------------------------------------===//
 
+def CoreWire:   I32EnumAttrCase<"Core", 0>;
+def DMAWire:    I32EnumAttrCase<"DMA", 1>;
+def FIFOWire:   I32EnumAttrCase<"FIFO", 2>;
+def SouthWire:  I32EnumAttrCase<"South", 3>;
+def WestWire:   I32EnumAttrCase<"West", 4>;
+def NorthWire:  I32EnumAttrCase<"North", 5>;
+def EastWire:   I32EnumAttrCase<"East", 6>;
+def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
+def NOCWire:    I32EnumAttrCase<"NOC", 8>;
+def TraceWire:  I32EnumAttrCase<"Trace", 9>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   [
-    I32EnumAttrCase<"Core", 0>,
-    I32EnumAttrCase<"DMA", 1>,
-    I32EnumAttrCase<"FIFO", 2>,
-    I32EnumAttrCase<"South", 3>,
-    I32EnumAttrCase<"West", 4>,
-    I32EnumAttrCase<"North", 5>,
-    I32EnumAttrCase<"East", 6>,
-    I32EnumAttrCase<"PLIO", 7>,
-    I32EnumAttrCase<"NOC", 8>,
-    I32EnumAttrCase<"Trace", 9>
+    CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
+    EastWire, PLIOWire, NOCWire, TraceWire
+  ]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
+  [
+    SouthWire, WestWire, NorthWire, EastWire
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -143,16 +153,5 @@ def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
     /*attrMnemonic*/"bd_dim_layout_arr_arr",
     /*eltName*/BDDimLayoutArrayAttr.cppClassName
 >;
-
-def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
-  [
-    I32EnumAttrCase<"South", 0>,
-    I32EnumAttrCase<"West", 1>,
-    I32EnumAttrCase<"North", 2>,
-    I32EnumAttrCase<"East", 3>
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
 
 #endif // AIE_ATTRS
