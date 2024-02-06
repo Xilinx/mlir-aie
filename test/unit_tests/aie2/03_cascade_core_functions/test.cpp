@@ -33,7 +33,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_configure_cascade();
   mlir_aie_initialize_locks(_xaie);
-  
   int errors = 0;
 
   mlir_aie_write_buffer_a(_xaie, 3, 7);
