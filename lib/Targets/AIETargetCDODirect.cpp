@@ -705,8 +705,10 @@ struct AIEControl {
         auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
         TRY_XAIE_API_EMIT_ERROR(
             targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(static_cast<WireBundle>(configOp.getInputDir())),
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(static_cast<WireBundle>(configOp.getOutputDir())));
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                static_cast<WireBundle>(configOp.getInputDir())),
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                static_cast<WireBundle>(configOp.getOutputDir())));
       }
     }
 
