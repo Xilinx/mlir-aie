@@ -229,7 +229,7 @@ static TileElement getParentTileElement(Operation *op) {
       return element;
     parent = parent->getParentOp();
   }
-  return llvm::dyn_cast<TileElement>(parent);
+  return llvm::cast<TileElement>(parent);
 }
 
 namespace {
@@ -680,10 +680,10 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
-        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        auto name = cast<FlatSymbolRefAttr>(sym);
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
@@ -696,10 +696,10 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
-        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
+        auto name = cast<FlatSymbolRefAttr>(sym);
+        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
@@ -774,7 +774,7 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -831,7 +831,7 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -878,7 +878,7 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -929,7 +929,7 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -2045,7 +2045,7 @@ LogicalResult SwitchboxOp::verify() {
 
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
-        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+        auto amsel = cast<AMSelOp>(val.getDefiningOp());
         if (arbiter != -1 && arbiter != amsel.arbiterIndex())
           return connectOp.emitOpError(
               "a master port can only be tied to one arbiter");
@@ -2064,7 +2064,7 @@ LogicalResult SwitchboxOp::verify() {
       std::vector<PacketRulesOp> slvs;
       for (auto *user : amselOp.getResult().getUsers()) {
         if (auto s = dyn_cast<PacketRuleOp>(user)) {
-          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
+          auto pktRules = cast<PacketRulesOp>(s->getParentOp());
           slvs.push_back(pktRules);
         } else if (auto m = dyn_cast<MasterSetOp>(user))
           mstrs.push_back(m);
@@ -2171,7 +2171,7 @@ struct AcquireReleaseOneStateInDMABlock {
 struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
-      auto useLock = dyn_cast<UseLockOp>(op);
+      auto useLock = cast<UseLockOp>(op);
       if (auto lock = useLock.getLockOp();
           lock.getTileOp().colIndex() != memOp.colIndex() ||
           lock.getTileOp().rowIndex() != memOp.rowIndex())

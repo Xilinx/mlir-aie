@@ -108,7 +108,7 @@ struct AIEObjectFifoRegisterProcessPass
       builder.setInsertionPoint(device.getBody()->getTerminator());
       ObjectFifoCreateOp objFifo = registerOp.getObjectFifo();
       auto elementType =
-          llvm::dyn_cast<AIEObjectFifoType>(objFifo.getElemType())
+          llvm::cast<AIEObjectFifoType>(objFifo.getElemType())
               .getElementType();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {

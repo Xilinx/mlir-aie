@@ -218,25 +218,25 @@ struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
       routeOps.push_back(routeOp);
 
       auto sourceHerds =
-          dyn_cast<SelectOp>(routeOp.getSourceHerds().getDefiningOp());
+          cast<SelectOp>(routeOp.getSourceHerds().getDefiningOp());
       auto destHerds =
-          dyn_cast<SelectOp>(routeOp.getDestHerds().getDefiningOp());
+          cast<SelectOp>(routeOp.getDestHerds().getDefiningOp());
       WireBundle sourceBundle = routeOp.getSourceBundle();
       WireBundle destBundle = routeOp.getDestBundle();
       int sourceChannel = routeOp.getSourceChannelValue();
       int destChannel = routeOp.getDestChannelValue();
 
       HerdOp sourceHerd =
-          dyn_cast<HerdOp>(sourceHerds.getStartHerd().getDefiningOp());
+          cast<HerdOp>(sourceHerds.getStartHerd().getDefiningOp());
       IterOp sourceIterX =
-          dyn_cast<IterOp>(sourceHerds.getIterX().getDefiningOp());
+          cast<IterOp>(sourceHerds.getIterX().getDefiningOp());
       IterOp sourceIterY =
-          dyn_cast<IterOp>(sourceHerds.getIterY().getDefiningOp());
+          cast<IterOp>(sourceHerds.getIterY().getDefiningOp());
 
       HerdOp destHerd =
-          dyn_cast<HerdOp>(destHerds.getStartHerd().getDefiningOp());
-      IterOp destIterX = dyn_cast<IterOp>(destHerds.getIterX().getDefiningOp());
-      IterOp destIterY = dyn_cast<IterOp>(destHerds.getIterY().getDefiningOp());
+          cast<HerdOp>(destHerds.getStartHerd().getDefiningOp());
+      IterOp destIterX = cast<IterOp>(destHerds.getIterX().getDefiningOp());
+      IterOp destIterY = cast<IterOp>(destHerds.getIterY().getDefiningOp());
 
       int sourceStartX = sourceIterX.getStartValue();
       int sourceEndX = sourceIterX.getEndValue();
@@ -294,7 +294,7 @@ struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
       int x = swboxCfg.first.second.col;
       int y = swboxCfg.first.second.row;
       auto connects = swboxCfg.second;
-      HerdOp herd = dyn_cast<HerdOp>(herdOp);
+      HerdOp herd = cast<HerdOp>(herdOp);
 
       builder.setInsertionPoint(device.getBody()->getTerminator());
 

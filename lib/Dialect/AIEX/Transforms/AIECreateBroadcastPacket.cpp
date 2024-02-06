@@ -57,7 +57,7 @@ struct AIEBroadcastPacketPass
       Block &b = r.front();
       Port sourcePort = broadcastpacket.port();
       TileOp srcTile =
-          dyn_cast<TileOp>(broadcastpacket.getTile().getDefiningOp());
+          cast<TileOp>(broadcastpacket.getTile().getDefiningOp());
 
       for (Operation &Op : b.getOperations()) {
         if (BPIDOp bpid = dyn_cast<BPIDOp>(Op)) {
@@ -75,7 +75,7 @@ struct AIEBroadcastPacketPass
           for (Operation &op : b_bpid.getOperations()) {
             if (BPDestOp bpdest = dyn_cast<BPDestOp>(op)) {
               TileOp destTile =
-                  dyn_cast<TileOp>(bpdest.getTile().getDefiningOp());
+                  cast<TileOp>(bpdest.getTile().getDefiningOp());
               Port destPort = bpdest.port();
               builder.setInsertionPointToEnd(b_pkFlow);
               builder.create<PacketDestOp>(builder.getUnknownLoc(), destTile,

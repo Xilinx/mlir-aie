@@ -29,10 +29,10 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 static TileOp srcTileOp(xilinx::AIEX::MemcpyOp op) {
-  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
+  return llvm::cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
 }
 static TileOp dstTileOp(xilinx::AIEX::MemcpyOp op) {
-  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
+  return llvm::cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
 }
 
 struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
@@ -113,8 +113,8 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     DenseMap<Value, int> destChannel;
     for (auto op : device.getOps<MemcpyOp>()) {
       builder.setInsertionPoint(op);
-      TileOp srcTile = dyn_cast<TileOp>(op.getSrcTile().getDefiningOp());
-      TileOp dstTile = dyn_cast<TileOp>(op.getDstTile().getDefiningOp());
+      TileOp srcTile = cast<TileOp>(op.getSrcTile().getDefiningOp());
+      TileOp dstTile = cast<TileOp>(op.getDstTile().getDefiningOp());
       // TODO: perhaps a better approach is to not assert here, but rather have
       // a subsequent pass that legally relocates the ports
       assert(destChannel[op.getDstTile()] <= 2 &&
