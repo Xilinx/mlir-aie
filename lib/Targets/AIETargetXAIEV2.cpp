@@ -148,7 +148,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasAcq = false, hasRel = false;
     int acqLockID = 0, relLockID = 0;
     for (auto op : block.template getOps<UseLockOp>()) {
-      LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
       int lockCol = lock.colIndex();
       int lockRow = lock.rowIndex();
       int lockID = lock.getLockIDValue();
@@ -617,11 +617,11 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                    dyn_cast<SelectOp>(switchboxOp.getTile().getDefiningOp())) {
       // parameterize streamswitch's configuration
       isParam = true;
-      HerdOp sourceHerd = dyn_cast<HerdOp>(sel.getStartHerd().getDefiningOp());
+      HerdOp sourceHerd = cast<HerdOp>(sel.getStartHerd().getDefiningOp());
       std::string sourceHerdName(sourceHerd.name().getValue());
 
-      IterOp iterX = dyn_cast<IterOp>(sel.getIterX().getDefiningOp());
-      IterOp iterY = dyn_cast<IterOp>(sel.getIterY().getDefiningOp());
+      IterOp iterX = cast<IterOp>(sel.getIterX().getDefiningOp());
+      IterOp iterY = cast<IterOp>(sel.getIterY().getDefiningOp());
       int startXValue = iterX.getStartValue();
       int endXValue = iterX.getEndValue();
       int strideXValue = iterX.getStrideValue();
@@ -654,7 +654,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int mask = 0;
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
-        AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+        AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
         arbiter = amsel.arbiterIndex();
         int msel = amsel.getMselValue();
         mask |= (1 << msel);
@@ -678,7 +678,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int slot = 0;
       Block &block = connectOp.getRules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
+        AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
         output << "__mlir_aie_try(XAie_StrmPktSwSlavePortEnable("
@@ -770,7 +770,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "int mlir_aie_configure_cascade(" << ctx_p << ") {\n";
   for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
-    TileOp tile = dyn_cast<TileOp>(configOp.getTile().getDefiningOp());
+    TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
     int col = tile.colIndex();
     int row = tile.rowIndex();
     output << "XAie_CoreConfigAccumulatorControl(" << deviceInstRef << ", "

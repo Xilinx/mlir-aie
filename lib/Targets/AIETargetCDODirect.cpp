@@ -631,7 +631,7 @@ struct AIEControl {
         int arbiter = -1;
 
         for (auto val : connectOp.getAmsels()) {
-          AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+          AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
           arbiter = amsel.arbiterIndex();
           int msel = amsel.getMselValue();
           mask |= (1 << msel);
@@ -657,7 +657,7 @@ struct AIEControl {
         Block &block = connectOp.getRules().front();
         for (auto slotOp : block.getOps<PacketRuleOp>()) {
           AMSelOp amselOp =
-              dyn_cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
+              cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
           TRY_XAIE_API_EMIT_ERROR(
@@ -708,7 +708,7 @@ struct AIEControl {
 
     // Cascade configuration
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
-      TileOp tile = dyn_cast<TileOp>(configOp.getTile().getDefiningOp());
+      TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto tileLoc =
           XAie_TileLoc(tile.getCol(), tile.getRow());
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreConfigAccumulatorControl,
