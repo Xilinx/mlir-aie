@@ -26,29 +26,30 @@ module {
     func.func private @extern_kernel1() -> ()
     func.func private @extern_kernel2(%b: memref<64xi32>) -> ()
 
-    %lock13_1 = aie.lock(%t02, 1) { sym_name = "lock_13_1" }
+    %lock13_1 = aie.lock(%t02, 1) { sym_name = "lock_13_1", init = 1 : i32 }
+    %lock13_2 = aie.lock(%t02, 1) { sym_name = "lock_13_2" }
   
     %core02 = aie.core(%t02) {
       %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
-      aie.use_lock(%lock13_1, "Acquire", 0)
+      aie.use_lock(%lock13_1, "AcquireGreaterEqual", 1)
 
       func.call @extern_kernel1() : () -> ()
 
-      aie.use_lock(%lock13_1, "Release", 1)
+      aie.use_lock(%lock13_2, "Release", 1)
       aie.objectfifo.release @objFifo_in1(Consume, 1)
 
       aie.end
     } { link_with="kernel1.o" }
 
     %core12 = aie.core(%t12) {
-        aie.use_lock(%lock13_1, "Acquire", 1)
+        aie.use_lock(%lock13_2, "AcquireGreaterEqual", 1)
 
         %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<64xi32>>
         %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<64xi32>> -> memref<64xi32>
 
         func.call @extern_kernel2(%elem1) : (memref<64xi32>) -> ()
 
-        aie.use_lock(%lock13_1, "Release", 0)
+        aie.use_lock(%lock13_1, "Release", 1)
         aie.objectfifo.release @objFifo_out1(Produce, 1)
         aie.end
     } { link_with="kernel2.o" }
