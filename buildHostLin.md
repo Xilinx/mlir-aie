@@ -87,9 +87,9 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
     source /opt/xilinx/xrt/setup.sh
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
     ```
-1. Goto the design of interest and run `make`
+2. Goto the design of interest and run `make`
 
-1. Signing your array configuration binary aka. XCLBIN
+3. Signing your array configuration binary aka. XCLBIN
     ```
     sudo bash
     source /opt/xilinx/xrt/setup.sh
@@ -99,6 +99,7 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
     # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
     # When xrt_plugin package is removed, it will automatically cleanup.
     ```
+    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdipu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
 
 ### Build and run host part:
 
