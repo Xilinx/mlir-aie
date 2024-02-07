@@ -82,7 +82,7 @@
    cd add_one_objFifo
    ```
 
-1. Jump ahead to [Build device AIE part](###Build device AIE part) step 2.
+1. Jump ahead to [Build device AIE part](#build-device-aie-part) step 2.
 
 ### Build mlir-aie tools from source for development:
 
