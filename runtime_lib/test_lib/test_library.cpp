@@ -37,6 +37,37 @@ hsa_status_t air_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t
+air_packet_nd_memcpy(hsa_agent_dispatch_packet_t *pkt, uint16_t herd_id,
+                     uint8_t col, uint8_t direction, uint8_t channel,
+                     uint8_t burst_len, uint8_t memory_space,
+                     uint64_t phys_addr, uint32_t transfer_length1d,
+                     uint32_t transfer_length2d, uint32_t transfer_stride2d,
+                     uint32_t transfer_length3d, uint32_t transfer_stride3d,
+                     uint32_t transfer_length4d, uint32_t transfer_stride4d) {
+
+  pkt->arg[0] = 0;
+  pkt->arg[0] |= ((uint64_t)memory_space) << 16;
+  pkt->arg[0] |= ((uint64_t)channel) << 24;
+  pkt->arg[0] |= ((uint64_t)col) << 32;
+  pkt->arg[0] |= ((uint64_t)burst_len) << 52;
+  pkt->arg[0] |= ((uint64_t)direction) << 60;
+
+  pkt->arg[1] = phys_addr;
+  pkt->arg[2] = transfer_length1d;
+  pkt->arg[2] |= ((uint64_t)transfer_length2d) << 32;
+  pkt->arg[2] |= ((uint64_t)transfer_stride2d) << 48;
+  pkt->arg[3] = transfer_length3d;
+  pkt->arg[3] |= ((uint64_t)transfer_stride3d) << 16;
+  pkt->arg[3] |= ((uint64_t)transfer_length4d) << 32;
+  pkt->arg[3] |= ((uint64_t)transfer_stride4d) << 48;
+
+  pkt->type = AIR_PKT_TYPE_ND_MEMCPY;
+  pkt->header = (HSA_PACKET_TYPE_AGENT_DISPATCH << HSA_PACKET_HEADER_TYPE);
+
+  return HSA_STATUS_SUCCESS;
+}
+
 hsa_status_t get_aie_agents(hsa_agent_t agent, void *data) {
   hsa_status_t status(HSA_STATUS_SUCCESS);
   hsa_device_type_t device_type;
