@@ -11,7 +11,7 @@ All steps in WSL Ubuntu terminal.
 1. Prepare WSL2 with Ubuntu 22.04:
     - Install packages (after apt-get update):
       ``` 
-        build-essential clang-14 lld-14 cmake
+        build-essential clang clang-14 lld lld-14 cmake
         libboost-all-dev
         python3-venv python3-pip
         libxrender1 libxtst6 libxi6
