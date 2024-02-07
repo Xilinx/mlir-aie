@@ -65,7 +65,7 @@ CMAKE_CONFIGS="\
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
     -DAIE_RUNTIME_TARGETS=x86_64-hsa;aarch64 \
     -DAIE_ENABLE_PYTHON_PASSES=OFF \
-    -DAIE_RUNTIME_TEST_TARGET=aarch64
+    -DAIE_RUNTIME_TEST_TARGET=x86_64-hsa
     .. |& tee cmake.log"
 
 if [ -x "$(command -v lld)" ]; then
