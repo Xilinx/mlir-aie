@@ -58,8 +58,7 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
       TileOp srcTile = cast<TileOp>(multicast.getTile().getDefiningOp());
       for (Operation &Op : b.getOperations()) {
         if (MultiDestOp multiDest = dyn_cast<MultiDestOp>(Op)) {
-          TileOp destTile =
-              cast<TileOp>(multiDest.getTile().getDefiningOp());
+          TileOp destTile = cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
           builder.create<FlowOp>(builder.getUnknownLoc(), srcTile,
                                  sourcePort.bundle, sourcePort.channel,
