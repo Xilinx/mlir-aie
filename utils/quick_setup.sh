@@ -16,27 +16,35 @@
 ##===----------------------------------------------------------------------===##
 
 echo "Setting up RyzenAI developement tools..."
-XBUTIL=`which xbutil`
-if ! test -f "$XBUTIL"; then 
-  echo "XRT is not installed"
-  return 1
-fi
-NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
-if [[ $NPU == *"RyzenAI"* ]]; then
-  echo "Ryzen AI NPU found:"
-  echo $NPU
+if [[ -z "{$WSL_DISTRO_NAME}" ]]; then
+  XBUTIL=`which xbutil`
+  if ! test -f "$XBUTIL"; then 
+    echo "XRT is not installed"
+    return 1
+  fi
+  NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
+  if [[ $NPU == *"RyzenAI"* ]]; then
+    echo "Ryzen AI NPU found:"
+    echo $NPU
+  else
+    echo "NPU not found. Is the amdxdna driver installed?"
+    return 1
+  fi
 else
-  echo "NPU not found. Is the amdxdna driver installed?"
-  return 1
+  echo "Environment is WSL"
 fi
 if ! hash python3.8; then
   echo "This script requires python3.8"
   echo "https://linuxgenie.net/how-to-install-python-3-8-on-ubuntu-22-04/"
-  echo "Don't forget python3-distutils!"
+  echo "Don't forget python3.8-distutils!"
   return 1
 fi
 if ! hash virtualenv; then
   echo "virtualenv is not installed"
+  return 1
+fi
+if ! hash unzip; then
+  echo "unzip is not installed"
   return 1
 fi
 alias python3=python3.8
