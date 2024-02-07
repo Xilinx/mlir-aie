@@ -77,11 +77,6 @@
 1. Source `utils/quick_setup.sh` to setup the prerequisites and
    install the mlir-aie and llvm compiler tools from whls.
 
-1. Choose a Ryzen AI reference design.
-   ```
-   cd add_one_objFifo
-   ```
-
 1. Jump ahead to [Build device AIE part](#build-device-aie-part) step 2.
 
 ### Build mlir-aie tools from source for development:
