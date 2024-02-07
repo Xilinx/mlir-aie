@@ -229,7 +229,7 @@ static TileElement getParentTileElement(Operation *op) {
       return element;
     parent = parent->getParentOp();
   }
-  return llvm::cast<TileElement>(parent);
+  return llvm::dyn_cast<TileElement>(parent);
 }
 
 namespace {

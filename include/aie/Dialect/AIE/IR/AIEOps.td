@@ -1327,7 +1327,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
       return 1;
     }
     LockOp getLockOp() {
-      return llvm::cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
+      return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
     }
   }];
 }
@@ -1743,11 +1743,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   let extraClassDeclaration = [{
     int size(int index = 0) {
       if (llvm::isa<mlir::ArrayAttr>(getElemNumber()))
-        return llvm::cast<mlir::IntegerAttr>(
-                   llvm::cast<mlir::ArrayAttr>(getElemNumber())[index])
+        return llvm::dyn_cast<mlir::IntegerAttr>(
+                   llvm::dyn_cast<mlir::ArrayAttr>(getElemNumber())[index])
             .getInt();
       else
-        return llvm::cast<mlir::IntegerAttr>(getElemNumber()).getInt();
+        return llvm::dyn_cast<mlir::IntegerAttr>(getElemNumber()).getInt();
     }
 
     TileOp getProducerTileOp();

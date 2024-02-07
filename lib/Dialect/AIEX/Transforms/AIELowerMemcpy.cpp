@@ -29,10 +29,10 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 static TileOp srcTileOp(xilinx::AIEX::MemcpyOp op) {
-  return llvm::cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
+  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
 }
 static TileOp dstTileOp(xilinx::AIEX::MemcpyOp op) {
-  return llvm::cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
+  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
 }
 
 struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
