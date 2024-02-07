@@ -27,7 +27,7 @@ module {
     func.func private @extern_kernel2(%b: memref<64xi32>) -> ()
 
     %lock13_1 = aie.lock(%t02, 1) { sym_name = "lock_13_1", init = 1 : i32 }
-    %lock13_2 = aie.lock(%t02, 1) { sym_name = "lock_13_2" }
+    %lock13_2 = aie.lock(%t02, 2) { sym_name = "lock_13_2" }
   
     %core02 = aie.core(%t02) {
       %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
