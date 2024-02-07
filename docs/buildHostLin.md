@@ -54,11 +54,6 @@
         libxrender1 libxtst6 libxi6
       ```
 
-1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
-   ```
-   git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
-   ````
-
 1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
     
     - Setup your environment in the following order for aietools and Vitis:
@@ -71,7 +66,32 @@
       export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
       ```
 
-1. Build MLIR-AIE tools following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html). Please disregard any instructions referencing alternative LibXAIE versions or sysroots.
+### Quick setup for Ryzen AI application development:
+
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE): 
+   ```
+   git clone https://github.com/Xilinx/mlir-aie.git
+   cd mlir-aie
+   ````
+
+1. Source `utils/quick_setup.sh` to setup the prerequisites and
+   install the mlir-aie and llvm compiler tools from whls.
+
+1. Choose a Ryzen AI reference design.
+   ```
+   cd add_one_objFifo
+   ```
+
+1. Jump ahead to [Build device AIE part](###Build device AIE part) step 2.
+
+### Build mlir-aie tools from source for development:
+
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
+   ```
+   git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
+   ````
+
+1. Follow regular getting started instructions [Building on x86](https://xilinx.github.io/mlir-aie/Building.html) from step 2. Please disregard any instructions referencing alternative LibXAIE versions or sysroots.
 
 ## Build a Design
 
