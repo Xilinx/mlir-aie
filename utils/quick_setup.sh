@@ -16,27 +16,35 @@
 ##===----------------------------------------------------------------------===##
 
 echo "Setting up RyzenAI developement tools..."
-XBUTIL=`which xbutil`
-if ! test -f "$XBUTIL"; then 
-  echo "XRT is not installed"
-  return 1
-fi
-NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
-if [[ $NPU == *"RyzenAI"* ]]; then
-  echo "Ryzen AI NPU found:"
-  echo $NPU
+if [[ -z "{$WSL_DISTRO_NAME}" ]]; then
+  XBUTIL=`which xbutil`
+  if ! test -f "$XBUTIL"; then 
+    echo "XRT is not installed"
+    return 1
+  fi
+  NPU=`/opt/xilinx/xrt/bin/xbutil examine | grep RyzenAI`
+  if [[ $NPU == *"RyzenAI"* ]]; then
+    echo "Ryzen AI NPU found:"
+    echo $NPU
+  else
+    echo "NPU not found. Is the amdxdna driver installed?"
+    return 1
+  fi
 else
-  echo "NPU not found. Is the amdxdna driver installed?"
-  return 1
+  echo "Environment is WSL"
 fi
 if ! hash python3.8; then
   echo "This script requires python3.8"
   echo "https://linuxgenie.net/how-to-install-python-3-8-on-ubuntu-22-04/"
-  echo "Don't forget python3-distutils!"
+  echo "Don't forget python3.8-distutils!"
   return 1
 fi
 if ! hash virtualenv; then
   echo "virtualenv is not installed"
+  return 1
+fi
+if ! hash unzip; then
+  echo "unzip is not installed"
   return 1
 fi
 alias python3=python3.8
@@ -53,12 +61,12 @@ if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
   pushd my_install
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024020616+bde53fc-py3-none-manylinux_2_35_x86_64.whl
+  wget -q --show-progress --no-check-certificate https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024020616+bde53fc-py3-none-manylinux_2_35_x86_64.whl
   unzip -q mlir_aie-*-py3-none-manylinux_*_x86_64.whl
   sed -i "s^TARGET_AIE_LIBDIR=.*^TARGET_AIE_LIBDIR=\"$AIETOOLS/data/versal_prod/lib\"^g" mlir_aie/bin/xchesscc_wrapper
   sed -i "s^TARGET_AIE2_LIBDIR=.*^TARGET_AIE2_LIBDIR=\"$AIETOOLS/data/aie_ml/lib\"^g" mlir_aie/bin/xchesscc_wrapper
   sed -i "s^AIETOOLS=.*^AIETOOLS=\"$AIETOOLS\"^g" mlir_aie/bin/xchesscc_wrapper
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024013022+24923214-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+  wget -q --show-progress --no-check-certificate https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024013022+24923214-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
   unzip -q mlir-*-py3-none-manylinux_*_x86_64.manylinux_*_x86_64.whl
   pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
   rm -rf mlir*.whl

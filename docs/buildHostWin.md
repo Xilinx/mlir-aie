@@ -11,7 +11,7 @@ All steps in WSL Ubuntu terminal.
 1. Prepare WSL2 with Ubuntu 22.04:
     - Install packages (after apt-get update):
       ``` 
-        build-essential clang-14 lld-14 cmake
+        build-essential clang clang-14 lld lld-14 cmake
         libboost-all-dev
         python3-venv python3-pip
         libxrender1 libxtst6 libxi6
@@ -37,7 +37,17 @@ All steps in WSL Ubuntu terminal.
       ip link set vmnic0 addr <yourMACaddress>
       ```
 
-1. Build MLIR-AIE tools under WSL2 following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
+1. Install or Build MLIR-AIE tools under WSL2:
+
+   * Use quick setup script to install from whls:
+     ```
+     source utils/quick_setup.sh
+     # NOTE: this will install mlir-aie in my_install/mlir_aie
+     # and llvm in my_install/mlir. Be sure to account for this
+     # using utils/env_setup.sh later on.
+     ```
+
+   * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
 1. After installing the updated RyzenAI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
     ```
