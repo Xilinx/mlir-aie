@@ -102,6 +102,14 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
     source /opt/xilinx/xrt/setup.sh
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
     ```
+    If you used the quick setup script:
+    ```
+    # NOTE: if you did NOT exit the terminal you can skip this step.
+    cd <yourPathToBuildMLIR-AIE>
+    source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
+    source yourVitisSetupScript (example shown above)
+    source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
+    ```
 2. Goto the design of interest and run `make`
 
 3. Signing your array configuration binary aka. XCLBIN
