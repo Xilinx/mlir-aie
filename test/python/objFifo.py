@@ -41,7 +41,7 @@ from util import construct_and_print_module
 @construct_and_print_module
 def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
-    dev_block = Block.create_at_start(dev.bodyRegion)
+    dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         S = tile(0, 2)
         T_ = tile(1, 2)

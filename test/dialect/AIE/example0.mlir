@@ -106,7 +106,7 @@ module @example0 {
     aie.put_stream(%0 : i32, %val0 : i32)
     %val1 = aie.get_stream(%0 : i32) : i128
     %val2 = arith.constant 1 : i384
-    aie.putCascade(%val2: i384)
+    aie.put_cascade(%val2: i384)
 
     aie.use_lock(%l33_0, Release, 1)
     aie.use_lock(%l33_1, Release, 1)

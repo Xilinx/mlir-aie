@@ -1284,18 +1284,17 @@ struct AIEObjectFifoStatefulTransformPass
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
-      if (shared) {
+      if (shared)
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-      } else {
-        if (isa<ArrayAttr>(createOp.getElemNumber())) {
-          createOp->setAttr("elemNumber",
-                            builder.getI32IntegerAttr(createOp.size()));
-        } else {
+      else {
+        if (isa<ArrayAttr>(createOp.getElemNumber()))
+          createOp.setElemNumberAttr(
+              builder.getI32IntegerAttr(createOp.size()));
+        else {
           int prodMaxAcquire = findObjectFifoSize(
               device, createOp.getProducerTileOp(), createOp);
-          createOp->setAttr("elemNumber",
-                            builder.getI32IntegerAttr(prodMaxAcquire));
+          createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);

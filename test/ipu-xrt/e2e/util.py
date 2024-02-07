@@ -2,31 +2,44 @@ import __main__
 import inspect
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
+from aie.extras.runtime.passes import Pipeline, run_pipeline
 
 from aie.compiler.aiecc.main import (
+    AIE_LOWER_TO_LLVM,
+    CREATE_PATH_FINDER_FLOWS,
+    DMA_TO_IPU,
+    INPUT_WITH_ADDRESSES_PIPELINE,
     chesshack,
     emit_design_bif,
-    mem_topology,
-    emit_partition,
     emit_design_kernel_json,
+    emit_partition,
+    generate_cores_list,
+    mem_topology,
 )
-from aie.dialects.aie import aie_llvm_link
-from aie.ir import Context, Location, Module, InsertionPoint
+from aie.dialects.aie import (
+    aie_llvm_link,
+    generate_bcf,
+    generate_cdo,
+    ipu_instgen,
+    translate_aie_vec_to_cpp,
+    translate_mlir_to_llvmir,
+)
+from aie.ir import Context, InsertionPoint, Location, Module
 
-WORKDIR = Path(
-    os.getenv(
-        "WORKDIR",
-        Path(__main__.__file__).parent.absolute()
-        / (__main__.__file__[:-3] + "_workdir"),
+WORKDIR = os.getenv("WORKDIR")
+if WORKDIR is None:
+    WORKDIR = Path(__main__.__file__).parent.absolute() / (
+        __main__.__file__[:-3] + "_workdir"
     )
-).absolute()
+else:
+    WORKDIR = Path(WORKDIR).absolute()
 
 VITIS_DIR = Path(os.getenv("VITIS_DIR", "/opt/tools/Xilinx/Vitis/2023.2")).absolute()
 XRT_DIR = Path(os.getenv("XRT_DIR", "/opt/xilinx/xrt")).absolute()
@@ -298,3 +311,68 @@ def setup_xclbin_firmware(xclbin_path):
         xclbin_path,
     ]
     _run_command(cmd)
+
+
+def compile_with_vectorization(mod_aie, mod_aievec):
+    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
+    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
+
+    input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
+    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
+    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
+    aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
+
+    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, debug=True)
+    # this is wonky because it's already on disk but oh well...
+    with open(
+        Path(__file__).parent / "chess_intrinsic_wrapper.ll"
+    ) as chess_intrinsic_wrapper_ll:
+        fullylinked_ll = chess_llvm_link(
+            chesshack(aie_ll),
+            aievec_ll,
+            chess_intrinsic_wrapper_ll.read(),
+            input_prefixes=["aie_input", "aievec_input", "chess_intrinsic_wrapper"],
+        )
+
+    chess_compile(fullylinked_ll)
+
+    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
+
+    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
+    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+    make_core_elf(core_bcf)
+
+    # _GlobalDebug.flag = True
+    generate_cdo(input_physical.operation, str(WORKDIR))
+    # _GlobalDebug.flag = False
+    make_design_pdi()
+
+    return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+
+
+def compile_without_vectorization(module):
+    module = run_pipeline(module, Pipeline().canonicalize())
+    lowered_linalg = run_pipeline(
+        module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
+    )
+
+    input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
+    input_opt_with_addresses = run_pipeline(input_with_addresses, AIE_LOWER_TO_LLVM)
+    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
+    chess_compile(
+        link_with_chess_intrinsic_wrapper(
+            translate_mlir_to_llvmir(input_opt_with_addresses.operation)
+        )
+    )
+
+    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
+    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+    make_core_elf(core_bcf)
+
+    # _GlobalDebug.flag = True
+    generate_cdo(input_physical.operation, str(WORKDIR))
+    # _GlobalDebug.flag = False
+    make_design_pdi()
+
+    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
+    return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]

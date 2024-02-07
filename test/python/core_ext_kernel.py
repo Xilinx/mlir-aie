@@ -55,7 +55,7 @@ range_ = for_
 @construct_and_print_module
 def core_ext_kernel():
     dev = Device(AIEDevice.xcve2802)
-    dev_block = Block.create_at_start(dev.bodyRegion)
+    dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         external_func(
             "test_func", inputs=[T.memref(8, 8, T.i32()), T.i32()], outputs=[T.i32()]
