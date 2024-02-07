@@ -85,13 +85,20 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (build during Prerequisites part of this guide)
-   NOTE: if you used the quick setup, skip this step.
 
     ```
     cd <yourPathToDesignsWithMLIR-AIE>
     source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
     source yourVitisSetupScript (example shown above)
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
+    ```
+    If you used the quick setup script:
+    ```
+    # NOTE: if you did NOT exit the terminal you can skip this step.
+    cd <yourPathToDesignsWithMLIR-AIE>
+    source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
+    source yourVitisSetupScript (example shown above)
+    source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
     ```
 1. Goto the design of interest and run `make`
 
