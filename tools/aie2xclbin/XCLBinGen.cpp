@@ -606,18 +606,6 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
       llvmModule->print(llvmirStream, nullptr);
     }
 
-    // SmallString<64> chesshackedFile(TK.TempDir);
-    // sys::path::append(chesshackedFile, "input.chesshacked.ll");
-
-    // {
-    //   auto chesshackOutput = openOutputFile(chesshackedFile, &errorMessage);
-    //   if (!chesshackOutput) {
-    //     return moduleOp.emitOpError(errorMessage);
-    //   }
-    //   chesshackOutput->os() << chesshack(llvmirString);
-    //   chesshackOutput->keep();
-    // }
-
     SmallString<64> chesslinkedFile(TK.TempDir);
     sys::path::append(chesslinkedFile, "input.chesslinked.ll");
     SmallString<64> llvmLinkBin(TK.PeanoDir);
