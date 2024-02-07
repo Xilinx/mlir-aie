@@ -66,7 +66,7 @@ find_package(Python3 COMPONENTS Interpreter)
 find_package(XRT)
 
 cmake_dependent_option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ON "Vitis_FOUND" OFF)
-cmake_dependent_option(ENABLE_BOARD_TESTS "Enable board tests" ON "CMAKE_HOST_SYSTEM_PROCESSOR MATCHES aarch64" OFF)
+cmake_dependent_option(ENABLE_BOARD_TESTS "Enable board tests" ON "hsa-runtime64_FOUND" OFF)
 cmake_dependent_option(ENABLE_PYTHON_TESTS "Enable python tests" ON "AIE_ENABLE_BINDINGS_PYTHON" OFF)
 
 # Look for LibXAIE

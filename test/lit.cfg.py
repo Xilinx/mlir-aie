@@ -54,15 +54,25 @@ config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
-if config.enable_board_tests:
-    config.substitutions.append(
-        ("%run_on_board", "echo %T >> /home/xilinx/testlog | sync | sudo")
-    )
-else:
-    config.substitutions.append(("%run_on_board", "echo"))
-
 run_on_ipu = "echo"
 xrt_flags = ""
+
+if config.hsa_found:
+    # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
+    # directory so need to go up three directories
+    rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
+    print("Found ROCm:", rocm_root)
+    config.substitutions.append(('%link_against_hsa%', "--link_against_hsa"))
+
+    if config.enable_board_tests:
+        config.substitutions.append(('%run_on_board', "sudo"))
+    else:
+        print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
+        config.substitutions.append(('%run_on_board', "echo"))
+else:
+    print("ROCm not found")
+    config.substitutions.append(('%link_against_hsa%', ""))
+
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
