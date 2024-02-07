@@ -73,7 +73,7 @@ XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
 _generated_ipu_write32 = ipu_write32
 
 
-def ipu_write32(channel_dir, channel_index, col, bd_id, repeats=0):
+def ipu_write32(channel_dir, channel_index, column, bd_id, repeats=0):
     if isinstance(channel_index, IntegerAttr):
         channel_index = channel_index.value
     if channel_dir == DMAChannelDir.MM2S:
@@ -87,7 +87,7 @@ def ipu_write32(channel_dir, channel_index, col, bd_id, repeats=0):
     if channel_dir == DMAChannelDir.S2MM:
         # issue token
         value |= XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK
-    _generated_ipu_write32(address=address, column=col, row=0, value=value)
+    _generated_ipu_write32(address=address, column=column, row=0, value=value)
 
 
 _generated_ipu_writebd_shimtile = ipu_writebd_shimtile
@@ -98,6 +98,7 @@ def ipu_writebd_shimtile(
     buffer_length,
     offset,
     ddr_id,
+    column=0,
     d2_stride=1,
     d1_size=None,
     d1_stride=1,
@@ -132,7 +133,7 @@ def ipu_writebd_shimtile(
         bd_id=bd_id,
         buffer_length=buffer_length,
         buffer_offset=offset,
-        column=0,
+        column=column,
         column_num=1,
         d0_size=d0_size,
         d0_stride=d0_stride,

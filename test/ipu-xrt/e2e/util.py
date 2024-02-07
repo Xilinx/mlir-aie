@@ -261,13 +261,15 @@ def make_design_pdi():
     _run_command(cmd)
 
 
-def make_xclbin(module, name="final"):
+def make_xclbin(module, name="final", kernel_json=None):
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)
     with open(WORKDIR / "aie_partition.json", "w") as f:
         json.dump(emit_partition(str(module)), f, indent=2)
+    if kernel_json is None:
+        kernel_json = emit_design_kernel_json()
     with open(WORKDIR / "kernels.json", "w") as f:
-        json.dump(emit_design_kernel_json(), f, indent=2)
+        json.dump(kernel_json, f, indent=2)
     xclbin_path = str(WORKDIR / f"{name}.xclbin")
     cmd = [
         "xclbinutil",
@@ -348,9 +350,9 @@ def compile_without_vectorization(module):
         )
     )
 
-    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-    make_core_elf(core_bcf)
+    for col, row, _ in generate_cores_list(str(input_with_addresses)):
+        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+        make_core_elf(core_bcf)
 
     # _GlobalDebug.flag = True
     generate_cdo(input_physical.operation, str(WORKDIR))
