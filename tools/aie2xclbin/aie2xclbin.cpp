@@ -54,7 +54,8 @@ cl::opt<std::string> FileName(cl::Positional, cl::desc("<input mlir>"),
 cl::opt<std::string>
     TmpDir("tmpdir", cl::desc("Directory used for temporary file storage"),
            cl::cat(AIE2XCLBinCat));
-cl::opt<bool> Verbose("v", cl::desc("Trace commands as they are executed"));
+cl::opt<bool> Verbose("v", cl::desc("Trace commands as they are executed"),
+                      cl::cat(AIE2XCLBinCat));
 cl::opt<std::string>
     Peano("peano", cl::desc("Root directory where peano compiler is installed"),
           cl::Required, cl::cat(AIE2XCLBinCat));
@@ -83,6 +84,9 @@ cl::opt<std::string> XCLBinKernelID("xclbin-kernel-id",
 cl::opt<std::string> InstallDir("install-dir",
                                 cl::desc("Root of mlir-aie installation"),
                                 cl::cat(AIE2XCLBinCat));
+cl::opt<bool> UseChess("use-chess",
+                       cl::desc("Use chess compiler instead of peano"),
+                       cl::cat(AIE2XCLBinCat));
 
 int main(int argc, char *argv[]) {
   registerAsmPrinterCLOptions();
@@ -96,6 +100,7 @@ int main(int argc, char *argv[]) {
   TK.XCLBinKernelName = XCLBinKernelName;
   TK.XCLBinKernelID = XCLBinKernelID;
   TK.XCLBinInstanceName = XCLBinInstanceName;
+  TK.UseChess = UseChess;
 
   findVitis(TK);
 
