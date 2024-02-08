@@ -198,55 +198,113 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     } else {
       elfFileName = std::string("core_") + std::to_string(col) + "_" +
                     std::to_string(row) + ".elf";
-      std::cout << "assigned core elf name " << elfFileName << std::endl;
       coreOp.setElfFile(elfFileName);
     }
 
-    SmallString<64> ldscript_path(TK.TempDir);
-    sys::path::append(ldscript_path, elfFileName + ".ld");
-    {
-      auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
-      if (!ldscript_output) {
-        return coreOp.emitOpError(errorMessage);
-      }
-
-      if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
-                                             col, row))) {
-        return coreOp.emitOpError("failed to generate ld script for core (")
-               << col << "," << row << ")";
-      }
-      ldscript_output->keep();
-    }
-
-    // We are running a clang command for now, but really this is an lld
-    // command.
     SmallString<64> elfFile(TK.TempDir);
     sys::path::append(elfFile, elfFileName);
-    {
-      std::string targetLower = StringRef(TK.TargetArch).lower();
-      SmallVector<std::string, 10> flags;
-      flags.push_back("-O2");
-      std::string targetFlag = "--target=" + targetLower + "-none-elf";
-      flags.push_back(targetFlag);
-      flags.emplace_back(objFile);
-      SmallString<64> meBasicPath(TK.InstallDir);
-      sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
-                        "me_basic.o");
-      flags.emplace_back(meBasicPath);
-      SmallString<64> libcPath(TK.PeanoDir);
-      sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
-                        "libc.a");
-      flags.emplace_back(libcPath);
-      flags.push_back("-Wl,--gc-sections");
-      std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
-      flags.push_back(ldScriptFlag);
-      flags.push_back("-o");
-      flags.emplace_back(elfFile);
-      SmallString<64> clangBin(TK.PeanoDir);
-      sys::path::append(clangBin, "bin", "clang");
-      if (runTool(clangBin, flags, TK.Verbose) != 0) {
-        return coreOp.emitOpError("failed to link elf file for core(")
-               << col << "," << row << ")";
+
+    if (TK.UseChess) {
+      // Use xbridge (to remove any peano dependency with use-chess option)
+      SmallString<64> bcfPath(TK.TempDir);
+      sys::path::append(bcfPath, elfFileName + ".bcf");
+
+      {
+        auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
+        if (!bcfOutput) {
+          return coreOp.emitOpError(errorMessage);
+        }
+
+        if (failed(
+                AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row))) {
+          return coreOp.emitOpError("Failed to generate BCF");
+        }
+        bcfOutput->keep();
+      }
+
+      std::vector<std::string> extractedIncludes;
+      {
+        auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
+        if (!bcfFileIn) {
+          moduleOp.emitOpError(errorMessage);
+        }
+
+        std::string bcfFile = std::string(bcfFileIn->getBuffer());
+        std::regex r("^_include _file (.*)", std::regex::multiline);
+        auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
+        auto end = std::sregex_iterator();
+        for (std::sregex_iterator i = begin; i != end; ++i) {
+          extractedIncludes.push_back(i->str(1));
+        }
+      }
+
+      SmallString<64> chessWrapperBin(TK.InstallDir);
+      sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
+      SmallString<64> chessworkDir(TK.TempDir);
+      sys::path::append(chessworkDir, "chesswork");
+
+      SmallVector<std::string> flags{StringRef(TK.TargetArch).lower(),
+                                     "+w",
+                                     std::string(chessworkDir),
+                                     "-d",
+                                     "+l",
+                                     std::string(bcfPath),
+                                     "-o",
+                                     std::string(elfFile),
+                                     "-f",
+                                     std::string(objFile)};
+      for (const auto &inc : extractedIncludes) {
+        flags.push_back(inc);
+      }
+
+      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0) {
+        coreOp.emitOpError("Failed to link with xbridge");
+      }
+    } else {
+      SmallString<64> ldscript_path(TK.TempDir);
+      sys::path::append(ldscript_path, elfFileName + ".ld");
+      {
+        auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
+        if (!ldscript_output) {
+          return coreOp.emitOpError(errorMessage);
+        }
+
+        if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
+                                               col, row))) {
+          return coreOp.emitOpError("failed to generate ld script for core (")
+                 << col << "," << row << ")";
+        }
+        ldscript_output->keep();
+      }
+
+      // We are running a clang command for now, but really this is an lld
+      // command.
+      {
+        std::string targetLower = StringRef(TK.TargetArch).lower();
+        SmallVector<std::string, 10> flags;
+        flags.push_back("-O2");
+        std::string targetFlag = "--target=" + targetLower + "-none-elf";
+        flags.push_back(targetFlag);
+        flags.emplace_back(objFile);
+        SmallString<64> meBasicPath(TK.InstallDir);
+        sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
+                          "me_basic.o");
+        flags.emplace_back(meBasicPath);
+        SmallString<64> libcPath(TK.PeanoDir);
+        sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
+                          "libc.a");
+        flags.emplace_back(libcPath);
+        flags.push_back("-Wl,--gc-sections");
+        std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
+        flags.push_back(ldScriptFlag);
+        flags.push_back("-o");
+        flags.emplace_back(elfFile);
+        SmallString<64> clangBin(TK.PeanoDir);
+        sys::path::append(clangBin, "bin", "clang");
+        if (runTool(clangBin, flags, TK.Verbose) != 0) {
+          return coreOp.emitOpError("failed to link elf file for core(")
+                 << col << "," << row << ")";
+        }
       }
     }
   }
@@ -610,6 +668,13 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(chesslinkedFile, "input.chesslinked.ll");
     SmallString<64> llvmLinkBin(TK.PeanoDir);
     sys::path::append(llvmLinkBin, "bin", "llvm-link");
+    if (!sys::fs::exists(llvmLinkBin)) {
+      if (auto llvmLink = sys::findProgramByName("llvm-link")) {
+        llvmLinkBin = *llvmLink;
+      } else {
+        moduleOp.emitOpError("Can't find llvm-link");
+      }
+    }
     if (runTool(llvmLinkBin,
                 {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
                  "-o", std::string(chesslinkedFile)},

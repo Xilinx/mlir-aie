@@ -58,7 +58,7 @@ cl::opt<bool> Verbose("v", cl::desc("Trace commands as they are executed"),
                       cl::cat(AIE2XCLBinCat));
 cl::opt<std::string>
     Peano("peano", cl::desc("Root directory where peano compiler is installed"),
-          cl::Required, cl::cat(AIE2XCLBinCat));
+          cl::cat(AIE2XCLBinCat));
 cl::opt<std::string>
     HostArch("host-target", cl::desc("Target architecture of the host program"),
              cl::init(HOST_ARCHITECTURE), cl::cat(AIE2XCLBinCat));
@@ -115,8 +115,8 @@ int main(int argc, char *argv[]) {
     TK.InstallDir = sys::path::parent_path(sys::path::parent_path(argv[0]));
   }
   TK.PeanoDir = Peano.getValue();
-  if (!sys::fs::is_directory(TK.PeanoDir)) {
-    llvm::errs() << "Peano path " << TK.PeanoDir << " is invalid\n";
+  if (!TK.UseChess && !sys::fs::is_directory(TK.PeanoDir)) {
+    llvm::errs() << "Peano path \"" << TK.PeanoDir << "\" is invalid\n";
     return 1;
   }
 
