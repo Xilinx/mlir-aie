@@ -49,7 +49,7 @@
 1. Prepare Ubuntu 22.04 to build mlir-aie:
     - Install packages (after apt-get update):
       ``` 
-        build-essential clang-14 lld-14 cmake
+        build-essential clang clang-14 lld lld-14 cmake
         python3-venv python3-pip
         libxrender1 libxtst6 libxi6
       ```
