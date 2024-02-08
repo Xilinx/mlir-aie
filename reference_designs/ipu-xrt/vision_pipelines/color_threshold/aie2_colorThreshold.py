@@ -34,12 +34,6 @@ def color_threshold():
         def device_body():
             line_channels_ty = T.memref(lineWidthChannels, T.ui8())
             line_ty = T.memref(lineWidth, T.ui8())
-            ofifo_line_channels_ty = TypeAttr.get(
-                ObjectFifoType.get(T.memref(lineWidthChannels, T.ui8()))
-            )
-            ofifo_line_ty = TypeAttr.get(
-                ObjectFifoType.get(T.memref(lineWidth, T.ui8()))
-            )
 
             # AIE Core Function declarations
             thresholdLine = external_func(
@@ -58,52 +52,60 @@ def color_threshold():
             # AIE-array data movement with object fifos
 
             # Input RGBA broadcast + memtile for skip
-            objectfifo(
-                "inOOB_L3L2", ShimTile, [MemTile], 2, ofifo_line_channels_ty, [], []
+            inOOB_L3L2 = object_fifo(
+                "inOOB_L3L2", ShimTile, MemTile, 2, line_channels_ty
             )
-            objectfifo(
-                "inOOB_L2L1_0", MemTile, [ComputeTile2], 2, ofifo_line_ty, [], []
+            inOOB_L2L1_0 = object_fifo(
+                "inOOB_L2L1_0", MemTile, ComputeTile2, 2, line_ty
             )
-            objectfifo(
-                "inOOB_L2L1_1", MemTile, [ComputeTile3], 2, ofifo_line_ty, [], []
+            inOOB_L2L1_1 = object_fifo(
+                "inOOB_L2L1_1", MemTile, ComputeTile3, 2, line_ty
             )
-            objectfifo(
-                "inOOB_L2L1_2", MemTile, [ComputeTile4], 2, ofifo_line_ty, [], []
+            inOOB_L2L1_2 = object_fifo(
+                "inOOB_L2L1_2", MemTile, ComputeTile4, 2, line_ty
             )
-            objectfifo(
-                "inOOB_L2L1_3", MemTile, [ComputeTile5], 2, ofifo_line_ty, [], []
+            inOOB_L2L1_3 = object_fifo(
+                "inOOB_L2L1_3", MemTile, ComputeTile5, 2, line_ty
             )
-            objectfifo_link(
-                ["inOOB_L3L2"],
-                ["inOOB_L2L1_0", "inOOB_L2L1_1", "inOOB_L2L1_2", "inOOB_L2L1_3"],
+            object_fifo_link(
+                inOOB_L3L2,
+                [inOOB_L2L1_0, inOOB_L2L1_1, inOOB_L2L1_2, inOOB_L2L1_3],
             )
 
             # Output RGBA
-            objectfifo(
-                "outOOB_L2L3", MemTile, [ShimTile], 2, ofifo_line_channels_ty, [], []
+            outOOB_L2L3 = object_fifo(
+                "outOOB_L2L3", MemTile, ShimTile, 2, line_channels_ty
             )
-            objectfifo(
-                "outOOB_L1L2_0", ComputeTile2, [MemTile], 2, ofifo_line_ty, [], []
+            outOOB_L1L2_0 = object_fifo(
+                "outOOB_L1L2_0", ComputeTile2, MemTile, 2, line_ty
             )
-            objectfifo(
-                "outOOB_L1L2_1", ComputeTile3, [MemTile], 2, ofifo_line_ty, [], []
+            outOOB_L1L2_1 = object_fifo(
+                "outOOB_L1L2_1", ComputeTile3, MemTile, 2, line_ty
             )
-            objectfifo(
-                "outOOB_L1L2_2", ComputeTile4, [MemTile], 2, ofifo_line_ty, [], []
+            outOOB_L1L2_2 = object_fifo(
+                "outOOB_L1L2_2", ComputeTile4, MemTile, 2, line_ty
             )
-            objectfifo(
-                "outOOB_L1L2_3", ComputeTile5, [MemTile], 2, ofifo_line_ty, [], []
+            outOOB_L1L2_3 = object_fifo(
+                "outOOB_L1L2_3", ComputeTile5, MemTile, 2, line_ty
             )
-            objectfifo_link(
-                ["outOOB_L1L2_0", "outOOB_L1L2_1", "outOOB_L1L2_2", "outOOB_L1L2_3"],
-                ["outOOB_L2L3"],
+            object_fifo_link(
+                [outOOB_L1L2_0, outOOB_L1L2_1, outOOB_L1L2_2, outOOB_L1L2_3],
+                outOOB_L2L3,
             )
 
             # Runtime parameters
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile2 = buffer(
+                T.memref(16, T.i32()), ComputeTile2, sym_name="rtpComputeTile2"
+            )
+            rtpComputeTile3 = buffer(
+                T.memref(16, T.i32()), ComputeTile3, sym_name="rtpComputeTile3"
+            )
+            rtpComputeTile4 = buffer(
+                T.memref(16, T.i32()), ComputeTile4, sym_name="rtpComputeTile4"
+            )
+            rtpComputeTile5 = buffer(
+                T.memref(16, T.i32()), ComputeTile5, sym_name="rtpComputeTile5"
+            )
 
             # Set up compute tiles
 
@@ -112,18 +114,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = acquire(
-                        ObjectFifoPort.Consume,
-                        "inOOB_L2L1_0",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
-                    elemOut = acquire(
-                        ObjectFifoPort.Produce,
-                        "outOOB_L1L2_0",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
+                    elemIn = inOOB_L2L1_0.acquire(1)
+                    elemOut = outOOB_L1L2_0.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -137,7 +129,7 @@ def color_threshold():
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    Call(
+                    call(
                         thresholdLine,
                         [
                             elemIn,
@@ -149,8 +141,8 @@ def color_threshold():
                         ],
                     )
 
-                    objectfifo_release(ObjectFifoPort.Consume, "inOOB_L2L1_0", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "outOOB_L1L2_0", 1)
+                    inOOB_L2L1_0.release(1)
+                    outOOB_L1L2_0.release(1)
                     yield_([])
 
             # Compute tile 3
@@ -158,18 +150,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = acquire(
-                        ObjectFifoPort.Consume,
-                        "inOOB_L2L1_1",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
-                    elemOut = acquire(
-                        ObjectFifoPort.Produce,
-                        "outOOB_L1L2_1",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
+                    elemIn = inOOB_L2L1_1.acquire(1)
+                    elemOut = outOOB_L1L2_1.acquire(1)
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
                     thresholdValue = arith.trunci(
@@ -182,7 +164,7 @@ def color_threshold():
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    Call(
+                    call(
                         thresholdLine,
                         [
                             elemIn,
@@ -194,8 +176,8 @@ def color_threshold():
                         ],
                     )
 
-                    objectfifo_release(ObjectFifoPort.Consume, "inOOB_L2L1_1", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "outOOB_L1L2_1", 1)
+                    inOOB_L2L1_1.release(1)
+                    outOOB_L1L2_1.release(1)
                     yield_([])
 
             # Compute tile 4
@@ -203,18 +185,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = acquire(
-                        ObjectFifoPort.Consume,
-                        "inOOB_L2L1_2",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
-                    elemOut = acquire(
-                        ObjectFifoPort.Produce,
-                        "outOOB_L1L2_2",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
+                    elemIn = inOOB_L2L1_2.acquire(1)
+                    elemOut = outOOB_L1L2_2.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -228,7 +200,7 @@ def color_threshold():
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8())
-                    Call(
+                    call(
                         thresholdLine,
                         [
                             elemIn,
@@ -240,8 +212,8 @@ def color_threshold():
                         ],
                     )
 
-                    objectfifo_release(ObjectFifoPort.Consume, "inOOB_L2L1_2", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "outOOB_L1L2_2", 1)
+                    inOOB_L2L1_2.release(1)
+                    outOOB_L1L2_2.release(1)
                     yield_([])
 
             # Compute tile 5
@@ -249,18 +221,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = acquire(
-                        ObjectFifoPort.Consume,
-                        "inOOB_L2L1_3",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
-                    elemOut = acquire(
-                        ObjectFifoPort.Produce,
-                        "outOOB_L1L2_3",
-                        1,
-                        T.memref(lineWidth, T.ui8()),
-                    ).acquired_elem()
+                    elemIn = inOOB_L2L1_3.acquire(1)
+                    elemOut = outOOB_L1L2_3.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -274,7 +236,7 @@ def color_threshold():
                     # maxValue = arith.constant(255, T.i16())
                     # thresholdValue = arith.constant(50, T.i16())
                     # thresholdType = arith.constant(0, T.i8()
-                    Call(
+                    call(
                         thresholdLine,
                         [
                             elemIn,
@@ -286,8 +248,8 @@ def color_threshold():
                         ],
                     )
 
-                    objectfifo_release(ObjectFifoPort.Consume, "inOOB_L2L1_3", 1)
-                    objectfifo_release(ObjectFifoPort.Produce, "outOOB_L1L2_3", 1)
+                    inOOB_L2L1_3.release(1)
+                    outOOB_L1L2_3.release(1)
                     yield_([])
 
             # To/from AIE-array data movement
