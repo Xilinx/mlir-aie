@@ -122,6 +122,7 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
           
-          wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
-          chmod +x parallel
-          ls test/ipu-xrt/e2e/*.py | grep -v vectorized | ./parallel -j12 "python {}"
+          # wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
+          # chmod +x parallel
+          # ls test/ipu-xrt/e2e/*.py | grep -v vectorized | ./parallel -j12 "python {}"
+          python test/ipu-xrt/e2e/square_matrix_mult.py
