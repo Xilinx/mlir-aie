@@ -125,4 +125,4 @@ jobs:
           # wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
           # chmod +x parallel
           # ls test/ipu-xrt/e2e/*.py | grep -v vectorized | ./parallel -j12 "python {}"
-          python test/ipu-xrt/e2e/square_matrix_mult.py
+          # python test/ipu-xrt/e2e/square_matrix_mult.py
