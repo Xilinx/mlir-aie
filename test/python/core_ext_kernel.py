@@ -6,16 +6,12 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    Call,
+    call,
     Core,
     Device,
-    ObjectFifoPort,
-    ObjectFifoType,
-    acquire,
     external_func,
-    objectfifo,
-    objectfifo_link,
-    objectfifo_release,
+    object_fifo,
+    object_fifo_link,
     tile,
     end,
 )
@@ -42,11 +38,11 @@ range_ = for_
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index
 # CHECK:        scf.for %arg0 = %c0 to %c10 step %c1 {
-# CHECK:          %0 = aie.objectfifo.acquire @of1(Consume, 1) : !aie.objectfifosubview<memref<8x8xi32>>
+# CHECK:          %0 = aie.objectfifo.acquire @of1( 1) : !aie.objectfifosubview<memref<8x8xi32>>
 # CHECK:          %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<8x8xi32>> -> memref<8x8xi32>
 # CHECK:          %c4_i32 = arith.constant 4 : i32
 # CHECK:          %2 = func.call @test_func(%1, %c4_i32) : (memref<8x8xi32>, i32) -> i32
-# CHECK:          aie.objectfifo.release @of1(Consume, 1)
+# CHECK:          aie.objectfifo.release @of1( 1)
 # CHECK:        }
 # CHECK:        aie.end
 # CHECK:      } {link_with = "test.o"}
@@ -65,34 +61,16 @@ def core_ext_kernel():
         M = tile(1, 2)
         N = tile(3, 3)
 
-        objectfifo(
-            "of0",
-            S,
-            [M],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "of1",
-            M,
-            [N],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo_link(["of0"], ["of1"])
+        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of1 = object_fifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
+        object_fifo_link(of0, of1)
 
         C = Core(N, "test.o")
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             for _ in range_(10):
-                elem0 = acquire(
-                    ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
-                ).acquired_elem()
-                res = Call("test_func", [elem0, arith.constant(4)], [T.i32()])
-                objectfifo_release(ObjectFifoPort.Consume, "of1", 1)
+                elem0 = of1.acquire(1)
+                res = call("test_func", [elem0, arith.constant(4)], [T.i32()])
+                of1.release(1)
                 yield_([])
             end()

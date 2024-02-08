@@ -6,19 +6,17 @@
 
 from aie.dialects.aie import (
     AIEDevice,
-    Buffer,
     Core,
     Device,
-    ExternalBuffer,
     MemOp,
-    ObjectFifoPort,
-    ObjectFifoType,
-    acquire,
+    ObjectFifoSubviewType,
+    buffer,
+    external_buffer,
     bd_dim_layout,
     end,
-    objectfifo,
-    objectfifo_link,
-    objectfifo_release,
+    object_fifo,
+    objectfifo_acquire,
+    object_fifo_link,
     objectfifo_subview_access,
     tile,
 )
@@ -77,18 +75,18 @@ def deviceOp():
 
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "b"} : memref<12xi32>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
-    b = Buffer(tile=t, size=(12,), datatype=T.i32())
+    b = buffer(T.memref(12, T.i32()), t)
 
 
 # CHECK-LABEL: externalBufferOp
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
 @construct_and_print_module
 def externalBufferOp():
-    b = ExternalBuffer(size=(12,), datatype=T.i32())
+    b = external_buffer(T.memref(12, T.i32()))
 
 
 # CHECK-LABEL: objFifo
@@ -102,12 +100,12 @@ def objFifo():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectfifo(
+        object_fifo(
             "of0",
             tile0,
-            [tile1],
+            tile1,
             2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
+            T.memref(12, T.f16()),
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
         )
@@ -129,25 +127,9 @@ def objFifoLink():
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
         tile2 = tile(col=7, row=7)
-        objectfifo(
-            "of0",
-            tile0,
-            [tile1],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "of1",
-            tile1,
-            [tile2],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [],
-            [],
-        )
-        objectfifo_link(["of0"], ["of1"])
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
+        of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
+        object_fifo_link(of0, of1)
         end()
 
 
@@ -155,7 +137,7 @@ def objFifoLink():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]]( 1) : !aie.objectfifosubview<memref<12xf16>>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -163,24 +145,11 @@ def objFifoAcquire():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectfifo(
-            "of0",
-            tile0,
-            [tile1],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [],
-            [],
-        )
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = acquire(
-                port=ObjectFifoPort.Consume,
-                of_name="of0",
-                num_elem=1,
-                datatype=T.memref(12, T.f16()),
-            )
+            acq = of0.acquire(1)
             end()
 
 
@@ -188,7 +157,7 @@ def objFifoAcquire():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]]( 1) : !aie.objectfifosubview<memref<12xf16>>
 # CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
@@ -197,23 +166,12 @@ def objFifoSubviewAccess():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectfifo(
-            "of0",
-            tile0,
-            [tile1],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [],
-            [],
-        )
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = acquire(
-                port=ObjectFifoPort.Consume,
-                of_name="of0",
-                num_elem=1,
-                datatype=T.memref(12, T.f16()),
+            acq = objectfifo_acquire(
+                ObjectFifoSubviewType.get(T.memref(12, T.f16())), "of0", 1
             )
             subview = objectfifo_subview_access(
                 T.memref(12, T.f16()), subview=acq, index=0
@@ -225,7 +183,7 @@ def objFifoSubviewAccess():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo.release @[[VAL_2]](Produce, 1)
+# CHECK: aie.objectfifo.release @[[VAL_2]]( 1)
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
@@ -233,19 +191,11 @@ def objFifoRelease():
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
-        objectfifo(
-            "of0",
-            tile0,
-            [tile1],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(12, T.f16()))),
-            [],
-            [],
-        )
+        of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         C = Core(tile0)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = objectfifo_release(ObjectFifoPort.Produce, "of0", 1)
+            acq = of0.release(1)
             end()
 
 
