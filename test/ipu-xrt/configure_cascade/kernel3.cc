@@ -1,4 +1,4 @@
-//===- kernel1.cc -------------------------------------------------*- C++
+//===- kernel3.cc -------------------------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -19,16 +19,9 @@
 
 extern "C" {
 
-void extern_kernel1() {
-  v32int32 v32 = undef_v32int32();
-  for (i = 0; i < 5; i++) {
-    if (i == 0 ) {
-      v32 = upd_elem(v32, i, 14);
-    } else {
-      v32 = upd_elem(v32, i, 0);
-    }
-  }
-  put_mcd(v32);
+void extern_kernel3(int32_t *restrict buf) {
+  v32int32 v32 = get_scd_v32int32();
+  buf[5] = ext_elem(v32, 0) + 100;
 }
 
 } // extern "C"

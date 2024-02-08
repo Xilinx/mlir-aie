@@ -19,9 +19,10 @@
 
 extern "C" {
 
-void extern_kernel2(int32_t *restrict buf) {
+void extern_kernel2() {
   v32int32 v32 = get_scd_v32int32();
-  buf[5] = ext_elem(v32, 0) + 100;
+  v32 = upd_elem(v32, 0, 114);
+  put_mcd(v32);
 }
 
 } // extern "C"

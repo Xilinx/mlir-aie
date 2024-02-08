@@ -9,14 +9,16 @@ module {
   aie.device(ipu) {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
-    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    %t13 = aie.tile(1, 3)
     %t12 = aie.tile(1, 2)
 
-    aie.configure_cascade(%t02, West, East)
-    aie.configure_cascade(%t12, West, East)
+    aie.configure_cascade(%t03, West, East)
+    aie.configure_cascade(%t13, West, South)
+    aie.configure_cascade(%t12, North, South)
   
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
-    aie.objectfifo @objFifo_in1(%t01, {%t02}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @objFifo_in1(%t01, {%t03}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ()
 
     aie.objectfifo @objFifo_out1(%t12, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
@@ -24,22 +26,37 @@ module {
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ()
 
     func.func private @extern_kernel1() -> ()
-    func.func private @extern_kernel2(%b: memref<64xi32>) -> ()
+    func.func private @extern_kernel2() -> ()
+    func.func private @extern_kernel3(%b: memref<64xi32>) -> ()
 
-    %lock13_1 = aie.lock(%t02, 1) { sym_name = "lock_13_1", init = 1 : i32 }
-    %lock13_2 = aie.lock(%t02, 2) { sym_name = "lock_13_2" }
+    %lock03_1 = aie.lock(%t03, 1) { sym_name = "lock_03_1", init = 1 : i32 }
+    %lock03_2 = aie.lock(%t03, 2) { sym_name = "lock_03_2" }
+
+    %lock13_1 = aie.lock(%t13, 1) { sym_name = "lock_13_1", init = 1 : i32 }
+    %lock13_2 = aie.lock(%t13, 2) { sym_name = "lock_13_2" }
   
-    %core02 = aie.core(%t02) {
+    %core02 = aie.core(%t03) {
       %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
-      aie.use_lock(%lock13_1, "AcquireGreaterEqual", 1)
+      aie.use_lock(%lock03_1, "AcquireGreaterEqual", 1)
 
       func.call @extern_kernel1() : () -> ()
 
-      aie.use_lock(%lock13_2, "Release", 1)
+      aie.use_lock(%lock03_2, "Release", 1)
       aie.objectfifo.release @objFifo_in1(Consume, 1)
 
       aie.end
     } { link_with="kernel1.o" }
+
+    %core13 = aie.core(%t13) {
+        aie.use_lock(%lock03_2, "AcquireGreaterEqual", 1)
+        aie.use_lock(%lock13_1, "AcquireGreaterEqual", 1)
+
+        func.call @extern_kernel2() : () -> ()
+
+        aie.use_lock(%lock13_2, "Release", 1)
+        aie.use_lock(%lock03_1, "Release", 1)
+        aie.end
+    } { link_with="kernel2.o" }
 
     %core12 = aie.core(%t12) {
         aie.use_lock(%lock13_2, "AcquireGreaterEqual", 1)
@@ -47,12 +64,12 @@ module {
         %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<64xi32>>
         %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<64xi32>> -> memref<64xi32>
 
-        func.call @extern_kernel2(%elem1) : (memref<64xi32>) -> ()
+        func.call @extern_kernel3(%elem1) : (memref<64xi32>) -> ()
 
         aie.use_lock(%lock13_1, "Release", 1)
         aie.objectfifo.release @objFifo_out1(Produce, 1)
         aie.end
-    } { link_with="kernel2.o" }
+    } { link_with="kernel3.o" }
 
     func.func @sequence(%in : memref<64xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : i64

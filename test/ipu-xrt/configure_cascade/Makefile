@@ -16,7 +16,7 @@ build/%.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 
-build/final.xclbin: aie.mlir build/kernel1.o build/kernel2.o
+build/final.xclbin: aie.mlir build/kernel1.o build/kernel2.o build/kernel3.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
