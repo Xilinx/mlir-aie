@@ -21,13 +21,7 @@ extern "C" {
 
 void extern_kernel1() {
   v32int32 v32 = undef_v32int32();
-  for (i = 0; i < 5; i++) {
-    if (i == 0 ) {
-      v32 = upd_elem(v32, i, 14);
-    } else {
-      v32 = upd_elem(v32, i, 0);
-    }
-  }
+  v32 = upd_elem(v32, 0, 14);
   put_mcd(v32);
 }
 

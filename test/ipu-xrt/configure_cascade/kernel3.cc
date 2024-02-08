@@ -19,9 +19,15 @@
 
 extern "C" {
 
-void extern_kernel3(int32_t *restrict buf) {
+void extern_kernel3(int32_t *restrict buf, int N) {
   v32int32 v32 = get_scd_v32int32();
-  buf[5] = ext_elem(v32, 0) + 100;
+  for (int i = 0; i < N; i++) {
+    if (i == 5) {
+      buf[i] = ext_elem(v32, 0) + 100;
+    } else {
+      buf[i] = 0;
+    }
+  }
 }
 
 } // extern "C"

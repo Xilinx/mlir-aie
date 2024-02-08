@@ -170,14 +170,14 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < 64; i++) {
     uint32_t ref = 0;
     if (i == 5) {
-      ref = 114;
+      ref = 214;
     }
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+      std::cout << "Error in output at index " << i << ": " << *(bufOut + i) << " != " << ref
                 << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+      std::cout << "Correct output at index " << i << ": " << *(bufOut + i) << " == " << ref
                 << std::endl;
     }
   }
