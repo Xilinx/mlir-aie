@@ -25,7 +25,7 @@ env:
 
 jobs:
   build-repo:
-    name: Build and Test
+    name: Build and Test with AIE tools on Ryzen AI
 
     runs-on: amd7940hs
 
