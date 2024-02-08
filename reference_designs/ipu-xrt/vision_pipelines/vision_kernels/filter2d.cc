@@ -15,9 +15,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
 
 #include <aie_api/aie.hpp>

@@ -155,10 +155,12 @@ def edge_detect():
                     OF_2to3.release(1)
                     yield_([])
 
+            kernel = Buffer(ComputeTile3, [3, 3], T.i16(), "kernel")
+
             # Compute tile 3
             @core(ComputeTile3, "filter2d.cc.o")
             def core_body():
-                kernel = memref.alloc([3, 3], T.i16())
+                # kernel = memref.alloca([3, 3], T.i16())
                 v0 = arith.constant(0, T.i16())
                 v1 = arith.constant(4096, T.i16())
                 v_minus4 = arith.constant(-16384, T.i16())

@@ -14,9 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 // clang-format off
 #include <aie_api/aie.hpp>
 #include "lut_inv_8b.h"

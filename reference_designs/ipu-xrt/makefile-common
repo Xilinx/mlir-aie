@@ -6,8 +6,15 @@ VITIS_AIETOOLS_DIR ?= ${VITIS_ROOT}/aietools
 VITIS_AIE_INCLUDE_DIR ?= ${VITIS_ROOT}/aietools/data/versal_prod/lib
 VITIS_AIE2_INCLUDE_DIR ?= ${VITIS_ROOT}/aietools/data/aie_ml/lib
 
+export XILINX_VITIS_AIETOOLS = ${VITIS_AIETOOLS_DIR}
+
 CHESSCC1_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
 CHESSCC2_FLAGS = -f -p me -P ${VITIS_AIE2_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20
+
+# Compile with peano, link with xbridge
+CLANG_CHESSLIBC_FLAGS = --target=aie2 -I ${VITIS_AIETOOLS_DIR}/include -I ${VITIS_AIETOOLS_DIR}/include/adf -I ${VITIS_AIETOOLS_DIR}/include/aie_api -D_LIBCPP_HAS_THREAD_API_PTHREAD --std=c++2a -O2 -fno-jump-tables -Wno-deprecated-declarations
+# Compile with peano, link with lld
+CLANG_FLAGS = --target=aie2-none-elf -I ${VITIS_AIETOOLS_DIR}/include -D_LIBCPP_HAS_THREAD_API_PTHREAD --std=c++2a -O2 -fno-jump-tables -Wno-deprecated-declarations
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
 CHESSCCWRAP1_FLAGS = aie -I ${VITIS_AIETOOLS_DIR}/include 
