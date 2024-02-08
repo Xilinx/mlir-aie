@@ -322,3 +322,4 @@ def offsets_sizes_strides(module):
 
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             print(wrap_C)
+            assert False

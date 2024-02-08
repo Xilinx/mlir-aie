@@ -316,6 +316,7 @@ def nonsquare_matrix_mult(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: nonsquare_matrix_mult_sugar
@@ -515,3 +516,4 @@ def nonsquare_matrix_mult_sugar(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False

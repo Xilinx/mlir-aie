@@ -419,6 +419,7 @@ def vec_add_vectorized(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: vec_add_vectorized_sugar
@@ -688,3 +689,4 @@ def vec_add_vectorized_sugar(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False
