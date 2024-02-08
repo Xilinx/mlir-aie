@@ -10,6 +10,10 @@ defaults:
   run:
     shell: bash
 
+schedule:
+  # At 04:00. (see https://crontab.guru)
+  - cron: '0 4 * * *'
+    
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
