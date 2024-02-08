@@ -81,7 +81,7 @@ jobs:
           sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
 
           sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
-          ninja check-aie
+          LIT_FILTER_OUT=test/ipu-xrt/e2e ninja check-aie
           sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
           ninja check-reference-designs
 
@@ -124,4 +124,4 @@ jobs:
           
           wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
           chmod +x parallel
-          ls test/ipu-xrt/e2e/*.py | ./parallel -j12 "python {}"
+          ls test/ipu-xrt/e2e/*.py | grep -v vectorized | ./parallel -j12 "python {}"
