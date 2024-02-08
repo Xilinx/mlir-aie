@@ -177,8 +177,8 @@ int main(int argc, const char *argv[]) {
                 << " != " << ref << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output at index " << i << ": " << *(bufOut + i) << " == " << ref
-                << std::endl;
+      std::cout << "Correct output at index " << i << ": " << *(bufOut + i)
+                << " == " << ref << std::endl;
     }
   }
 
