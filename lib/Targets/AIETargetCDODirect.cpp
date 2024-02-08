@@ -329,7 +329,7 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(uint8_t partitionNumCols, bool aieSim, const AIETargetModel &tm) {
+  AIEControl(size_t partitionNumCols, bool aieSim, const AIETargetModel &tm) {
     configPtr = XAie_Config{
         .AieGen = XAIE_DEV_GEN_AIEML,
         .BaseAddr = XAIE_BASE_ADDR,

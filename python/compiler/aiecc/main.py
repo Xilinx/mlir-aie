@@ -572,7 +572,6 @@ class FlowRunner:
         else:
             task = None
 
-        buffers = ["in", "tmp", "out"]
         await write_file_async(
             json.dumps(mem_topology, indent=2),
             self.prepend_tmp("mem_topology.json"),
@@ -583,10 +582,14 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
+        buffer_arg_names = ["in", "tmp", "out"]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
-                    opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
+                    opts.kernel_name,
+                    opts.kernel_id,
+                    opts.instance_name,
+                    buffer_arg_names,
                 ),
                 indent=2,
             ),
