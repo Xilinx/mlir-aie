@@ -99,7 +99,7 @@ the tools are largely board and device independent and can be adapted to other e
 4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or Ryzen AI 
     with the path to the `llvm/build` directory. The Vitis environment will have to be 
     set up for this to succeed. Note that when targetting the VCK5000 platform, please
-    refer to the further instructions below titled `Building on X86 targetting the VCK5000`
+    refer to the further instructions below titled `Building on X86 targeting the VCK5000`
     as there are a few extra steps needed.
 
     ```
