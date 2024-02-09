@@ -1145,7 +1145,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                       }             // for(int x=0; x<8; x++)
                     line[i] -= 320; // (8+2)*32, Reset line buffer ptr to
                                     // beginning of line (after first 4)
-                  } // for(int j=0; j<kernel_width;j++) {
+                  }                 // for(int j=0; j<kernel_width;j++) {
                 wtsLine[i] += ((kernel_height - 1) * kernel_width *
                                64);  // Move to next ic/8 position
                 line[i] += (iw * 8); // Increment to next ic/8 position (reset
