@@ -25,6 +25,7 @@ def my_vector_scalar():
         @device(AIEDevice.ipu)
         def device_body():
             memRef_ty = T.memref(n, T.i32())
+            ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
             # AIE Core Function declarations
             scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
@@ -34,8 +35,12 @@ def my_vector_scalar():
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
+            objectfifo(
+                "in", ShimTile, [ComputeTile2], buffer_depth, ofifo_memRef_ty, [], []
+            )
+            objectfifo(
+                "out", ComputeTile2, [ShimTile], buffer_depth, ofifo_memRef_ty, [], []
+            )
 
             # Set up compute tiles
 
@@ -46,11 +51,15 @@ def my_vector_scalar():
                 for _ in for_(sys.maxsize):
                     # Number of sub-vector "tile" iterations
                     for _ in for_(N_div_n):
-                        elem_out = of_out.acquire(1)
-                        elem_in = of_in.acquire(1)
-                        call(scale_int32, [elem_in, elem_out])
-                        of_in.release(1)
-                        of_out.release(1)
+                        elem_out = acquire(
+                            ObjectFifoPort.Produce, "out", 1, memRef_ty
+                        ).acquired_elem()
+                        elem_in = acquire(
+                            ObjectFifoPort.Consume, "in", 1, memRef_ty
+                        ).acquired_elem()
+                        Call(scale_int32, [elem_in, elem_out])
+                        objectfifo_release(ObjectFifoPort.Consume, "in", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "out", 1)
                         yield_([])
                     yield_([])
 

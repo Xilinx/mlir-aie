@@ -37,6 +37,9 @@ def color_detect():
             line_bytes_ty = MemRefType.get((lineWidthInBytes,), T.ui8())
             line_ty = MemRefType.get((lineWidth,), T.ui8())
 
+            ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
+            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
+
             # AIE Core Function declarations
             rgba2hueLine = external_func(
                 "rgba2hueLine", inputs=[line_bytes_ty, line_ty, T.i32()]
@@ -67,36 +70,110 @@ def color_detect():
             # AIE-array data movement with object fifos
 
             # Input
-            inOF_L3L2 = object_fifo(
+            objectfifo(
                 "inOF_L3L2",
                 ShimTile,
                 [ComputeTile2, MemTile],
                 [2, 2, 6],
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            inOF_L2L1 = object_fifo(
-                "inOF_L2L1", MemTile, ComputeTile5, 6, line_bytes_ty
+            objectfifo(
+                "inOF_L2L1",
+                MemTile,
+                [ComputeTile5],
+                6,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            object_fifo_link(inOF_L3L2, inOF_L2L1)
+            objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
             # Output
-            outOF_L2L3 = object_fifo("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
-            outOF_L1L2 = object_fifo(
-                "outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty
+            objectfifo(
+                "outOF_L2L3",
+                MemTile,
+                [ShimTile],
+                2,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            object_fifo_link(outOF_L1L2, outOF_L2L3)
+            objectfifo(
+                "outOF_L1L2",
+                ComputeTile5,
+                [MemTile],
+                2,
+                ofifo_line_bytes_ty,
+                [],
+                [],
+            )
+            objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
             # Intermediate
-            OF_2to34 = object_fifo(
-                "OF_2to34", ComputeTile2, [ComputeTile3, ComputeTile4], 2, line_ty
+            objectfifo(
+                "OF_2to34",
+                ComputeTile2,
+                [ComputeTile3, ComputeTile4],
+                2,
+                ofifo_line_ty,
+                [],
+                [],
             )
-            OF_3to3 = object_fifo("OF_3to3", ComputeTile3, ComputeTile3, 1, line_ty)
-            OF_3to5 = object_fifo("OF_3to5", ComputeTile3, ComputeTile5, 2, line_ty)
-            OF_4to4 = object_fifo("OF_4to4", ComputeTile4, ComputeTile4, 1, line_ty)
-            OF_4to5 = object_fifo("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
-            OF_5to5a = object_fifo("OF_5to5a", ComputeTile5, ComputeTile5, 1, line_ty)
-            OF_5to5b = object_fifo(
-                "OF_5to5b", ComputeTile5, ComputeTile5, 1, line_bytes_ty
+            objectfifo(
+                "OF_3to3",
+                ComputeTile3,
+                [ComputeTile3],
+                1,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_3to5",
+                ComputeTile3,
+                [ComputeTile5],
+                2,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_4to4",
+                ComputeTile4,
+                [ComputeTile4],
+                1,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_4to5",
+                ComputeTile4,
+                [ComputeTile5],
+                2,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_5to5a",
+                ComputeTile5,
+                [ComputeTile5],
+                1,
+                ofifo_line_ty,
+                [],
+                [],
+            )
+            objectfifo(
+                "OF_5to5b",
+                ComputeTile5,
+                [ComputeTile5],
+                1,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
 
             # Set up compute tiles
@@ -105,11 +182,15 @@ def color_detect():
             @core(ComputeTile2, "rgba2hue.cc.o")
             def coreBody():
                 for _ in range_(sys.maxsize):
-                    elemIn = inOF_L3L2.acquire(1)
-                    elemOut = OF_2to34.acquire(1)
-                    call(rgba2hueLine, [elemIn, elemOut, arith.constant(lineWidth)])
-                    inOF_L3L2.release(1)
-                    OF_2to34.release(1)
+                    elemIn = acquire(
+                        ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elemOut = acquire(
+                        ObjectFifoPort.Produce, "OF_2to34", 1, line_ty
+                    ).acquired_elem()
+                    Call(rgba2hueLine, [elemIn, elemOut, arith.constant(lineWidth)])
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_2to34", 1)
                     yield_([])
 
             # Compute tile 3
@@ -121,9 +202,13 @@ def color_detect():
                 thresholdModeToZeroInv = arith.constant(4, T.i8())
                 thresholdModeBinary = arith.constant(0, T.i8())
                 for _ in range_(sys.maxsize):
-                    elemIn = OF_2to34.acquire(1)
-                    elemOutTmp = OF_3to3.acquire(1)
-                    call(
+                    elemIn = acquire(
+                        ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
+                    ).acquired_elem()
+                    elemOutTmp = acquire(
+                        ObjectFifoPort.Produce, "OF_3to3", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         thresholdLine,
                         [
                             elemIn,
@@ -134,11 +219,15 @@ def color_detect():
                             thresholdModeToZeroInv,
                         ],
                     )
-                    OF_2to34.release(1)
-                    OF_3to3.release(1)
-                    elemInTmp = OF_3to3.acquire(1)
-                    elemOut = OF_3to5.acquire(1)
-                    call(
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to34", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to3", 1)
+                    elemInTmp = acquire(
+                        ObjectFifoPort.Consume, "OF_3to3", 1, line_ty
+                    ).acquired_elem()
+                    elemOut = acquire(
+                        ObjectFifoPort.Produce, "OF_3to5", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         thresholdLine,
                         [
                             elemInTmp,
@@ -149,8 +238,8 @@ def color_detect():
                             thresholdModeBinary,
                         ],
                     )
-                    OF_3to3.release(1)
-                    OF_3to5.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_3to3", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to5", 1)
                     yield_([])
 
             # Compute tile 4
@@ -162,9 +251,13 @@ def color_detect():
                 thresholdModeToZeroInv = arith.constant(4, T.i8())
                 thresholdModeBinary = arith.constant(0, T.i8())
                 for _ in range_(sys.maxsize):
-                    elemIn = OF_2to34.acquire(1)
-                    elemOutTmp = OF_4to4.acquire(1)
-                    call(
+                    elemIn = acquire(
+                        ObjectFifoPort.Consume, "OF_2to34", 1, line_ty
+                    ).acquired_elem()
+                    elemOutTmp = acquire(
+                        ObjectFifoPort.Produce, "OF_4to4", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         thresholdLine,
                         [
                             elemIn,
@@ -175,11 +268,15 @@ def color_detect():
                             thresholdModeToZeroInv,
                         ],
                     )
-                    OF_2to34.release(1)
-                    OF_4to4.release(1)
-                    elemInTmp = OF_4to4.acquire(1)
-                    elemOut = OF_4to5.acquire(1)
-                    call(
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to34", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_4to4", 1)
+                    elemInTmp = acquire(
+                        ObjectFifoPort.Consume, "OF_4to4", 1, line_ty
+                    ).acquired_elem()
+                    elemOut = acquire(
+                        ObjectFifoPort.Produce, "OF_4to5", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         thresholdLine,
                         [
                             elemInTmp,
@@ -190,8 +287,8 @@ def color_detect():
                             thresholdModeBinary,
                         ],
                     )
-                    OF_4to4.release(1)
-                    OF_4to5.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_4to4", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
                     yield_([])
 
             # Compute tile 5
@@ -199,30 +296,46 @@ def color_detect():
             def coreBody():
                 for _ in range_(sys.maxsize):
                     # bitwise OR
-                    elemIn1 = OF_3to5.acquire(1)
-                    elemIn2 = OF_4to5.acquire(1)
-                    elemOutTmpA = OF_5to5a.acquire(1)
-                    call(
+                    elemIn1 = acquire(
+                        ObjectFifoPort.Consume, "OF_3to5", 1, line_ty
+                    ).acquired_elem()
+                    elemIn2 = acquire(
+                        ObjectFifoPort.Consume, "OF_4to5", 1, line_ty
+                    ).acquired_elem()
+                    elemOutTmpA = acquire(
+                        ObjectFifoPort.Produce, "OF_5to5a", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         bitwiseORLine,
                         [elemIn1, elemIn2, elemOutTmpA, arith.constant(lineWidth)],
                     )
-                    OF_3to5.release(1)
-                    OF_4to5.release(1)
-                    OF_5to5a.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_3to5", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_5to5a", 1)
                     # gray2rgba
-                    elemInTmpA = OF_5to5a.acquire(1)
-                    elemOutTmpB = OF_5to5b.acquire(1)
-                    call(
+                    elemInTmpA = acquire(
+                        ObjectFifoPort.Consume, "OF_5to5a", 1, line_ty
+                    ).acquired_elem()
+                    elemOutTmpB = acquire(
+                        ObjectFifoPort.Produce, "OF_5to5b", 1, line_bytes_ty
+                    ).acquired_elem()
+                    Call(
                         gray2rgbaLine,
                         [elemInTmpA, elemOutTmpB, arith.constant(lineWidth)],
                     )
-                    OF_5to5a.release(1)
-                    OF_5to5b.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_5to5a", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_5to5b", 1)
                     # bitwise AND
-                    elemInTmpB1 = OF_5to5b.acquire(1)
-                    elemInTmpB2 = inOF_L2L1.acquire(1)
-                    elemOut = outOF_L1L2.acquire(1)
-                    call(
+                    elemInTmpB1 = acquire(
+                        ObjectFifoPort.Consume, "OF_5to5b", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elemInTmpB2 = acquire(
+                        ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elemOut = acquire(
+                        ObjectFifoPort.Produce, "outOF_L1L2", 1, line_bytes_ty
+                    ).acquired_elem()
+                    Call(
                         bitwiseANDLine,
                         [
                             elemInTmpB1,
@@ -231,9 +344,9 @@ def color_detect():
                             arith.constant(lineWidthInBytes),
                         ],
                     )
-                    OF_5to5b.release(1)
-                    inOF_L2L1.release(1)
-                    outOF_L1L2.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_5to5b", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                     yield_([])
 
             # To/from AIE-array data movement

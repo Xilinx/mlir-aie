@@ -38,6 +38,9 @@ def edge_detect():
             line_ty = T.memref(lineWidth, T.ui8())
             memRef_3x3_ty = T.memref(3, 3, T.i16())
 
+            ofifo_line_bytes_ty = TypeAttr.get(ObjectFifoType.get(line_bytes_ty))
+            ofifo_line_ty = TypeAttr.get(ObjectFifoType.get(line_ty))
+
             # AIE Core Function declarations
             rgba2gray_line = external_func(
                 "rgba2grayLine", inputs=[line_bytes_ty, line_ty, T.i32()]
@@ -76,67 +79,83 @@ def edge_detect():
 
             # AIE-array data movement with object fifos
             # Input
-            inOF_L3L2 = object_fifo(
+            objectfifo(
                 "inOF_L3L2",
                 ShimTile,
                 [ComputeTile2, MemTile],
                 [2, 2, 7],
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            inOF_L2L1 = object_fifo(
+            objectfifo(
                 "inOF_L2L1",
                 MemTile,
-                ComputeTile5,
+                [ComputeTile5],
                 7,
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            object_fifo_link(inOF_L3L2, inOF_L2L1)
+            objectfifo_link(["inOF_L3L2"], ["inOF_L2L1"])
 
             # Output
-            outOF_L2L3 = object_fifo(
+            objectfifo(
                 "outOF_L2L3",
                 MemTile,
-                ShimTile,
+                [ShimTile],
                 2,
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            outOF_L1L2 = object_fifo(
+            objectfifo(
                 "outOF_L1L2",
                 ComputeTile5,
-                MemTile,
+                [MemTile],
                 2,
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
-            object_fifo_link(outOF_L1L2, outOF_L2L3)
+            objectfifo_link(["outOF_L1L2"], ["outOF_L2L3"])
 
             # Intermediate
-            OF_2to3 = object_fifo(
+            objectfifo(
                 "OF_2to3",
                 ComputeTile2,
-                ComputeTile3,
+                [ComputeTile3],
                 4,
-                line_ty,
+                ofifo_line_ty,
+                [],
+                [],
             )
-            OF_3to4 = object_fifo(
+            objectfifo(
                 "OF_3to4",
                 ComputeTile3,
-                ComputeTile4,
+                [ComputeTile4],
                 2,
-                line_ty,
+                ofifo_line_ty,
+                [],
+                [],
             )
-            OF_4to5 = object_fifo(
+            objectfifo(
                 "OF_4to5",
                 ComputeTile4,
-                ComputeTile5,
+                [ComputeTile5],
                 2,
-                line_ty,
+                ofifo_line_ty,
+                [],
+                [],
             )
-            OF_5to5 = object_fifo(
+            objectfifo(
                 "OF_5to5",
                 ComputeTile5,
-                ComputeTile5,
+                [ComputeTile5],
                 1,
-                line_bytes_ty,
+                ofifo_line_bytes_ty,
+                [],
+                [],
             )
 
             # Set up compute tiles
@@ -146,13 +165,17 @@ def edge_detect():
             def core_body():
                 for _ in for_(4294967295):
                     # for _ in for_(36):
-                    elem_in = inOF_L3L2.acquire(1)
-                    elem_out = OF_2to3.acquire(1)
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_2to3", 1, line_ty
+                    ).acquired_elem()
 
-                    call(rgba2gray_line, [elem_in, elem_out, arith.constant(lineWidth)])
+                    Call(rgba2gray_line, [elem_in, elem_out, arith.constant(lineWidth)])
 
-                    inOF_L3L2.release(1)
-                    OF_2to3.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_2to3", 1)
                     yield_([])
 
             # Compute tile 3
@@ -174,9 +197,13 @@ def edge_detect():
 
                 for _ in for_(4294967295):
                     # Preamble : Top Border
-                    elems_in_pre = OF_2to3.acquire(2)
-                    elem_pre_out = OF_3to4.acquire(1)
-                    call(
+                    elems_in_pre = acquire(
+                        ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
+                    ).acquired_elem()
+                    elem_pre_out = acquire(
+                        ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         filter2d_line,
                         [
                             elems_in_pre[0],
@@ -187,13 +214,17 @@ def edge_detect():
                             kernel,
                         ],
                     )
-                    OF_3to4.release(1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
                     # Steady State : Middle
                     for _ in for_(1, heightMinus1):
-                        elems_in = OF_2to3.acquire(3)
-                        elem_out = OF_3to4.acquire(1)
-                        call(
+                        elems_in = acquire(
+                            ObjectFifoPort.Consume, "OF_2to3", 3, line_ty
+                        ).acquired_elem()
+                        elem_out = acquire(
+                            ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
+                        ).acquired_elem()
+                        Call(
                             filter2d_line,
                             [
                                 elems_in[0],
@@ -204,14 +235,18 @@ def edge_detect():
                                 kernel,
                             ],
                         )
-                        OF_2to3.release(1)
-                        OF_3to4.release(1)
+                        objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
                         yield_([])
 
                     # Postamble : Bottom Border
-                    elems_in_post = OF_2to3.acquire(2)
-                    elem_post_out = OF_3to4.acquire(1)
-                    call(
+                    elems_in_post = acquire(
+                        ObjectFifoPort.Consume, "OF_2to3", 2, line_ty
+                    ).acquired_elem()
+                    elem_post_out = acquire(
+                        ObjectFifoPort.Produce, "OF_3to4", 1, line_ty
+                    ).acquired_elem()
+                    Call(
                         filter2d_line,
                         [
                             elems_in_post[0],
@@ -222,8 +257,8 @@ def edge_detect():
                             kernel,
                         ],
                     )
-                    OF_2to3.release(2)
-                    OF_3to4.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_2to3", 2)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_3to4", 1)
                     yield_([])
 
             # Compute tile 4
@@ -234,10 +269,14 @@ def edge_detect():
                 v_typ = arith.constant(0, T.i8())
 
                 for _ in for_(4294967295):
-                    elem_in = OF_3to4.acquire(1)
-                    elem_out = OF_4to5.acquire(1)
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "OF_3to4", 1, line_ty
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_4to5", 1, line_ty
+                    ).acquired_elem()
 
-                    call(
+                    Call(
                         threshold_line,
                         [
                             elem_in,
@@ -249,31 +288,41 @@ def edge_detect():
                         ],
                     )
 
-                    OF_3to4.release(1)
-                    OF_4to5.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_3to4", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_4to5", 1)
                     yield_([])
 
             # Compute tile 5
             @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
             def core_body():
                 for _ in for_(4294967295):
-                    elem_in = OF_4to5.acquire(1)
-                    elem_out = OF_5to5.acquire(1)
+                    elem_in = acquire(
+                        ObjectFifoPort.Consume, "OF_4to5", 1, line_ty
+                    ).acquired_elem()
+                    elem_out = acquire(
+                        ObjectFifoPort.Produce, "OF_5to5", 1, line_bytes_ty
+                    ).acquired_elem()
 
-                    call(gray2rgba_line, [elem_in, elem_out, arith.constant(lineWidth)])
+                    Call(gray2rgba_line, [elem_in, elem_out, arith.constant(lineWidth)])
 
-                    OF_4to5.release(1)
-                    OF_5to5.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_4to5", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
-                    elem_in1 = OF_5to5.acquire(1)
-                    elem_in2 = inOF_L2L1.acquire(1)
-                    elem_out2 = outOF_L1L2.acquire(1)
+                    elem_in1 = acquire(
+                        ObjectFifoPort.Consume, "OF_5to5", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elem_in2 = acquire(
+                        ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty
+                    ).acquired_elem()
+                    elem_out2 = acquire(
+                        ObjectFifoPort.Produce, "outOF_L1L2", 1, line_bytes_ty
+                    ).acquired_elem()
 
                     alpha = arith.constant(16384, T.i16())
                     beta = arith.constant(16384, T.i16())
                     gamma = arith.constant(0, T.i8())
 
-                    call(
+                    Call(
                         add_weighted_line,
                         [
                             elem_in1,
@@ -286,9 +335,9 @@ def edge_detect():
                         ],
                     )
 
-                    OF_5to5.release(1)
-                    inOF_L2L1.release(1)
-                    outOF_L1L2.release(1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_5to5", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
+                    objectfifo_release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
                     yield_([])
 
             # To/from AIE-array data movement
