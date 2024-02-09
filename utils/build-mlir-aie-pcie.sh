@@ -52,7 +52,6 @@ CMAKE_CONFIGS="\
     -DLibXAIE_x86_64-hsa_DIR=${LIBXAIE_DIR} \
     -Dhsa-runtime64_DIR=${HSA_DIR} \
     -Dhsakmt_DIR=${HSAKMT_DIR} \
-    -DROCR_DIR=${ROCR_DIR} \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
@@ -63,9 +62,8 @@ CMAKE_CONFIGS="\
     -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
-    -DAIE_RUNTIME_TARGETS=x86_64-hsa;aarch64 \
+    -DAIE_RUNTIME_TARGETS=x86_64-hsa \
     -DAIE_ENABLE_PYTHON_PASSES=OFF \
-    -DAIE_RUNTIME_TEST_TARGET=aarch64
     .. |& tee cmake.log"
 
 if [ -x "$(command -v lld)" ]; then

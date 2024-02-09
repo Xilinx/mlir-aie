@@ -692,7 +692,7 @@ class FlowRunner:
                 hsa_path = os.path.join(aie.compiler.aiecc.configure.hsa_dir)
                 hsa_include_path = os.path.join(hsa_path, "..", "..", "..", "include")
                 hsa_lib_path = os.path.join(hsa_path, "..", "..")
-                hsa_so_path = os.path.join(hsa_lib_path, "libhsa-runtime64.so.1.9.0")
+                hsa_so_path = os.path.join(hsa_lib_path, "libhsa-runtime64.so")
             else:
                 arch_name = opts.host_target.split("-")[0]
 
