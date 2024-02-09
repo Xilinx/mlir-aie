@@ -112,7 +112,7 @@ _A circuit-switched connection inside a switchbox_
 Syntax:
 
 ```
-operation ::= `aie.connect` `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
+operation ::= `aie.connect` `<` $source_bundle `:` $source_channel `,` $dest_bundle `:` $dest_channel `>` attr-dict
 ```
 
 This operation represents a programmed circuit-switched connection in a stream switch.
@@ -136,7 +136,7 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -147,8 +147,8 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -159,7 +159,7 @@ Traits: `HasParent<SwitchboxOp, ShimMuxOp>`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
 
@@ -208,7 +208,7 @@ Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileEle
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>stackSize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
@@ -303,7 +303,7 @@ _An op to describe a set of DMA operations._
 Syntax:
 
 ```
-operation ::= `aie.dma` `(` $channelDir `,` $channelIndex (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+operation ::= `aie.dma` `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
 ```
 
 
@@ -315,10 +315,10 @@ Interfaces: `InferTypeOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
 * S2MM (`S2MM`)
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
-<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
@@ -474,7 +474,7 @@ _An op to start DMA_
 Syntax:
 
 ```
-operation ::= `aie.dma_start` `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
+operation ::= `aie.dma_start` `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
 ```
 
 This operation declares a DMA channel to be used for data transfer. It usually exists inside
@@ -506,10 +506,10 @@ Interfaces: `InferTypeOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
 * S2MM (`S2MM`)
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
-<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
 #### Results:
@@ -613,7 +613,7 @@ _A logical circuit-switched connection between cores_
 Syntax:
 
 ```
-operation ::= `aie.flow` `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+operation ::= `aie.flow` `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
 ```
 
 The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
@@ -633,7 +633,7 @@ Example:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -644,8 +644,8 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -656,7 +656,7 @@ Example:
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
 #### Operands:
@@ -675,7 +675,7 @@ _An op to read from a cascading stream from a neighboring core_
 Syntax:
 
 ```
-operation ::= `aie.get_cascade` `(` `)` attr-dict `:` type($cascadeValue)
+operation ::= `aie.get_cascade` `(` `)` attr-dict `:` type($cascade_value)
 ```
 
 An op to read from a cascading stream from a neighboring core.
@@ -688,7 +688,7 @@ Traits: `HasParent<CoreOp>`
 
 | Result | Description |
 | :----: | ----------- |
-| `cascadeValue` | any type
+| `cascade_value` | any type
 
 
 ### `aie.get_stream` (::xilinx::AIE::GetStreamOp)
@@ -699,7 +699,7 @@ _An op to read from a stream channel/port of a switchbox_
 Syntax:
 
 ```
-operation ::= `aie.get_stream` `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
+operation ::= `aie.get_stream` `(` $channel `:` type($channel) `)` attr-dict `:` type($stream_value)
 ```
 
 An op to read from a stream channel/port of a switchbox.
@@ -716,7 +716,7 @@ Traits: `HasParent<CoreOp>`
 
 | Result | Description |
 | :----: | ----------- |
-| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+| `stream_value` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
 
 ### `aie.lock` (::xilinx::AIE::LockOp)
@@ -780,7 +780,7 @@ _Packet switched input connection_
 Syntax:
 
 ```
-operation ::= `aie.masterset` `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
+operation ::= `aie.masterset` `(` $dest_bundle `:` $dest_channel `,` $amsels `)` attr-dict
 ```
 
 A Packet switched connection inside a switchbox.
@@ -816,7 +816,7 @@ Interfaces: `InferTypeOpInterface`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -827,7 +827,7 @@ Interfaces: `InferTypeOpInterface`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>dest_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
 #### Operands:
@@ -1454,7 +1454,7 @@ _Packet switched routing rules_
 Syntax:
 
 ```
-operation ::= `aie.packet_rules` `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict
+operation ::= `aie.packet_rules` `(` $source_bundle `:` $source_channel `)` regions attr-dict
 ```
 
 This operation defines packet-switched routing configuration for packets entering a switchbox.
@@ -1470,7 +1470,7 @@ Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -1481,7 +1481,7 @@ Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>source_channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 </table>
 
 
@@ -1557,30 +1557,7 @@ Interfaces: `InferTypeOpInterface`
 &laquo;unnamed&raquo; | index
 
 
-### `aie.put_stream` (::xilinx::AIE::PutStreamOp)
-
-_An op to write to a stream channel/port of a switchbox_
-
-
-Syntax:
-
-```
-operation ::= `aie.put_stream` `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
-```
-
-An op to write to a stream channel/port of a switchbox.
-
-Traits: `HasParent<CoreOp>`
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `channel` | integer
-| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
-
-
-### `aie.putCascade` (::xilinx::AIE::PutCascadeOp)
+### `aie.put_cascade` (::xilinx::AIE::PutCascadeOp)
 
 _An op to write to a cascading stream from a neighboring core_
 
@@ -1588,7 +1565,7 @@ _An op to write to a cascading stream from a neighboring core_
 Syntax:
 
 ```
-operation ::= `aie.putCascade` `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
+operation ::= `aie.put_cascade` `(` $cascade_value `:` type($cascade_value) `)` attr-dict
 ```
 
 An op to write to a cascading stream from a neighboring core.
@@ -1601,7 +1578,30 @@ Traits: `HasParent<CoreOp>`
 
 | Operand | Description |
 | :-----: | ----------- |
-| `cascadeValue` | any type
+| `cascade_value` | any type
+
+
+### `aie.put_stream` (::xilinx::AIE::PutStreamOp)
+
+_An op to write to a stream channel/port of a switchbox_
+
+
+Syntax:
+
+```
+operation ::= `aie.put_stream` `(` $channel `:` type($channel) `,` $stream_value `:` type($stream_value) `)` attr-dict
+```
+
+An op to write to a stream channel/port of a switchbox.
+
+Traits: `HasParent<CoreOp>`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `channel` | integer
+| `stream_value` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
 
 ### `aie.rule` (::xilinx::AIE::PacketRuleOp)
@@ -1718,7 +1718,7 @@ _Runtime allocation information for a single shim DMA_
 Syntax:
 
 ```
-operation ::= `aie.shim_dma_allocation` $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+operation ::= `aie.shim_dma_allocation` $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
 ```
 
 This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -1747,10 +1747,10 @@ Traits: `HasParent<DeviceOp>`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>channelDir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+<tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
 * S2MM (`S2MM`)
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
-<tr><td><code>channelIndex</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 </table>
 
@@ -1960,7 +1960,7 @@ _A bundle of physical wires between components_
 Syntax:
 
 ```
-operation ::= `aie.wire` `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
+operation ::= `aie.wire` `(` $source `:` $source_bundle `,` $dest `:` $dest_bundle `)` attr-dict
 ```
 
 The `aie.wire` operation represents a physical set of connections between components in a Versal device.
@@ -1971,7 +1971,7 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>source_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
@@ -1982,7 +1982,7 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 * PLIO (`PLIO`)
 * NOC (`NOC`)
 * Trace (`Trace`){{% /markdown %}}</details></td></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+<tr><td><code>dest_bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
 * Core (`Core`)
 * DMA (`DMA`)
 * FIFO (`FIFO`)
