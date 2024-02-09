@@ -116,7 +116,7 @@ flattenedStridedExpr(llvm::ArrayRef<int64_t> sizes,
   if (is_contained(sizes, 0))
     return getAffineConstantExpr(0, context);
 
-  auto maps = mlir::AffineMap::inferFromExprList(exprs);
+  auto maps = mlir::AffineMap::inferFromExprList(exprs, context);
   if (maps.empty())
     return nullptr;
 
