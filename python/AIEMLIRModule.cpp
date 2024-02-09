@@ -89,20 +89,21 @@ PYBIND11_MODULE(_aie, m) {
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   py::enum_<byte_ordering>(m, "byte_ordering")
-      .value("Little_Endian", byte_ordering::Little_Endian)
-      .value("Big_Endian", byte_ordering::Big_Endian);
+      .value("Little_Endian", Little_Endian)
+      .value("Big_Endian", Big_Endian);
 
   m.def(
       "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath,
-         byte_ordering endianness, bool emitUnified, bool axiDebug,
-         bool aieSim) {
+         byte_ordering endianness, bool emitUnified, bool axiDebug, bool aieSim,
+         size_t partitionStartCol) {
         aieTranslateToCDODirect(op, {workDirPath.data(), workDirPath.size()},
-                                endianness, emitUnified, axiDebug, aieSim);
+                                endianness, emitUnified, axiDebug, aieSim,
+                                partitionStartCol);
       },
-      "module"_a, "work_dir_path"_a,
-      "endianness"_a = byte_ordering::Little_Endian, "emit_unified"_a = false,
-      "axi_debug"_a = false, "aiesim"_a = false);
+      "module"_a, "work_dir_path"_a, "endianness"_a = Little_Endian,
+      "emit_unified"_a = false, "axi_debug"_a = false, "aiesim"_a = false,
+      "partition_start_col"_a = 1);
 #endif
 
   m.def(

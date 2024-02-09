@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-import random
-import sys
-
 # RUN: export BASENAME="$(basename %s .py)"
 # RUN: rm -rf "$BASENAME" && mkdir "$BASENAME" && cd "$BASENAME"
 # RUN: VITIS_DIR="$VITIS" WORKDIR="$PWD" XRT_DIR="%XRT_DIR" %PYTHON %s
 
+
+import random
+import sys
 
 from aie.extras.dialects.ext import arith, func, linalg
 from filelock import FileLock
@@ -38,7 +38,7 @@ Release = LockAction.Release
 
 
 # CHECK-LABEL: systolic_vec_add
-@construct_and_print_module
+# @construct_and_print_module
 def systolic_vec_add(module):
     K = 32
     tiles = 1
@@ -281,7 +281,7 @@ def systolic_vec_add(module):
 
 
 # CHECK-LABEL: max_result_args
-@construct_and_print_module
+# @construct_and_print_module
 def max_result_args(module):
     K = 32
     tiles = 1
@@ -414,7 +414,7 @@ def max_result_args(module):
 
 
 # CHECK-LABEL: max_input_and_output_args
-@construct_and_print_module
+# @construct_and_print_module
 def max_input_and_output_args(module):
     K = 32
     tiles = 1
@@ -603,3 +603,112 @@ def max_input_and_output_args(module):
             wrap_C = np.asarray(c)
             print(f"a={wrap_A}")
             print(f"c={wrap_C}")
+
+
+# CHECK-LABEL: zeroth_column
+@construct_and_print_module
+def zeroth_column(module):
+    RANDOM_NUMBER = random.randint(1, 100)
+    print(RANDOM_NUMBER)
+    K = 32
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        shim_tile = aie.tile(1, 0)
+        mem_tile = aie.tile(0, 1)
+        compute_tile = aie.tile(0, 2)
+
+        # output flow
+        output_c_tile_row_2_to_tile_row_1 = aie.flow(
+            compute_tile, DMA, 0, mem_tile, DMA, 2
+        )
+        output_c_tile_row_1_to_tile_row_0 = aie.flow(
+            mem_tile, DMA, 2, shim_tile, DMA, 0
+        )
+
+        @aie.memtile_dma(mem_tile)
+        def memtile_dma_0_1():
+            buffer_row_1_c = aie.buffer(T.memref(K, T.i32()), mem_tile)
+            aiex.forward_bd(
+                mem_tile,
+                output_c_tile_row_1_to_tile_row_0.source_channel,
+                buffer_row_1_c,
+            )
+            aie.end()
+
+        # out
+        buffer_row_2_c = aie.buffer(T.memref(K, T.i32()), compute_tile)
+        lock_row_2_use_c = aie.lock(compute_tile, lock_id=4, init=1)
+        lock_row_2_write_out_c = aie.lock(compute_tile, lock_id=5, init=0)
+
+        @aie.mem(compute_tile)
+        def mem_row_2():
+            # output
+            @aie.dma(MM2S, output_c_tile_row_2_to_tile_row_1.source_channel)
+            def dma3():
+                aiex.process_bd(
+                    lock_row_2_write_out_c, buffer_row_2_c, lock_row_2_use_c
+                )
+
+            aie.end()
+
+        @aie.core(compute_tile)
+        def core():
+            with aiex.hold_lock(lock_row_2_use_c, lock_row_2_write_out_c):
+                linalg_fill(
+                    arith.constant(RANDOM_NUMBER),
+                    outs=[buffer_row_2_c],
+                )
+
+        @func.func(emit=True)
+        def bobsyouruncle():
+            ddr_id = 0
+            offset = 0
+            bd_id = 0
+            # out C
+            aiex.ipu.writebd_shimtile(
+                bd_id=bd_id,
+                column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
+                buffer_length=K,
+                offset=offset,
+                ddr_id=ddr_id,
+            )
+            aiex.ipu.write32(
+                channel_dir=S2MM,
+                channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
+                column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
+                bd_id=bd_id,
+            )
+            aiex.ipu.sync(
+                channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
+                column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
+                column_num=1,
+                direction=0,
+                row=0,
+                row_num=1,
+            )
+            ddr_id += 1
+
+    ipu_insts = compile_without_vectorization(module, partition_start_col=0)
+    buffer_args = ["output"]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json, start_columns=[0])
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        xclbin.load_ipu_instructions(ipu_insts)
+        views = xclbin.mmap_buffers([(K,)], np.int32)
+        assert len(views) == 1
+        view = views[0]
+
+        wrap_view = np.asarray(view)
+        C = np.zeros((K,), dtype=np.int32)
+        np.copyto(wrap_view, C, casting="no")
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+    with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+        print(f"{wrap_view=}")

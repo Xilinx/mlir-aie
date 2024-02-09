@@ -196,8 +196,6 @@ auto ps = std::filesystem::path::preferred_separator;
 #define ODD_BD_NUM_START 24
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
-#define PARTITION_START_COL 1
-#define PARTITION_NUM_COLS 1
 
 namespace xilinx::AIE {
 
@@ -329,7 +327,8 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(size_t partitionNumCols, bool aieSim, const AIETargetModel &tm) {
+  AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
+             const AIETargetModel &tm) {
     configPtr = XAie_Config{
         .AieGen = XAIE_DEV_GEN_AIEML,
         .BaseAddr = XAIE_BASE_ADDR,
@@ -357,7 +356,7 @@ struct AIEControl {
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
-                             XAIE_PARTITION_BASE_ADDR, PARTITION_START_COL,
+                             XAIE_PARTITION_BASE_ADDR, partitionStartCol,
                              partitionNumCols);
     TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
     if (aieSim) {
@@ -587,9 +586,10 @@ struct AIEControl {
 
     // StreamSwitch (switchbox) configuration
     for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
-      XAie_LocType tileLoc = XAie_TileLoc(switchboxOp.getTileOp().getCol(),
-                                          switchboxOp.getTileOp().getRow());
-      if (switchboxOp.rowIndex() == 0) {
+      int32_t col = switchboxOp.getTileOp().getCol();
+      int32_t row = switchboxOp.getTileOp().getRow();
+      XAie_LocType tileLoc = XAie_TileLoc(col, row);
+      if (row == 0 && col != 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
         auto slvPortNum = 0;
@@ -790,7 +790,7 @@ namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool axiDebug,
-                                      bool aieSim) {
+                                      bool aieSim, size_t partitionStartCol) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -800,7 +800,8 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
     minCol = std::min(tileOp.getCol(), minCol);
     maxCol = std::max(tileOp.getCol(), maxCol);
   }
-  AIEControl ctl(/*partitionNumCols*/ maxCol - minCol + 1, aieSim,
+  size_t partitionNumCols = maxCol - minCol + 1;
+  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim,
                  targetOp.getTargetModel());
   initializeCDOGenerator(endianness, axiDebug);
   if (emitUnified)

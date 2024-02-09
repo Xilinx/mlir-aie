@@ -180,7 +180,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901"):
+def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
         tiles = find_ops(
@@ -190,8 +190,11 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
         min_col = min([t.col.value for t in tiles])
         max_col = max([t.col.value for t in tiles])
 
-    uuid = random.randint(2222, 9999)
     num_cols = max_col - min_col + 1
+    if start_columns is None:
+        start_columns = list(range(1, 6 - num_cols))
+
+    uuid = random.randint(2222, 9999)
     return {
         "aie_partition": {
             "name": "QoS",
@@ -200,7 +203,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
             "pre_post_fingerprint": "12345",
             "partition": {
                 "column_width": num_cols,
-                "start_columns": [*range(1, 6 - num_cols)],
+                "start_columns": start_columns,
             },
             "PDIs": [
                 {

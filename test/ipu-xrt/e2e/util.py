@@ -267,11 +267,15 @@ def make_design_pdi():
     _run_command(cmd)
 
 
-def make_xclbin(module, name="final", kernel_json=None):
+def make_xclbin(module, name="final", kernel_json=None, start_columns=None):
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)
     with open(WORKDIR / "aie_partition.json", "w") as f:
-        json.dump(emit_partition(str(module)), f, indent=2)
+        json.dump(
+            emit_partition(str(module), start_columns=start_columns),
+            f,
+            indent=2,
+        )
     if kernel_json is None:
         kernel_json = emit_design_kernel_json()
     with open(WORKDIR / "kernels.json", "w") as f:
@@ -311,7 +315,7 @@ def _global_debug(debug):
     _GlobalDebug.flag = False
 
 
-def compile_with_vectorization(mod_aie, mod_aievec, debug=False):
+def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start_col=1):
     aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
 
@@ -341,14 +345,18 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False):
         make_core_elf(core_bcf)
 
     with _global_debug(debug):
-        generate_cdo(input_physical.operation, str(WORKDIR))
+        generate_cdo(
+            input_physical.operation,
+            str(WORKDIR),
+            partition_start_col=partition_start_col,
+        )
 
     make_design_pdi()
 
     return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
 
 
-def compile_without_vectorization(module, debug=False):
+def compile_without_vectorization(module, debug=False, partition_start_col=1):
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
         module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
@@ -368,7 +376,11 @@ def compile_without_vectorization(module, debug=False):
         make_core_elf(core_bcf)
 
     with _global_debug(debug):
-        generate_cdo(input_physical.operation, str(WORKDIR))
+        generate_cdo(
+            input_physical.operation,
+            str(WORKDIR),
+            partition_start_col=partition_start_col,
+        )
 
     make_design_pdi()
 
