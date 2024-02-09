@@ -1819,6 +1819,7 @@ def SingleBottleneck_x3_projected_without_bn(num_classes):
     )
 
 
+
 # #  oneroof demo
 def Resnet50ACDC(num_classes):
     return CombinedModel(
