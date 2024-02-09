@@ -1153,7 +1153,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
               } // for(int i=kernel_height_start; i<kernel_height_end; i++) { //
                 // 1 to 3
-          } // for(int ic=0; ic<(input_channels/8); ic++) {
+          }     // for(int ic=0; ic<(input_channels/8); ic++) {
         for (int x = 0; x < 8; x++)
           chess_unroll_loop() chess_loop_range(8, 8) {
             aie::vector<uint8, 32> o1 = acc_tmp[x].to_vector<uint8>(scale);
