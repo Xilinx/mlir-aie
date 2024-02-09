@@ -257,10 +257,12 @@ memtile_dma = region_op(
 
 @region_op
 def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
     return DMAOp(
         valid=T.bool(),
-        channelDir=channel_dir,
-        channelIndex=channel_index,
+        channel_dir=channel_dir,
+        channel_index=channel_index,
         num_bds=num_blocks,
         loop=loop,
         loc=loc,
@@ -371,3 +373,8 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         loc=loc,
         ip=ip,
     )
+
+
+_flow = flow
+
+flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview

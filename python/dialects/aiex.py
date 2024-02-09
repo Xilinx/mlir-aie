@@ -4,10 +4,11 @@ from contextlib import contextmanager
 from functools import partial
 
 from ._aiex_ops_gen import *
-from .aie import DMAChannelDir, WireBundle, LockAction, use_lock, dma_bd, dma, lock
+from .aie import DMAChannelDir, LockAction, use_lock, dma_bd, dma, lock
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
+from ..ir import IntegerAttr
 
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -73,6 +74,8 @@ _generated_ipu_write32 = ipu_write32
 
 
 def ipu_write32(channel_dir, channel_index, col, bd_id, repeats=0):
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
     if channel_dir == DMAChannelDir.MM2S:
         address = XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE
     else:
@@ -155,6 +158,13 @@ def ipu_writebd_shimtile(
     )
 
 
+class ipu:
+    write32 = ipu_write32
+    writebd_shimtile = ipu_writebd_shimtile
+    dma_memcpy_nd = ipu_dma_memcpy_nd
+    sync = ipu_sync
+
+
 def process_bd(
     acq_lock,
     buffer,
@@ -170,6 +180,8 @@ def process_bd(
 
 
 def forward_bd(tile, channel_idx, buffer, read_in_lock=None, write_out_lock=None):
+    if isinstance(channel_idx, IntegerAttr):
+        channel_idx = channel_idx.value
     if read_in_lock is None:
         read_in_lock = lock(tile, init=1)
     if write_out_lock is None:

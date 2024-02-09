@@ -11,77 +11,35 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-import numpy as np
 from aie.extras.context import ExplicitlyManagedModule
 from aie.extras.dialects.ext import arith, func, linalg
-from aie.extras.runtime.passes import run_pipeline, Pipeline
+from aie.extras.runtime.passes import Pipeline, run_pipeline
 from aie.extras.util import find_ops
 from filelock import FileLock
+import numpy as np
 
-import aie.extras.types as T
-import util
-from aie.compiler.aiecc.main import (
-    generate_cores_list,
-    chesshack,
-)
-from aie.dialects import aie, builtin, pdl
+from aie.dialects import aie, aiex, builtin, pdl
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
-    device,
-    generate_bcf,
-    generate_cdo,
-    ipu_instgen,
-    mem,
-    memtile_dma,
-    tile,
-    translate_mlir_to_llvmir,
-    translate_aie_vec_to_cpp,
-    dma,
 )
-from aie.dialects.aiex import ipu_sync
-from aie.dialects.linalg.opdsl.ops.core_named_ops import fill
-from aie.dialects.scf import for_, yield_
-from aie.dialects.transform import (
-    get_parent_op,
-    apply_registered_pass,
-    any_op_t,
-)
+from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
+from aie.dialects.scf import for_ as range_, yield_
+from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.structured import structured_match
+import aie.extras.types as T
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
 from util import (
-    chess_compile,
-    make_core_elf,
-    make_design_pdi,
+    compile_with_vectorization,
+    construct_and_print_module,
     make_xclbin,
     setup_xclbin_firmware,
-    chess_compile_cpp_to_ll,
-    chess_llvm_link,
-    construct_and_print_module,
 )
-
-from aie.compiler.aiecc.main import (
-    INPUT_WITH_ADDRESSES_PIPELINE,
-    AIE_LOWER_TO_LLVM,
-    CREATE_PATH_FINDER_FLOWS,
-    DMA_TO_IPU,
-)
-
-from aie.dialects.aiex import (
-    ipu_writebd_shimtile,
-    ipu_write32,
-    forward_bd,
-    process_bd,
-    hold_lock,
-)
-
-range_ = for_
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -109,12 +67,12 @@ def vec_add_i32_i32(
 def vec_add_vectorized(_module):
     mod_aie = ExplicitlyManagedModule()
 
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         vec_add_i32_i32.emit(decl=True)
-        tile_0_0 = tile(0, 0)
-        tile_0_1 = tile(0, 1)
-        tile_0_2 = tile(0, 2)
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
 
         # in
         buffer_0_2_a = aie.buffer(T.memref(k, T.i32()), tile_0_2)
@@ -157,40 +115,40 @@ def vec_add_vectorized(_module):
             ddr_id = 0
             offsets = list(range(0, K, k))
             for i, bd_id in enumerate(range(tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # in B
             channel_index = 1
             col = 0
             ddr_id = 1
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # out C
             channel_index = 0
             col = 0
             ddr_id = 2
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(S2MM, channel_index, col, bd_id)
-                ipu_sync(
+                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+                aiex.ipu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -199,7 +157,7 @@ def vec_add_vectorized(_module):
                     row_num=1,
                 )
 
-        @memtile_dma(tile_0_1)
+        @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
             buffer_0_1_a = aie.buffer(T.memref(k, T.i32()), tile_0_1)
@@ -207,37 +165,37 @@ def vec_add_vectorized(_module):
             # output flow
             buffer_0_1_c = aie.buffer(T.memref(k, T.i32()), tile_0_1)
 
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
                 aie.use_lock(lock_0_1_read_in_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
 
-            @dma(MM2S, 0)
+            @aie.dma(MM2S, 0)
             def dma2():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_read_in_a, Release)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma3():
                 aie.use_lock(lock_0_1_read_in_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_b)
                 aie.use_lock(lock_0_1_write_out_b, Release)
 
-            @dma(MM2S, 1)
+            @aie.dma(MM2S, 1)
             def dma4():
                 aie.use_lock(lock_0_1_write_out_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_b)
                 aie.use_lock(lock_0_1_read_in_b, Release)
 
-            @dma(S2MM, 2)
+            @aie.dma(S2MM, 2)
             def dma5():
                 aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
                 aie.use_lock(lock_0_1_write_out_c, Release)
 
-            @dma(MM2S, 2)
+            @aie.dma(MM2S, 2)
             def dma6():
                 aie.use_lock(lock_0_1_write_out_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
@@ -245,23 +203,23 @@ def vec_add_vectorized(_module):
 
             aie.end()
 
-        @mem(tile_0_2)
+        @aie.mem(tile_0_2)
         def mem_0_2():
             # input
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
                 aie.use_lock(lock_0_2_read_in_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_a)
                 aie.use_lock(lock_0_2_use_a, Release)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma2():
                 aie.use_lock(lock_0_2_read_in_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_b)
                 aie.use_lock(lock_0_2_use_b, Release)
 
             # output
-            @dma(MM2S, 0)
+            @aie.dma(MM2S, 0)
             def dma3():
                 aie.use_lock(lock_0_2_write_out_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_c)
@@ -278,7 +236,7 @@ def vec_add_vectorized(_module):
                 aie.use_lock(lock_0_2_use_b, AcquireGreaterEqual)
                 aie.use_lock(lock_0_2_use_c, AcquireGreaterEqual)
 
-                fill(arith.constant(0), outs=[buffer_0_2_c])
+                linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                 vec_add_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
                 aie.use_lock(lock_0_2_read_in_a, Release)
@@ -353,43 +311,8 @@ def vec_add_vectorized(_module):
         lambda x: "transform.target_tag" in x.attributes,
         single=True,
     )
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
-    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
-    print(aievec_cpp)
-
-    input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
-    aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-
-    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp)
-    # this is wonky because it's already on disk but oh well...
-    with open(
-        Path(__file__).parent / "chess_intrinsic_wrapper.ll"
-    ) as chess_intrinsic_wrapper_ll:
-        fullylinked_ll = chess_llvm_link(
-            chesshack(aie_ll),
-            aievec_ll,
-            chess_intrinsic_wrapper_ll.read(),
-            input_prefixes=["aie_input", "aievec_input", "chess_intrinsic_wrapper"],
-        )
-
-        chess_compile(fullylinked_ll)
-
-        generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-
-        [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-        make_core_elf(core_bcf)
-
-        # _GlobalDebug.flag = True
-        generate_cdo(input_physical.operation, str(util.WORKDIR))
-        # _GlobalDebug.flag = False
-        make_design_pdi()
-
-        xclbin_path = make_xclbin(mod_aie)
-
-    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+    ipu_insts = compile_with_vectorization(mod_aie, mod_aievec)
+    xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
 
@@ -419,6 +342,7 @@ def vec_add_vectorized(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: vec_add_vectorized_sugar
@@ -426,12 +350,12 @@ def vec_add_vectorized(_module):
 def vec_add_vectorized_sugar(_module):
     mod_aie = ExplicitlyManagedModule()
 
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         vec_add_i32_i32.emit(decl=True)
-        tile_0_0 = tile(0, 0)
-        tile_0_1 = tile(0, 1)
-        tile_0_2 = tile(0, 2)
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
 
         # in
         buffer_0_2_a = aie.buffer(T.memref(k, T.i32()), tile_0_2)
@@ -465,40 +389,40 @@ def vec_add_vectorized_sugar(_module):
             ddr_id = 0
             offsets = list(range(0, K, k))
             for i, bd_id in enumerate(range(tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # in B
             channel_index = 1
             col = 0
             ddr_id = 1
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # out C
             channel_index = 0
             col = 0
             ddr_id = 2
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=k,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(S2MM, channel_index, col, bd_id)
-                ipu_sync(
+                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+                aiex.ipu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -507,7 +431,7 @@ def vec_add_vectorized_sugar(_module):
                     row_num=1,
                 )
 
-        @memtile_dma(tile_0_1)
+        @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
             buffer_0_1_a = aie.buffer(T.memref(k, T.i32()), tile_0_1)
@@ -515,28 +439,28 @@ def vec_add_vectorized_sugar(_module):
             # output flow
             buffer_0_1_c = aie.buffer(T.memref(k, T.i32()), tile_0_1)
 
-            forward_bd(tile_0_1, 0, buffer_0_1_a)
-            forward_bd(tile_0_1, 1, buffer_0_1_b)
+            aiex.forward_bd(tile_0_1, 0, buffer_0_1_a)
+            aiex.forward_bd(tile_0_1, 1, buffer_0_1_b)
             # output flow
-            forward_bd(tile_0_1, 2, buffer_0_1_c)
+            aiex.forward_bd(tile_0_1, 2, buffer_0_1_c)
 
             aie.end()
 
-        @mem(tile_0_2)
+        @aie.mem(tile_0_2)
         def mem_0_2():
             # input
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
-                process_bd(lock_0_2_read_in_a, buffer_0_2_a, lock_0_2_use_a)
+                aiex.process_bd(lock_0_2_read_in_a, buffer_0_2_a, lock_0_2_use_a)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma2():
-                process_bd(lock_0_2_read_in_b, buffer_0_2_b, lock_0_2_use_b)
+                aiex.process_bd(lock_0_2_read_in_b, buffer_0_2_b, lock_0_2_use_b)
 
             # output
-            @dma(MM2S, 0)
+            @aie.dma(MM2S, 0)
             def dma3():
-                process_bd(lock_0_2_write_out_c, buffer_0_2_c, lock_0_2_use_c)
+                aiex.process_bd(lock_0_2_write_out_c, buffer_0_2_c, lock_0_2_use_c)
 
             aie.end()
 
@@ -544,14 +468,14 @@ def vec_add_vectorized_sugar(_module):
         def core():
             for _ in range_(0, tiles):
                 with (
-                    hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
-                    hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                    hold_lock(
+                    aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
+                    aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
+                    aiex.hold_lock(
                         lock_0_2_use_c,
                         lock_0_2_write_out_c,
                     ),
                 ):
-                    fill(arith.constant(0), outs=[buffer_0_2_c])
+                    linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                     vec_add_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
                 yield_([])
 
@@ -622,43 +546,9 @@ def vec_add_vectorized_sugar(_module):
         lambda x: "transform.target_tag" in x.attributes,
         single=True,
     )
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
-    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
-    print(aievec_cpp)
 
-    input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
-    aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-
-    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp)
-    # this is wonky because it's already on disk but oh well...
-    with open(
-        Path(__file__).parent / "chess_intrinsic_wrapper.ll"
-    ) as chess_intrinsic_wrapper_ll:
-        fullylinked_ll = chess_llvm_link(
-            chesshack(aie_ll),
-            aievec_ll,
-            chess_intrinsic_wrapper_ll.read(),
-            input_prefixes=["aie_input", "aievec_input", "chess_intrinsic_wrapper"],
-        )
-
-        chess_compile(fullylinked_ll)
-
-        generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-
-        [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-        make_core_elf(core_bcf)
-
-        # _GlobalDebug.flag = True
-        generate_cdo(input_physical.operation, str(util.WORKDIR))
-        # _GlobalDebug.flag = False
-        make_design_pdi()
-
-        xclbin_path = make_xclbin(mod_aie)
-
-    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+    ipu_insts = compile_with_vectorization(mod_aie, mod_aievec)
+    xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
 
@@ -688,3 +578,4 @@ def vec_add_vectorized_sugar(_module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A + B)
                 print(wrap_C)
+                assert False

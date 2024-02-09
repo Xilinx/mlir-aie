@@ -25,7 +25,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
+template <typename MyOp>
+struct AIEOpRemoval : OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
@@ -746,22 +747,15 @@ struct AIERoutePacketFlowsPass
             Block &b0 = r0.front();
             builder.setInsertionPointToStart(&b0);
 
-            pktrules->removeAttr("sourceBundle");
-            pktrules->setAttr(
-                "sourceBundle",
-                builder.getI32IntegerAttr(3)); // WireBundle::South
+            pktrules.setSourceBundle(WireBundle::South);
             if (pktrules.getSourceChannel() == 0) {
-              pktrules->removeAttr("sourceChannel");
-              pktrules->setAttr("sourceChannel",
-                                builder.getI32IntegerAttr(3)); // Channel 3
+              pktrules.setSourceChannel(3);
               builder.create<ConnectOp>(builder.getUnknownLoc(),
                                         WireBundle::DMA, 0, WireBundle::North,
                                         3);
             }
             if (pktrules.getSourceChannel() == 1) {
-              pktrules->removeAttr("sourceChannel");
-              pktrules->setAttr("sourceChannel",
-                                builder.getI32IntegerAttr(7)); // Channel 7
+              pktrules.setSourceChannel(7);
               builder.create<ConnectOp>(builder.getUnknownLoc(),
                                         WireBundle::DMA, 1, WireBundle::North,
                                         7);
@@ -791,21 +785,15 @@ struct AIERoutePacketFlowsPass
             Block &b0 = r0.front();
             builder.setInsertionPointToStart(&b0);
 
-            mtset->removeAttr("destBundle");
-            mtset->setAttr("destBundle",
-                           builder.getI32IntegerAttr(3)); // WireBundle::South
+            mtset.setDestBundle(WireBundle::South);
             if (mtset.getDestChannel() == 0) {
-              mtset->removeAttr("destChannel");
-              mtset->setAttr("destChannel",
-                             builder.getI32IntegerAttr(2)); // Channel 2
+              mtset.setDestChannel(2);
               builder.create<ConnectOp>(builder.getUnknownLoc(),
                                         WireBundle::North, 2, WireBundle::DMA,
                                         0);
             }
             if (mtset.getDestChannel() == 1) {
-              mtset->removeAttr("destChannel");
-              mtset->setAttr("destChannel",
-                             builder.getI32IntegerAttr(3)); // Channel 3
+              mtset.setDestChannel(3);
               builder.create<ConnectOp>(builder.getUnknownLoc(),
                                         WireBundle::North, 3, WireBundle::DMA,
                                         1);

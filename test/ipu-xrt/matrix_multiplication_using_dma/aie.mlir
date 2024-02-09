@@ -12,12 +12,12 @@ module {
     memref.global "public" @inA_cons : memref<64x32xi16>
     memref.global "public" @inB : memref<32x64xi16>
     memref.global "public" @inB_cons : memref<32x64xi16>
-    memref.global "public" @memA : memref<64x32xi16>
-    memref.global "public" @memA_cons : memref<64x32xi16>
-    memref.global "public" @memB : memref<32x64xi16>
-    memref.global "public" @memB_cons : memref<32x64xi16>
-    memref.global "public" @memC : memref<64x64xi16>
-    memref.global "public" @memC_cons : memref<64x64xi16>
+    memref.global "public" @aie.memA : memref<64x32xi16>
+    memref.global "public" @aie.memA_cons : memref<64x32xi16>
+    memref.global "public" @aie.memB : memref<32x64xi16>
+    memref.global "public" @aie.memB_cons : memref<32x64xi16>
+    memref.global "public" @aie.memC : memref<64x64xi16>
+    memref.global "public" @aie.memC_cons : memref<64x64xi16>
     memref.global "public" @outC : memref<64x64xi16>
     memref.global "public" @outC_cons : memref<64x64xi16>
 

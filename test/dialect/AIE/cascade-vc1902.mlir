@@ -16,7 +16,7 @@ module @test {
     %t33 = aie.tile(3, 3)
     %c33 = aie.core(%t33) {
       %val2 = aie.get_cascade() : i384
-      aie.putCascade(%val2: i384)
+      aie.put_cascade(%val2: i384)
       aie.end
     }
   }
