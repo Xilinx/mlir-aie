@@ -1104,7 +1104,7 @@ _Acquire operation to lock and return objects of an ObjectFifo_
 Syntax:
 
 ```
-operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `(` ($port^ `,`)? $size `)` `:` type($subview)
+operation ::= `aie.objectfifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
 ```
 
 The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
@@ -1299,7 +1299,7 @@ _Release operation for object locks in an ObjectFifo_
 Syntax:
 
 ```
-operation ::= `aie.objectfifo.release` attr-dict $objFifo_name `(` ($port^ `,`)? $size `)`
+operation ::= `aie.objectfifo.release` attr-dict $objFifo_name `(` $port `,` $size `)`
 ```
 
 The `aie.objectFifo.release` operation releases the locks of the given number of objects
