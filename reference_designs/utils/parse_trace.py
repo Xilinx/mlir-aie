@@ -205,9 +205,9 @@ def convert_to_commands(byte_stream_list, zero=True):
                         for i in range(0, 8):
                             e = (events >> i) & 0b1
                             if e:
-                                com[
-                                    "event" + str(i)
-                                ] = i  # TODO is this how event# is stored in IR?
+                                com["event" + str(i)] = (
+                                    i  # TODO is this how event# is stored in IR?
+                                )
                         commands[t][key].append(com)
                         cursor = cursor + 2
                     if (byte_stream[cursor] & 0b11111100) == 0b11010000:
