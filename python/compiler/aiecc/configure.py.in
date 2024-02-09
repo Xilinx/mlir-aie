@@ -16,9 +16,8 @@ aie_disable_compile = not pythonize_bool("@AIECC_COMPILE@")
 aie_unified_compile = True
 host_disable_compile = not pythonize_bool("@AIECC_HOST_COMPILE@")
 host_architecture = os.getenv("LLVM_HOST_TRIPLE", "@LLVM_HOST_TRIPLE@")
-hsa_dir = "@hsa-runtime64_DIR@"
-libxaie_x86_hsa_dir = "@LibXAIE_x86_64-hsa_DIR@"
-peano_install_dir = "@CONFIG_PEANO_INSTALL_DIR@"
+hsa_dir = os.getenv("HSA_RUNTIME_64_DIR", "@hsa-runtime64_DIR@")
+libxaie_x86_hsa_dir = os.getenv("LIBXAIE_X86_HSA_DIR", "@LibXAIE_x86_64-hsa_DIR@")
 
 peano_install_dir = os.getenv("PEANO_INSTALL_DIR", "@PEANO_INSTALL_DIR@")
 aie_dir = os.path.realpath(
