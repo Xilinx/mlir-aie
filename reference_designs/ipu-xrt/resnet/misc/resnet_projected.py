@@ -1792,7 +1792,6 @@ def SingleBottleneck_x3_projected_with_bn(num_classes):
 #                               PostConv2dLayers(Bottleneck_projected, [2,2,2],num_classes))
 
 
-
 def SingleBottleneck_x1_projected_without_bn(num_classes):
     return CombinedModel(
         NonAIELayerInitial(),
