@@ -37,6 +37,7 @@ config.suffixes = [".mlir", ".py"]
 config.test_source_root = os.path.dirname(__file__)
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
+config.substitutions.append(("%AIE_SRC_ROOT", config.aie_src_root))
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -73,18 +74,21 @@ if config.xrt_lib_dir:
             [xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         result = result.stdout.decode("utf-8").split("\n")
-        p = re.compile("\[.+:.+:.+\].+Phoenix.+Yes")
+        p = re.compile("\[.+:.+:.+\].+Phoenix")
         for l in result:
             m = p.match(l)
             if m:
                 print("Found Ryzen AI device:", m.group().split()[0])
                 config.available_features.add("ryzen_ai")
-                run_on_ipu = "flock /tmp/ipu.lock /opt/xilinx/run_on_ipu.sh"
+                run_on_ipu = (
+                    f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
+                )
     except:
         print("Failed to run xbutil")
         pass
 else:
     print("xrt not found")
+
 config.substitutions.append(("%run_on_ipu", run_on_ipu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
@@ -142,6 +146,9 @@ if config.vitis_root:
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 prepend_path(config.llvm_tools_dir)
 prepend_path(peano_tools_dir)
+# Certainly the prepend works but I would rather be explicit
+config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+
 prepend_path(config.aie_tools_dir)
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]

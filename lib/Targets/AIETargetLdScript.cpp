@@ -64,11 +64,7 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
                                                   int tileCol, int tileRow) {
   DenseMap<TileID, Operation *> tiles;
-  DenseMap<Operation *, CoreOp> cores;
-  DenseMap<Operation *, MemOp> mems;
-  DenseMap<std::pair<Operation *, int>, LockOp> locks;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-  DenseMap<Operation *, SwitchboxOp> switchboxes;
 
   if (module.getOps<DeviceOp>().empty()) {
     module.emitOpError("expected AIE.device operation at toplevel");

@@ -36,7 +36,7 @@ from util import construct_and_print_module
 @construct_and_print_module
 def simple_with_bindings_example():
     dev = Device(AIEDevice.xcve2802)
-    dev_block = Block.create_at_start(dev.bodyRegion)
+    dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         tile_a = tile(1, 4)
         buff = Buffer(tile=tile_a, size=(256,), datatype=T.i32())

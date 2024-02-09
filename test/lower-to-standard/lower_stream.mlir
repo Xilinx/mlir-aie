@@ -48,7 +48,7 @@ module @test_core_llvm0 {
     aie.put_stream(%0 : i32, %val0 : i32)
     aie.put_stream(%1 : i32, %val1 : i128)
     %val2 = arith.constant 64 : i384
-    aie.putCascade(%val2 : i384)
+    aie.put_cascade(%val2 : i384)
     aie.end
   }
 

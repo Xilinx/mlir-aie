@@ -1370,6 +1370,9 @@ BufferOp DMABDOp::getBufferOp() {
 }
 
 LogicalResult DMABDOp::verify() {
+  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+    return emitOpError(
+        "BDs only support BufferOp or ExternalBufferOp operands.");
   if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
     if (auto bufferOp = getBufferOp();
         bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
@@ -1392,43 +1395,43 @@ LogicalResult DMABDOp::verify() {
 
     ArrayRef<BDDimLayoutAttr> dims = *getDimensions();
     size_t maxNDims = 3;
-    if (isa_and_nonnull<MemTileDMAOp>((*this)->getParentOp())) {
+    if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
       maxNDims = 4;
-    }
-    if (dims.size() > maxNDims) {
+
+    if (dims.size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
                            << " dimensions for step sizes and wraps in this "
                               " tile (got "
                            << std::to_string(dims.size()) << " dimensions).";
-    }
+
     for (BDDimLayoutAttr dim : dims) {
       maxIdx += dim.getStride() * (dim.getSize() - 1);
-      if (0 == dim.getStride()) {
+      if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
-      }
-      if (dim.getStride() > memrefSize) {
+      if (dim.getStride() > memrefSize)
         return emitOpError()
                << "Step size " << std::to_string(dim.getStride() * 4) << " "
                << "bytes exceeds memref size " << std::to_string(memrefSize);
-      }
-      if (dim.getSize() >= (1UL << 9) + 1) {
+      if (dim.getSize() >= (1UL << 9) + 1)
         return emitOpError() << "Size may not exceed 1023.";
-      }
-      if (dim.getStride() >= (1UL << 19)) {
+      if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
-      }
     }
-    if (memrefSize <= 4 * maxIdx) {
+
+    if (memrefSize <= 4 * maxIdx)
       return emitOpError() << "Specified stride(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << ", accessing at "
                            << std::to_string(4 * maxIdx)
                            << " byte offset in memref of length "
                            << std::to_string(memrefSize) << ".";
-    }
   }
+
+  if (!getLen() && !getBuffer().getType().hasStaticShape())
+    return emitOpError() << "buffer with dynamic shape requires static length.";
+
   return success();
 }
 

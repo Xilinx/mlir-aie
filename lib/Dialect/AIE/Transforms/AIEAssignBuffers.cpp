@@ -22,21 +22,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static int64_t assignAddress(BufferOp op, int64_t lastAddress,
-                             OpBuilder &rewriter) {
-  Operation *Op = op.getOperation();
-  rewriter.setInsertionPointToEnd(Op->getBlock());
-
-  int64_t startAddr = lastAddress;
-  int64_t endAddr = startAddr + op.getAllocationSize();
-  if (Op->getAttrOfType<IntegerAttr>("address")) {
-    Op->emitWarning("Overriding existing address");
-  }
-  Op->setAttr("address", rewriter.getI32IntegerAttr(startAddr));
-  // Fixme: alignment
-  return endAddr;
-}
-
 struct AIEAssignBufferAddressesPass
     : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -48,14 +33,14 @@ struct AIEAssignBufferAddressesPass
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // Make sure all the buffers have a name
     int counter = 0;
-    for (auto buffer : device.getOps<BufferOp>()) {
+    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (!buffer.hasName()) {
         std::string name = "_anonymous";
         name += std::to_string(counter++);
         buffer->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr(name));
       }
-    }
+    });
 
     for (auto tile : device.getOps<TileOp>()) {
       const auto &targetModel = getTargetModel(tile);
@@ -66,9 +51,10 @@ struct AIEAssignBufferAddressesPass
         maxDataMemorySize = targetModel.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
-      for (auto buffer : device.getOps<BufferOp>())
+      device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
         if (buffer.getTileOp() == tile)
           buffers.push_back(buffer);
+      });
       // Sort by allocation size.
       std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
         return a.getAllocationSize() > b.getAllocationSize();
@@ -83,8 +69,14 @@ struct AIEAssignBufferAddressesPass
         stacksize = core.getStackSize();
         address += stacksize;
       }
-      for (auto buffer : buffers)
-        address = assignAddress(buffer, address, builder);
+
+      for (auto buffer : buffers) {
+        if (buffer.getAddress())
+          buffer->emitWarning("Overriding existing address");
+        buffer.setAddress(address);
+        address += buffer.getAllocationSize();
+      }
+
       if (address > maxDataMemorySize) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory\n");

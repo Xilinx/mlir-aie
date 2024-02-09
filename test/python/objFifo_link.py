@@ -33,7 +33,7 @@ from util import construct_and_print_module
 @construct_and_print_module
 def link_example():
     dev = Device(AIEDevice.xcve2802)
-    dev_block = Block.create_at_start(dev.bodyRegion)
+    dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         S = tile(0, 2)
         M = tile(1, 2)

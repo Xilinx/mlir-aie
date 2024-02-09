@@ -151,14 +151,24 @@ cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
 cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
+find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
+find_library(UUID uuid)
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
-  "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL" OFF)
+  "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL;UUID" OFF)
+if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  add_library(xrt_coreutil SHARED IMPORTED)
+  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+endif()
 
 find_library(CDO_DRIVER_LIBRARY cdo_driver
   HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
 )
 cmake_dependent_option(AIE_ENABLE_GENERATE_CDO_DIRECT
   "Enables building of direct bindings to libcdo." ON "CDO_DRIVER_LIBRARY" OFF)
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  add_library(cdo_driver SHARED IMPORTED)
+  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
+endif()
 
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
@@ -174,6 +184,10 @@ cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
 
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
   "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
+
+find_library(ELF_LIB elf)
+cmake_dependent_option(AIE_ENABLE_AIRBIN
+  "Enables emitting AIRBIN ELF binaries." ON "ELF_LIB" OFF)
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
@@ -226,8 +240,12 @@ if(AIE_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
   mlir_configure_python_dev_packages()
 
+  if(NOT AIE_PYTHON_INSTALL_DIR)
+    set(AIE_PYTHON_INSTALL_DIR "python")
+  endif()
+
   if(NOT AIE_PYTHON_PACKAGES_DIR)
-    set(AIE_PYTHON_PACKAGES_DIR "${AIE_BINARY_DIR}/python")
+    set(AIE_PYTHON_PACKAGES_DIR "${AIE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}")
   endif()
 endif()
 
@@ -236,7 +254,6 @@ add_subdirectory(lib)
 add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
-add_subdirectory(data)
 
 if(AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)

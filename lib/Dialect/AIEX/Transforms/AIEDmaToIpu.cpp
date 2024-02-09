@@ -104,8 +104,10 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
       return failure();
 
     auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
+    if (!infoOp) {
+      op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
+    }
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
@@ -159,8 +161,10 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
       return failure();
 
     auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp)
+    if (!infoOp) {
+      op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
+    }
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
@@ -242,7 +246,10 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     MemRefType my_memref = op.getMemref().getType();
     auto shape = my_memref.getShape();
     size_t R = shape.size();
-    size_t S = my_memref.getElementType().getIntOrFloatBitWidth() / 8;
+    size_t el_bit_width = my_memref.getElementTypeBitWidth();
+    assert(el_bit_width % 8 == 0 &&
+           "Expected Memref element bitwidth to be multiple of 8.");
+    size_t S = el_bit_width / 8;
     for (size_t i = 0; i < R; i++) {
       offset += offsets[i] * stride * S;
       stride *= shape[R - i - 1];

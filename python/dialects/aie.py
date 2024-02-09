@@ -1,26 +1,24 @@
-# ./python/aie/dialects/aie/__init__.py -*- Python -*-
-
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import inspect
 from typing import List, Optional, Union, Tuple
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
+from ._ods_common import _cext
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from .._mlir_libs._aie import (
     ObjectFifoType,
-    translate_aie_vec_to_cpp,
     ObjectFifoSubviewType,
 )
-
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
-from ..extras.util import Successor, get_user_code_loc
+from ..extras.util import Successor, get_user_code_loc, region_adder
 from ..ir import (
     ArrayAttr,
     Attribute,
@@ -30,11 +28,10 @@ from ..ir import (
     InsertionPoint,
     IntegerAttr,
     IntegerType,
-    _typeAttr,
     TypeAttr,
     _i32ArrayAttr,
 )
-from ._ods_common import _cext
+from ..util import _get_sym_name
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -126,11 +123,6 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
-
-
-@register_attribute_builder("MemRefTypeAttr")
-def _memref_type_attr(x, context):
-    return _typeAttr(x, context)
 
 
 #### AIE Wrappers ####
@@ -263,6 +255,32 @@ memtile_dma = region_op(
 )
 
 
+@region_op
+def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
+    return DMAOp(
+        valid=T.bool(),
+        channel_dir=channel_dir,
+        channel_index=channel_index,
+        num_bds=num_blocks,
+        loop=loop,
+        loc=loc,
+        ip=ip,
+    )
+
+
+@region_adder()
+def another_bd(dma_op):
+    for r in dma_op.regions:
+        if len(r.blocks) == 0:
+            r.blocks.append()
+        if len(r.blocks[0].operations) == 0:
+            return r
+
+    raise Exception("couldn't find empty region to add to.")
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
@@ -327,3 +345,36 @@ class NextBDOp(NextBDOp):
 
 def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
+
+
+_buffer = buffer
+
+
+def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
+    return _buffer(
+        buffer,
+        tile,
+        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "buffer"),
+        address=address,
+        loc=loc,
+        ip=ip,
+    )
+
+
+_lock = lock
+
+
+def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
+    return _lock(
+        tile,
+        lock_id=lock_id,
+        init=init,
+        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "lock"),
+        loc=loc,
+        ip=ip,
+    )
+
+
+_flow = flow
+
+flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview

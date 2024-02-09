@@ -18,7 +18,6 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 
@@ -35,7 +34,6 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
   }
 
   void runOnOperation() override {
-
     DeviceOp device = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
 
@@ -49,15 +47,11 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DenseMap<TileOp, TileLockOps> tileToLocks;
 
     // Construct data structure storing locks by tile.
-    for (LockOp lockOp : device.getOps<LockOp>()) {
-
+    device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
       TileOp tileOp = lockOp.getTileOp();
-      bool isAssigned = lockOp.getLockID().has_value();
-
-      if (isAssigned) {
+      if (lockOp.getLockID().has_value()) {
         auto lockID = lockOp.getLockID().value();
         auto iter = tileToLocks.find(tileOp);
-
         if (iter == tileToLocks.end())
           tileToLocks.insert({tileOp, {{lockID}, /* unassigned = */ {}}});
         else {
@@ -78,14 +72,12 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
         else
           iter->second.unassigned.push_back(lockOp);
       }
-    }
+    });
 
     // IR mutation: assign locks to all unassigned lock ops.
     for (auto [tileOp, locks] : tileToLocks) {
-
       const auto locksPerTile =
           getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
-
       uint32_t nextID = 0;
       for (auto lockOp : locks.unassigned) {
         while (nextID < locksPerTile &&
@@ -99,7 +91,7 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
                                            << " locks available in this tile.";
           return signalPassFailure();
         }
-        lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nextID));
+        lockOp.setLockIDAttr(rewriter.getI32IntegerAttr(nextID));
         ++nextID;
       }
     }

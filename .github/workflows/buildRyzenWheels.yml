@@ -1,0 +1,194 @@
+name: Build wheels on/for Ryzen AI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/buildRyzenWheels.yml'
+  workflow_dispatch:
+
+  schedule:
+    # At 04:00. (see https://crontab.guru)
+    - cron: '0 4 * * *'
+    
+defaults:
+  run:
+    shell: bash
+    
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-experimental-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+
+jobs:
+  build-repo:
+    name: Build and upload mlir_aie wheels
+
+    runs-on: amd7940hs
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+
+      - uses: actions/checkout@v3
+        with:
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Build mlir-aie distro
+        run: |
+          
+          pip cache purge
+          
+          python -m venv aie-venv
+          source aie-venv/bin/activate
+          pip install -r python/requirements.txt
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+          export MLIR_AIE_SOURCE_DIR=$PWD
+          export WHEELHOUSE_DIR=$PWD/wheelhouse
+          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+          export XRT_ROOT=/opt/xilinx/xrt
+          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
+          export DATETIME=$(date +"%Y%m%d%H")
+          
+          pushd utils/mlir_aie_wheels
+          
+          pip install wheel auditwheel patchelf importlib_metadata
+          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          
+          popd
+          
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+          WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
+          mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp38-cp38/py3-none/"`"
+
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@v3
+        with:
+          path: wheelhouse/repaired_wheel/mlir_aie*whl
+          name: mlir_aie
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+
+  build-wheel:
+    name: Build wheel
+
+    runs-on: amd7940hs
+
+    permissions:
+      id-token: write
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: [ "3.8", "3.9", "3.10", "3.11", "3.12" ]
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          # unpacks default artifact into dist/
+          # if `name: artifact` is omitted, the action will create extra parent dir
+          name: mlir_aie
+          path: .
+
+      - name: Build mlir-aie python bindings
+        run: |
+
+          # faster to do this twice instead of upload the directory with ~4000 files in it...
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          
+          unzip -q mlir_aie-*.whl
+          find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
+          
+          python -m venv aie-venv
+          source aie-venv/bin/activate
+          pip install -r python/requirements.txt
+          source aie-venv/bin/activate
+          
+          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+          export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
+          export WHEELHOUSE_DIR=$PWD/wheelhouse
+          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export XRT_ROOT=/opt/xilinx/xrt
+          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
+          export DATETIME=$(date +"%Y%m%d%H")
+          
+          cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
+          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
+          
+          pushd utils/mlir_aie_wheels/python_bindings
+          
+          pip install wheel auditwheel patchelf
+          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          
+          popd
+          
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*whl --plat manylinux_2_35_x86_64
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v3
+        with:
+          path: wheelhouse/repaired_wheel/aie-*.whl
+          name: ryzen_ai_wheel
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheelhouse/repaired_wheel/aie-*.whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true

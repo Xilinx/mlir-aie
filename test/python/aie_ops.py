@@ -70,7 +70,7 @@ def memOp():
 @construct_and_print_module
 def deviceOp():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         end()
 
@@ -98,7 +98,7 @@ def externalBufferOp():
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
@@ -124,7 +124,7 @@ def objFifo():
 @construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
@@ -159,7 +159,7 @@ def objFifoLink():
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
@@ -193,7 +193,7 @@ def objFifoAcquire():
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)
@@ -229,7 +229,7 @@ def objFifoSubviewAccess():
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
-    bb = Block.create_at_start(dev.bodyRegion)
+    bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
         tile0 = tile(col=6, row=6)
         tile1 = tile(col=2, row=2)

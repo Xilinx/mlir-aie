@@ -1,6 +1,9 @@
 name: MLIR AIE Distro
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/mlirAIEDistro.yml'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:
@@ -31,7 +34,6 @@ on:
 
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
-#  pull_request:
 
 jobs:
 
@@ -296,157 +298,11 @@ jobs:
       run: |
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
 
-    - name: build python bindings
-      shell: bash
-      if: (matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64') && matrix.ENABLE_RTTI == 'ON'
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      run: |
-        
-        export PIP_NO_BUILD_ISOLATION=false
-        
-        cp requirements.txt python_bindings
-        cp wheelhouse/mlir_aie*.whl python_bindings/
-        cp -r scripts python_bindings/scripts
-        
-        pushd python_bindings
-        unzip -q mlir_aie*.whl
-        rm -rf mlir_aie*.whl
-        
-        CIBW_ARCHS=${{ matrix.ARCH }} \
-        CMAKE_GENERATOR="Ninja" \
-        HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
-        MLIR_AIE_WHEEL_VERSION=${{ steps.get_wheel_version.outputs.MLIR_AIE_WHEEL_VERSION }} \
-        MATRIX_OS=${{ matrix.OS }} \
-        PARALLEL_LEVEL=2 \
-        cibuildwheel --output-dir ../wheelhouse
-        
-        popd
-
     - name: Upload distro wheels
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
-
-  build_linux_aarch64_pybindings_wheels:
-
-    needs: build_distro_wheels
-
-    continue-on-error: true
-
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }} ${{ matrix.PY_VERSION }}
-
-    runs-on: ${{ matrix.OS }}
-
-    strategy:
-
-      fail-fast: false
-      matrix:
-        include:
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            PY_VERSION: "cp310"
-
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            PY_VERSION: "cp311"
-
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            PY_VERSION: "cp312"
-
-    steps:
-
-      - name: set ENV
-        shell: bash
-        run: |
-          
-          PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
-          if [ x"${{ github.event_name }}" == x"pull_request" ]; then
-            PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
-          fi
-          echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
-          echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
-
-      - name: Checkout actions
-        uses: actions/checkout@v3
-        with:
-          sparse-checkout: .github/actions
-
-      - uses: ./.github/actions/setup_base
-        id: setup_base
-        with:
-          MATRIX_OS: ${{ matrix.OS }}
-          MATRIX_ARCH: ${{ matrix.ARCH }}
-
-      - uses: ./.github/actions/setup_ccache
-        id: setup_ccache
-        with:
-          MATRIX_OS: ${{ matrix.OS }}
-          MATRIX_ARCH: ${{ matrix.ARCH }}
-
-      - name: Shift workspace root
-        id: workspace_root
-        shell: bash
-        working-directory: ${{ env.TEMP }}
-        run: |
-          
-          ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
-          
-          if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
-            WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
-          else
-            WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
-          fi
-          
-          echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
-
-      - uses: actions/download-artifact@v3
-        with:
-          # unpacks default artifact into dist/
-          # if `name: artifact` is omitted, the action will create extra parent dir
-          name: build_artifact_ubuntu-20.04_aarch64_rtti_ON
-          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse
-
-      - name: Set up QEMU
-        if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: ${{ matrix.ARCH }}
-
-      # build
-
-      - name: cibuildwheel python bindings aarch64
-        shell: bash
-        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-        run: |
-          
-          export PIP_NO_BUILD_ISOLATION=false
-          
-          cp requirements.txt python_bindings
-          cp -R scripts python_bindings/scripts
-          pushd python_bindings
-          unzip -q ../wheelhouse/mlir_aie*-linux_aarch64.whl
-          
-          CIBW_ARCHS=${{ matrix.ARCH }} \
-          CIBW_BUILD=${{ matrix.PY_VERSION }}-manylinux_aarch64 \
-          CIBW_CONTAINER_ENGINE="docker; create_args: --platform=linux/aarch64" \
-          CMAKE_GENERATOR=Ninja \
-          HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
-          MATRIX_OS=${{ matrix.OS }} \
-          MLIR_AIE_WHEEL_VERSION=${{ needs.build_distro_wheels.outputs.MLIR_AIE_WHEEL_VERSION }} \
-          cibuildwheel --output-dir ../wheelhouse
-          
-          popd
-
-      # done
-
-      - name: Upload wheels
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/aie-*aarch64*.whl
-          name: build_artifact_ubuntu-20.04_aarch64_rtti_ON
 
   smoke_test_wheels:
 
@@ -514,7 +370,7 @@ jobs:
 
   upload_wheels:
 
-    needs: [smoke_test_wheels, build_linux_aarch64_pybindings_wheels]
+    needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
 

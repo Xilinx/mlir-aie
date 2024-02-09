@@ -138,6 +138,14 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
+        "--aie-generate-airbin",
+        dest="airbin",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate airbin configuration (default is off)",
+    )
+    parser.add_argument(
         "host_args",
         action="store",
         help="arguments for host compiler",
@@ -214,6 +222,14 @@ def parse_args(args=None):
         action="store_const",
         const=True,
         help="Generate libxaie v2 for CDO",
+    )
+    parser.add_argument(
+        "--aie-generate-xclbin",
+        dest="xcl",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Generate xclbin",
     )
     parser.add_argument(
         "--xclbin-name",

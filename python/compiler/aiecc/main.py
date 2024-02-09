@@ -23,6 +23,7 @@ import tempfile
 from textwrap import dedent
 
 import aiofiles
+from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
 
 from aie.passmanager import PassManager
@@ -35,20 +36,59 @@ import aie.compiler.aiecc.configure
 import rich.progress as progress
 import re
 
-aie_opt_lower_to_llvm_passes = [
-    "--canonicalize",
-    "--cse",
-    "--convert-vector-to-llvm",
-    "--expand-strided-metadata",
-    "--lower-affine",
-    "--convert-math-to-llvm",
-    "--convert-arith-to-llvm",
-    "--finalize-memref-to-llvm",
-    "--convert-func-to-llvm=use-bare-ptr-memref-call-conv",
-    "--convert-cf-to-llvm",
-    "--canonicalize",
-    "--cse",
-]
+
+INPUT_WITH_ADDRESSES_PIPELINE = (
+    Pipeline()
+    .convert_linalg_to_affine_loops()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Context(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass("aie-objectFifo-stateful-transform")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-create-packet-flows")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-buffer-addresses"),
+    )
+    .convert_scf_to_cf()
+)
+
+LOWER_TO_LLVM_PIPELINE = (
+    Pipeline()
+    .canonicalize()
+    .cse()
+    .convert_vector_to_llvm()
+    .expand_strided_metadata()
+    .lower_affine()
+    .convert_math_to_llvm()
+    .convert_arith_to_llvm()
+    .finalize_memref_to_llvm()
+    .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
+    .convert_cf_to_llvm()
+    .canonicalize()
+    .cse()
+)
+
+AIE_LOWER_TO_LLVM = (
+    Pipeline()
+    .Context(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-localize-locks")
+        .add_pass("aie-normalize-address-spaces"),
+    )
+    .add_pass("aie-standard-lowering")
+    .add_pass("aiex-standard-lowering")
+)
+AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
+
+CREATE_PATH_FINDER_FLOWS = Pipeline().Context(
+    "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
+)
+DMA_TO_IPU = Pipeline().Context("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -451,7 +491,7 @@ class FlowRunner:
                 file_core = corefile(self.tmpdirname, core, "mlir")
                 await self.do_call(task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering=tilecol=%d tilerow=%d" % core[0:2], "--aiex-standard-lowering", file_with_addresses, "-o", file_core])
                 file_opt_core = corefile(self.tmpdirname, core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", *aie_opt_lower_to_llvm_passes, file_core, "-o", file_opt_core])
+                await self.do_call(task, ["aie-opt", f"--pass-pipeline={LOWER_TO_LLVM_PIPELINE}", file_core, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -501,33 +541,15 @@ class FlowRunner:
                 self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_xclbin_gen(self, aie_target, has_cores):
-        async with self.limit:
-            if self.stopall:
-                return
-
-            if opts.progress:
-                task = self.progress_bar.add_task(
-                    "[yellow] XCLBIN generation ", total=10, command="starting"
-                )
-            else:
-                task = None
-
-            buffers = ["in", "tmp", "out"]
-
-            install_path = aie.compiler.aiecc.configure.install_path()
-            data_path = os.path.join(install_path, "data")
-
-            runtime_xaiengine_path = os.path.join(
-                install_path,
-                "runtime_lib",
-                opts.host_target.split("-")[0],
-                "xaiengine",
-                "cdo",
+    async def process_cdo(self):
+        try:
+            from aie.dialects.aie import generate_cdo
+        except ImportError:
+            raise Exception(
+                "cdo generation not supported, recompile with AIE_ENABLE_GENERATE_CDO_DIRECT"
             )
-            xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
-            xaiengine_lib_path = os.path.join(runtime_xaiengine_path)
 
+        with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
                 try:
                     shutil.copy(elf, self.tmpdirname)
@@ -538,61 +560,49 @@ class FlowRunner:
                     shutil.copy(elf_map, self.tmpdirname)
                 except shutil.SameFileError:
                     pass
-
-            # fmt: off
-            p0 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", *aie_target_defines(aie_target), "-D__AIESIM__", "-D__CDO__", "-D__PS_INIT_AIE__", "-D__LOCK_FENCE_MODE__=2", "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR", "-DAIE2_FP32_EMULATION_ACCURACY_FAST", "-Wno-deprecated-declarations", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("gen_cdo.o"), os.path.join(data_path, "generated-source/gen_cdo.cpp")])
-            p1 = self.do_call(task, ["clang++", "-fPIC", "-c", "-std=c++17", "-I" + self.tmpdirname, "-I" + xaiengine_include_path, "-I" + os.path.join(opts.aietools_path, "include"), "-o", self.prepend_tmp("cdo_main.o"), os.path.join(data_path, "generated-source/cdo_main.cpp")])
-            await asyncio.gather(p0, p1)
-            await self.do_call(task, ["clang++", "-L" + xaiengine_lib_path, "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"), "-lxaienginecdo", "-lcdo_driver", "-o", self.prepend_tmp("cdo_main.out"), self.prepend_tmp("gen_cdo.o"), self.prepend_tmp("cdo_main.o")])
-            # fmt: on
-
-            ld_paths = [
-                os.getenv("LD_LIBRARY_PATH"),
-                xaiengine_lib_path,
-                os.path.join(opts.aietools_path, "lib", "lnx64.o"),
-            ]
-            os.environ["LD_LIBRARY_PATH"] = ":".join(list(filter(None, ld_paths)))
-            await self.do_call(
-                task,
-                [
-                    self.prepend_tmp("cdo_main.out"),
-                    "--work-dir-path",
-                    self.tmpdirname + "/",
-                ]
-                + (["--aximm-dump"] if self.opts.verbose else []),
+            input_physical = Module.parse(
+                await read_file_async(self.prepend_tmp("input_physical.mlir"))
             )
+            generate_cdo(input_physical.operation, self.tmpdirname)
 
-            await write_file_async(
-                json.dumps(mem_topology, indent=2),
-                self.prepend_tmp("mem_topology.json"),
+    async def process_xclbin_gen(self, has_cores):
+        if opts.progress:
+            task = self.progress_bar.add_task(
+                "[yellow] XCLBIN generation ", total=10, command="starting"
             )
+        else:
+            task = None
 
-            await write_file_async(
-                json.dumps(
-                    emit_partition(self.mlir_module_str, opts.kernel_id), indent=2
+        buffers = ["in", "tmp", "out"]
+        await write_file_async(
+            json.dumps(mem_topology, indent=2),
+            self.prepend_tmp("mem_topology.json"),
+        )
+
+        await write_file_async(
+            json.dumps(emit_partition(self.mlir_module_str, opts.kernel_id), indent=2),
+            self.prepend_tmp("aie_partition.json"),
+        )
+
+        await write_file_async(
+            json.dumps(
+                emit_design_kernel_json(
+                    opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
                 ),
-                self.prepend_tmp("aie_partition.json"),
-            )
+                indent=2,
+            ),
+            self.prepend_tmp("kernels.json"),
+        )
 
-            await write_file_async(
-                json.dumps(
-                    emit_design_kernel_json(
-                        opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
-                    ),
-                    indent=2,
-                ),
-                self.prepend_tmp("kernels.json"),
-            )
+        await write_file_async(
+            emit_design_bif(self.tmpdirname, has_cores),
+            self.prepend_tmp("design.bif"),
+        )
 
-            await write_file_async(
-                emit_design_bif(self.tmpdirname, has_cores),
-                self.prepend_tmp("design.bif"),
-            )
-
-            # fmt: off
-            await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
-            await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
-            # fmt: on
+        # fmt: off
+        await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
+        await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
+        # fmt: on
 
     async def process_host_cgen(self, aie_target, file_with_addresses):
         async with self.limit:
@@ -621,29 +631,29 @@ class FlowRunner:
                     file_physical,
                 ],
             )
-            file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
-            await self.do_call(
-                task,
-                [
-                    "aie-translate",
-                    "--aie-generate-xaie",
-                    file_physical,
-                    "-o",
-                    file_inc_cpp,
-                ],
-            )
 
-            # Optionally generate aie_control.cpp for CDO to XCLBIN backend
-            file_control_cpp = self.prepend_tmp("aie_control.cpp")
-            if opts.cdo:
+            if opts.airbin:
+                file_airbin = self.prepend_tmp("air.bin")
                 await self.do_call(
                     task,
                     [
                         "aie-translate",
-                        "--aie-generate-cdo",
+                        "--aie-generate-airbin",
                         file_physical,
                         "-o",
-                        file_control_cpp,
+                        file_airbin,
+                    ],
+                )
+            else:
+                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-xaie",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
                     ],
                 )
 
@@ -992,7 +1002,7 @@ class FlowRunner:
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", "--aie-localize-locks", "--aie-normalize-address-spaces", "--aie-standard-lowering", "--aiex-standard-lowering", *aie_opt_lower_to_llvm_passes, file_with_addresses, "-o", file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM}", file_with_addresses, "-o", file_opt_with_addresses])
 
                 file_llvmir = self.prepend_tmp("input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
@@ -1035,8 +1045,9 @@ class FlowRunner:
 
             # Must have elfs, before we build the final binary assembly
             if opts.cdo:
-                processes = [self.process_xclbin_gen(aie_target, bool(len(cores)))]
-                await asyncio.gather(*processes)
+                await self.process_cdo()
+            if opts.cdo or opts.xcl:
+                await self.process_xclbin_gen(bool(len(cores)))
 
     def dumpprofile(self):
         sortedruntimes = sorted(

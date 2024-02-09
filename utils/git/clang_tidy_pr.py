@@ -425,7 +425,7 @@ def post_review_comments(
             requests.codes.ok,  # pylint: disable=no-member
             requests.codes.bad_gateway,  # pylint: disable=no-member
         ):
-            warnings.warn("couldn't post pull review comments")
+            warnings.warn(f"Didn't post comment {warning_comment}")
 
         # Avoid triggering abuse detection
         time.sleep(10)

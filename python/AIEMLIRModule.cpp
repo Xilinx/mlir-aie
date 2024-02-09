@@ -87,20 +87,13 @@ PYBIND11_MODULE(_aie, m) {
       },
       "module"_a);
 
-  m.def(
-      "generate_cdo",
-      [&stealCStr](MlirOperation op) {
-        return stealCStr(aieTranslateToCDO(op));
-      },
-      "module"_a);
-
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   py::enum_<byte_ordering>(m, "byte_ordering")
       .value("Little_Endian", byte_ordering::Little_Endian)
       .value("Big_Endian", byte_ordering::Big_Endian);
 
   m.def(
-      "generate_cdo_direct",
+      "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath,
          byte_ordering endianness, bool emitUnified, bool axiDebug,
          bool aieSim) {

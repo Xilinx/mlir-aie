@@ -420,15 +420,15 @@ struct AIEObjectFifoStatefulTransformPass
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims) {
-    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqMode,
-                              acqLockAction);
+    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
+                              acqMode);
     if (!dims.getValue().empty())
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
     else
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
 
-    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock, relMode,
-                              LockAction::Release);
+    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
+                              LockAction::Release, relMode);
     builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
@@ -1039,8 +1039,8 @@ struct AIEObjectFifoStatefulTransformPass
       for (int i = 0; i < numLocks; i++) {
         int lockID = acc[{op, portNum}];
         builder.create<UseLockOp>(builder.getUnknownLoc(),
-                                  locksPerFifo[target][lockID], lockMode,
-                                  lockAction);
+                                  locksPerFifo[target][lockID], lockAction,
+                                  lockMode);
         acc[{op, portNum}] =
             (lockID + 1) % op.size(); // update to next objFifo elem
       }
@@ -1061,8 +1061,8 @@ struct AIEObjectFifoStatefulTransformPass
         else
           lock = locksPerFifo[target][0];
       }
-      builder.create<UseLockOp>(builder.getUnknownLoc(), lock, numLocks,
-                                lockAction);
+      builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
+                                numLocks);
       acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
                            op.size(); // update to next objFifo elem
     }
@@ -1284,18 +1284,17 @@ struct AIEObjectFifoStatefulTransformPass
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
-      if (shared) {
+      if (shared)
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-      } else {
-        if (isa<ArrayAttr>(createOp.getElemNumber())) {
-          createOp->setAttr("elemNumber",
-                            builder.getI32IntegerAttr(createOp.size()));
-        } else {
+      else {
+        if (isa<ArrayAttr>(createOp.getElemNumber()))
+          createOp.setElemNumberAttr(
+              builder.getI32IntegerAttr(createOp.size()));
+        else {
           int prodMaxAcquire = findObjectFifoSize(
               device, createOp.getProducerTileOp(), createOp);
-          createOp->setAttr("elemNumber",
-                            builder.getI32IntegerAttr(prodMaxAcquire));
+          createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);

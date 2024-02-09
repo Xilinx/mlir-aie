@@ -35,8 +35,6 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
-mlir::LogicalResult AIETranslateToCDO(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
 std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp);
@@ -59,6 +57,15 @@ mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
                                             bool emitUnified, bool axiDebug,
                                             bool aieSim);
 #endif
+#ifdef AIE_ENABLE_AIRBIN
+mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
+                                         const std::string &outputFilename,
+                                         const std::string &coreFilesDir,
+                                         bool testAirBin = false);
+#endif
+
+mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
+                                             llvm::raw_ostream &output);
 } // namespace AIE
 
 namespace aievec {

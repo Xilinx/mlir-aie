@@ -89,6 +89,9 @@ jobs:
           vcvarsall: ${{ contains(matrix.OS, 'windows') }}
           cmake: true
           ninja: true
+          cppcheck: false
+          clangtidy: false
+          clangformat: false
 
       - uses: ./.github/actions/setup_ccache
         id: setup_ccache

@@ -92,6 +92,20 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
          << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
          << '\n';
 }
+
+LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
+  AIEArch arch = AIEArch::AIE1;
+  if (!module.getOps<DeviceOp>().empty()) {
+    DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+    arch = targetOp.getTargetModel().getTargetArch();
+  }
+  if (arch == AIEArch::AIE1)
+    output << "AIE\n";
+  else
+    output << stringifyEnum(arch) << "\n";
+  return success();
+}
+
 void registerAIETranslations() {
   static llvm::cl::opt<int> tileCol(
       "tilecol", llvm::cl::desc("column coordinate of core to translate"),
@@ -99,6 +113,19 @@ void registerAIETranslations() {
   static llvm::cl::opt<int> tileRow(
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
+
+#ifdef AIE_ENABLE_AIRBIN
+  static llvm::cl::opt<std::string> outputFilename(
+      "airbin-output-filepath",
+      llvm::cl::desc("Output airbin file path (including filename)"),
+      llvm::cl::value_desc("airbin-output-filepath"),
+      llvm::cl::init("airbin.elf"));
+
+  static llvm::cl::opt<std::string> coreFilesDir(
+      "airbin-aux-core-dir-path",
+      llvm::cl::desc("Auxiliary core elf files dir path"),
+      llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
+#endif
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
@@ -125,11 +152,7 @@ void registerAIETranslations() {
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
         DenseMap<TileID, Operation *> tiles;
-        DenseMap<Operation *, CoreOp> cores;
-        DenseMap<Operation *, MemOp> mems;
-        DenseMap<std::pair<Operation *, int>, LockOp> locks;
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-        DenseMap<Operation *, SwitchboxOp> switchboxes;
 
         if (module.getOps<DeviceOp>().empty()) {
           module.emitOpError("expected AIE.device operation at toplevel");
@@ -211,19 +234,7 @@ void registerAIETranslations() {
 
   TranslateFromMLIRRegistration registrationTargetArch(
       "aie-generate-target-arch", "Get the target architecture",
-      [](ModuleOp module, raw_ostream &output) {
-        AIEArch arch = AIEArch::AIE1;
-        if (!module.getOps<DeviceOp>().empty()) {
-          DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
-          arch = targetOp.getTargetModel().getTargetArch();
-        }
-        if (arch == AIEArch::AIE1)
-          output << "AIE\n";
-        else
-          output << stringifyEnum(arch) << "\n";
-        return success();
-      },
-      registerDialects);
+      AIETranslateToTargetArch, registerDialects);
 
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",
@@ -255,6 +266,14 @@ void registerAIETranslations() {
         registry.insert<xilinx::ADF::ADFDialect>();
         registerDialects(registry);
       });
+#ifdef AIE_ENABLE_AIRBIN
+  TranslateFromMLIRRegistration registrationAirbin(
+      "aie-generate-airbin", "Generate configuration binary blob",
+      [](ModuleOp module, raw_ostream &) {
+        return AIETranslateToAirbin(module, outputFilename, coreFilesDir);
+      },
+      registerDialects);
+#endif
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
@@ -275,15 +294,9 @@ void registerAIETranslations() {
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
-  TranslateFromMLIRRegistration registrationCDO(
-      "aie-generate-cdo", "Generate libxaie for CDO",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToCDO(module, output);
-      },
-      registerDialects);
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   TranslateFromMLIRRegistration registrationCDODirect(
-      "aie-generate-cdo-direct", "Generate libxaie for CDO directly",
+      "aie-generate-cdo", "Generate libxaie for CDO directly",
       [](ModuleOp module, raw_ostream &) {
         SmallString<128> workDirPath_;
         if (workDirPath.getNumOccurrences() == 0) {

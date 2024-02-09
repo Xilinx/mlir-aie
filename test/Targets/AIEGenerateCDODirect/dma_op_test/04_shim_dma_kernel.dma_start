@@ -1,0 +1,49 @@
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+
+module @test_chess_04_deprecated_shim_dma_precompiled_kernel {
+  aie.device(ipu) {
+    %tile_0_3 = aie.tile(0, 3)
+    %tile_0_2 = aie.tile(0, 2)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_0 = aie.tile(0, 0)
+    %a_ping = aie.buffer(%tile_0_3) {sym_name = "a_ping"} : memref<16xi32>
+    %a_pong = aie.buffer(%tile_0_3) {sym_name = "a_pong"} : memref<16xi32>
+    %b_ping = aie.buffer(%tile_0_3) {sym_name = "b_ping"} : memref<16xi32>
+    %b_pong = aie.buffer(%tile_0_3) {sym_name = "b_pong"} : memref<16xi32>
+    %lock_0_3 = aie.lock(%tile_0_3, 3) {init = 2 : i32}
+    %lock_0_3_0 = aie.lock(%tile_0_3, 4)
+    %lock_0_3_1 = aie.lock(%tile_0_3, 5) {init = 2 : i32}
+    %lock_0_3_2 = aie.lock(%tile_0_3, 6)
+    %lock_0_3_3 = aie.lock(%tile_0_3, 7)
+    %mem_0_3 = aie.mem(%tile_0_3) {
+      %0 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
+    ^bb1:  // pred: ^bb0
+      %1 = aie.dma_start(MM2S, 1, ^bb4, ^bb6)
+    ^bb2:  // 2 preds: ^bb0, ^bb3
+      aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
+      aie.dma_bd(%a_ping : memref<16xi32>, 0, 16)
+      aie.use_lock(%lock_0_3_0, Release, 1)
+      aie.next_bd ^bb3
+    ^bb3:  // pred: ^bb2
+      aie.use_lock(%lock_0_3, AcquireGreaterEqual, 1)
+      aie.dma_bd(%a_pong : memref<16xi32>, 0, 16)
+      aie.use_lock(%lock_0_3_0, Release, 1)
+      aie.next_bd ^bb2
+    ^bb4:  // 2 preds: ^bb1, ^bb5
+      aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
+      aie.dma_bd(%b_ping : memref<16xi32>, 0, 16)
+      aie.use_lock(%lock_0_3_1, Release, 1)
+      aie.next_bd ^bb5
+    ^bb5:  // pred: ^bb4
+      aie.use_lock(%lock_0_3_2, AcquireGreaterEqual, 1)
+      aie.dma_bd(%b_pong : memref<16xi32>, 0, 16)
+      aie.use_lock(%lock_0_3_1, Release, 1)
+      aie.next_bd ^bb4
+    ^bb6:  // pred: ^bb1
+      aie.end
+    }
+  }
+}
+

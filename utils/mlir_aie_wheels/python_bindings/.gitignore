@@ -2,3 +2,8 @@ scripts
 wheelhouse
 requirements.txt
 aie
+aie-python-extras-req.txt
+aie.egg-info
+build
+.idea
+cmake-build-debug

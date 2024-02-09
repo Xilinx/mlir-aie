@@ -20,11 +20,11 @@ module {
 
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
     ^bb0:
-      aie.dma(S2MM, 0) {
+      aie.dma(S2MM, 0) [{
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
         aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 16)
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
-      }
+      }]
       aie.next_bd ^bb1
     ^bb1:
       aie.end

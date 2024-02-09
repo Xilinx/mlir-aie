@@ -31,7 +31,7 @@ public:
            int deviceIndex)
       : xclBin(std::make_unique<xrt::xclbin>(xclBinPath)),
         device(std::make_unique<xrt::device>(deviceIndex)) {
-    assert(device->get_info<xrt::info::device::name>() == "Phoenix" &&
+    assert(device->get_info<xrt::info::device::name>() == "RyzenAI-Phoenix" &&
            "only Phoenix supported by xrt python bindings");
     device->register_xclbin(*xclBin);
     context = std::make_unique<xrt::hw_context>(*device, xclBin->get_uuid());
@@ -57,6 +57,7 @@ public:
     std::vector<py::memoryview> inputViews;
     std::vector<py::memoryview> outputViews;
     inputViews.reserve(inputShapes.size());
+    outputViews.reserve(outputShapes.size());
 
     auto initAndViewBuffer = [this](
                                  std::vector<int> shape, int groupId,
@@ -119,7 +120,13 @@ public:
     run_->start();
   }
 
-  void wait() { run_->wait(); }
+  void wait(const std::optional<int> timeout) {
+    if (timeout) {
+      if (run_->wait(timeout.value() * 1000) == ERT_CMD_STATE_TIMEOUT)
+        throw std::runtime_error("kernel timed out");
+    } else
+      (void)run_->wait();
+  }
 
   std::unique_ptr<xrt::xclbin> xclBin;
   std::unique_ptr<xrt::device> device;
@@ -142,13 +149,15 @@ PYBIND11_MODULE(_xrt, m) {
       .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
       .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
       .def("run", &PyXCLBin::run)
-      .def("wait", &PyXCLBin::wait)
+      .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
       .def(
           "mmap_buffers",
           [](PyXCLBin &self, const std::vector<std::vector<int>> &inputShapes,
              const std::vector<std::vector<int>> &outputShapes,
              const py::object &npFormat) {
             auto npy = py::module_::import("numpy");
+            if (npFormat.is(npy.attr("int16")))
+              return self.mmapBuffers<int16_t>(inputShapes, outputShapes);
             if (npFormat.is(npy.attr("int32")))
               return self.mmapBuffers<int32_t>(inputShapes, outputShapes);
             if (npFormat.is(npy.attr("float32")))

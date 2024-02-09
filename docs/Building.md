@@ -40,7 +40,7 @@ Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-
 the tools are largely board and device independent and can be adapted to other environments.
 
 
-## Building on X86
+## Building on X86 for mlir-aie development
 
 1. Clone the `mlir-aie` repository with its sub-modules:
     ```

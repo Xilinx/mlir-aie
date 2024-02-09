@@ -31,7 +31,7 @@ jobs:
       - name: Install clang-tidy
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy ninja-build clang
+          sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
       - uses: actions/setup-python@v4
         with:
@@ -70,6 +70,7 @@ jobs:
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_AIRBIN=ON \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
@@ -201,8 +202,8 @@ jobs:
           pip install cmake numpy psutil pybind11 rich lit
           pip install -r python/requirements.txt
 
-      - name: Install Ninja
-        run: sudo apt-get install -y ninja-build clang lld llvm
+      - name: Install packages
+        run: sudo apt-get install -y ninja-build clang lld llvm libelf-dev
 
       - name: Get changed files
         id: changed-files
@@ -249,6 +250,7 @@ jobs:
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_AIRBIN=ON \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
