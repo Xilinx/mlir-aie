@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -40,6 +39,8 @@ if WORKDIR is None:
     )
 else:
     WORKDIR = Path(WORKDIR).absolute()
+
+WORKDIR.mkdir(exist_ok=True)
 
 VITIS_DIR = Path(os.getenv("VITIS_DIR", "/opt/tools/Xilinx/Vitis/2023.2")).absolute()
 XRT_DIR = Path(os.getenv("XRT_DIR", "/opt/xilinx/xrt")).absolute()
@@ -96,30 +97,12 @@ XCHESS_ARGS = lambda: [
 ]
 
 
-def maybe_make_workdir():
-    if WORKDIR.exists():
-        shutil.rmtree(WORKDIR)
-    WORKDIR.mkdir()
-
-
-maybe_make_workdir()
-
-
 def construct_and_print_module(f):
     global WORKDIR
-    # fmt: off
-    WORKDIR = (
-        Path(
-            os.getenv(
-                "WORKDIR",
-                Path(__main__.__file__).parent.absolute()
-                / (__main__.__file__[:-3] + "_workdir"),
-            )
-        ).absolute()
-        / (f.__name__ + "_workdir")
-    )
-    # fmt: on
-    maybe_make_workdir()
+    assert WORKDIR is not None and WORKDIR.exists()
+    WORKDIR = WORKDIR / (f.__name__ + "_workdir")
+    WORKDIR.mkdir(exist_ok=True)
+
     print("\nTEST:", f.__name__)
     with Context(), Location.unknown():
         module = Module.create()

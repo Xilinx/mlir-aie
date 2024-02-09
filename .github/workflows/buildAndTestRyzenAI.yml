@@ -83,9 +83,8 @@ jobs:
           LIT_PATH=$(python -c "import lit; from pathlib import Path; print(Path(lit.__file__).parent)")
           sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
 
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
-          LIT_FILTER_OUT=test/ipu-xrt/e2e ninja check-aie
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
+          export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
+          ninja check-aie
           ninja check-reference-designs
 
           popd

@@ -4,8 +4,6 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: export BASENAME=$(basename %s)
-# RUN: rm -rf $BASENAME && mkdir $BASENAME && cd $BASENAME
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 import random
