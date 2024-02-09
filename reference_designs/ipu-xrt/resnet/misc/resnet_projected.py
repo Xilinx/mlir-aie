@@ -1777,25 +1777,33 @@ def SingleBottleneck_x3_projected_with_bn(num_classes):
 #     return CombinedModel(NonAIELayerInitial(),AIELayerOffloadProper(Bottleneck_projected, [3,]), \
 #                         #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
 #                               PostConv2dLayers(Bottleneck_projected, [4,6,3],num_classes))
- 
+
 # # # 2024.1.26 oneRoof demo
 # def Resnet50(num_classes):
 #     return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected, [1,]), \
 #                         #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
 #                               PostConv2dLayers(Bottleneck_projected, [4,6,3],num_classes))
- 
- 
-                            
+
+
 # # # old ACDC demo
 # def Resnet50ACDC(num_classes):
 #     return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected, [1,]), \
 #                         #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
 #                               PostConv2dLayers(Bottleneck_projected, [2,2,2],num_classes))
 
+
 def SingleBottleneck_x1_projected_without_bn(num_classes):
-    return CombinedModel(NonAIELayerInitial(),AIELayerOffload(Bottleneck_projected_without_bn, [1,]), \
-                        #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
-                              NonAIELayerPost(num_classes))
+    return CombinedModel(
+        NonAIELayerInitial(),
+        AIELayerOffload(
+            Bottleneck_projected_without_bn,
+            [
+                1,
+            ],
+        ),  #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
+        NonAIELayerPost(num_classes),
+    )
+
 
 def SingleBottleneck_x3_projected_without_bn(num_classes):
     return CombinedModel(
@@ -1809,24 +1817,44 @@ def SingleBottleneck_x3_projected_without_bn(num_classes):
         NonAIELayerPost(num_classes),
     )
 
+
 # #  oneroof demo
 def Resnet50ACDC(num_classes):
-    return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected, [1,]), \
-                        #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
-                              PostConv2dLayers(Bottleneck_projected, [2,2,2],num_classes))
- 
- 
+    return CombinedModel(
+        NonAIELayerInitial(),
+        AIELayerOffload3(
+            Bottleneck_projected,
+            [
+                1,
+            ],
+        ),  #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
+        PostConv2dLayers(Bottleneck_projected, [2, 2, 2], num_classes),
+    )
+
 
 # #  oneroof demo
 def Resnet50OneRoof(num_classes):
-    return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected_without_bn, [1,]), \
-                        #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
-                              PostConv2dLayers(Bottleneck_projected, [2,2,2],num_classes))
- 
- 
+    return CombinedModel(
+        NonAIELayerInitial(),
+        AIELayerOffload3(
+            Bottleneck_projected_without_bn,
+            [
+                1,
+            ],
+        ),  #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
+        PostConv2dLayers(Bottleneck_projected, [2, 2, 2], num_classes),
+    )
+
+
 # #  oneroof demo
 def Resnet50(num_classes):
-    return CombinedModel(NonAIELayerInitial(),AIELayerOffload3(Bottleneck_projected_without_bn, [1,]), \
-                        #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
-                              PostConv2dLayers(Bottleneck_projected, [4,6,3],num_classes))
- 
+    return CombinedModel(
+        NonAIELayerInitial(),
+        AIELayerOffload3(
+            Bottleneck_projected_without_bn,
+            [
+                1,
+            ],
+        ),  #  AIELayerOffload(Bottleneck_projected_OFFLOAD, [2,]),\
+        PostConv2dLayers(Bottleneck_projected, [4, 6, 3], num_classes),
+    )

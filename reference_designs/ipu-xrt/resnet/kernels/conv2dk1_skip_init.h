@@ -1,5 +1,5 @@
 //===- conv2dk1_skip_init.h -------------------------------------------------*-
-//C++ -*-===//
+// C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.

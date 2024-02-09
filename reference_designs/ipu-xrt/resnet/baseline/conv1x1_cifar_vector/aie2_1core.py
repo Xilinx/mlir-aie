@@ -23,11 +23,11 @@ if len(sys.argv) == 3:
     height = int(sys.argv[2])
 
 
-actIn = width*in_channels # 32*64 = 2048
-bufIn = actIn*2
+actIn = width * in_channels  # 32*64 = 2048
+bufIn = actIn * 2
 actInInt32s = actIn // 4
 
-weights = in_channels*out_channels
+weights = in_channels * out_channels
 weightsInInt32s = weights // 4
 
 enableTrace = True
@@ -57,9 +57,17 @@ def conv2dk1():
 
             # AIE Core Function declarations
             conv2dk1_i8 = external_func(
-                "conv2dk1_i8", inputs=[actIn_ty, weights_ty, out_ty, T.i32(), T.i32(), T.i32(), T.i32()]
+                "conv2dk1_i8",
+                inputs=[
+                    actIn_ty,
+                    weights_ty,
+                    out_ty,
+                    T.i32(),
+                    T.i32(),
+                    T.i32(),
+                    T.i32(),
+                ],
             )
-
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -71,7 +79,7 @@ def conv2dk1():
 
             if enableTrace:
                 flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
-                #flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
+                # flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
             # Input
@@ -129,7 +137,6 @@ def conv2dk1():
 
             # Set up compute tiles
 
-
             rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
 
             # Compute tile 2
@@ -146,7 +153,7 @@ def conv2dk1():
                     ).acquired_elem()
 
                     scale = memref.load(rtp2, [0])
-                    #scale = memref.load(rtpComputeTile2, [0])
+                    # scale = memref.load(rtpComputeTile2, [0])
 
                     for _ in for_(y_dim):
                         elemIn = acquire(
@@ -157,9 +164,18 @@ def conv2dk1():
                             ObjectFifoPort.Produce, "out_02_L2", 1, out_ty
                         ).acquired_elem()
 
-                        Call(conv2dk1_i8, [elemIn, elemWts, elemOut0, 
-                            arith.constant(x_dim), arith.constant(ci), arith.constant(co),
-                            scale])
+                        Call(
+                            conv2dk1_i8,
+                            [
+                                elemIn,
+                                elemWts,
+                                elemOut0,
+                                arith.constant(x_dim),
+                                arith.constant(ci),
+                                arith.constant(co),
+                                scale,
+                            ],
+                        )
 
                         objectfifo_release(ObjectFifoPort.Consume, "act_L2_02", 1)
                         objectfifo_release(ObjectFifoPort.Produce, "out_02_L2", 1)
@@ -238,16 +254,16 @@ def conv2dk1():
                         column=0,
                         column_num=1,
                         d0_stride=0,
-                        #d0_wrap=0,
+                        # d0_wrap=0,
                         d0_size=0,
                         d1_stride=0,
-                        #d1_wrap=0,
+                        # d1_wrap=0,
                         d1_size=0,
                         d2_stride=0,
                         ddr_id=2,
                         iteration_current=0,
                         iteration_stride=0,
-                        #iteration_wrap=0,
+                        # iteration_wrap=0,
                         iteration_size=0,
                         lock_acq_enable=0,
                         lock_acq_id=0,
@@ -259,7 +275,7 @@ def conv2dk1():
                         valid_bd=1,
                     )
                     ipu_write32(0, 0, 0x1D20C, 0x3)
-                
+
                 IpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=9)
 
                 ipu_dma_memcpy_nd(
