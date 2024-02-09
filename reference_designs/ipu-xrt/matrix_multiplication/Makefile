@@ -16,7 +16,7 @@ m?=64
 k?=32
 n?=64
 
-dtype_in?=i16
+dtype_in?=bf16
 ifeq ($(dtype_in), i16)
 	word_size_in?=2
 	r?=4
@@ -54,7 +54,7 @@ build/final.xclbin: build/aie.mlir build/mm.o
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
