@@ -338,8 +338,6 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start
 
     chess_compile(fullylinked_ll)
 
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-
     for col, row, _ in generate_cores_list(str(input_with_addresses)):
         core_bcf = generate_bcf(input_with_addresses.operation, col, row)
         make_core_elf(core_bcf)
@@ -353,6 +351,7 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start
 
     make_design_pdi()
 
+    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
     return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
 
 

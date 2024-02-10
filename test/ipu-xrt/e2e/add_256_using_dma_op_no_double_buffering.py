@@ -191,10 +191,10 @@ def add_256_using_dma_op_no_double_buffering(module):
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(LEN,), (LEN,)], [(LEN,)], np.int32)
+        views = xclbin.mmap_buffers([(LEN,), (LEN,), (LEN,)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, LEN, dtype=np.int32)
         C = np.zeros(LEN, dtype=np.int32)
