@@ -118,9 +118,7 @@ jobs:
               export LIT_FILTER="${{ inputs.LIT_FILTER }}"
             fi
             
-            # until I put bootgen into the image
-            export LIT_FILTER_OUT=Targets/AIEGenerateCDODirect
-            sed -i.bak 's/-sv --timeout 600/-sv --timeout 600 -j1/g' ../test/CMakeLists.txt
-            sed -i.bak 's/-sv --timeout 300/-sv --timeout 600 -j1 --show-unsupported/g' ../reference_designs/CMakeLists.txt
+            # filter out CODirect until I put bootgen into the image
+            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie
             ninja check-reference-designs
