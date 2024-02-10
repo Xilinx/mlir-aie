@@ -98,7 +98,9 @@ the tools are largely board and device independent and can be adapted to other e
 
 4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or Ryzen AI 
     with the path to the `llvm/build` directory. The Vitis environment will have to be 
-    set up for this to succeed.
+    set up for this to succeed. Note that when targetting the VCK5000 platform, please
+    refer to the further instructions below titled `Building on X86 targeting the VCK5000`
+    as there are a few extra steps needed.
 
     ```
     source <Vitis Install Path>/settings64.sh
@@ -107,7 +109,7 @@ the tools are largely board and device independent and can be adapted to other e
 
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
-    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors.
+    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. 
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
@@ -115,6 +117,35 @@ and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
     ```
+
+## Building on X86 targetting the VCK5000
+
+In order to build and run on PCIe cards, you first have to build and install the aie-rt library. We chose to install the library in /opt/xaiengine but it is not required for the tools to be installed there. Just ensure that when building mlir-aie and mlir-air, that you point to the directory in which the aie-rt library was installed.
+
+```
+git clone https://github.com/stephenneuendorffer/aie-rt
+cd aie-rt
+git checkout phoenix_v2023.2
+cd driver/src
+make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
+sudo cp -r ../include /opt/aiengine/
+sudo cp libxaiengine.so* /opt/xaiengine/lib/
+export LD_LIBRARY_PATH=/opt/xaiengine/lib:${LD_LIBRARY_PATH}
+```
+
+When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime (ROCr) which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install ROCr. Run the following script to clone the ROCm-air-platforms repository:
+
+```
+./utils/clone-rocm-air-platforms.sh
+```
+
+Then, set `${ROCM_ROOT}` to the ROCm install from the previous path. Then, run the following command to build the mlir-aie toolchain targetting the VCK5000.
+
+```
+./utils/build-mlir-aie-pcie.sh llvm/build/ build install /opt/xaienginev2 ${ROCM_ROOT}/lib/cmake/hsa-runtime64/ ${ROCM_ROOT}/lib/cmake/hsakmt/
+```
+
+The PCIe AIR runtime requires the use of the [AIR PCIe kernel driver](https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver). The driver directory in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to compile and load the AIR PCIe kernel driver.
 
 ### Sysroot
 Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
