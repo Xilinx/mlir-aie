@@ -25,6 +25,12 @@
 namespace py = pybind11;
 using namespace py::literals;
 
+// group_id 0 is for ipu instructions
+// group_id 1 is for number of ipu instructions
+// host side buffers/args follow starting from position 2
+// see aiecc.main.emit_design_kernel_json
+constexpr size_t HOST_BUFFERS_START_IDX = 2;
+
 class PyXCLBin {
 public:
   PyXCLBin(const std::string &xclBinPath, const std::string &kernelName,
@@ -49,15 +55,11 @@ public:
   }
 
   template <typename ElementT>
-  std::pair<std::vector<py::memoryview>, std::vector<py::memoryview>>
-  mmapBuffers(std::vector<std::vector<int>> inputShapes,
-              std::vector<std::vector<int>> outputShapes) {
-    this->inputBuffers.reserve(inputShapes.size());
-    this->outputBuffers.reserve(outputShapes.size());
-    std::vector<py::memoryview> inputViews;
-    std::vector<py::memoryview> outputViews;
-    inputViews.reserve(inputShapes.size());
-    outputViews.reserve(outputShapes.size());
+  std::vector<py::memoryview>
+  mmapBuffers(std::vector<std::vector<int>> shapes) {
+    this->buffers.reserve(shapes.size());
+    std::vector<py::memoryview> views;
+    views.reserve(shapes.size());
 
     auto initAndViewBuffer = [this](
                                  std::vector<int> shape, int groupId,
@@ -74,7 +76,7 @@ public:
       for (int i = 0; i < nElements; ++i)
         buf[i] = static_cast<ElementT>(0);
 
-      std::vector<int> strides_{1};
+      std::vector strides_{1};
       for (int i = shape.size() - 1; i > 0; i--)
         strides_.push_back(strides_.back() * shape[i]);
       std::vector<int> strides;
@@ -85,27 +87,19 @@ public:
       views.push_back(py::memoryview::from_buffer(buf, shape, strides));
     };
 
-    // group_id 0 is for ipu instructions and then data buffers start with group
-    // 2?
-    for (size_t i = 0; i < inputShapes.size(); ++i)
-      initAndViewBuffer(inputShapes[i], i + 2, this->inputBuffers, inputViews);
-    for (size_t i = 0; i < outputShapes.size(); ++i)
-      initAndViewBuffer(outputShapes[i], i + 2 + this->inputBuffers.size(),
-                        this->outputBuffers, outputViews);
-    return {inputViews, outputViews};
+    for (size_t i = 0; i < shapes.size(); ++i)
+      initAndViewBuffer(shapes[i], HOST_BUFFERS_START_IDX + i, this->buffers,
+                        views);
+    return views;
   }
 
   void syncBuffersToDevice() {
-    for (auto &buf : this->inputBuffers)
-      buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    for (auto &buf : this->outputBuffers)
+    for (auto &buf : this->buffers)
       buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
 
   void syncBuffersFromDevice() {
-    for (auto &buf : this->inputBuffers)
-      buf->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    for (auto &buf : this->outputBuffers)
+    for (auto &buf : this->buffers)
       buf->sync(XCL_BO_SYNC_BO_FROM_DEVICE);
   }
 
@@ -113,10 +107,8 @@ public:
     run_ = std::make_unique<xrt::run>(*kernel);
     run_->set_arg(0, *ipuInstructions);
     run_->set_arg(1, ipuInstructions->size());
-    for (size_t i = 0; i < inputBuffers.size(); ++i)
-      run_->set_arg(i + 2, *inputBuffers[i]);
-    for (size_t i = 0; i < outputBuffers.size(); ++i)
-      run_->set_arg(i + 2 + inputBuffers.size(), *outputBuffers[i]);
+    for (size_t i = 0; i < buffers.size(); ++i)
+      run_->set_arg(HOST_BUFFERS_START_IDX + i, *buffers[i]);
     run_->start();
   }
 
@@ -134,8 +126,7 @@ public:
   std::unique_ptr<xrt::kernel> kernel;
   std::unique_ptr<xrt::bo> ipuInstructions;
 
-  std::vector<std::unique_ptr<xrt::bo>> inputBuffers;
-  std::vector<std::unique_ptr<xrt::bo>> outputBuffers;
+  std::vector<std::unique_ptr<xrt::bo>> buffers;
 
   std::unique_ptr<xrt::run> run_;
 };
@@ -152,22 +143,21 @@ PYBIND11_MODULE(_xrt, m) {
       .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
       .def(
           "mmap_buffers",
-          [](PyXCLBin &self, const std::vector<std::vector<int>> &inputShapes,
-             const std::vector<std::vector<int>> &outputShapes,
+          [](PyXCLBin &self, const std::vector<std::vector<int>> &shapes,
              const py::object &npFormat) {
             auto npy = py::module_::import("numpy");
             if (npFormat.is(npy.attr("int16")))
-              return self.mmapBuffers<int16_t>(inputShapes, outputShapes);
+              return self.mmapBuffers<int16_t>(shapes);
             if (npFormat.is(npy.attr("int32")))
-              return self.mmapBuffers<int32_t>(inputShapes, outputShapes);
+              return self.mmapBuffers<int32_t>(shapes);
             if (npFormat.is(npy.attr("float32")))
-              return self.mmapBuffers<float>(inputShapes, outputShapes);
+              return self.mmapBuffers<float>(shapes);
             if (npFormat.is(npy.attr("int64")))
-              return self.mmapBuffers<int64_t>(inputShapes, outputShapes);
+              return self.mmapBuffers<int64_t>(shapes);
             if (npFormat.is(npy.attr("float64")))
-              return self.mmapBuffers<double>(inputShapes, outputShapes);
+              return self.mmapBuffers<double>(shapes);
             throw std::runtime_error("unsupported np format: " +
                                      py::repr(npFormat).cast<std::string>());
           },
-          "input_shape"_a, "output_shapes"_a, "np_format"_a);
+          "shapes"_a, "np_format"_a);
 }

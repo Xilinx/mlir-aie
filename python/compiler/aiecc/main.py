@@ -180,7 +180,7 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901"):
+def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
         tiles = find_ops(
@@ -190,8 +190,11 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
         min_col = min([t.col.value for t in tiles])
         max_col = max([t.col.value for t in tiles])
 
-    uuid = random.randint(2222, 9999)
     num_cols = max_col - min_col + 1
+    if start_columns is None:
+        start_columns = list(range(1, 6 - num_cols))
+
+    uuid = random.randint(2222, 9999)
     return {
         "aie_partition": {
             "name": "QoS",
@@ -200,7 +203,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901"):
             "pre_post_fingerprint": "12345",
             "partition": {
                 "column_width": num_cols,
-                "start_columns": [*range(1, 6 - num_cols)],
+                "start_columns": start_columns,
             },
             "PDIs": [
                 {
@@ -572,7 +575,6 @@ class FlowRunner:
         else:
             task = None
 
-        buffers = ["in", "tmp", "out"]
         await write_file_async(
             json.dumps(mem_topology, indent=2),
             self.prepend_tmp("mem_topology.json"),
@@ -583,10 +585,14 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
+        buffer_arg_names = ["in", "tmp", "out"]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
-                    opts.kernel_name, opts.kernel_id, opts.instance_name, buffers
+                    opts.kernel_name,
+                    opts.kernel_id,
+                    opts.instance_name,
+                    buffer_arg_names,
                 ),
                 indent=2,
             ),

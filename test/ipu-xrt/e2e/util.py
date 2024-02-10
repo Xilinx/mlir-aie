@@ -1,5 +1,7 @@
 import __main__
+import contextlib
 import inspect
+from itertools import zip_longest
 import json
 import os
 from pathlib import Path
@@ -8,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 
+from aie._mlir_libs._mlir.ir import _GlobalDebug
 from aie.extras.runtime.passes import Pipeline, run_pipeline
 
 from aie.compiler.aiecc.main import (
@@ -95,6 +98,9 @@ XCHESS_ARGS = lambda: [
     "+w",
     str(WORKDIR),
 ]
+
+# https://github.com/amd/xdna-driver/blob/d8ff9afc5c202c2bee22e6d36d1fc24dcdb6ea71/src/shim/ipu/hwctx.cpp#L58
+os.environ["XRT_HACK_UNSECURE_LOADING_XCLBIN"] = "1"
 
 
 def construct_and_print_module(f):
@@ -224,20 +230,20 @@ def chess_llvm_link(*file_strs, prefix="chess_llvm_link_output", input_prefixes=
 
 
 def make_core_elf(core_bcf, input_object_file="input.o"):
-    with open(WORKDIR / f"core.bcf", "w") as f:
-        f.write(core_bcf)
-
     input_files = extract_input_files(core_bcf)
     core_name = re.findall(r"_symbol (.*?) _after _main_init", core_bcf, re.MULTILINE)
     assert len(core_name) == 1
     core_name = core_name[0]
+
+    with open(WORKDIR / f"{core_name}.bcf", "w") as f:
+        f.write(core_bcf)
 
     cmd = [
         *XCHESS_ARGS(),
         input_object_file,
         *input_files,
         "+l",  # linker configuration file
-        f"core.bcf",
+        f"{core_name}.bcf",
         "-o",
         f"{core_name}.elf",
     ]
@@ -261,13 +267,19 @@ def make_design_pdi():
     _run_command(cmd)
 
 
-def make_xclbin(module, name="final"):
+def make_xclbin(module, name="final", kernel_json=None, start_columns=None):
     with open(WORKDIR / "mem_topology.json", "w") as f:
         json.dump(mem_topology, f, indent=2)
     with open(WORKDIR / "aie_partition.json", "w") as f:
-        json.dump(emit_partition(str(module)), f, indent=2)
+        json.dump(
+            emit_partition(str(module), start_columns=start_columns),
+            f,
+            indent=2,
+        )
+    if kernel_json is None:
+        kernel_json = emit_design_kernel_json()
     with open(WORKDIR / "kernels.json", "w") as f:
-        json.dump(emit_design_kernel_json(), f, indent=2)
+        json.dump(kernel_json, f, indent=2)
     xclbin_path = str(WORKDIR / f"{name}.xclbin")
     cmd = [
         "xclbinutil",
@@ -296,7 +308,14 @@ def setup_xclbin_firmware(xclbin_path):
     _run_command(cmd)
 
 
-def compile_with_vectorization(mod_aie, mod_aievec):
+@contextlib.contextmanager
+def _global_debug(debug):
+    _GlobalDebug.flag = debug
+    yield
+    _GlobalDebug.flag = False
+
+
+def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start_col=1):
     aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
 
@@ -319,21 +338,24 @@ def compile_with_vectorization(mod_aie, mod_aievec):
 
     chess_compile(fullylinked_ll)
 
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
+    for col, row, _ in generate_cores_list(str(input_with_addresses)):
+        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+        make_core_elf(core_bcf)
 
-    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-    make_core_elf(core_bcf)
+    with _global_debug(debug):
+        generate_cdo(
+            input_physical.operation,
+            str(WORKDIR),
+            partition_start_col=partition_start_col,
+        )
 
-    # _GlobalDebug.flag = True
-    generate_cdo(input_physical.operation, str(WORKDIR))
-    # _GlobalDebug.flag = False
     make_design_pdi()
 
+    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
     return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
 
 
-def compile_without_vectorization(module):
+def compile_without_vectorization(module, debug=False, partition_start_col=1):
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
         module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
@@ -348,14 +370,31 @@ def compile_without_vectorization(module):
         )
     )
 
-    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-    make_core_elf(core_bcf)
+    for col, row, _ in generate_cores_list(str(input_with_addresses)):
+        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
+        make_core_elf(core_bcf)
 
-    # _GlobalDebug.flag = True
-    generate_cdo(input_physical.operation, str(WORKDIR))
-    # _GlobalDebug.flag = False
+    with _global_debug(debug):
+        generate_cdo(
+            input_physical.operation,
+            str(WORKDIR),
+            partition_start_col=partition_start_col,
+        )
+
     make_design_pdi()
 
     generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
     return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+
+
+def grouper(iterable, n, *, incomplete="fill", fill_value=None):
+    args = [iter(iterable)] * n
+    match incomplete:
+        case "fill":
+            return zip_longest(*args, fillvalue=fill_value)
+        case "strict":
+            return zip(*args, strict=True)
+        case "ignore":
+            return zip(*args)
+        case _:
+            raise ValueError("Expected fill, strict, or ignore")

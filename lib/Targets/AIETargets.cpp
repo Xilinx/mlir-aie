@@ -146,6 +146,9 @@ void registerAIETranslations() {
   static llvm::cl::opt<bool> cdoAieSim(
       "cdo-aiesim", llvm::cl::init(false),
       llvm::cl::desc("AIESIM target cdo generation"));
+  static llvm::cl::opt<size_t> cdoPartitionStartCol(
+      "cdo-partition-start-col", llvm::cl::init(1),
+      llvm::cl::desc("Partition starting column for CDO generation"));
 #endif
 
   TranslateFromMLIRRegistration registrationMMap(
@@ -307,7 +310,8 @@ void registerAIETranslations() {
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
         return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
-                                       cdoUnified, axiDebug, cdoAieSim);
+                                       cdoUnified, axiDebug, cdoAieSim,
+                                       cdoPartitionStartCol);
       },
       registerDialects);
 #endif
