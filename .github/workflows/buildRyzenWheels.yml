@@ -186,8 +186,8 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/aie-*.whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
-          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          tag: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 'latest-wheels' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

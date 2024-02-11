@@ -232,6 +232,14 @@ def parse_args(args=None):
         help="Generate xclbin",
     )
     parser.add_argument(
+        "--link_against_hsa",
+        dest="link_against_hsa",
+        default=False,
+        action="store_const",
+        const=True,
+        help="Link runtime against ROCm runtime HSA interface",
+    )
+    parser.add_argument(
         "--xclbin-name",
         dest="xclbin_name",
         default="final.xclbin",

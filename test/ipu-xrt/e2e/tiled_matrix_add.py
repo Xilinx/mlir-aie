@@ -4,8 +4,6 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: export BASENAME=$(basename %s)
-# RUN: rm -rf $BASENAME && mkdir $BASENAME && cd $BASENAME
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 import random
@@ -246,11 +244,11 @@ def tiled_matrix_add(module):
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(M, N), (M, N)], [(M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (M, N), dtype=np.int32)
         B = np.random.randint(0, 10, (M, N), dtype=np.int32)
@@ -490,11 +488,11 @@ def matrix_add_sugar(module):
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(M, N), (M, N)], [(M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (M, N), dtype=np.int32)
         B = np.random.randint(0, 10, (M, N), dtype=np.int32)

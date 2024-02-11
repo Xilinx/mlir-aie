@@ -12,6 +12,7 @@ add_library(test_lib STATIC test_library.cpp)
 set(TEST_LIB_PUBLIC_HEADERS
     test_library.h
     target.h
+    hsa_ext_air.h
 )
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "${TEST_LIB_PUBLIC_HEADERS}")
 target_compile_options(test_lib PRIVATE -fPIC)
@@ -20,8 +21,27 @@ target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
 )
 
+
+if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+  message("Building x86_64-hsa runtime")
+  add_definitions(-DHSA_RUNTIME)
+endif()
+
+# If we are compiling the x86_64 runtime targetting HSA we need to link against HSA
+if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+  message("Linking against hsa-runtime64")
+  find_package(hsa-runtime64 REQUIRED)
+  target_link_libraries(test_lib
+    hsa-runtime64::hsa-runtime64
+  )
+  include_directories(
+    ${hsa-runtime64_DIR}/../../../include
+  )
+
+endif()
+
 # copy header and source files into build area
-set(headers target.h test_library.h memory_allocator.h)
+set(headers target.h test_library.h memory_allocator.h hsa_ext_air.h)
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
@@ -66,10 +86,32 @@ target_include_directories(memory_allocator_ion PRIVATE
 target_compile_options(memory_allocator_ion PRIVATE -fPIC)
 target_compile_definitions(memory_allocator_ion PRIVATE)
 
+message("LibXAIE_INC_DIR is at ${LibXAIE_INC_DIR} for ${AIE_RUNTIME_TARGET}")
+
 install(TARGETS memory_allocator_ion
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+
+# If we are compiling x86_64 HSA runtime, need to link against HSA
+if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+  add_library(memory_allocator_hsa STATIC memory_allocator_hsa.cpp)
+  set_target_properties(memory_allocator_hsa PROPERTIES PUBLIC_HEADER "memory_allocator.h")
+  target_compile_options(memory_allocator_hsa PRIVATE -fPIC)
+  target_compile_definitions(memory_allocator_hsa PRIVATE)
+  target_include_directories(memory_allocator_hsa PRIVATE ${LibXAIE_INC_DIR})
+  target_link_libraries(memory_allocator_hsa
+    hsa-runtime64::hsa-runtime64
+  )
+  include_directories(
+    ${hsa-runtime64_DIR}/../../../include
+  )
+ 
+  install(TARGETS memory_allocator_hsa
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+      PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
+  )
+endif()
 
 if (VITIS_ROOT)
     add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)

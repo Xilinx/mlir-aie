@@ -83,49 +83,8 @@ jobs:
           LIT_PATH=$(python -c "import lit; from pathlib import Path; print(Path(lit.__file__).parent)")
           sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
 
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../test/CMakeLists.txt
-          LIT_FILTER_OUT=test/ipu-xrt/e2e ninja check-aie
-          sed -i.bak 's/-sv --timeout 600/-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded/g' $PWD/../reference_designs/CMakeLists.txt
+          export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
+          ninja check-aie
           ninja check-reference-designs
 
           popd
-
-      - name: Build mlir-aie python bindings
-        run: |
-          
-          source aie-venv/bin/activate
-          
-          export MLIR_INSTALL_ABS_PATH=$PWD/mlir
-          export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
-          export WHEELHOUSE_DIR=$PWD/wheelhouse
-          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
-          export XRT_ROOT=/opt/xilinx/xrt
-          export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
-          export DATETIME=$(date +"%Y%m%d%H")
-          
-          cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
-          
-          pushd utils/mlir_aie_wheels/python_bindings
-          
-          pip install wheel auditwheel patchelf
-          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie-*.whl --plat manylinux_2_35_x86_64
-          
-          popd
-
-      - name: Install and test mlir-aie python bindings
-        run: |
-          
-          source aie-venv/bin/activate
-          pip install wheelhouse/repaired_wheel/aie-*.whl --force-reinstall
-          
-          export VITIS_DIR=/opt/Xilinx/Vitis/2023.2
-          export XRT_ROOT=/opt/xilinx/xrt
-          export XILINXD_LICENSE_FILE=/opt/xilinx/Xilinx.lic
-          
-          # wget -q https://raw.githubusercontent.com/gitGNU/gnu_parallel/master/src/parallel
-          # chmod +x parallel
-          # ls test/ipu-xrt/e2e/*.py | grep -v vectorized | ./parallel -j12 "python {}"
-          # python test/ipu-xrt/e2e/square_matrix_mult.py
