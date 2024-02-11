@@ -1,7 +1,7 @@
 include ../../../makefile-common
 
-#mlirFileName = aieFinal
-mlirFileName = aieWithTrace
+mlirFileName = aieFinal
+# mlirFileName = aieWithTrace
 # mlirFileName = aieDemo
 
 VPATH := ../../kernels
@@ -18,7 +18,7 @@ build/conv2dk3.o: conv2dk3.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -c $< -o $@
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
 
 build/final.xclbin: ${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \
