@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import inspect
-from typing import List, Optional, Union, Tuple
+from collections import defaultdict, namedtuple
+from enum import Enum, auto
+from typing import List, Optional, Union, Tuple, Dict, Set
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
@@ -29,6 +31,7 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     TypeAttr,
+    Value,
     _i32ArrayAttr,
 )
 from ..util import _get_sym_name
@@ -210,23 +213,6 @@ def acquire(port, of_name, num_elem, datatype):
     return ObjectFifoAcquireOp(port, of_name, num_elem, datatype)
 
 
-# Create a flow between source and destination tile ports.
-class Flow(FlowOp):
-    """Specialize FlowOp class constructor to take python integers"""
-
-    def __init__(
-        self, source, source_port, source_channel, dest, dest_port, dest_channel
-    ):
-        super().__init__(
-            source=source,
-            sourceBundle=source_port,
-            sourceChannel=source_channel,
-            dest=dest,
-            destBundle=dest_port,
-            destChannel=dest_channel,
-        )
-
-
 # Create a packet flow between source and destination tile ports.
 class PacketFlow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
@@ -378,3 +364,127 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
 _flow = flow
 
 flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview
+
+
+class IncomingOutgoing(Enum):
+    INCOMING = auto()
+    OUTGOING = auto()
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class TileOp(TileOp):
+    flows: Dict[Tuple[WireBundle, IncomingOutgoing, int], FlowOp] = None
+
+    def ep(
+        self,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        if self.flows is None:
+            self.flows = {}
+        return FlowEndPoint(self, bundle, channel)
+
+    def __rshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        return self.ep() >> other
+
+    def __lshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        other >> self.ep()
+        return other
+
+
+class classproperty:
+    def __init__(self, func):
+        self.fget = func
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
+
+
+class FlowEndPoint:
+    tile: TileOp = None
+    bundle: WireBundle = None
+    channel: int = None
+
+    def __init__(
+        self,
+        tile: TileOp,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        self.tile = tile
+        self.bundle = bundle
+        self.channel = channel
+
+    # fmt: off
+    __used_channels: Dict[Tuple[int, int, WireBundle, IncomingOutgoing], Set[int]] = None
+    # fmt: on
+
+    @classmethod
+    def _reset_used_channels(cls):
+        cls.__used_channels = defaultdict(set)
+
+    @classproperty
+    def _used_channels(cls):
+        if cls.__used_channels is None:
+            cls._reset_used_channels()
+        return cls.__used_channels
+
+    def __rshift__(self, other: "FlowEndPoint"):
+        def get_channel_and_update(channel, tile, bundle, incoming_outgoing):
+            used_channels = FlowEndPoint._used_channels[
+                tile.col.value, tile.row.value, bundle, incoming_outgoing
+            ]
+            if channel is None:
+                max_used_channel = max(used_channels, default=-1)
+                for i in range(max_used_channel):
+                    if i not in used_channels:
+                        channel = i
+                        break
+                else:
+                    channel = max_used_channel + 1
+            assert channel not in used_channels
+            used_channels.add(channel)
+            return channel
+
+        if isinstance(other, TileOp):
+            other = other.ep()
+
+        for op in [self, other]:
+            if op.bundle is None:
+                op.bundle = WireBundle.DMA
+
+        lhs_channel = get_channel_and_update(
+            self.channel, self.tile, self.bundle, IncomingOutgoing.OUTGOING
+        )
+        rhs_channel = get_channel_and_update(
+            other.channel,
+            other.tile,
+            other.bundle,
+            IncomingOutgoing.INCOMING,
+        )
+
+        result = flow(
+            self.tile,
+            self.bundle,
+            lhs_channel,
+            other.tile,
+            other.bundle,
+            rhs_channel,
+        )
+
+        self.tile.flows[self.bundle, IncomingOutgoing.OUTGOING, lhs_channel] = result
+        other.tile.flows[other.bundle, IncomingOutgoing.INCOMING, rhs_channel] = result
+
+        return other
+
+    def __lshift__(self, other: "FlowEndPoint"):
+        other >> self
+        return other
+
+
+def tile(col, row, *, loc=None, ip=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip)
