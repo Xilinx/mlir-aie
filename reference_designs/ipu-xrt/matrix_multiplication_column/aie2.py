@@ -243,13 +243,6 @@ def my_matmul():
                             sizes=[N_div_n, K_div_k, m_x_n_cores, k_in_i32s],
                             strides=[0, k_in_i32s, K_in_i32s],
                         )
-                        #ipu_dma_memcpy_nd(
-                        #    metadata="inB",
-                        #    bd_id=2 * tile_row + 2,
-                        #    mem=B,
-                        #    sizes=[1, N_div_n, K, n_in_i32s],
-                        #    strides=[0, n_in_i32s, N_in_i32s],
-                        #)
                         ipu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
