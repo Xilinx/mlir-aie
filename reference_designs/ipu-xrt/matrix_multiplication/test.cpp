@@ -9,9 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include <boost/program_options.hpp>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <chrono>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -240,8 +240,11 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  std::cout << std::endl << "NPU matmul time: " 
-            << std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count() 
+  std::cout << std::endl
+            << "NPU matmul time: "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(stop -
+                                                                     start)
+                   .count()
             << "ms." << std::endl;
 
   if (!errors) {
