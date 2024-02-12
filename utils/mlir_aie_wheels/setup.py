@@ -145,6 +145,7 @@ class CMakeBuild(build_ext):
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
+            "-DMLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS=ON",
             # not used on MSVC, but no harm
         ]
 

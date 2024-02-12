@@ -118,6 +118,7 @@ jobs:
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
+            -DMLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS=ON \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
@@ -152,6 +153,7 @@ jobs:
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_AIRBIN=ON \
             -DHOST_COMPILER=NONE \
+            -DMLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS=ON \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \

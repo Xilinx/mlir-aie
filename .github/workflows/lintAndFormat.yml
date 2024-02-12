@@ -74,6 +74,7 @@ jobs:
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
+            -DMLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
@@ -257,6 +258,7 @@ jobs:
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DMLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS=ON \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             \
