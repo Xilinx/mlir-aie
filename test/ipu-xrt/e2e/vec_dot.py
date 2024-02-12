@@ -237,11 +237,11 @@ def vec_dot(module):
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(K,), (K,)], [(tiles,)], np.int32)
+        views = xclbin.mmap_buffers([(K,), (K,), (tiles,)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (K,), dtype=np.int32)
         # B = np.ones((K), dtype=np.int32)
@@ -412,11 +412,11 @@ def vec_dot_sugar(module):
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(K,), (K,)], [(tiles,)], np.int32)
+        views = xclbin.mmap_buffers([(K,), (K,), (tiles,)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (K,), dtype=np.int32)
         # B = np.ones((K), dtype=np.int32)

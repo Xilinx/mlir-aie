@@ -20,13 +20,109 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <vector>
 
-// extern "C" {
-// extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
-// }
+#define SYSFS_PATH_MAX 63
 
-// namespace aie_device {
-//}
+#ifdef HSA_RUNTIME
+hsa_status_t air_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
+                                        uint64_t va) {
+
+  pkt->arg[0] = 0;
+  pkt->arg[0] = va;
+
+  pkt->type = AIR_PKT_TYPE_TRANSLATE;
+  pkt->header = (HSA_PACKET_TYPE_AGENT_DISPATCH << HSA_PACKET_HEADER_TYPE);
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t get_aie_agents(hsa_agent_t agent, void *data) {
+  hsa_status_t status(HSA_STATUS_SUCCESS);
+  hsa_device_type_t device_type;
+  std::vector<hsa_agent_t> *aie_agents(nullptr);
+
+  if (!data) {
+    status = HSA_STATUS_ERROR_INVALID_ARGUMENT;
+    return status;
+  }
+
+  aie_agents = static_cast<std::vector<hsa_agent_t> *>(data);
+  status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+
+  if (status != HSA_STATUS_SUCCESS) {
+    printf("%s [ERROR] We got a status of 0x%x from hsa_agent_get_info\n",
+           __func__, status);
+    return status;
+  }
+
+  if (device_type == HSA_DEVICE_TYPE_AIE) {
+    aie_agents->push_back(agent);
+  }
+
+  return status;
+}
+
+hsa_status_t get_global_mem_pool(hsa_amd_memory_pool_t pool, void *data) {
+  hsa_status_t status(HSA_STATUS_SUCCESS);
+  hsa_region_segment_t segment_type;
+  status = hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT,
+                                        &segment_type);
+  if (segment_type == HSA_REGION_SEGMENT_GLOBAL) {
+    *reinterpret_cast<hsa_amd_memory_pool_t *>(data) = pool;
+  }
+
+  return status;
+}
+
+template <typename T>
+inline void air_write_pkt(hsa_queue_t *q, uint32_t packet_id, T *pkt) {
+  reinterpret_cast<T *>(q->base_address)[packet_id] = *pkt;
+}
+
+hsa_status_t air_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q,
+                                         uint64_t packet_id, uint64_t doorbell,
+                                         hsa_agent_dispatch_packet_t *pkt,
+                                         bool destroy_signal) {
+
+  // dispatch and wait has blocking semantics so we can internally create the
+  // signal
+  hsa_amd_signal_create_on_agent(1, 0, nullptr, agent, 0,
+                                 &(pkt->completion_signal));
+
+  // Write the packet to the queue
+  air_write_pkt<hsa_agent_dispatch_packet_t>(q, packet_id, pkt);
+
+  // Ringing the doorbell
+  hsa_signal_store_screlease(q->doorbell_signal, doorbell);
+
+  // wait for packet completion
+  while (hsa_signal_wait_scacquire(pkt->completion_signal,
+                                   HSA_SIGNAL_CONDITION_EQ, 0, 0x80000,
+                                   HSA_WAIT_STATE_ACTIVE) != 0)
+    ;
+
+  // Optionally destroying the signal
+  if (destroy_signal) {
+    hsa_signal_destroy(pkt->completion_signal);
+  }
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t air_packet_device_init(hsa_agent_dispatch_packet_t *pkt,
+                                    uint32_t num_cols) {
+
+  pkt->arg[0] = 0;
+  pkt->arg[0] |= (AIR_ADDRESS_ABSOLUTE_RANGE << 48);
+  pkt->arg[0] |= ((uint64_t)num_cols << 40);
+
+  pkt->type = AIR_PKT_TYPE_DEVICE_INITIALIZE;
+  pkt->header = (HSA_PACKET_TYPE_AGENT_DISPATCH << HSA_PACKET_HEADER_TYPE);
+
+  return HSA_STATUS_SUCCESS;
+}
+#endif
 
 /// @brief  Release access to the libXAIE context.
 /// @param ctx The context
@@ -35,14 +131,94 @@ void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
   if (RC != XAIE_OK) {
     printf("Failed to finish tiles.\n");
   }
+
+#ifdef HSA_RUNTIME
+  if (ctx->cmd_queue != NULL) {
+    hsa_queue_destroy(ctx->cmd_queue);
+  }
+  hsa_shut_down();
+#endif
   free(ctx);
 }
 
 /// @brief Initialize the device represented by the context.
 /// @param ctx The context
 /// @return Zero on success
-int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
+int mlir_aie_init_device(aie_libxaie_ctx_t *ctx, uint32_t device_id) {
   AieRC RC = XAIE_OK;
+
+#ifdef HSA_RUNTIME
+  if (ctx == NULL) {
+    printf("[ERROR] %s: Passed context of NULL\n", __func__);
+    return -1;
+  }
+
+  // Initializing HSA
+  hsa_status_t hsa_ret = hsa_init();
+  if (hsa_ret != HSA_STATUS_SUCCESS) {
+    printf("hsa_init failed\n");
+    return -1;
+  }
+
+  // Finding all AIE HSA agents
+  hsa_status_t iterate_agents_ret = hsa_iterate_agents(
+      &get_aie_agents, reinterpret_cast<void *>(&(ctx->agents)));
+  if (iterate_agents_ret != HSA_STATUS_SUCCESS) {
+    printf("iterate_agents failed with opcode 0x%x\n", iterate_agents_ret);
+    return -1;
+  }
+
+  // Checking if the agents are empty
+  if (ctx->agents.empty()) {
+    printf("No agents found. Exiting.\n");
+    return -1;
+  }
+
+  // Iterating over memory pools to initialize our allocator
+  hsa_amd_agent_iterate_memory_pools(
+      ctx->agents.front(), get_global_mem_pool,
+      reinterpret_cast<void *>(&(ctx->global_mem_pool)));
+
+  // Creating a queue on the first agent that we see
+  hsa_queue_t *q = nullptr;
+  int aie_max_queue_size = 0;
+  hsa_agent_get_info(ctx->agents[0], HSA_AGENT_INFO_QUEUE_MAX_SIZE,
+                     &aie_max_queue_size);
+
+  auto queue_create_status =
+      hsa_queue_create(ctx->agents[0], aie_max_queue_size,
+                       HSA_QUEUE_TYPE_SINGLE, nullptr, nullptr, 0, 0, &q);
+
+  if (queue_create_status != HSA_STATUS_SUCCESS) {
+    printf("Failed to create queue. Exiting\n");
+    return -1;
+  }
+
+  // Initializing the device
+  uint64_t wr_idx = hsa_queue_add_write_index_relaxed(q, 1);
+  uint64_t packet_id = wr_idx % q->size;
+  hsa_agent_dispatch_packet_t shim_pkt;
+  air_packet_device_init(&shim_pkt, 50);
+  air_queue_dispatch_and_wait(&(ctx->agents[0]), q, packet_id, wr_idx,
+                              &shim_pkt, true);
+
+  // Attaching the queue to the context so we can send more packets if needed
+  ctx->cmd_queue = q;
+
+  // Creating the sysfs path to issue read/write 32 commands
+  char sysfs_path[SYSFS_PATH_MAX + 1];
+  if (snprintf(sysfs_path, SYSFS_PATH_MAX, "/sys/class/amdair/amdair/%02u",
+               device_id) == SYSFS_PATH_MAX)
+    sysfs_path[SYSFS_PATH_MAX] = 0;
+
+  // Using the AMDAIR libxaie backend, which utilizes the AMDAIR driver
+  XAie_BackendType backend;
+  ctx->AieConfigPtr.Backend = XAIE_IO_BACKEND_AMDAIR;
+  backend = XAIE_IO_BACKEND_AMDAIR;
+  ctx->AieConfigPtr.BaseAddr = 0;
+  ctx->DevInst.IOInst = (void *)sysfs_path;
+
+#endif
 
   RC = XAie_CfgInitialize(&(ctx->DevInst), &(ctx->AieConfigPtr));
   if (RC != XAIE_OK) {
@@ -66,6 +242,13 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
       printf("Failed to finish tiles.\n");
       return -1;
     }
+
+#ifdef HSA_RUNTIME
+    // Because we tear this down, need to do it again
+    ctx->AieConfigPtr.BaseAddr = 0;
+    ctx->DevInst.IOInst = (void *)sysfs_path;
+#endif
+
     RC = XAie_CfgInitialize(&(ctx->DevInst), &(ctx->AieConfigPtr));
     if (RC != XAIE_OK) {
       printf("Driver initialization failed.\n");

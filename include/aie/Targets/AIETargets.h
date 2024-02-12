@@ -51,11 +51,11 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m,
-                                            llvm::StringRef workDirPath,
-                                            byte_ordering endianness,
-                                            bool emitUnified, bool axiDebug,
-                                            bool aieSim);
+mlir::LogicalResult
+AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
+                        byte_ordering endianness = Little_Endian,
+                        bool emitUnified = false, bool axiDebug = false,
+                        bool aieSim = false, size_t partitionStartCol = 1);
 #endif
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
