@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <boost/program_options.hpp>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -16,8 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <string>
-#include <vector>
+#include <stdfloat>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -31,13 +31,15 @@ constexpr int A_VOLUME = M * K;
 constexpr int B_VOLUME = N * K;
 constexpr int C_VOLUME = M * N;
 
-using A_DATATYPE = std::int16_t;
-using B_DATATYPE = std::int16_t;
-using C_DATATYPE = std::int16_t;
+using A_DATATYPE = std::bfloat16_t;
+using B_DATATYPE = std::bfloat16_t;
+using C_DATATYPE = float;
 
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
+
+constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
@@ -73,13 +75,17 @@ static inline std::int16_t random_int16_t() {
   return ((std::int16_t)rand() % 0x10000);
 }
 
+static inline std::bfloat16_t random_bfloat16_t() {
+  return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+}
+
 template <typename Tin, typename Tout>
 void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
       Tout running_sum = 0;
       for (int i = 0; i < K; i++) {
-        running_sum += a[row * K + i] * b[i * N + col];
+        running_sum += Tout(a[row * K + i] * b[i * N + col]);
       }
       c[row * N + col] += running_sum;
     }
@@ -180,12 +186,12 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec;
   for (int i = 0; i < A_VOLUME; i++)
-    AVec.push_back(random_int16_t());
+    AVec.push_back(random_bfloat16_t());
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec;
   for (int i = 0; i < B_VOLUME; i++)
-    BVec.push_back(random_int16_t());
+    BVec.push_back(random_bfloat16_t());
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
   std::vector<C_DATATYPE> CVec;
@@ -203,8 +209,10 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
+  auto start = std::chrono::system_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
+  auto stop = std::chrono::system_clock::now();
 
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
@@ -213,21 +221,31 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
   int max_errors = 100;
 
-  std::vector<C_DATATYPE> output_ref0;
-  for (uint32_t i = 0; i < C_VOLUME; i++)
-    output_ref0.push_back(0);
-  matmul(AVec, BVec, output_ref0);
+  if (VERIFY) {
+    std::vector<C_DATATYPE> output_ref0;
+    for (uint32_t i = 0; i < C_VOLUME; i++)
+      output_ref0.push_back(0);
+    matmul(AVec, BVec, output_ref0);
 
-  for (uint32_t i = 0; i < C_VOLUME; i++) {
-    if (bufOut[i] != output_ref0[i]) {
-      errors++;
-      if (errors < max_errors) {
-        std::cout << "\nerror, id " << i << " expected "
-                  << std::to_string(output_ref0[i]) << ", got "
-                  << std::to_string(bufOut[i]) << "\n";
+    const C_DATATYPE absTol = std::abs(0.1);
+    for (uint32_t i = 0; i < C_VOLUME; i++) {
+      if (std::abs(bufOut[i] - output_ref0[i]) > absTol) {
+        errors++;
+        if (errors < max_errors) {
+          std::cout << "\nerror, id " << i << " expected "
+                    << std::to_string(output_ref0[i]) << ", got "
+                    << std::to_string(bufOut[i]) << "\n";
+        }
       }
     }
   }
+
+  std::cout << std::endl
+            << "NPU matmul time: "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(stop -
+                                                                     start)
+                   .count()
+            << "ms." << std::endl;
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";
