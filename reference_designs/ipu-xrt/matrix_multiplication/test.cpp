@@ -11,15 +11,13 @@
 #include <boost/program_options.hpp>
 #include <cstdint>
 #include <cstdlib>
+#include <chrono>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <string>
-#include <vector>
 #include <stdfloat>
-#include <unistd.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -40,6 +38,8 @@ using C_DATATYPE = float;
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
+
+constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
@@ -209,8 +209,10 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
+  auto start = std::chrono::system_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
+  auto stop = std::chrono::system_clock::now();
 
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
@@ -219,22 +221,28 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
   int max_errors = 100;
 
-  std::vector<C_DATATYPE> output_ref0;
-  for (uint32_t i = 0; i < C_VOLUME; i++)
-    output_ref0.push_back(0);
-  matmul(AVec, BVec, output_ref0);
+  if (VERIFY) {
+    std::vector<C_DATATYPE> output_ref0;
+    for (uint32_t i = 0; i < C_VOLUME; i++)
+      output_ref0.push_back(0);
+    matmul(AVec, BVec, output_ref0);
 
-  const C_DATATYPE absTol = std::abs(0.1);
-  for (uint32_t i = 0; i < C_VOLUME; i++) {
-    if (std::abs(bufOut[i] - output_ref0[i]) > absTol) {
-      errors++;
-      if (errors < max_errors) {
-        std::cout << "\nerror, id " << i << " expected "
-                  << std::to_string(output_ref0[i]) << ", got "
-                  << std::to_string(bufOut[i]) << "\n";
+    const C_DATATYPE absTol = std::abs(0.1);
+    for (uint32_t i = 0; i < C_VOLUME; i++) {
+      if (std::abs(bufOut[i] - output_ref0[i]) > absTol) {
+        errors++;
+        if (errors < max_errors) {
+          std::cout << "\nerror, id " << i << " expected "
+                    << std::to_string(output_ref0[i]) << ", got "
+                    << std::to_string(bufOut[i]) << "\n";
+        }
       }
     }
   }
+
+  std::cout << std::endl << "NPU matmul time: " 
+            << std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count() 
+            << "ms." << std::endl;
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";
