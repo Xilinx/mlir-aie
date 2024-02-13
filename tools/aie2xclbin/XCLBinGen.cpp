@@ -132,10 +132,9 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
             std::optional<ArrayRef<StringRef>> Env = std::nullopt) {
   if (Verbose) {
     llvm::outs() << "Run:";
-    if (Env) {
+    if (Env)
       for (auto &s : *Env)
         llvm::outs() << " " << s;
-    }
     llvm::outs() << " " << Program;
     for (auto &s : Args)
       llvm::outs() << " " << s;
@@ -148,24 +147,22 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
   PArgs.append(Args.begin(), Args.end());
   int result = sys::ExecuteAndWait(Program, PArgs, Env, {}, 0, 0, &err_msg,
                                    nullptr, &opt_stats);
-  if (Verbose) {
+  if (Verbose)
     llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
                  << std::chrono::duration_cast<std::chrono::duration<float>>(
                         stats.TotalTime)
                         .count()
                  << " code: " << result << "\n";
-  }
   return result;
 }
 
 template <unsigned N>
 static void aieTargetDefines(SmallVector<std::string, N> &Args,
                              std::string aie_target) {
-  if (aie_target == "AIE2") {
+  if (aie_target == "AIE2")
     Args.push_back("-D__AIEARCH__=20");
-  } else {
+  else
     Args.push_back("-D__AIEARCH__=10");
-  }
 }
 
 // Generate the elf files for the core
@@ -173,9 +170,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                           const StringRef objFile,
                                           XCLBinGenConfig &TK) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
-  if (!llvm::hasSingleElement(deviceOps)) {
+  if (!llvm::hasSingleElement(deviceOps))
     return moduleOp.emitOpError("expected a single device op");
-  }
 
   AIE::DeviceOp deviceOp = *deviceOps.begin();
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
@@ -186,9 +182,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
     auto coreOp = tileOp.getCoreOp();
-    if (!coreOp) {
+    if (!coreOp)
       continue;
-    }
 
     std::string elfFileName;
     if (auto fileAttr = coreOp.getElfFileAttr()) {
@@ -209,23 +204,19 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
 
       {
         auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
-        if (!bcfOutput) {
+        if (!bcfOutput)
           return coreOp.emitOpError(errorMessage);
-        }
 
-        if (failed(
-                AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row))) {
+        if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
           return coreOp.emitOpError("Failed to generate BCF");
-        }
         bcfOutput->keep();
       }
 
       std::vector<std::string> extractedIncludes;
       {
         auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
-        if (!bcfFileIn) {
+        if (!bcfFileIn)
           moduleOp.emitOpError(errorMessage);
-        }
 
         std::string bcfFile = std::string(bcfFileIn->getBuffer());
         std::regex r("^_include _file (.*)", std::regex::multiline);
@@ -253,23 +244,20 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       for (const auto &inc : extractedIncludes)
         flags.push_back(inc);
 
-      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0) {
+      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0)
         coreOp.emitOpError("Failed to link with xbridge");
-      }
     } else {
       SmallString<64> ldscript_path(TK.TempDir);
       sys::path::append(ldscript_path, elfFileName + ".ld");
       {
         auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
-        if (!ldscript_output) {
+        if (!ldscript_output)
           return coreOp.emitOpError(errorMessage);
-        }
 
         if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
-                                               col, row))) {
+                                               col, row)))
           return coreOp.emitOpError("failed to generate ld script for core (")
                  << col << "," << row << ")";
-        }
         ldscript_output->keep();
       }
 
@@ -297,10 +285,9 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.emplace_back(elfFile);
         SmallString<64> clangBin(TK.PeanoDir);
         sys::path::append(clangBin, "bin", "clang");
-        if (runTool(clangBin, flags, TK.Verbose) != 0) {
+        if (runTool(clangBin, flags, TK.Verbose) != 0)
           return coreOp.emitOpError("failed to link elf file for core(")
                  << col << "," << row << ")";
-        }
       }
     }
   }
@@ -376,9 +363,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   {
     auto memTopologyJsonOut =
         openOutputFile(memTopologyJsonFile, &errorMessage);
-    if (!memTopologyJsonOut) {
+    if (!memTopologyJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
 
     std::string mem_topology_data = R"({
       "mem_topology": {
@@ -411,9 +397,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   {
     auto aiePartitionJsonOut =
         openOutputFile(aiePartitionJsonFile, &errorMessage);
-    if (!aiePartitionJsonOut) {
+    if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
+
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -461,9 +447,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   sys::path::append(kernelsJsonFile, "kernels.json");
   {
     auto kernelsJsonOut = openOutputFile(kernelsJsonFile, &errorMessage);
-    if (!kernelsJsonOut) {
+    if (!kernelsJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
+
     json::Object kernels_data{
         {"ps-kernels",
          json::Object{
@@ -480,9 +466,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   sys::path::append(designBifFile, "design.bif");
   {
     auto designBifOut = openOutputFile(designBifFile, &errorMessage);
-    if (!designBifOut) {
+    if (!designBifOut)
       return moduleOp.emitOpError(errorMessage);
-    }
 
     designBifOut->os() << "all:\n"
                        << "{\n"
@@ -514,9 +499,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
 
     SmallString<64> bootgenBin(TK.InstallDir);
     sys::path::append(bootgenBin, "bin", "bootgen");
-    if (runTool(bootgenBin, flags, TK.Verbose) != 0) {
+    if (runTool(bootgenBin, flags, TK.Verbose) != 0)
       return moduleOp.emitOpError("failed to execute bootgen");
-    }
   }
 
   // Execute the xclbinutil command.
@@ -536,9 +520,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                        std::string(Output)};
 
     if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
-      if (runTool(*xclbinutil, flags, TK.Verbose) != 0) {
+      if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
         return moduleOp.emitOpError("failed to execute xclbinutil");
-      }
     } else {
       return moduleOp.emitOpError("could not find xclbinutil");
     }
@@ -588,9 +571,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   }
 
   ModuleOp copy = moduleOp.clone();
-  if (failed(pm.run(copy))) {
+  if (failed(pm.run(copy)))
     return moduleOp.emitOpError("Failed to lower to LLVM");
-  }
 
   SmallString<64> LLVMIRFile(TK.TempDir);
   sys::path::append(LLVMIRFile, "input.ll");
@@ -603,9 +585,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   std::string errorMessage;
   {
     auto output = openOutputFile(LLVMIRFile, &errorMessage);
-    if (!output) {
+    if (!output)
       return moduleOp.emitOpError(errorMessage);
-    }
     llvmModule->print(output->os(), nullptr);
     output->keep();
   }
@@ -629,16 +610,14 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                  std::string(chessworkDir), "-c", "-d", "-f", "+f", "+P", "4",
                  std::string(chessIntrinsicsCpp), "-o",
                  std::string(chessIntrinsicsLL)},
-                TK.Verbose) != 0) {
+                TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to compile chess intrinsics");
-    }
 
     std::string newIntrinsicsLL;
     {
       auto chessIntrinsicIn = openInputFile(chessIntrinsicsLL, &errorMessage);
-      if (!chessIntrinsicIn) {
+      if (!chessIntrinsicIn)
         moduleOp.emitOpError(errorMessage);
-      }
 
       newIntrinsicsLL = std::regex_replace(
           std::string(chessIntrinsicIn->getBuffer()),
@@ -646,9 +625,9 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     }
     {
       auto chessIntrinsicOut = openOutputFile(chessIntrinsicsLL);
-      if (!chessIntrinsicOut) {
+      if (!chessIntrinsicOut)
         moduleOp.emitOpError(errorMessage);
-      }
+
       chessIntrinsicOut->os() << newIntrinsicsLL;
       chessIntrinsicOut->keep();
     }
@@ -664,34 +643,31 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     SmallString<64> llvmLinkBin(TK.PeanoDir);
     sys::path::append(llvmLinkBin, "bin", "llvm-link");
     if (!sys::fs::exists(llvmLinkBin)) {
-      if (auto llvmLink = sys::findProgramByName("llvm-link")) {
+      if (auto llvmLink = sys::findProgramByName("llvm-link"))
         llvmLinkBin = *llvmLink;
-      } else {
+      else
         moduleOp.emitOpError("Can't find llvm-link");
-      }
     }
     if (runTool(llvmLinkBin,
                 {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
                  "-o", std::string(chesslinkedFile)},
-                TK.Verbose) != 0) {
+                TK.Verbose) != 0)
       moduleOp.emitOpError("Couldn't link in the intrinsics");
-    }
 
     std::string mungedLLVMIR;
     {
       auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
-      if (!chesslinkedIn) {
+      if (!chesslinkedIn)
         moduleOp.emitOpError(errorMessage);
-      }
 
       mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
       mungedLLVMIR = chesshack(mungedLLVMIR);
     }
     {
       auto chesslinkedOut = openOutputFile(chesslinkedFile);
-      if (!chesslinkedOut) {
+      if (!chesslinkedOut)
         moduleOp.emitOpError(errorMessage);
-      }
+
       chesslinkedOut->os() << mungedLLVMIR;
       chesslinkedOut->keep();
     }
@@ -700,9 +676,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                 {StringRef(TK.TargetArch).lower(), "+w",
                  std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
                  std::string(chesslinkedFile), "-o", std::string(outputFile)},
-                TK.Verbose) != 0) {
+                TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to assemble with chess");
-    }
   } else {
     SmallString<64> peanoOptBin(TK.PeanoDir);
     sys::path::append(peanoOptBin, "bin", "opt");
@@ -714,17 +689,16 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     if (runTool(peanoOptBin,
                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
                  "-o", std::string(OptLLVMIRFile)},
-                TK.Verbose) != 0) {
+                TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to optimize");
-    }
+
     if (runTool(peanoLLCBin,
                 {std::string(OptLLVMIRFile), "-O2",
                  "--march=" + StringRef(TK.TargetArch).lower(),
                  "--function-sections", "--filetype=obj", "-o",
                  std::string(outputFile)},
-                TK.Verbose) != 0) {
+                TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to assemble");
-    }
   }
   copy->erase();
   return success();
@@ -742,31 +716,27 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     llvm::outs() << "\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError("AIE lowering pipline failed");
-  }
 
   raw_string_ostream target_arch_os(TK.TargetArch);
-  if (failed(AIE::AIETranslateToTargetArch(moduleOp, target_arch_os))) {
+  if (failed(AIE::AIETranslateToTargetArch(moduleOp, target_arch_os)))
     return moduleOp.emitOpError("Couldn't detect target architure");
-  }
 
   TK.TargetArch = StringRef(TK.TargetArch).trim();
 
   std::regex target_regex("AIE.?");
-  if (!std::regex_search(TK.TargetArch, target_regex)) {
+  if (!std::regex_search(TK.TargetArch, target_regex))
     return moduleOp.emitOpError()
            << "Unexpected target architecture: " << TK.TargetArch;
-  }
 
   // generateIPUInstructions
   {
     PassManager pm(ctx, moduleOp.getOperationName());
     pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToIpuPass());
     ModuleOp copy = moduleOp.clone();
-    if (failed(pm.run(copy))) {
+    if (failed(pm.run(copy)))
       return moduleOp.emitOpError("IPU Instruction pipeline failed");
-    }
 
     std::string errorMessage;
     auto output = openOutputFile(OutputIPU, &errorMessage);
@@ -775,9 +745,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToIPU(copy, output->os()))) {
+    if (failed(AIE::AIETranslateToIPU(copy, output->os())))
       return moduleOp.emitOpError("IPU Instruction translation failed");
-    }
 
     output->keep();
     copy->erase();
@@ -785,22 +754,17 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
 
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
-  if (failed(
-          generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj)))) {
+  if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
     return moduleOp.emitOpError("Failed to generate unified object");
-  }
 
-  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK))) {
+  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
-  }
 
-  if (failed(generateCDO(ctx, moduleOp, TK))) {
+  if (failed(generateCDO(ctx, moduleOp, TK)))
     return moduleOp.emitOpError("Failed to generate CDO");
-  }
 
-  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin))) {
+  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin)))
     return moduleOp.emitOpError("Failed to generate XCLBin");
-  }
 
   return success();
 }
