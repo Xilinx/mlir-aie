@@ -206,29 +206,36 @@ set(libsources
     verifyimage-zynqmp.cpp
 )
 list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
+
+if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows|Darwin")
+# Windows fails CI because OpenSSL is not installed
+# Macos fails because no malloc.h???
 add_library(Bootgen STATIC ${libsources})
-#-Wno-aligned-new -Wno-class-memaccess
-set(bootgen_warning_ignores
-  -Wno-reorder
-  -Wno-unused-private-field
-  -Wno-deprecated-register
-  -Wno-overloaded-virtual
-  -Wno-deprecated-declarations
-  -Wno-pointer-bool-conversion
-  -Wno-unused-const-variable
-  -Wno-tautological-overlap-compare
-  -Wno-dynamic-class-memaccess
-  -Wno-misleading-indentation
-  -Wno-suggest-override
-  -Wno-non-virtual-dtor
-  -Wno-deprecated-copy
-  -Wno-cast-qual
-  -Wno-date-time
-  -Wno-implicit-fallthrough
-  -Wno-incompatible-pointer-types-discards-qualifiers
-  -Wno-sign-compare
-  -Wno-covered-switch-default
-)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set(bootgen_warning_ignores
+    -Wno-reorder
+    -Wno-unused-private-field
+    -Wno-deprecated-register
+    -Wno-overloaded-virtual
+    -Wno-deprecated-declarations
+    -Wno-pointer-bool-conversion
+    -Wno-unused-const-variable
+    -Wno-tautological-overlap-compare
+    -Wno-dynamic-class-memaccess
+    -Wno-misleading-indentation
+    -Wno-suggest-override
+    -Wno-non-virtual-dtor
+    -Wno-deprecated-copy
+    -Wno-cast-qual
+    -Wno-date-time
+    -Wno-implicit-fallthrough
+    -Wno-incompatible-pointer-types-discards-qualifiers
+    -Wno-sign-compare
+    -Wno-covered-switch-default
+  )
+else()
+  set(bootgen_warning_ignores)
+endif()
 target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
 target_include_directories(Bootgen PUBLIC ${BOOTGEN_SOURCE})
 
@@ -238,6 +245,7 @@ target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
 target_link_libraries(bootgen Bootgen Bootgen ssl crypto)
 
 install(TARGETS bootgen Bootgen)
+endif() #NOT MSVC
 
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   include("xaiengine/aiert.cmake")
