@@ -924,7 +924,8 @@ LogicalResult CascadeSwitchboxOp::verify() {
     }
   }
   if (numOp > 1) {
-    return emitOpError("cannot have more than one ConnectOp in CascadeSwitchboxOp");
+    return emitOpError(
+        "cannot have more than one ConnectOp in CascadeSwitchboxOp");
   }
   return success();
 }
