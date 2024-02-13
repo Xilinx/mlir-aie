@@ -133,14 +133,12 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
   if (Verbose) {
     llvm::outs() << "Run:";
     if (Env) {
-      for (auto &s : *Env) {
+      for (auto &s : *Env)
         llvm::outs() << " " << s;
-      }
     }
     llvm::outs() << " " << Program;
-    for (auto &s : Args) {
+    for (auto &s : Args)
       llvm::outs() << " " << s;
-    }
     llvm::outs() << "\n";
   }
   std::string err_msg;
@@ -233,9 +231,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         std::regex r("^_include _file (.*)", std::regex::multiline);
         auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
         auto end = std::sregex_iterator();
-        for (std::sregex_iterator i = begin; i != end; ++i) {
+        for (std::sregex_iterator i = begin; i != end; ++i)
           extractedIncludes.push_back(i->str(1));
-        }
       }
 
       SmallString<64> chessWrapperBin(TK.InstallDir);
@@ -253,9 +250,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                      std::string(elfFile),
                                      "-f",
                                      std::string(objFile)};
-      for (const auto &inc : extractedIncludes) {
+      for (const auto &inc : extractedIncludes)
         flags.push_back(inc);
-      }
 
       if (runTool(chessWrapperBin, flags, TK.Verbose) != 0) {
         coreOp.emitOpError("Failed to link with xbridge");
@@ -569,9 +565,8 @@ static std::string chesshack(const std::string &input) {
       {"memory(argmem: write, inaccessiblemem: write)",
        "inaccessiblemem_or_argmemonly writeonly"},
   };
-  for (const auto &pair : substitutions) {
+  for (const auto &pair : substitutions)
     result = std::regex_replace(result, std::regex(pair.first), pair.second);
-  }
   return result;
 }
 
