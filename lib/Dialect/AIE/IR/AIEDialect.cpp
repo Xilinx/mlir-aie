@@ -910,7 +910,9 @@ LogicalResult CascadeSwitchboxOp::verify() {
       }
       WireBundle outDir = connectOp.getDestBundle();
       if (outDir != WireBundle::East && outDir != WireBundle::South) {
-        return connectOp.emitOpError("dest port of ConnectOp in CascadeSwitchboxOp must be East or South");
+        return connectOp.emitOpError(
+            "dest port of ConnectOp in CascadeSwitchboxOp must be East or "
+            "South");
       }
       if (connectOp.sourceIndex() != 0 || connectOp.destIndex() != 0) {
         return connectOp.emitOpError("portIndex of ConnectOp is out-of-bounds");
