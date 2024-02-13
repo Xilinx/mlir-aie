@@ -907,28 +907,76 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 }
 
 //===----------------------------------------------------------------------===//
-// ConfigureCascadeOp
+// CascadeFlowOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ConfigureCascadeOp::verify() {
-  const auto &targetModel = getTargetModel(*this);
-  CascadeDir inputDir = getInputDir();
-  CascadeDir outputDir = getOutputDir();
-  if (targetModel.getTargetArch() == AIEArch::AIE2) {
-    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
-      return emitOpError("input direction of cascade must be North or West on ")
-             << stringifyAIEArch(targetModel.getTargetArch());
-    }
-    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
-      return emitOpError(
-                 "output direction of cascade must be South or East on ")
-             << stringifyAIEArch(targetModel.getTargetArch());
-    }
-  } else {
-    return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+LogicalResult CascadeFlowOp::verify() {
+  TileOp src = getSourceTileOp();
+  TileOp dst = getDestTileOp();
+  const auto &t = getTargetModel(src);
+  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
+      && !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
+      && !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
+      && !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+        return emitOpError("tiles must be adjacent");
   }
   return success();
+}
+
+TileOp CascadeFlowOp::getSourceTileOp() {
+  return cast<TileOp>(getSourceTile().getDefiningOp());
+}
+
+TileOp CascadeFlowOp::getDestTileOp() {
+  return cast<TileOp>(getDestTile().getDefiningOp());
+}
+
+//===----------------------------------------------------------------------===//
+// CascadeSwitchboxOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CascadeSwitchboxOp::verify() {
+  Region &body = getConnections();
+  if (body.empty())
+    return emitOpError("should have non-empty body");
+
+  int numOp = 0;
+  for (auto &ops : body.front()) {
+    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      numOp++;
+      WireBundle inDir = connectOp.getSourceBundle();
+      if (inDir != WireBundle::West && inDir != WireBundle::North) {
+        return connectOp.emitOpError("source port of ConnectOp in CascadeSwitchboxOp must be West or North");
+      }
+      WireBundle outDir = connectOp.getDestBundle();
+      if (outDir != WireBundle::East && outDir != WireBundle::South) {
+        return connectOp.emitOpError("dest port of ConnectOp in CascadeSwitchboxOp must be East or South");
+      }
+      if (connectOp.sourceIndex() != 0 || connectOp.destIndex() != 0) {
+        return connectOp.emitOpError("portIndex of ConnectOp is out-of-bounds");
+      }
+    } else if (isa<EndOp>(ops)) {
+      // continue;
+    } else {
+      return ops.emitOpError("cannot be contained in a CascadeSwitchboxOp");
+    }
+  }
+  if (numOp > 1) {
+    return emitOpError("cannot have more than one ConnectOp in CascadeSwitchboxOp");
+  }
+  return success();
+}
+
+int CascadeSwitchboxOp::colIndex() {
+  return getTileOp().colIndex();
+}
+
+int CascadeSwitchboxOp::rowIndex() {
+  return getTileOp().rowIndex();
+}
+
+TileOp CascadeSwitchboxOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//

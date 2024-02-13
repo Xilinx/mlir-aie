@@ -769,14 +769,21 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   // mlir_aie_configure_cascade
   //---------------------------------------------------------------------------
   output << "int mlir_aie_configure_cascade(" << ctx_p << ") {\n";
-  for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
-    TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+  for (auto cascadeSwboxOp : targetOp.getOps<CascadeSwitchboxOp>()) {
+    TileOp tile = cascadeSwboxOp.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
-    output << "XAie_CoreConfigAccumulatorControl(" << deviceInstRef << ", "
-           << "XAie_TileLoc(" << col << ", " << row << "), "
-           << stringifyCascadeDir(configOp.getInputDir()).upper() << ", "
-           << stringifyCascadeDir(configOp.getOutputDir()).upper() << ");\n";
+    Region &body = cascadeSwboxOp.getConnections();
+    for (auto &ops : body.front()) {
+      if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+        WireBundle inputDir = connectOp.getSourceBundle();
+        WireBundle outputDir = connectOp.getDestBundle();
+        output << "XAie_CoreConfigAccumulatorControl(" << deviceInstRef << ", "
+               << "XAie_TileLoc(" << col << ", " << row << "), "
+               << stringifyWireBundle(inputDir).upper() << ", "
+               << stringifyWireBundle(outputDir).upper() << ");\n";
+      }
+    }
   }
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_configure_cascade\n\n";

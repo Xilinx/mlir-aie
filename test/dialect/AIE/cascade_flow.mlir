@@ -1,4 +1,4 @@
-//===- cascade_configure.mlir -----------------------------------*- MLIR -*-===//
+//===- cascade_flow.mlir ----------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,7 +14,6 @@ module @test {
   aie.device(xcve2802) {
     %t13 = aie.tile(1, 3)
     %t23 = aie.tile(2, 3)
-    aie.configure_cascade(%t13, West, East)
-    aie.configure_cascade(%t23, North, South)
+    aie.cascade_flow(%t13, %t23)
   }
 }

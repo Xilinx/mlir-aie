@@ -700,15 +700,20 @@ struct AIEControl {
     // Cascade configuration
     const auto &target_model = xilinx::AIE::getTargetModel(targetOp);
     if (target_model.getTargetArch() == AIEArch::AIE2) {
-      for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
-        TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
-        auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
-        TRY_XAIE_API_EMIT_ERROR(
-            targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                static_cast<WireBundle>(configOp.getInputDir())),
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                static_cast<WireBundle>(configOp.getOutputDir())));
+      for (auto cascadeSwboxOp : targetOp.getOps<CascadeSwitchboxOp>()) {
+        TileOp tile = cascadeSwboxOp.getTileOp();
+        Region &body = cascadeSwboxOp.getConnections();
+        for (auto &ops : body.front()) {
+          if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+            auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
+            TRY_XAIE_API_EMIT_ERROR(
+                targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
+                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                    connectOp.getSourceBundle()),
+                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                    connectOp.getDestBundle()));
+          }
+        }
       }
     }
 

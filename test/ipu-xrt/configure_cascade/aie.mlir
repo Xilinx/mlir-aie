@@ -13,9 +13,8 @@ module {
     %t13 = aie.tile(1, 3)
     %t12 = aie.tile(1, 2)
 
-    aie.configure_cascade(%t03, West, East)
-    aie.configure_cascade(%t13, West, South)
-    aie.configure_cascade(%t12, North, South)
+    aie.cascade_flow(%t03, %t13)
+    aie.cascade_flow(%t13, %t12)
   
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t03}, 1 : i32) : !aie.objectfifo<memref<64xi32>>

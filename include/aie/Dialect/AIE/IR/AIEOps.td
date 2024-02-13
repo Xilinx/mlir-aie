@@ -369,7 +369,7 @@ def AIE_PLIOOp: AIE_Op<"plio", [
   }];
 }
 
-def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
+def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp", "CascadeSwitchboxOp"]> ]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$sourceChannel,
@@ -380,7 +380,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
-    This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` operation.
+    This operation must exist within an `aie.switchbox` or `aie.shim_switchbox` or `aie.cascade_switchbox` operation.
     All of the `aie.connect` operations in a switchbox must have a different destinations.
     All of the `aie.connect` operations must also have a destination which is different from all
     of the `aie.masterset` operations in the same switchbox.
@@ -1343,28 +1343,66 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   }];
 }
 
-def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
-  let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
+def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
+  let arguments = (
+    ins Index:$sourceTile,
+        Index:$destTile
+  );
+  let summary = "A cascade connection between tiles";
   let description = [{
-    An operation to configure the cascade on a single tile in both the input and the output 
-    directions.
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
+    During routing, this is replaced by `aie.connect` operations which represent the programmed connections 
+    inside an `aie.cascade_switchbox`.
 
     Example:
     ```
-      %tile00 = aie.tile(1, 3)
-      aie.configure_cascade(%tile00, West, East)
+      %tile03 = aie.tile(0, 3)
+      %tile13 = aie.tile(1, 3)
+      aie.cascade_flow(%tile03, %tile13)
     ```
-    Configures the input cascade port of %tile00 to the West direction, and the output port to the East direction.
+  }];
+  let hasVerifier = 1;
+  let assemblyFormat = [{
+    `(` $sourceTile `,` $destTile `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    TileOp getSourceTileOp();
+    TileOp getDestTileOp();
+  }];
+}
+
+def AIE_CascadeSwitchboxOp: AIE_Op<"cascade_switchbox", [
+    TileElement,
+    SingleBlockImplicitTerminator<"EndOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index:$result)> {
+  let arguments = (ins Index:$tile);
+
+  let summary = "Declare a cascade switch";
+  let description = [{
+    This operation represents a switchbox which contans the programmed input and output directions 
+    for the cascade streams on a tile. A switchbox is configured by code in its region, representing 
+    various connections.
+
+    Example:
+    ```
+    %tile = aie.tile(1, 1)
+    aie.cascade_switchbox(%tile) {
+      aie.connect<"West" : 0, "East" : 0>
+    }
+    ```
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        CascadeDir:$inputDir,
-        CascadeDir:$outputDir
-  );
-  let results = (outs);
+  let regions = (region AnyRegion:$connections);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
-  let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
+
+  let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
+    TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<CascadeSwitchboxOp>::getAsmResultNames;
+  }];
 }
 
 def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
