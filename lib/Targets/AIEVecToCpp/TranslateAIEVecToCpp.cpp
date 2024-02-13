@@ -308,6 +308,13 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             emitter.setName(idxCastOp->getResult(0), srcName);
             return true;
           })
+          // skip op 6: ignore vector shape cast operations.
+          .Case<vector::ShapeCastOp>([&](auto castOp) {
+            Value source = castOp.getSource();
+            StringRef srcName = emitter.getOrCreateName(source);
+            emitter.setName(castOp.getResult(), srcName);
+            return true;
+          })
           .Default([&](Operation *) { return false; });
 
   // Ops whose strong liveness must be determined
