@@ -22,7 +22,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-CascadeSwitchboxOp getOrCreateCascadeSwitchbox(OpBuilder &builder, TileOp tile) {
+CascadeSwitchboxOp getOrCreateCascadeSwitchbox(OpBuilder &builder,
+                                               TileOp tile) {
   for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<CascadeSwitchboxOp>(*i)) {
       return llvm::cast<CascadeSwitchboxOp>(*i);
@@ -53,15 +54,18 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.push_back(src);
       tilesWithCascadeFlow.push_back(dst);
 
-      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(), 
+                              dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(), 
+                                    dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
       } else {
         // TODO: remove when this pass supports routing
-        cascadeFlow.emitOpError("source tile must be to the North or West of the destination tile");
+        cascadeFlow.emitOpError(
+            "source tile must be to the North or West of the destination tile");
         return;
       }
     }
@@ -87,7 +91,8 @@ struct AIELowerCascadeFlowsPass
         outputDir = WireBundle::South;
       }
       int channelIndex = 0;
-      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex, outputDir, channelIndex);
+      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex, 
+                                outputDir, channelIndex);
       builder.setInsertionPointAfter(swbox);
     }
 
@@ -103,7 +108,6 @@ struct AIELowerCascadeFlowsPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIELowerCascadeFlowsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIELowerCascadeFlowsPass() {
   return std::make_unique<AIELowerCascadeFlowsPass>();
 }

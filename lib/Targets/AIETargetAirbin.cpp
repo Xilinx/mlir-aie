@@ -1216,7 +1216,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   }
 
   configureSwitchBoxes(targetOp);
-  //configureCascade(targetOp);
+  configureCascade(targetOp);
   configureDMAs(targetOp);
   groupSections(sections);
 

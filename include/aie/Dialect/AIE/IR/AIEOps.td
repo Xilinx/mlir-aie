@@ -1345,8 +1345,8 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
 
 def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   let arguments = (
-    ins Index:$sourceTile,
-        Index:$destTile
+    ins Index:$source_tile,
+        Index:$dest_tile
   );
   let summary = "A cascade connection between tiles";
   let description = [{
@@ -1363,7 +1363,7 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   }];
   let hasVerifier = 1;
   let assemblyFormat = [{
-    `(` $sourceTile `,` $destTile `)` attr-dict
+    `(` $source_tile `,` $dest_tile `)` attr-dict
   }];
   let extraClassDeclaration = [{
     TileOp getSourceTileOp();

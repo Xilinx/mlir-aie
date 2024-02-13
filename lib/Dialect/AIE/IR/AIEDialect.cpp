@@ -872,10 +872,10 @@ LogicalResult CascadeFlowOp::verify() {
   TileOp src = getSourceTileOp();
   TileOp dst = getDestTileOp();
   const auto &t = getTargetModel(src);
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
         return emitOpError("tiles must be adjacent");
   }
   return success();
@@ -904,11 +904,15 @@ LogicalResult CascadeSwitchboxOp::verify() {
       numOp++;
       WireBundle inDir = connectOp.getSourceBundle();
       if (inDir != WireBundle::West && inDir != WireBundle::North) {
-        return connectOp.emitOpError("source port of ConnectOp in CascadeSwitchboxOp must be West or North");
+        return connectOp.emitOpError(
+            "source port of ConnectOp in CascadeSwitchboxOp must be West or "
+            "North");
       }
       WireBundle outDir = connectOp.getDestBundle();
       if (outDir != WireBundle::East && outDir != WireBundle::South) {
-        return connectOp.emitOpError("dest port of ConnectOp in CascadeSwitchboxOp must be East or South");
+        return connectOp.emitOpError(
+            "dest port of ConnectOp in CascadeSwitchboxOp must be East or "
+            "South");
       }
       if (connectOp.sourceIndex() != 0 || connectOp.destIndex() != 0) {
         return connectOp.emitOpError("portIndex of ConnectOp is out-of-bounds");
@@ -920,7 +924,8 @@ LogicalResult CascadeSwitchboxOp::verify() {
     }
   }
   if (numOp > 1) {
-    return emitOpError("cannot have more than one ConnectOp in CascadeSwitchboxOp");
+    return emitOpError(
+        "cannot have more than one ConnectOp in CascadeSwitchboxOp");
   }
   return success();
 }

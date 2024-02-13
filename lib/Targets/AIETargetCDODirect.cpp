@@ -714,8 +714,7 @@ struct AIEControl {
                 targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
                 WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
                     connectOp.getSourceBundle()),
-                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                    connectOp.getDestBundle()));
+                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()));
           }
         }
       }
