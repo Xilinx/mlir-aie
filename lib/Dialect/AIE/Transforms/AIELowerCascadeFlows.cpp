@@ -103,7 +103,6 @@ struct AIELowerCascadeFlowsPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIELowerCascadeFlowsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIELowerCascadeFlowsPass() {
   return std::make_unique<AIELowerCascadeFlowsPass>();
 }
