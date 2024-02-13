@@ -8,3 +8,6 @@
 	path = runtime_lib/xaiengine/aie-rt
 	url = https://github.com/stephenneuendorffer/aie-rt.git
 	branch = phoenix_v2023.2
+[submodule "third_party/bootgen"]
+	path = third_party/bootgen
+	url = git@github.com:Xilinx/bootgen.git
