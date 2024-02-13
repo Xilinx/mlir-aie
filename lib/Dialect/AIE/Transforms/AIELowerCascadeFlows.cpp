@@ -64,7 +64,8 @@ struct AIELowerCascadeFlowsPass
         cascadeOutputsPerTile[src] = WireBundle::East;
       } else {
         // TODO: remove when this pass supports routing
-        cascadeFlow.emitOpError("source tile must be to the North or West of the destination tile");
+        cascadeFlow.emitOpError(
+            "source tile must be to the North or West of the destination tile");
         return;
       }
     }
