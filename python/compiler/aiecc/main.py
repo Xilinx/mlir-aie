@@ -1077,7 +1077,7 @@ class FlowRunner:
             await asyncio.gather(*processes)
 
             # Must have elfs, before we build the final binary assembly
-            if opts.cdo:
+            if opts.cdo and opts.execute:
                 await self.process_cdo()
             if opts.cdo or opts.xcl:
                 await self.process_xclbin_gen(bool(len(cores)))
