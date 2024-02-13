@@ -54,7 +54,8 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.push_back(src);
       tilesWithCascadeFlow.push_back(dst);
 
-      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
+                              dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
       } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
