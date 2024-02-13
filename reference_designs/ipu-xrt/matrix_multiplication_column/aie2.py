@@ -20,10 +20,10 @@ def my_matmul():
     k = 32
     n = 64
     r = 4
-    s = 4
+    s = 8
     t = 4
     word_size_in = 2
-    word_size_out = 2
+    word_size_out = 4
 
     n_cores = 4
 
@@ -46,6 +46,7 @@ def my_matmul():
     # Matrix B: KxN, submatrices b: kxn
     n_in_i32s = n * word_size_in // 4
     N_in_i32s = N * word_size_in // 4
+    k_x_N_in_i32s = k * N * word_size_in // 4
 
     # Output Matrix C: MxN
     n_in_i32s_out = n * word_size_out // 4
@@ -58,12 +59,12 @@ def my_matmul():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * k * n_cores, T.i16())
-            memRef_inB_ty = T.memref(k * n * 1, T.i16())
-            memRef_outC_ty = T.memref(m * n * n_cores, T.i16())
-            memRef_A_ty = T.memref(m, k, T.i16())
-            memRef_B_ty = T.memref(k, n, T.i16())
-            memRef_C_ty = T.memref(m, n, T.i16())
+            memRef_inA_ty = T.memref(m * k * n_cores, T.bf16())
+            memRef_inB_ty = T.memref(k * n * 1, T.bf16())
+            memRef_outC_ty = T.memref(m * n * n_cores, T.f32())
+            memRef_A_ty = T.memref(m, k, T.bf16())
+            memRef_B_ty = T.memref(k, n, T.bf16())
+            memRef_C_ty = T.memref(m, n, T.f32())
 
             ofifo_memRef_inA_ty = TypeAttr.get(ObjectFifoType.get(memRef_inA_ty))
             ofifo_memRef_inB_ty = TypeAttr.get(ObjectFifoType.get(memRef_inB_ty))
@@ -73,13 +74,13 @@ def my_matmul():
             ofifo_memRef_C_ty = TypeAttr.get(ObjectFifoType.get(memRef_C_ty))
 
             # AIE Core Function declarations
-            zero_scalar = external_func("zero_scalar_i16", inputs=[memRef_C_ty])
-            zero = external_func("zero_i16", inputs=[memRef_C_ty])
+            zero_scalar = external_func("zero_scalar_f32", inputs=[memRef_C_ty])
+            zero = external_func("zero_f32", inputs=[memRef_C_ty])
             matmul_scalar = external_func(
-                "matmul_scalar_i16_i16", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
+                "matmul_scalar_bf16_f32", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
             )
             matmul = external_func(
-                "matmul_i16_i16", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
+                "matmul_bf16_f32", inputs=[memRef_A_ty, memRef_B_ty, memRef_C_ty]
             )
 
             # Tile declarations
@@ -246,8 +247,8 @@ def my_matmul():
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
-                            sizes=[1, N_div_n, K, n_in_i32s],
-                            strides=[0, n_in_i32s, N_in_i32s],
+                            sizes=[N_div_n, K_div_k, k, n_in_i32s],
+                            strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                         )
 
                     ipu_sync(column=0, row=0, direction=0, channel=0)
