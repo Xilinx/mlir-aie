@@ -457,12 +457,10 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    if (auto bootgen = sys::findProgramByName("bootgen")) {
-      if (runTool(*bootgen, flags, TK.Verbose) != 0) {
-        return moduleOp.emitOpError("failed to execute bootgen");
-      }
-    } else {
-      return moduleOp.emitOpError("could not find bootgen");
+    SmallString<64> bootgenBin(TK.InstallDir);
+    sys::path::append(bootgenBin, "bin", "bootgen");
+    if (runTool(bootgenBin, flags, TK.Verbose) != 0) {
+      return moduleOp.emitOpError("failed to execute bootgen");
     }
   }
 
