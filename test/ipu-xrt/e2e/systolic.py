@@ -736,11 +736,8 @@ def global_core_mem_init(module):
             compute_tile = aie.tile(column, 2)
 
             weight = memref.global_(
-                f"weight_{column}",
-                T.memref(k, T.i32()),
-                initial_value=_i32ElementsAttr(
-                    np.ones((k,), dtype=np.int32) * column * RANDOM_NUMBER, None
-                ),
+                sym_name=f"weight_{column}",
+                initial_value=np.ones((k,), dtype=np.int32) * column * RANDOM_NUMBER,
                 constant=True,
             ).opview
 
