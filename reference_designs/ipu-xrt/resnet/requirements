@@ -1,0 +1,11 @@
+brevitas
+ply
+torchvision
+torch
+matplotlib
+numpy
+opencv-python
+onnx
+onnxruntime
+prettytable
+setuptools-scm

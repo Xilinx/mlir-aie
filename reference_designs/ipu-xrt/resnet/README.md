@@ -30,6 +30,10 @@ resnet
 6. In "notebook", we provide jupyter notebooks to run end-to-end ResNet50 where we offload part of the model onto AIE. We also provide notebooks to run standalone bottleneck block or baseline.
 
 ```    
+# Prerequisite
+<ul>
+<li>[Riallto](https://gitenterprise.xilinx.com/XRLabs/Riallto) NPU python package </li>
+</ul>
 
 # Getting Help
 If you have suggestions for improvement, new applications, or collaboration, please contact Gagandeep Singh (gagandeep dot singh at amd dot com) or Jack Lo (jack dot lo at amd dot com).
