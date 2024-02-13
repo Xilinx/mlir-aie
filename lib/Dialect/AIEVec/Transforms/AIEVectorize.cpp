@@ -394,7 +394,7 @@ static AffineExpr makeFlattenedStridedExpr(ArrayRef<int64_t> sizes,
   if (llvm::is_contained(sizes, 0))
     return getAffineConstantExpr(0, context);
 
-  auto maps = AffineMap::inferFromExprList(exprs);
+  auto maps = AffineMap::inferFromExprList(exprs, context);
   assert(!maps.empty() && "Expected one non-empty map");
   unsigned nSymbols = maps[0].getNumSymbols();
 

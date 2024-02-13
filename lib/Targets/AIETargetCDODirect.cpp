@@ -35,7 +35,6 @@ extern "C" {
 #include <cstdlib> // calloc
 #include <filesystem>
 #include <functional>
-#include <iostream>
 #include <map>
 #include <optional>
 #include <string>
@@ -109,7 +108,6 @@ static const std::map<WireBundle, StrmSwPortType>
 };
 
 // https://stackoverflow.com/a/32230306
-
 template <typename H1>
 raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
   return out << label << "=" << std::forward<H1>(value);
@@ -185,9 +183,6 @@ auto ps = std::filesystem::path::preferred_separator;
 #define XAIE_ROW_SHIFT 20
 #define XAIE_SHIM_ROW 0
 #define XAIE_MEM_TILE_ROW_START 1
-#define XAIE_MEM_TILE_NUM_ROWS 1
-#define XAIE_AIE_TILE_ROW_START 2
-#define XAIE_AIE_TILE_NUM_ROWS 4
 #define XAIE_PARTITION_BASE_ADDR 0x0
 
 #define NPI_ADDR 0x0
@@ -196,8 +191,6 @@ auto ps = std::filesystem::path::preferred_separator;
 #define ODD_BD_NUM_START 24
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
-#define PARTITION_START_COL 1
-#define PARTITION_NUM_COLS 1
 
 namespace xilinx::AIE {
 
@@ -329,7 +322,8 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(uint8_t partitionNumCols, bool aieSim, const AIETargetModel &tm) {
+  AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
+             const AIETargetModel &tm) {
     configPtr = XAie_Config{
         .AieGen = XAIE_DEV_GEN_AIEML,
         .BaseAddr = XAIE_BASE_ADDR,
@@ -350,10 +344,14 @@ struct AIEControl {
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
+
+    // Setting the backend to CDO
+    configPtr.Backend = XAIE_IO_BACKEND_CDO;
+
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
-                             XAIE_PARTITION_BASE_ADDR, PARTITION_START_COL,
+                             XAIE_PARTITION_BASE_ADDR, partitionStartCol,
                              partitionNumCols);
     TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
     if (aieSim) {
@@ -583,9 +581,12 @@ struct AIEControl {
 
     // StreamSwitch (switchbox) configuration
     for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
-      XAie_LocType tileLoc = XAie_TileLoc(switchboxOp.getTileOp().getCol(),
-                                          switchboxOp.getTileOp().getRow());
-      if (switchboxOp.rowIndex() == 0) {
+      int32_t col = switchboxOp.colIndex();
+      int32_t row = switchboxOp.rowIndex();
+      XAie_LocType tileLoc = XAie_TileLoc(col, row);
+      assert(targetOp.getDevice() == AIEDevice::ipu &&
+             "Only IPU currently supported");
+      if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
         auto slvPortNum = 0;
@@ -593,17 +594,20 @@ struct AIEControl {
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
                                 tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
         // configure DMA_<S2MM/MM2S>_<chNum>_Ctrl register
-        for (int chNum = 0; chNum <= 1; ++chNum) {
-          XAie_DmaChannelDesc dmaChannelDescInst;
-          auto controllerId = 0;
-          TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelDescInit,
-                                  &devInst, &dmaChannelDescInst, tileLoc);
-          TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelSetControllerId,
-                                  &dmaChannelDescInst, controllerId);
-          TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaWriteChannel, &devInst,
-                                  &dmaChannelDescInst, tileLoc, chNum,
-                                  DMA_S2MM);
-        }
+        assert(targetOp.getDevice() == AIEDevice::ipu &&
+               "Only IPU currently supported");
+        if (col != 0)
+          for (int chNum = 0; chNum <= 1; ++chNum) {
+            XAie_DmaChannelDesc dmaChannelDescInst;
+            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelDescInit,
+                                    &devInst, &dmaChannelDescInst, tileLoc);
+            auto controllerId = 0;
+            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelSetControllerId,
+                                    &dmaChannelDescInst, controllerId);
+            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaWriteChannel, &devInst,
+                                    &dmaChannelDescInst, tileLoc, chNum,
+                                    DMA_S2MM);
+          }
 
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_AieToPlIntfEnable, &devInst,
                                 tileLoc, /*PortNum*/ 0, PLIF_WIDTH_32);
@@ -806,17 +810,22 @@ namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool axiDebug,
-                                      bool aieSim) {
+                                      bool aieSim, size_t partitionStartCol) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
+  // things like XAIE_MEM_TILE_ROW_START and the missing
+  // shim dma on tile (0,0) are hard-coded assumptions about IPU...
+  assert(targetOp.getDevice() == AIEDevice::ipu &&
+         "Only IPU currently supported");
   int maxCol = 0, minCol = 0;
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     minCol = std::min(tileOp.getCol(), minCol);
     maxCol = std::max(tileOp.getCol(), maxCol);
   }
-  AIEControl ctl(/*partitionNumCols*/ maxCol - minCol + 1, aieSim,
+  size_t partitionNumCols = maxCol - minCol + 1;
+  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim,
                  targetOp.getTargetModel());
   initializeCDOGenerator(endianness, axiDebug);
   if (emitUnified)

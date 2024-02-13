@@ -269,8 +269,7 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
 
-  if (failed(AIE::AIETranslateToCDODirect(
-          copy, TK.TempDir, byte_ordering::Little_Endian, false, false, false)))
+  if (failed(AIE::AIETranslateToCDODirect(copy, TK.TempDir)))
     return moduleOp.emitOpError("failed to emit CDO");
 
   copy->erase();

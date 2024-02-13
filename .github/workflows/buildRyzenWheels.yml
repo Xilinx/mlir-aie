@@ -6,10 +6,14 @@ on:
       - '.github/workflows/buildRyzenWheels.yml'
   workflow_dispatch:
 
+  schedule:
+    # At 04:00. (see https://crontab.guru)
+    - cron: '0 4 * * *'
+    
 defaults:
   run:
     shell: bash
-
+    
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -182,8 +186,8 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/aie-*.whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
-          name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
+          tag: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 'latest-wheels' || 'dev-wheels' }}
+          name: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 'latest-wheels' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

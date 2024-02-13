@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import inspect
-from typing import List, Optional, Union, Tuple
+from collections import defaultdict, namedtuple
+from enum import Enum, auto
+from typing import List, Optional, Union, Tuple, Dict, Set
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
@@ -29,6 +31,7 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     TypeAttr,
+    Value,
     _i32ArrayAttr,
 )
 from ..util import _get_sym_name
@@ -48,7 +51,7 @@ def external_func(name, inputs, outputs=None, visibility="private"):
 
 
 # Wrapper for func CallOp.
-class call(CallOp):
+class Call(CallOp):
     """Specialize CallOp class constructor to take python integers"""
 
     def __init__(self, calleeOrResults, inputs=[], input_types=[]):
@@ -136,82 +139,82 @@ class Core(CoreOp):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
+# Create an aie buffer of (size x datatype) on given tile.
+# size examples: [256], [256, 256], [256, 256,]
+class Buffer(BufferOp):
+    def __init__(self, tile, size, datatype, name=None):
+        super().__init__(buffer=T.memref(*size, datatype), tile=tile, sym_name=name)
+
+
+# Create an aie external buffer of (size x datatype).
+# size examples: [256], [256, 256], [256, 256,]
+class ExternalBuffer(ExternalBufferOp):
+    def __init__(self, size, datatype, name=None):
+        super().__init__(buffer=T.memref(*size, datatype), sym_name=name)
+
+
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
-class object_fifo(ObjectFifoCreateOp):
+class OrderedObjectBuffer(ObjectFifoCreateOp):
     def __init__(
         self,
         name,
-        producerTile,
-        consumerTiles,
+        tile0,
+        tile1,
         depth,
         datatype,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
     ):
-        self.datatype = datatype
-        if not isinstance(consumerTiles, List):
-            consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
         int_ty = IntegerType.get_signless(32)
-        of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
+        if isinstance(depth, int):
+            int_depth = IntegerAttr.get(int_ty, depth)
+        else:
+            int_depths = []
+            for d in depth:
+                int_depths.append(IntegerAttr.get(int_ty, d))
+            int_depth = ArrayAttr.get(int_depths)
+        of_Ty = ObjectFifoType.get(datatype)
         super().__init__(
             sym_name=name,
-            producerTile=producerTile,
-            consumerTiles=consumerTiles,
-            elemNumber=depth,
-            elemType=of_Ty,
+            producerTile=tile0,
+            consumerTiles=tile1,
+            elemNumber=int_depth,
+            elem_type=TypeAttr.get(of_Ty),
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
         )
 
-    def acquire(self, num_elem):
-        subview_t = ObjectFifoSubviewType.get(self.datatype)
-        acq = ObjectFifoAcquireOp(subview_t, self.sym_name.value, num_elem)
 
+# Create an aie objectFifo acquire op of given number of elements with given memref datatype,
+# from objFifo with given name.
+class ObjectFifoAcquireOp(ObjectFifoAcquireOp):
+    def __init__(self, port, of_name, num_elem, datatype):
+        subview_t = ObjectFifoSubviewType.get(datatype)
+        self.datatype = datatype
+        super().__init__(subview_t, port, of_name, num_elem)
+
+    def acquired_elem(self):
         objects = []
-        if acq.size.value == 1:
+        if self.size.value == 1:
             return ObjectFifoSubviewAccessOp(
-                self.datatype, acq.subview, acq.size.value - 1
+                self.datatype, self.subview, self.size.value - 1
             )
-        for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
+        for i in range(self.size.value):
+            objects.append(ObjectFifoSubviewAccessOp(self.datatype, self.subview, i))
         return objects
 
-    def release(self, num_elem):
-        return objectfifo_release(self.sym_name.value, num_elem)
 
-
-# Create an aie objectFifo_link between input and output objectFifos.
-class object_fifo_link(ObjectFifoLinkOp):
-    """Specialize ObjectFifoLinkOp class constructor to take python variables"""
-
-    def __init__(
-        self,
-        fifoIns,
-        fifoOuts,
-    ):
-        if not isinstance(fifoIns, List):
-            fifoIns = [fifoIns]
-        if not isinstance(fifoOuts, List):
-            fifoOuts = [fifoOuts]
-        fifoInRefs = map(
-            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoIns
-        )
-        fifoOutRefs = map(
-            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoOuts
-        )
-        super().__init__(
-            fifoIns=fifoInRefs,
-            fifoOuts=fifoOutRefs,
-        )
+def acquire(port, of_name, num_elem, datatype):
+    return ObjectFifoAcquireOp(port, of_name, num_elem, datatype)
 
 
 # Create a packet flow between source and destination tile ports.
-class packetflow(PacketFlowOp):
+class PacketFlow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(
@@ -240,10 +243,12 @@ memtile_dma = region_op(
 
 @region_op
 def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
     return DMAOp(
         valid=T.bool(),
-        channelDir=channel_dir,
-        channelIndex=channel_index,
+        channel_dir=channel_dir,
+        channel_index=channel_index,
         num_bds=num_blocks,
         loop=loop,
         loc=loc,
@@ -354,3 +359,132 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         loc=loc,
         ip=ip,
     )
+
+
+_flow = flow
+
+flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview
+
+
+class IncomingOutgoing(Enum):
+    INCOMING = auto()
+    OUTGOING = auto()
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class TileOp(TileOp):
+    flows: Dict[Tuple[WireBundle, IncomingOutgoing, int], FlowOp] = None
+
+    def ep(
+        self,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        if self.flows is None:
+            self.flows = {}
+        return FlowEndPoint(self, bundle, channel)
+
+    def __rshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        return self.ep() >> other
+
+    def __lshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        other >> self.ep()
+        return other
+
+
+class classproperty:
+    def __init__(self, func):
+        self.fget = func
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
+
+
+class FlowEndPoint:
+    tile: TileOp = None
+    bundle: WireBundle = None
+    channel: int = None
+
+    def __init__(
+        self,
+        tile: TileOp,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        self.tile = tile
+        self.bundle = bundle
+        self.channel = channel
+
+    # fmt: off
+    __used_channels: Dict[Tuple[int, int, WireBundle, IncomingOutgoing], Set[int]] = None
+    # fmt: on
+
+    @classmethod
+    def _reset_used_channels(cls):
+        cls.__used_channels = defaultdict(set)
+
+    @classproperty
+    def _used_channels(cls):
+        if cls.__used_channels is None:
+            cls._reset_used_channels()
+        return cls.__used_channels
+
+    def __rshift__(self, other: "FlowEndPoint"):
+        def get_channel_and_update(channel, tile, bundle, incoming_outgoing):
+            used_channels = FlowEndPoint._used_channels[
+                tile.col.value, tile.row.value, bundle, incoming_outgoing
+            ]
+            if channel is None:
+                max_used_channel = max(used_channels, default=-1)
+                for i in range(max_used_channel):
+                    if i not in used_channels:
+                        channel = i
+                        break
+                else:
+                    channel = max_used_channel + 1
+            assert channel not in used_channels
+            used_channels.add(channel)
+            return channel
+
+        if isinstance(other, TileOp):
+            other = other.ep()
+
+        for op in [self, other]:
+            if op.bundle is None:
+                op.bundle = WireBundle.DMA
+
+        lhs_channel = get_channel_and_update(
+            self.channel, self.tile, self.bundle, IncomingOutgoing.OUTGOING
+        )
+        rhs_channel = get_channel_and_update(
+            other.channel,
+            other.tile,
+            other.bundle,
+            IncomingOutgoing.INCOMING,
+        )
+
+        result = flow(
+            self.tile,
+            self.bundle,
+            lhs_channel,
+            other.tile,
+            other.bundle,
+            rhs_channel,
+        )
+
+        self.tile.flows[self.bundle, IncomingOutgoing.OUTGOING, lhs_channel] = result
+        other.tile.flows[other.bundle, IncomingOutgoing.INCOMING, rhs_channel] = result
+
+        return other
+
+    def __lshift__(self, other: "FlowEndPoint"):
+        other >> self
+        return other
+
+
+def tile(col, row, *, loc=None, ip=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip)

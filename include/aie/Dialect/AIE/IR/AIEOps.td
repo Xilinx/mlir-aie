@@ -55,7 +55,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
   }];
 
   let arguments = (ins AIEDevice:$device);
-  let regions = (region AnyRegion:$bodyRegion);
+  let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` regions attr-dict
   }];
@@ -289,7 +289,7 @@ def AIE_CoreOp: AIE_Op<"core", [
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
-    DefaultValuedAttr<AIEI32Attr, "0x400">:$stackSize,
+    DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
     OptionalAttr<StrAttr>:$link_with,
     OptionalAttr<StrAttr>:$elf_file
   );
@@ -371,10 +371,10 @@ def AIE_PLIOOp: AIE_Op<"plio", [
 
 def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp", "CascadeSwitchboxOp"]> ]> {
   let arguments = (
-    ins WireBundle:$sourceBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$sourceChannel,
-        WireBundle:$destBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$destChannel
+    ins WireBundle:$source_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
+        WireBundle:$dest_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
@@ -395,7 +395,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp", "
   }];
 
   let assemblyFormat = [{
-    `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
+    `<` $source_bundle `:` $source_channel `,` $dest_bundle `:` $dest_channel `>` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -409,11 +409,11 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp", "
 def AIE_FlowOp: AIE_Op<"flow", []> {
   let arguments = (
     ins Index:$source,
-        WireBundle:$sourceBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$sourceChannel,
+        WireBundle:$source_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
         Index:$dest,
-        WireBundle:$destBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$destChannel
+        WireBundle:$dest_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
@@ -432,7 +432,7 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   }];
 
   let assemblyFormat = [{
-    `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -494,8 +494,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
-    ins WireBundle:$destBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$destChannel,
+    ins WireBundle:$dest_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
         Variadic<Index>:$amsels
   );
   let summary = "Packet switched input connection";
@@ -527,7 +527,7 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   }];
 
   let assemblyFormat = [{
-    `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
+    `(` $dest_bundle `:` $dest_channel `,` $amsels `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -539,9 +539,9 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
 def AIE_WireOp: AIE_Op<"wire", []> {
   let arguments = (
     ins Index:$source,
-        WireBundle:$sourceBundle,
+        WireBundle:$source_bundle,
         Index:$dest,
-        WireBundle:$destBundle
+        WireBundle:$dest_bundle
   );
   let summary = "A bundle of physical wires between components";
   let description = [{
@@ -551,14 +551,14 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   }];
 
   let assemblyFormat = [{
-    `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
+    `(` $source `:` $source_bundle `,` $dest `:` $dest_bundle `)` attr-dict
   }];
 }
 
 def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
-    ins WireBundle:$sourceBundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$sourceChannel
+    ins WireBundle:$source_bundle,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel
   );
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched routing rules";
@@ -571,7 +571,7 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
     See [aie.rule](#aierule-aiepacketruleop) for an example.
   }];
 
-  let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
+  let assemblyFormat = [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -883,12 +883,12 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let arguments = (
-    ins DMAChannelDir:$channelDir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channelIndex
+    ins DMAChannelDir:$channel_dir,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
+    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -906,13 +906,13 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let summary = "An op to describe a set of DMA operations.";
 
   let arguments = (
-    ins DMAChannelDir:$channelDir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channelIndex,
+    ins DMAChannelDir:$channel_dir,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
         DefaultValuedAttr<BoolAttr, "true">:$loop
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
-    `(` $channelDir `,` $channelIndex (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -1306,10 +1306,10 @@ def AIE_GetStreamOp: AIE_Op<"get_stream", [
   }];
 
   let arguments = (ins AnyInteger:$channel);
-  let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
+  let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$stream_value);
 
   let assemblyFormat = [{
-    `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
+    `(` $channel `:` type($channel) `)` attr-dict `:` type($stream_value)
   }];
 
   let extraClassDeclaration = [{
@@ -1328,11 +1328,11 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
 
   let arguments = (
     ins AnyInteger:$channel,
-        AnyTypeOf<[F32, I32, I<128>]>:$streamValue
+        AnyTypeOf<[F32, I32, I<128>]>:$stream_value
   );
 
   let assemblyFormat = [{
-    `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
+    `(` $channel `:` type($channel) `,` $stream_value `:` type($stream_value) `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1405,7 +1405,7 @@ def AIE_CascadeSwitchboxOp: AIE_Op<"cascade_switchbox", [
   }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascadeValue)> {
+def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1413,10 +1413,10 @@ def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(out
     which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
   }];
   let hasVerifier = 1;
-  let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascadeValue) }];
+  let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascade_value) }];
 }
 
-def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
+def AIE_PutCascadeOp: AIE_Op<"put_cascade", [HasParent<"CoreOp">]> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
     An op to write to a cascading stream from a neighboring core.
@@ -1424,9 +1424,9 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
     which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
   }];
 
-  let arguments = (ins AnyType:$cascadeValue);
+  let arguments = (ins AnyType:$cascade_value);
   let hasVerifier = 1;
-  let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
+  let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
 def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
@@ -1454,15 +1454,15 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
 
   let arguments = (
     ins FlatSymbolRefAttr:$sym_name,
-        DMAChannelDir:$channelDir,
-        AIEI64Attr:$channelIndex,
+        DMAChannelDir:$channel_dir,
+        AIEI64Attr:$channel_index,
         AIEI64Attr:$col
   );
 
   let results = (outs);
 
   let assemblyFormat = [{
-    $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+    $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
   }];
 }
 
@@ -1723,7 +1723,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   }];
 
   let arguments = (
-    ins OptionalAttr<ObjectFifoPort>:$port,
+    ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
   );
@@ -1731,14 +1731,13 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` ($port^ `,`)? $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    ObjectFifoPort getPortValue();
     int acqNumber() { return getSize(); }
   }];
 }
@@ -1760,20 +1759,19 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   }];
 
   let arguments = (
-    ins OptionalAttr<ObjectFifoPort>:$port,
+    ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` ($port^ `,`)? $size `)`
+    attr-dict $objFifo_name `(` $port `,` $size `)`
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    ObjectFifoPort getPortValue();
     int relNumber() { return getSize(); }
   }];
 }

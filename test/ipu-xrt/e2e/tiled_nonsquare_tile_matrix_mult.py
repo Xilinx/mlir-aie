@@ -4,70 +4,32 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: export BASENAME=$(basename %s)
-# RUN: rm -rf $BASENAME && mkdir $BASENAME && cd $BASENAME
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 import sys
 
-import numpy as np
 from aie.extras.dialects.ext import arith, func, linalg
-from aie.extras.runtime.passes import run_pipeline, Pipeline
 from filelock import FileLock
+import numpy as np
 
-import aie.extras.types as T
-import util
-from aie.compiler.aiecc.main import (
-    generate_cores_list,
-)
-from aie.dialects import aie
+from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
-    device,
-    generate_bcf,
-    generate_cdo,
-    ipu_instgen,
-    mem,
-    memtile_dma,
-    tile,
-    translate_mlir_to_llvmir,
-    dma,
-    another_bd,
 )
-from aie.dialects.aiex import ipu_sync
-from aie.dialects.linalg.opdsl.ops.core_named_ops import fill
-from aie.dialects.scf import for_, yield_
+from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
+from aie.dialects.scf import for_ as range_, yield_
+import aie.extras.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
 from util import (
+    compile_without_vectorization,
     construct_and_print_module,
-    chess_compile,
-    make_core_elf,
-    make_design_pdi,
     make_xclbin,
     setup_xclbin_firmware,
-    link_with_chess_intrinsic_wrapper,
 )
-
-from aie.compiler.aiecc.main import (
-    INPUT_WITH_ADDRESSES_PIPELINE,
-    AIE_LOWER_TO_LLVM,
-    CREATE_PATH_FINDER_FLOWS,
-    DMA_TO_IPU,
-)
-
-from aie.dialects.aiex import (
-    ipu_writebd_shimtile,
-    ipu_write32,
-    forward_bd,
-    process_bd,
-    hold_lock,
-)
-
-range_ = for_
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -115,11 +77,11 @@ def tiled_nonsquare_tile_matrix_mult(module):
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
-        tile_0_0 = tile(0, 0)
-        tile_0_1 = tile(0, 1)
-        tile_0_2 = tile(0, 2)
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
 
         # in
         buffer_0_2_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_2)
@@ -166,20 +128,20 @@ def tiled_nonsquare_tile_matrix_mult(module):
                 0 + d1_size_A * d1_stride_A,
             ]
             for i, bd_id in enumerate(range(2)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # in B
             channel_index = 1
             col = 0
             ddr_id = 1
             for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     offset=0,
@@ -189,10 +151,10 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
                 bd_id += 1
                 # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     offset=d0_size_B * d0_stride_B,
@@ -202,7 +164,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # out C
             channel_index = 0
@@ -216,7 +178,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
             ]
 
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
                     offset=offsets[i],
@@ -226,12 +188,12 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     d0_size=d0_size_C,
                     d0_stride=d0_stride_C,
                 )
-                ipu_write32(S2MM, channel_index, col, bd_id)
-                ipu_sync(
+                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+                aiex.ipu.sync(
                     channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
                 )
 
-        @memtile_dma(tile_0_1)
+        @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
             buffer_0_1_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_1)
@@ -239,43 +201,43 @@ def tiled_nonsquare_tile_matrix_mult(module):
             # output flow
             buffer_0_1_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_1)
 
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
                 aie.use_lock(lock_0_1_read_in_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
 
-            @dma(MM2S, 0, num_blocks=2)
+            @aie.dma(MM2S, 0, num_blocks=2)
             def dma2():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
 
-            @another_bd(dma2)
+            @aie.another_bd(dma2)
             def dma2point5():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_read_in_a, Release)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma3():
                 aie.use_lock(lock_0_1_read_in_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_b)
                 aie.use_lock(lock_0_1_write_out_b, Release)
 
-            @dma(MM2S, 1)
+            @aie.dma(MM2S, 1)
             def dma4():
                 aie.use_lock(lock_0_1_write_out_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_b)
                 aie.use_lock(lock_0_1_read_in_b, Release)
 
-            @dma(S2MM, 2)
+            @aie.dma(S2MM, 2)
             def dma5():
                 aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
                 aie.use_lock(lock_0_1_write_out_c, Release)
 
-            @dma(MM2S, 2)
+            @aie.dma(MM2S, 2)
             def dma6():
                 aie.use_lock(lock_0_1_write_out_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
@@ -283,23 +245,23 @@ def tiled_nonsquare_tile_matrix_mult(module):
 
             aie.end()
 
-        @mem(tile_0_2)
+        @aie.mem(tile_0_2)
         def mem_0_2():
             # input
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
                 aie.use_lock(lock_0_2_read_in_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_a)
                 aie.use_lock(lock_0_2_use_a, Release)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma2():
                 aie.use_lock(lock_0_2_read_in_b, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_b)
                 aie.use_lock(lock_0_2_use_b, Release)
 
             # output
-            @dma(MM2S, 0)
+            @aie.dma(MM2S, 0)
             def dma3():
                 aie.use_lock(lock_0_2_write_out_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_2_c)
@@ -317,7 +279,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     aie.use_lock(lock_0_2_use_b, AcquireGreaterEqual)
                     aie.use_lock(lock_0_2_use_c, AcquireGreaterEqual)
 
-                    fill(arith.constant(0), outs=[buffer_0_2_c])
+                    linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                     linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
                     aie.use_lock(lock_0_2_read_in_a, Release)
@@ -326,43 +288,18 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     yield_([])
                 yield_([])
 
-    module = run_pipeline(module, Pipeline().canonicalize())
-    lowered_linalg = run_pipeline(
-        module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
-    )
-    input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_opt_with_addresses = run_pipeline(input_with_addresses, AIE_LOWER_TO_LLVM)
-    chess_compile(
-        link_with_chess_intrinsic_wrapper(
-            translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-        )
-    )
-
-    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-    make_core_elf(core_bcf)
-
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-
-    # _GlobalDebug.flag = True
-    generate_cdo(input_physical.operation, str(util.WORKDIR))
-    # _GlobalDebug.flag = False
-    make_design_pdi()
-
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
-
+    ipu_insts = compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(M, N), (M, N)], [(M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (M, N), dtype=np.int32)
         B = np.random.randint(0, 10, (M, N), dtype=np.int32)
@@ -382,6 +319,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_matrix_mult_sugar
@@ -422,11 +360,11 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
-        tile_0_0 = tile(0, 0)
-        tile_0_1 = tile(0, 1)
-        tile_0_2 = tile(0, 2)
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
 
         # in
         buffer_0_2_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_2)
@@ -468,20 +406,20 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                 0 + d1_size_A * d1_stride_A,
             ]
             for i, bd_id in enumerate(range(2)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
                     offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # in B
             channel_index = 1
             col = 0
             ddr_id = 1
             for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     offset=0,
@@ -491,10 +429,10 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
                 bd_id += 1
                 # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     offset=d0_size_B * d0_stride_B,
@@ -504,7 +442,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                ipu_write32(MM2S, channel_index, col, bd_id)
+                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
 
             # out C
             channel_index = 0
@@ -518,7 +456,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
             ]
 
             for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
-                ipu_writebd_shimtile(
+                aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
                     offset=offsets[i],
@@ -528,12 +466,12 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                     d0_size=d0_size_C,
                     d0_stride=d0_stride_C,
                 )
-                ipu_write32(S2MM, channel_index, col, bd_id)
-                ipu_sync(
+                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+                aiex.ipu.sync(
                     channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
                 )
 
-        @memtile_dma(tile_0_1)
+        @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
             buffer_0_1_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_1)
@@ -541,38 +479,40 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
             # output flow
             buffer_0_1_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_1)
 
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
-                process_bd(lock_0_1_read_in_a, buffer_0_1_a, lock_0_1_write_out_a)
+                aiex.process_bd(lock_0_1_read_in_a, buffer_0_1_a, lock_0_1_write_out_a)
 
-            @dma(MM2S, 0, num_blocks=2)
+            @aie.dma(MM2S, 0, num_blocks=2)
             def dma2():
-                process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_write_out_a)
+                aiex.process_bd(
+                    lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_write_out_a
+                )
 
-            @another_bd(dma2)
+            @aie.another_bd(dma2)
             def dma2point5():
-                process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
+                aiex.process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
 
-            forward_bd(tile_0_1, 1, buffer_0_1_b)
-            forward_bd(tile_0_1, 2, buffer_0_1_c)
+            aiex.forward_bd(tile_0_1, 1, buffer_0_1_b)
+            aiex.forward_bd(tile_0_1, 2, buffer_0_1_c)
 
             aie.end()
 
-        @mem(tile_0_2)
+        @aie.mem(tile_0_2)
         def mem_0_2():
             # input
-            @dma(S2MM, 0)
+            @aie.dma(S2MM, 0)
             def dma1():
-                process_bd(lock_0_2_read_in_a, buffer_0_2_a, lock_0_2_use_a)
+                aiex.process_bd(lock_0_2_read_in_a, buffer_0_2_a, lock_0_2_use_a)
 
-            @dma(S2MM, 1)
+            @aie.dma(S2MM, 1)
             def dma2():
-                process_bd(lock_0_2_read_in_b, buffer_0_2_b, lock_0_2_use_b)
+                aiex.process_bd(lock_0_2_read_in_b, buffer_0_2_b, lock_0_2_use_b)
 
             # output
-            @dma(MM2S, 0)
+            @aie.dma(MM2S, 0)
             def dma3():
-                process_bd(lock_0_2_write_out_c, buffer_0_2_c, lock_0_2_use_c)
+                aiex.process_bd(lock_0_2_write_out_c, buffer_0_2_c, lock_0_2_use_c)
 
             aie.end()
 
@@ -581,52 +521,27 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
             for _ in range_(0, tile_rows_C):
                 for _ in range_(0, tile_cols_C):
                     with (
-                        hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
-                        hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                        hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
+                        aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
+                        aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
+                        aiex.hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
                     ):
-                        fill(arith.constant(0), outs=[buffer_0_2_c])
+                        linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                         linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
                     yield_([])
                 yield_([])
 
-    module = run_pipeline(module, Pipeline().canonicalize())
-    lowered_linalg = run_pipeline(
-        module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
-    )
-    input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_opt_with_addresses = run_pipeline(input_with_addresses, AIE_LOWER_TO_LLVM)
-    chess_compile(
-        link_with_chess_intrinsic_wrapper(
-            translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-        )
-    )
-
-    [(col, row, _)] = generate_cores_list(str(input_with_addresses))
-    core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-    make_core_elf(core_bcf)
-
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-
-    # _GlobalDebug.flag = True
-    generate_cdo(input_physical.operation, str(util.WORKDIR))
-    # _GlobalDebug.flag = False
-    make_design_pdi()
-
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
-
+    ipu_insts = compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        inps, outps = xclbin.mmap_buffers([(M, N), (M, N)], [(M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
-        wrap_A = np.asarray(inps[0])
-        wrap_B = np.asarray(inps[1])
-        wrap_C = np.asarray(outps[0])
+        wrap_A = np.asarray(views[0])
+        wrap_B = np.asarray(views[1])
+        wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (M, N), dtype=np.int32)
         B = np.random.randint(0, 10, (M, N), dtype=np.int32)
@@ -646,3 +561,4 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(A @ B)
                 print(wrap_C)
+                assert False

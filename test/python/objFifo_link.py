@@ -6,9 +6,10 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
+    ObjectFifoType,
     bd_dim_layout,
-    object_fifo,
-    object_fifo_link,
+    objectfifo,
+    objectfifo_link,
     tile,
     Device,
 )
@@ -32,23 +33,39 @@ from util import construct_and_print_module
 @construct_and_print_module
 def link_example():
     dev = Device(AIEDevice.xcve2802)
-    dev_block = Block.create_at_start(dev.bodyRegion)
+    dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         S = tile(0, 2)
         M = tile(1, 2)
         T0 = tile(2, 2)
         T1 = tile(2, 3)
 
-        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
-        of1 = object_fifo("of1", M, [T0, T1], 2, T.memref(64, T.i32()))
-        object_fifo_link(of0, of1)
+        objectfifo(
+            "of0",
+            S,
+            [M],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
+            [],
+            [],
+        )
+        objectfifo(
+            "of1",
+            M,
+            [T0, T1],
+            2,
+            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.i32()))),
+            [],
+            [],
+        )
+        objectfifo_link(["of0"], ["of1"])
 
-        object_fifo(
+        objectfifo(
             "of2",
             M,
             [T0, T1],
             [2, 2, 7],
-            T.memref(256, T.ui8()),
+            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)], [bd_dim_layout(size=1, stride=2)]],
         )
