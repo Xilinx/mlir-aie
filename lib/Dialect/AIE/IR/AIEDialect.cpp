@@ -904,7 +904,9 @@ LogicalResult CascadeSwitchboxOp::verify() {
       numOp++;
       WireBundle inDir = connectOp.getSourceBundle();
       if (inDir != WireBundle::West && inDir != WireBundle::North) {
-        return connectOp.emitOpError("source port of ConnectOp in CascadeSwitchboxOp must be West or North");
+        return connectOp.emitOpError(
+            "source port of ConnectOp in CascadeSwitchboxOp must be West or "
+            "North");
       }
       WireBundle outDir = connectOp.getDestBundle();
       if (outDir != WireBundle::East && outDir != WireBundle::South) {
