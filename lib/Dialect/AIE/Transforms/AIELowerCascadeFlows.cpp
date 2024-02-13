@@ -57,7 +57,8 @@ struct AIELowerCascadeFlowsPass
       if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
+                                    dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
       } else {
