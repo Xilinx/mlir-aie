@@ -41,8 +41,7 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIELowerCascadeFlowsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

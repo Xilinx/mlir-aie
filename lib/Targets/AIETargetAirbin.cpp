@@ -1069,15 +1069,17 @@ static void configureCascade(DeviceOp &targetOp) {
       Region &body = cascadeSwboxOp.getConnections();
       for (auto &ops : body.front()) {
         if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-          auto inputDir = stringifyWireBundle(connectOp.getSourceBundle()).upper();
-          auto outputDir = stringifyWireBundle(connectOp.getDestBundle()).upper();
+          auto inputDir =
+              stringifyWireBundle(connectOp.getSourceBundle()).upper();
+          auto outputDir =
+              stringifyWireBundle(connectOp.getDestBundle()).upper();
 
           Address address{tile, 0x36060u};
 
           /*
-          *  * Register value for output BIT 1: 0 == SOUTH, 1 == EAST
-          *  * Register value for input BIT 0: 0 == NORTH, 1 == WEST
-          */
+           *  * Register value for output BIT 1: 0 == SOUTH, 1 == EAST
+           *  * Register value for input BIT 0: 0 == NORTH, 1 == WEST
+           */
           uint8_t outputValue = (outputDir == "SOUTH") ? 0 : 1;
           uint8_t inputValue = (inputDir == "NORTH") ? 0 : 1;
 

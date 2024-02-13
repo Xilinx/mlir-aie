@@ -876,7 +876,7 @@ LogicalResult CascadeFlowOp::verify() {
       !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
       !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
       !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
-        return emitOpError("tiles must be adjacent");
+    return emitOpError("tiles must be adjacent");
   }
   return success();
 }

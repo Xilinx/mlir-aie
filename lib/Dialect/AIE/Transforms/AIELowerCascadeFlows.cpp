@@ -54,11 +54,11 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.push_back(src);
       tilesWithCascadeFlow.push_back(dst);
 
-      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(), 
+      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
                               dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(), 
+      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
                                     dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
@@ -91,7 +91,7 @@ struct AIELowerCascadeFlowsPass
         outputDir = WireBundle::South;
       }
       int channelIndex = 0;
-      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex, 
+      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex,
                                 outputDir, channelIndex);
       builder.setInsertionPointAfter(swbox);
     }
