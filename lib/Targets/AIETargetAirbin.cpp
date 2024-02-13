@@ -1069,8 +1069,10 @@ static void configureCascade(DeviceOp &targetOp) {
       Region &body = cascadeSwboxOp.getConnections();
       for (auto &ops : body.front()) {
         if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-          auto inputDir = stringifyWireBundle(connectOp.getSourceBundle()).upper();
-          auto outputDir = stringifyWireBundle(connectOp.getDestBundle()).upper();
+          auto inputDir =
+              stringifyWireBundle(connectOp.getSourceBundle()).upper();
+          auto outputDir =
+              stringifyWireBundle(connectOp.getDestBundle()).upper();
 
           Address address{tile, 0x36060u};
 
