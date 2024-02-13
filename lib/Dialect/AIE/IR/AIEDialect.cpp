@@ -930,13 +930,9 @@ LogicalResult CascadeSwitchboxOp::verify() {
   return success();
 }
 
-int CascadeSwitchboxOp::colIndex() {
-  return getTileOp().colIndex();
-}
+int CascadeSwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
-int CascadeSwitchboxOp::rowIndex() {
-  return getTileOp().rowIndex();
-}
+int CascadeSwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CascadeSwitchboxOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
