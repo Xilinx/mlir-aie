@@ -22,7 +22,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-CascadeSwitchboxOp getOrCreateCascadeSwitchbox(OpBuilder &builder, TileOp tile) {
+CascadeSwitchboxOp getOrCreateCascadeSwitchbox(OpBuilder &builder,
+                                               TileOp tile) {
   for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<CascadeSwitchboxOp>(*i)) {
       return llvm::cast<CascadeSwitchboxOp>(*i);
