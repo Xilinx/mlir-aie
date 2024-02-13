@@ -872,6 +872,13 @@ LogicalResult CascadeFlowOp::verify() {
   TileOp src = getSourceTileOp();
   TileOp dst = getDestTileOp();
   const auto &t = getTargetModel(src);
+
+  if (src.isShimTile() || dst.isShimTile())
+    return emitOpError("shimTile row has no cascade stream interface");
+  if (t.isMemTile(src.colIndex(), src.rowIndex()) ||
+      t.isMemTile(dst.colIndex(), dst.rowIndex()))
+    return emitOpError("memTile row has no cascade stream interface");
+
   if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
       !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
       !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
@@ -894,9 +901,14 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CascadeSwitchboxOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
   Region &body = getConnections();
   if (body.empty())
     return emitOpError("should have non-empty body");
+  if (getTileOp().isShimTile())
+    return emitOpError("shimTile row has no cascade stream interface");
+  if (targetModel.isMemTile(colIndex(), rowIndex()))
+    return emitOpError("memTile row has no cascade stream interface");
 
   int numOp = 0;
   for (auto &ops : body.front()) {

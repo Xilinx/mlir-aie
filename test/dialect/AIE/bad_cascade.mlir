@@ -19,6 +19,69 @@ aie.device(xcve2802) {
 
 // -----
 
+// CHECK: error{{.*}}'aie.cascade_flow' op memTile row has no cascade stream interface
+
+aie.device(xcve2802) {
+  %t12 = aie.tile(1, 2)
+  %t22 = aie.tile(2, 2)
+  aie.cascade_flow(%t12, %t22)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_flow' op shimTile row has no cascade stream interface
+
+aie.device(ipu) {
+  %t10 = aie.tile(1, 0)
+  %t20 = aie.tile(2, 0)
+  aie.cascade_flow(%t10, %t20)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_flow' op memTile row has no cascade stream interface
+
+aie.device(ipu) {
+  %t11 = aie.tile(1, 1)
+  %t21 = aie.tile(2, 1)
+  aie.cascade_flow(%t11, %t21)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_switchbox' op memTile row has no cascade stream interface
+
+aie.device(xcve2802) {
+  %t12 = aie.tile(1, 2)
+  aie.cascade_switchbox(%t12) {
+    aie.connect<West: 0, East: 0>
+  }
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_switchbox' op shimTile row has no cascade stream interface
+
+aie.device(ipu) {
+  %t10 = aie.tile(1, 0)
+  aie.cascade_switchbox(%t10) {
+    aie.connect<West: 0, East: 0>
+  }
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_switchbox' op memTile row has no cascade stream interface
+
+aie.device(ipu) {
+  %t11 = aie.tile(1, 1)
+  aie.cascade_switchbox(%t11) {
+    aie.connect<West: 0, East: 0>
+  }
+}
+
+// -----
+
 // CHECK: error{{.*}}'aie.cascade_switchbox' op cannot have more than one ConnectOp in CascadeSwitchboxOp
 
 aie.device(xcve2802) {
