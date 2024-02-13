@@ -42,7 +42,7 @@ struct AIELowerCascadeFlowsPass
     const auto &targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
-    std::vector<TileOp> tilesWithCascadeFlow;
+    std::set<TileOp> tilesWithCascadeFlow;
     DenseMap<TileOp, WireBundle> cascadeInputsPerTile;
     DenseMap<TileOp, WireBundle> cascadeOutputsPerTile;
 
@@ -51,8 +51,8 @@ struct AIELowerCascadeFlowsPass
       // for each cascade flow
       TileOp src = cascadeFlow.getSourceTileOp();
       TileOp dst = cascadeFlow.getDestTileOp();
-      tilesWithCascadeFlow.push_back(src);
-      tilesWithCascadeFlow.push_back(dst);
+      tilesWithCascadeFlow.insert(src);
+      tilesWithCascadeFlow.insert(dst);
 
       if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
                               dst.getRow())) {
