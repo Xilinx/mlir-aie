@@ -91,7 +91,8 @@ struct AIELowerCascadeFlowsPass
         outputDir = WireBundle::South;
       }
       int channelIndex = 0;
-      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex, outputDir, channelIndex);
+      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex,
+                                outputDir, channelIndex);
       builder.setInsertionPointAfter(swbox);
     }
 
