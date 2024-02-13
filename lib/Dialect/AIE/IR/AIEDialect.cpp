@@ -872,11 +872,11 @@ LogicalResult CascadeFlowOp::verify() {
   TileOp src = getSourceTileOp();
   TileOp dst = getDestTileOp();
   const auto &t = getTargetModel(src);
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())
-      && !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
-        return emitOpError("tiles must be adjacent");
+  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+    return emitOpError("tiles must be adjacent");
   }
   return success();
 }
