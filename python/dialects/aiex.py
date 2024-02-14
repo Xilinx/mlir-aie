@@ -192,6 +192,7 @@ def forward_bd(
     mm2s_channel_idx=None,
     read_in_lock=None,
     write_out_lock=None,
+    repeat_count=None,
 ):
     if isinstance(s2mm_channel_idx, IntegerAttr):
         s2mm_channel_idx = s2mm_channel_idx.value
@@ -215,11 +216,13 @@ def forward_bd(
             sym_name=(f"{buffer_sym_name}_write_out_lock" if buffer_sym_name else None),
         )
 
-    @dma(DMAChannelDir.S2MM, s2mm_channel_idx)
+    loop = repeat_count is None
+
+    @dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_incoming():
         process_bd(read_in_lock, buffer, write_out_lock)
 
-    @dma(DMAChannelDir.MM2S, mm2s_channel_idx)
+    @dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_outgoing():
         process_bd(write_out_lock, buffer, read_in_lock)
 

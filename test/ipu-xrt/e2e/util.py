@@ -36,8 +36,6 @@ from aie.dialects.aie import (
 from aie.extras.runtime.passes import Pipeline, run_pipeline
 from aie.extras.util import find_ops
 from aie.ir import Context, InsertionPoint, Location, Module
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 
 WORKDIR = os.getenv("WORKDIR")
 if WORKDIR is None:
@@ -413,6 +411,9 @@ def sliding_window(iterable, n):
 
 
 def display_flows(module):
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+
     fig, axs = plt.subplots()
     for c in find_ops(
         module.operation,

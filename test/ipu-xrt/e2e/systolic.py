@@ -11,6 +11,8 @@
 import random
 import sys
 
+from aie.extras.util import find_ops
+
 from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.dialects import aie, aiex
 from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
@@ -39,7 +41,7 @@ Release = LockAction.Release
 
 
 # CHECK-LABEL: systolic_vec_add
-# @construct_and_print_module
+@construct_and_print_module
 def systolic_vec_add(module):
     K = 32
     tiles = 1
@@ -282,7 +284,7 @@ def systolic_vec_add(module):
 
 
 # CHECK-LABEL: max_result_args
-# @construct_and_print_module
+@construct_and_print_module
 def max_result_args(module):
     K = 32
     tiles = 1
@@ -415,7 +417,7 @@ def max_result_args(module):
 
 
 # CHECK-LABEL: max_input_and_output_args
-# @construct_and_print_module
+@construct_and_print_module
 def max_input_and_output_args(module):
     K = 32
     tiles = 1
@@ -607,7 +609,7 @@ def max_input_and_output_args(module):
 
 
 # CHECK-LABEL: zeroth_column
-# @construct_and_print_module
+@construct_and_print_module
 def zeroth_column(module):
     RANDOM_NUMBER = random.randint(1, 100)
     print(RANDOM_NUMBER)
@@ -716,7 +718,7 @@ def zeroth_column(module):
 
 
 # CHECK-LABEL: global_core_mem_init
-# @construct_and_print_module
+@construct_and_print_module
 def global_core_mem_init(module):
     K = 32
     tiles = 1
@@ -857,18 +859,17 @@ def global_core_mem_init(module):
 def constant_systolic_3x3(module):
     K = 32
     n_tiles = 1
-    k = K // n_tiles
     columns = [0, 1, 2]
     rows = list(range(5))
-    RANDOM_NUMBER = random.randint(1, 100)
-    print(RANDOM_NUMBER)
     # six rows X five columns
     # image orientation x-> cols, y-> rows
     tiles = np.empty((5, 6), dtype=object)
     tiles[0, 0] = None
+    repeat_count = 2
 
     @aie.device(AIEDevice.ipu)
     def ipu():
+        weight_id = random.randint(1, 100)
         for c in columns:
             for r in rows:
                 if (c, r) == (0, 0):
@@ -894,11 +895,12 @@ def constant_systolic_3x3(module):
             next_tile_next_col = tiles[0 + 1, r]
             weight = memref.global_(
                 sym_name=f"weight_0_{r}",
-                initial_value=np.ones((k,), dtype=np.int32) * r * RANDOM_NUMBER,
+                initial_value=np.ones((K,), dtype=np.int32) * weight_id,
                 constant=True,
             )
+            weight_id = random.randint(1, 10)
             buffer_weight = aie.buffer(
-                T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_0_{r}_weight"
+                T.memref(K, T.i32()), compute_tile, sym_name=f"buffer_0_{r}_weight"
             )
             lock_read_weight = aie.lock(
                 compute_tile, init=1, sym_name=f"lock_0_{r}_read_weight"
@@ -909,7 +911,12 @@ def constant_systolic_3x3(module):
 
             @aie.mem(compute_tile)
             def mem():
-                @aie.dma(MM2S, compute_tile.flows[next_tile_next_col][0].source_channel)
+                @aie.dma(
+                    MM2S,
+                    compute_tile.flows[next_tile_next_col][0].source_channel,
+                    loop=False,
+                    repeat_count=repeat_count,
+                )
                 def _():
                     aiex.process_bd(lock_send_weight, buffer_weight, lock_read_weight)
 
@@ -917,20 +924,22 @@ def constant_systolic_3x3(module):
 
             @aie.core(compute_tile)
             def core():
-                with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                    x = memref.get_global(weight.type_.value, weight.sym_name.value)
-                    linalg.copy(x, buffer_weight)
+                for _ in range(repeat_count):
+                    with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                        x = memref.get_global(weight.type_.value, weight.sym_name.value)
+                        linalg.copy(x, buffer_weight)
 
         for c in [1, 2]:
             compute_tile = tiles[c, 4]
             next_tile_next_row = tiles[c, 4 - 1]
             weight = memref.global_(
                 sym_name=f"weight_{c}_4",
-                initial_value=np.ones((k,), dtype=np.int32) * c * RANDOM_NUMBER,
+                initial_value=np.ones((K,), dtype=np.int32) * weight_id,
                 constant=True,
             )
+            weight_id = random.randint(1, 10)
             buffer_weight = aie.buffer(
-                T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_4_weight"
+                T.memref(K, T.i32()), compute_tile, sym_name=f"buffer_{c}_4_weight"
             )
             lock_read_weight = aie.lock(
                 compute_tile, init=1, sym_name=f"lock_{c}_4_read_weight"
@@ -941,7 +950,12 @@ def constant_systolic_3x3(module):
 
             @aie.mem(compute_tile)
             def mem():
-                @aie.dma(MM2S, compute_tile.flows[next_tile_next_row][0].source_channel)
+                @aie.dma(
+                    MM2S,
+                    compute_tile.flows[next_tile_next_row][0].source_channel,
+                    loop=False,
+                    repeat_count=repeat_count,
+                )
                 def _():
                     aiex.process_bd(lock_send_weight, buffer_weight, lock_read_weight)
 
@@ -949,9 +963,10 @@ def constant_systolic_3x3(module):
 
             @aie.core(compute_tile)
             def core():
-                with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                    x = memref.get_global(weight.type_.value, weight.sym_name.value)
-                    linalg.copy(x, buffer_weight)
+                for _ in range(repeat_count):
+                    with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                        x = memref.get_global(weight.type_.value, weight.sym_name.value)
+                        linalg.copy(x, buffer_weight)
 
         for c in [1, 2]:
             for r in [2, 3]:
@@ -962,13 +977,13 @@ def constant_systolic_3x3(module):
                 next_tile_next_row = tiles[c, r - 1]
 
                 buffer_a = aie.buffer(
-                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_a"
+                    T.memref(K, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_a"
                 )
                 buffer_b = aie.buffer(
-                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_b"
+                    T.memref(K, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_b"
                 )
                 buffer_c = aie.buffer(
-                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_c"
+                    T.memref(K, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_c"
                 )
 
                 if next_tile_next_col:
@@ -991,10 +1006,20 @@ def constant_systolic_3x3(module):
                     compute_tile, init=0, sym_name=f"lock_{c}_{r}_use_b"
                 )
 
+                lock_use_c = aie.lock(
+                    compute_tile, init=1, sym_name=f"lock_{c}_{r}_use_c"
+                )
+                lock_write_out_c = aie.lock(
+                    compute_tile, init=0, sym_name=f"lock_{c}_{r}_write_out_c"
+                )
+
                 @aie.mem(compute_tile)
                 def mem():
                     @aie.dma(
-                        S2MM, compute_tile.flows[prev_tile_prev_col][0].dest_channel
+                        S2MM,
+                        compute_tile.flows[prev_tile_prev_col][0].dest_channel,
+                        loop=False,
+                        repeat_count=repeat_count,
                     )
                     def _():
                         aiex.process_bd(
@@ -1010,6 +1035,8 @@ def constant_systolic_3x3(module):
                         @aie.dma(
                             MM2S,
                             compute_tile.flows[next_tile_next_col][0].source_channel,
+                            loop=False,
+                            repeat_count=repeat_count,
                         )
                         def _():
                             aiex.process_bd(
@@ -1021,7 +1048,10 @@ def constant_systolic_3x3(module):
                             )
 
                     @aie.dma(
-                        S2MM, compute_tile.flows[prev_tile_prev_row][0].dest_channel
+                        S2MM,
+                        compute_tile.flows[prev_tile_prev_row][0].dest_channel,
+                        loop=False,
+                        repeat_count=repeat_count,
                     )
                     def _():
                         aiex.process_bd(
@@ -1031,12 +1061,24 @@ def constant_systolic_3x3(module):
                     @aie.dma(
                         MM2S,
                         compute_tile.flows[next_tile_next_row][0].source_channel,
+                        num_blocks=2,
+                        loop=False,
                     )
-                    def _():
+                    def output():
                         aiex.process_bd(
                             lock_use_b,
                             buffer_b,
                             lock_read_in_b,
+                            acq_val=1,
+                            rel_val=1,
+                        )
+
+                    @aie.another_bd(output)
+                    def output_c():
+                        aiex.process_bd(
+                            lock_write_out_c,
+                            buffer_c,
+                            lock_use_c,
                             acq_val=1,
                             rel_val=1,
                         )
@@ -1052,7 +1094,9 @@ def constant_systolic_3x3(module):
                         aiex.hold_lock(
                             lock_use_b, lock_read_in_b, acq_val=1, rel_val=1
                         ),
-                        # aiex.hold_lock(lock_use_c, lock_write_out_c),
+                        aiex.hold_lock(
+                            lock_use_c, lock_write_out_c, acq_val=1, rel_val=1
+                        ),
                     ):
                         linalg.add(buffer_a, buffer_b, buffer_c)
 
@@ -1065,10 +1109,11 @@ def constant_systolic_3x3(module):
                 aiex.forward_bd(
                     mem_tile,
                     aie.buffer(
-                        T.memref(k, T.i32()), mem_tile, sym_name=f"buffer_{c}_1_c"
+                        T.memref(K, T.i32()), mem_tile, sym_name=f"buffer_{c}_1_c"
                     ),
                     s2mm_channel_idx=mem_tile.flows[compute_tile][0].dest_channel,
                     mm2s_channel_idx=mem_tile.flows[shim_tile][0].source_channel,
+                    repeat_count=repeat_count,
                 )
 
                 aie.end()
@@ -1077,40 +1122,44 @@ def constant_systolic_3x3(module):
 
         @func.func(emit=True)
         def bobsyouruncle():
-            ddr_id = 0
-            for column in [1, 2]:
-                shim_tile = tiles[c, 0]
-                mem_tile = tiles[c, 1]
-                offsets = list(range(0, K, k))
+            for j in range(repeat_count):
+                ddr_id = 0
                 bd_id = 0
-                # out C
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + n_tiles)):
-                    aiex.ipu.writebd_shimtile(
-                        bd_id=bd_id,
-                        column=column,
-                        buffer_length=k,
-                        offset=offsets[i],
-                        ddr_id=ddr_id,
-                    )
-                    aiex.ipu.write32(
-                        channel_dir=S2MM,
-                        channel_index=mem_tile.flows[shim_tile][0].dest_channel,
-                        column=column,
-                        bd_id=bd_id,
-                    )
-                    aiex.ipu.sync(
-                        channel=mem_tile.flows[shim_tile][0].dest_channel,
-                        column=column,
-                        column_num=1,
-                        direction=0,
-                        row=0,
-                        row_num=1,
-                    )
-                ddr_id += 1
+                for column in [1, 2]:
+                    shim_tile = tiles[c, 0]
+                    mem_tile = tiles[c, 1]
+                    # out C
+                    for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + n_tiles)):
+                        aiex.ipu.writebd_shimtile(
+                            bd_id=bd_id,
+                            column=column,
+                            buffer_length=K,
+                            offset=j * K,
+                            ddr_id=ddr_id,
+                        )
+                        aiex.ipu.write32(
+                            channel_dir=S2MM,
+                            channel_index=mem_tile.flows[shim_tile][0].dest_channel,
+                            column=column,
+                            bd_id=bd_id,
+                        )
+                        aiex.ipu.sync(
+                            channel=mem_tile.flows[shim_tile][0].dest_channel,
+                            column=column,
+                            column_num=1,
+                            direction=0,
+                            row=0,
+                            row_num=1,
+                        )
+                    ddr_id += 1
 
-    display_flows(module)
+    # display_flows(module)
     print(module)
     assert module.operation.verify()
+
+    weights = find_ops(module.operation, lambda o: "memref.global" in str(o))
+    for w in weights:
+        print(w)
 
     ipu_insts = compile_without_vectorization(module, partition_start_col=0)
     buffer_args = [f"c{c}" for c in [1, 2]]
@@ -1119,11 +1168,11 @@ def constant_systolic_3x3(module):
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(K,)] * len([1, 2]), np.int32)
+        views = xclbin.mmap_buffers([(2 * K,)] * len([1, 2]), np.int32)
 
         for c in views:
             wrap_C = np.asarray(c)
-            C = np.zeros((K,), dtype=np.int32)
+            C = np.zeros((2 * K,), dtype=np.int32)
             np.copyto(wrap_C, C, casting="no")
 
         xclbin.sync_buffers_to_device()

@@ -54,13 +54,7 @@ def repeat_count(module):
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
 
-        iv = _i32ElementsAttr(RANDOM_WEIGHT, None)
-        weight = memref.global_(
-            sym_name=f"weight",
-            type_=T.memref(K, T.i32()),
-            initial_value=iv,
-            constant=True,
-        ).opview
+        weight = memref.global_(initial_value=RANDOM_WEIGHT, constant=True)
         buffer_weight = aie.buffer(T.memref(K, T.i32()), tile_0_2)
         lock_read_weight = aie.lock(tile_0_2, init=1)
         lock_send_weight = aie.lock(tile_0_2, init=0)

@@ -479,23 +479,25 @@ class FlowEndPoint:
             if op.bundle is None:
                 op.bundle = WireBundle.DMA
 
-        self.channel = self._get_channel_and_update(
+        self_channel = self._get_channel_and_update(
             self.channel, self.tile, self.bundle, IncomingOutgoing.OUTGOING
         )
-        other.channel = self._get_channel_and_update(
+        other_channel = self._get_channel_and_update(
             other.channel,
             other.tile,
             other.bundle,
             IncomingOutgoing.INCOMING,
         )
+        if self.bundle != WireBundle.DMA or other.bundle != WireBundle.DMA:
+            assert self.channel == other.channel, "channel mismatch (see arch page 121)"
 
         result = flow(
             self.tile,
             self.bundle,
-            self.channel,
+            self_channel,
             other.tile,
             other.bundle,
-            other.channel,
+            other_channel,
         )
 
         self.tile.flows[other.tile].append(result)
