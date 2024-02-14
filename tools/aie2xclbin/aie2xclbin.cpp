@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -148,6 +149,7 @@ int main(int argc, char *argv[]) {
   registry.insert<scf::SCFDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<cf::ControlFlowDialect>();
+  registry.insert<vector::VectorDialect>();
   xilinx::registerAllDialects(registry);
   registerBuiltinDialectTranslation(registry);
   registerLLVMDialectTranslation(registry);
