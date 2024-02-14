@@ -1,24 +1,24 @@
 //===- aie2_tileDMA4.mlir --------------------------------------*- MLIR -*-===//
- //
- // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
- // See https://llvm.org/LICENSE.txt for license information.
- // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- //
- // (c) Copyright 2023 Advanced Micro Devices, Inc.
- //
- //===----------------------------------------------------------------------===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
 
- // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
- // CHECK: XAie_DmaDesc [[bd0:.*]];
- // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3)));
- // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(3,-1),XAie_LockInit(4,1)));
- // CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 256 * 4));
- // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 0,  /* enableNextBd */ 0));
- // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
- // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3),  /* bd */ 0));
- // CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 4, /* EnToken */ Xaie_DISABLE));
- // CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM));
+// CHECK: XAie_DmaDesc [[bd0:.*]];
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3)));
+// CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(3,-1),XAie_LockInit(4,1)));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 256 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 0,  /* enableNextBd */ 0));
+// CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3),  /* bd */ 0));
+// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 4, /* EnToken */ XAIE_DISABLE));
+// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */ 0, /* dmaDir */ DMA_S2MM));
 
  module @aie_module  {
    aie.device(xcve2802) {
@@ -31,7 +31,7 @@
 
      // Tile DMA
      %m73 = aie.mem(%t73) {
-         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, 4)
+         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, repeat_count = 4)
        ^bd0:
          // Note: acquire and release are different locks.
          aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
