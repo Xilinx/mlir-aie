@@ -1,4 +1,4 @@
-# Linux Build Instructions
+# Linux Setup and Build Instructions
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Only Ubuntu 22.04 LTS is supported. The instructions were tested on a ASUS Vivobook Pro 15. 
 
@@ -338,7 +338,9 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
     .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
     ```
 
-### FAQ Resetting the NPU:
+# Troubleshooting
+
+## Resetting the NPU
 
 It is possible to hang the NPU in an unstable state. To reset the NPU:
 
@@ -346,6 +348,33 @@ It is possible to hang the NPU in an unstable state. To reset the NPU:
 sudo rmmod amdxdna.ko
 sudo insmod $XDNA_SRC_DIR/build/Release/bins/driver/amdxdna.ko
 ```
+
+If you installed the AMD XDNA driver using `.deb` packages as outlined above, and `insmod` does not work, you may instead want to try:
+
+```
+sudo modprobe -r amdxdna
+sudo modprobe -v amdxdna
+```
+
+## `xrt_core::system_error` - Unsigned xclbins
+
+If you are able to successfully build your design, but are getting the following error when trying to execute it:
+
+```
+terminate called after throwing an instance of 'xrt_core::system_error'
+  what():  DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=2): No such file or directory
+Aborted (core dumped)
+```
+
+This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
+
+## License Errors When Trying to Compile
+
+The `v++` compiler for the NPU device code requires a valid Vitis license. If you are getting errors related to this:
+
+1. You have obtained a valid license, as described [above](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites). 
+1. Make sure you have set the environment variable `LM_LICENSE_FILE` to point to your license file, see [above](#setting-up-your-environment).
+1. Make sure the ethernet interface whose MAC address you used to generate the license is still available on your machine. For example, if you used the MAC address of a removable USB Ethernet adapter, and then removed that adapter, the license check will fail. You can list MAC addresses of interfaces on your machine using `ip link`.
 
 -----
 
