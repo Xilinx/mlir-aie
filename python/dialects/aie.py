@@ -242,7 +242,16 @@ memtile_dma = region_op(
 
 
 @region_op
-def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
+def dma(
+    channel_dir,
+    channel_index,
+    *,
+    num_blocks=1,
+    loop=None,
+    repeat_count=None,
+    loc=None,
+    ip=None,
+):
     if isinstance(channel_index, IntegerAttr):
         channel_index = channel_index.value
     return DMAOp(
@@ -251,6 +260,7 @@ def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=Non
         channel_index=channel_index,
         num_bds=num_blocks,
         loop=loop,
+        repeat_count=repeat_count,
         loc=loc,
         ip=ip,
     )
@@ -276,6 +286,7 @@ class DMAStartOp(DMAStartOp):
         *,
         dest: Optional[Union[Successor, Block]] = None,
         chain: Optional[Union[Successor, Block]] = None,
+        repeat_count: Optional[int] = None,
         loc=None,
         ip=None,
     ):
@@ -287,7 +298,15 @@ class DMAStartOp(DMAStartOp):
             dest = InsertionPoint.current.block
         if chain is None:
             chain = InsertionPoint.current.block
-        super().__init__(channel_dir, channel_index, dest, chain, loc=loc, ip=ip)
+        super().__init__(
+            channel_dir,
+            channel_index,
+            dest,
+            chain,
+            repeat_count=repeat_count,
+            loc=loc,
+            ip=ip,
+        )
 
     @property
     def dest(self):

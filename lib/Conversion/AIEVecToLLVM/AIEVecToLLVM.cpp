@@ -825,6 +825,82 @@ class MatMulOpConversion
         vecTy.getElementType());
   }
 
+  static LLVM::LLVMFuncOp getVectorSetFunction(PatternRewriter &b,
+                                               ModuleOp moduleOp,
+                                               int64_t fromBitWidth,
+                                               int64_t toBitWidth,
+                                               bool isAcc = false) {
+    assert((isAcc && ((fromBitWidth == 256 || fromBitWidth == 512) &&
+                      toBitWidth == 1024) ||
+            !isAcc && ((fromBitWidth == 128 || fromBitWidth == 256) &&
+                       toBitWidth == 512)) &&
+           "invalid vector set function");
+    std::stringstream intrNameStream;
+    intrNameStream << "llvm.aie2.set.";
+    if (!isAcc)
+      intrNameStream << "I";
+    intrNameStream << toBitWidth << ".";
+    if (!isAcc)
+      intrNameStream << "I";
+    intrNameStream << fromBitWidth;
+    if (isAcc)
+      intrNameStream << ".acc";
+    std::string intrinsicName = intrNameStream.str();
+    MLIRContext *ctx = b.getContext();
+    auto funcOp = moduleOp.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(ctx, intrinsicName));
+    if (!funcOp) {
+      int64_t elemBitWidth = 32;
+      Type elemTy = b.getI32Type();
+      if (isAcc) {
+        elemBitWidth = 64;
+        elemTy = b.getI64Type();
+      }
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(moduleOp.getBody());
+      SmallVector<Type, 2> funcSigParamTy(
+          {VectorType::get({fromBitWidth / elemBitWidth}, elemTy)});
+      if (fromBitWidth != 128)
+        funcSigParamTy.push_back(b.getI32Type());
+      funcOp = b.create<LLVM::LLVMFuncOp>(
+          b.getUnknownLoc(), intrinsicName,
+          LLVM::LLVMFunctionType::get(
+              VectorType::get({toBitWidth / elemBitWidth}, elemTy),
+              funcSigParamTy));
+    }
+    return funcOp;
+  }
+
+  static Value widenVectorTo512bit(PatternRewriter &b, Location loc,
+                                   Value val) {
+    auto valTy = cast<VectorType>(val.getType());
+    auto elemBitWidth = valTy.getElementTypeBitWidth();
+    int64_t vecBitWidth = elemBitWidth * valTy.getShape()[0];
+    if (vecBitWidth == 512)
+      return val;
+    if (vecBitWidth == 128)
+      val = b.create<LLVM::BitcastOp>(loc, VectorType::get({4}, b.getI32Type()),
+                                      val)
+                .getResult();
+    else if (vecBitWidth == 256)
+      val = b.create<LLVM::BitcastOp>(loc, VectorType::get({8}, b.getI32Type()),
+                                      val)
+                .getResult();
+    else
+      llvm_unreachable("invalid vector type");
+
+    auto moduleOp = val.getParentRegion()->getParentOfType<ModuleOp>();
+    auto funcOp = getVectorSetFunction(b, moduleOp, vecBitWidth, 512);
+    SmallVector<Value, 2> operands({val});
+    if (vecBitWidth == 256) {
+      auto zeroi32 = b.create<arith::ConstantOp>(loc, b.getI32Type(),
+                                                 b.getI32IntegerAttr(0))
+                         .getResult();
+      operands.push_back(zeroi32);
+    }
+    return b.create<LLVM::CallOp>(loc, funcOp, operands).getResult();
+  }
+
   LogicalResult
   matchAndRewrite(aievec::MatMulOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -846,12 +922,22 @@ class MatMulOpConversion
         loc, accFlattenedVecTy, decodedMatMulOp.acc);
 
     if (decodedMatMulOp.kind != DecodedMatMulOp::Kind::BF16) {
+      if (lhsFlattenedVecTy.getShape()[0] *
+              lhsFlattenedVecTy.getElementTypeBitWidth() !=
+          512)
+        decodedMatMulOp.lhs =
+            widenVectorTo512bit(rewriter, loc, decodedMatMulOp.lhs);
       decodedMatMulOp.lhs =
           rewriter
               .create<LLVM::BitcastOp>(
                   loc, VectorType::get({64}, rewriter.getI8Type()),
                   decodedMatMulOp.lhs)
               .getResult();
+      if (rhsFlattenedVecTy.getShape()[0] *
+              rhsFlattenedVecTy.getElementTypeBitWidth() !=
+          512)
+        decodedMatMulOp.rhs =
+            widenVectorTo512bit(rewriter, loc, decodedMatMulOp.rhs);
       decodedMatMulOp.rhs =
           rewriter
               .create<LLVM::BitcastOp>(
@@ -948,9 +1034,7 @@ struct ConvertAIEVecToLLVMPass
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<AIEVecDialect>();
-    target.addLegalOp<arith::ConstantOp>();
-    target.addLegalOp<vector::ShapeCastOp>();
-    //    target.addLegalOp<arith::ConstantOp>();
+    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();

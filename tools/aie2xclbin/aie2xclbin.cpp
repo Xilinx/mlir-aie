@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -81,7 +82,7 @@ cl::opt<std::string> XCLBinKernelID("xclbin-kernel-id",
                                     cl::init("0x901"), cl::cat(AIE2XCLBinCat));
 cl::opt<std::string> InstallDir("install-dir",
                                 cl::desc("Root of mlir-aie installation"),
-                                cl::init(INSTALL_DIR), cl::cat(AIE2XCLBinCat));
+                                cl::cat(AIE2XCLBinCat));
 
 int main(int argc, char *argv[]) {
   registerAsmPrinterCLOptions();
@@ -102,7 +103,12 @@ int main(int argc, char *argv[]) {
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
   }
 
-  TK.InstallDir = InstallDir;
+  if (InstallDir.size()) {
+    TK.InstallDir = InstallDir;
+  } else {
+    // Navigate up from install/bin/aie2xclbin to install/
+    TK.InstallDir = sys::path::parent_path(sys::path::parent_path(argv[0]));
+  }
   TK.PeanoDir = Peano.getValue();
   if (!sys::fs::is_directory(TK.PeanoDir)) {
     llvm::errs() << "Peano path " << TK.PeanoDir << " is invalid\n";
@@ -143,6 +149,7 @@ int main(int argc, char *argv[]) {
   registry.insert<scf::SCFDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<cf::ControlFlowDialect>();
+  registry.insert<vector::VectorDialect>();
   xilinx::registerAllDialects(registry);
   registerBuiltinDialectTranslation(registry);
   registerLLVMDialectTranslation(registry);

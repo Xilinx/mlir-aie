@@ -17,7 +17,7 @@
 // CHECK: XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 1,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd0]]))
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,4),  /* bd */ 0)
-// CHECK: XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(7,4), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0)
+// CHECK: XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,4), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE)
 // CHECK: XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(7,4), /* ChNum */ 0, /* dmaDir */ DMA_S2MM)
 
 module @aie_module  {
