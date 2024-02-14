@@ -8,7 +8,7 @@
 
 include ../makefile-common
 
-targetname = configureCascade
+targetname = cascadeFlows
 
 all: build/final.xclbin build/insts.txt
 
