@@ -1,7 +1,8 @@
 import __main__
+import collections
 import contextlib
 import inspect
-from itertools import zip_longest
+from itertools import islice, zip_longest
 import json
 import os
 from pathlib import Path
@@ -10,9 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-from aie._mlir_libs._mlir.ir import _GlobalDebug
-from aie.extras.runtime.passes import Pipeline, run_pipeline
-
+from aie._mlir_libs._mlir.ir import UnitAttr, _GlobalDebug
 from aie.compiler.aiecc.main import (
     AIE_LOWER_TO_LLVM,
     CREATE_PATH_FINDER_FLOWS,
@@ -25,6 +24,7 @@ from aie.compiler.aiecc.main import (
     generate_cores_list,
     mem_topology,
 )
+from aie.dialects import aie
 from aie.dialects.aie import (
     aie_llvm_link,
     generate_bcf,
@@ -33,7 +33,11 @@ from aie.dialects.aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
 )
+from aie.extras.runtime.passes import Pipeline, run_pipeline
+from aie.extras.util import find_ops
 from aie.ir import Context, InsertionPoint, Location, Module
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 
 WORKDIR = os.getenv("WORKDIR")
 if WORKDIR is None:
@@ -398,3 +402,34 @@ def grouper(iterable, n, *, incomplete="fill", fill_value=None):
             return zip(*args)
         case _:
             raise ValueError("Expected fill, strict, or ignore")
+
+
+def sliding_window(iterable, n):
+    it = iter(iterable)
+    window = collections.deque(islice(it, n - 1), maxlen=n)
+    for x in it:
+        window.append(x)
+        yield tuple(window)
+
+
+def display_flows(module):
+    fig, axs = plt.subplots()
+    for c in find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, aie.FlowOp),
+    ):
+        arrow = mpatches.FancyArrowPatch(
+            (c.source.owner.opview.col.value, c.source.owner.opview.row.value),
+            (c.dest.owner.opview.col.value, c.dest.owner.opview.row.value),
+            mutation_scale=10,
+        )
+        axs.add_patch(arrow)
+
+    axs.set(xlim=(-1, 5), ylim=(-1, 6))
+    fig.show()
+    fig.tight_layout()
+    fig.savefig("flows.png")
+
+
+def annot(op, annot):
+    op.operation.attributes[annot] = UnitAttr.get()

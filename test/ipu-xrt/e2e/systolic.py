@@ -11,21 +11,21 @@
 import random
 import sys
 
-from aie.extras.dialects.ext import arith, func, linalg, memref
-from filelock import FileLock
-import numpy as np
-
 from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.dialects import aie, aiex
 from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext import arith, func, linalg, memref
 import aie.extras.types as T
-from aie.ir import _i32ElementsAttr
 from aie.xrt import XCLBin
+from filelock import FileLock
+import numpy as np
+
 from util import (
     compile_without_vectorization,
     construct_and_print_module,
+    display_flows,
     grouper,
     make_xclbin,
 )
@@ -39,7 +39,7 @@ Release = LockAction.Release
 
 
 # CHECK-LABEL: systolic_vec_add
-@construct_and_print_module
+# @construct_and_print_module
 def systolic_vec_add(module):
     K = 32
     tiles = 1
@@ -92,18 +92,18 @@ def systolic_vec_add(module):
 
                 aiex.forward_bd(
                     mem_tile,
-                    input_a_tile_row_0_to_tile_row_1.dest_channel,
                     buffer_row_1_a,
+                    input_a_tile_row_0_to_tile_row_1.dest_channel,
                 )
                 aiex.forward_bd(
                     mem_tile,
-                    input_b_tile_row_0_to_tile_row_1.dest_channel,
                     buffer_row_1_b,
+                    input_b_tile_row_0_to_tile_row_1.dest_channel,
                 )
                 aiex.forward_bd(
                     mem_tile,
-                    output_c_tile_row_1_to_tile_row_0.source_channel,
                     buffer_row_1_c,
+                    output_c_tile_row_1_to_tile_row_0.source_channel,
                 )
 
                 aie.end()
@@ -282,7 +282,7 @@ def systolic_vec_add(module):
 
 
 # CHECK-LABEL: max_result_args
-@construct_and_print_module
+# @construct_and_print_module
 def max_result_args(module):
     K = 32
     tiles = 1
@@ -318,8 +318,8 @@ def max_result_args(module):
 
                 aiex.forward_bd(
                     mem_tile,
-                    output_c_tile_row_1_to_tile_row_0.source_channel,
                     buffer_row_1_c,
+                    output_c_tile_row_1_to_tile_row_0.source_channel,
                 )
 
                 aie.end()
@@ -415,7 +415,7 @@ def max_result_args(module):
 
 
 # CHECK-LABEL: max_input_and_output_args
-@construct_and_print_module
+# @construct_and_print_module
 def max_input_and_output_args(module):
     K = 32
     tiles = 1
@@ -459,13 +459,13 @@ def max_input_and_output_args(module):
 
                 aiex.forward_bd(
                     mem_tile,
-                    input_a_tile_row_0_to_tile_row_1.dest_channel,
                     buffer_row_1_a,
+                    input_a_tile_row_0_to_tile_row_1.dest_channel,
                 )
                 aiex.forward_bd(
                     mem_tile,
-                    output_c_tile_row_1_to_tile_row_0.source_channel,
                     buffer_row_1_c,
+                    output_c_tile_row_1_to_tile_row_0.source_channel,
                 )
 
                 aie.end()
@@ -607,7 +607,7 @@ def max_input_and_output_args(module):
 
 
 # CHECK-LABEL: zeroth_column
-@construct_and_print_module
+# @construct_and_print_module
 def zeroth_column(module):
     RANDOM_NUMBER = random.randint(1, 100)
     print(RANDOM_NUMBER)
@@ -632,8 +632,8 @@ def zeroth_column(module):
             buffer_row_1_c = aie.buffer(T.memref(K, T.i32()), mem_tile)
             aiex.forward_bd(
                 mem_tile,
-                output_c_tile_row_1_to_tile_row_0.source_channel,
                 buffer_row_1_c,
+                output_c_tile_row_1_to_tile_row_0.source_channel,
             )
             aie.end()
 
@@ -716,7 +716,7 @@ def zeroth_column(module):
 
 
 # CHECK-LABEL: global_core_mem_init
-@construct_and_print_module
+# @construct_and_print_module
 def global_core_mem_init(module):
     K = 32
     tiles = 1
@@ -758,8 +758,8 @@ def global_core_mem_init(module):
 
                 aiex.forward_bd(
                     mem_tile,
-                    output_c_tile_row_1_to_tile_row_0.source_channel,
                     buffer_row_1_c,
+                    output_c_tile_row_1_to_tile_row_0.source_channel,
                 )
 
                 aie.end()
@@ -834,6 +834,292 @@ def global_core_mem_init(module):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(K,)] * len(columns), np.int32)
+
+        for c in views:
+            wrap_C = np.asarray(c)
+            C = np.zeros((K,), dtype=np.int32)
+            np.copyto(wrap_C, C, casting="no")
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+    with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+        for c in views:
+            wrap_C = np.asarray(c)
+            print(f"c={wrap_C}")
+
+
+# CHECK-LABEL: constant_systolic_3x3
+@construct_and_print_module
+def constant_systolic_3x3(module):
+    K = 32
+    n_tiles = 1
+    k = K // n_tiles
+    columns = [0, 1, 2]
+    rows = list(range(5))
+    RANDOM_NUMBER = random.randint(1, 100)
+    print(RANDOM_NUMBER)
+    # six rows X five columns
+    # image orientation x-> cols, y-> rows
+    tiles = np.empty((5, 6), dtype=object)
+    tiles[0, 0] = None
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        for c in columns:
+            for r in rows:
+                if (c, r) == (0, 0):
+                    continue
+                tiles[c, r] = aie.tile(c, r)
+
+        for r in [2, 3]:
+            for c in columns[:-1]:
+                tiles[c, r] >> tiles[c + 1, r]
+
+        for c in columns[1:]:
+            for r in rows[:-1]:
+                tiles[c, r] << tiles[c, r + 1]
+
+        for t in tiles.flat:
+            if t is None or t.flows is None:
+                continue
+            for _, v in t.flows.items():
+                assert len(v) == 1, print(v)
+
+        for r in [2, 3]:
+            compute_tile = tiles[0, r]
+            next_tile_next_col = tiles[0 + 1, r]
+            weight = memref.global_(
+                sym_name=f"weight_0_{r}",
+                initial_value=np.ones((k,), dtype=np.int32) * r * RANDOM_NUMBER,
+                constant=True,
+            )
+            buffer_weight = aie.buffer(
+                T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_0_{r}_weight"
+            )
+            lock_read_weight = aie.lock(
+                compute_tile, init=1, sym_name=f"lock_0_{r}_read_weight"
+            )
+            lock_send_weight = aie.lock(
+                compute_tile, init=0, sym_name=f"lock_0_{r}_send_weight"
+            )
+
+            @aie.mem(compute_tile)
+            def mem():
+                @aie.dma(MM2S, compute_tile.flows[next_tile_next_col][0].source_channel)
+                def _():
+                    aiex.process_bd(lock_send_weight, buffer_weight, lock_read_weight)
+
+                aie.end()
+
+            @aie.core(compute_tile)
+            def core():
+                with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                    x = memref.get_global(weight.type_.value, weight.sym_name.value)
+                    linalg.copy(x, buffer_weight)
+
+        for c in [1, 2]:
+            compute_tile = tiles[c, 4]
+            next_tile_next_row = tiles[c, 4 - 1]
+            weight = memref.global_(
+                sym_name=f"weight_{c}_4",
+                initial_value=np.ones((k,), dtype=np.int32) * c * RANDOM_NUMBER,
+                constant=True,
+            )
+            buffer_weight = aie.buffer(
+                T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_4_weight"
+            )
+            lock_read_weight = aie.lock(
+                compute_tile, init=1, sym_name=f"lock_{c}_4_read_weight"
+            )
+            lock_send_weight = aie.lock(
+                compute_tile, init=0, sym_name=f"lock_{c}_4_send_weight"
+            )
+
+            @aie.mem(compute_tile)
+            def mem():
+                @aie.dma(MM2S, compute_tile.flows[next_tile_next_row][0].source_channel)
+                def _():
+                    aiex.process_bd(lock_send_weight, buffer_weight, lock_read_weight)
+
+                aie.end()
+
+            @aie.core(compute_tile)
+            def core():
+                with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                    x = memref.get_global(weight.type_.value, weight.sym_name.value)
+                    linalg.copy(x, buffer_weight)
+
+        for c in [1, 2]:
+            for r in [2, 3]:
+                compute_tile = tiles[c, r]
+                prev_tile_prev_col = tiles[c - 1, r]
+                next_tile_next_col = tiles[c + 1, r]
+                prev_tile_prev_row = tiles[c, r + 1]
+                next_tile_next_row = tiles[c, r - 1]
+
+                buffer_a = aie.buffer(
+                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_a"
+                )
+                buffer_b = aie.buffer(
+                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_b"
+                )
+                buffer_c = aie.buffer(
+                    T.memref(k, T.i32()), compute_tile, sym_name=f"buffer_{c}_{r}_c"
+                )
+
+                if next_tile_next_col:
+                    lock_read_in_a_init = 2
+                else:
+                    lock_read_in_a_init = 1
+                lock_read_in_a = aie.lock(
+                    compute_tile,
+                    init=lock_read_in_a_init,
+                    sym_name=f"lock_{c}_{r}_read_a",
+                )
+                lock_use_a = aie.lock(
+                    compute_tile, init=0, sym_name=f"lock_{c}_{r}_use_a"
+                )
+
+                lock_read_in_b = aie.lock(
+                    compute_tile, init=2, sym_name=f"lock_{c}_{r}_read_b"
+                )
+                lock_use_b = aie.lock(
+                    compute_tile, init=0, sym_name=f"lock_{c}_{r}_use_b"
+                )
+
+                @aie.mem(compute_tile)
+                def mem():
+                    @aie.dma(
+                        S2MM, compute_tile.flows[prev_tile_prev_col][0].dest_channel
+                    )
+                    def _():
+                        aiex.process_bd(
+                            lock_read_in_a,
+                            buffer_a,
+                            lock_use_a,
+                            acq_val=lock_read_in_a_init,
+                            rel_val=lock_read_in_a_init,
+                        )
+
+                    if next_tile_next_col:
+
+                        @aie.dma(
+                            MM2S,
+                            compute_tile.flows[next_tile_next_col][0].source_channel,
+                        )
+                        def _():
+                            aiex.process_bd(
+                                lock_use_a,
+                                buffer_a,
+                                lock_read_in_a,
+                                acq_val=1,
+                                rel_val=1,
+                            )
+
+                    @aie.dma(
+                        S2MM, compute_tile.flows[prev_tile_prev_row][0].dest_channel
+                    )
+                    def _():
+                        aiex.process_bd(
+                            lock_read_in_b, buffer_b, lock_use_b, acq_val=2, rel_val=2
+                        )
+
+                    @aie.dma(
+                        MM2S,
+                        compute_tile.flows[next_tile_next_row][0].source_channel,
+                    )
+                    def _():
+                        aiex.process_bd(
+                            lock_use_b,
+                            buffer_b,
+                            lock_read_in_b,
+                            acq_val=1,
+                            rel_val=1,
+                        )
+
+                    aie.end()
+
+                @aie.core(compute_tile)
+                def core():
+                    with (
+                        aiex.hold_lock(
+                            lock_use_a, lock_read_in_a, acq_val=1, rel_val=1
+                        ),
+                        aiex.hold_lock(
+                            lock_use_b, lock_read_in_b, acq_val=1, rel_val=1
+                        ),
+                        # aiex.hold_lock(lock_use_c, lock_write_out_c),
+                    ):
+                        linalg.add(buffer_a, buffer_b, buffer_c)
+
+            compute_tile = tiles[c, 2]
+            mem_tile = tiles[c, 1]
+            shim_tile = tiles[c, 0]
+
+            @aie.memtile_dma(mem_tile)
+            def memtile_dma():
+                aiex.forward_bd(
+                    mem_tile,
+                    aie.buffer(
+                        T.memref(k, T.i32()), mem_tile, sym_name=f"buffer_{c}_1_c"
+                    ),
+                    s2mm_channel_idx=mem_tile.flows[compute_tile][0].dest_channel,
+                    mm2s_channel_idx=mem_tile.flows[shim_tile][0].source_channel,
+                )
+
+                aie.end()
+
+            arith.constant(80081355)
+
+        @func.func(emit=True)
+        def bobsyouruncle():
+            ddr_id = 0
+            for column in [1, 2]:
+                shim_tile = tiles[c, 0]
+                mem_tile = tiles[c, 1]
+                offsets = list(range(0, K, k))
+                bd_id = 0
+                # out C
+                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + n_tiles)):
+                    aiex.ipu.writebd_shimtile(
+                        bd_id=bd_id,
+                        column=column,
+                        buffer_length=k,
+                        offset=offsets[i],
+                        ddr_id=ddr_id,
+                    )
+                    aiex.ipu.write32(
+                        channel_dir=S2MM,
+                        channel_index=mem_tile.flows[shim_tile][0].dest_channel,
+                        column=column,
+                        bd_id=bd_id,
+                    )
+                    aiex.ipu.sync(
+                        channel=mem_tile.flows[shim_tile][0].dest_channel,
+                        column=column,
+                        column_num=1,
+                        direction=0,
+                        row=0,
+                        row_num=1,
+                    )
+                ddr_id += 1
+
+    display_flows(module)
+    print(module)
+    assert module.operation.verify()
+
+    ipu_insts = compile_without_vectorization(module, partition_start_col=0)
+    buffer_args = [f"c{c}" for c in [1, 2]]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        xclbin.load_ipu_instructions(ipu_insts)
+        views = xclbin.mmap_buffers([(K,)] * len([1, 2]), np.int32)
 
         for c in views:
             wrap_C = np.asarray(c)

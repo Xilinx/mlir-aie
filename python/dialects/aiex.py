@@ -170,37 +170,64 @@ def process_bd(
     acq_lock,
     buffer,
     rel_lock,
+    *,
+    offset=None,
+    len=None,
+    dimensions=None,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
     acq_val=None,
     rel_val=None,
 ):
     use_lock(acq_lock, acq_action, value=acq_val)
-    dma_bd(buffer)
+    dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
     use_lock(rel_lock, rel_action, value=rel_val)
 
 
-def forward_bd(tile, channel_idx, buffer, read_in_lock=None, write_out_lock=None):
-    if isinstance(channel_idx, IntegerAttr):
-        channel_idx = channel_idx.value
+def forward_bd(
+    tile,
+    buffer,
+    s2mm_channel_idx,
+    *,
+    mm2s_channel_idx=None,
+    read_in_lock=None,
+    write_out_lock=None,
+):
+    if isinstance(s2mm_channel_idx, IntegerAttr):
+        s2mm_channel_idx = s2mm_channel_idx.value
+    if isinstance(mm2s_channel_idx, IntegerAttr):
+        mm2s_channel_idx = mm2s_channel_idx.value
+    if mm2s_channel_idx is None:
+        mm2s_channel_idx = s2mm_channel_idx
+    buffer_sym_name = buffer.owner.opview.sym_name
+    if buffer_sym_name:
+        buffer_sym_name = buffer_sym_name.value
     if read_in_lock is None:
-        read_in_lock = lock(tile, init=1)
+        read_in_lock = lock(
+            tile,
+            init=1,
+            sym_name=(f"{buffer_sym_name}_read_in_lock" if buffer_sym_name else None),
+        )
     if write_out_lock is None:
-        write_out_lock = lock(tile, init=0)
+        write_out_lock = lock(
+            tile,
+            init=0,
+            sym_name=(f"{buffer_sym_name}_write_out_lock" if buffer_sym_name else None),
+        )
 
-    @dma(DMAChannelDir.S2MM, channel_idx)
+    @dma(DMAChannelDir.S2MM, s2mm_channel_idx)
     def dma_incoming():
         process_bd(read_in_lock, buffer, write_out_lock)
 
-    @dma(DMAChannelDir.MM2S, channel_idx)
+    @dma(DMAChannelDir.MM2S, mm2s_channel_idx)
     def dma_outgoing():
         process_bd(write_out_lock, buffer, read_in_lock)
 
 
 @contextmanager
-def hold_lock(acq_lock, rel_lock):
-    use_lock(acq_lock, LockAction.AcquireGreaterEqual)
+def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
+    use_lock(acq_lock, LockAction.AcquireGreaterEqual, value=acq_val)
     try:
         yield
     finally:
-        use_lock(rel_lock, LockAction.Release)
+        use_lock(rel_lock, LockAction.Release, value=rel_val)
