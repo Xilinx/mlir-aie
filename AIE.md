@@ -303,7 +303,7 @@ _An op to describe a set of DMA operations._
 Syntax:
 
 ```
-operation ::= `aie.dma` `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+operation ::= `aie.dma` `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? (`,` `repeat_count` `=` $repeat_count^)? `)` `[`regions`]` attr-dict
 ```
 
 
@@ -320,6 +320,7 @@ Interfaces: `InferTypeOpInterface`
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Results:
@@ -474,7 +475,7 @@ _An op to start DMA_
 Syntax:
 
 ```
-operation ::= `aie.dma_start` `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
+operation ::= `aie.dma_start` `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
 ```
 
 This operation declares a DMA channel to be used for data transfer. It usually exists inside
@@ -510,6 +511,7 @@ Interfaces: `InferTypeOpInterface`
 * S2MM (`S2MM`)
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Results:
