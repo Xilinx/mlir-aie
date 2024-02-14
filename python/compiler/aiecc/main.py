@@ -47,6 +47,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass("aie-objectFifo-stateful-transform")
+        .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-create-packet-flows")
         .add_pass("aie-lower-multicast")
@@ -970,6 +971,7 @@ class FlowRunner:
                     "aie.device(" + "aie-assign-lock-ids",
                     "aie-register-objectFifos",
                     "aie-objectFifo-stateful-transform",
+                    "aie-lower-cascade-flows",
                     "aie-lower-broadcast-packet",
                     "aie-create-packet-flows",
                     "aie-lower-multicast",
