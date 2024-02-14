@@ -53,7 +53,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
 
     rewriter.setInsertionPointToStart(dmaBlock);
     rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaDir, channelIndex,
-                                bdBlock, &endBlock);
+                                /*repeatCount*/ 1, bdBlock, &endBlock);
 
     // Setup bd Block
     // It should contain locking operations (lock or token) as well as DMABD op

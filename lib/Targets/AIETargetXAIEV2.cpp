@@ -265,13 +265,28 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
       int chNum = op.getChannelIndex();
-      output << "__mlir_aie_try(XAie_DmaChannelPushBdToQueue(" << deviceInstRef
-             << ", " << tileLocStr(col, row) << ", "
-             << "/* ChNum */" << chNum
-             << ", "
-             // TODO hack until physical dialect changes
-             << "/* dmaDir */ DMA_" << dmaDir << ", "
-             << "/* BdNum */" << bdNum << "));\n";
+      const auto &target_model = xilinx::AIE::getTargetModel(op);
+      if (target_model.getTargetArch() == AIEArch::AIE1) {
+        output << "__mlir_aie_try(XAie_DmaChannelPushBdToQueue("
+               << deviceInstRef << ", " << tileLocStr(col, row) << ", "
+               << "/* ChNum */" << chNum
+               << ", "
+               // TODO hack until physical dialect changes
+               << "/* dmaDir */ DMA_" << dmaDir << ", "
+               << "/* BdNum */" << bdNum << "));\n";
+      } else {
+        output << "__mlir_aie_try(XAie_DmaChannelSetStartQueue("
+               << deviceInstRef << ", " << tileLocStr(col, row) << ", "
+               << "/* ChNum */" << chNum
+               << ", "
+               // TODO hack until physical dialect changes
+               << "/* dmaDir */ DMA_" << dmaDir << ", "
+               << "/* BdNum */" << bdNum << ", "
+               << "/* Repeat */ " << op.getRepeatCount() << ", "
+               << "/* EnToken */ "
+               << "XAIE_DISABLE"
+               << "));\n";
+      }
       output << "__mlir_aie_try(XAie_DmaChannelEnable(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", "
              << "/* ChNum */ " << chNum
