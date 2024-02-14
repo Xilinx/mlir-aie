@@ -30,7 +30,7 @@ ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
 	cp _build/${targetname} $@ 
-endif
+endif 
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
