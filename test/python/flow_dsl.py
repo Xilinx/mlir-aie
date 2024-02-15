@@ -90,20 +90,32 @@ def flow_dsl_3(module):
 
         tile_0_0 >> tile_0_1 >> tile_0_2 >> tile_0_1 >> tile_0_0
 
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
         # CHECK: aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_0, DMA : 0)
-        for _, f in tile_0_0.flows.items():
-            print(f)
+        for k, fs in tile_0_0.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
+
+        # CHECK: %tile_0_0 = aie.tile(0, 0)
         # CHECK: aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
-        # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
-        # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 1)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_0, DMA : 0)
-        for _, f in tile_0_1.flows.items():
-            print(f)
+        # CHECK: %tile_0_2 = aie.tile(0, 2)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
         # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 1)
-        for _, f in tile_0_2.flows.items():
-            print(f)
+        for k, fs in tile_0_1.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
+
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
+        # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 1)
+        for k, fs in tile_0_2.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
     # CHECK:  aie.device(ipu) {
     # CHECK:    %tile_0_0 = aie.tile(0, 0)
@@ -157,18 +169,28 @@ def flow_dsl_5(module):
 
         tile_0_0 << tile_0_1 >> tile_0_2
 
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-        for _, f in tile_0_0.flows.items():
-            print(f)
+        for k, fs in tile_0_0.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
+        # CHECK: %tile_0_0 = aie.tile(0, 0)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
+        # CHECK: %tile_0_2 = aie.tile(0, 2)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
-        for _, f in tile_0_1.flows.items():
-            print(f)
+        for k, fs in tile_0_1.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
-        # aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
-        for _, f in tile_0_2.flows.items():
-            print(f)
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
+        for k, fs in tile_0_2.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
     # CHECK:  aie.device(ipu) {
     # CHECK:    %tile_0_0 = aie.tile(0, 0)
@@ -193,23 +215,30 @@ def flow_dsl_6(module):
 
         tile_0_0 << tile_0_1 >> tile_0_2 >> tile_0_3
 
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-        for _, f in tile_0_0.flows.items():
-            print(f)
+        for k, fs in tile_0_0.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
+        # CHECK: %tile_0_0 = aie.tile(0, 0)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
+        # CHECK: %tile_0_2 = aie.tile(0, 2)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
-        for _, f in tile_0_1.flows.items():
-            print(f)
+        for k, fs in tile_0_1.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
-        # aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
-        # aie.flow(%tile_0_2, DMA : 0, %tile_0_3, DMA : 0)
-        for _, f in tile_0_2.flows.items():
-            print(f)
-
-        # aie.flow(%tile_0_2, DMA : 0, %tile_0_3, DMA : 0)
-        for _, f in tile_0_3.flows.items():
-            print(f)
+        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
+        # CHECK: %tile_0_3 = aie.tile(0, 3)
+        # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_3, DMA : 0)
+        for k, fs in tile_0_2.flows.items():
+            print(k)
+            for f in fs:
+                print(f)
 
     # CHECK:  aie.device(ipu) {
     # CHECK:    %tile_0_0 = aie.tile(0, 0)

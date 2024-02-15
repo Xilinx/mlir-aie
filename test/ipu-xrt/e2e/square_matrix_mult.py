@@ -341,9 +341,9 @@ def square_matrix_mult_sugar(module):
             # output flow
             buffer_0_1_c = aie.buffer(T.memref(M, N, T.i32()), tile_0_1)
 
-            aiex.forward_bd(tile_0_1, 0, buffer_0_1_a)
-            aiex.forward_bd(tile_0_1, 1, buffer_0_1_b)
-            aiex.forward_bd(tile_0_1, 2, buffer_0_1_c)
+            aiex.forward_bd(tile_0_1, buffer_0_1_a, 0)
+            aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
+            aiex.forward_bd(tile_0_1, buffer_0_1_c, 2)
 
             aie.end()
 

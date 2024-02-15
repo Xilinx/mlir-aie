@@ -94,13 +94,13 @@ def add_256_using_dma_op_no_double_buffering(module):
 
         # this is gibberish - everything from here to the end of "bobsyouruncle"
         this_is_meaningless_1 = memref.global_(
-            "this_is_meaningless_1",
-            T.memref(1, T.f8E4M3B11FNUZ()),
+            sym_name="this_is_meaningless_1",
+            type_=T.memref(1, T.f8E4M3B11FNUZ()),
             sym_visibility="public",
         ).opview
         this_is_meaningless_2 = memref.global_(
-            "this_is_meaningless_2",
-            T.memref(1, T.f8E4M3B11FNUZ()),
+            sym_name="this_is_meaningless_2",
+            type_=T.memref(1, T.f8E4M3B11FNUZ()),
             sym_visibility="public",
         ).opview
         aie.shim_dma_allocation(this_is_meaningless_1.sym_name.value, MM2S, 0, 0)

@@ -586,8 +586,8 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
             def dma2point5():
                 aiex.process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
 
-            aiex.forward_bd(tile_0_1, 1, buffer_0_1_b)
-            aiex.forward_bd(tile_0_1, 2, buffer_0_1_c)
+            aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
+            aiex.forward_bd(tile_0_1, buffer_0_1_c, 2)
 
             aie.end()
 
