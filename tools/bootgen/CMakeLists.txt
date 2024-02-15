@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2024 Xilinx Inc.
 
-set(BOOTGEN_SOURCE ../third_party/bootgen)
+set(BOOTGEN_SOURCE ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 set(libsources
     cdo-alloc.c
     cdo-binary.c
@@ -91,6 +91,7 @@ add_library(Bootgen STATIC ${libsources})
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
     -Wno-reorder
+    -Wno-register
     -Wno-unused-private-field
     -Wno-deprecated-register
     -Wno-overloaded-virtual
@@ -114,12 +115,24 @@ else()
   set(bootgen_warning_ignores)
 endif()
 target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
-target_include_directories(Bootgen PUBLIC ${BOOTGEN_SOURCE})
+target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE})
+install(TARGETS Bootgen DESTINATION lib EXPORT Bootgen)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE})
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
 target_link_libraries(bootgen Bootgen Bootgen ssl crypto)
+install(TARGETS bootgen)
 
-install(TARGETS bootgen Bootgen)
+add_library(cdo_driver STATIC
+  ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c
+)
+target_include_directories(cdo_driver PUBLIC
+    $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
+    $<INSTALL_INTERFACE:include/cdo_driver>
+)
+target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
+install(TARGETS cdo_driver DESTINATION lib EXPORT cdo_driver)
+install(EXPORT cdo_driver DESTINATION lib/cmake/aie)
+
 endif() #NOT MSVC

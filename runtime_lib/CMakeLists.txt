@@ -139,7 +139,7 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   )
   add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
-  target_link_libraries(xaienginecdo_static PUBLIC cdo_driver)
+  target_link_libraries(xaienginecdo_static PRIVATE cdo_driver)
   target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
 
   # just to make cmake happy since AIETargets will need to re-export
@@ -147,10 +147,4 @@ if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
   install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
   install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    cdo_driver
-    COMPONENT cdo_driver
-    LIBRARY
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-  )
 endif()
