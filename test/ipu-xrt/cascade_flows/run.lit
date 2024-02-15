@@ -1,7 +1,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai
+// REQUIRES: ryzen_ai, chess
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel1.cc -o ./kernel1.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel2.cc -o ./kernel2.o
