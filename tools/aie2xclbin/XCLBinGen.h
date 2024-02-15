@@ -30,6 +30,7 @@ struct XCLBinGenConfig {
   std::string XCLBinKernelName;
   std::string XCLBinKernelID;
   std::string XCLBinInstanceName;
+  bool UseChess = false;
 };
 
 void findVitis(XCLBinGenConfig &TK);
