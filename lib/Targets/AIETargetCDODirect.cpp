@@ -809,9 +809,6 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
       });
 }
 
-// Not sure why but defining this with xilinx::AIE will create a duplicate
-// symbol in libAIETargets.a that then doesn't actually match the header?
-namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool axiDebug,
@@ -836,5 +833,16 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp, aieSim);
   return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim);
+}
+// Not sure why but defining this with xilinx::AIE will create a duplicate
+// symbol in libAIETargets.a that then doesn't actually match the header?
+namespace xilinx::AIE {
+LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+                                      bool bigendian,
+                                      bool emitUnified, bool axiDebug,
+                                      bool aieSim, size_t partitionStartCol) {
+  byte_ordering endianness =
+    bigendian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
+  return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified, axiDebug, aieSim, partitionStartCol);
 }
 } // namespace xilinx::AIE
