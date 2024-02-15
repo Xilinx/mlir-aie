@@ -53,7 +53,7 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 mlir::LogicalResult
 AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
-                        byte_ordering endianness = Little_Endian,
+                        bool bigEndian = false,
                         bool emitUnified = false, bool axiDebug = false,
                         bool aieSim = false, size_t partitionStartCol = 1);
 #endif

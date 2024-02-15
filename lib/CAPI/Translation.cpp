@@ -58,11 +58,11 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 MlirLogicalResult
 aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
-                        byte_ordering endianness, bool emitUnified,
+                        bool bigEndian, bool emitUnified,
                         bool axiDebug, bool aieSim, size_t partitionStartCol) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   auto status = AIETranslateToCDODirect(
-      mod, llvm::StringRef(workDirPath.data, workDirPath.length), endianness,
+      mod, llvm::StringRef(workDirPath.data, workDirPath.length), bigEndian,
       emitUnified, axiDebug, aieSim, partitionStartCol);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {

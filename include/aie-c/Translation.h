@@ -32,7 +32,7 @@ MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
                                              int nModules);
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
-    MlirOperation moduleOp, MlirStringRef workDirPath, byte_ordering endianness,
+    MlirOperation moduleOp, MlirStringRef workDirPath, bool bigEndian,
     bool emitUnified, bool axiDebug, bool aieSim, size_t partitionStartCol);
 #endif
 
