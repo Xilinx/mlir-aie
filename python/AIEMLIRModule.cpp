@@ -87,11 +87,6 @@ PYBIND11_MODULE(_aie, m) {
       },
       "module"_a);
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-  py::enum_<byte_ordering>(m, "byte_ordering")
-      .value("Little_Endian", Little_Endian)
-      .value("Big_Endian", Big_Endian);
-
   m.def(
       "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath,
@@ -105,7 +100,6 @@ PYBIND11_MODULE(_aie, m) {
       "module"_a, "work_dir_path"_a, "bigendian"_a = false,
       "emit_unified"_a = false, "axi_debug"_a = false, "aiesim"_a = false,
       "partition_start_col"_a = 1);
-#endif
 
   m.def(
       "ipu_instgen",

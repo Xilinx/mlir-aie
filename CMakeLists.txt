@@ -160,9 +160,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
 endif()
 
-cmake_dependent_option(AIE_ENABLE_GENERATE_CDO_DIRECT
-  "Enables building of direct bindings to libcdo." ON "CDO_DRIVER_LIBRARY" OFF)
-
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
 

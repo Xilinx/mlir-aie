@@ -128,23 +128,21 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   endif()
 endforeach()
 
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  include("xaiengine/aiert.cmake")
-  set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
+include("xaiengine/aiert.cmake")
+set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
 
-  add_aiert_headers(xaienginecdo_static
-          ${XAIE_SOURCE_DIR}
-          ${AIE_BINARY_DIR}/include
-          ${CMAKE_INSTALL_PREFIX}/include/xaiengine
-  )
-  add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
+add_aiert_headers(xaienginecdo_static
+        ${XAIE_SOURCE_DIR}
+        ${AIE_BINARY_DIR}/include
+        ${CMAKE_INSTALL_PREFIX}/include/xaiengine
+)
+add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
-  target_link_libraries(xaienginecdo_static PRIVATE cdo_driver)
-  target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
+target_link_libraries(xaienginecdo_static PRIVATE cdo_driver)
+target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
 
-  # just to make cmake happy since AIETargets will need to re-export
-  # make sure not abs path...
-  # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
-  install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
-  install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
-endif()
+# just to make cmake happy since AIETargets will need to re-export
+# make sure not abs path...
+# https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
+install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
+install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
