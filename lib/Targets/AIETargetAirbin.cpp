@@ -1064,33 +1064,26 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
 static void configureCascade(DeviceOp &targetOp) {
   const auto &target_model = xilinx::AIE::getTargetModel(targetOp);
   if (target_model.getTargetArch() == AIEArch::AIE2) {
-    for (auto cascadeSwboxOp : targetOp.getOps<CascadeSwitchboxOp>()) {
-      TileOp tile = cascadeSwboxOp.getTileOp();
-      Region &body = cascadeSwboxOp.getConnections();
-      for (auto &ops : body.front()) {
-        if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-          auto inputDir =
-              stringifyWireBundle(connectOp.getSourceBundle()).upper();
-          auto outputDir =
-              stringifyWireBundle(connectOp.getDestBundle()).upper();
+    for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+      TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+      auto inputDir = stringifyCascadeDir(configOp.getInputDir()).upper();
+      auto outputDir = stringifyCascadeDir(configOp.getOutputDir()).upper();
 
-          Address address{tile, 0x36060u};
+      Address address{tile, 0x36060u};
 
-          /*
-           *  * Register value for output BIT 1: 0 == SOUTH, 1 == EAST
-           *  * Register value for input BIT 0: 0 == NORTH, 1 == WEST
-           */
-          uint8_t outputValue = (outputDir == "SOUTH") ? 0 : 1;
-          uint8_t inputValue = (inputDir == "NORTH") ? 0 : 1;
+      /*
+       *  * Register value for output BIT 1: 0 == SOUTH, 1 == EAST
+       *  * Register value for input BIT 0: 0 == NORTH, 1 == WEST
+       */
+      uint8_t outputValue = (outputDir == "SOUTH") ? 0 : 1;
+      uint8_t inputValue = (inputDir == "NORTH") ? 0 : 1;
 
-          constexpr Field<1> Output;
-          constexpr Field<0> Input;
+      constexpr Field<1> Output;
+      constexpr Field<0> Input;
 
-          auto regValue = Output(outputValue) | Input(inputValue);
+      auto regValue = Output(outputValue) | Input(inputValue);
 
-          write32(address, regValue);
-        }
-      }
+      write32(address, regValue);
     }
   }
 }

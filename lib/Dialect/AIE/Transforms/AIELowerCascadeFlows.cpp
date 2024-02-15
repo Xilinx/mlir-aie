@@ -22,16 +22,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-CascadeSwitchboxOp getOrCreateCascadeSwitchbox(OpBuilder &builder,
-                                               TileOp tile) {
-  for (auto i : tile.getResult().getUsers()) {
-    if (llvm::isa<CascadeSwitchboxOp>(*i)) {
-      return llvm::cast<CascadeSwitchboxOp>(*i);
-    }
-  }
-  return builder.create<CascadeSwitchboxOp>(builder.getUnknownLoc(), tile);
-}
-
 struct AIELowerCascadeFlowsPass
     : AIELowerCascadeFlowsBase<AIELowerCascadeFlowsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -70,14 +60,8 @@ struct AIELowerCascadeFlowsPass
       }
     }
 
-    // generate cascade switchboxes
+    // generate configure cascade ops
     for (TileOp tile : tilesWithCascadeFlow) {
-      CascadeSwitchboxOp swbox = getOrCreateCascadeSwitchbox(builder, tile);
-      CascadeSwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
-                                           builder.getUnknownLoc());
-      Block &b = swbox.getConnections().front();
-      builder.setInsertionPoint(b.getTerminator());
-
       WireBundle inputDir;
       if (cascadeInputsPerTile.find(tile) != cascadeInputsPerTile.end()) {
         inputDir = cascadeInputsPerTile[tile];
@@ -90,10 +74,9 @@ struct AIELowerCascadeFlowsPass
       } else {
         outputDir = WireBundle::South;
       }
-      int channelIndex = 0;
-      builder.create<ConnectOp>(builder.getUnknownLoc(), inputDir, channelIndex,
-                                outputDir, channelIndex);
-      builder.setInsertionPointAfter(swbox);
+      builder.create<ConfigureCascadeOp>(builder.getUnknownLoc(), tile, 
+                                         static_cast<CascadeDir>(inputDir),
+                                         static_cast<CascadeDir>(outputDir));
     }
 
     // erase CascadeFlowOps

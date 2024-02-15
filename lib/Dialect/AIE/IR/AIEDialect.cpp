@@ -897,57 +897,28 @@ TileOp CascadeFlowOp::getDestTileOp() {
 }
 
 //===----------------------------------------------------------------------===//
-// CascadeSwitchboxOp
+// ConfigureCascadeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CascadeSwitchboxOp::verify() {
+LogicalResult ConfigureCascadeOp::verify() {
   const auto &targetModel = getTargetModel(*this);
-  Region &body = getConnections();
-  if (body.empty())
-    return emitOpError("should have non-empty body");
-  if (getTileOp().isShimTile())
-    return emitOpError("shimTile row has no cascade stream interface");
-  if (targetModel.isMemTile(colIndex(), rowIndex()))
-    return emitOpError("memTile row has no cascade stream interface");
-
-  int numOp = 0;
-  for (auto &ops : body.front()) {
-    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-      numOp++;
-      WireBundle inDir = connectOp.getSourceBundle();
-      if (inDir != WireBundle::West && inDir != WireBundle::North) {
-        return connectOp.emitOpError(
-            "source port of ConnectOp in CascadeSwitchboxOp must be West or "
-            "North");
-      }
-      WireBundle outDir = connectOp.getDestBundle();
-      if (outDir != WireBundle::East && outDir != WireBundle::South) {
-        return connectOp.emitOpError(
-            "dest port of ConnectOp in CascadeSwitchboxOp must be East or "
-            "South");
-      }
-      if (connectOp.sourceIndex() != 0 || connectOp.destIndex() != 0) {
-        return connectOp.emitOpError("portIndex of ConnectOp is out-of-bounds");
-      }
-    } else if (isa<EndOp>(ops)) {
-      // continue;
-    } else {
-      return ops.emitOpError("cannot be contained in a CascadeSwitchboxOp");
+  CascadeDir inputDir = getInputDir();
+  CascadeDir outputDir = getOutputDir();
+  if (targetModel.getTargetArch() == AIEArch::AIE2) {
+    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
+      return emitOpError("input direction of cascade must be North or West on ")
+             << stringifyAIEArch(targetModel.getTargetArch());
     }
-  }
-  if (numOp > 1) {
-    return emitOpError(
-        "cannot have more than one ConnectOp in CascadeSwitchboxOp");
+    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
+      return emitOpError(
+                 "output direction of cascade must be South or East on ")
+             << stringifyAIEArch(targetModel.getTargetArch());
+    }
+  } else {
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(targetModel.getTargetArch());
   }
   return success();
-}
-
-int CascadeSwitchboxOp::colIndex() { return getTileOp().colIndex(); }
-
-int CascadeSwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
-
-TileOp CascadeSwitchboxOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//

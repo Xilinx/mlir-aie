@@ -49,78 +49,27 @@ aie.device(ipu) {
 
 // -----
 
-// CHECK: error{{.*}}'aie.cascade_switchbox' op memTile row has no cascade stream interface
-
-aie.device(xcve2802) {
-  %t12 = aie.tile(1, 2)
-  aie.cascade_switchbox(%t12) {
-    aie.connect<West: 0, East: 0>
-  }
-}
-
-// -----
-
-// CHECK: error{{.*}}'aie.cascade_switchbox' op shimTile row has no cascade stream interface
-
-aie.device(ipu) {
-  %t10 = aie.tile(1, 0)
-  aie.cascade_switchbox(%t10) {
-    aie.connect<West: 0, East: 0>
-  }
-}
-
-// -----
-
-// CHECK: error{{.*}}'aie.cascade_switchbox' op memTile row has no cascade stream interface
-
-aie.device(ipu) {
-  %t11 = aie.tile(1, 1)
-  aie.cascade_switchbox(%t11) {
-    aie.connect<West: 0, East: 0>
-  }
-}
-
-// -----
-
-// CHECK: error{{.*}}'aie.cascade_switchbox' op cannot have more than one ConnectOp in CascadeSwitchboxOp
+// CHECK: error{{.*}}'aie.configure_cascade' op input direction of cascade must be North or West on AIE2
 
 aie.device(xcve2802) {
   %t13 = aie.tile(1, 3)
-  aie.cascade_switchbox(%t13) {
-    aie.connect<West: 0, East: 0>
-    aie.connect<North: 0, South: 0>
-  }
+  aie.configure_cascade(%t13, East, South)
 }
 
 // -----
 
-// CHECK: error{{.*}}'aie.connect' op portIndex of ConnectOp is out-of-bounds
+// CHECK: error{{.*}}'aie.configure_cascade' op output direction of cascade must be South or East on AIE2
 
 aie.device(xcve2802) {
   %t13 = aie.tile(1, 3)
-  aie.cascade_switchbox(%t13) {
-    aie.connect<West: 0, East: 1>
-  }
+  aie.configure_cascade(%t13, North, West)
 }
 
 // -----
 
-// CHECK: error{{.*}}'aie.connect' op source port of ConnectOp in CascadeSwitchboxOp must be West or North
+// CHECK: error{{.*}}'aie.configure_cascade' op cascade not supported in AIE1
 
-aie.device(xcve2802) {
+aie.device(xcvc1902) {
   %t13 = aie.tile(1, 3)
-  aie.cascade_switchbox(%t13) {
-    aie.connect<East: 0, South: 0>
-  }
-}
-
-// -----
-
-// CHECK: error{{.*}}'aie.connect' op dest port of ConnectOp in CascadeSwitchboxOp must be East or South
-
-aie.device(xcve2802) {
-  %t13 = aie.tile(1, 3)
-  aie.cascade_switchbox(%t13) {
-    aie.connect<West: 0, North: 0>
-  }
+  aie.configure_cascade(%t13, North, East)
 }

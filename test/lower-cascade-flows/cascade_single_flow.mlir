@@ -16,18 +16,10 @@
 // CHECK:     %tile_2_3 = aie.tile(2, 3)
 // CHECK:     %tile_3_4 = aie.tile(3, 4)
 // CHECK:     %tile_3_3 = aie.tile(3, 3)
-// CHECK:     %cascade_switchbox_1_3 = aie.cascade_switchbox(%tile_1_3) {
-// CHECK:       aie.connect<North : 0, East : 0>
-// CHECK:     }
-// CHECK:     %cascade_switchbox_2_3 = aie.cascade_switchbox(%tile_2_3) {
-// CHECK:       aie.connect<West : 0, South : 0>
-// CHECK:     }
-// CHECK:     %cascade_switchbox_3_4 = aie.cascade_switchbox(%tile_3_4) {
-// CHECK:       aie.connect<North : 0, South : 0>
-// CHECK:     }
-// CHECK:     %cascade_switchbox_3_3 = aie.cascade_switchbox(%tile_3_3) {
-// CHECK:       aie.connect<North : 0, South : 0>
-// CHECK:     }
+// CHECK:     aie.configure_cascade(%tile_1_3, North, East)
+// CHECK:     aie.configure_cascade(%tile_2_3, West, South)
+// CHECK:     aie.configure_cascade(%tile_3_4, North, South)
+// CHECK:     aie.configure_cascade(%tile_3_3, North, South)
 // CHECK:   }
 // CHECK: }
 

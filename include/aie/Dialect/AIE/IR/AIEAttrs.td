@@ -59,6 +59,14 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   let cppNamespace = "xilinx::AIE";
 }
 
+def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
+  [
+    SouthWire, WestWire, NorthWire, EastWire
+  ]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [
     I32EnumAttrCase<"Acquire", 0>,

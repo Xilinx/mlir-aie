@@ -1,4 +1,4 @@
-//===- aie2_cascade_flow.mlir -----------------------------------*- MLIR -*-===//
+//===- aie2_configure_cascade.mlir ------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -24,17 +24,10 @@ module @cascade_flow {
     %tile_2_3 = aie.tile(2, 3)
     %tile_3_4 = aie.tile(3, 4)
     %tile_3_3 = aie.tile(3, 3)
-    %cascade_switchbox_1_3 = aie.cascade_switchbox(%tile_1_3) {
-      aie.connect<North : 0, East : 0>
-    }
-    %cascade_switchbox_2_3 = aie.cascade_switchbox(%tile_2_3) {
-      aie.connect<West : 0, South : 0>
-    }
-    %cascade_switchbox_3_4 = aie.cascade_switchbox(%tile_3_4) {
-      aie.connect<North : 0, South : 0>
-    }
-    %cascade_switchbox_3_3 = aie.cascade_switchbox(%tile_3_3) {
-      aie.connect<North : 0, South : 0>
-    }
+    
+    aie.configure_cascade(%tile_1_3, North, East)
+    aie.configure_cascade(%tile_2_3, West, South)
+    aie.configure_cascade(%tile_3_4, North, South)
+    aie.configure_cascade(%tile_3_3, North, South)
   }
 }

@@ -571,7 +571,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
         AIEOpRemoval<MemOp>, AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
         AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>, AIEOpRemoval<BufferOp>,
         AIEOpRemoval<ExternalBufferOp>, AIEOpRemoval<ShimDMAAllocationOp>,
-        AIEOpRemoval<CascadeFlowOp>, AIEOpRemoval<CascadeSwitchboxOp>>(
+        AIEOpRemoval<CascadeFlowOp>, AIEOpRemoval<ConfigureCascadeOp>>(
         m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
