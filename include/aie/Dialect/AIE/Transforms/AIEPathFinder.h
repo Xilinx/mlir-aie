@@ -87,8 +87,8 @@ using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
   explicit ChannelEdge(SwitchboxNode &target) = delete;
   ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
               int maxCapacity)
-      : src(src), ChannelEdgeBase(target),
-        Channel(src, target, bundle, maxCapacity) {}
+      : ChannelEdgeBase(target), Channel(src, target, bundle, maxCapacity),
+        src(src) {}
 
   // This class isn't designed to copied or moved.
   ChannelEdge(const ChannelEdge &E) = delete;
