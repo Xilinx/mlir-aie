@@ -1,7 +1,6 @@
 // (c) Copyright 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: cdo_direct_generation
 //
 // RUN: export BASENAME=$(basename %s)
 // RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj

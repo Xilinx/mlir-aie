@@ -9,12 +9,6 @@
 #ifndef AIE_TARGETS_AIETARGETS_H
 #define AIE_TARGETS_AIETARGETS_H
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-extern "C" {
-#include "cdo_driver.h"
-}
-#endif
-
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -50,13 +44,11 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
             bool Internalize = false, bool OnlyNeeded = false,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 mlir::LogicalResult
 AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
                         bool bigEndian = false,
                         bool emitUnified = false, bool axiDebug = false,
                         bool aieSim = false, size_t partitionStartCol = 1);
-#endif
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,

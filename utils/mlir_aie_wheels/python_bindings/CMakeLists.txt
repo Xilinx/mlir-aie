@@ -71,11 +71,6 @@ mlir_configure_python_dev_packages()
 
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  # TODO(max): AIEConfig.cmake should add this to the CXXFLAGS...
-  add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
-endif()
-
 if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
   find_package(XRT)
   find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
@@ -151,23 +146,3 @@ if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
     RENAME libxrt_coreutil.so.2
   )
 endif()
-
-# TODO(max): this is not DRY - should be able to fetch it from mlir_aie_install/lib
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  # for build dir (superfluous here because setup.py builds the wheel from the install dir but good for sanity checking)
-  add_custom_command(
-    TARGET AIEAggregateCAPI PRE_BUILD
-    COMMENT "Copying libcdo_driver into _mlir_libs during build"
-    DEPENDS "${CDO_DRIVER_LIBRARY}"
-    COMMAND "${CMAKE_COMMAND}" -E copy
-    "${CDO_DRIVER_LIBRARY}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libcdo_driver.so"
-  )
-  # for install
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    cdo_driver
-    COMPONENT aie-python-cdo
-    LIBRARY
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
-  )
-endif()
-

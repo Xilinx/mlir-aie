@@ -55,7 +55,6 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 MlirLogicalResult
 aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
                         bool bigEndian, bool emitUnified,
@@ -75,7 +74,6 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
 
   return wrap(status);
 }
-#endif
 
 MlirStringRef aieTranslateToIPU(MlirOperation moduleOp) {
   std::string ipu;

@@ -322,10 +322,7 @@ else ()
 
 endif ()
 
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
-  target_compile_definitions(AIEPythonModules.extension._aie.dso PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
-endif()
+target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
 set(_runtime_deps

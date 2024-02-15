@@ -31,6 +31,10 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 
+extern "C" {
+#include "cdo_driver.h"
+}
+
 #define DEBUG_TYPE "aie-targets"
 
 using namespace mlir;
@@ -127,7 +131,6 @@ void registerAIETranslations() {
       llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
 #endif
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
       llvm::cl::desc("Absolute path to working directory"));
@@ -149,7 +152,6 @@ void registerAIETranslations() {
   static llvm::cl::opt<size_t> cdoPartitionStartCol(
       "cdo-partition-start-col", llvm::cl::init(1),
       llvm::cl::desc("Partition starting column for CDO generation"));
-#endif
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -297,7 +299,6 @@ void registerAIETranslations() {
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   TranslateFromMLIRRegistration registrationCDODirect(
       "aie-generate-cdo", "Generate libxaie for CDO directly",
       [](ModuleOp module, raw_ostream &) {
@@ -314,7 +315,6 @@ void registerAIETranslations() {
                                        cdoPartitionStartCol);
       },
       registerDialects);
-#endif
   TranslateFromMLIRRegistration registrationIPU(
       "aie-ipu-instgen", "Generate instructions for IPU",
       [](ModuleOp module, raw_ostream &output) {
