@@ -104,9 +104,8 @@ int main(int argc, char *argv[]) {
 
   findVitis(TK);
 
-  if (Verbose) {
+  if (Verbose)
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
-  }
 
   if (InstallDir.size()) {
     TK.InstallDir = InstallDir;
@@ -120,17 +119,17 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (TmpDir.size()) {
+  if (TmpDir.size())
     TK.TempDir = TmpDir.getValue();
-  } else {
+  else
     TK.TempDir = FileName + ".prj";
-  }
+
   std::error_code err;
   SmallString<64> tmpDir(TK.TempDir);
   err = sys::fs::make_absolute(tmpDir);
-  if (err) {
+  if (err)
     llvm::errs() << "Failed to make absolute path: " << err.message() << "\n";
-  }
+
   TK.TempDir = std::string(tmpDir);
 
   err = sys::fs::create_directories(TK.TempDir);
@@ -140,9 +139,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (Verbose) {
+  if (Verbose)
     llvm::errs() << "Created temporary directory " << TK.TempDir << "\n";
-  }
 
   MLIRContext ctx;
   ParserConfig pcfg(&ctx);
@@ -163,14 +161,12 @@ int main(int argc, char *argv[]) {
   OwningOpRef<ModuleOp> owning =
       parseSourceFile<ModuleOp>(FileName, srcMgr, pcfg);
 
-  if (!owning) {
+  if (!owning)
     return 1;
-  }
 
   if (failed(aie2xclbin(&ctx, *owning, TK, IPUInstsName.getValue(),
-                        XCLBinName.getValue()))) {
+                        XCLBinName.getValue())))
     return 1;
-  }
 
   return 0;
 }
