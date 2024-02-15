@@ -294,7 +294,7 @@ def test_i8xi8_add_elem(module):
         .canonicalize()
         .cse()
         .convert_linalg_to_affine_loops()
-        .Func(p().affine_super_vectorize(virtual_vector_size=[64]))
+        .Func(p().affine_super_vectorize(virtual_vector_size=64))
         .add_pass("convert-vector-to-aievec", aie_target="aieml")
         .lower_affine()
     )

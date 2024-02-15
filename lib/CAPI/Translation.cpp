@@ -11,6 +11,7 @@
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/CAPI/Support.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -21,6 +22,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -54,14 +56,24 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
 }
 
 #ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-void aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
-                             byte_ordering endianness, bool emitUnified,
-                             bool axiDebug, bool aieSim,
-                             size_t partitionStartCol) {
+MlirLogicalResult
+aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
+                        byte_ordering endianness, bool emitUnified,
+                        bool axiDebug, bool aieSim, size_t partitionStartCol) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  (void)failed(AIETranslateToCDODirect(
+  auto status = AIETranslateToCDODirect(
       mod, llvm::StringRef(workDirPath.data, workDirPath.length), endianness,
-      emitUnified, axiDebug, aieSim, partitionStartCol));
+      emitUnified, axiDebug, aieSim, partitionStartCol);
+  std::vector<std::string> diagnostics;
+  ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
+    llvm::raw_string_ostream(diagnostics.emplace_back())
+        << d.getLocation() << ": " << d;
+  });
+  if (failed(status))
+    for (const auto &diagnostic : diagnostics)
+      std::cerr << diagnostic << "\n";
+
+  return wrap(status);
 }
 #endif
 
