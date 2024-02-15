@@ -901,22 +901,29 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConfigureCascadeOp::verify() {
-  const auto &targetModel = getTargetModel(*this);
+  const auto &t = getTargetModel(*this);
+  TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
   CascadeDir outputDir = getOutputDir();
-  if (targetModel.getTargetArch() == AIEArch::AIE2) {
+
+  if (tile.isShimTile())
+    return emitOpError("shimTile row has no cascade stream interface");
+  if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
+    return emitOpError("memTile row has no cascade stream interface");
+
+  if (t.getTargetArch() == AIEArch::AIE2) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
-             << stringifyAIEArch(targetModel.getTargetArch());
+             << stringifyAIEArch(t.getTargetArch());
     }
     if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
       return emitOpError(
                  "output direction of cascade must be South or East on ")
-             << stringifyAIEArch(targetModel.getTargetArch());
+             << stringifyAIEArch(t.getTargetArch());
     }
   } else {
     return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+           << stringifyAIEArch(t.getTargetArch());
   }
   return success();
 }

@@ -73,3 +73,21 @@ aie.device(xcvc1902) {
   %t13 = aie.tile(1, 3)
   aie.configure_cascade(%t13, North, East)
 }
+
+// -----
+
+// CHECK: error{{.*}}'aie.configure_cascade' op shimTile row has no cascade stream interface
+
+aie.device(xcve2802) {
+  %t10 = aie.tile(1, 0)
+  aie.configure_cascade(%t10, North, West)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.configure_cascade' op memTile row has no cascade stream interface
+
+aie.device(ipu) {
+  %t11 = aie.tile(1, 1)
+  aie.configure_cascade(%t11, North, West)
+}
