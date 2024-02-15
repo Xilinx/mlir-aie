@@ -884,11 +884,12 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 
   let arguments = (
     ins DMAChannelDir:$channel_dir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
+    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -908,11 +909,12 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<BoolAttr, "true">:$loop
+        DefaultValuedAttr<BoolAttr, "true">:$loop,
+        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? `)` `[`regions`]` attr-dict
+    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? (`,` `repeat_count` `=` $repeat_count^)? `)` `[`regions`]` attr-dict
   }];
   let hasVerifier = 1;
 }

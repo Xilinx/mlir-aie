@@ -411,60 +411,62 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     default:
       return 0;
     }
-  else if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+
+  if (isShimNOCTile(col, row) || isShimPLTile(col, row))
     switch (bundle) {
     case WireBundle::FIFO:
       return 1;
     case WireBundle::North:
       return 4;
-    case WireBundle::West:
+    case WireBundle::West: {
       if (col == 0)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::South:
       return 8;
-    case WireBundle::East:
+    case WireBundle::East: {
       if (col == columns() - 1)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::Trace:
       return 1;
     default:
       return 0;
     }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 1;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 1;
-    case WireBundle::North:
-      if (row == rows() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::West:
-      if (col == 0)
-        return 0;
-      else
-        return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      if (col == columns() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::Trace:
-      // Port 0: core trace. Port 1: memory trace.
-      return 2;
-    default:
+
+  // compute/core tile
+  switch (bundle) {
+  case WireBundle::Core:
+    return 1;
+  case WireBundle::DMA:
+    return 2;
+  case WireBundle::FIFO:
+    return 1;
+  case WireBundle::North: {
+    if (row == rows() - 1)
       return 0;
-    }
+    return 4;
+  }
+  case WireBundle::West: {
+    if (col == 0)
+      return 0;
+    return 4;
+  }
+  case WireBundle::South:
+    return 6;
+  case WireBundle::East: {
+    if (col == columns() - 1)
+      return 0;
+    return 4;
+  }
+  case WireBundle::Trace:
+    // Port 0: core trace. Port 1: memory trace.
+    return 2;
+  default:
+    return 0;
+  }
 }
 uint32_t
 AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,

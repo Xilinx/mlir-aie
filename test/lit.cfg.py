@@ -214,6 +214,7 @@ if config.enable_chess_tests:
 tools = [
     "aie-opt",
     "aie-translate",
+    "aie2xclbin",
     "aiecc.py",
     "ld.lld",
     "llc",

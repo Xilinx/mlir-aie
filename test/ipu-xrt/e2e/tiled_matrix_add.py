@@ -411,19 +411,13 @@ def matrix_add_sugar(module):
             )
 
             aiex.forward_bd(
-                mem_tile_0_1,
-                input_a_tile_0_0_to_tile_0_1.dest_channel,
-                buffer_0_1_a,
+                mem_tile_0_1, buffer_0_1_a, input_a_tile_0_0_to_tile_0_1.dest_channel
             )
             aiex.forward_bd(
-                mem_tile_0_1,
-                input_b_tile_0_0_to_tile_0_1.dest_channel,
-                buffer_0_1_b,
+                mem_tile_0_1, buffer_0_1_b, input_b_tile_0_0_to_tile_0_1.dest_channel
             )
             aiex.forward_bd(
-                mem_tile_0_1,
-                output_c_tile_0_1_to_tile_0_0.source_channel,
-                buffer_0_1_c,
+                mem_tile_0_1, buffer_0_1_c, output_c_tile_0_1_to_tile_0_0.source_channel
             )
 
             aie.end()

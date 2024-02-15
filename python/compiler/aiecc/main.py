@@ -41,7 +41,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
     .convert_linalg_to_affine_loops()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
-    .Context(
+    .Nested(
         "aie.device",
         Pipeline()
         .add_pass("aie-assign-lock-ids")
@@ -74,7 +74,7 @@ LOWER_TO_LLVM_PIPELINE = (
 
 AIE_LOWER_TO_LLVM = (
     Pipeline()
-    .Context(
+    .Nested(
         "aie.device",
         Pipeline()
         .add_pass("aie-localize-locks")
@@ -85,10 +85,10 @@ AIE_LOWER_TO_LLVM = (
 )
 AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
 
-CREATE_PATH_FINDER_FLOWS = Pipeline().Context(
+CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_IPU = Pipeline().Context("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_IPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -1079,7 +1079,7 @@ class FlowRunner:
             await asyncio.gather(*processes)
 
             # Must have elfs, before we build the final binary assembly
-            if opts.cdo:
+            if opts.cdo and opts.execute:
                 await self.process_cdo()
             if opts.cdo or opts.xcl:
                 await self.process_xclbin_gen(bool(len(cores)))
