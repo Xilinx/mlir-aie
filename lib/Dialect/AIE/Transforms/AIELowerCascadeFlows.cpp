@@ -74,7 +74,7 @@ struct AIELowerCascadeFlowsPass
       } else {
         outputDir = WireBundle::South;
       }
-      builder.create<ConfigureCascadeOp>(builder.getUnknownLoc(), tile, 
+      builder.create<ConfigureCascadeOp>(builder.getUnknownLoc(), tile,
                                          static_cast<CascadeDir>(inputDir),
                                          static_cast<CascadeDir>(outputDir));
     }
