@@ -338,9 +338,6 @@ set(_runtime_deps
 if (TARGET mlir_rocm_runtime)
   list(APPEND _runtime_deps mlir_rocm_runtime)
 endif()
-if (TARGET cdo_driver)
-  list(APPEND _runtime_deps cdo_driver)
-endif()
 
 set(HAS_MLIR_RUNTIME_LIBRARIES ON PARENT_SCOPE)
 foreach(r ${_runtime_deps})

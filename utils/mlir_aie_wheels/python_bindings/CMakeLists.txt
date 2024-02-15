@@ -74,14 +74,6 @@ add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 if(AIE_ENABLE_GENERATE_CDO_DIRECT)
   # TODO(max): AIEConfig.cmake should add this to the CXXFLAGS...
   add_compile_definitions(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  # for cdo_driver.h
-  find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
-  include_directories(${VITIS_AIETOOLS_DIR}/include)
-  find_library(CDO_DRIVER_LIBRARY cdo_driver
-    HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
-  )
-  add_library(cdo_driver SHARED IMPORTED)
-  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
 endif()
 
 if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
