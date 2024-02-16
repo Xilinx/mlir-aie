@@ -72,13 +72,15 @@ jobs:
             echo -n "${{ secrets.XILINX_LIC }}" | base64 --decode > ~/.Xilinx/Xilinx.lic
             
             cd /
-            git clone --recursive https://github.com/Xilinx/mlir-aie.git
+            git clone https://github.com/Xilinx/mlir-aie.git
             cd /mlir-aie
             
             git checkout ${{ github.head_ref }}
             if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
               git reset --hard ${{ inputs.AIE_COMMIT }}
-            fi 
+            fi
+            
+            git submodule update --init --recursive
             
             apt install python3.10-venv
             python -m venv aie-venv
