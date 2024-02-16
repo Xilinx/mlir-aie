@@ -36,6 +36,8 @@ def one_global(module):
     iv = np.random.randint(0, 10, (K,), dtype=np.int32)
     column = 2
 
+    ipu_insts = aiex.ipu.get_prolog()
+
     @aie.device(AIEDevice.ipu)
     def ipu():
         # TODO(max): figure this annoying thing out...
@@ -101,32 +103,36 @@ def one_global(module):
 
             aie.end()
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            bd_id = 0
+        ddr_id = 0
+        bd_id = 0
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id=bd_id,
                 column=column,
                 buffer_length=K,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.write32(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=column,
                 bd_id=bd_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=column,
                 direction=0,
                 row=0,
             )
+        )
 
     print(module)
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -154,6 +160,8 @@ def threesome(module):
     K = 32
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
+
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -234,32 +242,36 @@ def threesome(module):
 
             aie.end()
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            bd_id = 0
+        ddr_id = 0
+        bd_id = 0
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id=bd_id,
                 column=shim_tile_column,
                 buffer_length=K,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.write32(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 bd_id=bd_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 direction=0,
                 row=0,
             )
+        )
 
     print(module)
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -289,6 +301,8 @@ def foursome(module):
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv3 = np.random.randint(0, 10, (K,), dtype=np.int32)
+
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -387,32 +401,36 @@ def foursome(module):
 
             aie.end()
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            bd_id = 0
+        ddr_id = 0
+        bd_id = 0
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id=bd_id,
                 column=shim_tile_column,
                 buffer_length=K,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.write32(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 bd_id=bd_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 direction=0,
                 row=0,
             )
+        )
 
     print(module)
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")

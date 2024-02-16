@@ -353,9 +353,6 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start
 
     make_design_pdi()
 
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-    return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
-
 
 def compile_without_vectorization(module, debug=False, partition_start_col=1):
     module = run_pipeline(module, Pipeline().canonicalize())
@@ -384,9 +381,6 @@ def compile_without_vectorization(module, debug=False, partition_start_col=1):
         )
 
     make_design_pdi()
-
-    generated_ipu_insts = run_pipeline(input_with_addresses, DMA_TO_IPU)
-    return [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
 
 
 def grouper(iterable, n, *, incomplete="fill", fill_value=None):

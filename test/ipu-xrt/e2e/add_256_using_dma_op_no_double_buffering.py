@@ -9,15 +9,18 @@
 import random
 
 from aie.extras.dialects.ext import arith, func, memref
+from aie.extras.runtime.passes import run_pipeline
 from filelock import FileLock
 import numpy as np
 
+from aie.compiler.aiecc.main import DMA_TO_IPU
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
+    ipu_instgen,
 )
 from aie.dialects.scf import for_ as range_, yield_
 import aie.extras.types as T
@@ -112,7 +115,7 @@ def add_256_using_dma_op_no_double_buffering(module):
             _arg1: T.memref(1, T.i32()),
             arg2: T.memref(LEN, T.i32()),
         ):
-            aiex.ipu.dma_memcpy_nd(
+            aiex.ipu_dma_memcpy_nd(
                 this_is_meaningless_1.sym_name.value,
                 0,
                 arg0,
@@ -120,7 +123,7 @@ def add_256_using_dma_op_no_double_buffering(module):
                 [1, 1, 1, LEN],
                 [0, 0, 0],
             )
-            aiex.ipu.dma_memcpy_nd(
+            aiex.ipu_dma_memcpy_nd(
                 this_is_meaningless_2.sym_name.value,
                 1,
                 arg2,
@@ -129,7 +132,7 @@ def add_256_using_dma_op_no_double_buffering(module):
                 [0, 0, 0],
             )
 
-            aiex.ipu.sync(
+            aiex.ipu_sync(
                 channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
             )
 
@@ -184,7 +187,9 @@ def add_256_using_dma_op_no_double_buffering(module):
 
             aie.end()
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
+    generated_ipu_insts = run_pipeline(module, DMA_TO_IPU)
+    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
