@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from functools import partial
 
 from ._aiex_ops_gen import *
-from .aie import DMAChannelDir, LockAction, use_lock, dma_bd, dma, lock
+from .aie import DMAChannelDir, LockAction, dma, dma_bd, lock, use_lock
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
@@ -90,8 +90,12 @@ XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE = 0x0001D214
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE = 0x0001D204
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK = 0x80000000
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
+
+# from dpufw/include/RunInstOpt.h
 SHIM_DMA_BD0_BASE_ADDR = 0x1D000
 SHIM_BD_OFFSET = 0x20
+# from dpufw/include/dpu_func.h
+DDR_AIE_ADDR_OFFSET = 0x80000000
 
 
 def _get_prolog():
@@ -99,7 +103,7 @@ def _get_prolog():
 
 
 # based on https://github.com/Xilinx/mlir-aie/blob/cb232a43383ef3b8efd8b408545c9b74885578ad/lib/Targets/AIETargetIPU.cpp
-def _ipu_sync(column, row, direction, channel, column_num=1, row_num=1):
+def _ipu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
     if isinstance(channel, IntegerAttr):
         channel = int(channel)
     words = [None] * 2
@@ -116,7 +120,7 @@ def _ipu_sync(column, row, direction, channel, column_num=1, row_num=1):
     return words
 
 
-def _ipu_write32(row, column, address, value):
+def _ipu_write32(column, row, address, value):
     words = [None] * 3
     op_code = 2
     words[0] = (op_code & 0xFF) << 24
@@ -144,7 +148,7 @@ def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=
         value |= XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK
 
     row = 0
-    return _ipu_write32(row, column, address, value)
+    return _ipu_write32(column, row, address, value)
 
 
 # based on ExecWriteBdExtendShimTileOpt @ dpufw/src/include/RunInstOpt.h:666
@@ -157,20 +161,21 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr=None):
     addr_high = iptr[4] & 0x0000FFFF
     if tensor_addr is None:
         tensor_addr = (addr_high << 32) | addr_low
+    tensor_addr += DDR_AIE_ADDR_OFFSET
     t_word0 = tensor_addr & 0xFFFFFFFC
     t_word1 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
 
     base_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(row, column, base_addr, iptr[2]),
-        *_ipu_write32(row, column, base_addr + 4, t_word0),
-        *_ipu_write32(row, column, base_addr + 8, t_word1),
-        *_ipu_write32(row, column, base_addr + 12, iptr[5]),
-        *_ipu_write32(row, column, base_addr + 16, iptr[6]),
-        *_ipu_write32(row, column, base_addr + 20, iptr[7]),
-        *_ipu_write32(row, column, base_addr + 24, iptr[8]),
-        *_ipu_write32(row, column, base_addr + 28, iptr[9]),
+        *_ipu_write32(column, row, base_addr, iptr[2]),
+        *_ipu_write32(column, row, base_addr + 4, t_word0),
+        *_ipu_write32(column, row, base_addr + 8, t_word1),
+        *_ipu_write32(column, row, base_addr + 12, iptr[5]),
+        *_ipu_write32(column, row, base_addr + 16, iptr[6]),
+        *_ipu_write32(column, row, base_addr + 20, iptr[7]),
+        *_ipu_write32(column, row, base_addr + 24, iptr[8]),
+        *_ipu_write32(column, row, base_addr + 28, iptr[9]),
     ]
     return words
 
@@ -267,22 +272,6 @@ def _ipu_writebd_shimtile(
     assert not any(w is None for w in words)
 
     return words
-
-
-# https://github.com/Xilinx/XRT/blob/248da9bf977628be7c13f55fafc0f08014242f9b/src/runtime_src/core/common/api/xrt_module.cpp#L906
-# https://github.com/dezhiAmd/XRT/blob/89b7cef12d9d3b3d372504193b3c80de943e50ea/src/runtime_src/core/common/api/xrt_module.cpp#L161
-#   void patch_shim48(uint32_t* bd_data_ptr, uint64_t patch)
-#   {
-#     // This function is a copy&paste from IPU firmware
-#     constexpr uint64_t ddr_aie_addr_offset = 0x80000000;
-#
-#     uint64_t base_address =
-#       ((static_cast<uint64_t>(bd_data_ptr[2]) & 0xFFF) << 32) | ((static_cast<uint64_t>(bd_data_ptr[1])));
-#
-#     base_address = base_address + patch + ddr_aie_addr_offset;
-#     bd_data_ptr[1] = (uint32_t)(base_address & 0xFFFFFFFC);
-#     bd_data_ptr[2] = (bd_data_ptr[2] & 0xFFFF0000) | (base_address >> 32);
-#   }
 
 
 class ipu:

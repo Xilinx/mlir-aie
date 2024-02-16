@@ -14,6 +14,7 @@ from aie.extras.dialects.ext import arith, func, linalg, memref
 from filelock import FileLock
 import numpy as np
 
+from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -27,7 +28,6 @@ from util import (
     compile_without_vectorization,
     construct_and_print_module,
     make_xclbin,
-    setup_xclbin_firmware,
 )
 
 DMA = WireBundle.DMA
@@ -43,6 +43,8 @@ Release = LockAction.Release
 def manual_args(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
+    repeat_count = 10
+    loop = False
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -61,14 +63,19 @@ def manual_args(module):
         @aie.core(tile_0_2)
         def core():
             x = memref.get_global(weight.type_.value, weight.sym_name.value)
-            with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                linalg.copy(x, buffer_weight)
+            y = memref.alloc(K, T.i32())
+            for j in range(repeat_count):
+                with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                    linalg.fill(j, y)
+                    linalg.copy(x, buffer_weight)
+                    linalg.add(y, buffer_weight, buffer_weight)
 
         @aie.mem(tile_0_2)
         def mem_0_2():
-            @aie.dma(MM2S, 0)
+            @aie.dma(MM2S, 0, loop=loop, repeat_count=repeat_count)
             def dma3():
                 aie.use_lock(lock_send_weight, AcquireGreaterEqual)
+                # TODO(max): would prefer to be able to stick get_global here...
                 aie.dma_bd(buffer_weight)
                 aie.use_lock(lock_read_weight, Release)
 
@@ -80,13 +87,13 @@ def manual_args(module):
             lock_0_1_write_out_c = aie.lock(tile_0_1, init=0)
             buffer_0_1_c = aie.buffer(T.memref(K, T.i32()), tile_0_1)
 
-            @aie.dma(S2MM, 2)
+            @aie.dma(S2MM, 2, loop=loop, repeat_count=repeat_count)
             def dma5():
                 aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
                 aie.use_lock(lock_0_1_write_out_c, Release)
 
-            @aie.dma(MM2S, 2)
+            @aie.dma(MM2S, 2, loop=loop, repeat_count=repeat_count)
             def dma6():
                 aie.use_lock(lock_0_1_write_out_c, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_c)
@@ -97,54 +104,44 @@ def manual_args(module):
     assert module.operation.verify()
 
     compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    buffer_args = [f"out_{i}" for i in range(repeat_count)]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        views = xclbin.mmap_buffers([(K,)], np.int32)
-        channel_index = 0
-        ddr_id = 0
+        views = xclbin.mmap_buffers([(K,)] * repeat_count, np.int32)
+
         col = 0
-        bd_id = 0
-        writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-            bd_id,
-            buffer_length=K,
-            buffer_offset=0,
-            ddr_id=ddr_id,
-        )
+        channel_index = 0
         ipu_insts = aiex.ipu.get_prolog()
-        ipu_insts.extend(
-            aiex.ipu._exec_write_bd_extend_shim_tile_opt(
-                writebd_shimtile_insts, tensor_addr=xclbin._get_buffer_host_address(0)
+        for bd_id in range(repeat_count):
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(bd_id, buffer_length=K)
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    writebd_shimtile_insts,
+                    tensor_addr=xclbin._get_buffer_host_address(bd_id),
+                )
             )
-        )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
-        ipu_insts.extend(
-            aiex.ipu.sync(
-                channel=0,
-                column=0,
-                column_num=1,
-                direction=0,
-                row=0,
-                row_num=1,
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-        )
-        assert all(i < 2 ** 32 for i in ipu_insts)
+            ipu_insts.extend(aiex.ipu.sync(column=col))
+        assert all(i < 2**32 for i in ipu_insts)
 
         xclbin.load_ipu_instructions(ipu_insts)
 
-        wrap_C = np.asarray(views[0])
-
-        C = np.zeros((K,), dtype=np.int32)
-        np.copyto(wrap_C, C, casting="no")
+        wraps = list(map(np.asarray, views))
 
         xclbin.sync_buffers_to_device()
-        xclbin._run_only_ipu_instructions()
+        xclbin.run()
         print("Running kernel")
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-        if not np.array_equal(RANDOM_WEIGHT, wrap_C):
-            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-                print(RANDOM_WEIGHT)
-                print(wrap_C)
-                assert False
+        for i, w in enumerate(wraps):
+            if not np.array_equal(RANDOM_WEIGHT + i, w):
+                with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                    print("RANDOM_WEIGHT", RANDOM_WEIGHT)
+                    print(f"{buffer_args[i]} =", w)
+                    assert False

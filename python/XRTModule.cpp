@@ -96,11 +96,8 @@ public:
   uint64_t getBufferHostAddress(size_t idx) { return buffers[idx]->address(); }
 
   void syncBuffersToDevice() {
-    for (auto &buf : this->buffers) {
-      py::print("before sync", buf->address());
+    for (auto &buf : this->buffers)
       buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
-      py::print("after sync", buf->address());
-    }
   }
 
   void syncBuffersFromDevice() {
