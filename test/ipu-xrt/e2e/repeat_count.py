@@ -47,6 +47,7 @@ def repeat_count(module):
     repeat_count = 4
     loop = False
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -99,20 +100,21 @@ def repeat_count(module):
 
             aie.end()
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            channel_index = 0
-            ddr_id = 0
-            col = 0
-            for i, bd_id in enumerate(range(repeat_count)):
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        col = 0
+        for i, bd_id in enumerate(range(repeat_count)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=K,
-                    offset=i * K,
+                    buffer_offset=i * K,
                     ddr_id=ddr_id,
                 )
-                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
                     column=0,
@@ -121,10 +123,11 @@ def repeat_count(module):
                     row=0,
                     row_num=1,
                 )
+            )
 
     assert module.operation.verify()
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)

@@ -42,6 +42,8 @@ Release = LockAction.Release
 def square_matrix_mult(module):
     M = N = 16
 
+    ipu_insts = aiex.ipu.get_prolog()
+
     @aie.device(AIEDevice.ipu)
     def ipu():
         tile_0_0 = aie.tile(0, 0)
@@ -81,46 +83,49 @@ def square_matrix_mult(module):
         aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
         aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            channel_index = 0
-            col = 0
-            ddr_id = 0
-            bd_id = 0
+        col = 0
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        bd_id = 0
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
 
-            # in B
-            channel_index = 1
-            col = 0
-            ddr_id = 1
-            bd_id += 1
+        # in B
+        channel_index = 1
+        ddr_id = 1
+        bd_id += 1
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
 
-            # out C
-            channel_index = 0
-            col = 0
-            ddr_id = 2
-            bd_id += 1
+        # out C
+        channel_index = 0
+        ddr_id = 2
+        bd_id += 1
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=0,
                 column=0,
@@ -129,6 +134,7 @@ def square_matrix_mult(module):
                 row=0,
                 row_num=1,
             )
+        )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -215,7 +221,7 @@ def square_matrix_mult(module):
             aie.use_lock(lock_0_2_read_in_b, Release)
             aie.use_lock(lock_0_2_write_out_c, Release)
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
@@ -254,6 +260,8 @@ def square_matrix_mult(module):
 def square_matrix_mult_sugar(module):
     M = N = 16
 
+    ipu_insts = aiex.ipu.get_prolog()
+
     @aie.device(AIEDevice.ipu)
     def ipu():
         tile_0_0 = aie.tile(0, 0)
@@ -284,46 +292,49 @@ def square_matrix_mult_sugar(module):
         aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
         aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            channel_index = 0
-            col = 0
-            ddr_id = 0
-            bd_id = 0
+        col = 0
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        bd_id = 0
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
 
-            # in B
-            channel_index = 1
-            col = 0
-            ddr_id = 1
-            bd_id += 1
+        # in B
+        channel_index = 1
+        ddr_id = 1
+        bd_id += 1
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
 
-            # out C
-            channel_index = 0
-            col = 0
-            ddr_id = 2
-            bd_id += 1
+        # out C
+        channel_index = 0
+        ddr_id = 2
+        bd_id += 1
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id,
                 buffer_length=M * N,
-                offset=0,
+                buffer_offset=0,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=0,
                 column=0,
@@ -332,6 +343,7 @@ def square_matrix_mult_sugar(module):
                 row=0,
                 row_num=1,
             )
+        )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -378,7 +390,7 @@ def square_matrix_mult_sugar(module):
                 linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                 linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
