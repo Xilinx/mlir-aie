@@ -109,7 +109,9 @@ def tiled_matrix_add(module):
                     d0_stride=d0_stride,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # in B
         channel_index = 1
@@ -127,7 +129,9 @@ def tiled_matrix_add(module):
                     d0_stride=d0_stride,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # out C
         channel_index = 0
@@ -145,7 +149,9 @@ def tiled_matrix_add(module):
                     d0_stride=d0_stride,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
@@ -364,7 +370,7 @@ def matrix_add_sugar(module):
                 )
             )
             ipu_insts.extend(
-                aiex.ipu.write32(
+                aiex.ipu.shimtile_push_queue(
                     MM2S, input_a_tile_0_0_to_tile_0_1.source_channel, col, bd_id
                 )
             )
@@ -385,7 +391,7 @@ def matrix_add_sugar(module):
                 )
             )
             ipu_insts.extend(
-                aiex.ipu.write32(
+                aiex.ipu.shimtile_push_queue(
                     MM2S, input_b_tile_0_0_to_tile_0_1.source_channel, col, bd_id
                 )
             )
@@ -406,7 +412,7 @@ def matrix_add_sugar(module):
                 )
             )
             ipu_insts.extend(
-                aiex.ipu.write32(
+                aiex.ipu.shimtile_push_queue(
                     S2MM, output_c_tile_0_1_to_tile_0_0.dest_channel, col, bd_id
                 )
             )

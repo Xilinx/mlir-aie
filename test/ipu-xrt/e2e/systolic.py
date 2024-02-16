@@ -194,7 +194,7 @@ def systolic_vec_add(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_a_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
@@ -215,7 +215,7 @@ def systolic_vec_add(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_b_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
@@ -236,7 +236,7 @@ def systolic_vec_add(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -389,7 +389,7 @@ def max_result_args(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -558,7 +558,7 @@ def max_input_and_output_args(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_a_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
@@ -579,7 +579,7 @@ def max_input_and_output_args(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -705,7 +705,7 @@ def zeroth_column(module):
             )
         )
         ipu_insts.extend(
-            aiex.ipu.write32(
+            aiex.ipu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                 column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
@@ -846,7 +846,7 @@ def global_core_mem_init(module):
                     )
                 )
                 ipu_insts.extend(
-                    aiex.ipu.write32(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -1176,7 +1176,7 @@ def constant_systolic_3x3(module):
                         )
                     )
                     ipu_insts.extend(
-                        aiex.ipu.write32(
+                        aiex.ipu.shimtile_push_queue(
                             channel_dir=S2MM,
                             channel_index=mem_tile.flows[shim_tile][0].dest_channel,
                             column=column,

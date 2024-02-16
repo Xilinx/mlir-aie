@@ -90,8 +90,8 @@ XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE = 0x0001D214
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE = 0x0001D204
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK = 0x80000000
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
-
-_generated_ipu_write32 = ipu_write32
+SHIM_DMA_BD0_BASE_ADDR = 0x1D000
+SHIM_BD_OFFSET = 0x20
 
 
 def _get_prolog():
@@ -116,7 +116,19 @@ def _ipu_sync(column, row, direction, channel, column_num=1, row_num=1):
     return words
 
 
-def _ipu_write32(channel_dir, channel_index, column, bd_id, repeats=0):
+def _ipu_write32(row, column, address, value):
+    words = [None] * 3
+    op_code = 2
+    words[0] = (op_code & 0xFF) << 24
+    words[0] |= (column & 0xFF) << 16
+    words[0] |= (row & 0xFF) << 8
+    words[1] = address
+    words[2] = value
+    assert not any(w is None for w in words)
+    return words
+
+
+def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=0):
     if isinstance(channel_index, IntegerAttr):
         channel_index = int(channel_index)
     if channel_dir == DMAChannelDir.MM2S:
@@ -130,19 +142,36 @@ def _ipu_write32(channel_dir, channel_index, column, bd_id, repeats=0):
     if channel_dir == DMAChannelDir.S2MM:
         # issue token
         value |= XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK
+
     row = 0
-
-    words = [None] * 3
-    op_code = 2
-    words[0] = (op_code & 0xFF) << 24
-    words[0] |= (column & 0xFF) << 16
-    words[0] |= (row & 0xFF) << 8
-    words[1] = address
-    words[2] = value
-    assert not any(w is None for w in words)
-    return words
+    return _ipu_write32(row, column, address, value)
 
 
+# based on ExecWriteBdExtendShimTileOpt @ dpufw/src/include/RunInstOpt.h:666
+def _exec_write_bd_extend_shim_tile_opt(iptr):
+    bd_id = iptr[0] & 0x0000000F
+    column = (iptr[0] & 0x00FF0000) >> 16
+    base_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
+    addr_low = iptr[2]
+    addr_high = iptr[3] & 0x0000FFFF
+    tensor_addr = (addr_high << 32) | addr_low
+    t_word0 = tensor_addr & 0xFFFFFFFFC
+    t_word1 = (iptr[3] & 0xFFFF0000) | (tensor_addr >> 32)
+
+    row = 0
+    return [
+        *_ipu_write32(row, column, base_addr, iptr[2]),
+        *_ipu_write32(row, column, base_addr + 4, t_word0),
+        *_ipu_write32(row, column, base_addr + 8, t_word1),
+        *_ipu_write32(row, column, base_addr + 12, iptr[5]),
+        *_ipu_write32(row, column, base_addr + 16, iptr[6]),
+        *_ipu_write32(row, column, base_addr + 20, iptr[7]),
+        *_ipu_write32(row, column, base_addr + 24, iptr[8]),
+        *_ipu_write32(row, column, base_addr + 28, iptr[9]),
+    ]
+
+
+# corresponds to ExecWriteBdExtendShimTileOpt
 def _ipu_writebd_shimtile(
     bd_id,
     buffer_length,
@@ -180,10 +209,10 @@ def _ipu_writebd_shimtile(
         d0_size = 0
 
     column_num = 1
-    enable_packet = 0
-    out_of_order_id = 0
-    packet_id = 0
-    packet_type = 0
+    # enable_packet = 0
+    # out_of_order_id = 0
+    # packet_id = 0
+    # packet_type = 0
     valid_bd = 1
 
     words = [None] * 10
@@ -196,15 +225,19 @@ def _ipu_writebd_shimtile(
 
     # TODO: Address Incr
     words[1] = 0
-
     words[2] = buffer_length
     words[3] = buffer_offset
 
+    # this is all wrong
     # En Packet , OoO BD ID , Packet ID , Packet Type
-    words[4] = (enable_packet & 0x1) << 30
-    words[4] |= (out_of_order_id & 0x3F) << 24
-    words[4] |= (packet_id & 0x1F) << 19
-    words[4] |= (packet_type & 0x7) << 16
+    # words[4] = (enable_packet & 0x1) << 30
+    # words[4] |= (out_of_order_id & 0x3F) << 24
+    # words[4] |= (packet_id & 0x1F) << 19
+    # words[4] |= (packet_type & 0x7) << 16
+
+    # it's actually:
+    # u64 AddrHigh = (iptr[4] & 0x0000FFFF);
+    words[4] = 0
 
     # TODO: Secure Access
     words[5] = (d0_size & 0x3FF) << 20
@@ -233,6 +266,7 @@ def _ipu_writebd_shimtile(
     words[9] |= lock_acq_id & 0xF
 
     assert not any(w is None for w in words)
+
     return words
 
 
@@ -243,8 +277,7 @@ def _ipu_writebd_shimtile(
 #     constexpr uint64_t ddr_aie_addr_offset = 0x80000000;
 #
 #     uint64_t base_address =
-#       ((static_cast<uint64_t>(bd_data_ptr[2]) & 0xFFF) << 32) |
-#       ((static_cast<uint64_t>(bd_data_ptr[1])));
+#       ((static_cast<uint64_t>(bd_data_ptr[2]) & 0xFFF) << 32) | ((static_cast<uint64_t>(bd_data_ptr[1])));
 #
 #     base_address = base_address + patch + ddr_aie_addr_offset;
 #     bd_data_ptr[1] = (uint32_t)(base_address & 0xFFFFFFFC);
@@ -254,6 +287,7 @@ def _ipu_writebd_shimtile(
 
 class ipu:
     write32 = _ipu_write32
+    shimtile_push_queue = _ipu_shimtile_push_queue
     writebd_shimtile = _ipu_writebd_shimtile
     sync = _ipu_sync
     get_prolog = _get_prolog

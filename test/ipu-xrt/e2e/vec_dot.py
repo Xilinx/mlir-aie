@@ -104,7 +104,9 @@ def vec_dot(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # in B
         channel_index = 1
@@ -119,7 +121,9 @@ def vec_dot(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # out C
         channel_index = 0
@@ -134,7 +138,9 @@ def vec_dot(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
@@ -327,7 +333,9 @@ def vec_dot_sugar(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # in B
         channel_index = 1
@@ -342,7 +350,9 @@ def vec_dot_sugar(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # out C
         channel_index = 0
@@ -357,7 +367,9 @@ def vec_dot_sugar(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,

@@ -113,7 +113,9 @@ def repeat_count(module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,

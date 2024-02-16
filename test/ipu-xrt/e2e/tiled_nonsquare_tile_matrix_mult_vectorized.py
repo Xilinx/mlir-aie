@@ -158,7 +158,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # in B
         channel_index = 1
@@ -176,7 +178,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
             bd_id += 1
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
             ipu_insts.extend(
@@ -191,7 +195,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # out C
         channel_index = 0
@@ -216,7 +222,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
                     d0_stride=d0_stride_C,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
@@ -510,7 +518,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # in B
         channel_index = 1
@@ -529,7 +539,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
             bd_id += 1
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
             ipu_insts.extend(
@@ -544,7 +556,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
         # out C
         channel_index = 0
@@ -570,7 +584,9 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
                     d0_stride=d0_stride_C,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
