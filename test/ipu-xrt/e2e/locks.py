@@ -115,7 +115,7 @@ def one_global(module):
             )
         )
         ipu_insts.extend(
-            aiex.ipu.write32(
+            aiex.ipu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=column,
@@ -254,7 +254,7 @@ def threesome(module):
             )
         )
         ipu_insts.extend(
-            aiex.ipu.write32(
+            aiex.ipu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
@@ -413,7 +413,7 @@ def foursome(module):
             )
         )
         ipu_insts.extend(
-            aiex.ipu.write32(
+            aiex.ipu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
