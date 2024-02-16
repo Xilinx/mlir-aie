@@ -148,18 +148,21 @@ def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=
 
 
 # based on ExecWriteBdExtendShimTileOpt @ dpufw/src/include/RunInstOpt.h:666
-def _exec_write_bd_extend_shim_tile_opt(iptr):
+def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr=None):
     bd_id = iptr[0] & 0x0000000F
     column = (iptr[0] & 0x00FF0000) >> 16
-    base_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
-    addr_low = iptr[2]
-    addr_high = iptr[3] & 0x0000FFFF
-    tensor_addr = (addr_high << 32) | addr_low
-    t_word0 = tensor_addr & 0xFFFFFFFFC
-    t_word1 = (iptr[3] & 0xFFFF0000) | (tensor_addr >> 32)
+    _addr_incr = iptr[1]
+    addr_low = iptr[3]
+    # upper 16 bits are for packets...
+    addr_high = iptr[4] & 0x0000FFFF
+    if tensor_addr is None:
+        tensor_addr = (addr_high << 32) | addr_low
+    t_word0 = tensor_addr & 0xFFFFFFFC
+    t_word1 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
 
+    base_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
-    return [
+    words = [
         *_ipu_write32(row, column, base_addr, iptr[2]),
         *_ipu_write32(row, column, base_addr + 4, t_word0),
         *_ipu_write32(row, column, base_addr + 8, t_word1),
@@ -169,14 +172,15 @@ def _exec_write_bd_extend_shim_tile_opt(iptr):
         *_ipu_write32(row, column, base_addr + 24, iptr[8]),
         *_ipu_write32(row, column, base_addr + 28, iptr[9]),
     ]
+    return words
 
 
 # corresponds to ExecWriteBdExtendShimTileOpt
 def _ipu_writebd_shimtile(
     bd_id,
     buffer_length,
-    buffer_offset,
-    ddr_id,
+    buffer_offset=0,
+    ddr_id=0,
     column=0,
     d2_stride=1,
     d1_size=None,
@@ -209,10 +213,10 @@ def _ipu_writebd_shimtile(
         d0_size = 0
 
     column_num = 1
-    # enable_packet = 0
-    # out_of_order_id = 0
-    # packet_id = 0
-    # packet_type = 0
+    enable_packet = 0
+    out_of_order_id = 0
+    packet_id = 0
+    packet_type = 0
     valid_bd = 1
 
     words = [None] * 10
@@ -228,16 +232,11 @@ def _ipu_writebd_shimtile(
     words[2] = buffer_length
     words[3] = buffer_offset
 
-    # this is all wrong
     # En Packet , OoO BD ID , Packet ID , Packet Type
-    # words[4] = (enable_packet & 0x1) << 30
-    # words[4] |= (out_of_order_id & 0x3F) << 24
-    # words[4] |= (packet_id & 0x1F) << 19
-    # words[4] |= (packet_type & 0x7) << 16
-
-    # it's actually:
-    # u64 AddrHigh = (iptr[4] & 0x0000FFFF);
-    words[4] = 0
+    words[4] = (enable_packet & 0x1) << 30
+    words[4] |= (out_of_order_id & 0x3F) << 24
+    words[4] |= (packet_id & 0x1F) << 19
+    words[4] |= (packet_type & 0x7) << 16
 
     # TODO: Secure Access
     words[5] = (d0_size & 0x3FF) << 20
@@ -270,6 +269,7 @@ def _ipu_writebd_shimtile(
     return words
 
 
+# https://github.com/Xilinx/XRT/blob/248da9bf977628be7c13f55fafc0f08014242f9b/src/runtime_src/core/common/api/xrt_module.cpp#L906
 # https://github.com/dezhiAmd/XRT/blob/89b7cef12d9d3b3d372504193b3c80de943e50ea/src/runtime_src/core/common/api/xrt_module.cpp#L161
 #   void patch_shim48(uint32_t* bd_data_ptr, uint64_t patch)
 #   {
@@ -291,6 +291,7 @@ class ipu:
     writebd_shimtile = _ipu_writebd_shimtile
     sync = _ipu_sync
     get_prolog = _get_prolog
+    _exec_write_bd_extend_shim_tile_opt = _exec_write_bd_extend_shim_tile_opt
 
 
 def process_bd(

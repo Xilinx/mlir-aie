@@ -93,9 +93,14 @@ public:
     return views;
   }
 
+  uint64_t getBufferHostAddress(size_t idx) { return buffers[idx]->address(); }
+
   void syncBuffersToDevice() {
-    for (auto &buf : this->buffers)
+    for (auto &buf : this->buffers) {
+      py::print("before sync", buf->address());
       buf->sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      py::print("after sync", buf->address());
+    }
   }
 
   void syncBuffersFromDevice() {
@@ -109,6 +114,13 @@ public:
     run_->set_arg(1, ipuInstructions->size());
     for (size_t i = 0; i < buffers.size(); ++i)
       run_->set_arg(HOST_BUFFERS_START_IDX + i, *buffers[i]);
+    run_->start();
+  }
+
+  void _runOnlyIpuInstructions() {
+    run_ = std::make_unique<xrt::run>(*kernel);
+    run_->set_arg(0, *ipuInstructions);
+    run_->set_arg(1, ipuInstructions->size());
     run_->start();
   }
 
@@ -140,6 +152,7 @@ PYBIND11_MODULE(_xrt, m) {
       .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
       .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
       .def("run", &PyXCLBin::run)
+      .def("_run_only_ipu_instructions", &PyXCLBin::_runOnlyIpuInstructions)
       .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
       .def(
           "mmap_buffers",
@@ -159,5 +172,9 @@ PYBIND11_MODULE(_xrt, m) {
             throw std::runtime_error("unsupported np format: " +
                                      py::repr(npFormat).cast<std::string>());
           },
-          "shapes"_a, "np_format"_a);
+          "shapes"_a, "np_format"_a)
+      .def("_get_buffer_host_address", [](PyXCLBin &self, size_t idx) {
+        return self.getBufferHostAddress(idx);
+      });
+  ;
 }
