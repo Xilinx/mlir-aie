@@ -355,7 +355,7 @@ def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
         buffer,
         tile,
         sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\.buffer|buffer"),
+        or _get_sym_name(inspect.currentframe().f_back, r"aie\.buffer|buffer"),
         address=address,
         loc=loc,
         ip=ip,
@@ -371,7 +371,7 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         lock_id=lock_id,
         init=init,
         sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\.lock|lock"),
+        or _get_sym_name(inspect.currentframe().f_back, r"aie\.lock|lock"),
         loc=loc,
         ip=ip,
     )
@@ -411,8 +411,11 @@ class TileOp(TileOp):
         other >> self.ep()
         return other
 
-    def __repr__(self):
+    def __str__(self):
         return f"tile(col={self.col.value}, row={self.row.value})"
+
+    def __repr__(self):
+        return str(self.result)
 
 
 class classproperty:
@@ -471,7 +474,6 @@ class FlowEndPoint:
         return channel
 
     def __rshift__(self, other: "FlowEndPoint"):
-
         if isinstance(other, TileOp):
             other = other.ep()
 
