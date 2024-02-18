@@ -32,6 +32,7 @@
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -131,15 +132,12 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
             std::optional<ArrayRef<StringRef>> Env = std::nullopt) {
   if (Verbose) {
     llvm::outs() << "Run:";
-    if (Env) {
-      for (auto &s : *Env) {
+    if (Env)
+      for (auto &s : *Env)
         llvm::outs() << " " << s;
-      }
-    }
     llvm::outs() << " " << Program;
-    for (auto &s : Args) {
+    for (auto &s : Args)
       llvm::outs() << " " << s;
-    }
     llvm::outs() << "\n";
   }
   std::string err_msg;
@@ -149,24 +147,22 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
   PArgs.append(Args.begin(), Args.end());
   int result = sys::ExecuteAndWait(Program, PArgs, Env, {}, 0, 0, &err_msg,
                                    nullptr, &opt_stats);
-  if (Verbose) {
+  if (Verbose)
     llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
                  << std::chrono::duration_cast<std::chrono::duration<float>>(
                         stats.TotalTime)
                         .count()
                  << " code: " << result << "\n";
-  }
   return result;
 }
 
 template <unsigned N>
 static void aieTargetDefines(SmallVector<std::string, N> &Args,
                              std::string aie_target) {
-  if (aie_target == "AIE2") {
+  if (aie_target == "AIE2")
     Args.push_back("-D__AIEARCH__=20");
-  } else {
+  else
     Args.push_back("-D__AIEARCH__=10");
-  }
 }
 
 // Generate the elf files for the core
@@ -174,9 +170,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                           const StringRef objFile,
                                           XCLBinGenConfig &TK) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
-  if (!llvm::hasSingleElement(deviceOps)) {
+  if (!llvm::hasSingleElement(deviceOps))
     return moduleOp.emitOpError("expected a single device op");
-  }
 
   AIE::DeviceOp deviceOp = *deviceOps.begin();
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
@@ -187,9 +182,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
     auto coreOp = tileOp.getCoreOp();
-    if (!coreOp) {
+    if (!coreOp)
       continue;
-    }
 
     std::string elfFileName;
     if (auto fileAttr = coreOp.getElfFileAttr()) {
@@ -197,55 +191,103 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     } else {
       elfFileName = std::string("core_") + std::to_string(col) + "_" +
                     std::to_string(row) + ".elf";
-      std::cout << "assigned core elf name " << elfFileName << std::endl;
       coreOp.setElfFile(elfFileName);
     }
 
-    SmallString<64> ldscript_path(TK.TempDir);
-    sys::path::append(ldscript_path, elfFileName + ".ld");
-    {
-      auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
-      if (!ldscript_output) {
-        return coreOp.emitOpError(errorMessage);
-      }
-
-      if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
-                                             col, row))) {
-        return coreOp.emitOpError("failed to generate ld script for core (")
-               << col << "," << row << ")";
-      }
-      ldscript_output->keep();
-    }
-
-    // We are running a clang command for now, but really this is an lld
-    // command.
     SmallString<64> elfFile(TK.TempDir);
     sys::path::append(elfFile, elfFileName);
-    {
-      std::string targetLower = StringRef(TK.TargetArch).lower();
-      SmallVector<std::string, 10> flags;
-      flags.push_back("-O2");
-      std::string targetFlag = "--target=" + targetLower + "-none-elf";
-      flags.push_back(targetFlag);
-      flags.emplace_back(objFile);
-      SmallString<64> meBasicPath(TK.InstallDir);
-      sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
-                        "me_basic.o");
-      flags.emplace_back(meBasicPath);
-      SmallString<64> libcPath(TK.PeanoDir);
-      sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
-                        "libc.a");
-      flags.emplace_back(libcPath);
-      flags.push_back("-Wl,--gc-sections");
-      std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
-      flags.push_back(ldScriptFlag);
-      flags.push_back("-o");
-      flags.emplace_back(elfFile);
-      SmallString<64> clangBin(TK.PeanoDir);
-      sys::path::append(clangBin, "bin", "clang");
-      if (runTool(clangBin, flags, TK.Verbose) != 0) {
-        return coreOp.emitOpError("failed to link elf file for core(")
-               << col << "," << row << ")";
+
+    if (TK.UseChess) {
+      // Use xbridge (to remove any peano dependency with use-chess option)
+      SmallString<64> bcfPath(TK.TempDir);
+      sys::path::append(bcfPath, elfFileName + ".bcf");
+
+      {
+        auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
+        if (!bcfOutput)
+          return coreOp.emitOpError(errorMessage);
+
+        if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
+          return coreOp.emitOpError("Failed to generate BCF");
+        bcfOutput->keep();
+      }
+
+      std::vector<std::string> extractedIncludes;
+      {
+        auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
+        if (!bcfFileIn)
+          moduleOp.emitOpError(errorMessage);
+
+        std::string bcfFile = std::string(bcfFileIn->getBuffer());
+        std::regex r("^_include _file (.*)", std::regex::multiline);
+        auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
+        auto end = std::sregex_iterator();
+        for (std::sregex_iterator i = begin; i != end; ++i)
+          extractedIncludes.push_back(i->str(1));
+      }
+
+      SmallString<64> chessWrapperBin(TK.InstallDir);
+      sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
+      SmallString<64> chessworkDir(TK.TempDir);
+      sys::path::append(chessworkDir, "chesswork");
+
+      SmallVector<std::string> flags{StringRef(TK.TargetArch).lower(),
+                                     "+w",
+                                     std::string(chessworkDir),
+                                     "-d",
+                                     "+l",
+                                     std::string(bcfPath),
+                                     "-o",
+                                     std::string(elfFile),
+                                     "-f",
+                                     std::string(objFile)};
+      for (const auto &inc : extractedIncludes)
+        flags.push_back(inc);
+
+      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0)
+        coreOp.emitOpError("Failed to link with xbridge");
+    } else {
+      SmallString<64> ldscript_path(TK.TempDir);
+      sys::path::append(ldscript_path, elfFileName + ".ld");
+      {
+        auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
+        if (!ldscript_output)
+          return coreOp.emitOpError(errorMessage);
+
+        if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
+                                               col, row)))
+          return coreOp.emitOpError("failed to generate ld script for core (")
+                 << col << "," << row << ")";
+        ldscript_output->keep();
+      }
+
+      // We are running a clang command for now, but really this is an lld
+      // command.
+      {
+        std::string targetLower = StringRef(TK.TargetArch).lower();
+        SmallVector<std::string, 10> flags;
+        flags.push_back("-O2");
+        std::string targetFlag = "--target=" + targetLower + "-none-elf";
+        flags.push_back(targetFlag);
+        flags.emplace_back(objFile);
+        SmallString<64> meBasicPath(TK.InstallDir);
+        sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
+                          "me_basic.o");
+        flags.emplace_back(meBasicPath);
+        SmallString<64> libcPath(TK.PeanoDir);
+        sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
+                          "libc.a");
+        flags.emplace_back(libcPath);
+        flags.push_back("-Wl,--gc-sections");
+        std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
+        flags.push_back(ldScriptFlag);
+        flags.push_back("-o");
+        flags.emplace_back(elfFile);
+        SmallString<64> clangBin(TK.PeanoDir);
+        sys::path::append(clangBin, "bin", "clang");
+        if (runTool(clangBin, flags, TK.Verbose) != 0)
+          return coreOp.emitOpError("failed to link elf file for core(")
+                 << col << "," << row << ")";
       }
     }
   }
@@ -321,9 +363,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   {
     auto memTopologyJsonOut =
         openOutputFile(memTopologyJsonFile, &errorMessage);
-    if (!memTopologyJsonOut) {
+    if (!memTopologyJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
 
     std::string mem_topology_data = R"({
       "mem_topology": {
@@ -356,9 +397,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   {
     auto aiePartitionJsonOut =
         openOutputFile(aiePartitionJsonFile, &errorMessage);
-    if (!aiePartitionJsonOut) {
+    if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
+
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -406,9 +447,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   sys::path::append(kernelsJsonFile, "kernels.json");
   {
     auto kernelsJsonOut = openOutputFile(kernelsJsonFile, &errorMessage);
-    if (!kernelsJsonOut) {
+    if (!kernelsJsonOut)
       return moduleOp.emitOpError(errorMessage);
-    }
+
     json::Object kernels_data{
         {"ps-kernels",
          json::Object{
@@ -425,9 +466,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   sys::path::append(designBifFile, "design.bif");
   {
     auto designBifOut = openOutputFile(designBifFile, &errorMessage);
-    if (!designBifOut) {
+    if (!designBifOut)
       return moduleOp.emitOpError(errorMessage);
-    }
 
     designBifOut->os() << "all:\n"
                        << "{\n"
@@ -457,13 +497,10 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    if (auto bootgen = sys::findProgramByName("bootgen")) {
-      if (runTool(*bootgen, flags, TK.Verbose) != 0) {
-        return moduleOp.emitOpError("failed to execute bootgen");
-      }
-    } else {
-      return moduleOp.emitOpError("could not find bootgen");
-    }
+    SmallString<64> bootgenBin(TK.InstallDir);
+    sys::path::append(bootgenBin, "bin", "bootgen");
+    if (runTool(bootgenBin, flags, TK.Verbose) != 0)
+      return moduleOp.emitOpError("failed to execute bootgen");
   }
 
   // Execute the xclbinutil command.
@@ -483,13 +520,187 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                        std::string(Output)};
 
     if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
-      if (runTool(*xclbinutil, flags, TK.Verbose) != 0) {
+      if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
         return moduleOp.emitOpError("failed to execute xclbinutil");
-      }
     } else {
       return moduleOp.emitOpError("could not find xclbinutil");
     }
   }
+  return success();
+}
+
+static std::string chesshack(const std::string &input) {
+  std::string result(input);
+  static const std::unordered_map<std::string, std::string> substitutions{
+      {"memory\\(none\\)", "readnone"},
+      {"memory\\(read\\)", "readonly"},
+      {"memory\\(write\\)", "writeonly"},
+      {"memory\\(argmem: readwrite\\)", "argmemonly"},
+      {"memory\\(argmem: read\\)", "argmemonly readonly"},
+      {"memory\\(argmem: write\\)", "argmemonly writeonly"},
+      {"memory\\(inaccessiblemem: write\\)", "inaccessiblememonly writeonly"},
+      {"memory\\(inaccessiblemem: readwrite\\)", "inaccessiblememonly"},
+      {"memory\\(inaccessiblemem: read\\)", "inaccessiblememonly readonly"},
+      {"memory(argmem: readwrite, inaccessiblemem: readwrite)",
+       "inaccessiblemem_or_argmemonly"},
+      {"memory(argmem: read, inaccessiblemem: read)",
+       "inaccessiblemem_or_argmemonly readonly"},
+      {"memory(argmem: write, inaccessiblemem: write)",
+       "inaccessiblemem_or_argmemonly writeonly"},
+  };
+  for (const auto &pair : substitutions)
+    result = std::regex_replace(result, std::regex(pair.first), pair.second);
+  return result;
+}
+
+static LogicalResult generateUnifiedObject(MLIRContext *context,
+                                           ModuleOp moduleOp,
+                                           XCLBinGenConfig &TK,
+                                           const std::string &outputFile) {
+  PassManager pm(context, moduleOp.getOperationName());
+  pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
+  pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
+  pm.addPass(AIE::createAIECoreToStandardPass());
+  pm.addPass(AIEX::createAIEXToStandardPass());
+  addLowerToLLVMPasses(pm);
+
+  if (TK.Verbose) {
+    llvm::outs() << "Running: ";
+    pm.printAsTextualPipeline(llvm::outs());
+    llvm::outs() << "\n";
+  }
+
+  ModuleOp copy = moduleOp.clone();
+  if (failed(pm.run(copy)))
+    return moduleOp.emitOpError("Failed to lower to LLVM");
+
+  SmallString<64> LLVMIRFile(TK.TempDir);
+  sys::path::append(LLVMIRFile, "input.ll");
+
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
+  if (!llvmModule)
+    return moduleOp.emitOpError("Failed to translate module to LLVMIR");
+
+  std::string errorMessage;
+  {
+    auto output = openOutputFile(LLVMIRFile, &errorMessage);
+    if (!output)
+      return moduleOp.emitOpError(errorMessage);
+    llvmModule->print(output->os(), nullptr);
+    output->keep();
+  }
+
+  if (TK.UseChess) {
+    SmallString<64> chessWrapperBin(TK.InstallDir);
+    sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
+
+    SmallString<64> chessworkDir(TK.TempDir);
+    sys::path::append(chessworkDir, "chesswork");
+
+    SmallString<64> chessIntrinsicsCpp(TK.InstallDir);
+    sys::path::append(chessIntrinsicsCpp, "aie_runtime_lib", TK.TargetArch,
+                      "chess_intrinsic_wrapper.cpp");
+
+    SmallString<64> chessIntrinsicsLL(TK.TempDir);
+    sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
+
+    if (runTool(chessWrapperBin,
+                {StringRef(TK.TargetArch).lower(), "+w",
+                 std::string(chessworkDir), "-c", "-d", "-f", "+f", "+P", "4",
+                 std::string(chessIntrinsicsCpp), "-o",
+                 std::string(chessIntrinsicsLL)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to compile chess intrinsics");
+
+    std::string newIntrinsicsLL;
+    {
+      auto chessIntrinsicIn = openInputFile(chessIntrinsicsLL, &errorMessage);
+      if (!chessIntrinsicIn)
+        moduleOp.emitOpError(errorMessage);
+
+      newIntrinsicsLL = std::regex_replace(
+          std::string(chessIntrinsicIn->getBuffer()),
+          std::regex("^target.*", std::regex::multiline), "");
+    }
+    {
+      auto chessIntrinsicOut = openOutputFile(chessIntrinsicsLL);
+      if (!chessIntrinsicOut)
+        moduleOp.emitOpError(errorMessage);
+
+      chessIntrinsicOut->os() << newIntrinsicsLL;
+      chessIntrinsicOut->keep();
+    }
+
+    std::string llvmirString;
+    {
+      raw_string_ostream llvmirStream(llvmirString);
+      llvmModule->print(llvmirStream, nullptr);
+    }
+
+    SmallString<64> chesslinkedFile(TK.TempDir);
+    sys::path::append(chesslinkedFile, "input.chesslinked.ll");
+    SmallString<64> llvmLinkBin(TK.PeanoDir);
+    sys::path::append(llvmLinkBin, "bin", "llvm-link");
+    if (!sys::fs::exists(llvmLinkBin)) {
+      if (auto llvmLink = sys::findProgramByName("llvm-link"))
+        llvmLinkBin = *llvmLink;
+      else
+        moduleOp.emitOpError("Can't find llvm-link");
+    }
+    if (runTool(llvmLinkBin,
+                {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
+                 "-o", std::string(chesslinkedFile)},
+                TK.Verbose) != 0)
+      moduleOp.emitOpError("Couldn't link in the intrinsics");
+
+    std::string mungedLLVMIR;
+    {
+      auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
+      if (!chesslinkedIn)
+        moduleOp.emitOpError(errorMessage);
+
+      mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
+      mungedLLVMIR = chesshack(mungedLLVMIR);
+    }
+    {
+      auto chesslinkedOut = openOutputFile(chesslinkedFile);
+      if (!chesslinkedOut)
+        moduleOp.emitOpError(errorMessage);
+
+      chesslinkedOut->os() << mungedLLVMIR;
+      chesslinkedOut->keep();
+    }
+
+    if (runTool(chessWrapperBin,
+                {StringRef(TK.TargetArch).lower(), "+w",
+                 std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
+                 std::string(chesslinkedFile), "-o", std::string(outputFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to assemble with chess");
+  } else {
+    SmallString<64> peanoOptBin(TK.PeanoDir);
+    sys::path::append(peanoOptBin, "bin", "opt");
+    SmallString<64> peanoLLCBin(TK.PeanoDir);
+    sys::path::append(peanoLLCBin, "bin", "llc");
+
+    SmallString<64> OptLLVMIRFile(TK.TempDir);
+    sys::path::append(OptLLVMIRFile, "input.opt.ll");
+    if (runTool(peanoOptBin,
+                {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+                 "-o", std::string(OptLLVMIRFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to optimize");
+
+    if (runTool(peanoLLCBin,
+                {std::string(OptLLVMIRFile), "-O2",
+                 "--march=" + StringRef(TK.TargetArch).lower(),
+                 "--function-sections", "--filetype=obj", "-o",
+                 std::string(outputFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to assemble");
+  }
+  copy->erase();
   return success();
 }
 
@@ -505,31 +716,27 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     llvm::outs() << "\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError("AIE lowering pipline failed");
-  }
 
   raw_string_ostream target_arch_os(TK.TargetArch);
-  if (failed(AIE::AIETranslateToTargetArch(moduleOp, target_arch_os))) {
+  if (failed(AIE::AIETranslateToTargetArch(moduleOp, target_arch_os)))
     return moduleOp.emitOpError("Couldn't detect target architure");
-  }
 
   TK.TargetArch = StringRef(TK.TargetArch).trim();
 
   std::regex target_regex("AIE.?");
-  if (!std::regex_search(TK.TargetArch, target_regex)) {
+  if (!std::regex_search(TK.TargetArch, target_regex))
     return moduleOp.emitOpError()
            << "Unexpected target architecture: " << TK.TargetArch;
-  }
 
   // generateIPUInstructions
   {
     PassManager pm(ctx, moduleOp.getOperationName());
     pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToIpuPass());
     ModuleOp copy = moduleOp.clone();
-    if (failed(pm.run(copy))) {
+    if (failed(pm.run(copy)))
       return moduleOp.emitOpError("IPU Instruction pipeline failed");
-    }
 
     std::string errorMessage;
     auto output = openOutputFile(OutputIPU, &errorMessage);
@@ -538,88 +745,26 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToIPU(copy, output->os()))) {
+    if (failed(AIE::AIETranslateToIPU(copy, output->os())))
       return moduleOp.emitOpError("IPU Instruction translation failed");
-    }
 
     output->keep();
     copy->erase();
   }
 
-  SmallString<64> peanoOptBin(TK.PeanoDir);
-  sys::path::append(peanoOptBin, "bin", "opt");
-  SmallString<64> peanoLLCBin(TK.PeanoDir);
-  sys::path::append(peanoLLCBin, "bin", "llc");
-
-  // generateObjectFile
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
-  {
-    PassManager pm(ctx, moduleOp.getOperationName());
-    pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
-    pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
-    pm.addPass(AIE::createAIECoreToStandardPass());
-    pm.addPass(AIEX::createAIEXToStandardPass());
-    addLowerToLLVMPasses(pm);
+  if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
+    return moduleOp.emitOpError("Failed to generate unified object");
 
-    if (TK.Verbose) {
-      llvm::outs() << "Running: ";
-      pm.printAsTextualPipeline(llvm::outs());
-      llvm::outs() << "\n";
-    }
-
-    ModuleOp copy = moduleOp.clone();
-    if (failed(pm.run(copy))) {
-      return moduleOp.emitOpError("Failed to lower to LLVM");
-    }
-
-    SmallString<64> LLVMIRFile(TK.TempDir);
-    sys::path::append(LLVMIRFile, "input.ll");
-
-    std::string errorMessage;
-    auto output = openOutputFile(LLVMIRFile, &errorMessage);
-    if (!output) {
-      return moduleOp.emitOpError(errorMessage);
-    }
-
-    llvm::LLVMContext llvmContext;
-    auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
-    if (!llvmModule)
-      return moduleOp.emitOpError("Failed to translate module to LLVMIR");
-
-    llvmModule->print(output->os(), nullptr);
-    output->keep();
-
-    SmallString<64> OptLLVMIRFile(TK.TempDir);
-    sys::path::append(OptLLVMIRFile, "input.opt.ll");
-    if (runTool(peanoOptBin,
-                {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
-                 "-o", std::string(OptLLVMIRFile)},
-                TK.Verbose) != 0) {
-      return moduleOp.emitOpError("Failed to optimize");
-    }
-    if (runTool(peanoLLCBin,
-                {std::string(OptLLVMIRFile), "-O2",
-                 "--march=" + StringRef(TK.TargetArch).lower(),
-                 "--function-sections", "--filetype=obj", "-o",
-                 std::string(unifiedObj)},
-                TK.Verbose) != 0) {
-      return moduleOp.emitOpError("Failed to assemble");
-    }
-    copy->erase();
-  }
-
-  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK))) {
+  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
-  }
 
-  if (failed(generateCDO(ctx, moduleOp, TK))) {
+  if (failed(generateCDO(ctx, moduleOp, TK)))
     return moduleOp.emitOpError("Failed to generate CDO");
-  }
 
-  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin))) {
+  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin)))
     return moduleOp.emitOpError("Failed to generate XCLBin");
-  }
 
   return success();
 }

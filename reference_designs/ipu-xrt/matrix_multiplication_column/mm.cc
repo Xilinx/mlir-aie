@@ -25,15 +25,15 @@
 #include "zero.cc"
 
 template <typename T_in, typename T_out, int M, int K, int N>
-void matmulScalar(T_in *a, T_in *b, T_out *c) {
+void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      T_out runningSum = 0;
+      T_out running_sum = 0;
       for (int i = 0; i < K; i++) {
-        runningSum += a[row * K + i] * b[i * N + col];
+        running_sum += a[row * K + i] * b[i * N + col];
       }
-      c[row * N + col] += runningSum;
+      c[row * N + col] += running_sum;
     }
   }
   event1();
@@ -41,8 +41,8 @@ void matmulScalar(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
-                      T_out *__restrict pC) {
+void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
+                       T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
   event0();
@@ -63,7 +63,8 @@ void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
       T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
 
       for (unsigned j = 0; j < colB; j += 2)
-        chess_loop_range(2, ) {
+        // chess_loop_range(2, ) {
+        chess_prepare_for_pipelining chess_loop_range(16, ) {
           const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
           const T_in *__restrict pB1 = pB + (0 * colB + j) * MMUL::size_B;
@@ -100,22 +101,63 @@ void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
           C10.mac(A1, B0);
           C11.mac(A1, B1);
 
-          for (unsigned i = 1; i < colA; ++i)
-            chess_prepare_for_pipelining chess_loop_range(3, ) {
-              A0 = aie::load_v<MMUL::size_A>(pA1);
-              pA1 += MMUL::size_A;
-              A1 = aie::load_v<MMUL::size_A>(pA2);
-              pA2 += MMUL::size_A;
-              B0 = aie::load_v<MMUL::size_B>(pB1);
-              pB1 += MMUL::size_B * colB;
-              B1 = aie::load_v<MMUL::size_B>(pB2);
-              pB2 += MMUL::size_B * colB;
+          A0 = aie::load_v<MMUL::size_A>(pA1);
+          pA1 += MMUL::size_A;
+          A1 = aie::load_v<MMUL::size_A>(pA2);
+          pA2 += MMUL::size_A;
+          B0 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += MMUL::size_B * colB;
+          B1 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += MMUL::size_B * colB;
 
-              C00.mac(A0, B0);
-              C01.mac(A0, B1);
-              C10.mac(A1, B0);
-              C11.mac(A1, B1);
-            }
+          C00.mac(A0, B0);
+          C01.mac(A0, B1);
+          C10.mac(A1, B0);
+          C11.mac(A1, B1);
+
+          A0 = aie::load_v<MMUL::size_A>(pA1);
+          pA1 += MMUL::size_A;
+          A1 = aie::load_v<MMUL::size_A>(pA2);
+          pA2 += MMUL::size_A;
+          B0 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += MMUL::size_B * colB;
+          B1 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += MMUL::size_B * colB;
+
+          C00.mac(A0, B0);
+          C01.mac(A0, B1);
+          C10.mac(A1, B0);
+          C11.mac(A1, B1);
+
+          A0 = aie::load_v<MMUL::size_A>(pA1);
+          pA1 += MMUL::size_A;
+          A1 = aie::load_v<MMUL::size_A>(pA2);
+          pA2 += MMUL::size_A;
+          B0 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += MMUL::size_B * colB;
+          B1 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += MMUL::size_B * colB;
+
+          C00.mac(A0, B0);
+          C01.mac(A0, B1);
+          C10.mac(A1, B0);
+          C11.mac(A1, B1);
+          //          for (unsigned i = 1; i < colA; ++i)
+          //            chess_prepare_for_pipelining chess_loop_range(3, ) {
+          //              A0 = aie::load_v<MMUL::size_A>(pA1);
+          //              pA1 += MMUL::size_A;
+          //              A1 = aie::load_v<MMUL::size_A>(pA2);
+          //              pA2 += MMUL::size_A;
+          //              B0 = aie::load_v<MMUL::size_B>(pB1);
+          //              pB1 += MMUL::size_B * colB;
+          //              B1 = aie::load_v<MMUL::size_B>(pB2);
+          //              pB2 += MMUL::size_B * colB;
+          //
+          //              C00.mac(A0, B0);
+          //              C01.mac(A0, B1);
+          //              C10.mac(A1, B0);
+          //              C11.mac(A1, B1);
+          //            }
 
           aie::store_v(pC1, C00.template to_vector<T_out>());
           pC1 += MMUL::size_C;
@@ -132,10 +174,10 @@ void matmulVectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x4x4i16i16(const int16 *__restrict pA,
-                                 const int16 *__restrict pB,
-                                 int16 *__restrict pC) {
-  // matmulVectorized operates on two 4x4 input blocks of A, and two 4x4 input
+void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
+                                     const int16 *__restrict pB,
+                                     int16 *__restrict pC) {
+  // matmul_vectorized operates on two 4x4 input blocks of A, and two 4x4 input
   // blocks of B in each iteration. Make sure we have at least 2 blocks in each
   // dimension, and that our input matrix is evenly divisible.
   constexpr int r = 4;
@@ -144,36 +186,36 @@ void matmulVectorized4x4x4i16i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmulVectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
-                                                                      pC);
+  return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+                                                                       pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x8x4bf16bf16(const bfloat16 *__restrict pA,
-                                   const bfloat16 *__restrict pB,
-                                   bfloat16 *__restrict pC) {
+void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
+                                       const bfloat16 *__restrict pB,
+                                       bfloat16 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmulVectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
+  return matmul_vectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
       pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
-void matmulVectorized4x8x4bf16f32(const bfloat16 *__restrict pA,
-                                  const bfloat16 *__restrict pB,
-                                  float *__restrict pC) {
+void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+                                      const bfloat16 *__restrict pB,
+                                      float *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
   constexpr int t = 4;
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmulVectorized<bfloat16, float, m / r, k / s, n / t, r, s, t>(pA, pB,
-                                                                         pC);
+  return matmul_vectorized<bfloat16, float, m / r, k / s, n / t, r, s, t>(
+      pA, pB, pC);
 }
 
 extern "C" {
@@ -187,27 +229,27 @@ extern "C" {
                                  mlir_type_out, r, s, t)                       \
   void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
                                                ctype_out *c_out) {             \
-    matmulVectorized##r##x##s##x##t##mlir_type_in##mlir_type_out<64, 32, 64>(  \
-        a_in, b_in, c_out);                                                    \
+    matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
+        64, 32, 64>(a_in, b_in, c_out);                                        \
   }
 
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matmulScalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);          \
+    matmul_scalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);         \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
   void zero_##mlir_type_out(ctype_out *c_out) {                                \
-    zeroVectorized<ctype_out, 64, 64, 32>(c_out);                              \
+    zero_vectorized<ctype_out, 64, 64, 32>(c_out);                             \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            r, s, t)                                            \
   void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zeroScalar<ctype_out, 64, 64>(c_out);                                      \
+    zero_scalar<ctype_out, 64, 64>(c_out);                                     \
   }
 
 combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)

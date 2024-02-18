@@ -10,14 +10,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
 
 using namespace llvm;
 
 namespace xilinx {
 namespace AIE {
-AIETargetModel::~AIETargetModel() {}
+AIETargetModel::~AIETargetModel() = default;
 
 ///
 /// AIE1 TargetModel
@@ -37,9 +36,10 @@ std::optional<TileID> AIE1TargetModel::getMemWest(TileID src) const {
     ret.reset();
   return ret;
 }
+
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
-  bool isEvenRow = ((src.row % 2) == 0);
+  bool isEvenRow = (src.row % 2) == 0;
   std::optional<TileID> ret;
   if (isEvenRow)
     ret = {src.col + 1, src.row};
@@ -49,6 +49,7 @@ std::optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
     ret.reset();
   return ret;
 }
+
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE1TargetModel::getMemNorth(TileID src) const {
   std::optional<TileID> ret({src.col, src.row + 1});
@@ -56,6 +57,7 @@ std::optional<TileID> AIE1TargetModel::getMemNorth(TileID src) const {
     ret.reset();
   return ret;
 }
+
 std::optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
   std::optional<TileID> ret({src.col, src.row - 1});
   // The first row doesn't have a tile memory south
@@ -66,14 +68,14 @@ std::optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
 
 bool AIE1TargetModel::isMemWest(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
-  bool IsEvenRow = ((srcRow % 2) == 0);
+  bool IsEvenRow = (srcRow % 2) == 0;
   return (IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
 }
 
 bool AIE1TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
-  bool IsEvenRow = ((srcRow % 2) == 0);
+  bool IsEvenRow = (srcRow % 2) == 0;
   return (!IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (IsEvenRow && isEast(srcCol, srcRow, dstCol, dstRow));
 }
@@ -103,6 +105,7 @@ bool AIE1TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
 
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
+
 uint32_t
 AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -112,50 +115,49 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 2;
     case WireBundle::North:
       return 6;
-    case WireBundle::West:
+    case WireBundle::West: {
       if (col == 0)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::South:
       return 6;
-    case WireBundle::East:
+    case WireBundle::East: {
       if (col == columns() - 1)
         return 0;
-      else
-        return 4;
-    default:
-      return 0;
-    }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      if (row == rows() - 1)
-        return 0;
-      else
-        return 6;
-    case WireBundle::West:
-      if (col == 0)
-        return 0;
-      else
-        return 4;
-    case WireBundle::South:
       return 4;
-    case WireBundle::East:
-      if (col == columns() - 1)
-        return 0;
-      else
-        return 4;
+    }
     default:
       return 0;
     }
+
+  switch (bundle) {
+  case WireBundle::Core:
+  case WireBundle::DMA:
+  case WireBundle::FIFO:
+    return 2;
+  case WireBundle::North: {
+    if (row == rows() - 1)
+      return 0;
+    return 6;
+  }
+  case WireBundle::West: {
+    if (col == 0)
+      return 0;
+    return 4;
+  }
+  case WireBundle::South:
+    return 4;
+  case WireBundle::East: {
+    if (col == columns() - 1)
+      return 0;
+    return 4;
+  }
+  default:
+    return 0;
+  }
 }
+
 uint32_t
 AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
                                                   WireBundle bundle) const {
@@ -165,53 +167,51 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
       return 2;
     case WireBundle::North:
       return 4;
-    case WireBundle::West:
+    case WireBundle::West: {
       if (col == 0)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::South:
       return 8;
-    case WireBundle::East:
+    case WireBundle::East: {
       if (col == columns() - 1)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::Trace:
       return 1;
     default:
       return 0;
     }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      if (row == rows() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::West:
-      if (col == 0)
-        return 0;
-      else
-        return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      if (col == columns() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::Trace:
-      return 2;
-    default:
+
+  switch (bundle) {
+  case WireBundle::Core:
+  case WireBundle::DMA:
+  case WireBundle::FIFO:
+    return 2;
+  case WireBundle::North: {
+    if (row == rows() - 1)
       return 0;
-    }
+    return 4;
+  }
+  case WireBundle::West: {
+    if (col == 0)
+      return 0;
+    return 4;
+  }
+  case WireBundle::South:
+    return 6;
+  case WireBundle::East: {
+    if (col == columns() - 1)
+      return 0;
+    return 4;
+  }
+  case WireBundle::Trace:
+    return 2;
+  default:
+    return 0;
+  }
 }
 uint32_t
 AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
@@ -229,8 +229,7 @@ AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
     default:
       return 0;
     }
-  else
-    return 0;
+  return 0;
 }
 uint32_t
 AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
@@ -242,14 +241,12 @@ AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
     case WireBundle::NOC:
       return 4;
     case WireBundle::PLIO:
-      return 6;
     case WireBundle::South:
       return 6;
     default:
       return 0;
     }
-  else
-    return 0;
+  return 0;
 }
 
 bool AIE1TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
@@ -272,13 +269,15 @@ std::optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
     ret.reset();
   return ret;
 }
+
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
-  std::optional<TileID> ret = src;
+  std::optional ret = src;
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
+
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
   std::optional<TileID> ret({src.col, src.row + 1});
@@ -286,6 +285,7 @@ std::optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
     ret.reset();
   return ret;
 }
+
 std::optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
   std::optional<TileID> ret({src.col, src.row - 1});
   // The first row doesn't have a tile memory south
@@ -327,17 +327,16 @@ bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
     return isEast(coreCol, coreRow, memCol, memRow) ||
            isInternal(coreCol, coreRow, memCol, memRow) ||
            isWest(coreCol, coreRow, memCol, memRow);
-  else
-    return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
-           IsMemWest || IsMemEast;
+  return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
+         IsMemWest || IsMemEast;
 }
+
 uint32_t
 AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
   if (isMemTile(col, row))
     switch (bundle) {
     case WireBundle::DMA:
-      return 6;
     case WireBundle::North:
       return 6;
     case WireBundle::South:
@@ -345,56 +344,58 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
     default:
       return 0;
     }
-  else if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+
+  if (isShimNOCTile(col, row) || isShimPLTile(col, row))
     switch (bundle) {
     case WireBundle::FIFO:
       return 1;
     case WireBundle::North:
       return 6;
-    case WireBundle::West:
+    case WireBundle::West: {
       if (col == 0)
         return 0;
-      else
-        return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      if (col == columns() - 1)
-        return 0;
-      else
-        return 4;
-    default:
-      return 0;
-    }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 1;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 1;
-    case WireBundle::North:
-      if (row == rows() - 1)
-        return 0;
-      else
-        return 6;
-    case WireBundle::West:
-      if (col == 0)
-        return 0;
-      else
-        return 4;
-    case WireBundle::South:
       return 4;
-    case WireBundle::East:
+    }
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East: {
       if (col == columns() - 1)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     default:
       return 0;
     }
+
+  switch (bundle) {
+  case WireBundle::Core:
+    return 1;
+  case WireBundle::DMA:
+    return 2;
+  case WireBundle::FIFO:
+    return 1;
+  case WireBundle::North: {
+    if (row == rows() - 1)
+      return 0;
+    return 6;
+  }
+  case WireBundle::West: {
+    if (col == 0)
+      return 0;
+    return 4;
+  }
+  case WireBundle::South:
+    return 4;
+  case WireBundle::East: {
+    if (col == columns() - 1)
+      return 0;
+    return 4;
+  }
+  default:
+    return 0;
+  }
 }
+
 uint32_t
 AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
                                                   WireBundle bundle) const {
@@ -411,61 +412,64 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     default:
       return 0;
     }
-  else if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+
+  if (isShimNOCTile(col, row) || isShimPLTile(col, row))
     switch (bundle) {
     case WireBundle::FIFO:
       return 1;
     case WireBundle::North:
       return 4;
-    case WireBundle::West:
+    case WireBundle::West: {
       if (col == 0)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::South:
       return 8;
-    case WireBundle::East:
+    case WireBundle::East: {
       if (col == columns() - 1)
         return 0;
-      else
-        return 4;
+      return 4;
+    }
     case WireBundle::Trace:
       return 1;
     default:
       return 0;
     }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 1;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 1;
-    case WireBundle::North:
-      if (row == rows() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::West:
-      if (col == 0)
-        return 0;
-      else
-        return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      if (col == columns() - 1)
-        return 0;
-      else
-        return 4;
-    case WireBundle::Trace:
-      // Port 0: core trace. Port 1: memory trace.
-      return 2;
-    default:
+
+  // compute/core tile
+  switch (bundle) {
+  case WireBundle::Core:
+    return 1;
+  case WireBundle::DMA:
+    return 2;
+  case WireBundle::FIFO:
+    return 1;
+  case WireBundle::North: {
+    if (row == rows() - 1)
       return 0;
-    }
+    return 4;
+  }
+  case WireBundle::West: {
+    if (col == 0)
+      return 0;
+    return 4;
+  }
+  case WireBundle::South:
+    return 6;
+  case WireBundle::East: {
+    if (col == columns() - 1)
+      return 0;
+    return 4;
+  }
+  case WireBundle::Trace:
+    // Port 0: core trace. Port 1: memory trace.
+    return 2;
+  default:
+    return 0;
+  }
 }
+
 uint32_t
 AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
                                               WireBundle bundle) const {
@@ -482,9 +486,10 @@ AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
     default:
       return 0;
     }
-  else
-    return 0;
+
+  return 0;
 }
+
 uint32_t
 AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -495,14 +500,13 @@ AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
     case WireBundle::NOC:
       return 4;
     case WireBundle::PLIO:
-      return 6;
     case WireBundle::South:
       return 6;
     default:
       return 0;
     }
-  else
-    return 0;
+
+  return 0;
 }
 
 bool AIE2TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
@@ -515,17 +519,17 @@ bool AIE2TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
   if (srcBundle == WireBundle::North && dstBundle == WireBundle::South &&
       srcChan != dstChan)
     return false;
-  else if (srcBundle == WireBundle::South && dstBundle == WireBundle::North &&
-           srcChan != dstChan)
+  if (srcBundle == WireBundle::South && dstBundle == WireBundle::North &&
+      srcChan != dstChan)
     return false;
   // Memtile has no east or west connections
-  else if (srcBundle == WireBundle::East)
+  if (srcBundle == WireBundle::East)
     return false;
-  else if (srcBundle == WireBundle::West)
+  if (srcBundle == WireBundle::West)
     return false;
-  else if (dstBundle == WireBundle::East)
+  if (dstBundle == WireBundle::East)
     return false;
-  else if (dstBundle == WireBundle::West)
+  if (dstBundle == WireBundle::West)
     return false;
   return true;
 }

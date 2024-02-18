@@ -10,9 +10,11 @@
 
 # <ins>Matrix Multiplication</ins>
 
-Single tile performs a `matrix * matrix` multiply on int16 data type where `MxKxN` is `128x128x128`. The kernel itself computes `64x32x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
+Single tile performs a `matrix * matrix` multiply on bfloat16 data type where `MxKxN` is `128x128x128`. The kernel itself computes `64x32x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
 
-To compile desing in Windows:
+You need c++23 for bfloat16_t support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
+
+To compile design:
 ```
 make
 make matrixMultiplication.exe

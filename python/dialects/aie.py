@@ -1,8 +1,10 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from collections import defaultdict
+from enum import Enum, auto
 import inspect
-from typing import List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
@@ -11,14 +13,11 @@ from ._ods_common import _cext
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from .._mlir_libs._aie import (
-    ObjectFifoType,
-    ObjectFifoSubviewType,
-)
+from .._mlir_libs._aie import ObjectFifoSubviewType, ObjectFifoType
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
-from ..extras.util import Successor, get_user_code_loc, region_adder
+from ..extras.util import Successor, _get_sym_name, get_user_code_loc, region_adder
 from ..ir import (
     ArrayAttr,
     Attribute,
@@ -31,7 +30,6 @@ from ..ir import (
     TypeAttr,
     _i32ArrayAttr,
 )
-from ..util import _get_sym_name
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -210,23 +208,6 @@ def acquire(port, of_name, num_elem, datatype):
     return ObjectFifoAcquireOp(port, of_name, num_elem, datatype)
 
 
-# Create a flow between source and destination tile ports.
-class Flow(FlowOp):
-    """Specialize FlowOp class constructor to take python integers"""
-
-    def __init__(
-        self, source, source_port, source_channel, dest, dest_port, dest_channel
-    ):
-        super().__init__(
-            source=source,
-            sourceBundle=source_port,
-            sourceChannel=source_channel,
-            dest=dest,
-            destBundle=dest_port,
-            destChannel=dest_channel,
-        )
-
-
 # Create a packet flow between source and destination tile ports.
 class PacketFlow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
@@ -256,7 +237,16 @@ memtile_dma = region_op(
 
 
 @region_op
-def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=None):
+def dma(
+    channel_dir,
+    channel_index,
+    *,
+    num_blocks=1,
+    loop=None,
+    repeat_count=None,
+    loc=None,
+    ip=None,
+):
     if isinstance(channel_index, IntegerAttr):
         channel_index = channel_index.value
     return DMAOp(
@@ -265,6 +255,7 @@ def dma(channel_dir, channel_index, *, num_blocks=1, loop=None, loc=None, ip=Non
         channel_index=channel_index,
         num_bds=num_blocks,
         loop=loop,
+        repeat_count=repeat_count,
         loc=loc,
         ip=ip,
     )
@@ -290,6 +281,7 @@ class DMAStartOp(DMAStartOp):
         *,
         dest: Optional[Union[Successor, Block]] = None,
         chain: Optional[Union[Successor, Block]] = None,
+        repeat_count: Optional[int] = None,
         loc=None,
         ip=None,
     ):
@@ -301,7 +293,15 @@ class DMAStartOp(DMAStartOp):
             dest = InsertionPoint.current.block
         if chain is None:
             chain = InsertionPoint.current.block
-        super().__init__(channel_dir, channel_index, dest, chain, loc=loc, ip=ip)
+        super().__init__(
+            channel_dir,
+            channel_index,
+            dest,
+            chain,
+            repeat_count=repeat_count,
+            loc=loc,
+            ip=ip,
+        )
 
     @property
     def dest(self):
@@ -354,7 +354,8 @@ def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
     return _buffer(
         buffer,
         tile,
-        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "buffer"),
+        sym_name=sym_name
+        or _get_sym_name(inspect.currentframe().f_back, r"aie\.buffer|buffer"),
         address=address,
         loc=loc,
         ip=ip,
@@ -369,7 +370,8 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         tile,
         lock_id=lock_id,
         init=init,
-        sym_name=sym_name or _get_sym_name(inspect.currentframe().f_back, "lock"),
+        sym_name=sym_name
+        or _get_sym_name(inspect.currentframe().f_back, r"aie\.lock|lock"),
         loc=loc,
         ip=ip,
     )
@@ -378,3 +380,142 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
 _flow = flow
 
 flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview
+
+
+class IncomingOutgoing(Enum):
+    INCOMING = auto()
+    OUTGOING = auto()
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class TileOp(TileOp):
+    flows: Dict["TileOp", List[FlowOp]] = None
+
+    def ep(
+        self,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        if self.flows is None:
+            self.flows = defaultdict(list)
+        return FlowEndPoint(self, bundle, channel)
+
+    def __rshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        return self.ep() >> other
+
+    def __lshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, TileOp):
+            other = other.ep()
+        other >> self.ep()
+        return other
+
+    def __str__(self):
+        return f"tile(col={self.col.value}, row={self.row.value})"
+
+    def __repr__(self):
+        return str(self.result)
+
+
+class classproperty:
+    def __init__(self, func):
+        self.fget = func
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
+
+
+class FlowEndPoint:
+    tile: TileOp = None
+    bundle: WireBundle = None
+    channel: int = None
+    flow: FlowOp = None
+
+    def __init__(
+        self,
+        tile: TileOp,
+        bundle: Optional[WireBundle] = None,
+        channel: Optional[int] = None,
+    ):
+        self.tile = tile
+        self.bundle = bundle
+        self.channel = channel
+
+    # fmt: off
+    __used_channels: Dict[Tuple[int, int, WireBundle, IncomingOutgoing], Set[int]] = None
+    # fmt: on
+
+    @classmethod
+    def _reset_used_channels(cls):
+        cls.__used_channels = defaultdict(set)
+
+    @classproperty
+    def _used_channels(cls):
+        if cls.__used_channels is None:
+            cls._reset_used_channels()
+        return cls.__used_channels
+
+    @classmethod
+    def _get_channel_and_update(cls, channel, tile, bundle, incoming_outgoing):
+        used_channels = cls._used_channels[
+            tile.col.value, tile.row.value, bundle, incoming_outgoing
+        ]
+        if channel is None:
+            max_used_channel = max(used_channels, default=-1)
+            for i in range(max_used_channel):
+                if i not in used_channels:
+                    channel = i
+                    break
+            else:
+                channel = max_used_channel + 1
+        assert channel not in used_channels
+        used_channels.add(channel)
+        return channel
+
+    def __rshift__(self, other: "FlowEndPoint"):
+        if isinstance(other, TileOp):
+            other = other.ep()
+
+        for op in [self, other]:
+            if op.bundle is None:
+                op.bundle = WireBundle.DMA
+
+        self_channel = self._get_channel_and_update(
+            self.channel, self.tile, self.bundle, IncomingOutgoing.OUTGOING
+        )
+        other_channel = self._get_channel_and_update(
+            other.channel,
+            other.tile,
+            other.bundle,
+            IncomingOutgoing.INCOMING,
+        )
+        if self.bundle != WireBundle.DMA or other.bundle != WireBundle.DMA:
+            assert self.channel == other.channel, "channel mismatch (see arch page 121)"
+
+        result = flow(
+            self.tile,
+            self.bundle,
+            self_channel,
+            other.tile,
+            other.bundle,
+            other_channel,
+        )
+
+        self.tile.flows[other.tile].append(result)
+        other.tile.flows[self.tile].append(result)
+        self.flow = result
+        other.flow = result
+
+        return other
+
+    def __lshift__(self, other: "FlowEndPoint"):
+        other >> self
+        return other
+
+    def __repr__(self):
+        return f"<FlowEndPoint: {self.tile} - {self.bundle} - {self.channel}>"
+
+
+def tile(col, row, *, loc=None, ip=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip)

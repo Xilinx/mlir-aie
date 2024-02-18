@@ -44,6 +44,7 @@ def tiled_matrix_add(module):
     _, _, (d1_size, d1_stride), (d0_size, d0_stride) = tiling_calculator_n_tiles(
         M, N, n_tile_rows=n_tile_rows, n_tile_cols=n_tile_cols
     )
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -84,20 +85,19 @@ def tiled_matrix_add(module):
         # output flow
         buffer_0_1_c = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_1)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # coordinates (0, 0), (0, 8), (128, 0), (128, 8)
-            offsets = [
-                0,
-                0 + d0_size * d0_stride,
-                d1_size * d1_stride,
-                d1_size * d1_stride + d0_size * d0_stride,
-            ]
-            col = 0
-            # in A
-            channel_index = 0
-            ddr_id = 0
-            for i, bd_id in enumerate(range(4)):
+        # coordinates (0, 0), (0, 8), (128, 0), (128, 8)
+        offsets = [
+            0,
+            0 + d0_size * d0_stride,
+            d1_size * d1_stride,
+            d1_size * d1_stride + d0_size * d0_stride,
+        ]
+        col = 0
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        for i, bd_id in enumerate(range(4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -108,12 +108,16 @@ def tiled_matrix_add(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # in B
-            channel_index = 1
-            ddr_id = 1
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        # in B
+        channel_index = 1
+        ddr_id = 1
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -124,12 +128,16 @@ def tiled_matrix_add(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # out C
-            channel_index = 0
-            ddr_id = 2
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        # out C
+        channel_index = 0
+        ddr_id = 2
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -140,10 +148,15 @@ def tiled_matrix_add(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
                 )
+            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -237,7 +250,7 @@ def tiled_matrix_add(module):
                     yield_([])
                 yield_([])
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
@@ -276,6 +289,7 @@ def matrix_add_sugar(module):
     _, _, (d1_size, d1_stride), (d0_size, d0_stride) = tiling_calculator_n_tiles(
         M, N, n_tile_rows=n_tile_rows, n_tile_cols=n_tile_cols
     )
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -332,19 +346,18 @@ def matrix_add_sugar(module):
             dest_channel=0,
         )
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # coordinates (0, 0), (0, 8), (128, 0), (128, 8)
-            offsets = [
-                0,
-                0 + d0_size * d0_stride,
-                d1_size * d1_stride,
-                d1_size * d1_stride + d0_size * d0_stride,
-            ]
-            col = 0
-            # in A
-            ddr_id = 0
-            for i, bd_id in enumerate(range(4)):
+        # coordinates (0, 0), (0, 8), (128, 0), (128, 8)
+        offsets = [
+            0,
+            0 + d0_size * d0_stride,
+            d1_size * d1_stride,
+            d1_size * d1_stride + d0_size * d0_stride,
+        ]
+        col = 0
+        # in A
+        ddr_id = 0
+        for i, bd_id in enumerate(range(4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -355,13 +368,17 @@ def matrix_add_sugar(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
                     MM2S, input_a_tile_0_0_to_tile_0_1.source_channel, col, bd_id
                 )
+            )
 
-            # in B
-            ddr_id = 1
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        # in B
+        ddr_id = 1
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -372,13 +389,17 @@ def matrix_add_sugar(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
                     MM2S, input_b_tile_0_0_to_tile_0_1.source_channel, col, bd_id
                 )
+            )
 
-            # out C
-            ddr_id = 2
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        # out C
+        ddr_id = 2
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     tile_rows * tile_cols,
@@ -389,12 +410,17 @@ def matrix_add_sugar(module):
                     d0_size=d0_size,
                     d0_stride=d0_stride,
                 )
-                aiex.ipu.write32(
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
                     S2MM, output_c_tile_0_1_to_tile_0_0.dest_channel, col, bd_id
                 )
+            )
+            ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
                 )
+            )
 
         @aie.memtile_dma(mem_tile_0_1)
         def memtile_dma_0_1():
@@ -411,19 +437,13 @@ def matrix_add_sugar(module):
             )
 
             aiex.forward_bd(
-                mem_tile_0_1,
-                input_a_tile_0_0_to_tile_0_1.dest_channel,
-                buffer_0_1_a,
+                mem_tile_0_1, buffer_0_1_a, input_a_tile_0_0_to_tile_0_1.dest_channel
             )
             aiex.forward_bd(
-                mem_tile_0_1,
-                input_b_tile_0_0_to_tile_0_1.dest_channel,
-                buffer_0_1_b,
+                mem_tile_0_1, buffer_0_1_b, input_b_tile_0_0_to_tile_0_1.dest_channel
             )
             aiex.forward_bd(
-                mem_tile_0_1,
-                output_c_tile_0_1_to_tile_0_0.source_channel,
-                buffer_0_1_c,
+                mem_tile_0_1, buffer_0_1_c, output_c_tile_0_1_to_tile_0_0.source_channel
             )
 
             aie.end()
@@ -481,7 +501,7 @@ def matrix_add_sugar(module):
                     yield_([])
                 yield_([])
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)

@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -53,10 +54,11 @@ cl::opt<std::string> FileName(cl::Positional, cl::desc("<input mlir>"),
 cl::opt<std::string>
     TmpDir("tmpdir", cl::desc("Directory used for temporary file storage"),
            cl::cat(AIE2XCLBinCat));
-cl::opt<bool> Verbose("v", cl::desc("Trace commands as they are executed"));
+cl::opt<bool> Verbose("v", cl::desc("Trace commands as they are executed"),
+                      cl::cat(AIE2XCLBinCat));
 cl::opt<std::string>
     Peano("peano", cl::desc("Root directory where peano compiler is installed"),
-          cl::Required, cl::cat(AIE2XCLBinCat));
+          cl::cat(AIE2XCLBinCat));
 cl::opt<std::string>
     HostArch("host-target", cl::desc("Target architecture of the host program"),
              cl::init(HOST_ARCHITECTURE), cl::cat(AIE2XCLBinCat));
@@ -81,7 +83,10 @@ cl::opt<std::string> XCLBinKernelID("xclbin-kernel-id",
                                     cl::init("0x901"), cl::cat(AIE2XCLBinCat));
 cl::opt<std::string> InstallDir("install-dir",
                                 cl::desc("Root of mlir-aie installation"),
-                                cl::init(INSTALL_DIR), cl::cat(AIE2XCLBinCat));
+                                cl::cat(AIE2XCLBinCat));
+cl::opt<bool> UseChess("use-chess",
+                       cl::desc("Use chess compiler instead of peano"),
+                       cl::cat(AIE2XCLBinCat));
 
 int main(int argc, char *argv[]) {
   registerAsmPrinterCLOptions();
@@ -95,31 +100,36 @@ int main(int argc, char *argv[]) {
   TK.XCLBinKernelName = XCLBinKernelName;
   TK.XCLBinKernelID = XCLBinKernelID;
   TK.XCLBinInstanceName = XCLBinInstanceName;
+  TK.UseChess = UseChess;
 
   findVitis(TK);
 
-  if (Verbose) {
+  if (Verbose)
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
-  }
 
-  TK.InstallDir = InstallDir;
+  if (InstallDir.size()) {
+    TK.InstallDir = InstallDir;
+  } else {
+    // Navigate up from install/bin/aie2xclbin to install/
+    TK.InstallDir = sys::path::parent_path(sys::path::parent_path(argv[0]));
+  }
   TK.PeanoDir = Peano.getValue();
-  if (!sys::fs::is_directory(TK.PeanoDir)) {
-    llvm::errs() << "Peano path " << TK.PeanoDir << " is invalid\n";
+  if (!TK.UseChess && !sys::fs::is_directory(TK.PeanoDir)) {
+    llvm::errs() << "Peano path \"" << TK.PeanoDir << "\" is invalid\n";
     return 1;
   }
 
-  if (TmpDir.size()) {
+  if (TmpDir.size())
     TK.TempDir = TmpDir.getValue();
-  } else {
+  else
     TK.TempDir = FileName + ".prj";
-  }
+
   std::error_code err;
   SmallString<64> tmpDir(TK.TempDir);
   err = sys::fs::make_absolute(tmpDir);
-  if (err) {
+  if (err)
     llvm::errs() << "Failed to make absolute path: " << err.message() << "\n";
-  }
+
   TK.TempDir = std::string(tmpDir);
 
   err = sys::fs::create_directories(TK.TempDir);
@@ -129,9 +139,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (Verbose) {
+  if (Verbose)
     llvm::errs() << "Created temporary directory " << TK.TempDir << "\n";
-  }
 
   MLIRContext ctx;
   ParserConfig pcfg(&ctx);
@@ -143,6 +152,7 @@ int main(int argc, char *argv[]) {
   registry.insert<scf::SCFDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<cf::ControlFlowDialect>();
+  registry.insert<vector::VectorDialect>();
   xilinx::registerAllDialects(registry);
   registerBuiltinDialectTranslation(registry);
   registerLLVMDialectTranslation(registry);
@@ -151,14 +161,12 @@ int main(int argc, char *argv[]) {
   OwningOpRef<ModuleOp> owning =
       parseSourceFile<ModuleOp>(FileName, srcMgr, pcfg);
 
-  if (!owning) {
+  if (!owning)
     return 1;
-  }
 
   if (failed(aie2xclbin(&ctx, *owning, TK, IPUInstsName.getValue(),
-                        XCLBinName.getValue()))) {
+                        XCLBinName.getValue())))
     return 1;
-  }
 
   return 0;
 }

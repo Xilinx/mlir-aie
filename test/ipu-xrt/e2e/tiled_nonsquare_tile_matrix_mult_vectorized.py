@@ -96,6 +96,8 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
+    ipu_insts = aiex.ipu.get_prolog()
+
     mod_aie = ExplicitlyManagedModule()
 
     @aie.device(AIEDevice.ipu)
@@ -138,79 +140,92 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
         aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
         aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            channel_index = 0
-            col = 0
-            ddr_id = 0
-            offsets = [
-                0,
-                # A tiles are "fat" so need to offset by rows (i.e. d1 dim)
-                0 + d1_size_A * d1_stride_A,
-            ]
-            for i, bd_id in enumerate(range(2)):
+        col = 0
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        offsets = [
+            0,
+            # A tiles are "fat" so need to offset by rows (i.e. d1 dim)
+            0 + d1_size_A * d1_stride_A,
+        ]
+        for i, bd_id in enumerate(range(2)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
-                    offset=offsets[i],
+                    buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # in B
-            channel_index = 1
-            col = 0
-            ddr_id = 1
-            for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
+        # in B
+        channel_index = 1
+        ddr_id = 1
+        for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
-                    offset=0,
+                    buffer_offset=0,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
                     d1_stride=d1_stride_B,
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
-                bd_id += 1
-                # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
+            bd_id += 1
+            # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
-                    offset=d0_size_B * d0_stride_B,
+                    buffer_offset=d0_size_B * d0_stride_B,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
                     d1_stride=d1_stride_B,
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # out C
-            channel_index = 0
-            col = 0
-            ddr_id = 2
-            offsets = [
-                0,
-                0 + d0_size_C * d0_stride_C,
-                d1_size_C * d1_stride_C,
-                d1_size_C * d1_stride_C + d0_size_C * d0_stride_C,
-            ]
+        # out C
+        channel_index = 0
+        ddr_id = 2
+        offsets = [
+            0,
+            0 + d0_size_C * d0_stride_C,
+            d1_size_C * d1_stride_C,
+            d1_size_C * d1_stride_C + d0_size_C * d0_stride_C,
+        ]
 
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
-                    offset=offsets[i],
+                    buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                     d1_size=d1_size_C,
                     d1_stride=d1_stride_C,
                     d0_size=d0_size_C,
                     d0_stride=d0_stride_C,
                 )
-                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
                     column=0,
@@ -219,6 +234,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
                     row=0,
                     row_num=1,
                 )
+            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -383,7 +399,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized(_module):
         single=True,
     )
 
-    ipu_insts = compile_with_vectorization(mod_aie, mod_aievec)
+    compile_with_vectorization(mod_aie, mod_aievec)
     xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)
@@ -445,6 +461,8 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
+    ipu_insts = aiex.ipu.get_prolog()
+
     mod_aie = ExplicitlyManagedModule()
 
     @aie.device(AIEDevice.ipu)
@@ -482,79 +500,94 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
         aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
         aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            channel_index = 0
-            col = 0
-            ddr_id = 0
-            offsets = [
-                0,
-                # A tiles are "fat" so need to offset by rows (i.e. d1 dim)
-                0 + d1_size_A * d1_stride_A,
-            ]
-            for i, bd_id in enumerate(range(2)):
+        col = 0
+        # in A
+        channel_index = 0
+        ddr_id = 0
+        offsets = [
+            0,
+            # A tiles are "fat" so need to offset by rows (i.e. d1 dim)
+            0 + d1_size_A * d1_stride_A,
+        ]
+        for i, bd_id in enumerate(range(2)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
-                    offset=offsets[i],
+                    buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # in B
-            channel_index = 1
-            col = 0
-            ddr_id = 1
-            for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
+        # in B
+        channel_index = 1
+        col = 0
+        ddr_id = 1
+        for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
-                    offset=0,
+                    buffer_offset=0,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
                     d1_stride=d1_stride_B,
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
-                bd_id += 1
-                # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
+            bd_id += 1
+            # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
-                    offset=d0_size_B * d0_stride_B,
+                    buffer_offset=d0_size_B * d0_stride_B,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
                     d1_stride=d1_stride_B,
                     d0_size=d0_size_B,
                     d0_stride=d0_stride_B,
                 )
-                aiex.ipu.write32(MM2S, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            )
 
-            # out C
-            channel_index = 0
-            col = 0
-            ddr_id = 2
-            offsets = [
-                0,
-                0 + d0_size_C * d0_stride_C,
-                d1_size_C * d1_stride_C,
-                d1_size_C * d1_stride_C + d0_size_C * d0_stride_C,
-            ]
+        # out C
+        channel_index = 0
+        col = 0
+        ddr_id = 2
+        offsets = [
+            0,
+            0 + d0_size_C * d0_stride_C,
+            d1_size_C * d1_stride_C,
+            d1_size_C * d1_stride_C + d0_size_C * d0_stride_C,
+        ]
 
-            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
+            ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
-                    offset=offsets[i],
+                    buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                     d1_size=d1_size_C,
                     d1_stride=d1_stride_C,
                     d0_size=d0_size_C,
                     d0_stride=d0_stride_C,
                 )
-                aiex.ipu.write32(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            )
+            ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
                     column=0,
@@ -563,6 +596,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
                     row=0,
                     row_num=1,
                 )
+            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -586,8 +620,8 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
             def dma2point5():
                 aiex.process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
 
-            aiex.forward_bd(tile_0_1, 1, buffer_0_1_b)
-            aiex.forward_bd(tile_0_1, 2, buffer_0_1_c)
+            aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
+            aiex.forward_bd(tile_0_1, buffer_0_1_c, 2)
 
             aie.end()
 
@@ -692,7 +726,7 @@ def tiled_nonsquare_tile_matrix_mult_vectorized_sugar(_module):
         single=True,
     )
 
-    ipu_insts = compile_with_vectorization(mod_aie, mod_aievec)
+    compile_with_vectorization(mod_aie, mod_aievec)
     xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
         setup_xclbin_firmware(xclbin_path)

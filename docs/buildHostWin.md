@@ -1,6 +1,12 @@
-# Windows Build Instructions: WSL Ubuntu for tools, MS Visual Code Community for host test code</h1>
+# Windows Setup and Build Instructions
+
+These instructions will guide you through everything required for building and executing a program on the Ryzen AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15. 
+
+You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community.
+
 - Rely on WSL Ubuntu 22.04 LTS for Vitis tool install and to build and run our MLIR-AIE tools
 - Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp)
+
 ## Prerequisites
 ### MLIR-AIE tools: WSL Ubuntu 22.04
 All steps in WSL Ubuntu terminal.
@@ -11,10 +17,11 @@ All steps in WSL Ubuntu terminal.
 1. Prepare WSL2 with Ubuntu 22.04:
     - Install packages (after apt-get update):
       ``` 
-        build-essential clang clang-14 lld lld-14 cmake
-        libboost-all-dev
-        python3-venv python3-pip
-        libxrender1 libxtst6 libxi6
+        sudo apt install \
+        build-essential clang clang-14 lld lld-14 cmake \
+        libboost-all-dev \
+        python3-venv python3-pip \
+        libxrender1 libxtst6 libxi6 \
         mingw-w64-tools
       ```
     - generate locales
@@ -78,31 +85,42 @@ All steps in Win11 (powershell where needed).
       ```
 1. Clone [https://github.com/Xilinx/mlir-aie.git]([https://gitenterprise.xilinx.com/XRLabs/pynqMLIR-AIE](https://github.com/Xilinx/mlir-aie.git)) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithMLIR-AIE) 
 
+## Set up your environment
+
+To make the compilation toolchain available for use in your WSL terminal, you will need to set some environment variables. We suggest you add the following to a file named `setup.sh`, so you can set up your environment easily by running `source setup.sh`.
+
+### `setup.sh` - Option A - Using Quick Setup
+
+If you used the quick setup script (precompiled MLIR-AIE binaries), use this setup script.
+
+```
+# NOTE: if you did NOT exit the terminal you can skip this step.
+cd <yourPathToDesignsWithMLIR-AIE>
+source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
+source yourVitisSetupScript (example shown above)
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
+```
+
+### `setup.sh` - Option B - Built from Source
+
+```
+cd <yourPathToDesignsWithMLIR-AIE>
+source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
+source yourVitisSetupScript (example shown above)
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
+```
+
 
 ## Build a Design
 
 For your design of interest, for instance [add_one_objFifo](../reference_designs/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
 
 ### Build device AIE part: WSL Ubuntu terminal
-1. Prepare your enviroment with the mlir-aie tools (build during Prerequisites part of this guide)
+1. Prepare your enviroment with the mlir-aie tools (built during Prerequisites part of this guide). See [Set up your environment](#set-up-your-environment) above.
 
-    ```
-    cd <yourPathToDesignsWithMLIR-AIE>
-    source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
-    source yourVitisSetupScript (example shown above)
-    source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
-    ```
-    If you used the quick setup script:
-    ```
-    # NOTE: if you did NOT exit the terminal you can skip this step.
-    cd <yourPathToDesignsWithMLIR-AIE>
-    source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
-    source yourVitisSetupScript (example shown above)
-    source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
-    ```
-1. Goto the design of interest and run `make`
+1. Goto the design of interest and run `make`.
 
-### Build and run host part: powershell
+### Build and run host part: PowerShell
 
 Note that your design of interest might need an adapted CMakelists.txt file. Also pay attention to accurately set the paths CMake parameters BOOST_ROOT, XRT_INC_DIR and XRT_LIB_DIR used in the CMakelists.txt, either in the file or as CMake command line parameters.
 

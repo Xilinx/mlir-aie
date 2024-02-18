@@ -45,7 +45,7 @@ def passThroughAIE2():
             ComputeTile2 = tile(0, 2)
 
             if enableTrace:
-                Flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
+                FlowOp(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
             objectfifo("in", ShimTile, [ComputeTile2], 2, ofifo_line_ty, [], [])

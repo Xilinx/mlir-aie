@@ -505,16 +505,3 @@ def _to_js(sizes_strides):
         {sizes_strides}
     ])
     """
-
-
-def _get_sym_name(previous_frame, check_func_call=None):
-    try:
-        with open(inspect.getfile(previous_frame)) as src_file:
-            src_lines = src_file.readlines()
-            src_line = src_lines[previous_frame.f_lineno - 1].strip()
-            ident, func_call = map(lambda x: x.strip(), src_line.split("=", maxsplit=1))
-            if check_func_call is None:
-                assert check_func_call in func_call
-        return ident
-    except:
-        return None

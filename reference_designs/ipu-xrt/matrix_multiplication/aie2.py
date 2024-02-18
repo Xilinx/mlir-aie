@@ -19,10 +19,10 @@ def my_matmul():
     k = 32
     n = 64
     r = 4
-    s = 4
+    s = 8
     t = 4
     word_size_in = 2
-    word_size_out = 2
+    word_size_out = 4
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -54,23 +54,23 @@ def my_matmul():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memref_a_ty = T.memref(m, k, T.i16())
-            memref_b_ty = T.memref(k, n, T.i16())
-            memref_c_ty = T.memref(m, n, T.i16())
+            memref_a_ty = T.memref(m, k, T.bf16())
+            memref_b_ty = T.memref(k, n, T.bf16())
+            memref_c_ty = T.memref(m, n, T.f32())
 
             ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
             ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
             ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
 
             # AIE Core Function declarations
-            zero_scalar = external_func("zero_scalar_i16", inputs=[memref_c_ty])
-            zero = external_func("zero_i16", inputs=[memref_c_ty])
+            zero_scalar = external_func("zero_scalar_f32", inputs=[memref_c_ty])
+            zero = external_func("zero_f32", inputs=[memref_c_ty])
             matmul_scalar = external_func(
-                "matmul_scalar_i16_i16",
+                "matmul_scalar_bf16_f32",
                 inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
             matmul = external_func(
-                "matmul_i16_i16", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
+                "matmul_bf16_f32", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
             )
 
             # Tile declarations
