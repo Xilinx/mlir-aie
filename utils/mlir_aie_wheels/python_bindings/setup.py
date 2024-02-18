@@ -203,7 +203,7 @@ version = f"{release_version}.{datetime}+{commit_hash}"
 setup(
     version=os.getenv("MLIR_AIE_WHEEL_VERSION", version),
     author="",
-    name="aie",
+    name="aie-python-bindings",
     include_package_data=True,
     long_description_content_type="text/markdown",
     ext_modules=[CMakeExtension("_aie", sourcedir=Path(__file__).parent.absolute())],
