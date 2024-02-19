@@ -1353,8 +1353,8 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   let summary = "A cascade connection between tiles";
   let description = [{
     The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
-    During routing, this is replaced by `aie.connect` operations which represent the programmed connections 
-    inside an `aie.cascade_switchbox`.
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+    their relative placement to one another.
 
     Example:
     ```

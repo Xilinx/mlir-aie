@@ -212,9 +212,9 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
 }
 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
-  let summary = "Lower aie.cascade_flow operations through cascade switchboxes";
+  let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
   let description = [{
-    Replace each aie.cascade_flow operation with an equivalent set of aie.cascade_switchbox
+    Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade` 
     operations. 
   }];
 
