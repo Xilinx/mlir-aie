@@ -1345,6 +1345,57 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   }];
 }
 
+def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
+  let arguments = (
+    ins Index:$source_tile,
+        Index:$dest_tile
+  );
+  let summary = "A cascade connection between tiles";
+  let description = [{
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+    their relative placement to one another.
+
+    Example:
+    ```
+      %tile03 = aie.tile(0, 3)
+      %tile13 = aie.tile(1, 3)
+      aie.cascade_flow(%tile03, %tile13)
+    ```
+  }];
+  let hasVerifier = 1;
+  let assemblyFormat = [{
+    `(` $source_tile `,` $dest_tile `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    TileOp getSourceTileOp();
+    TileOp getDestTileOp();
+  }];
+}
+
+def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
+  let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
+  let description = [{
+    An operation to configure the cascade on a single tile in both the input and the output 
+    directions.
+
+    Example:
+    ```
+      %tile00 = aie.tile(1, 3)
+      aie.configure_cascade(%tile00, West, East)
+    ```
+    Configures the input cascade port of %tile00 to the West direction, and the output port to the East direction.
+  }];
+  let arguments = (
+    ins Index:$tile,
+        CascadeDir:$inputDir,
+        CascadeDir:$outputDir
+  );
+  let results = (outs);
+  let hasVerifier = 1;
+  let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
+}
+
 def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{

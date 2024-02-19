@@ -31,13 +31,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_cores(_xaie);
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_configure_dmas(_xaie);
+  mlir_aie_configure_cascade();
   mlir_aie_initialize_locks(_xaie);
-
-  // FIXME: model in MLIR
-  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(1, 3), WEST,
-                                    EAST);
-  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(2, 3), WEST,
-                                    EAST);
   int errors = 0;
 
   mlir_aie_write_buffer_a(_xaie, 3, 7);

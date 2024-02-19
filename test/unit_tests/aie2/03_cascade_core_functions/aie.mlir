@@ -20,6 +20,8 @@ module {
     %tile13 = aie.tile(1, 3)
     %tile23 = aie.tile(2, 3)
 
+    aie.cascade_flow(%tile13, %tile23)
+
     %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
     %buf23_0 = aie.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
 

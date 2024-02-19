@@ -865,6 +865,70 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 }
 
 //===----------------------------------------------------------------------===//
+// CascadeFlowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CascadeFlowOp::verify() {
+  TileOp src = getSourceTileOp();
+  TileOp dst = getDestTileOp();
+  const auto &t = getTargetModel(src);
+
+  if (src.isShimTile() || dst.isShimTile())
+    return emitOpError("shimTile row has no cascade stream interface");
+  if (t.isMemTile(src.colIndex(), src.rowIndex()) ||
+      t.isMemTile(dst.colIndex(), dst.rowIndex()))
+    return emitOpError("memTile row has no cascade stream interface");
+
+  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+    return emitOpError("tiles must be adjacent");
+  }
+  return success();
+}
+
+TileOp CascadeFlowOp::getSourceTileOp() {
+  return cast<TileOp>(getSourceTile().getDefiningOp());
+}
+
+TileOp CascadeFlowOp::getDestTileOp() {
+  return cast<TileOp>(getDestTile().getDefiningOp());
+}
+
+//===----------------------------------------------------------------------===//
+// ConfigureCascadeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConfigureCascadeOp::verify() {
+  const auto &t = getTargetModel(*this);
+  TileOp tile = cast<TileOp>(getTile().getDefiningOp());
+  CascadeDir inputDir = getInputDir();
+  CascadeDir outputDir = getOutputDir();
+
+  if (tile.isShimTile())
+    return emitOpError("shimTile row has no cascade stream interface");
+  if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
+    return emitOpError("memTile row has no cascade stream interface");
+
+  if (t.getTargetArch() == AIEArch::AIE2) {
+    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
+      return emitOpError("input direction of cascade must be North or West on ")
+             << stringifyAIEArch(t.getTargetArch());
+    }
+    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
+      return emitOpError(
+                 "output direction of cascade must be South or East on ")
+             << stringifyAIEArch(t.getTargetArch());
+    }
+  } else {
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(t.getTargetArch());
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // PutCascadeOp
 //===----------------------------------------------------------------------===//
 
