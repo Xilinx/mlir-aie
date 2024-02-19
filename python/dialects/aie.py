@@ -234,6 +234,12 @@ shim_dma = region_op(
 memtile_dma = region_op(
     lambda tile, *, loc=None, ip=None: MemTileDMAOp(T.index(), tile, loc=loc, ip=ip)
 )
+switchbox = region_op(
+    lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
+)
+shim_mux = region_op(
+    lambda tile, *, loc=None, ip=None: ShimMuxOp(T.index(), tile, loc=loc, ip=ip)
+)
 
 
 @region_op
