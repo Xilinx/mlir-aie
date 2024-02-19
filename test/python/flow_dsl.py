@@ -249,3 +249,43 @@ def flow_dsl_6(module):
     # CHECK:    aie.flow(%tile_0_2, DMA : 0, %tile_0_3, DMA : 0)
     # CHECK:  }
     print(module)
+
+
+@construct_and_print_module
+def broadcast(module):
+    FlowEndPoint._reset_used_channels()
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        # col a0 (top row of matrix products)
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
+        tile_0_3 = aie.tile(0, 3)
+
+        # col a1 (bottom row of matrix products)
+        tile_1_0 = aie.tile(1, 0)
+        tile_1_1 = aie.tile(1, 1)
+        tile_1_2 = aie.tile(1, 2)
+        tile_1_3 = aie.tile(1, 3)
+
+        tile_2_0 = aie.tile(2, 0)
+        tile_2_1 = aie.tile(2, 1)
+
+        # broadcast a0
+        tile_0_0 >> tile_0_1 >> (tile_0_2, tile_0_3)
+        # broadcast a1
+        tile_1_0 >> tile_1_1 >> (tile_1_2, tile_1_3)
+
+        # broadcast b0
+        tile_0_0 >> tile_0_1 >> (tile_0_2, tile_1_2)
+        # broadcast b1
+        tile_1_0 >> tile_1_1 >> (tile_0_3, tile_1_3)
+
+        # [a0*b0, a0*b1]
+        tile_2_1 << (tile_0_2, tile_0_3)
+        x = tile_2_0 << (tile_2_1, tile_2_1)
+        # [a1*b0, a1*b1]
+        # tile_2_0 << tile_2_1 << (tile_0_3, tile_1_3)
+
+    print(module)
