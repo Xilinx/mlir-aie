@@ -523,7 +523,9 @@ class FlowEndPoint:
             other.bundle,
             IncomingOutgoing.INCOMING,
         )
-        if self.bundle != WireBundle.DMA or other.bundle != WireBundle.DMA:
+        if int(self.bundle) != int(WireBundle.DMA) or int(other.bundle) != int(
+            WireBundle.DMA
+        ):
             assert (
                 self_channel == other_channel
             ), f"channel mismatch {self_channel=} {other_channel=} (see arch page 121)"

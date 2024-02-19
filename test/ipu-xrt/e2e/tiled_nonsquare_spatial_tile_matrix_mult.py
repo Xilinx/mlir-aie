@@ -45,36 +45,6 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-M = N = 32
-
-tile_rows_A, tile_cols_A = 2, 1
-tile_rows_B, tile_cols_B = 1, 2
-tile_rows_C, tile_cols_C = 2, 2
-
-tile_m_A, tile_n_A = M // tile_rows_A, N // tile_cols_A
-tile_m_B, tile_n_B = M // tile_rows_B, N // tile_cols_B
-tile_m_C, tile_n_C = M // tile_rows_C, N // tile_cols_C
-
-(
-    _,
-    _,
-    (d1_size_A, d1_stride_A),
-    (d0_size_A, d0_stride_A),
-) = tiling_calculator_n_tiles(M, N, n_tile_rows=tile_rows_A, n_tile_cols=tile_cols_A)
-(
-    _,
-    _,
-    (d1_size_B, d1_stride_B),
-    (d0_size_B, d0_stride_B),
-) = tiling_calculator_n_tiles(M, N, n_tile_rows=tile_rows_B, n_tile_cols=tile_cols_B)
-(
-    _,
-    _,
-    (d1_size_C, d1_stride_C),
-    (d0_size_C, d0_stride_C),
-) = tiling_calculator_n_tiles(M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C)
-
-
 def shim_tensor_slice(
     M,
     N,
@@ -87,7 +57,12 @@ def shim_tensor_slice(
     bd_id,
     ddr_id,
 ):
-    (_, _, (d1_size, d1_stride), (d0_size, d0_stride),) = tiling_calculator_n_tiles(
+    (
+        _,
+        _,
+        (d1_size, d1_stride),
+        (d0_size, d0_stride),
+    ) = tiling_calculator_n_tiles(
         M, N, n_tile_rows=n_tile_rows, n_tile_cols=n_tile_cols
     )
 
@@ -108,9 +83,44 @@ def shim_tensor_slice(
     return ipu_insts
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_spatial
+# CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2
 @construct_and_print_module
-def tiled_nonsquare_tile_spatial(module):
+def tiled_nonsquare_tile_spatial_2x2(module):
+    M = N = 32
+
+    tile_rows_A, tile_cols_A = 2, 1
+    tile_rows_B, tile_cols_B = 1, 2
+    tile_rows_C, tile_cols_C = 2, 2
+
+    tile_m_A, tile_n_A = M // tile_rows_A, N // tile_cols_A
+    tile_m_B, tile_n_B = M // tile_rows_B, N // tile_cols_B
+    tile_m_C, tile_n_C = M // tile_rows_C, N // tile_cols_C
+
+    (
+        _,
+        _,
+        (d1_size_A, d1_stride_A),
+        (d0_size_A, d0_stride_A),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_A, n_tile_cols=tile_cols_A
+    )
+    (
+        _,
+        _,
+        (d1_size_B, d1_stride_B),
+        (d0_size_B, d0_stride_B),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_B, n_tile_cols=tile_cols_B
+    )
+    (
+        _,
+        _,
+        (d1_size_C, d1_stride_C),
+        (d0_size_C, d0_stride_C),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
+    )
+
     ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
@@ -377,6 +387,17 @@ def tiled_nonsquare_tile_spatial(module):
                 assert False
 
 
+M = N = 32
+
+tile_rows_A, tile_cols_A = 2, 1
+tile_rows_B, tile_cols_B = 1, 2
+tile_rows_C, tile_cols_C = 2, 2
+
+tile_m_A, tile_n_A = M // tile_rows_A, N // tile_cols_A
+tile_m_B, tile_n_B = M // tile_rows_B, N // tile_cols_B
+tile_m_C, tile_n_C = M // tile_rows_C, N // tile_cols_C
+
+
 @func.func(sym_visibility="private")
 def matmul_i32_i32_already_vectorized(
     A: T.memref(tile_m_A, tile_n_A, T.i32()),
@@ -412,6 +433,32 @@ def matmul_i32_i32_already_vectorized(
 @construct_and_print_module
 def tiled_nonsquare_tile_spatial_vectorized(module):
     FlowEndPoint._reset_used_channels()
+
+    (
+        _,
+        _,
+        (d1_size_A, d1_stride_A),
+        (d0_size_A, d0_stride_A),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_A, n_tile_cols=tile_cols_A
+    )
+    (
+        _,
+        _,
+        (d1_size_B, d1_stride_B),
+        (d0_size_B, d0_stride_B),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_B, n_tile_cols=tile_cols_B
+    )
+    (
+        _,
+        _,
+        (d1_size_C, d1_stride_C),
+        (d0_size_C, d0_stride_C),
+    ) = tiling_calculator_n_tiles(
+        M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
+    )
+
     ipu_insts = aiex.ipu.get_prolog()
 
     mod_aie = ExplicitlyManagedModule()
