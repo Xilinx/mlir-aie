@@ -63,6 +63,12 @@ AIE.core(%tile) {
   AIE.useLock(%lockindex, "Acquire", 1)
 }
 ```
+### `-aie-lower-cascade-flows`
+
+_Lower aie.cascade_flow operations through `aie.configure_cascade` operations_
+
+Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade` 
+operations. 
 ### `-aie-normalize-address-spaces`
 
 _Remove non-default address spaces_

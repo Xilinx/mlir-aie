@@ -104,6 +104,82 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 | `buffer` | memref of any type values
 
 
+### `aie.cascade_flow` (::xilinx::AIE::CascadeFlowOp)
+
+_A cascade connection between tiles_
+
+
+Syntax:
+
+```
+operation ::= `aie.cascade_flow` `(` $source_tile `,` $dest_tile `)` attr-dict
+```
+
+The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
+During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+their relative placement to one another.
+
+Example:
+```
+  %tile03 = aie.tile(0, 3)
+  %tile13 = aie.tile(1, 3)
+  aie.cascade_flow(%tile03, %tile13)
+```
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source_tile` | index
+| `dest_tile` | index
+
+
+### `aie.configure_cascade` (::xilinx::AIE::ConfigureCascadeOp)
+
+_An op to configure the input and output directions of the cascade for a single AIE tile_
+
+
+Syntax:
+
+```
+operation ::= `aie.configure_cascade` `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict
+```
+
+An operation to configure the cascade on a single tile in both the input and the output 
+directions.
+
+Example:
+```
+  %tile00 = aie.tile(1, 3)
+  aie.configure_cascade(%tile00, West, East)
+```
+Configures the input cascade port of %tile00 to the West direction, and the output port to the East direction.
+
+Traits: `HasParent<DeviceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>inputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td><details><summary>Directions for cascade</summary>{{% markdown %}}Enum cases:
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`){{% /markdown %}}</details></td></tr>
+<tr><td><code>outputDir</code></td><td>xilinx::AIE::CascadeDirAttr</td><td><details><summary>Directions for cascade</summary>{{% markdown %}}Enum cases:
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`){{% /markdown %}}</details></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+
 ### `aie.connect` (::xilinx::AIE::ConnectOp)
 
 _A circuit-switched connection inside a switchbox_
