@@ -18,14 +18,15 @@
 #include <iostream>
 #include <sstream>
 #include <stdfloat>
+#include <bits/stdc++.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
 constexpr int M = 256;
-constexpr int K = 256;
-constexpr int N = 256;
+constexpr int K = 2048;
+constexpr int N = 2048;
 
 constexpr int A_VOLUME = M * K;
 constexpr int B_VOLUME = N * K;
@@ -76,7 +77,10 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  return ((std::bfloat16_t)rand() / (std::bfloat16_t)RAND_MAX);
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0,
+                                                     1.0);
+  return std::bfloat16_t(distribution(gen));
 }
 
 template <typename Tin, typename Tout>
@@ -229,7 +233,7 @@ int main(int argc, const char *argv[]) {
       output_ref0.push_back(0);
     matmul(AVec, BVec, output_ref0);
 
-    const C_DATATYPE absTol = std::abs(1.0);
+    const C_DATATYPE absTol = std::abs(0.1);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
       if (std::abs((float)bufOut[i] - (float)output_ref0[i]) > absTol) {
         errors++;
@@ -242,12 +246,16 @@ int main(int argc, const char *argv[]) {
     }
   }
 
+  float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop -
+                                                                         start)
+                   .count();
+  float macs = 2.0 * float(M) * float(K) * float(N);
+
   std::cout << std::endl
             << "NPU matmul time: "
-            << std::chrono::duration_cast<std::chrono::microseconds>(stop -
-                                                                     start)
-                   .count()
+            << npu_time
             << "us." << std::endl;
+  std::cout << "NPU gflops: " << macs / (1000 * npu_time) << std::endl;
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";

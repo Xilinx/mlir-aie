@@ -14,8 +14,8 @@ from aie.dialects.scf import *
 
 def my_matmul():
     M = 256
-    K = 256
-    N = 256
+    K = 2048
+    N = 2048
     m = 64
     k = 64
     n = 64
@@ -50,11 +50,13 @@ def my_matmul():
     n_in_i32s = n * word_size_in // 4
     N_in_i32s = N * word_size_in // 4
     k_x_N_in_i32s = k * N * word_size_in // 4
+    n_x_n_cols_in_i32s = n_in_i32s * n_cols
 
     # Output Matrix C: MxN
     n_in_i32s_out = n * word_size_out // 4
     N_in_i32s_out = N * word_size_out // 4
     m_x_n_rows_x_N_in_i32s_out = m * n_cores * N_in_i32s_out
+    n_x_n_cols_in_i32s_out = n_in_i32s_out * n_cols
 
     vectorized = True
 
@@ -262,10 +264,11 @@ def my_matmul():
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_row_offset_in_i32s],
-                        sizes=[1, 1, m_x_n_rows, n_in_i32s_out],
+                        sizes=[1, N_div_n_div_n_cols, m_x_n_rows, n_in_i32s_out],
                         strides=[
-                            m_x_n_rows_x_N_in_i32s_out,
-                            n_in_i32s_out,
+                            #m_x_n_rows_x_N_in_i32s_out,
+                            0,
+                            n_x_n_cols_in_i32s_out,
                             N_in_i32s_out,
                         ],
                     )
@@ -304,7 +307,7 @@ def my_matmul():
                         mem=B,
                         offsets=[0, 0, 0, B_col_offset_in_i32s],
                         sizes=[N_div_n_div_n_cols, K_div_k, k, n_in_i32s],
-                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                        strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
                     )
                 for i in range(n_cols):
                     ipu_sync(column=i, row=0, direction=0, channel=0)
