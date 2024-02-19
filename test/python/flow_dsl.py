@@ -90,7 +90,7 @@ def flow_dsl_3(module):
 
         tile_0_0 >> tile_0_1 >> tile_0_2 >> tile_0_1 >> tile_0_0
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_0, DMA : 0)
         for k, fs in tile_0_0.flows.items():
@@ -98,10 +98,10 @@ def flow_dsl_3(module):
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_0 = aie.tile(0, 0)
+        # CHECK: tile(col=0, row=0)
         # CHECK: aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_0, DMA : 0)
-        # CHECK: %tile_0_2 = aie.tile(0, 2)
+        # CHECK: tile(col=0, row=2)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
         # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 1)
         for k, fs in tile_0_1.flows.items():
@@ -109,7 +109,7 @@ def flow_dsl_3(module):
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
         # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 1)
         for k, fs in tile_0_2.flows.items():
@@ -169,23 +169,23 @@ def flow_dsl_5(module):
 
         tile_0_0 << tile_0_1 >> tile_0_2
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
         for k, fs in tile_0_0.flows.items():
             print(k)
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_0 = aie.tile(0, 0)
+        # CHECK: tile(col=0, row=0)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-        # CHECK: %tile_0_2 = aie.tile(0, 2)
+        # CHECK: tile(col=0, row=2)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
         for k, fs in tile_0_1.flows.items():
             print(k)
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
         for k, fs in tile_0_2.flows.items():
             print(k)
@@ -215,25 +215,25 @@ def flow_dsl_6(module):
 
         tile_0_0 << tile_0_1 >> tile_0_2 >> tile_0_3
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
         for k, fs in tile_0_0.flows.items():
             print(k)
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_0 = aie.tile(0, 0)
+        # CHECK: tile(col=0, row=0)
         # CHECK: aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-        # CHECK: %tile_0_2 = aie.tile(0, 2)
+        # CHECK: tile(col=0, row=2)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
         for k, fs in tile_0_1.flows.items():
             print(k)
             for f in fs:
                 print(f)
 
-        # CHECK: %tile_0_1 = aie.tile(0, 1)
+        # CHECK: tile(col=0, row=1)
         # CHECK: aie.flow(%tile_0_1, DMA : 1, %tile_0_2, DMA : 0)
-        # CHECK: %tile_0_3 = aie.tile(0, 3)
+        # CHECK: tile(col=0, row=3)
         # CHECK: aie.flow(%tile_0_2, DMA : 0, %tile_0_3, DMA : 0)
         for k, fs in tile_0_2.flows.items():
             print(k)

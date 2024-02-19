@@ -47,6 +47,7 @@ def systolic_vec_add(module):
     tiles = 1
     k = K // tiles
     columns = [1, 2, 3]
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -178,60 +179,71 @@ def systolic_vec_add(module):
 
                     yield_([])
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            ddr_id = 0
-            for column in columns:
-                offsets = list(range(0, K, k))
-                for i, bd_id in enumerate(range(tiles)):
+        # in A
+        ddr_id = 0
+        for column in columns:
+            offsets = list(range(0, K, k))
+            for i, bd_id in enumerate(range(tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_a_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
                         bd_id=bd_id,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-                # in B
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+            # in B
+            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_b_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
                         bd_id=bd_id,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-                # out C
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+            # out C
+            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
                         bd_id=bd_id,
                     )
+                )
+                ipu_insts.extend(
                     aiex.ipu.sync(
                         channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -240,9 +252,10 @@ def systolic_vec_add(module):
                         row=0,
                         row_num=1,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     buffer_args = []
     for c in columns:
         buffer_args.extend([f"a{c}", f"b{c}", f"c{c}"])
@@ -292,6 +305,7 @@ def max_result_args(module):
     columns = [0, 1, 2, 3]
     RANDOM_NUMBER = random.randint(1, 100)
     print(f"{RANDOM_NUMBER=}")
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -359,27 +373,30 @@ def max_result_args(module):
 
                     yield_([])
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            for column in columns:
-                offsets = list(range(0, K, k))
-                bd_id = 0
-                # out C
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+        ddr_id = 0
+        for column in columns:
+            offsets = list(range(0, K, k))
+            bd_id = 0
+            # out C
+            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
                         bd_id=bd_id,
                     )
+                )
+                ipu_insts.extend(
                     aiex.ipu.sync(
                         channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -388,9 +405,10 @@ def max_result_args(module):
                         row=0,
                         row_num=1,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     buffer_args = [f"c{c}" for c in columns]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(module, kernel_json=kernel_json)
@@ -423,6 +441,7 @@ def max_input_and_output_args(module):
     tiles = 1
     k = K // tiles
     columns = [1, 2, 3]
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -524,43 +543,50 @@ def max_input_and_output_args(module):
 
                     yield_([])
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            # in A
-            ddr_id = 0
-            for column in columns:
-                offsets = list(range(0, K, k))
-                for i, bd_id in enumerate(range(tiles)):
+        # in A
+        ddr_id = 0
+        for column in columns:
+            offsets = list(range(0, K, k))
+            for i, bd_id in enumerate(range(tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=MM2S,
                         channel_index=input_a_tile_row_0_to_tile_row_1.source_channel,
                         column=column,
                         bd_id=bd_id,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-                # out C
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+            # out C
+            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
                         bd_id=bd_id,
                     )
+                )
+                ipu_insts.extend(
                     aiex.ipu.sync(
                         channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -569,9 +595,10 @@ def max_input_and_output_args(module):
                         row=0,
                         row_num=1,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     buffer_args = []
     for c in columns:
         buffer_args.extend([f"a{c}", f"c{c}"])
@@ -614,6 +641,7 @@ def zeroth_column(module):
     RANDOM_NUMBER = random.randint(1, 100)
     print(RANDOM_NUMBER)
     K = 32
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -663,25 +691,28 @@ def zeroth_column(module):
                     outs=[buffer_row_2_c],
                 )
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            offset = 0
-            bd_id = 0
-            # out C
+        ddr_id = 0
+        offset = 0
+        bd_id = 0
+        # out C
+        ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
                 bd_id=bd_id,
                 column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
                 buffer_length=K,
-                offset=offset,
+                buffer_offset=offset,
                 ddr_id=ddr_id,
             )
-            aiex.ipu.write32(
+        )
+        ipu_insts.extend(
+            aiex.ipu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                 column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
                 bd_id=bd_id,
             )
+        )
+        ipu_insts.extend(
             aiex.ipu.sync(
                 channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
                 column=int(output_c_tile_row_1_to_tile_row_0.dest.owner.opview.col),
@@ -690,9 +721,10 @@ def zeroth_column(module):
                 row=0,
                 row_num=1,
             )
-            ddr_id += 1
+        )
+        ddr_id += 1
 
-    ipu_insts = compile_without_vectorization(module, partition_start_col=0)
+    compile_without_vectorization(module, partition_start_col=0)
     buffer_args = ["output"]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(module, kernel_json=kernel_json, start_columns=[0])
@@ -726,6 +758,7 @@ def global_core_mem_init(module):
     columns = [0, 1, 2, 3]
     RANDOM_NUMBER = random.randint(1, 100)
     print(RANDOM_NUMBER)
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -797,27 +830,30 @@ def global_core_mem_init(module):
 
                     yield_([])
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            ddr_id = 0
-            for column in columns:
-                offsets = list(range(0, K, k))
-                bd_id = 0
-                # out C
-                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+        ddr_id = 0
+        for column in columns:
+            offsets = list(range(0, K, k))
+            bd_id = 0
+            # out C
+            for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
+                ipu_insts.extend(
                     aiex.ipu.writebd_shimtile(
                         bd_id=bd_id,
                         column=column,
                         buffer_length=k,
-                        offset=offsets[i],
+                        buffer_offset=offsets[i],
                         ddr_id=ddr_id,
                     )
-                    aiex.ipu.write32(
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
                         channel_dir=S2MM,
                         channel_index=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
                         bd_id=bd_id,
                     )
+                )
+                ipu_insts.extend(
                     aiex.ipu.sync(
                         channel=output_c_tile_row_1_to_tile_row_0.dest_channel,
                         column=column,
@@ -826,9 +862,10 @@ def global_core_mem_init(module):
                         row=0,
                         row_num=1,
                     )
-                ddr_id += 1
+                )
+            ddr_id += 1
 
-    ipu_insts = compile_without_vectorization(module)
+    compile_without_vectorization(module)
     buffer_args = [f"c{c}" for c in columns]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(module, kernel_json=kernel_json)
@@ -866,6 +903,7 @@ def constant_systolic_3x3(module):
     tiles = np.empty((5, 6), dtype=object)
     tiles[0, 0] = None
     repeat_count = 2
+    ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -1120,29 +1158,32 @@ def constant_systolic_3x3(module):
 
             arith.constant(80081355)
 
-        @func.func(emit=True)
-        def bobsyouruncle():
-            for j in range(repeat_count):
-                ddr_id = 0
-                bd_id = 0
-                for column in [1, 2]:
-                    shim_tile = tiles[c, 0]
-                    mem_tile = tiles[c, 1]
-                    # out C
-                    for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + n_tiles)):
+        for j in range(repeat_count):
+            ddr_id = 0
+            bd_id = 0
+            for column in [1, 2]:
+                shim_tile = tiles[c, 0]
+                mem_tile = tiles[c, 1]
+                # out C
+                for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + n_tiles)):
+                    ipu_insts.extend(
                         aiex.ipu.writebd_shimtile(
                             bd_id=bd_id,
                             column=column,
                             buffer_length=K,
-                            offset=j * K,
+                            buffer_offset=j * K,
                             ddr_id=ddr_id,
                         )
-                        aiex.ipu.write32(
+                    )
+                    ipu_insts.extend(
+                        aiex.ipu.shimtile_push_queue(
                             channel_dir=S2MM,
                             channel_index=mem_tile.flows[shim_tile][0].dest_channel,
                             column=column,
                             bd_id=bd_id,
                         )
+                    )
+                    ipu_insts.extend(
                         aiex.ipu.sync(
                             channel=mem_tile.flows[shim_tile][0].dest_channel,
                             column=column,
@@ -1151,7 +1192,8 @@ def constant_systolic_3x3(module):
                             row=0,
                             row_num=1,
                         )
-                    ddr_id += 1
+                    )
+                ddr_id += 1
 
     # display_flows(module)
     print(module)
@@ -1161,7 +1203,7 @@ def constant_systolic_3x3(module):
     for w in weights:
         print(w)
 
-    ipu_insts = compile_without_vectorization(module, partition_start_col=0)
+    compile_without_vectorization(module, partition_start_col=0)
     buffer_args = [f"c{c}" for c in [1, 2]]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(module, kernel_json=kernel_json)
