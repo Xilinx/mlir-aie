@@ -13,7 +13,7 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 256
+    M = 2048
     K = 2048
     N = 2048
     m = 64
@@ -238,79 +238,79 @@ def my_matmul():
             )
             def sequence(A, B, C):
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-                #rows_per_block = 5
-                #for tile_row_block in range(
-                #    (M_div_m_div_n_rows + rows_per_block - 1) // rows_per_block
-                #):
-                    #num_tile_rows = min(
-                    #    [
-                    #        rows_per_block,
-                    #        M_div_m_div_n_rows - tile_row_block * rows_per_block,
-                    #    ]
-                    #)
-                for i in range(n_cols):
-                    C_row_offset_in_i32s = (
-                        #tile_row_block
-                        #* rows_per_block
-                        #* m
-                        #* n_rows
-                        #* N
-                        i * k
+                rows_per_block = 5
+                for tile_row_block in range(
+                    (M_div_m_div_n_rows + rows_per_block - 1) // rows_per_block
+                ):
+                    num_tile_rows = min(
+                        [
+                            rows_per_block,
+                            M_div_m_div_n_rows - tile_row_block * rows_per_block,
+                        ]
+                    )
+                    C_row_offset = (
+                        tile_row_block
+                        * rows_per_block
+                        * m
+                        * n_rows
+                        * N
                         * word_size_out
-                        // 4
                     )
-                    ipu_dma_memcpy_nd(
-                        metadata=outC_fifos[i],
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_row_offset_in_i32s],
-                        sizes=[1, N_div_n_div_n_cols, m_x_n_rows, n_in_i32s_out],
-                        strides=[
-                            #m_x_n_rows_x_N_in_i32s_out,
-                            0,
-                            n_x_n_cols_in_i32s_out,
-                            N_in_i32s_out,
-                        ],
-                    )
-                    #for tile_row in range(num_tile_rows):
-                    A_col_offset_in_i32s = (
-                        #((tile_row_block * rows_per_block) + tile_row)
-                        #* m
-                        #* n_rows
-                        #* K
-                        i * m
-                        * K
-                        * word_size_in
-                        // 4
-                    )
-                    B_col_offset_in_i32s = (
-                        #((tile_row_block * rows_per_block) + tile_row)
-                        #* m
-                        #* n_rows
-                        #* K
-                        i * n
-                        * word_size_in
-                        // 4
-                    )
-                    tile_row = 0
-                    ipu_dma_memcpy_nd(
-                        metadata=inA_fifos[i],
-                        bd_id=2 * tile_row + 1,
-                        mem=A,
-                        offsets=[0, 0, 0, A_col_offset_in_i32s],
-                        sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
-                        strides=[0, k_in_i32s, K_in_i32s],
-                    )
-                    ipu_dma_memcpy_nd(
-                        metadata=inB_fifos[i],
-                        bd_id=2 * tile_row + 2,
-                        mem=B,
-                        offsets=[0, 0, 0, B_col_offset_in_i32s],
-                        sizes=[N_div_n_div_n_cols, K_div_k, k, n_in_i32s],
-                        strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
-                    )
-                for i in range(n_cols):
-                    ipu_sync(column=i, row=0, direction=0, channel=0)
+                    for i in range(n_cols):
+                        C_col_offset = (
+                            i * n
+                            * word_size_out
+                        )
+                        C_offset_in_i32s = (C_col_offset + C_row_offset) // 4
+                        ipu_dma_memcpy_nd(
+                            metadata=outC_fifos[i],
+                            bd_id=0,
+                            mem=C,
+                            offsets=[0, 0, 0, C_offset_in_i32s],
+                            sizes=[num_tile_rows, N_div_n_div_n_cols, m_x_n_rows, n_in_i32s_out],
+                            strides=[
+                                m_x_n_rows_x_N_in_i32s_out,
+                                n_x_n_cols_in_i32s_out,
+                                N_in_i32s_out,
+                            ],
+                        )
+                        for tile_row in range(num_tile_rows):
+                            A_row_offset_in_i32s = (
+                                ((tile_row_block * rows_per_block) + tile_row)
+                                * m
+                                * K
+                                * word_size_in
+                                // 4
+                            )
+                            A_col_offset_in_i32s = (
+                                i * m
+                                * K
+                                * word_size_in
+                                // 4
+                            )
+                            B_col_offset_in_i32s = (
+                                i * n
+                                * word_size_in
+                                // 4
+                            )
+                            ipu_dma_memcpy_nd(
+                                metadata=inA_fifos[i],
+                                bd_id=2 * tile_row + 1,
+                                mem=A,
+                                offsets=[0, 0, 0, A_col_offset_in_i32s + A_row_offset_in_i32s],
+                                sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
+                                strides=[0, k_in_i32s, K_in_i32s],
+                            )
+                            ipu_dma_memcpy_nd(
+                                metadata=inB_fifos[i],
+                                bd_id=2 * tile_row + 2,
+                                mem=B,
+                                offsets=[0, 0, 0, B_col_offset_in_i32s],
+                                sizes=[N_div_n_div_n_cols, K_div_k, k, n_in_i32s],
+                                strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                            )
+                    for i in range(n_cols):
+                        ipu_sync(column=i, row=0, direction=0, channel=0)
 
     #print(ctx.module.operation.verify())
     print(ctx.module)

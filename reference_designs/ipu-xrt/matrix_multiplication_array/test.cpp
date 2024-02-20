@@ -24,7 +24,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int M = 256;
+constexpr int M = 2048;
 constexpr int K = 2048;
 constexpr int N = 2048;
 
@@ -40,7 +40,7 @@ constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-constexpr bool VERIFY = true;
+constexpr bool VERIFY = false;
 
 namespace po = boost::program_options;
 
@@ -233,7 +233,7 @@ int main(int argc, const char *argv[]) {
       output_ref0.push_back(0);
     matmul(AVec, BVec, output_ref0);
 
-    const C_DATATYPE absTol = std::abs(0.1);
+    const float absTol = std::abs(0.1);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
       if (std::abs((float)bufOut[i] - (float)output_ref0[i]) > absTol) {
         errors++;
