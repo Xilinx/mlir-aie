@@ -299,17 +299,6 @@ def make_xclbin(module, name="final", kernel_json=None, start_columns=None):
     return xclbin_path
 
 
-def setup_xclbin_firmware(xclbin_path):
-    cmd = [
-        str(XRT_DIR / "amdxdna/setup_xclbin_firmware.sh"),
-        "-dev",
-        "Phoenix",
-        "-xclbin",
-        xclbin_path,
-    ]
-    _run_command(cmd)
-
-
 @contextlib.contextmanager
 def _global_debug(debug):
     _GlobalDebug.flag = debug

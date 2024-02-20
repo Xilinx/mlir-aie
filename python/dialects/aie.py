@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from collections import defaultdict
-from enum import Enum, auto
+from enum import Enum
 import inspect
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -361,7 +361,7 @@ def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
         buffer,
         tile,
         sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, r"aie\.buffer|buffer"),
+        or _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer"),
         address=address,
         loc=loc,
         ip=ip,
@@ -377,7 +377,7 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         lock_id=lock_id,
         init=init,
         sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, r"aie\.lock|lock"),
+        or _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock"),
         loc=loc,
         ip=ip,
     )
@@ -386,6 +386,12 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
 _flow = flow
 
 flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class FlowOp(FlowOp):
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self}>"
 
 
 class IncomingOutgoing(Enum):
@@ -412,6 +418,10 @@ class TileOp(TileOp):
         return self.ep() >> other
 
     def __lshift__(self, other: Union["TileOp", "FlowEndPoint"]):
+        if isinstance(other, tuple):
+            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
+            return tuple([t >> self for t in other])
+
         if isinstance(other, TileOp):
             other = other.ep()
         other >> self.ep()
@@ -475,11 +485,28 @@ class FlowEndPoint:
                     break
             else:
                 channel = max_used_channel + 1
-        assert channel not in used_channels
+        # in case we got IntegerAttr existing channel
+        channel = int(channel)
+        if incoming_outgoing is IncomingOutgoing.INCOMING:
+            assert channel not in used_channels
         used_channels.add(channel)
         return channel
 
-    def __rshift__(self, other: "FlowEndPoint"):
+    def __rshift__(
+        self, other: Union["FlowEndPoint", TileOp, Tuple[Union["FlowEndPoint", TileOp]]]
+    ):
+        if isinstance(other, tuple):
+            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
+            first = self >> other[0]
+            return tuple(
+                [first]
+                + [
+                    self.tile.ep(first.flow.source_bundle, first.flow.source_channel)
+                    >> t
+                    for t in other[1:]
+                ]
+            )
+
         if isinstance(other, TileOp):
             other = other.ep()
 
@@ -496,8 +523,12 @@ class FlowEndPoint:
             other.bundle,
             IncomingOutgoing.INCOMING,
         )
-        if self.bundle != WireBundle.DMA or other.bundle != WireBundle.DMA:
-            assert self.channel == other.channel, "channel mismatch (see arch page 121)"
+        if int(self.bundle) != int(WireBundle.DMA) or int(other.bundle) != int(
+            WireBundle.DMA
+        ):
+            assert (
+                self_channel == other_channel
+            ), f"channel mismatch {self_channel=} {other_channel=} (see arch page 121)"
 
         result = flow(
             self.tile,
@@ -515,12 +546,24 @@ class FlowEndPoint:
 
         return other
 
-    def __lshift__(self, other: "FlowEndPoint"):
+    def __lshift__(
+        self, other: Union["FlowEndPoint", TileOp, Tuple[Union["FlowEndPoint", TileOp]]]
+    ):
+        if isinstance(other, tuple):
+            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
+            return tuple([t >> self for t in other])
         other >> self
         return other
 
     def __repr__(self):
-        return f"<FlowEndPoint: {self.tile} - {self.bundle} - {self.channel}>"
+        if self.channel:
+            return f"<FlowEndPoint: {self.tile} - {self.bundle} - {self.channel}>"
+        return f"<FlowEndPoint: {self.tile} - {self.bundle}>"
+
+    def __str__(self):
+        if self.channel:
+            return f"<{self.tile} - {self.bundle} - {self.channel}>"
+        return f"<{self.tile} - {self.bundle}>"
 
 
 def tile(col, row, *, loc=None, ip=None):

@@ -36,7 +36,6 @@ from util import (
     compile_with_vectorization,
     construct_and_print_module,
     make_xclbin,
-    setup_xclbin_firmware,
 )
 
 DMA = WireBundle.DMA
@@ -326,7 +325,6 @@ def nonsquare_matrix_mult_vectorized(module):
     compile_with_vectorization(mod_aie, mod_aievec)
     xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
-        setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -583,7 +581,6 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
     compile_with_vectorization(mod_aie, mod_aievec)
     xclbin_path = make_xclbin(mod_aie)
     with FileLock("/tmp/ipu.lock"):
-        setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

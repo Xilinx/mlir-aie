@@ -31,7 +31,6 @@ from util import (
     compile_without_vectorization,
     construct_and_print_module,
     make_xclbin,
-    setup_xclbin_firmware,
 )
 
 DMA = WireBundle.DMA
@@ -247,7 +246,6 @@ def vec_dot(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-        setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -436,7 +434,6 @@ def vec_dot_sugar(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-        setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

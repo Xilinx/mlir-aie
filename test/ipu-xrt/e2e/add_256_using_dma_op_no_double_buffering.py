@@ -29,7 +29,6 @@ from util import (
     compile_without_vectorization,
     construct_and_print_module,
     make_xclbin,
-    setup_xclbin_firmware,
 )
 
 DMA = WireBundle.DMA
@@ -192,7 +191,6 @@ def add_256_using_dma_op_no_double_buffering(module):
     ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-        setup_xclbin_firmware(xclbin_path)
 
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
