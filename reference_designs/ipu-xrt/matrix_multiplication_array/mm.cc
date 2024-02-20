@@ -101,63 +101,22 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
           C10.mac(A1, B0);
           C11.mac(A1, B1);
 
-          //A0 = aie::load_v<MMUL::size_A>(pA1);
-          //pA1 += MMUL::size_A;
-          //A1 = aie::load_v<MMUL::size_A>(pA2);
-          //pA2 += MMUL::size_A;
-          //B0 = aie::load_v<MMUL::size_B>(pB1);
-          //pB1 += MMUL::size_B * colB;
-          //B1 = aie::load_v<MMUL::size_B>(pB2);
-          //pB2 += MMUL::size_B * colB;
-
-          //C00.mac(A0, B0);
-          //C01.mac(A0, B1);
-          //C10.mac(A1, B0);
-          //C11.mac(A1, B1);
-
-          //A0 = aie::load_v<MMUL::size_A>(pA1);
-          //pA1 += MMUL::size_A;
-          //A1 = aie::load_v<MMUL::size_A>(pA2);
-          //pA2 += MMUL::size_A;
-          //B0 = aie::load_v<MMUL::size_B>(pB1);
-          //pB1 += MMUL::size_B * colB;
-          //B1 = aie::load_v<MMUL::size_B>(pB2);
-          //pB2 += MMUL::size_B * colB;
-
-          //C00.mac(A0, B0);
-          //C01.mac(A0, B1);
-          //C10.mac(A1, B0);
-          //C11.mac(A1, B1);
-
-          //A0 = aie::load_v<MMUL::size_A>(pA1);
-          //pA1 += MMUL::size_A;
-          //A1 = aie::load_v<MMUL::size_A>(pA2);
-          //pA2 += MMUL::size_A;
-          //B0 = aie::load_v<MMUL::size_B>(pB1);
-          //pB1 += MMUL::size_B * colB;
-          //B1 = aie::load_v<MMUL::size_B>(pB2);
-          //pB2 += MMUL::size_B * colB;
-
-          //C00.mac(A0, B0);
-          //C01.mac(A0, B1);
-          //C10.mac(A1, B0);
-          //C11.mac(A1, B1);
-                    for (unsigned i = 1; i < colA; ++i)
-                      chess_prepare_for_pipelining chess_loop_range(7, ) {
-                        A0 = aie::load_v<MMUL::size_A>(pA1);
-                        pA1 += MMUL::size_A;
-                        A1 = aie::load_v<MMUL::size_A>(pA2);
-                        pA2 += MMUL::size_A;
-                        B0 = aie::load_v<MMUL::size_B>(pB1);
-                        pB1 += MMUL::size_B * colB;
-                        B1 = aie::load_v<MMUL::size_B>(pB2);
-                        pB2 += MMUL::size_B * colB;
-          
-                        C00.mac(A0, B0);
-                        C01.mac(A0, B1);
-                        C10.mac(A1, B0);
-                        C11.mac(A1, B1);
-                      }
+          for (unsigned i = 1; i < colA; ++i)
+            chess_prepare_for_pipelining chess_loop_range(7, ) {
+              A0 = aie::load_v<MMUL::size_A>(pA1);
+              pA1 += MMUL::size_A;
+              A1 = aie::load_v<MMUL::size_A>(pA2);
+              pA2 += MMUL::size_A;
+              B0 = aie::load_v<MMUL::size_B>(pB1);
+              pB1 += MMUL::size_B * colB;
+              B1 = aie::load_v<MMUL::size_B>(pB2);
+              pB2 += MMUL::size_B * colB;
+        
+              C00.mac(A0, B0);
+              C01.mac(A0, B1);
+              C10.mac(A1, B0);
+              C11.mac(A1, B1);
+            }
 
           aie::store_v(pC1, C00.template to_vector<T_out>());
           pC1 += MMUL::size_C;

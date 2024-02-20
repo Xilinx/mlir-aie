@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
@@ -18,7 +19,6 @@
 #include <iostream>
 #include <sstream>
 #include <stdfloat>
-#include <bits/stdc++.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -40,7 +40,7 @@ constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-constexpr bool VERIFY = false;
+constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
@@ -78,8 +78,7 @@ static inline std::int16_t random_int16_t() {
 
 static inline std::bfloat16_t random_bfloat16_t() {
   std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0,
-                                                     1.0);
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
   return std::bfloat16_t(distribution(gen));
 }
 
@@ -213,8 +212,8 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  //auto run0 = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
-  //run0.wait();
+  // auto run0 = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
+  // run0.wait();
   auto start = std::chrono::high_resolution_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
@@ -246,15 +245,13 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop -
-                                                                         start)
-                   .count();
+  float npu_time =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+          .count();
   float macs = 2.0 * float(M) * float(K) * float(N);
 
   std::cout << std::endl
-            << "NPU matmul time: "
-            << npu_time
-            << "us." << std::endl;
+            << "NPU matmul time: " << npu_time << "us." << std::endl;
   std::cout << "NPU gflops: " << macs / (1000 * npu_time) << std::endl;
 
   if (!errors) {
