@@ -24,9 +24,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int M = 2048;
-constexpr int K = 2048;
-constexpr int N = 2048;
+constexpr int M = 256;
+constexpr int K = 256;
+constexpr int N = 256;
 
 constexpr int A_VOLUME = M * K;
 constexpr int B_VOLUME = N * K;

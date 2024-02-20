@@ -9,11 +9,11 @@
 include ../makefile-common
 
 M?=256
-K?=128
-N?=128
+K?=256
+N?=256
 
 m?=64
-k?=32
+k?=64
 n?=64
 
 dtype_in?=bf16
@@ -30,8 +30,8 @@ ifeq ($(dtype_in), bf16)
 	r?=4
 	s?=8
 	t?=4
-	dtype_out?=f32
-	word_size_out?=4
+	dtype_out?=bf16
+	word_size_out?=${word_size_in}
 endif
 
 targetname = matrixMultiplication

@@ -13,9 +13,9 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 2048
-    K = 2048
-    N = 2048
+    M = 256
+    K = 256
+    N = 256
     m = 64
     k = 64
     n = 64
