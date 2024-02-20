@@ -111,7 +111,6 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
               pB1 += MMUL::size_B * colB;
               B1 = aie::load_v<MMUL::size_B>(pB2);
               pB2 += MMUL::size_B * colB;
-        
               C00.mac(A0, B0);
               C01.mac(A0, B1);
               C10.mac(A1, B0);
