@@ -141,27 +141,27 @@ extern "C" {
                              ctype_acc)                                        \
   void matvec_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvecScalar<ctype_in, ctype_out, 64, 32>(a_in, b_in, c_out);              \
+    matvecScalar<ctype_in, ctype_out, 32, 32>(a_in, b_in, c_out);              \
   }
 
 #define matvec_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, ctype_acc)                     \
   void matvec_vectorized_##mlir_type_in##_##mlir_type_out(                     \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvecVectorized<ctype_in, ctype_out, ctype_acc, 64, 32, 16, 8>(           \
+    matvecVectorized<ctype_in, ctype_out, ctype_acc, 32, 32, 16, 8>(           \
         a_in, b_in, c_out);                                                    \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, ctype_acc)                       \
   void zero_vectorized_##mlir_type_out(ctype_out *c_out) {                     \
-    zeroVectorized<ctype_out, 64, 1, 32>(c_out);                               \
+    zeroVectorized<ctype_out, 32, 1, 32>(c_out);                               \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            ctype_acc)                                          \
   void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zeroScalar<ctype_out, 64, 1>(c_out);                                       \
+    zeroScalar<ctype_out, 32, 1>(c_out);                                       \
   }
 
 combos(matvec_scalar_c_func) combos(matvec_vectorized_c_func)

@@ -13,9 +13,9 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 256
-    K = 128
-    m = 64
+    M = 288
+    K = 288
+    m = 32
     k = 32
     word_size_in = 2
     word_size_out = 4
