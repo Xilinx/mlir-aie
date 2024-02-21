@@ -48,6 +48,9 @@ if ! hash unzip; then
   return 1
 fi
 alias python3=python3.8
+# if an install is already present, remove it to start from a clean slate
+rm -rf ironenv
+rm -rf my_install
 python3 -m virtualenv ironenv
 # The real path to source might depend on the virtualenv version
 if [ -r ironenv/local/bin/activate ]; then
@@ -71,7 +74,7 @@ if test -f "$VPP"; then
   export LD_LIBRARY_PATH=`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   popd
-  python3 -m pip install -r python/requirements.txt
+  python3 -m pip install --upgrade --force-reinstall -r python/requirements.txt
   pushd reference_designs/ipu-xrt
 else
   echo "Vitis not found! Exiting..."
