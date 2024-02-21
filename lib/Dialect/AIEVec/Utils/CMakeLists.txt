@@ -13,7 +13,7 @@ add_mlir_dialect_library(MLIRAIEVecUtils
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec
 
   LINK_LIBS PUBLIC
-  MLIRAIEVec
+  MLIRAIEVecDialect
   MLIRAffineDialect
   MLIRAffineAnalysis
   MLIRAffineUtils

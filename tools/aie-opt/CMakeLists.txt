@@ -30,7 +30,7 @@ set(LIBS
   AIEX
   AIEXTransforms
   AIEXUtils
-  MLIRAIEVec
+  MLIRAIEVecDialect
   MLIRAIEVecTransformOps
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM

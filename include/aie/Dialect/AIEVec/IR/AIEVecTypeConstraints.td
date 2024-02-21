@@ -10,6 +10,8 @@
 //===----------------------------------------------------------------------===//
 // Extra type constraint definitions for AIEVec operations.
 //===----------------------------------------------------------------------===//
+#ifndef AIE_DIALECT_AIEVEC_IR_AIEVECTYPECONSTRAINTS_TD
+#define AIE_DIALECT_AIEVEC_IR_AIEVECTYPECONSTRAINTS_TD
 
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/OpBase.td"
@@ -141,3 +143,5 @@ class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
                   VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
                                    rhs, VectorOfShapeAndType<[8, 4], BF16>,
                                    acc, VectorOfShapeAndType<[4, 4], F32>>]>>;
+
+#endif
