@@ -58,10 +58,12 @@ def my_matmul():
             zero_scalar = external_func("zero_scalar_f32", inputs=[memRef_outC_ty])
             zero = external_func("zero_vectorized_f32", inputs=[memRef_outC_ty])
             matvec_scalar = external_func(
-                "matvec_scalar_bf16_f32", inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty]
+                "matvec_scalar_bf16_f32",
+                inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
             )
             matvec = external_func(
-                "matvec_vectorized_bf16_f32", inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty]
+                "matvec_vectorized_bf16_f32",
+                inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
             )
 
             # Tile declarations
@@ -88,7 +90,15 @@ def my_matmul():
             # AIE-array data movement with object fifos
             # Input A
             for i in range(n_cores):
-                objectfifo(memA_fifos[i], ShimTiles[i], [MemTiles[i]], 2, ofifo_memRef_inA_ty, [], [])
+                objectfifo(
+                    memA_fifos[i],
+                    ShimTiles[i],
+                    [MemTiles[i]],
+                    2,
+                    ofifo_memRef_inA_ty,
+                    [],
+                    [],
+                )
                 objectfifo(
                     inA_fifos[i],
                     MemTiles[i],
@@ -103,14 +113,28 @@ def my_matmul():
                     [],
                 )
                 objectfifo_link([memA_fifos[i]], [inA_fifos[i]])
-            
+
             # Input B
-            objectfifo(inB_fifos[0], ShimTiles[1%n_cores], cores[0:n_cores], 2, ofifo_memRef_inB_ty, [], [])
+            objectfifo(
+                inB_fifos[0],
+                ShimTiles[1 % n_cores],
+                cores[0:n_cores],
+                2,
+                ofifo_memRef_inB_ty,
+                [],
+                [],
+            )
 
             # Output C
             for i in range(n_cores):
                 objectfifo(
-                    outC_fifos[i], cores[i], [ShimTiles[i]], 2, ofifo_memRef_outC_ty, [], []
+                    outC_fifos[i],
+                    cores[i],
+                    [ShimTiles[i]],
+                    2,
+                    ofifo_memRef_outC_ty,
+                    [],
+                    [],
                 )
 
             # Set up compute tiles
@@ -132,12 +156,8 @@ def my_matmul():
                                 ObjectFifoPort.Consume, inB_fifos[0], 1, memRef_inB_ty
                             ).acquired_elem()
                             Call(matvec, [elem_in_a, elem_in_b, elem_out])
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, inA_fifos[i], 1
-                            )
-                            objectfifo_release(
-                                ObjectFifoPort.Consume, inB_fifos[0], 1
-                            )
+                            objectfifo_release(ObjectFifoPort.Consume, inA_fifos[i], 1)
+                            objectfifo_release(ObjectFifoPort.Consume, inB_fifos[0], 1)
                             yield_([])
 
                         objectfifo_release(ObjectFifoPort.Produce, outC_fifos[i], 1)
@@ -159,21 +179,8 @@ def my_matmul():
                     strides=[0, 0, 0],
                 )
                 for i in range(n_cores):
-                    A_offset = (
-                        i
-                        * M_div_m_div_n_cores
-                        * m 
-                        * K
-                        * word_size_in
-                        // 4
-                    )
-                    C_offset = (
-                        i
-                        * M_div_m_div_n_cores
-                        * m
-                        * word_size_out
-                        // 4
-                    )
+                    A_offset = i * M_div_m_div_n_cores * m * K * word_size_in // 4
+                    C_offset = i * M_div_m_div_n_cores * m * word_size_out // 4
                     ipu_dma_memcpy_nd(
                         metadata=memA_fifos[i],
                         bd_id=1,
