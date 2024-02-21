@@ -73,7 +73,7 @@ def one_global(module):
                 linalg.copy(x, buffer_weight_0_2)
 
         mem_tile = aie.tile(column, 1)
-        flow_to_mem = (mem_tile << tile_0_2).flow
+        flow_to_mem = aie.flow(tile_0_2, dest=mem_tile)
 
         @aie.mem(tile_0_2)
         def mem():
@@ -89,7 +89,7 @@ def one_global(module):
             aie.end()
 
         shim_tile = aie.tile(column, 0)
-        flow_to_shim = (shim_tile << mem_tile).flow
+        flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
         mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
 
         @aie.memtile_dma(mem_tile)
@@ -212,7 +212,7 @@ def threesome(module):
 
         shim_tile_column = 2
         mem_tile = aie.tile(shim_tile_column, 1)
-        flow_to_mem = (mem_tile << tile_2_2).flow
+        flow_to_mem = aie.flow(tile_2_2, dest=mem_tile)
 
         @aie.mem(tile_2_2)
         def mem_2_2():
@@ -228,7 +228,7 @@ def threesome(module):
             aie.end()
 
         shim_tile = aie.tile(shim_tile_column, 0)
-        flow_to_shim = (shim_tile << mem_tile).flow
+        flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
         mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
 
         @aie.memtile_dma(mem_tile)
@@ -371,7 +371,8 @@ def foursome(module):
 
         shim_tile_column = 3
         mem_tile = aie.tile(shim_tile_column, 1)
-        flow_to_mem = (mem_tile << tile_2_3).flow
+        aie.flow(tile_2_3, dest=mem_tile)
+        flow_to_mem = aie.flow(tile_2_3, dest=mem_tile)
 
         @aie.mem(tile_2_3)
         def mem():
@@ -387,7 +388,7 @@ def foursome(module):
             aie.end()
 
         shim_tile = aie.tile(shim_tile_column, 0)
-        flow_to_shim = (shim_tile << mem_tile).flow
+        flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
         mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
 
         @aie.memtile_dma(mem_tile)
