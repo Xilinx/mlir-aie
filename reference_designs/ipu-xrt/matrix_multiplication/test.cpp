@@ -39,11 +39,11 @@ constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
-constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACE = true;
+constexpr bool VERIFY = false;
+constexpr bool ENABLE_TRACING = false;
 constexpr int TRACE_SIZE = 4096; 
 
-constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACE ? TRACE_SIZE : 0);
+constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
 
 namespace po = boost::program_options;
 
@@ -116,7 +116,7 @@ int main(int argc, const char *argv[]) {
       ("kernel,k", po::value<std::string>()->required(), "the kernel name in the XCLBIN (for instance PP_PRE_FD)")
       ("verbosity,v", po::value<int>()->default_value(0), "the verbosity of the output")
       ("instr,i", po::value<std::string>()->required(), "path of file containing userspace instructions to be sent to the LX6");
-  if(ENABLE_TRACE) {
+  if(ENABLE_TRACING) {
     desc.add_options()
       ("trace,t", po::value<std::string>()->default_value("trace.txt"), "where to store trace output");
   }
@@ -258,7 +258,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  if (ENABLE_TRACE) {
+  if (ENABLE_TRACING) {
     write_out_trace(bufOut, vm["trace"].as<std::string>());
   }
 

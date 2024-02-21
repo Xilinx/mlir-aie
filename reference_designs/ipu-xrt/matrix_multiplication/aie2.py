@@ -25,7 +25,7 @@ def my_matmul():
     word_size_out = 4
 
     vectorized = True
-    enable_tracing = True
+    enable_tracing = False
     trace_size = 4096
 
     A_sz_in_i32s = M * K * word_size_in // 4
@@ -192,21 +192,21 @@ def my_matmul():
                     #              BB      <- Event to start trace capture
                     #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
                     # Configure so that "Event 1" (always true) causes tracing to start
-                    AIEX._generated_ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340D0, value=0x00010000)
+                    AIEX.ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340D0, value=0x00010000)
                     # 0x340D4: Trace Control 1
-                    AIEX._generated_ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340D4, value=0x00000000)
+                    AIEX.ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340D4, value=0x00000000)
                     # 0x340E0: Trace Event Group 1  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    AIEX._generated_ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E0, value=0x4B222125)
+                    AIEX.ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E0, value=0x4B222125)
                     # 0x340E4: Trace Event Group 2  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    AIEX._generated_ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E4, value=0x00000000)
+                    AIEX.ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E4, value=0x00000000)
 
                     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
                     # out to host DDR memory
                     trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
                     output_size = C_sz_in_bytes
-                    AIEX._generated_ipu_writebd_shimtile(
+                    AIEX.ipu_writebd_shimtile(
                             bd_id              =  trace_bd_id,
                             buffer_length      =   trace_size,
                             buffer_offset      =  output_size,
@@ -234,7 +234,7 @@ def my_matmul():
                             use_next_bd        =            0,
                             valid_bd           =            1)
                     # Set start BD to our shim bd_Id (3)
-                    AIEX._generated_ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
+                    AIEX.ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
