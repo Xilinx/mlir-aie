@@ -16,7 +16,7 @@
 #ifndef AIE_TARGET_LLVMIR_DIALECT_ALL_H
 #define AIE_TARGET_LLVMIR_DIALECT_ALL_H
 
-#include "mlir/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
+#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
 
 namespace mlir {
 class DialectRegistry;

@@ -10,7 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
-#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
+#include "aie/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Support/LogicalResult.h"
@@ -38,7 +38,7 @@ void registerToLLVMIRTranslation() {
       },
       [](DialectRegistry &registry) {
         registry.insert<DLTIDialect, func::FuncDialect>();
-        xilinx::aievec::registerAIEVecDialectTranslation(registry);
+        xilinx::registerAllAIEToLLVMIRTranslations(registry);
         registerAllToLLVMIRTranslations(registry);
       });
 }
