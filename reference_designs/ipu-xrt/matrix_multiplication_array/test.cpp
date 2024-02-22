@@ -25,24 +25,9 @@
 #include "xrt/xrt_kernel.h"
 
 #include "../matrix_multiplication.h"
-
-constexpr int M = 512;
-constexpr int K = 512;
-constexpr int N = 512;
-
-constexpr int A_VOLUME = M * K;
-constexpr int B_VOLUME = N * K;
-constexpr int C_VOLUME = M * N;
-
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = std::bfloat16_t;
-
-constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
-constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
-constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
-
-constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
@@ -54,11 +39,29 @@ int main(int argc, const char *argv[]) {
   matmul_common::add_default_options(desc);
   matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+  int do_verify = vm["verify"].as<bool>();
 
   srand(time(NULL));
 
+  int M = vm["M"].as<int>();
+  int K = vm["K"].as<int>();
+  int N = vm["N"].as<int>();
+
+  if(verbosity >= 1) {
+    std::cout << "Matrix size " << M << "x" << "x" << K << "x" << N << std::endl;
+  }
+
+  int A_VOLUME = M * K;
+  int B_VOLUME = N * K;
+  int C_VOLUME = M * N;
+
+  int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
+  int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
+  int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
+
   std::vector<uint32_t> instr_v =
       matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
+
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -161,7 +164,7 @@ int main(int argc, const char *argv[]) {
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
     std::vector<C_DATATYPE> CVecRef(C_VOLUME);
-    if (VERIFY) {
+    if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
@@ -203,7 +206,7 @@ int main(int argc, const char *argv[]) {
             << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
   std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
-  if (VERIFY && !errors) {
+  if (do_verify && !errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {

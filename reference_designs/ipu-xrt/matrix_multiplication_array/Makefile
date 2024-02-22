@@ -11,45 +11,30 @@ include ../makefile-common
 M?=512
 K?=512
 N?=512
+verify?=1
 
-m?=64
-k?=64
-n?=64
-
-dtype_in?=bf16
-ifeq ($(dtype_in), i16)
-	word_size_in?=2
-	r?=4
-	s?=4
-	t?=4
-	dtype_out?=i16
-	word_size_out?=${word_size_in}
-endif
-ifeq ($(dtype_in), bf16)
-	word_size_in?=2
-	r?=4
-	s?=8
-	t?=4
-	dtype_out?=bf16
-	word_size_out?=${word_size_in}
-endif
-
+xclbin_sign=/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh 
 targetname = matrixMultiplication
 
-all: build/final.xclbin build/insts.txt
+mlir_target=build/aie_${M}x${K}x${N}.mlir
+xclbin_target=build/final_${M}x${K}x${N}.xclbin
+insts_target=build/insts_${M}x${K}x${N}.txt
+
+.PHONY: all
+all: ${xclbin_target} ${insts_target} ${targetname}.exe sign
 
 build/%.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 
-build/aie.mlir: aie2.py
+${mlir_target}: aie2.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< -M $M -K $K -N $N > $@
 
-build/final.xclbin: build/aie.mlir build/mm.o
+${xclbin_target}: ${mlir_target} build/mm.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-ipu --ipu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: test.cpp ../matrix_multiplication.h
 	rm -rf _build
@@ -62,8 +47,14 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+.PHONY: sign
+sign: ${xclbin_target}
+	${xclbin_sign} -dev Phoenix -xclbin $<
 
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${insts_target} sign
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N --verify ${verify}
+
+.PHONY: clean
 clean:
 	rm -rf build _build ${targetname}.exe
