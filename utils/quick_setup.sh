@@ -63,9 +63,6 @@ if test -f "$VPP"; then
   pushd my_install
   pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q mlir_aie-*_x86_64.whl
-  sed -i "s^TARGET_AIE_LIBDIR=.*^TARGET_AIE_LIBDIR=\"$AIETOOLS/data/versal_prod/lib\"^g" mlir_aie/bin/xchesscc_wrapper
-  sed -i "s^TARGET_AIE2_LIBDIR=.*^TARGET_AIE2_LIBDIR=\"$AIETOOLS/data/aie_ml/lib\"^g" mlir_aie/bin/xchesscc_wrapper
-  sed -i "s^AIETOOLS=.*^AIETOOLS=\"$AIETOOLS\"^g" mlir_aie/bin/xchesscc_wrapper
   pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
   unzip -q mlir-*_x86_64.whl
   pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip

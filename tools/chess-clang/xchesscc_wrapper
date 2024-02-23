@@ -7,10 +7,11 @@
 # (c) Copyright 2021 Xilinx Inc.
 # (c) Copyright 2022-2023 Advanced Micro Devices, Inc.
 
-TARGET_AIE_LIBDIR=${VITIS_AIE_INCLUDE_DIR:-"@VITIS_AIE_INCLUDE_DIR@"}
-TARGET_AIE2_LIBDIR=${VITIS_AIE2_INCLUDE_DIR:-"@VITIS_AIE2_INCLUDE_DIR@"}
+VITIS_ROOT=`realpath $(dirname $(which vitis))/../`
+AIETOOLS=$VITIS_ROOT/aietools
 
-AIETOOLS=${VITIS_AIETOOLS_DIR:-"@VITIS_AIETOOLS_DIR@"}
+TARGET_AIE_LIBDIR=$AIETOOLS/data/versal_prod/lib
+TARGET_AIE2_LIBDIR=$AIETOOLS/data/aie_ml/lib
 
 TARGET=${1^^}
 shift
