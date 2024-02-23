@@ -31,6 +31,7 @@ for M in $Ms; do
     for K in $Ks; do
         for N in $Ns; do
             echo ${M}x${K}x${N} 1>&2
+            rm -r /lib/firmware/amdnpu/1502/*.xclbin  # Signing step may hang otherwise
             M=${M} K=${K} N=${N} verify=${verify} make all 1>>$log_out 2>&1
             printf "${M},\t${K},\t${N}" >>$csv_out
             for i in $(seq 1 $iterations); do
