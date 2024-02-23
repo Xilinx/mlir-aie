@@ -12,12 +12,13 @@ import numpy as np
 from ._aiex_ops_gen import *
 from .aie import (
     DMAChannelDir,
-    DeviceOp,
-    FlowOp,
     LockAction,
     TileOp,
     dma,
     dma_bd,
+    find_neighbors,
+    find_matching_flows,
+    find_matching_locks,
     flow,
     lock,
     tile,
@@ -26,11 +27,8 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..extras.util import _get_previous_frame_idents, find_ops, find_parent_of_type
 from ..ir import DictAttr, IntegerAttr, UnitAttr
 
-# Copyright (C) 2023, Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -373,26 +371,21 @@ def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
 
 
 class TileArray:
-    def __init__(self, cols=5, rows=6, df=None, flows=None):
+    def __init__(self, cols=5, rows=6, df=None):
         if df is None:
             df = np.array(
                 [[tile(c, r) for r in range(rows)] for c in range(cols)],
             )
         self.df = df
-        if flows is None:
-            flows = Flows(self)
-        self._flows = flows
 
     def flow(self, other, *args, **kwargs):
-        return broadcast_flow(self.df, other.df, *args, **kwargs, flows=self.flows)
+        return broadcast_flow(self.df, other.df, *args, **kwargs)
 
     def __rshift__(self, other):
-        return broadcast_flow(self.df, other.df, flows=self.flows)
+        return broadcast_flow(self.df, other.df)
 
     def __lshift__(self, other):
-        r = np.frompyfunc(partial(broadcast_flow, flows=self.flows), 2, 1).outer(
-            other.df, self.df
-        )
+        r = np.frompyfunc(partial(broadcast_flow), 2, 1).outer(other.df, self.df)
         if isinstance(r, np.ndarray):
             r = r.flatten().tolist()
             if len(r) == 1:
@@ -429,9 +422,15 @@ class TileArray:
         assert isinstance(self.df, TileOp)
         return item == self.df
 
+    def flows(self, **kwargs):
+        return find_matching_flows(self, **kwargs)
+
+    def locks(self, **kwargs):
+        return find_matching_locks(self, **kwargs)
+
     @property
-    def flows(self):
-        return self._flows
+    def neighbors(self):
+        return np.vectorize(find_neighbors)(self.df)
 
     @property
     def shape(self):
@@ -439,66 +438,6 @@ class TileArray:
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.df}>"
-
-
-class Flows:
-    def __init__(self, tiles: TileArray):
-        self.tiles = tiles
-
-    def find_matching_flows(
-        self,
-        tiles,
-        filter_source=False,
-        filter_dest=False,
-        source_annot=None,
-        dest_annot=None,
-    ):
-        assert not (filter_source and filter_dest), "Can only filter by source XOR dest"
-        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
-
-        def _cb(op):
-            if isinstance(op, FlowOp):
-                if filter_source and op.source.owner.opview not in tiles:
-                    return False
-                if filter_dest and op.dest.owner.opview not in tiles:
-                    return False
-
-                return (
-                    op.source.owner.opview in tiles
-                    or op.dest.owner.opview in tiles
-                    and (
-                        (
-                            "source_annot" in op.attributes
-                            and source_annot in op.attributes["source_annot"]
-                        )
-                        if source_annot is not None
-                        else True
-                    )
-                    and (
-                        (
-                            "dest_annot" in op.attributes
-                            and dest_annot in op.attributes["dest_annot"]
-                        )
-                        if dest_annot is not None
-                        else True
-                    )
-                )
-
-        return find_ops(device, _cb)
-
-    def __getitem__(self, item):
-        kwargs = {}
-        if len(item) > 2:
-            # not sure how but you don't need two backs here
-            # (the previous frame is the call site of TileArray().flows...)
-            previous_frame = inspect.currentframe().f_back
-            for kwarg in item[2:]:
-                k = _get_previous_frame_idents(kwarg, previous_frame)
-                assert len(k) == 1, f"{len(k)=}"
-                kwargs[k[0]] = kwarg
-            item = item[:2]
-        tiles = self.tiles[item]
-        return self.find_matching_flows(tiles, **kwargs)
 
 
 def broadcast_flow(
@@ -510,14 +449,13 @@ def broadcast_flow(
     dest_channel=None,
     source_annot=None,
     dest_annot=None,
-    flows: Flows = None,
 ):
     if isinstance(source, TileOp):
         source = np.asarray([source])
     if isinstance(dest, TileOp):
         dest = np.asarray([dest])
     for chan in [source_channel, dest_channel]:
-        assert (chan is None and flows is not None) or np.all(
+        assert chan is None or np.all(
             np.array(chan) != None
         ), "can't handle mixed auto channel assignment"
 
@@ -534,19 +472,15 @@ def broadcast_flow(
     if source_channel is None or np.all(np.array(source_channel) == None):
         source_channel = np.empty_like(source, dtype=None)
         for s, indices in zip(*map(list, np.unique(source, return_index=True))):
-            used_channels = set(
-                int(f.source_channel)
-                for f in flows.find_matching_flows([s], filter_source=True)
-            )
+            matching_flows = find_matching_flows([s], filter_source=True)
+            used_channels = set(int(f.source_channel) for f in matching_flows)
             source_channel.flat[indices] = _find_next_channel(used_channels)
 
     if dest_channel is None or np.all(np.array(dest_channel) == None):
         used_channels = {}
         for d in np.unique(dest):
-            used_channels[d] = set(
-                int(f.dest_channel)
-                for f in flows.find_matching_flows([d], filter_dest=True)
-            )
+            matching_flows = find_matching_flows([d], filter_dest=True)
+            used_channels[d] = set(int(f.dest_channel) for f in matching_flows)
         dest_channel = np.empty_like(dest, dtype=None)
         for idx, dst in np.ndenumerate(dest):
             dest_channel[idx] = _find_next_channel(used_channels[dst])
