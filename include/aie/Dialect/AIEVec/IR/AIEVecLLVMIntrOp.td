@@ -26,6 +26,10 @@ class ExtIntrOpBase<Dialect dialect,
     list<int> llvmArgIndices = [];
 }
 
+// TODO: Create an aievecllvm dialect so it can be marked legal all at once.
+// TODO: That will require moving AIEVecLLVMIntrOp.td _out_ of AIEVecOps.td
+// TODO: header, which is how these are being generated.
+
 // For AIE2 only
 class AIEVec2_IntrOp<string mnemonic,
                      list<Trait> traits = [],
@@ -40,6 +44,14 @@ class AIEVec2_IntrOp<string mnemonic,
 // TODO: Find better names for these
 def MacConfAcc32IntrOp :
     AIEVec2_IntrOp<"I512.I512.ACC1024.acc32.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   VectorOfLengthAndType<[16], [I64]>:$acc,
+                   I32:$conf)>;
+
+def MacConfAcc64IntrOp :
+    AIEVec2_IntrOp<"I512.I512.ACC1024.acc64.mac.conf",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
     Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
