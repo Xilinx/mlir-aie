@@ -541,6 +541,24 @@ Effects: `MemoryEffects::Effect{}`
 | `res` | LLVM dialect-compatible type
 
 
+### `aievec.intr.I512.I512.ACC1024.acc64.mac.conf` (::xilinx::aievec::MacConfAcc64IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 8-bit signless integer values of length 64
+| `rhs` | vector of 32-bit signless integer values of length 16
+| `acc` | vector of 64-bit signless integer values of length 16
+| `conf` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `aievec.intr.set.I512.I128` (::xilinx::aievec::VectorSetI512I128IntrOp)
 
 #### Operands:
