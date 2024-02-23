@@ -1,10 +1,8 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from collections import defaultdict
-from enum import Enum
 import inspect
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
@@ -17,7 +15,12 @@ from .._mlir_libs._aie import ObjectFifoSubviewType, ObjectFifoType
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 from ..extras.meta import region_op
-from ..extras.util import Successor, _get_sym_name, get_user_code_loc, region_adder
+from ..extras.util import (
+    Successor,
+    _get_sym_name,
+    get_user_code_loc,
+    region_adder,
+)
 from ..ir import (
     ArrayAttr,
     Attribute,
@@ -383,187 +386,54 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
     )
 
 
-_flow = flow
-
-flow = lambda *args, **kwargs: _flow(*args, **kwargs).opview
-
-
 @_cext.register_operation(_Dialect, replace=True)
 class FlowOp(FlowOp):
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self}>"
 
 
-class IncomingOutgoing(Enum):
-    INCOMING = auto()
-    OUTGOING = auto()
+def flow(
+    source,
+    source_bundle=None,
+    source_channel=None,
+    dest=None,
+    dest_bundle=None,
+    dest_channel=None,
+):
+    assert dest is not None
+    if source_bundle is None:
+        source_bundle = WireBundle.DMA
+    if source_channel is None:
+        source_channel = 0
+    if dest_bundle is None:
+        dest_bundle = WireBundle.DMA
+    if dest_channel is None:
+        dest_channel = 0
+    return FlowOp(
+        source, source_bundle, source_channel, dest, dest_bundle, dest_channel
+    )
 
 
 @_cext.register_operation(_Dialect, replace=True)
 class TileOp(TileOp):
-    flows: Dict["TileOp", List[FlowOp]] = None
-
-    def ep(
-        self,
-        bundle: Optional[WireBundle] = None,
-        channel: Optional[int] = None,
-    ):
-        if self.flows is None:
-            self.flows = defaultdict(list)
-        return FlowEndPoint(self, bundle, channel)
-
-    def __rshift__(self, other: Union["TileOp", "FlowEndPoint"]):
-        if isinstance(other, TileOp):
-            other = other.ep()
-        return self.ep() >> other
-
-    def __lshift__(self, other: Union["TileOp", "FlowEndPoint"]):
-        if isinstance(other, tuple):
-            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
-            return tuple([t >> self for t in other])
-
-        if isinstance(other, TileOp):
-            other = other.ep()
-        other >> self.ep()
-        return other
-
     def __str__(self):
         return f"tile(col={self.col.value}, row={self.row.value})"
 
     def __repr__(self):
-        return str(self.result)
+        return str(self.operation)
 
-
-class classproperty:
-    def __init__(self, func):
-        self.fget = func
-
-    def __get__(self, instance, owner):
-        return self.fget(owner)
-
-
-class FlowEndPoint:
-    tile: TileOp = None
-    bundle: WireBundle = None
-    channel: int = None
-    flow: FlowOp = None
-
-    def __init__(
-        self,
-        tile: TileOp,
-        bundle: Optional[WireBundle] = None,
-        channel: Optional[int] = None,
-    ):
-        self.tile = tile
-        self.bundle = bundle
-        self.channel = channel
-
-    # fmt: off
-    __used_channels: Dict[Tuple[int, int, WireBundle, IncomingOutgoing], Set[int]] = None
-    # fmt: on
-
-    @classmethod
-    def _reset_used_channels(cls):
-        cls.__used_channels = defaultdict(set)
-
-    @classproperty
-    def _used_channels(cls):
-        if cls.__used_channels is None:
-            cls._reset_used_channels()
-        return cls.__used_channels
-
-    @classmethod
-    def _get_channel_and_update(cls, channel, tile, bundle, incoming_outgoing):
-        used_channels = cls._used_channels[
-            tile.col.value, tile.row.value, bundle, incoming_outgoing
-        ]
-        if channel is None:
-            max_used_channel = max(used_channels, default=-1)
-            for i in range(max_used_channel):
-                if i not in used_channels:
-                    channel = i
-                    break
-            else:
-                channel = max_used_channel + 1
-        # in case we got IntegerAttr existing channel
-        channel = int(channel)
-        if incoming_outgoing is IncomingOutgoing.INCOMING:
-            assert channel not in used_channels
-        used_channels.add(channel)
-        return channel
-
-    def __rshift__(
-        self, other: Union["FlowEndPoint", TileOp, Tuple[Union["FlowEndPoint", TileOp]]]
-    ):
-        if isinstance(other, tuple):
-            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
-            first = self >> other[0]
-            return tuple(
-                [first]
-                + [
-                    self.tile.ep(first.flow.source_bundle, first.flow.source_channel)
-                    >> t
-                    for t in other[1:]
-                ]
-            )
-
-        if isinstance(other, TileOp):
-            other = other.ep()
-
-        for op in [self, other]:
-            if op.bundle is None:
-                op.bundle = WireBundle.DMA
-
-        self_channel = self._get_channel_and_update(
-            self.channel, self.tile, self.bundle, IncomingOutgoing.OUTGOING
-        )
-        other_channel = self._get_channel_and_update(
-            other.channel,
-            other.tile,
-            other.bundle,
-            IncomingOutgoing.INCOMING,
-        )
-        if int(self.bundle) != int(WireBundle.DMA) or int(other.bundle) != int(
-            WireBundle.DMA
-        ):
-            assert (
-                self_channel == other_channel
-            ), f"channel mismatch {self_channel=} {other_channel=} (see arch page 121)"
-
-        result = flow(
-            self.tile,
-            self.bundle,
-            self_channel,
-            other.tile,
-            other.bundle,
-            other_channel,
+    def __lt__(self, other):
+        return tuple(map(int, (self.col, self.row))) < tuple(
+            map(int, (other.col, other.row))
         )
 
-        self.tile.flows[other.tile].append(result)
-        other.tile.flows[self.tile].append(result)
-        self.flow = result
-        other.flow = result
+    def __eq__(self, other):
+        return tuple(map(int, (self.col, self.row))) == tuple(
+            map(int, (other.col, other.row))
+        )
 
-        return other
-
-    def __lshift__(
-        self, other: Union["FlowEndPoint", TileOp, Tuple[Union["FlowEndPoint", TileOp]]]
-    ):
-        if isinstance(other, tuple):
-            assert all(isinstance(t, (FlowEndPoint, TileOp)) for t in other)
-            return tuple([t >> self for t in other])
-        other >> self
-        return other
-
-    def __repr__(self):
-        if self.channel:
-            return f"<FlowEndPoint: {self.tile} - {self.bundle} - {self.channel}>"
-        return f"<FlowEndPoint: {self.tile} - {self.bundle}>"
-
-    def __str__(self):
-        if self.channel:
-            return f"<{self.tile} - {self.bundle} - {self.channel}>"
-        return f"<{self.tile} - {self.bundle}>"
+    def __hash__(self):
+        return hash((self.col, self.row))
 
 
 def tile(col, row, *, loc=None, ip=None):

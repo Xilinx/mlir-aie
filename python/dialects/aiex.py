@@ -2,13 +2,32 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
 from functools import partial
+import inspect
+import itertools
+from operator import itemgetter
+from typing import Union
+
+import numpy as np
 
 from ._aiex_ops_gen import *
-from .aie import DMAChannelDir, LockAction, dma, dma_bd, lock, use_lock
+from .aie import (
+    DMAChannelDir,
+    DeviceOp,
+    FlowOp,
+    LockAction,
+    TileOp,
+    dma,
+    dma_bd,
+    flow,
+    lock,
+    tile,
+    use_lock,
+)
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import IntegerAttr
+from ..extras.util import _get_previous_frame_idents, find_ops, find_parent_of_type
+from ..ir import DictAttr, IntegerAttr, UnitAttr
 
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -351,3 +370,221 @@ def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
         yield
     finally:
         use_lock(rel_lock, LockAction.Release, value=rel_val)
+
+
+class TileArray:
+    def __init__(self, cols=5, rows=6, df=None, flows=None):
+        if df is None:
+            df = np.array(
+                [[tile(c, r) for r in range(rows)] for c in range(cols)],
+            )
+        self.df = df
+        if flows is None:
+            flows = Flows(self)
+        self._flows = flows
+
+    def flow(self, other, *args, **kwargs):
+        return broadcast_flow(self.df, other.df, *args, **kwargs, flows=self.flows)
+
+    def __rshift__(self, other):
+        return broadcast_flow(self.df, other.df, flows=self.flows)
+
+    def __lshift__(self, other):
+        r = np.frompyfunc(partial(broadcast_flow, flows=self.flows), 2, 1).outer(
+            other.df, self.df
+        )
+        if isinstance(r, np.ndarray):
+            r = r.flatten().tolist()
+            if len(r) == 1:
+                r = r[0]
+        return r
+
+    def __getitem__(self, item):
+        # https://numpy.org/doc/stable/user/basics.indexing.html#integer-array-indexing
+        # numpy advanced indexing is a little mind-binding:
+        # self.df[[[0], [1]], 0].shape == (2, 1)
+        # the way it works is _the indices_ are broadcasted too
+        # "Advanced indices always are broadcast and iterated as one"
+
+        # canonicalize slices so that below shortcut works correctly
+        if isinstance(item, int):
+            item = [item]
+        item = list(item)
+        for j, i in enumerate(item):
+            if isinstance(i, slice):
+                item[j] = list(range(*i.indices(self.df.shape[j])))
+        # take a shortcut and turn something like self.df[[0, 1], WHATEVER] into self.df[[[0], [1]], WHATEVER]
+        # i.e. outer dim will match the length of the first idx
+        if len(item) == 2:
+            if np.asarray(item[0]).ndim == 1:
+                item[0] = np.asarray(item[0])[:, np.newaxis]
+            if np.asarray(item[1]).ndim == 1:
+                item[1] = np.asarray(item[1])[np.newaxis, :]
+        item = tuple(item)
+        return TileArray(df=self.df[item])
+
+    def __contains__(self, item):
+        if isinstance(self.df, np.ndarray):
+            return item in self.df
+        assert isinstance(self.df, TileOp)
+        return item == self.df
+
+    @property
+    def flows(self):
+        return self._flows
+
+    @property
+    def shape(self):
+        return self.df.shape
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.df}>"
+
+
+class Flows:
+    def __init__(self, tiles: TileArray):
+        self.tiles = tiles
+
+    def find_matching_flows(
+        self,
+        tiles,
+        filter_source=False,
+        filter_dest=False,
+        source_annot=None,
+        dest_annot=None,
+    ):
+        assert not (filter_source and filter_dest), "Can only filter by source XOR dest"
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+        def _cb(op):
+            if isinstance(op, FlowOp):
+                if filter_source and op.source.owner.opview not in tiles:
+                    return False
+                if filter_dest and op.dest.owner.opview not in tiles:
+                    return False
+
+                return (
+                    op.source.owner.opview in tiles
+                    or op.dest.owner.opview in tiles
+                    and (
+                        (
+                            "source_annot" in op.attributes
+                            and source_annot in op.attributes["source_annot"]
+                        )
+                        if source_annot is not None
+                        else True
+                    )
+                    and (
+                        (
+                            "dest_annot" in op.attributes
+                            and dest_annot in op.attributes["dest_annot"]
+                        )
+                        if dest_annot is not None
+                        else True
+                    )
+                )
+
+        return find_ops(device, _cb)
+
+    def __getitem__(self, item):
+        kwargs = {}
+        if len(item) > 2:
+            # not sure how but you don't need two backs here
+            # (the previous frame is the call site of TileArray().flows...)
+            previous_frame = inspect.currentframe().f_back
+            for kwarg in item[2:]:
+                k = _get_previous_frame_idents(kwarg, previous_frame)
+                assert len(k) == 1, f"{len(k)=}"
+                kwargs[k[0]] = kwarg
+            item = item[:2]
+        tiles = self.tiles[item]
+        return self.find_matching_flows(tiles, **kwargs)
+
+
+def broadcast_flow(
+    source: Union[np.ndarray, TileOp],
+    dest: Union[np.ndarray, TileOp],
+    source_bundle=None,
+    source_channel=None,
+    dest_bundle=None,
+    dest_channel=None,
+    source_annot=None,
+    dest_annot=None,
+    flows: Flows = None,
+):
+    if isinstance(source, TileOp):
+        source = np.asarray([source])
+    if isinstance(dest, TileOp):
+        dest = np.asarray([dest])
+    for chan in [source_channel, dest_channel]:
+        assert (chan is None and flows is not None) or np.all(
+            np.array(chan) != None
+        ), "can't handle mixed auto channel assignment"
+
+    def _find_next_channel(used_channels):
+        max_used_channel = max(used_channels, default=-1)
+        for i in range(max_used_channel):
+            if i not in used_channels:
+                channel = i
+                break
+        else:
+            channel = max_used_channel + 1
+        return channel
+
+    if source_channel is None or np.all(np.array(source_channel) == None):
+        source_channel = np.empty_like(source, dtype=None)
+        for s, indices in zip(*map(list, np.unique(source, return_index=True))):
+            used_channels = set(
+                int(f.source_channel)
+                for f in flows.find_matching_flows([s], filter_source=True)
+            )
+            source_channel.flat[indices] = _find_next_channel(used_channels)
+
+    if dest_channel is None or np.all(np.array(dest_channel) == None):
+        used_channels = {}
+        for d in np.unique(dest):
+            used_channels[d] = set(
+                int(f.dest_channel)
+                for f in flows.find_matching_flows([d], filter_dest=True)
+            )
+        dest_channel = np.empty_like(dest, dtype=None)
+        for idx, dst in np.ndenumerate(dest):
+            dest_channel[idx] = _find_next_channel(used_channels[dst])
+            used_channels[dst].add(dest_channel[idx])
+
+    args = [
+        source,
+        source_bundle,
+        source_channel,
+        dest,
+        dest_bundle,
+        dest_channel,
+        source_annot,
+        dest_annot,
+    ]
+    for i, arg in enumerate(args):
+        arg = np.core.shape_base._atleast_nd(arg, dest.ndim)
+        # only support broadcast from source to dest
+        assert (
+            np.broadcast_shapes(arg.shape, dest.shape) == dest.shape
+        ), f"Only broadcasting from source to dest is supported: {arg=} {dest=}"
+        arg = np.broadcast_to(arg, dest.shape)
+        # flatten so we can do the groupby below
+        args[i] = arg.flatten()
+    flows = []
+    for _grp_name, grp in itertools.groupby(zip(*args), key=itemgetter(0)):
+        for g in grp:
+            *flow_args, source_annot, dest_annot = g
+            flow_ = flow(*flow_args)
+            if source_annot is not None:
+                flow_.attributes["source_annot"] = DictAttr.get(
+                    {source_annot: UnitAttr.get()}
+                )
+            if dest_annot is not None:
+                flow_.attributes["dest_annot"] = DictAttr.get(
+                    {dest_annot: UnitAttr.get()}
+                )
+            flows.append(flow_)
+    if len(flows) == 1:
+        flows = flows[0]
+    return flows
