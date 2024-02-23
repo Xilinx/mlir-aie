@@ -8,6 +8,7 @@
 if(NOT DEFINED CMAKE_CROSSCOMPILE)
   set(SCRIPT_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/bin)
   # These files are only useful on host x86 compiles.
+  install(PROGRAMS xchesscc_wrapper DESTINATION ${PROJECT_BINARY_DIR}/bin)
   install(PROGRAMS xchesscc_wrapper DESTINATION ${SCRIPT_INSTALL_PATH})
 
   set(FILES
