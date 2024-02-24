@@ -16,6 +16,7 @@ include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 include "aie/Dialect/AIE/IR/AIETypes.td"
 
+include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -1196,11 +1197,16 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   let arguments = (
     ins Index:$tile,
     OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<AIEI32Attr>:$address
+    OptionalAttr<AIEI32Attr>:$address,
+    OptionalAttr<ElementsAttr>:$initial_value
   );
 
   let results = (outs AnyMemRef:$buffer);
-  let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
+  let assemblyFormat = [{
+    `(` $tile `)`
+    attr-dict `:` type($buffer)
+    custom<BufferInitialValue>(ref(type($buffer)), $initial_value)
+  }];
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{

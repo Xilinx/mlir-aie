@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -358,10 +359,12 @@ void AIEDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
+
       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
@@ -1283,6 +1286,33 @@ void xilinx::AIE::collectBuffers(
     Operation *tileOp = buffer.getTile().getDefiningOp();
     buffers[tileOp].push_back(buffer);
   }
+}
+
+static void printBufferInitialValue(OpAsmPrinter &p, BufferOp op, Type type,
+                                    Attribute initialValue) {
+  if (op.getInitialValue()) {
+    p << "= ";
+    p.printAttributeWithoutType(initialValue);
+  }
+}
+
+static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
+                                           Attribute &initialValue) {
+  auto memrefType = llvm::cast<MemRefType>(type);
+  if (!memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << type;
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initialValue, tensorType))
+    return failure();
+  if (!llvm::isa<ElementsAttr>(initialValue))
+    return parser.emitError(parser.getNameLoc())
+           << "initial value should be an elements attribute";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

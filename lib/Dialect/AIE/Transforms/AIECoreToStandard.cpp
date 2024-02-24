@@ -395,7 +395,8 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     auto symName = buffer.name().getValue();
     rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), nullptr, false, nullptr);
+        buffer.getType(), buffer.getInitialValueAttr(), /*constant*/ false,
+        /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();

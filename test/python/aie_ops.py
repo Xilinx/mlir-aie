@@ -1,5 +1,6 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import numpy as np
 
 # RUN: %PYTHON %s | FileCheck %s
 
@@ -78,10 +79,17 @@ def deviceOp():
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
     b = Buffer(tile=t, size=(12,), datatype=T.i32())
+    b = Buffer(
+        tile=t,
+        size=(2, 2),
+        datatype=T.i32(),
+        initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
+    )
 
 
 # CHECK-LABEL: externalBufferOp

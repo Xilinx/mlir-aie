@@ -123,8 +123,9 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
-          BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t,
-                                                  tile, nullptr, nullptr);
+          BufferOp buf = builder.create<BufferOp>(
+              builder.getUnknownLoc(), t, tile, /*sym_name*/ nullptr,
+              /*address*/ nullptr, /*initial_value*/ nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }

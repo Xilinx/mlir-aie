@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import inspect
-from collections import namedtuple
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
+
+import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
@@ -29,6 +30,7 @@ from ..ir import (
     ArrayAttr,
     Attribute,
     Block,
+    DenseElementsAttr,
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
@@ -146,8 +148,20 @@ class Core(CoreOp):
 # Create an aie buffer of (size x datatype) on given tile.
 # size examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
-    def __init__(self, tile, size, datatype, name=None):
-        super().__init__(buffer=T.memref(*size, datatype), tile=tile, sym_name=name)
+    def __init__(self, tile, size, datatype, name=None, initial_value=None):
+        if initial_value is not None:
+            assert isinstance(initial_value, np.ndarray)
+            initial_value = DenseElementsAttr.get(
+                initial_value,
+                type=datatype,
+                context=None,
+            )
+        super().__init__(
+            buffer=T.memref(*size, datatype),
+            tile=tile,
+            sym_name=name,
+            initial_value=initial_value,
+        )
 
 
 # Create an aie external buffer of (size x datatype).
