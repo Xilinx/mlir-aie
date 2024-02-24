@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import inspect
+from collections import namedtuple
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 from ._aie_enum_gen import *
@@ -20,6 +22,8 @@ from ..extras.util import (
     _get_sym_name,
     get_user_code_loc,
     region_adder,
+    find_parent_of_type,
+    find_ops,
 )
 from ..ir import (
     ArrayAttr,
@@ -31,6 +35,8 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     TypeAttr,
+    DictAttr,
+    UnitAttr,
     _i32ArrayAttr,
 )
 
@@ -374,8 +380,10 @@ def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
 _lock = lock
 
 
-def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
-    return _lock(
+def lock(
+    tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
+):
+    l = _lock(
         tile,
         lock_id=lock_id,
         init=init,
@@ -384,6 +392,9 @@ def lock(tile, *, lock_id=None, init=None, sym_name=None, loc=None, ip=None):
         loc=loc,
         ip=ip,
     )
+    if annot is not None:
+        l.owner.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
+    return l
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -414,6 +425,101 @@ def flow(
     )
 
 
+def find_matching_flows(
+    tiles,
+    filter_source=False,
+    filter_dest=False,
+    source_annot=None,
+    dest_annot=None,
+    device=None,
+):
+    assert not (filter_source and filter_dest), "Can only filter by source XOR dest"
+    if device is None:
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+    def _cb(op):
+        if isinstance(op, FlowOp):
+            if filter_source and op.source.owner.opview not in tiles:
+                return False
+            if filter_dest and op.dest.owner.opview not in tiles:
+                return False
+
+            return (
+                op.source.owner.opview in tiles
+                or op.dest.owner.opview in tiles
+                and (
+                    (
+                        "source_annot" in op.attributes
+                        and source_annot in op.attributes["source_annot"]
+                    )
+                    if source_annot is not None
+                    else True
+                )
+                and (
+                    (
+                        "dest_annot" in op.attributes
+                        and dest_annot in op.attributes["dest_annot"]
+                    )
+                    if dest_annot is not None
+                    else True
+                )
+            )
+
+    return find_ops(device, _cb)
+
+
+def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
+    if device is None:
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+    def _cb(op):
+        if isinstance(op, LockOp):
+            return (
+                op.tile.owner.opview in tiles
+                and (sym_name == str(op.sym_name) if sym_name is not None else True)
+                and (
+                    ("annot" in op.attributes and annot in op.attributes["annot"])
+                    if annot is not None
+                    else True
+                )
+            )
+
+    return find_ops(device, _cb)
+
+
+@dataclass
+class Neighbors:
+    north: TileOp = None
+    west: TileOp = None
+    south: TileOp = None
+
+
+def find_neighbors(tile, device=None):
+    if device is None:
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+    assert int(device.device) == int(AIEDevice.ipu), "only ipu supported"
+
+    neighbors = {}
+    col, row = map(int, (tile.col, tile.row))
+    if col > 0 and row > 0 and not (col, row) == (1, 1):
+        neighbors[col - 1, row] = "west"
+    if row > 1:
+        neighbors[col, row - 1] = "south"
+    if 0 < row < 5:
+        neighbors[col, row + 1] = "north"
+
+    neighbors_ = {"north": None, "west": None, "south": None}
+
+    for n in find_ops(
+        device,
+        lambda op: isinstance(op, TileOp) and (int(op.col), int(op.row)) in neighbors,
+    ):
+        neighbors_[neighbors[int(n.col), int(n.row)]] = n
+
+    return Neighbors(**neighbors_)
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class TileOp(TileOp):
     def __str__(self):
@@ -434,6 +540,22 @@ class TileOp(TileOp):
 
     def __hash__(self):
         return hash((self.col, self.row))
+
+    def flows(
+        self, filter_source=False, filter_dest=False, source_annot=None, dest_annot=None
+    ):
+        return find_matching_flows(
+            [self],
+            filter_source=filter_source,
+            filter_dest=filter_dest,
+            source_annot=None,
+            dest_annot=None,
+        )
+
+    def locks(self, sym_name=None, annot=None, device=None):
+        return find_matching_locks(
+            [self], sym_name=sym_name, annot=annot, device=device
+        )
 
 
 def tile(col, row, *, loc=None, ip=None):
