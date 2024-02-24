@@ -26,7 +26,7 @@ def my_matmul():
 
     vectorized = True
     enable_tracing = False
-    trace_size = 4096
+    trace_size = 8192
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -200,7 +200,9 @@ def my_matmul():
                     ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E0, value=0x4B222125)
                     # 0x340E4: Trace Event Group 2  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E4, value=0x00000000)
+                    ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x340E4, value=0x2D2C1A4F)
+
+                    ipu_write32(column=compute_tile2_col, row=compute_tile2_row, address=0x3FF00, value=0x00000121)
 
                     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
                     # out to host DDR memory

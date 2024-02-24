@@ -41,7 +41,7 @@ constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
 constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 4096; 
+constexpr int TRACE_SIZE = 8192; 
 
 constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
 
@@ -252,10 +252,12 @@ int main(int argc, const char *argv[]) {
         if (errors < max_errors) {
           std::cout << "\nerror, id " << i << " expected "
                     << std::to_string(output_ref0[i]) << ", got "
-                    << std::to_string(bufOut[i]) << "\n";
+                    << std::to_string(COut[i]) << "\n";
         }
       }
     }
+  } else {
+    std::cout << "WARNING: matmul results not verified." << std::endl;
   }
 
   if (ENABLE_TRACING) {
