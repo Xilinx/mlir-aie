@@ -424,6 +424,7 @@ struct AIEExternalBufferToStandard : OpConversionPattern<ExternalBufferOp> {
   LogicalResult
   matchAndRewrite(ExternalBufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // only lower externalbuffers that refer to other buffers
     auto refSymName = buffer.getRefSymName();
     if (!refSymName)
       return failure();
