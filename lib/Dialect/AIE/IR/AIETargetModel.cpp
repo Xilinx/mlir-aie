@@ -278,7 +278,8 @@ std::optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
   return ret;
 }
 
-// Return the tile ID of the memory to the north of the given tile, if it exists.
+// Return the tile ID of the memory to the north of the given tile, if it
+// exists.
 std::optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
   std::optional<TileID> ret({src.col, src.row + 1});
   if (!isValidTile(*ret))
