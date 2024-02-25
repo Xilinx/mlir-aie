@@ -422,16 +422,10 @@ def matrix_add_sugar(module):
         @aie.memtile_dma(mem_tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(
-                T.memref(tile_rows, tile_cols, T.i32()), mem_tile_0_1
-            )
-            buffer_0_1_b = aie.buffer(
-                T.memref(tile_rows, tile_cols, T.i32()), mem_tile_0_1
-            )
+            buffer_0_1_a = aie.buffer(mem_tile_0_1, (tile_rows, tile_cols), T.i32())
+            buffer_0_1_b = aie.buffer(mem_tile_0_1, (tile_rows, tile_cols), T.i32())
             # output flow
-            buffer_0_1_c = aie.buffer(
-                T.memref(tile_rows, tile_cols, T.i32()), mem_tile_0_1
-            )
+            buffer_0_1_c = aie.buffer(mem_tile_0_1, (tile_rows, tile_cols), T.i32())
 
             aiex.forward_bd(
                 mem_tile_0_1, buffer_0_1_a, input_a_tile_0_0_to_tile_0_1.dest_channel
@@ -446,16 +440,10 @@ def matrix_add_sugar(module):
             aie.end()
 
         # in
-        buffer_0_2_a = aie.buffer(
-            T.memref(tile_rows, tile_cols, T.i32()), compute_tile_0_2
-        )
-        buffer_0_2_b = aie.buffer(
-            T.memref(tile_rows, tile_cols, T.i32()), compute_tile_0_2
-        )
+        buffer_0_2_a = aie.buffer(compute_tile_0_2, (tile_rows, tile_cols), T.i32())
+        buffer_0_2_b = aie.buffer(compute_tile_0_2, (tile_rows, tile_cols), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(
-            T.memref(tile_rows, tile_cols, T.i32()), compute_tile_0_2
-        )
+        buffer_0_2_c = aie.buffer(compute_tile_0_2, (tile_rows, tile_cols), T.i32())
 
         lock_0_2_read_in_a = aie.lock(compute_tile_0_2, lock_id=0, init=1)
         lock_0_2_use_a = aie.lock(compute_tile_0_2, lock_id=1, init=0)

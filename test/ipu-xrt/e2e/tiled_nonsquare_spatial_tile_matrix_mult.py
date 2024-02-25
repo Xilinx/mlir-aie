@@ -166,12 +166,8 @@ def tiled_nonsquare_tile_spatial_2x2(module):
 
         @aie.memtile_dma(tiles.df[0, 1])
         def memtile_dma_0_1():
-            buffer_0_1_a0 = aie.buffer(
-                T.memref(tile_m_A, tile_n_A, T.i32()), tiles.df[0, 1]
-            )
-            buffer_0_1_b0 = aie.buffer(
-                T.memref(tile_m_B, tile_n_B, T.i32()), tiles.df[0, 1]
-            )
+            buffer_0_1_a0 = aie.buffer(tiles.df[0, 1], (tile_m_A, tile_n_A), T.i32())
+            buffer_0_1_b0 = aie.buffer(tiles.df[0, 1], (tile_m_B, tile_n_B), T.i32())
 
             aiex.forward_bd(
                 tiles.df[0, 1],
@@ -192,12 +188,8 @@ def tiled_nonsquare_tile_spatial_2x2(module):
 
         @aie.memtile_dma(tiles.df[1, 1])
         def memtile_dma_1_1():
-            buffer_1_1_a1 = aie.buffer(
-                T.memref(tile_m_A, tile_n_A, T.i32()), tiles.df[1, 1]
-            )
-            buffer_1_1_b1 = aie.buffer(
-                T.memref(tile_m_B, tile_n_B, T.i32()), tiles.df[1, 1]
-            )
+            buffer_1_1_a1 = aie.buffer(tiles.df[1, 1], (tile_m_A, tile_n_A), T.i32())
+            buffer_1_1_b1 = aie.buffer(tiles.df[1, 1], (tile_m_B, tile_n_B), T.i32())
 
             aiex.forward_bd(
                 tiles.df[1, 1],
@@ -287,14 +279,16 @@ def tiled_nonsquare_tile_spatial_2x2(module):
             @aie.memtile_dma(tiles[c, 1].df)
             def memtile_dma_c_1():
                 buffer_c00 = aie.buffer(
-                    T.memref(tile_m_C, tile_n_C, T.i32()),
                     tiles[c, 1].df,
-                    sym_name=f"buffer_{c}_1_c_left",
+                    (tile_m_C, tile_n_C),
+                    T.i32(),
+                    name=f"buffer_{c}_1_c_left",
                 )
                 buffer_c01 = aie.buffer(
-                    T.memref(tile_m_C, tile_n_C, T.i32()),
                     tiles[c, 1].df,
-                    sym_name=f"buffer_{c}_1_c_right",
+                    (tile_m_C, tile_n_C),
+                    T.i32(),
+                    name=f"buffer_{c}_1_c_right",
                 )
 
                 aiex.forward_bd(
