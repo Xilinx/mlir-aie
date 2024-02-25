@@ -1263,10 +1263,7 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins
-    OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<StrAttr>:$ref_sym_name
-  );
+  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];

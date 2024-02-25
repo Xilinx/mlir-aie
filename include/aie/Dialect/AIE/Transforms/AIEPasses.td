@@ -226,20 +226,4 @@ def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   ];
 }
 
-def AIECorePrune : Pass<"aie-core-prune", "mlir::ModuleOp"> {
-  let summary = "Prune everything not related to core (tileCol, tileRow).";
-  let constructor = "xilinx::AIE::createAIECorePrunePass()";
-  let options = [
-    Option<"tileCol", "tilecol", "unsigned",
-           /*default=*/"0", "X coordinate of tile to prune for">,
-    Option<"tileRow", "tilerow", "unsigned",
-           /*default=*/"0", "Y coordinate of tile to prune for">,
-    Option<"pruneBuffers", "prunebuffers", "bool", /*default=*/"true", "">,
-    Option<"pruneTiles", "prunetiles", "bool", /*default=*/"true", "">
-  ];
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
 #endif

@@ -171,11 +171,10 @@ class Buffer(BufferOp):
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, size, datatype, name=None, ref_sym=None, loc=None, ip=None):
+    def __init__(self, size, datatype, name=None, loc=None, ip=None):
         super().__init__(
             buffer=T.memref(*size, datatype),
             sym_name=name,
-            ref_sym_name=ref_sym,
             loc=loc,
             ip=ip,
         )
@@ -399,18 +398,11 @@ def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=Non
     ).result
 
 
-def external_buffer(
-    size, datatype, name=None, ref_sym=None, ref=None, loc=None, ip=None
-):
-    if ref is not None:
-        assert ref_sym is None, f"only ref_sym or ref supported, not both"
-        ref_sym = ref.owner.opview.sym_name.value
-
+def external_buffer(size, datatype, name=None, loc=None, ip=None):
     return ExternalBuffer(
         size,
         datatype,
         name=name,
-        ref_sym=ref_sym,
         loc=loc,
         ip=ip,
     ).result
