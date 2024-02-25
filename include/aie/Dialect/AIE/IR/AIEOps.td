@@ -1243,8 +1243,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 }
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
-    Pure
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let description = [{
