@@ -386,7 +386,7 @@ struct AIEObjectFifoStatefulTransformPass
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            nullptr);
+            /*address*/ nullptr, /*initial_value*/ nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;

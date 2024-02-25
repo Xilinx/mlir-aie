@@ -53,9 +53,9 @@ def add_256_using_dma_op_no_double_buffering(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2 = aie.buffer(T.memref(LOCAL_MEM_SIZE, T.i32()), tile_0_2)
+        buffer_0_2 = aie.buffer(tile_0_2, (LOCAL_MEM_SIZE,), T.i32())
         # out
-        buffer_0_2_1 = aie.buffer(T.memref(LOCAL_MEM_SIZE, T.i32()), tile_0_2)
+        buffer_0_2_1 = aie.buffer(tile_0_2, (LOCAL_MEM_SIZE,), T.i32())
 
         lock_0_1_0 = aie.lock(tile_0_1, lock_id=0, init=1)
         lock_0_1_1 = aie.lock(tile_0_1, lock_id=1, init=0)
@@ -138,9 +138,9 @@ def add_256_using_dma_op_no_double_buffering(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1 = aie.buffer(T.memref(LOCAL_MEM_SIZE, T.i32()), tile_0_1)
+            buffer_0_1 = aie.buffer(tile_0_1, (LOCAL_MEM_SIZE,), T.i32())
             # output flow
-            buffer_0_1_0 = aie.buffer(T.memref(LOCAL_MEM_SIZE, T.i32()), tile_0_1)
+            buffer_0_1_0 = aie.buffer(tile_0_1, (LOCAL_MEM_SIZE,), T.i32())
 
             @aie.dma(S2MM, 0)
             def dma1():
@@ -191,7 +191,6 @@ def add_256_using_dma_op_no_double_buffering(module):
     ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(LEN,), (LEN,), (LEN,)], np.int32)

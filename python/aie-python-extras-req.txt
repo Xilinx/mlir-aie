@@ -1,2 +1,2 @@
 # this is actually the aie branch of mlir-python-extras (see https://github.com/makslevental/mlir-python-extras/pull/33)
-aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/c7cf7ca8587b24e1f169199ddec5d4424f24c42e.zip
+aie-python-extras @ https://github.com/makslevental/mlir-python-extras/archive/46a426eeb489b3a617f802f0ddd1a5f14e4a9b95.zip

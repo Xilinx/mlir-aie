@@ -384,18 +384,30 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
-  AIEBufferToStandard(MLIRContext *context, ModuleOp &m, IRMapping &mapper,
-                      PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
+  int tileCol = 0;
+  int tileRow = 0;
+  AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
+                      PatternBenefit benefit = 1, int tileCol = -1,
+                      int tileRow = -1)
+      : OpConversionPattern(context, benefit), module(m), tileCol(tileCol),
+        tileRow(tileRow) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = buffer.getType().cast<MemRefType>();
+    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
+    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
+    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
+    // Don't emit initialization for cores that don't "own" the buffer (to
+    // prevent duplication in the data section of the elf/object file)
+    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
+      initValue = nullptr;
     rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), nullptr, false, nullptr);
+        buffer.getType(), initValue, /*constant*/ false,
+        /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
@@ -514,7 +526,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
     if (m.getOps<DeviceOp>().empty()) {
       m.emitOpError("expected AIE.device operation at toplevel");
-      signalPassFailure();
+      return signalPassFailure();
     }
     DeviceOp device = *m.getOps<DeviceOp>().begin();
     const auto &targetModel = device.getTargetModel();
@@ -550,15 +562,17 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
+                                      tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
-      signalPassFailure();
+      return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
-    outlinePatterns.add<AIECoreToStandardFunc>(
-        m.getContext(), m, mapper, tileToBuffers, 1, tileCol, tileRow);
+    outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
+                                               tileToBuffers, /*benefit*/ 1,
+                                               tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
-      signalPassFailure();
+      return signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
@@ -575,7 +589,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
         m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
-      signalPassFailure();
+      return signalPassFailure();
   }
 };
 

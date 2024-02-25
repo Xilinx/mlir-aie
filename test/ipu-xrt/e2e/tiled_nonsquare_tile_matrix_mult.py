@@ -84,10 +84,10 @@ def tiled_nonsquare_tile_matrix_mult(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_2)
-        buffer_0_2_b = aie.buffer(T.memref(tile_m_B, tile_n_B, T.i32()), tile_0_2)
+        buffer_0_2_a = aie.buffer(tile_0_2, (tile_m_A, tile_n_A), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (tile_m_B, tile_n_B), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_2)
+        buffer_0_2_c = aie.buffer(tile_0_2, (tile_m_C, tile_n_C), T.i32())
 
         # input
         lock_0_1_read_in_a = aie.lock(tile_0_1, lock_id=0, init=1)
@@ -210,10 +210,10 @@ def tiled_nonsquare_tile_matrix_mult(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_1)
-            buffer_0_1_b = aie.buffer(T.memref(tile_m_B, tile_n_B, T.i32()), tile_0_1)
+            buffer_0_1_a = aie.buffer(tile_0_1, (tile_m_A, tile_n_A), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (tile_m_B, tile_n_B), T.i32())
             # output flow
-            buffer_0_1_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_1)
+            buffer_0_1_c = aie.buffer(tile_0_1, (tile_m_C, tile_n_C), T.i32())
 
             @aie.dma(S2MM, 0)
             def dma1():
@@ -305,7 +305,6 @@ def tiled_nonsquare_tile_matrix_mult(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
@@ -382,10 +381,10 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_2)
-        buffer_0_2_b = aie.buffer(T.memref(tile_m_B, tile_n_B, T.i32()), tile_0_2)
+        buffer_0_2_a = aie.buffer(tile_0_2, (tile_m_A, tile_n_A), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (tile_m_B, tile_n_B), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_2)
+        buffer_0_2_c = aie.buffer(tile_0_2, (tile_m_C, tile_n_C), T.i32())
 
         # input
         lock_0_1_read_in_a = aie.lock(tile_0_1, lock_id=0, init=1)
@@ -503,10 +502,10 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile_0_1)
-            buffer_0_1_b = aie.buffer(T.memref(tile_m_B, tile_n_B, T.i32()), tile_0_1)
+            buffer_0_1_a = aie.buffer(tile_0_1, (tile_m_A, tile_n_A), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (tile_m_B, tile_n_B), T.i32())
             # output flow
-            buffer_0_1_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile_0_1)
+            buffer_0_1_c = aie.buffer(tile_0_1, (tile_m_C, tile_n_C), T.i32())
 
             @aie.dma(S2MM, 0)
             def dma1():
@@ -562,7 +561,6 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)

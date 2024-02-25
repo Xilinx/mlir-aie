@@ -15,7 +15,6 @@ from aie._mlir_libs._mlir.ir import UnitAttr, _GlobalDebug
 from aie.compiler.aiecc.main import (
     AIE_LOWER_TO_LLVM,
     CREATE_PATH_FINDER_FLOWS,
-    DMA_TO_IPU,
     INPUT_WITH_ADDRESSES_PIPELINE,
     chesshack,
     emit_design_bif,
@@ -29,7 +28,6 @@ from aie.dialects.aie import (
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
-    ipu_instgen,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
 )
@@ -133,6 +131,9 @@ def extract_input_files(core_bcf):
 
 
 def _run_command(cmd, debug=False):
+    if debug:
+        print("shelling out command:")
+        print(" ".join([f"{k}={v}" for k, v in ENV.items()]) + " " + " ".join(cmd))
     handle = subprocess.run(cmd, capture_output=True, cwd=WORKDIR, env=ENV)
     stderr = handle.stderr.decode("utf-8").strip()
     if handle.returncode != 0:
@@ -150,19 +151,19 @@ def link_with_chess_intrinsic_wrapper(input_ll):
     return chesshack(aie_llvm_link([input_ll, chess_intrinsic_wrapper]))
 
 
-def chess_compile(input_ll, output_filename="input.o"):
-    with open(WORKDIR / "input.ll", "w") as f:
+def chess_compile(input_ll, output_filename="input", debug=False):
+    with open(WORKDIR / f"{output_filename}.ll", "w") as f:
         f.write(input_ll)
 
     # chess compile
     cmd = [
         *XCHESS_ARGS(),
         "-c",  # compile/assemble only, do not link
-        "input.ll",
+        f"{output_filename}.ll",
         "-o",
-        output_filename,
+        f"{output_filename}.o",
     ]
-    _run_command(cmd)
+    _run_command(cmd, debug)
 
 
 def chess_compile_cpp_to_ll(cpp, prefix="aievec", debug=False):
@@ -191,7 +192,7 @@ def chess_compile_cpp_to_ll(cpp, prefix="aievec", debug=False):
 
 
 def chess_llvm_link(*file_strs, prefix="chess_llvm_link_output", input_prefixes=None):
-    if input_prefixes:
+    if input_prefixes is None:
         input_prefixes = [f"chess_llvm_link_input_{i}" for i in range(len(file_strs))]
     else:
         assert len(input_prefixes) == len(
@@ -231,7 +232,7 @@ def chess_llvm_link(*file_strs, prefix="chess_llvm_link_output", input_prefixes=
     return output_str
 
 
-def make_core_elf(core_bcf, input_object_file="input.o"):
+def make_core_elf(core_bcf, input_filename="input", debug=False):
     input_files = extract_input_files(core_bcf)
     core_name = re.findall(r"_symbol (.*?) _after _main_init", core_bcf, re.MULTILINE)
     assert len(core_name) == 1
@@ -242,14 +243,14 @@ def make_core_elf(core_bcf, input_object_file="input.o"):
 
     cmd = [
         *XCHESS_ARGS(),
-        input_object_file,
+        f"{input_filename}.o",
         *input_files,
         "+l",  # linker configuration file
         f"{core_name}.bcf",
         "-o",
         f"{core_name}.elf",
     ]
-    _run_command(cmd)
+    _run_command(cmd, debug)
 
 
 def make_design_pdi():
@@ -306,33 +307,71 @@ def _global_debug(debug):
     _GlobalDebug.flag = False
 
 
-def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start_col=1):
+def compile_with_vectorization(
+    mod_aie, mod_aievec, *, debug=False, partition_start_col=1
+):
+    input_with_addresses = run_pipeline(
+        mod_aie, INPUT_WITH_ADDRESSES_PIPELINE, enable_ir_printing=debug
+    )
+
     aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
     aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
-
-    input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
-    aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-
-    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, debug=True)
-    # this is wonky because it's already on disk but oh well...
-    with open(
-        Path(__file__).parent / "chess_intrinsic_wrapper.ll"
-    ) as chess_intrinsic_wrapper_ll:
-        fullylinked_ll = chess_llvm_link(
-            chesshack(aie_ll),
-            aievec_ll,
-            chess_intrinsic_wrapper_ll.read(),
-            input_prefixes=["aie_input", "aievec_input", "chess_intrinsic_wrapper"],
+    aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, debug=debug)
+    # TODO(max) connect each core to its own kernel...
+    kernel = find_ops(mod_aievec, lambda o: "aie_kernel" in o.attributes, single=True)
+    if kernel:
+        print("compiling kernel")
+        chess_compile(
+            aievec_ll, output_filename=f"{kernel.sym_name.value}", debug=debug
         )
 
-    chess_compile(fullylinked_ll)
+    for col, row, _ in generate_cores_list(str(mod_aie)):
+        print(f"compiling core {col} {row}")
+        with Context():
+            core_mod = Module.parse(str(input_with_addresses))
+            core_bcf = generate_bcf(core_mod.operation, col, row)
+            core_lowered_to_llvm_dialect = run_pipeline(
+                core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
+            )
+            core_input_ll = translate_mlir_to_llvmir(
+                core_lowered_to_llvm_dialect.operation
+            )
+            # TODO(max) connect each core to its own kernel...
+            if kernel:
+                chess_compile(
+                    link_with_chess_intrinsic_wrapper(core_input_ll),
+                    output_filename=f"core_{col}_{row}",
+                    debug=debug,
+                )
+            else:
+                # this is wonky because it's already on disk but oh well...
+                with open(
+                    Path(__file__).parent / "chess_intrinsic_wrapper.ll"
+                ) as chess_intrinsic_wrapper_ll:
+                    fullylinked_ll = chess_llvm_link(
+                        chesshack(core_input_ll),
+                        aievec_ll,
+                        chess_intrinsic_wrapper_ll.read(),
+                        prefix=f"core_{col}_{row}_chess_llvm_link_output",
+                        input_prefixes=[
+                            f"core_{col}_{row}_aie_input",
+                            f"core_{col}_{row}_aievec_input",
+                            f"core_{col}_{row}_chess_intrinsic_wrapper",
+                        ],
+                    )
 
-    for col, row, _ in generate_cores_list(str(input_with_addresses)):
-        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-        make_core_elf(core_bcf)
+                chess_compile(
+                    fullylinked_ll,
+                    output_filename=f"core_{col}_{row}",
+                    debug=debug,
+                )
+        make_core_elf(core_bcf, input_filename=f"core_{col}_{row}", debug=debug)
 
+    input_physical = run_pipeline(
+        mod_aie,
+        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
+        enable_ir_printing=debug,
+    )
     with _global_debug(debug):
         generate_cdo(
             input_physical.operation,
@@ -343,25 +382,40 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start
     make_design_pdi()
 
 
-def compile_without_vectorization(module, debug=False, partition_start_col=1):
+def compile_without_vectorization(module, *, debug=False, partition_start_col=1):
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
-        module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
+        module,
+        Pipeline().convert_linalg_to_loops().fold_memref_alias_ops(),
+        enable_ir_printing=debug,
+    )
+    input_with_addresses = run_pipeline(
+        lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE, enable_ir_printing=debug
     )
 
-    input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_opt_with_addresses = run_pipeline(input_with_addresses, AIE_LOWER_TO_LLVM)
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    chess_compile(
-        link_with_chess_intrinsic_wrapper(
-            translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-        )
+    for col, row, _ in generate_cores_list(str(module)):
+        print(f"compiling core {col} {row}")
+        with Context():
+            core_mod = Module.parse(str(input_with_addresses))
+            core_bcf = generate_bcf(core_mod.operation, col, row)
+            core_lowered_to_llvm_dialect = run_pipeline(
+                core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
+            )
+            core_input_ll = translate_mlir_to_llvmir(
+                core_lowered_to_llvm_dialect.operation
+            )
+            chess_compile(
+                link_with_chess_intrinsic_wrapper(core_input_ll),
+                output_filename=f"core_{col}_{row}",
+                debug=debug,
+            )
+        make_core_elf(core_bcf, input_filename=f"core_{col}_{row}", debug=debug)
+
+    input_physical = run_pipeline(
+        module,
+        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
+        enable_ir_printing=debug,
     )
-
-    for col, row, _ in generate_cores_list(str(input_with_addresses)):
-        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-        make_core_elf(core_bcf)
-
     with _global_debug(debug):
         generate_cdo(
             input_physical.operation,

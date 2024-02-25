@@ -55,7 +55,7 @@ def repeat_count(module):
         tile_0_2 = aie.tile(0, 2)
 
         weight = memref.global_(initial_value=RANDOM_WEIGHT, constant=True)
-        buffer_weight = aie.buffer(T.memref(K, T.i32()), tile_0_2)
+        buffer_weight = aie.buffer(tile_0_2, (K,), T.i32())
         lock_read_weight = aie.lock(tile_0_2, init=1)
         lock_send_weight = aie.lock(tile_0_2, init=0)
 
@@ -83,7 +83,7 @@ def repeat_count(module):
         def memtile_dma_0_1():
             lock_0_1_read_in_c = aie.lock(tile_0_1, init=1)
             lock_0_1_write_out_c = aie.lock(tile_0_1, init=0)
-            buffer_0_1_c = aie.buffer(T.memref(K, T.i32()), tile_0_1)
+            buffer_0_1_c = aie.buffer(tile_0_1, (K,), T.i32())
 
             @aie.dma(S2MM, 2, loop=loop, repeat_count=repeat_count)
             def dma5():
@@ -131,7 +131,6 @@ def repeat_count(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(repeat_count * K,)], np.int32)

@@ -8,33 +8,30 @@
 aiecc - AIE compiler driver for MLIR tools
 """
 
-import os
-import stat
-import sys
-import time
-import subprocess
-import shutil
 import asyncio
 import glob
-import random
 import json
+import os
+import random
+import re
+import shutil
+import stat
+import subprocess
+import sys
 import tempfile
 from textwrap import dedent
+import time
 
-import aiofiles
 from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
-
-from aie.passmanager import PassManager
-from aie.ir import Module, Context, Location
-from aie.dialects import aie as aiedialect
+import aiofiles
+import rich.progress as progress
 
 import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
-
-import rich.progress as progress
-import re
-
+from aie.dialects import aie as aiedialect
+from aie.ir import Context, Location, Module
+from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
     Pipeline()
@@ -73,17 +70,19 @@ LOWER_TO_LLVM_PIPELINE = (
 )
 
 AIE_LOWER_TO_LLVM = (
-    Pipeline()
-    .Nested(
-        "aie.device",
+    lambda col=None, row=None: (
         Pipeline()
-        .add_pass("aie-localize-locks")
-        .add_pass("aie-normalize-address-spaces"),
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-localize-locks")
+            .add_pass("aie-normalize-address-spaces"),
+        )
+        .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
+        .add_pass("aiex-standard-lowering")
     )
-    .add_pass("aie-standard-lowering")
-    .add_pass("aiex-standard-lowering")
+    + LOWER_TO_LLVM_PIPELINE
 )
-AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
 
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
@@ -1037,7 +1036,7 @@ class FlowRunner:
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM}", file_with_addresses, "-o", file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM()}", file_with_addresses, "-o", file_opt_with_addresses])
 
                 file_llvmir = self.prepend_tmp("input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])

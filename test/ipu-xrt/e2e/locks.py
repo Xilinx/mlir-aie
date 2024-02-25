@@ -43,39 +43,40 @@ def one_global(module):
         # TODO(max): figure this annoying thing out...
         if column != 0:
             _dummy_tile = aie.tile(0, 2)
-        tile_0_3 = aie.tile(column, 3)
-        global_weight_0_3 = memref.global_(initial_value=iv)
-        # if you stick the locks inside the core then it gets dce'd???
-        lock_weight_0_3 = aie.lock(tile_0_3, init=0)
 
-        @aie.core(tile_0_3)
-        def core_0_3():
-            with aiex.hold_lock(lock_weight_0_3, lock_weight_0_3, acq_val=0):
+        tile_2_3 = aie.tile(column, 3)
+        global_weight_2_3 = memref.global_(initial_value=iv)
+        # if you stick the locks inside the core then it gets dce'd???
+        lock_weight_2_3 = aie.lock(tile_2_3, init=0)
+
+        @aie.core(tile_2_3)
+        def core_2_3():
+            with aiex.hold_lock(lock_weight_2_3, lock_weight_2_3, acq_val=0):
                 x = memref.get_global(
-                    global_weight_0_3.type_.value, global_weight_0_3.sym_name.value
+                    global_weight_2_3.type_.value, global_weight_2_3.sym_name.value
                 )
                 # this doesn't actually do anything...?
                 # right now just functions as a way to not DCE
                 linalg.fill(RANDOM_NUMBER, x)
 
-        tile_0_2 = aie.tile(column, 2)
+        tile_2_2 = aie.tile(column, 2)
         # if you stick the locks inside the core then it gets dce'd???
-        lock_use_weight_0_2 = aie.lock(tile_0_2, init=0)
+        lock_use_weight_2_2 = aie.lock(tile_2_2, init=0)
         # if you stick a buffer into the core then it doesn't get injected into the elf???
-        buffer_weight_0_2 = aie.buffer(T.memref(K, T.i32()), tile_0_2)
+        buffer_weight_2_2 = aie.buffer(tile_2_2, (K,), T.i32())
 
-        @aie.core(tile_0_2)
-        def core_0_2():
-            with aiex.hold_lock(lock_weight_0_3, lock_use_weight_0_2):
+        @aie.core(tile_2_2)
+        def core_2_2():
+            with aiex.hold_lock(lock_weight_2_3, lock_use_weight_2_2):
                 x = memref.get_global(
-                    global_weight_0_3.type_.value, global_weight_0_3.sym_name.value
+                    global_weight_2_3.type_.value, global_weight_2_3.sym_name.value
                 )
-                linalg.copy(x, buffer_weight_0_2)
+                linalg.copy(x, buffer_weight_2_2)
 
         mem_tile = aie.tile(column, 1)
-        flow_to_mem = aie.flow(tile_0_2, dest=mem_tile)
+        flow_to_mem = aie.flow(tile_2_2, dest=mem_tile)
 
-        @aie.mem(tile_0_2)
+        @aie.mem(tile_2_2)
         def mem():
             @aie.dma(
                 MM2S,
@@ -83,14 +84,14 @@ def one_global(module):
             )
             def _():
                 aiex.process_bd(
-                    lock_use_weight_0_2, buffer_weight_0_2, lock_use_weight_0_2
+                    lock_use_weight_2_2, buffer_weight_2_2, lock_use_weight_2_2
                 )
 
             aie.end()
 
         shim_tile = aie.tile(column, 0)
         flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
-        mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
+        mem_tile_buffer = aie.buffer(mem_tile, (K,), T.i32())
 
         @aie.memtile_dma(mem_tile)
         def memtile_dma():
@@ -192,7 +193,7 @@ def threesome(module):
 
         tile_2_2 = aie.tile(2, 2)
         lock_use_weight_2_2 = aie.lock(tile_2_2, init=0)
-        buffer_weight_2_2 = aie.buffer(T.memref(K, T.i32()), tile_2_2)
+        buffer_weight_2_2 = aie.buffer(tile_2_2, (K,), T.i32())
 
         @aie.core(tile_2_2)
         def core_2_2():
@@ -229,7 +230,7 @@ def threesome(module):
 
         shim_tile = aie.tile(shim_tile_column, 0)
         flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
-        mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
+        mem_tile_buffer = aie.buffer(mem_tile, (K,), T.i32())
 
         @aie.memtile_dma(mem_tile)
         def memtile_dma():
@@ -346,7 +347,7 @@ def foursome(module):
 
         tile_2_3 = aie.tile(2, 3)
         lock_use_weight_2_3 = aie.lock(tile_2_3, init=0)
-        buffer_weight_2_3 = aie.buffer(T.memref(K, T.i32()), tile_2_3)
+        buffer_weight_2_3 = aie.buffer(tile_2_3, (K,), T.i32())
 
         @aie.core(tile_2_3)
         def core():
@@ -389,7 +390,7 @@ def foursome(module):
 
         shim_tile = aie.tile(shim_tile_column, 0)
         flow_to_shim = aie.flow(mem_tile, dest=shim_tile)
-        mem_tile_buffer = aie.buffer(T.memref(K, T.i32()), mem_tile)
+        mem_tile_buffer = aie.buffer(mem_tile, (K,), T.i32())
 
         @aie.memtile_dma(mem_tile)
         def memtile_dma():

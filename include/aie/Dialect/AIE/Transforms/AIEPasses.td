@@ -74,6 +74,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
     "xilinx::AIE::AIEDialect",
   ];
 }
+
 def AIELocalizeLocks : Pass<"aie-localize-locks", "DeviceOp"> {
   let summary = "Convert global locks to a core-relative index";
   let description = [{
@@ -97,6 +98,7 @@ def AIELocalizeLocks : Pass<"aie-localize-locks", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIELocalizeLocksPass()";
 }
+
 def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{

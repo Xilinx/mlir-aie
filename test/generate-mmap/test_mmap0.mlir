@@ -40,31 +40,37 @@
 // BCF44:      _entry_point _main_init
 // BCF44-NEXT: _symbol core_4_4 _after _main_init
 // BCF44-NEXT: _symbol _main_init 0
-// BCF44-NEXT: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
-// BCF44-NEXT: _symbol z 0x20000 0x20
+// BCF44-NEXT: _reserved DMb 0x00000 0x20000 // Don't put data in code memory
+// BCF44-NEXT: _stack DM_stack 0x28000 0x400 // stack for core
+// BCF44:      // mapping neighbors tile memory
+// BCF44-NEXT: // south -------------------------------------------------
+// BCF44-NEXT: _reserved DMb 0x20000 0x8000  // Don't allocate variables in south neighbor
+// BCF44:      _symbol z 0x20000 32
 // BCF44-NEXT: _extern z
-// BCF44-NEXT: _reserved DMb 0x20000 0x20
-// BCF44-NEXT: _reserved DMb 0x20000 0x8000
-// BCF44-NEXT: _symbol a 0x28000 0x10
+// BCF44-NEXT: _reserved DMb 0x20000 32
+// BCF44:      // west -------------------------------------------------
+// BCF44-NEXT: _symbol a 0x28000 16
 // BCF44-NEXT: _extern a
-// BCF44-NEXT: _reserved DMb 0x28000 0x10
-// BCF44-NEXT: _symbol b 0x28010 0x40
+// BCF44-NEXT: _reserved DMb 0x28000 16
+// BCF44:      _symbol b 0x28010 64
 // BCF44-NEXT: _extern b
-// BCF44-NEXT: _reserved DMb 0x28010 0x40
-// BCF44-NEXT: _symbol c 0x28050 0x400
+// BCF44-NEXT: _reserved DMb 0x28010 64
+// BCF44:      _symbol c 0x28050 1024
 // BCF44-NEXT: _extern c
-// BCF44-NEXT: _reserved DMb 0x28050 0x400
-// BCF44-NEXT: _symbol t 0x30000 0x20
+// BCF44-NEXT: _reserved DMb 0x28050 1024
+// BCF44:      // north -------------------------------------------------
+// BCF44-NEXT: _reserved DMb 0x30000 0x8000  // Don't allocate variables in north neighbor
+// BCF44:      _symbol t 0x30000 32
 // BCF44-NEXT: _extern t
-// BCF44-NEXT: _reserved DMb 0x30000 0x20
-// BCF44-NEXT: _reserved DMb 0x30000 0x8000
-// BCF44-NEXT: _symbol y 0x38000 0x20
+// BCF44-NEXT: _reserved DMb 0x30000 32
+// BCF44:       // east -------------------------------------------------
+// BCF44-NEXT: _reserved DMb 0x38000 0x8000  // Don't allocate variables in east neighbor
+// BCF44:      _symbol y 0x38000 32
 // BCF44-NEXT: _extern y
-// BCF44-NEXT: _reserved DMb 0x38000 0x20
-// BCF44-NEXT: _reserved DMb 0x38000 0x8000
-// BCF44-NEXT: _stack    DM_stack 0x28000  0x400 //stack for core
-// BCF44-NEXT: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
-
+// BCF44-NEXT: _reserved DMb 0x38000 32
+// BCF44:      // end mapping neighbors tile memory
+// BCF44:      _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+// BCF44-NEXT: _resolve _main core_4_4
 
 
 // LD44: MEMORY
