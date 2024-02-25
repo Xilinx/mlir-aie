@@ -7,7 +7,7 @@
 import random
 import sys
 
-# this is to get the MemRefValue caster inside of aie-python-extras
+# this is to get the MemRefValue caster inside aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref
 from filelock import FileLock
@@ -31,12 +31,9 @@ MM2S = DMAChannelDir.MM2S
 @construct_and_print_module
 def foursome(module):
     K = 32
-    iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
-    iv11 = np.random.randint(0, 10, (K,), dtype=np.int32)
-    RANDOM_NUMBER = random.randint(0, 100)
-    iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
-    iv3 = np.random.randint(0, 10, (K,), dtype=np.int32)
-    iv4 = np.random.randint(0, 10, (K,), dtype=np.int32)
+
+    init_weights = [np.random.randint(0, 10, (K,), dtype=np.int32) for _ in range(7)]
+    random_numbers = [random.randint(0, 10) for _ in range(7, 7 + 3)]
 
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -53,48 +50,58 @@ def foursome(module):
         # self
         tile_2_3 = aie.tile(2, 3)
 
-        buffer_weight_1_3 = aie.buffer(tile_1_3, (K,), T.i32(), initial_value=iv1)
-        buffer_weight_1_3_random_number = aie.buffer(tile_1_3, (K,), T.i32())
-        buffer_weight_1_3_another_init = aie.buffer(
-            tile_1_3, (K,), T.i32(), initial_value=iv4
+        buffer_a = aie.buffer(tile_1_3, (K,), T.i32(), initial_value=init_weights[0])
+        buffer_b = aie.buffer(tile_1_3, (K,), T.i32())
+        buffer_c = aie.buffer(tile_1_3, (K,), T.i32(), initial_value=init_weights[1])
+        buffer_d = aie.buffer(tile_1_3, (K,), T.i32())
+        buffer_e = aie.buffer(tile_1_3, (K,), T.i32())
+        buffer_f = aie.buffer(tile_1_3, (K,), T.i32(), initial_value=init_weights[2])
+
+        buffer_1_3_inited_access_elsewhere = aie.buffer(
+            tile_1_3, (K,), T.i32(), initial_value=init_weights[3]
         )
+        buffer_1_3_result = aie.buffer(tile_1_3, (K,), T.i32())
+
         lock_weight_1_3 = aie.lock(tile_1_3, init=0)
 
         @aie.core(tile_1_3)
         def core():
             with aiex.hold_lock(lock_weight_1_3, lock_weight_1_3, acq_val=0):
-                linalg.fill(RANDOM_NUMBER, buffer_weight_1_3_random_number)
-                linalg.add(
-                    buffer_weight_1_3_random_number,
-                    buffer_weight_1_3,
-                    buffer_weight_1_3,
-                )
-                linalg.add(
-                    buffer_weight_1_3_another_init, buffer_weight_1_3, buffer_weight_1_3
-                )
+                linalg.fill(random_numbers[0], buffer_b)
+                linalg.fill(random_numbers[1], buffer_d)
+                linalg.fill(random_numbers[2], buffer_e)
+                linalg.fill(0, buffer_1_3_result)
+                linalg.add(buffer_a, buffer_1_3_result, buffer_1_3_result)
+                linalg.add(buffer_b, buffer_1_3_result, buffer_1_3_result)
+                linalg.add(buffer_c, buffer_1_3_result, buffer_1_3_result)
+                linalg.add(buffer_d, buffer_1_3_result, buffer_1_3_result)
+                linalg.add(buffer_e, buffer_1_3_result, buffer_1_3_result)
+                linalg.add(buffer_f, buffer_1_3_result, buffer_1_3_result)
 
-        buffer_weight_2_4 = aie.buffer(tile_2_4, (K,), T.i32(), initial_value=iv2)
+        buffer_weight_2_4 = aie.buffer(
+            tile_2_4, (K,), T.i32(), initial_value=init_weights[4]
+        )
         lock_weight_2_4 = aie.lock(tile_2_4, init=0)
 
         @aie.core(tile_2_4)
         def core():
             with aiex.hold_lock(lock_weight_2_4, lock_weight_2_4, acq_val=0):
-                linalg.add(buffer_weight_2_4, buffer_weight_2_4, buffer_weight_2_4)
+                linalg.copy(buffer_weight_2_4, buffer_weight_2_4)
 
-        buffer_weight_2_2 = aie.buffer(tile_2_2, (K,), T.i32(), initial_value=iv3)
+        buffer_weight_2_2 = aie.buffer(
+            tile_2_2, (K,), T.i32(), initial_value=init_weights[5]
+        )
         lock_weight_2_2 = aie.lock(tile_2_2, init=0)
 
         @aie.core(tile_2_2)
         def core():
             with aiex.hold_lock(lock_weight_2_2, lock_weight_2_2, acq_val=0):
-                linalg.add(buffer_weight_2_2, buffer_weight_2_2, buffer_weight_2_2)
+                linalg.copy(buffer_weight_2_2, buffer_weight_2_2)
 
         lock_use_weight_2_3 = aie.lock(tile_2_3, init=0)
-
-        global_weight_1_3 = aie.external_buffer((K,), T.i32(), ref=buffer_weight_1_3)
-        global_weight_2_4 = aie.external_buffer((K,), T.i32(), ref=buffer_weight_2_4)
-        global_weight_2_2 = aie.external_buffer((K,), T.i32(), ref=buffer_weight_2_2)
-        buffer_weight_2_3 = aie.buffer(tile_2_3, (K,), T.i32(), initial_value=iv4)
+        buffer_weight_2_3_result = aie.buffer(
+            tile_2_3, (K,), T.i32(), initial_value=init_weights[6]
+        )
 
         @aie.core(tile_2_3)
         def core():
@@ -104,9 +111,26 @@ def foursome(module):
                 aiex.hold_lock(lock_weight_2_4, lock_weight_2_4),
                 aiex.hold_lock(lock_use_weight_2_3, lock_use_weight_2_3, acq_val=0),
             ):
-                linalg.add(global_weight_1_3, buffer_weight_2_3, buffer_weight_2_3)
-                linalg.add(global_weight_2_4, buffer_weight_2_3, buffer_weight_2_3)
-                linalg.add(global_weight_2_2, buffer_weight_2_3, buffer_weight_2_3)
+                linalg.add(
+                    buffer_1_3_result,
+                    buffer_weight_2_3_result,
+                    buffer_weight_2_3_result,
+                )
+                linalg.add(
+                    buffer_1_3_inited_access_elsewhere,
+                    buffer_weight_2_3_result,
+                    buffer_weight_2_3_result,
+                )
+                linalg.add(
+                    buffer_weight_2_4,
+                    buffer_weight_2_3_result,
+                    buffer_weight_2_3_result,
+                )
+                linalg.add(
+                    buffer_weight_2_2,
+                    buffer_weight_2_3_result,
+                    buffer_weight_2_3_result,
+                )
 
         shim_tile_column = 3
         mem_tile = aie.tile(shim_tile_column, 1)
@@ -121,7 +145,7 @@ def foursome(module):
             )
             def _():
                 aiex.process_bd(
-                    lock_use_weight_2_3, buffer_weight_2_3, lock_use_weight_2_3
+                    lock_use_weight_2_3, buffer_weight_2_3_result, lock_use_weight_2_3
                 )
 
             aie.end()
@@ -185,10 +209,8 @@ def foursome(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-    if not np.array_equal(2 * iv1 + 2 * iv2 + 2 * iv3 + iv4, wrap_C):
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            print(f"{iv1=}")
-            print(f"{iv2=}")
-            print(f"{iv3=}")
-            print(f"{iv4=}")
-            print(f"c={wrap_C}")
+        if not np.array_equal(sum(init_weights) + sum(random_numbers), wrap_C):
+            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                print(sum(init_weights) + sum(random_numbers))
+                print(f"c={wrap_C}")
+                assert False

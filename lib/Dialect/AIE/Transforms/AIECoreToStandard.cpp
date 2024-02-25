@@ -384,19 +384,29 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
-  AIEBufferToStandard(MLIRContext *context, ModuleOp &m, IRMapping &mapper,
-                      PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
+  int tileCol = 0;
+  int tileRow = 0;
+  AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
+                      PatternBenefit benefit = 1, int tileCol = -1,
+                      int tileRow = -1)
+      : OpConversionPattern(context, benefit), module(m), tileCol(tileCol),
+        tileRow(tileRow) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = buffer.getType().cast<MemRefType>();
+    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
+    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
-    rewriter.create<memref::GlobalOp>(
+    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
+    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
+      initValue = nullptr;
+    auto globalOp = rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), buffer.getInitialValueAttr(), /*constant*/ false,
+        buffer.getType(), initValue, /*constant*/ false,
         /*alignment*/ nullptr);
+    globalOp->setAttr("aie_address", buffer.getAddressAttr());
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
@@ -594,13 +604,15 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
+                                      tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
-    outlinePatterns.add<AIECoreToStandardFunc>(
-        m.getContext(), m, mapper, tileToBuffers, 1, tileCol, tileRow);
+    outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
+                                               tileToBuffers, /*benefit*/ 1,
+                                               tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
       return signalPassFailure();
 

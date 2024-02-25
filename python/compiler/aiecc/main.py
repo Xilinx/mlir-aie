@@ -70,17 +70,19 @@ LOWER_TO_LLVM_PIPELINE = (
 )
 
 AIE_LOWER_TO_LLVM = (
-    Pipeline()
-    .Nested(
-        "aie.device",
+    lambda col=-1, row=-1: (
         Pipeline()
-        .add_pass("aie-localize-locks")
-        .add_pass("aie-normalize-address-spaces"),
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-localize-locks")
+            .add_pass("aie-normalize-address-spaces"),
+        )
+        .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
+        .add_pass("aiex-standard-lowering")
     )
-    .add_pass("aie-standard-lowering")
-    .add_pass("aiex-standard-lowering")
+    + LOWER_TO_LLVM_PIPELINE
 )
-AIE_LOWER_TO_LLVM += LOWER_TO_LLVM_PIPELINE
 
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")

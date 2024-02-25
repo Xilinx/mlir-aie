@@ -358,41 +358,19 @@ def compile_without_vectorization(module, debug=False, partition_start_col=1):
         print(f"compiling core {col} {row}")
         with Context():
             core_mod = Module.parse(str(input_with_addresses))
-            pruned_core = run_pipeline(
-                core_mod,
-                Pipeline().add_pass(
-                    "aie-core-prune",
-                    tilecol=col,
-                    tilerow=row,
-                    prunebuffers=False,
-                    prunetiles=False,
-                ),
-                enable_ir_printing=debug,
-            )
-            core_bcf = generate_bcf(pruned_core.operation, col, row)
-            pruned_core = run_pipeline(
-                core_mod,
-                Pipeline().add_pass(
-                    "aie-core-prune",
-                    tilecol=col,
-                    tilerow=row,
-                    prunebuffers=True,
-                    prunetiles=True,
-                ),
-                enable_ir_printing=debug,
-            )
+            core_bcf = generate_bcf(core_mod.operation, col, row)
             pruned_lowered_to_llvm_dialect = run_pipeline(
-                pruned_core, AIE_LOWER_TO_LLVM, enable_ir_printing=debug
+                core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
             )
             core_input_ll = translate_mlir_to_llvmir(
                 pruned_lowered_to_llvm_dialect.operation
             )
             chess_compile(
                 link_with_chess_intrinsic_wrapper(core_input_ll),
-                output_filename=f"input_{col}_{row}",
+                output_filename=f"core_{col}_{row}",
                 debug=debug,
             )
-        make_core_elf(core_bcf, input_filename=f"input_{col}_{row}", debug=debug)
+        make_core_elf(core_bcf, input_filename=f"core_{col}_{row}", debug=debug)
 
     input_physical = run_pipeline(
         module,

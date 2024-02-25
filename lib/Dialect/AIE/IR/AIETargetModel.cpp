@@ -270,7 +270,8 @@ std::optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
   return ret;
 }
 
-// Return the tile ID of the memory to the east of the given tile, if it exists.
+// Return the tile ID of the memory to the east of the given tile (ie self), if
+// it exists.
 std::optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
   std::optional ret = src;
   if (!isValidTile(*ret))
