@@ -63,12 +63,27 @@ struct PruneTileOp : public OpRewritePattern<TileOp> {
   bool pruneTiles;
 };
 
+struct PruneUnusedExternalBuffers : public OpRewritePattern<ExternalBufferOp> {
+  using OpRewritePattern<ExternalBufferOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExternalBufferOp buffer,
+                                PatternRewriter &rewriter) const override {
+    if (!buffer.getResult().use_empty())
+      return failure();
+
+    rewriter.eraseOp(buffer);
+
+    return success();
+  }
+};
+
 struct AIECorePrunePass : AIECorePruneBase<AIECorePrunePass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
     RewritePatternSet patterns(&getContext());
     patterns.add<PruneTileOp>(patterns.getContext(), tileCol, tileRow,
                               pruneBuffers, pruneTiles);
+    patterns.add<PruneUnusedExternalBuffers>(patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
       signalPassFailure();
   }
