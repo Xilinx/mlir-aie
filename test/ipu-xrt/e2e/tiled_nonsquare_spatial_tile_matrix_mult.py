@@ -237,9 +237,9 @@ def tiled_nonsquare_tile_spatial_2x2(module):
         for i in range(tile_rows_C):
             for j in range(tile_cols_C):
                 tile = core_tiles[i][j]
-                buffer_a = aie.buffer(T.memref(tile_m_A, tile_n_A, T.i32()), tile)
-                buffer_b = aie.buffer(T.memref(tile_m_B, tile_n_B, T.i32()), tile)
-                buffer_c = aie.buffer(T.memref(tile_m_C, tile_n_C, T.i32()), tile)
+                buffer_a = aie.buffer(tile, (tile_m_A, tile_n_A), T.i32())
+                buffer_b = aie.buffer(tile, (tile_m_B, tile_n_B), T.i32())
+                buffer_c = aie.buffer(tile, (tile_m_C, tile_n_C), T.i32())
                 lock_read_in_a = aie.lock(tile, init=1)
                 lock_use_a = aie.lock(tile, init=0)
                 lock_read_in_b = aie.lock(tile, init=1)
@@ -334,7 +334,6 @@ def tiled_nonsquare_tile_spatial_2x2(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)

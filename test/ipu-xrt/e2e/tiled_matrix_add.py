@@ -79,10 +79,10 @@ def tiled_matrix_add(module):
         aie.flow(tile_0_1, DMA, 2, tile_0_0, DMA, 0)
 
         # input flow
-        buffer_0_1_a = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_1)
-        buffer_0_1_b = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_1)
+        buffer_0_1_a = aie.buffer(tile_0_1, (tile_rows, tile_cols), T.i32())
+        buffer_0_1_b = aie.buffer(tile_0_1, (tile_rows, tile_cols), T.i32())
         # output flow
-        buffer_0_1_c = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_1)
+        buffer_0_1_c = aie.buffer(tile_0_1, (tile_rows, tile_cols), T.i32())
 
         # coordinates (0, 0), (0, 8), (128, 0), (128, 8)
         offsets = [
@@ -200,10 +200,10 @@ def tiled_matrix_add(module):
             aie.end()
 
         # in
-        buffer_0_2_a = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_2)
-        buffer_0_2_b = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_2)
+        buffer_0_2_a = aie.buffer(tile_0_2, (tile_rows, tile_cols), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (tile_rows, tile_cols), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(T.memref(tile_rows, tile_cols, T.i32()), tile_0_2)
+        buffer_0_2_c = aie.buffer(tile_0_2, (tile_rows, tile_cols), T.i32())
 
         @aie.mem(tile_0_2)
         def mem_0_2():
@@ -252,7 +252,6 @@ def tiled_matrix_add(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
@@ -502,7 +501,6 @@ def matrix_add_sugar(module):
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
-
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)

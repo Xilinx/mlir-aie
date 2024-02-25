@@ -660,7 +660,7 @@ def zeroth_column(module):
 
         @aie.memtile_dma(mem_tile)
         def memtile_dma_0_1():
-            buffer_row_1_c = aie.buffer(T.memref(K, T.i32()), mem_tile)
+            buffer_row_1_c = aie.buffer(mem_tile, (K,), T.i32())
             aiex.forward_bd(
                 mem_tile,
                 buffer_row_1_c,
@@ -669,7 +669,7 @@ def zeroth_column(module):
             aie.end()
 
         # out
-        buffer_row_2_c = aie.buffer(T.memref(K, T.i32()), compute_tile)
+        buffer_row_2_c = aie.buffer(compute_tile, (K,), T.i32())
         lock_row_2_use_c = aie.lock(compute_tile, lock_id=4, init=1)
         lock_row_2_write_out_c = aie.lock(compute_tile, lock_id=5, init=0)
 
