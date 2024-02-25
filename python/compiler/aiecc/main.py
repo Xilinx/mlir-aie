@@ -8,33 +8,30 @@
 aiecc - AIE compiler driver for MLIR tools
 """
 
-import os
-import stat
-import sys
-import time
-import subprocess
-import shutil
 import asyncio
 import glob
-import random
 import json
+import os
+import random
+import re
+import shutil
+import stat
+import subprocess
+import sys
 import tempfile
 from textwrap import dedent
+import time
 
-import aiofiles
 from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
-
-from aie.passmanager import PassManager
-from aie.ir import Module, Context, Location
-from aie.dialects import aie as aiedialect
+import aiofiles
+import rich.progress as progress
 
 import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
-
-import rich.progress as progress
-import re
-
+from aie.dialects import aie as aiedialect
+from aie.ir import Context, Location, Module
+from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
     Pipeline()

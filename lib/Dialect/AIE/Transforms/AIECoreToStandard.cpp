@@ -415,6 +415,45 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   }
 };
 
+struct AIEExternalBufferToStandard : OpConversionPattern<ExternalBufferOp> {
+  using OpConversionPattern::OpConversionPattern;
+  ModuleOp &module;
+  AIEExternalBufferToStandard(MLIRContext *context, ModuleOp &m,
+                              IRMapping &mapper, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), module(m) {}
+  LogicalResult
+  matchAndRewrite(ExternalBufferOp buffer, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto refSymName = buffer.getRefSymName();
+    if (refSymName) {
+      assert(!module.lookupSymbol(refSymName.value()) &&
+             "refSymName must refer to buffer in different core/tile i.e. one "
+             "whose symbol does not appear in current module");
+      rewriter.setInsertionPointToStart(module.getBody());
+      rewriter.create<memref::GlobalOp>(
+          rewriter.getUnknownLoc(), refSymName.value(),
+          rewriter.getStringAttr("public"), buffer.getType(),
+          /*initial_value*/ nullptr, /*constant*/ false,
+          /*alignment*/ nullptr);
+
+      for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
+        Operation *user = use.getOwner();
+        rewriter.setInsertionPoint(user);
+        auto t = buffer.getType().cast<MemRefType>();
+        auto allocated = rewriter.create<memref::GetGlobalOp>(
+            rewriter.getUnknownLoc(), t, refSymName.value());
+        // Assume that buffers are aligned so they can be vectorized.
+        rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
+                                                   allocated, 32);
+        use.set(allocated.getResult());
+      }
+    }
+
+    rewriter.eraseOp(buffer);
+    return success();
+  }
+};
+
 struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
@@ -565,6 +604,13 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     // module
     outlineOps<memref::GlobalOp>(device);
     outlineOps<func::FuncOp>(device);
+
+    // lower aie.externalbuffers after aie.buffers so we can ensure no name
+    // collisions between buffers and externalbuffers reference names
+    RewritePatternSet externBufPat(&getContext());
+    externBufPat.add<AIEExternalBufferToStandard>(m.getContext(), m, mapper);
+    if (failed(applyPartialConversion(m, target, std::move(externBufPat))))
+      signalPassFailure();
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns.add<

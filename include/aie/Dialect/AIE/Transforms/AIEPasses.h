@@ -42,6 +42,7 @@ createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIECorePrunePass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
@@ -50,7 +51,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 /// Overall Flow:
 /// rewrite switchboxes to assign unassigned connections, ensure this can be
 /// done concurrently ( by different threads)
-/// 1. Goal is to rewrite all flows in the device into switchboxes + shim-mux
+/// 1. Goal is to rewrite all flows in the device into switchboxes +
+/// shim-mux
 /// 2. multiple passes of the rewrite pattern rewriting streamswitch
 /// configurations to routes
 /// 3. rewrite flows to stream-switches using 'weights' from analysis pass.

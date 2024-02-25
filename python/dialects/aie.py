@@ -1,8 +1,8 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-import inspect
 from dataclasses import dataclass
+import inspect
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -21,23 +21,23 @@ from ..extras.meta import region_op
 from ..extras.util import (
     Successor,
     _get_sym_name,
+    find_ops,
+    find_parent_of_type,
     get_user_code_loc,
     region_adder,
-    find_parent_of_type,
-    find_ops,
 )
 from ..ir import (
     ArrayAttr,
     Attribute,
     Block,
     DenseElementsAttr,
+    DictAttr,
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
     TypeAttr,
-    DictAttr,
     UnitAttr,
     _i32ArrayAttr,
 )
@@ -148,7 +148,9 @@ class Core(CoreOp):
 # Create an aie buffer of (size x datatype) on given tile.
 # size examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
-    def __init__(self, tile, size, datatype, name=None, initial_value=None):
+    def __init__(
+        self, tile, size, datatype, name=None, initial_value=None, loc=None, ip=None
+    ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
             initial_value = DenseElementsAttr.get(
@@ -161,14 +163,22 @@ class Buffer(BufferOp):
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
+            loc=loc,
+            ip=ip,
         )
 
 
 # Create an aie external buffer of (size x datatype).
 # size examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, size, datatype, name=None):
-        super().__init__(buffer=T.memref(*size, datatype), sym_name=name)
+    def __init__(self, size, datatype, name=None, ref_sym=None, loc=None, ip=None):
+        super().__init__(
+            buffer=T.memref(*size, datatype),
+            sym_name=name,
+            ref_sym_name=ref_sym,
+            loc=loc,
+            ip=ip,
+        )
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
@@ -376,19 +386,34 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-_buffer = buffer
-
-
-def buffer(buffer, tile, *, sym_name=None, address=None, loc=None, ip=None):
-    return _buffer(
-        buffer,
+def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=None):
+    return Buffer(
         tile,
-        sym_name=sym_name
+        size,
+        datatype,
+        name=name
         or _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer"),
-        address=address,
+        initial_value=initial_value,
         loc=loc,
         ip=ip,
-    )
+    ).result
+
+
+def external_buffer(
+    size, datatype, name=None, ref_sym=None, ref=None, loc=None, ip=None
+):
+    if ref is not None:
+        assert ref_sym is None, f"only ref_sym or ref supported, not both"
+        ref_sym = ref.owner.opview.sym_name.value
+
+    return ExternalBuffer(
+        size,
+        datatype,
+        name=name,
+        ref_sym=ref_sym,
+        loc=loc,
+        ip=ip,
+    ).result
 
 
 _lock = lock

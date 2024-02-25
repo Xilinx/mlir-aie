@@ -1243,7 +1243,8 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 }
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+    Pure
   ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let description = [{
@@ -1263,7 +1264,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
+  let arguments = (ins
+    OptionalAttr<StrAttr>:$sym_name,
+    OptionalAttr<StrAttr>:$ref_sym_name
+  );
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];

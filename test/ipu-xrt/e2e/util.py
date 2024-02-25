@@ -133,6 +133,9 @@ def extract_input_files(core_bcf):
 
 
 def _run_command(cmd, debug=False):
+    if debug:
+        print("shelling out command:")
+        print(" ".join([f"{k}={v}" for k, v in ENV.items()]) + " " + " ".join(cmd))
     handle = subprocess.run(cmd, capture_output=True, cwd=WORKDIR, env=ENV)
     stderr = handle.stderr.decode("utf-8").strip()
     if handle.returncode != 0:
@@ -150,19 +153,19 @@ def link_with_chess_intrinsic_wrapper(input_ll):
     return chesshack(aie_llvm_link([input_ll, chess_intrinsic_wrapper]))
 
 
-def chess_compile(input_ll, output_filename="input.o"):
-    with open(WORKDIR / "input.ll", "w") as f:
+def chess_compile(input_ll, output_filename="input", debug=False):
+    with open(WORKDIR / f"{output_filename}.ll", "w") as f:
         f.write(input_ll)
 
     # chess compile
     cmd = [
         *XCHESS_ARGS(),
         "-c",  # compile/assemble only, do not link
-        "input.ll",
+        f"{output_filename}.ll",
         "-o",
-        output_filename,
+        f"{output_filename}.o",
     ]
-    _run_command(cmd)
+    _run_command(cmd, debug)
 
 
 def chess_compile_cpp_to_ll(cpp, prefix="aievec", debug=False):
@@ -231,7 +234,7 @@ def chess_llvm_link(*file_strs, prefix="chess_llvm_link_output", input_prefixes=
     return output_str
 
 
-def make_core_elf(core_bcf, input_object_file="input.o"):
+def make_core_elf(core_bcf, input_filename="input", debug=False):
     input_files = extract_input_files(core_bcf)
     core_name = re.findall(r"_symbol (.*?) _after _main_init", core_bcf, re.MULTILINE)
     assert len(core_name) == 1
@@ -242,14 +245,14 @@ def make_core_elf(core_bcf, input_object_file="input.o"):
 
     cmd = [
         *XCHESS_ARGS(),
-        input_object_file,
+        f"{input_filename}.o",
         *input_files,
         "+l",  # linker configuration file
         f"{core_name}.bcf",
         "-o",
         f"{core_name}.elf",
     ]
-    _run_command(cmd)
+    _run_command(cmd, debug)
 
 
 def make_design_pdi():
@@ -350,18 +353,52 @@ def compile_without_vectorization(module, debug=False, partition_start_col=1):
     )
 
     input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
-    input_opt_with_addresses = run_pipeline(input_with_addresses, AIE_LOWER_TO_LLVM)
-    input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    chess_compile(
-        link_with_chess_intrinsic_wrapper(
-            translate_mlir_to_llvmir(input_opt_with_addresses.operation)
-        )
+
+    for col, row, _ in generate_cores_list(str(module)):
+        print(f"compiling core {col} {row}")
+        with Context():
+            core_mod = Module.parse(str(input_with_addresses))
+            pruned_core = run_pipeline(
+                core_mod,
+                Pipeline().add_pass(
+                    "aie-core-prune",
+                    tilecol=col,
+                    tilerow=row,
+                    prunebuffers=False,
+                    prunetiles=False,
+                ),
+                enable_ir_printing=debug,
+            )
+            core_bcf = generate_bcf(pruned_core.operation, col, row)
+            pruned_core = run_pipeline(
+                core_mod,
+                Pipeline().add_pass(
+                    "aie-core-prune",
+                    tilecol=col,
+                    tilerow=row,
+                    prunebuffers=True,
+                    prunetiles=True,
+                ),
+                enable_ir_printing=debug,
+            )
+            pruned_lowered_to_llvm_dialect = run_pipeline(
+                pruned_core, AIE_LOWER_TO_LLVM, enable_ir_printing=debug
+            )
+            core_input_ll = translate_mlir_to_llvmir(
+                pruned_lowered_to_llvm_dialect.operation
+            )
+            chess_compile(
+                link_with_chess_intrinsic_wrapper(core_input_ll),
+                output_filename=f"input_{col}_{row}",
+                debug=debug,
+            )
+        make_core_elf(core_bcf, input_filename=f"input_{col}_{row}", debug=debug)
+
+    input_physical = run_pipeline(
+        module,
+        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
+        enable_ir_printing=debug,
     )
-
-    for col, row, _ in generate_cores_list(str(input_with_addresses)):
-        core_bcf = generate_bcf(input_with_addresses.operation, col, row)
-        make_core_elf(core_bcf)
-
     with _global_debug(debug):
         generate_cdo(
             input_physical.operation,

@@ -5,11 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIETargetShared.h"
-#include "aie/Targets/AIETargets.h"
-
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Targets/AIETargets.h"
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -47,9 +45,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("expected AIE.device operation at toplevel");
-  }
+  if (module.getOps<DeviceOp>().empty())
+    module.emitOpError("expected aie.device operation at toplevel");
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(targetOp, tiles);
@@ -80,15 +77,24 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                                      ? "0x40000"
                                      : "0x20000";
       output << "_reserved DMb      0x00000 " << initReserved
-             << " //Don't put data in code memory\n";
+             << " // Don't put data in code memory\n";
 
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          if (tiles.count(*tile))
-            for (auto buf : buffers[tiles[*tile]])
+          output << "// mapping " << dir << " tile memory\n";
+          if (tiles.count(*tile)) {
+            for (auto buf : buffers[tiles[*tile]]) {
+              if (buf.getInitialValue() && tile == srcCoord) {
+                output << "// skipping " << buf->getName()
+                       << " which is initialized "
+                          "and thus already in data memory for this tile\n";
+                continue;
+              }
               writeBCFMap(output, buf, offset);
+            }
+          }
           uint32_t localMemSize = targetModel.getLocalMemorySize();
           if (tile != srcCoord)
             output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
@@ -105,6 +111,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
         }
       };
 
+      output << "\n// mapping neighbors tile memory\n\n";
       doBuffer(targetModel.getMemSouth(srcCoord),
                targetModel.getMemSouthBaseAddress(), std::string("south"));
       doBuffer(targetModel.getMemWest(srcCoord),
@@ -113,13 +120,14 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                targetModel.getMemNorthBaseAddress(), std::string("north"));
       doBuffer(targetModel.getMemEast(srcCoord),
                targetModel.getMemEastBaseAddress(), std::string("east"));
+      output << "\n// end mapping neighbors tile memory\n\n";
 
       int stacksize = 0;
       if (auto core = tile.getCoreOp())
         stacksize = core.getStackSize();
       output << "_stack    DM_stack 0x"
              << llvm::utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
-             << "  0x" << llvm::utohexstr(stacksize) << " //stack for core\n";
+             << "  0x" << llvm::utohexstr(stacksize) << " // stack for core\n";
 
       if (targetModel.getTargetArch() == AIEArch::AIE2) {
         output << "_reserved DMb 0x80000 0x80000 // And everything else "
@@ -134,6 +142,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
              << "\n";
     }
+
   return success();
 }
 } // namespace AIE

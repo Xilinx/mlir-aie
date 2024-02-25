@@ -1281,8 +1281,7 @@ void xilinx::AIE::collectTiles(DeviceOp &device,
 void xilinx::AIE::collectBuffers(
     DeviceOp &device,
     DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
-
-  for (auto buffer : device.getOps<BufferOp>()) {
+  for (BufferOp buffer : device.getOps<BufferOp>()) {
     Operation *tileOp = buffer.getTile().getDefiningOp();
     buffers[tileOp].push_back(buffer);
   }
