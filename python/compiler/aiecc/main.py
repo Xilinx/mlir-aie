@@ -70,7 +70,7 @@ LOWER_TO_LLVM_PIPELINE = (
 )
 
 AIE_LOWER_TO_LLVM = (
-    lambda col=-1, row=-1: (
+    lambda col=None, row=None: (
         Pipeline()
         .Nested(
             "aie.device",
@@ -1036,7 +1036,7 @@ class FlowRunner:
             # fmt: off
             if opts.unified:
                 file_opt_with_addresses = self.prepend_tmp("input_opt_with_addresses.mlir")
-                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM}", file_with_addresses, "-o", file_opt_with_addresses])
+                await self.do_call(progress_bar.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM()}", file_with_addresses, "-o", file_opt_with_addresses])
 
                 file_llvmir = self.prepend_tmp("input.ll")
                 await self.do_call(progress_bar.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])

@@ -309,15 +309,17 @@ def _global_debug(debug):
     _GlobalDebug.flag = False
 
 
-def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start_col=1):
-    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
-    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
-
+# TODO(max): port to support aie.buffer inits (i.e. separate core compilation)
+def compile_with_vectorization(
+    mod_aie, mod_aievec, *, debug=False, partition_start_col=1
+):
     input_with_addresses = run_pipeline(mod_aie, INPUT_WITH_ADDRESSES_PIPELINE)
     input_physical = run_pipeline(input_with_addresses, CREATE_PATH_FINDER_FLOWS)
-    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM)
+    input_opt_with_addresses = run_pipeline(input_physical, AIE_LOWER_TO_LLVM())
     aie_ll = translate_mlir_to_llvmir(input_opt_with_addresses.operation)
 
+    aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
+    aievec_cpp = aievec_cpp.replace("void", 'extern "C" void')
     aievec_ll = chess_compile_cpp_to_ll(aievec_cpp, debug=True)
     # this is wonky because it's already on disk but oh well...
     with open(
@@ -346,12 +348,11 @@ def compile_with_vectorization(mod_aie, mod_aievec, debug=False, partition_start
     make_design_pdi()
 
 
-def compile_without_vectorization(module, debug=False, partition_start_col=1):
+def compile_without_vectorization(module, *, debug=False, partition_start_col=1):
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
         module, Pipeline().convert_linalg_to_loops().fold_memref_alias_ops()
     )
-
     input_with_addresses = run_pipeline(lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE)
 
     for col, row, _ in generate_cores_list(str(module)):
@@ -359,11 +360,11 @@ def compile_without_vectorization(module, debug=False, partition_start_col=1):
         with Context():
             core_mod = Module.parse(str(input_with_addresses))
             core_bcf = generate_bcf(core_mod.operation, col, row)
-            pruned_lowered_to_llvm_dialect = run_pipeline(
+            core_lowered_to_llvm_dialect = run_pipeline(
                 core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
             )
             core_input_ll = translate_mlir_to_llvmir(
-                pruned_lowered_to_llvm_dialect.operation
+                core_lowered_to_llvm_dialect.operation
             )
             chess_compile(
                 link_with_chess_intrinsic_wrapper(core_input_ll),

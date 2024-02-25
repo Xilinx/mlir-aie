@@ -400,13 +400,14 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
     mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
+    // Don't emit initialization for cores that don't "own" the buffer (to
+    // prevent duplication in the data section of the elf/object file)
     if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
       initValue = nullptr;
-    auto globalOp = rewriter.create<memref::GlobalOp>(
+    rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
         buffer.getType(), initValue, /*constant*/ false,
         /*alignment*/ nullptr);
-    globalOp->setAttr("aie_address", buffer.getAddressAttr());
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();

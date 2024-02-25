@@ -76,8 +76,16 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          output << "\n// " + dir +
+          output << "// " + dir +
                         " -------------------------------------------------\n";
+          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          if (tile != srcCoord)
+            output << "_reserved DMb " << utohexstr(offset) << " "
+                   << utohexstr(localMemSize) << " "
+                   << " // Don't allocate variables in " << dir
+                   << " neighbor\n\n";
+          // TODO How to set as reserved if no buffer exists (or reserve
+          // remaining buffer)
           if (tiles.count(*tile)) {
             for (auto buf : buffers[tiles[*tile]]) {
               std::string bufName(buf.name().getValue());
@@ -98,15 +106,6 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
               output << "\n";
             }
           }
-
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
-          if (tile != srcCoord)
-            output << "_reserved DMb " << utohexstr(offset) << " "
-                   << utohexstr(localMemSize) << " "
-                   << " // Don't allocate variables in " << dir
-                   << " neighbor\n";
-          // TODO How to set as reserved if no buffer exists (or reserve
-          // remaining buffer)
         } else {
           uint32_t localMemSize = targetModel.getLocalMemorySize();
           output << "_reserved DMb " << utohexstr(offset) << " "
