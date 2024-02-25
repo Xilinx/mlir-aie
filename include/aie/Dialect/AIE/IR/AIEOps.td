@@ -1294,8 +1294,6 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
         setNameFn(getResult(), name().str());
     }
   }];
-
-  let hasVerifier = 1;
 }
 
 def AIE_EventOp: AIE_Op<"event", []> {

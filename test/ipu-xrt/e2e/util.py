@@ -380,7 +380,6 @@ def compile_without_vectorization(module, debug=False, partition_start_col=1):
                     prunetiles=True,
                 ),
                 enable_ir_printing=debug,
-                verify=False
             )
             pruned_lowered_to_llvm_dialect = run_pipeline(
                 pruned_core, AIE_LOWER_TO_LLVM, enable_ir_printing=debug

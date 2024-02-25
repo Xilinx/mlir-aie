@@ -4,7 +4,7 @@
 #
 # (c) Copyright 2023 AMD Inc.
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
-
+import random
 import sys
 
 # this is to get the MemRefValue caster inside of aie-python-extras
@@ -32,6 +32,8 @@ MM2S = DMAChannelDir.MM2S
 def foursome(module):
     K = 32
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
+    iv11 = np.random.randint(0, 10, (K,), dtype=np.int32)
+    RANDOM_NUMBER = random.randint(0, 100)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv3 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv4 = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -52,12 +54,24 @@ def foursome(module):
         tile_2_3 = aie.tile(2, 3)
 
         buffer_weight_1_3 = aie.buffer(tile_1_3, (K,), T.i32(), initial_value=iv1)
+        buffer_weight_1_3_random_number = aie.buffer(tile_1_3, (K,), T.i32())
+        buffer_weight_1_3_another_init = aie.buffer(
+            tile_1_3, (K,), T.i32(), initial_value=iv4
+        )
         lock_weight_1_3 = aie.lock(tile_1_3, init=0)
 
         @aie.core(tile_1_3)
         def core():
             with aiex.hold_lock(lock_weight_1_3, lock_weight_1_3, acq_val=0):
-                linalg.add(buffer_weight_1_3, buffer_weight_1_3, buffer_weight_1_3)
+                linalg.fill(RANDOM_NUMBER, buffer_weight_1_3_random_number)
+                linalg.add(
+                    buffer_weight_1_3_random_number,
+                    buffer_weight_1_3,
+                    buffer_weight_1_3,
+                )
+                linalg.add(
+                    buffer_weight_1_3_another_init, buffer_weight_1_3, buffer_weight_1_3
+                )
 
         buffer_weight_2_4 = aie.buffer(tile_2_4, (K,), T.i32(), initial_value=iv2)
         lock_weight_2_4 = aie.lock(tile_2_4, init=0)

@@ -1313,25 +1313,6 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
 }
 
 //===----------------------------------------------------------------------===//
-// ExternalBufferOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ExternalBufferOp::verify() {
-  if (auto refSymName = getRefSymName()) {
-    DeviceOp device = getOperation()->getParentOfType<DeviceOp>();
-    auto walkResult = device.walk<WalkOrder::PostOrder>([&](BufferOp buffer) {
-      if (buffer.hasName() && buffer.name() == refSymName)
-        return WalkResult::interrupt();
-      return WalkResult::advance();
-    });
-    if (walkResult.wasInterrupted())
-      return success();
-    return emitOpError("refSymName does not reference any aie.buffer");
-  }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // MemOp
 //===----------------------------------------------------------------------===//
 
