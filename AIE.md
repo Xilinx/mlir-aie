@@ -69,7 +69,9 @@ _Declare a buffer_
 Syntax:
 
 ```
-operation ::= `aie.buffer` `(` $tile `)` attr-dict `:` type($buffer)
+operation ::= `aie.buffer` `(` $tile `)`
+              attr-dict `:` type($buffer)
+              custom<BufferInitialValue>(ref(type($buffer)), $initial_value)
 ```
 
 This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -89,6 +91,7 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>initial_value</code></td><td>::mlir::ElementsAttr</td><td>constant vector/tensor attribute</td></tr>
 </table>
 
 #### Operands:
