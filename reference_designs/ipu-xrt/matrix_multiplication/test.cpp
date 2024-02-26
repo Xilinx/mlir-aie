@@ -23,9 +23,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int M = 128;
-constexpr int K = 128;
-constexpr int N = 128;
+constexpr int M = 256;
+constexpr int K = 256;
+constexpr int N = 256;
 
 constexpr int A_VOLUME = M * K;
 constexpr int B_VOLUME = N * K;
@@ -40,6 +40,10 @@ constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
+constexpr bool ENABLE_TRACING = false;
+constexpr int TRACE_SIZE = 8192;
+
+constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
 
 namespace po = boost::program_options;
 
@@ -92,6 +96,16 @@ void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
   }
 }
 
+void write_out_trace(char *bufOut, std::string path) {
+  std::ofstream fout(path);
+  uint32_t *traceOut =
+      (uint32_t *)((char *)bufOut + sizeof(C_DATATYPE) * C_VOLUME);
+  for (int i = 0; i < TRACE_SIZE / sizeof(traceOut[0]); i++) {
+    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
+    fout << std::endl;
+  }
+}
+
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
@@ -105,6 +119,11 @@ int main(int argc, const char *argv[]) {
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
+  if (ENABLE_TRACING) {
+    desc.add_options()("trace,t",
+                       po::value<std::string>()->default_value("trace.txt"),
+                       "where to store trace output");
+  }
   po::variables_map vm;
 
   try {
@@ -148,9 +167,11 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
+                                 if (verbosity >= 1) {
+                                   std::cout << "Name: " << name << std::endl;
+                                 }
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
@@ -177,8 +198,8 @@ int main(int argc, const char *argv[]) {
       xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_b =
       xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_c =
-      xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_out =
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -193,30 +214,32 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < B_VOLUME; i++)
     BVec.push_back(random_bfloat16_t());
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
-  C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
-  std::vector<C_DATATYPE> CVec;
-  for (int i = 0; i < C_VOLUME; i++)
-    CVec.push_back(0);
-  memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
 
+  // Initialize outputs; bufOut is results matrix plus tracing info
+  char *bufOut = bo_out.map<char *>();
+  memset(bufOut, 0, OUT_SIZE);
+
+  // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   auto start = std::chrono::system_clock::now();
-  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
+  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
   run.wait();
   auto stop = std::chrono::system_clock::now();
 
-  bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
+  // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C
+  // matrix
+  C_DATATYPE *COut = (C_DATATYPE *)bufOut;
 
   int errors = 0;
   int max_errors = 100;
@@ -229,15 +252,21 @@ int main(int argc, const char *argv[]) {
 
     const C_DATATYPE absTol = std::abs(0.1);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs(bufOut[i] - output_ref0[i]) > absTol) {
+      if (std::abs(COut[i] - output_ref0[i]) > absTol) {
         errors++;
         if (errors < max_errors) {
           std::cout << "\nerror, id " << i << " expected "
                     << std::to_string(output_ref0[i]) << ", got "
-                    << std::to_string(bufOut[i]) << "\n";
+                    << std::to_string(COut[i]) << "\n";
         }
       }
     }
+  } else {
+    std::cout << "WARNING: matmul results not verified." << std::endl;
+  }
+
+  if (ENABLE_TRACING) {
+    write_out_trace(bufOut, vm["trace"].as<std::string>());
   }
 
   std::cout << std::endl
