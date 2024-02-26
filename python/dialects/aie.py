@@ -386,12 +386,13 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
 
 
 def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=None):
+    if name is not None and not name:
+        name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
     return Buffer(
         tile,
         size,
         datatype,
-        name=name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer"),
+        name=name,
         initial_value=initial_value,
         loc=loc,
         ip=ip,
@@ -414,12 +415,13 @@ _lock = lock
 def lock(
     tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
 ):
+    if sym_name is not None and not sym_name:
+        sym_name = _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock")
     l = _lock(
         tile,
         lock_id=lock_id,
         init=init,
-        sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock"),
+        sym_name=sym_name,
         loc=loc,
         ip=ip,
     )
@@ -496,7 +498,19 @@ def find_matching_flows(
                 )
             )
 
-    return find_ops(device, _cb)
+    return sorted(
+        find_ops(device, _cb),
+        key=lambda a: (
+            int(a.source.owner.opview.col),
+            int(a.source.owner.opview.row),
+            int(a.source_bundle),
+            int(a.source_channel),
+            int(a.dest.owner.opview.col),
+            int(a.dest.owner.opview.row),
+            int(a.dest_bundle),
+            int(a.dest_channel),
+        ),
+    )
 
 
 def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
@@ -515,7 +529,40 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
                 )
             )
 
-    return find_ops(device, _cb)
+    return sorted(
+        [o.result for o in find_ops(device, _cb)],
+        key=lambda a: (
+            int(a.owner.opview.tile.owner.opview.col),
+            int(a.owner.opview.tile.owner.opview.row),
+            a.get_name(),
+        ),
+    )
+
+
+def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
+    if device is None:
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+    def _cb(op):
+        if isinstance(op, BufferOp):
+            return (
+                op.tile.owner.opview in tiles
+                and (sym_name == str(op.sym_name) if sym_name is not None else True)
+                and (
+                    ("annot" in op.attributes and annot in op.attributes["annot"])
+                    if annot is not None
+                    else True
+                )
+            )
+
+    return sorted(
+        [o.result for o in find_ops(device, _cb)],
+        key=lambda a: (
+            int(a.owner.opview.tile.owner.opview.col),
+            int(a.owner.opview.tile.owner.opview.row),
+            a.get_name(),
+        ),
+    )
 
 
 @dataclass
@@ -525,7 +572,7 @@ class Neighbors:
     south: TileOp = None
 
 
-def find_neighbors(tile, device=None):
+def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
@@ -535,10 +582,19 @@ def find_neighbors(tile, device=None):
     col, row = map(int, (tile.col, tile.row))
     if col > 0 and row > 0 and not (col, row) == (1, 1):
         neighbors[col - 1, row] = "west"
-    if row > 1:
-        neighbors[col, row - 1] = "south"
-    if 0 < row < 5:
-        neighbors[col, row + 1] = "north"
+
+    if logical:
+        # can connect/talk/dma access
+        if row >= 3:
+            neighbors[col, row - 1] = "south"
+        if 2 <= row < 5:
+            neighbors[col, row + 1] = "north"
+    else:
+        # physical ie actually on the lattice nearby
+        if row >= 1:
+            neighbors[col, row - 1] = "south"
+        if 0 < row < 5:
+            neighbors[col, row + 1] = "north"
 
     neighbors_ = {"north": None, "west": None, "south": None}
 

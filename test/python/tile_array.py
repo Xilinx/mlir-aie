@@ -218,7 +218,7 @@ def locks(module):
         lock(tiles[0, 1].df)
         # CHECK: %lock_0_1 = aie.lock(%tile_0_1)
         for l in tiles[0, 1].locks():
-            print(l)
+            print(l.owner)
 
         lock(tiles[0, 2].df)
         lock(tiles[0, 2].df, annot="bob")
@@ -228,19 +228,19 @@ def locks(module):
         # CHECK: %lock_0_2 = aie.lock(%tile_0_2)
         # CHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
         for l in tiles[0, 2].locks():
-            print(l)
+            print(l.owner)
 
         # CHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
         assert len(tiles[0, 2].locks(annot="bob"))
         for l in tiles[0, 2].locks(annot="bob"):
-            print(l)
+            print(l.owner)
 
         assert len(tiles[0, 2].locks(annot="alice")) == 0
 
         assert len(tiles[0, 3].locks(annot="alice")) == 1
         # CHECK: %lock_0_3_1 = aie.lock(%tile_0_3) {annot = {alice}}
         for l in tiles[0, 3].locks(annot="alice"):
-            print(l)
+            print(l.owner)
 
 
 @construct_and_print_module
@@ -249,13 +249,20 @@ def neighbors(module):
     def ipu():
         tiles = TileArray()
 
-        # CHECK: Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=%tile_2_1 = aie.tile(2, 1))
+        # CHECK: Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=None)
         print(find_neighbors(tiles[2, 2].df))
 
-        assert tiles[1:3, 1:3].neighbors.shape == (2, 2)
-        # CHECK: tile(col=1, row=1) : Neighbors(north=%tile_1_2 = aie.tile(1, 2), west=None, south=None)
-        # CHECK: tile(col=1, row=2) : Neighbors(north=%tile_1_3 = aie.tile(1, 3), west=%tile_0_2 = aie.tile(0, 2), south=%tile_1_1 = aie.tile(1, 1))
-        # CHECK: tile(col=2, row=1) : Neighbors(north=%tile_2_2 = aie.tile(2, 2), west=%tile_1_1 = aie.tile(1, 1), south=None)
-        # CHECK: tile(col=2, row=2) : Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=%tile_2_1 = aie.tile(2, 1))
-        for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors):
+        assert tiles[1:3, 1:3].neighbors().shape == (2, 2)
+        # CHECK: tile(col=1, row=1) : Neighbors(north=None, west=None, south=None)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%tile_1_3 = aie.tile(1, 3)]>, west=<TileArray: [%tile_0_2 = aie.tile(0, 2)]>, south=None)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=None)
+        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=None)
+        for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors()):
+            print(tiles[1:3, 1:3][idx].df, ":", n)
+
+        # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, west=None, south=<TileArray: [%tile_1_0 = aie.tile(1, 0)]>)
+        # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%tile_1_3 = aie.tile(1, 3)]>, west=<TileArray: [%tile_0_2 = aie.tile(0, 2)]>, south=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>)
+        # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%tile_2_2 = aie.tile(2, 2)]>, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=<TileArray: [%tile_2_0 = aie.tile(2, 0)]>)
+        # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=<TileArray: [%tile_2_1 = aie.tile(2, 1)]>)
+        for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors(logical=False)):
             print(tiles[1:3, 1:3][idx].df, ":", n)

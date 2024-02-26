@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import sys
 
-from aie.extras.dialects.ext import arith, func, linalg, scf, vector
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, scf, vector, memref
 from aie.extras.context import ExplicitlyManagedModule
 from filelock import FileLock
 import numpy as np
 
+from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.dialects import aie, aievec, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -78,8 +80,21 @@ def shim_tensor_slice(
     return ipu_insts
 
 
+def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
+    ipu_insts = []
+    ipu_insts.extend(
+        aiex.ipu.writebd_shimtile(
+            bd_id=bd_id, ddr_id=ddr_id, column=column, buffer_length=buffer_length
+        )
+    )
+    ipu_insts.extend(
+        aiex.ipu.shimtile_push_queue(direction, channel, column, bd_id=bd_id)
+    )
+    return ipu_insts
+
+
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2
-@construct_and_print_module
+# @construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2(module):
     M = N = 32
 
@@ -398,7 +413,7 @@ def matmul_i32_i32_already_vectorized(
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2_vectorized
-@construct_and_print_module
+# @construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
     M = N = 32
 
@@ -683,3 +698,120 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
                 print(A @ B)
                 print(wrap_C)
                 assert False
+
+
+# CHECK-LABEL: tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1
+@construct_and_print_module
+def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
+    K = 32
+    cols = [0, 1, 2, 3]
+    rows = [0, 1, 2, 3, 4, 5]
+
+    dest_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        for i, ((col, row), t) in enumerate(tiles[:, 2:]):
+            aie.buffer(
+                t.tile,
+                (K,),
+                T.i32(),
+                initial_value=np.full((K,), i, dtype=np.int32),
+            )
+            aie.lock(t.tile, init=0)
+
+        for _, t in tiles[:, 5]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with aiex.hold_lock(self_lock, self_lock, acq_val=0):
+                    linalg.add(self_buffer, self_buffer, self_buffer)
+
+        for _, t in tiles[:, 2:5]:
+            north_lock = t.neighbors().north.locks()[0]
+            north_buffer = t.neighbors().north.buffers()[0]
+
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with (
+                    aiex.hold_lock(self_lock, self_lock, acq_val=0),
+                    aiex.hold_lock(north_lock, north_lock),
+                ):
+                    linalg.add(north_buffer, self_buffer, self_buffer)
+
+        tiles[:, 2] >> tiles[:, 1]
+
+        for _, t in tiles[:, 2]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+            flow = t.flows()[0]
+
+            @aie.mem(t.tile)
+            def mem():
+                aiex.send_bd(flow.source_channel, self_lock, self_buffer, self_lock)
+                aie.end()
+
+        tiles[:, 1] >> tiles[:, 0]
+
+        for ddr_id, ((col, row), t) in enumerate(tiles[:, 1]):
+            to_shim, to_mem = t.flows()
+
+            @aie.memtile_dma(t.tile)
+            def memtile_dma():
+                buffer = aie.buffer(t.tile, (K,), T.i32())
+
+                aiex.forward_bd(
+                    t.tile,
+                    buffer,
+                    s2mm_channel_idx=to_mem.dest_channel,
+                    mm2s_channel_idx=to_shim.source_channel,
+                )
+                aie.end()
+
+            dest_channels[col] = int(to_shim.dest_channel)
+
+    compile_without_vectorization(module)
+    buffer_args = [f"out_col_{c}" for c in cols]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
+
+        ipu_insts = aiex.ipu.get_prolog()
+        bd_id = 0
+        for col in cols:
+            dest_channel = dest_channels[col]
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                bd_id, buffer_length=K, column=col
+            )
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    writebd_shimtile_insts,
+                    tensor_addr=xclbin._get_buffer_host_address(col),
+                )
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
+            )
+            ipu_insts.extend(aiex.ipu.sync(column=col))
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)
