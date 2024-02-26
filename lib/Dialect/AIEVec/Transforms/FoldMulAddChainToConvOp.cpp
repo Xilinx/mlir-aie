@@ -16,7 +16,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
-
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -511,8 +511,11 @@ struct FoldMulAddChainToConvOpPattern
   unsigned shiftParam;
 };
 
+namespace xilinx::aievec {
+
 void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
-                                                      AnalysisManager &am) {
+                                                      AnalysisManager &am,
+                                                      TargetBackend backend) {
   LongestConvMACChainAnalysis::am = &am;
   target.addLegalDialect<AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
@@ -524,7 +527,8 @@ void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
 
 void populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
                                                 AnalysisManager &am,
-                                                unsigned shiftParam) {
+                                                unsigned shiftParam,
+                                                TargetBackend backend) {
   patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am,
                                                shiftParam);
 }
@@ -602,6 +606,8 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
   }
 };
 
-std::unique_ptr<Pass> xilinx::aievec::createAIEVecConvolutionAnalysisPass() {
+std::unique_ptr<Pass> createAIEVecConvolutionAnalysisPass() {
   return std::make_unique<AIEVecConvAnalysis>();
 }
+
+} // namespace xilinx::aievec

@@ -405,13 +405,15 @@ struct FlattenMultDimTransferWritePattern
 //================ Common AIE canonicalization configuration =================//
 //============================================================================//
 static void
-configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
+configureCommonAIECanonicalizeLegalizations(ConversionTarget &target,
+                                            TargetBackend backend) {
   target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
                          memref::MemRefDialect, vector::VectorDialect>();
 }
 
 static void
-populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                                TargetBackend backend) {
   patterns.add<ConvertSplatTransferReadToBroadcastPattern>(
       patterns.getContext());
 }
@@ -420,7 +422,8 @@ populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //============== AIEv1-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
+static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target,
+                                                    TargetBackend backend) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -430,7 +433,8 @@ static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
 }
 
 static void
-populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                            TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 512,
                                                   128);
 }
@@ -439,7 +443,8 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //============== AIEML-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
+static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
+                                                    TargetBackend backend) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -454,7 +459,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
 }
 
 static void
-populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                            TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
   patterns.add<FlattenMultDimTransferReadPattern,
@@ -484,6 +490,7 @@ struct CanonicalizeVectorForAIEVecPass
       const CanonicalizeVectorForAIEVecOptions &options)
       : CanonicalizeVectorForAIEVecPass() {
     aieTarget = options.aieTarget;
+    targetBackend = options.targetBackend;
   }
 
   // In case we want to register this pass as a standalone pass for test
@@ -507,6 +514,13 @@ struct CanonicalizeVectorForAIEVecPass
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
+  Option<std::string> targetBackend{
+      *this, "target-backend",
+      llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
+                     "will determine the aievec operations used to convert "
+                     "from vector dialect."),
+      llvm::cl::init("cpp")};
+
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
@@ -525,14 +539,31 @@ struct CanonicalizeVectorForAIEVecPass
       }
     }
 
-    populateCommonAIECanonicalizeConversionPatterns(patterns);
-    configureCommonAIECanonicalizeLegalizations(target);
+    TargetBackend backend = TargetBackend::CPP;
+    if (!targetBackend.empty()) {
+      std::string backendStr = targetBackend;
+      if (backendStr == "llvmir") {
+        backend = TargetBackend::LLVMIR;
+        if (aieVersion == AIEArch::AIE) {
+          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
+          signalPassFailure();
+          return;
+        }
+      } else if (backendStr != "cpp") {
+        op->emitError() << "unknown target backend'" << targetBackend << "'";
+        signalPassFailure();
+        return;
+      }
+    }
+
+    populateCommonAIECanonicalizeConversionPatterns(patterns, backend);
+    configureCommonAIECanonicalizeLegalizations(target, backend);
     if (aieVersion == AIEArch::AIE) {
-      populateAIEv1CanonicalizeConversionPatterns(patterns);
-      configureAIEv1CanonicalizeLegalizations(target);
+      populateAIEv1CanonicalizeConversionPatterns(patterns, backend);
+      configureAIEv1CanonicalizeLegalizations(target, backend);
     } else {
-      populateAIEMLCanonicalizeConversionPatterns(patterns);
-      configureAIEMLCanonicalizeLegalizations(target);
+      populateAIEMLCanonicalizeConversionPatterns(patterns, backend);
+      configureAIEMLCanonicalizeLegalizations(target, backend);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
