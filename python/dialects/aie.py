@@ -1,6 +1,5 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 from dataclasses import dataclass
 import inspect
 from typing import List, Optional, Tuple, Union
@@ -17,6 +16,9 @@ from .._mlir_libs._aie import *
 from .._mlir_libs._aie import ObjectFifoSubviewType, ObjectFifoType
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
+
+# noinspection PyUnresolvedReferences
+from ..extras.dialects.ext import memref
 from ..extras.meta import region_op
 from ..extras.util import (
     Successor,
@@ -145,11 +147,11 @@ class Core(CoreOp):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
-# Create an aie buffer of (size x datatype) on given tile.
-# size examples: [256], [256, 256], [256, 256,]
+# Create an aie buffer of (shape x datatype) on given tile.
+# shape examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
     def __init__(
-        self, tile, size, datatype, name=None, initial_value=None, loc=None, ip=None
+        self, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
     ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
@@ -159,7 +161,7 @@ class Buffer(BufferOp):
                 context=None,
             )
         super().__init__(
-            buffer=T.memref(*size, datatype),
+            buffer=T.memref(*shape, datatype),
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
@@ -168,12 +170,12 @@ class Buffer(BufferOp):
         )
 
 
-# Create an aie external buffer of (size x datatype).
-# size examples: [256], [256, 256], [256, 256,]
+# Create an aie external buffer of (shape x datatype).
+# shape examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, size, datatype, name=None, loc=None, ip=None):
+    def __init__(self, shape, datatype, name=None, loc=None, ip=None):
         super().__init__(
-            buffer=T.memref(*size, datatype),
+            buffer=T.memref(*shape, datatype),
             sym_name=name,
             loc=loc,
             ip=ip,
@@ -385,12 +387,12 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=None):
+def buffer(tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None):
     if name is not None and not name:
         name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
     return Buffer(
         tile,
-        size,
+        shape,
         datatype,
         name=name,
         initial_value=initial_value,
@@ -399,9 +401,9 @@ def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=Non
     ).result
 
 
-def external_buffer(size, datatype, name=None, loc=None, ip=None):
+def external_buffer(shape, datatype, name=None, loc=None, ip=None):
     return ExternalBuffer(
-        size,
+        shape,
         datatype,
         name=name,
         loc=loc,

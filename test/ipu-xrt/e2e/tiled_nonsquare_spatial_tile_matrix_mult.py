@@ -713,7 +713,7 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
     def ipu():
         tiles = TileArray(cols, rows)
         for i, ((col, row), t) in enumerate(tiles[:, 2:]):
-            aie.buffer(
+            b = aie.buffer(
                 t.tile,
                 (K,),
                 T.i32(),

@@ -3,21 +3,21 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-import numpy as np
 
 # RUN: %python %s | FileCheck %s
-# REQUIRES: py310
 
+import numpy as np
+
+from aie.dialects import aie
+from aie.extras import types as T
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
-    device,
-    lock,
     find_neighbors,
 )
-from aie.dialects.aiex import TileArray
+from aie.dialects.aiex import TileArray, Channel
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA
@@ -28,9 +28,10 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
+# CHECK-LABEL: broadcast
 @construct_and_print_module
 def broadcast(module):
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         df = TileArray()
         assert df[[0, 1], 0].shape == (2, 1)
@@ -190,9 +191,10 @@ def broadcast(module):
         print(module)
 
 
+# CHECK-LABEL: lshift
 @construct_and_print_module
 def lshift(module):
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray()
 
@@ -209,21 +211,22 @@ def lshift(module):
             print(f)
 
 
+# CHECK-LABEL: locks
 @construct_and_print_module
 def locks(module):
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray()
 
-        lock(tiles[0, 1].df)
+        aie.lock(tiles[0, 1].tile)
         # CHECK: %lock_0_1 = aie.lock(%tile_0_1)
         for l in tiles[0, 1].locks():
             print(l.owner)
 
-        lock(tiles[0, 2].df)
-        lock(tiles[0, 2].df, annot="bob")
-        lock(tiles[0, 3].df)
-        lock(tiles[0, 3].df, annot="alice")
+        aie.lock(tiles[0, 2].tile)
+        aie.lock(tiles[0, 2].tile, annot="bob")
+        aie.lock(tiles[0, 3].tile)
+        aie.lock(tiles[0, 3].tile, annot="alice")
 
         # CHECK: %lock_0_2 = aie.lock(%tile_0_2)
         # CHECK: %lock_0_2_0 = aie.lock(%tile_0_2) {annot = {bob}}
@@ -243,14 +246,15 @@ def locks(module):
             print(l.owner)
 
 
+# CHECK-LABEL: neighbors
 @construct_and_print_module
 def neighbors(module):
-    @device(AIEDevice.ipu)
+    @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray()
 
         # CHECK: Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=None)
-        print(find_neighbors(tiles[2, 2].df))
+        print(find_neighbors(tiles[2, 2].tile))
 
         assert tiles[1:3, 1:3].neighbors().shape == (2, 2)
         # CHECK: tile(col=1, row=1) : Neighbors(north=None, west=None, south=None)
@@ -258,11 +262,111 @@ def neighbors(module):
         # CHECK: tile(col=2, row=1) : Neighbors(north=None, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=None)
         # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=None)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors()):
-            print(tiles[1:3, 1:3][idx].df, ":", n)
+            print(tiles[1:3, 1:3][idx].tile, ":", n)
 
         # CHECK: tile(col=1, row=1) : Neighbors(north=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, west=None, south=<TileArray: [%tile_1_0 = aie.tile(1, 0)]>)
         # CHECK: tile(col=1, row=2) : Neighbors(north=<TileArray: [%tile_1_3 = aie.tile(1, 3)]>, west=<TileArray: [%tile_0_2 = aie.tile(0, 2)]>, south=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>)
         # CHECK: tile(col=2, row=1) : Neighbors(north=<TileArray: [%tile_2_2 = aie.tile(2, 2)]>, west=<TileArray: [%tile_1_1 = aie.tile(1, 1)]>, south=<TileArray: [%tile_2_0 = aie.tile(2, 0)]>)
         # CHECK: tile(col=2, row=2) : Neighbors(north=<TileArray: [%tile_2_3 = aie.tile(2, 3)]>, west=<TileArray: [%tile_1_2 = aie.tile(1, 2)]>, south=<TileArray: [%tile_2_1 = aie.tile(2, 1)]>)
         for idx, n in np.ndenumerate(tiles[1:3, 1:3].neighbors(logical=False)):
-            print(tiles[1:3, 1:3][idx].df, ":", n)
+            print(tiles[1:3, 1:3][idx].tile, ":", n)
+
+
+# CHECK-LABEL: channels_basic
+@construct_and_print_module
+def channels_basic(module):
+
+    # CHECK-LABEL: test-basic
+    print("test-basic")
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray()
+
+        b = aie.buffer(tiles[2, 2].tile, (10, 10), T.i32(), name="bob")
+        c = Channel(tiles[2, 2].tile, b)
+        c = Channel(
+            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+        )
+
+    # CHECK: %bob = aie.buffer(%tile_2_2) {sym_name = "bob"} : memref<10x10xi32>
+    # CHECK: %bob_producer_lock = aie.lock(%tile_2_2) {sym_name = "bob_producer_lock"}
+    # CHECK: %bob_consumer_lock = aie.lock(%tile_2_2) {sym_name = "bob_consumer_lock"}
+    # CHECK: %alice = aie.buffer(%tile_2_2) {sym_name = "alice"} : memref<10x10xi32>
+    # CHECK: %alice_producer_lock = aie.lock(%tile_2_2) {sym_name = "alice_producer_lock"}
+    # CHECK: %alice_consumer_lock = aie.lock(%tile_2_2) {sym_name = "alice_consumer_lock"}
+    print(ipu)
+
+    # CHECK-LABEL: test-context-manager
+    print("test-context-manager")
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray()
+
+        c = Channel(
+            tiles[2, 2].tile, shape=(10, 10), dtype=T.i32(), buffer_name="alice"
+        )
+
+        @aie.mem(tiles[2, 2].tile)
+        def mem():
+            with c.put() as buffer:
+                # CHECK: %30 = "aie.buffer"(%14) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
+                print(buffer.owner)
+            aie.end()
+
+        @aie.core(tiles[2, 2].tile)
+        def core():
+            with c.get() as buffer:
+                # CHECK: %30 = "aie.buffer"(%14) <{sym_name = "alice"}> : (index) -> memref<10x10xi32>
+                print(buffer.owner)
+
+    # CHECK: %alice = aie.buffer(%tile_2_2) {sym_name = "alice"} : memref<10x10xi32>
+    # CHECK: %alice_producer_lock = aie.lock(%tile_2_2) {sym_name = "alice_producer_lock"}
+    # CHECK: %alice_consumer_lock = aie.lock(%tile_2_2) {sym_name = "alice_consumer_lock"}
+    # CHECK: %mem_2_2 = aie.mem(%tile_2_2) {
+    # CHECK:   aie.use_lock(%alice_producer_lock, AcquireGreaterEqual)
+    # CHECK:   aie.use_lock(%alice_consumer_lock, Release)
+    # CHECK:   aie.end
+    # CHECK: }
+    # CHECK: %core_2_2 = aie.core(%tile_2_2) {
+    # CHECK:   aie.use_lock(%alice_consumer_lock, AcquireGreaterEqual)
+    # CHECK:   aie.use_lock(%alice_producer_lock, Release)
+    # CHECK:   aie.end
+    # CHECK: }
+    print(ipu)
+
+
+# CHECK-LABEL: nd_channels
+@construct_and_print_module
+def nd_channels(module):
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray()
+
+        shapes = np.array([None])
+        shapes[0] = (10, 10)
+        c = tiles[2, 2].channel(shape=shapes, dtype=[T.i32()])
+        # CHECK: <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
+        print(c)
+        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        assert cs.shape == (2, 2)
+
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_2_consumer_lock"})>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_3_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_consumer_lock"})>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_2_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_consumer_lock"})>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_3_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_consumer_lock"})>
+        for idx, c in np.ndenumerate(cs):
+            print(idx, c)
+
+        shapes = np.frompyfunc(lambda *t: t, nin=2, nout=1)
+        shapes = shapes.outer(range(10, 12), range(20, 22))
+        cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
+        assert cs.shape == (2, 2)
+
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_4, memref<10x20xi32>) producer_lock=Scalar(%buffer_2_2_4_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_4_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_4_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_4_consumer_lock"})>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3_5, memref<10x21xi32>) producer_lock=Scalar(%buffer_2_3_5_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_5_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_5_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_5_consumer_lock"})>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2_6, memref<11x20xi32>) producer_lock=Scalar(%buffer_3_2_6_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_6_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_6_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_6_consumer_lock"})>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3_7, memref<11x21xi32>) producer_lock=Scalar(%buffer_3_3_7_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_7_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_7_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_7_consumer_lock"})>
+        for idx, c in np.ndenumerate(cs):
+            print(idx, c)

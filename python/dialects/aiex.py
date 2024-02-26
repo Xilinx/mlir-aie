@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
 from functools import partial
-import inspect
 import itertools
 from operator import itemgetter
 from typing import Union
@@ -10,26 +9,24 @@ from typing import Union
 import numpy as np
 
 from ._aiex_ops_gen import *
+from . import aie
 from .aie import (
     DMAChannelDir,
     LockAction,
     Neighbors,
     TileOp,
-    dma,
-    dma_bd,
-    find_neighbors,
+    find_matching_buffers,
     find_matching_flows,
     find_matching_locks,
-    find_matching_buffers,
-    flow,
-    lock,
-    tile,
-    use_lock,
+    find_neighbors,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..ir import DictAttr, IntegerAttr, UnitAttr
+
+# noinspection PyUnresolvedReferences
+from ..extras.dialects.ext import memref
 
 
 # Comes from _aie
@@ -315,19 +312,19 @@ def process_bd(
     len=None,
     dimensions=None,
 ):
-    use_lock(acq_lock, acq_action, value=acq_val)
-    dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
-    use_lock(rel_lock, rel_action, value=rel_val)
+    aie.use_lock(acq_lock, acq_action, value=acq_val)
+    aie.dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
+    aie.use_lock(rel_lock, rel_action, value=rel_val)
 
 
 def send_bd(channel, *args, **kwargs):
-    @dma(DMAChannelDir.MM2S, channel)
+    @aie.dma(DMAChannelDir.MM2S, channel)
     def d():
         process_bd(*args, **kwargs)
 
 
 def receive_bd(channel, *args, **kwargs):
-    @dma(DMAChannelDir.S2MM, channel)
+    @aie.dma(DMAChannelDir.S2MM, channel)
     def d():
         process_bd(*args, **kwargs)
 
@@ -352,13 +349,13 @@ def forward_bd(
     if buffer_sym_name:
         buffer_sym_name = buffer_sym_name.value
     if read_in_lock is None:
-        read_in_lock = lock(
+        read_in_lock = aie.lock(
             tile,
             init=1,
             sym_name=(f"{buffer_sym_name}_read_in_lock" if buffer_sym_name else None),
         )
     if write_out_lock is None:
-        write_out_lock = lock(
+        write_out_lock = aie.lock(
             tile,
             init=0,
             sym_name=(f"{buffer_sym_name}_write_out_lock" if buffer_sym_name else None),
@@ -366,22 +363,115 @@ def forward_bd(
 
     loop = repeat_count is None
 
-    @dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
+    @aie.dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_incoming():
         process_bd(read_in_lock, buffer, write_out_lock)
 
-    @dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
+    @aie.dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_outgoing():
         process_bd(write_out_lock, buffer, read_in_lock)
 
 
 @contextmanager
 def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
-    use_lock(acq_lock, LockAction.AcquireGreaterEqual, value=acq_val)
+    aie.use_lock(acq_lock, LockAction.AcquireGreaterEqual, value=acq_val)
     try:
         yield
     finally:
-        use_lock(rel_lock, LockAction.Release, value=rel_val)
+        aie.use_lock(rel_lock, LockAction.Release, value=rel_val)
+
+
+class Channel:
+    def __init__(
+        self,
+        tile,
+        buffer=None,
+        shape=None,
+        dtype=None,
+        buffer_name=None,
+        initial_value=None,
+        producer_lock_id=None,
+        producer_lock_init=None,
+        producer_lock_sym_name=None,
+        producer_lock_annot=None,
+        consumer_lock_id=None,
+        consumer_lock_init=None,
+        consumer_lock_sym_name=None,
+        consumer_lock_annot=None,
+        loc=None,
+        ip=None,
+    ):
+        if buffer is None:
+            assert (
+                shape is not None and dtype is not None
+            ), f"must provide either existing buffer or buffer shape and dtype"
+            buffer = aie.buffer(
+                tile,
+                shape,
+                dtype,
+                name=buffer_name,
+                initial_value=initial_value,
+                loc=loc,
+                ip=ip,
+            )
+
+        self.buffer = buffer
+        if producer_lock_sym_name is None:
+            producer_lock_sym_name = (
+                f"{buffer.get_name().replace('%', '')}_producer_lock"
+            )
+        self.producer_lock = aie.lock(
+            tile,
+            lock_id=producer_lock_id,
+            init=producer_lock_init,
+            sym_name=producer_lock_sym_name,
+            annot=producer_lock_annot,
+            loc=loc,
+            ip=ip,
+        )
+        if consumer_lock_sym_name is None:
+            consumer_lock_sym_name = (
+                f"{buffer.get_name().replace('%', '')}_consumer_lock"
+            )
+        self.consumer_lock = aie.lock(
+            tile,
+            lock_id=consumer_lock_id,
+            init=consumer_lock_init,
+            sym_name=consumer_lock_sym_name,
+            annot=consumer_lock_annot,
+            loc=loc,
+            ip=ip,
+        )
+
+    @contextmanager
+    def put(self, *, acq_val=None, rel_val=None):
+        with hold_lock(
+            self.producer_lock, self.consumer_lock, acq_val=acq_val, rel_val=rel_val
+        ):
+            yield self.buffer
+
+    @contextmanager
+    def get(self, *, acq_val=None, rel_val=None):
+        with hold_lock(
+            self.consumer_lock, self.producer_lock, acq_val=acq_val, rel_val=rel_val
+        ):
+            yield self.buffer
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.buffer=} {self.producer_lock=} {self.consumer_lock=}>".replace(
+            "self.", ""
+        )
+
+
+def _broadcast_args_to(args, dest_shape=None):
+    args = list(args)
+    for i, arg in enumerate(args):
+        arg = np.core.shape_base._atleast_nd(arg, len(dest_shape))
+        assert (
+            np.broadcast_shapes(arg.shape, dest_shape) == dest_shape
+        ), f"Only broadcasting from source to dest is supported: {arg=} {dest_shape=}"
+        args[i] = np.broadcast_to(arg, dest_shape)
+    return args
 
 
 class TileArray:
@@ -392,16 +482,29 @@ class TileArray:
             if isinstance(rows, int):
                 rows = list(range(rows))
             assert isinstance(cols, (list, tuple)) and isinstance(rows, (list, tuple))
-            df = np.array([[tile(c, r) for r in rows] for c in cols])
+            df = np.array([[aie.tile(c, r) for r in rows] for c in cols])
         self.df = df
+        self.channels = np.empty_like(df, dtype=object)
 
     @property
     def tile(self):
+        if isinstance(self.df, TileOp):
+            return self.df
         assert len(self.df) == 1, f"convenience accessor only for getting a single tile"
         return self.df[0]
 
     def flow(self, other, *args, **kwargs):
         return broadcast_flow(self.df, other.df, *args, **kwargs)
+
+    def channel(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(Channel)(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
 
     def __rshift__(self, other):
         return broadcast_flow(self.df, other.df)
@@ -474,6 +577,8 @@ class TileArray:
 
     @property
     def shape(self):
+        if isinstance(self.df, TileOp):
+            return (1,)
         return self.df.shape
 
     def __repr__(self):
@@ -526,30 +631,26 @@ def broadcast_flow(
             dest_channel[idx] = _find_next_channel(used_channels[dst])
             used_channels[dst].add(dest_channel[idx])
 
-    args = [
-        source,
-        source_bundle,
-        source_channel,
-        dest,
-        dest_bundle,
-        dest_channel,
-        source_annot,
-        dest_annot,
-    ]
+    args = _broadcast_args_to(
+        [
+            source,
+            source_bundle,
+            source_channel,
+            dest,
+            dest_bundle,
+            dest_channel,
+            source_annot,
+            dest_annot,
+        ],
+        dest.shape,
+    )
     for i, arg in enumerate(args):
-        arg = np.core.shape_base._atleast_nd(arg, dest.ndim)
-        # only support broadcast from source to dest
-        assert (
-            np.broadcast_shapes(arg.shape, dest.shape) == dest.shape
-        ), f"Only broadcasting from source to dest is supported: {arg=} {dest=}"
-        arg = np.broadcast_to(arg, dest.shape)
-        # flatten so we can do the groupby below
         args[i] = arg.flatten()
     flows = []
     for _grp_name, grp in itertools.groupby(zip(*args), key=itemgetter(0)):
         for g in grp:
             *flow_args, source_annot, dest_annot = g
-            flow_ = flow(*flow_args)
+            flow_ = aie.flow(*flow_args)
             if source_annot is not None:
                 flow_.attributes["source_annot"] = DictAttr.get(
                     {source_annot: UnitAttr.get()}
