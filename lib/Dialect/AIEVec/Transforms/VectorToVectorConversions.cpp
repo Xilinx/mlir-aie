@@ -14,7 +14,6 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
-
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -25,8 +24,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-
 #include "llvm/ADT/TypeSwitch.h"
+#include <algorithm>
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
@@ -288,10 +287,14 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
                                             1, std::multiplies<>());
   SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
   newShape[shape.size() - numDims] = newInnerMostDim;
-  auto newMemRefTy = MemRefType::get(newShape, memRefTy.getElementType());
-  auto reassocIndices = getReassociationIndicesForCollapse(
-                            memRefTy.getShape(), newMemRefTy.getShape())
-                            .value();
+  auto newNumDims = newShape.size();
+  auto ctx = b.getContext();
+  auto newMemRefTy = MemRefType::get(
+      newShape, memRefTy.getElementType(),
+      AffineMap::getMinorIdentityMap(newNumDims, newNumDims, ctx),
+      memRefTy.getMemorySpace());
+  auto reassocIndices =
+      getReassociationIndicesForCollapse(shape, newShape).value();
   return b
       .create<memref::CollapseShapeOp>(loc, newMemRefTy, val, reassocIndices)
       .getResult();
@@ -312,8 +315,7 @@ struct FlattenMultDimTransferReadPattern
     if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
       return failure();
     VectorType vectorTy = readOp.getVector().getType();
-    // TODO: support beyond rank 2
-    if (vectorTy.getRank() != 2)
+    if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
     MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
@@ -321,11 +323,6 @@ struct FlattenMultDimTransferReadPattern
       return failure();
     auto memRefShape = memRefTy.getShape();
     auto vecShape = vectorTy.getShape();
-    // For the conversion to be valid, the n-1 innermost dimensions of the
-    // memref must to match the n-1 innermost dimensions of the n-D vector
-    if (!std::equal(memRefShape.end() - vecShape.size() + 1, memRefShape.end(),
-                    vecShape.begin() + 1, vecShape.end()))
-      return failure();
 
     auto newVectorTy =
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
@@ -333,12 +330,24 @@ struct FlattenMultDimTransferReadPattern
                         vectorTy.getElementType());
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newIndices =
-        collapseInnerMostDimIndices(rewriter, readOp.getLoc(), 2,
+        collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
-    auto newSource = collapseInnerMostShapeDims(rewriter, readOp.getLoc(), 2,
-                                                adaptor.getSource());
+    auto newSource = collapseInnerMostShapeDims(
+        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getSource());
     auto newVector = rewriter.create<vector::TransferReadOp>(
         readOp.getLoc(), newVectorTy, newSource, newIndices);
+
+    auto inBoundsArrayAttrOpt = adaptor.getInBounds();
+    if (inBoundsArrayAttrOpt) {
+      SmallVector<bool> inBounds = llvm::to_vector(
+          inBoundsArrayAttrOpt.value().getAsValueRange<BoolAttr>());
+      SmallVector<bool> newInBounds({false});
+      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
+                                   [](bool v) { return v; });
+      newVector.getProperties().setInBounds(
+          rewriter.getBoolArrayAttr(newInBounds));
+    }
+
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(readOp, vectorTy,
                                                      newVector);
 
@@ -361,7 +370,6 @@ struct FlattenMultDimTransferWritePattern
     if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
       return failure();
     VectorType vectorTy = cast<VectorType>(adaptor.getVector().getType());
-    // TODO: support beyond rank 2
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
@@ -370,11 +378,6 @@ struct FlattenMultDimTransferWritePattern
       return failure();
     auto memRefShape = memRefTy.getShape();
     auto vecShape = vectorTy.getShape();
-    // For the conversion to be valid, the n-1 innermost dimensions of the
-    // memref must to match the n-1 innermost dimensions of the n-D vector
-    if (!std::equal(memRefShape.end() - vecShape.size() + 1, memRefShape.end(),
-                    vecShape.begin() + 1, vecShape.end()))
-      return failure();
 
     auto newVectorTy =
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
@@ -386,12 +389,23 @@ struct FlattenMultDimTransferWritePattern
                              writeOp.getLoc(), newVectorTy, adaptor.getVector())
                          .getResult();
     auto newIndices =
-        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), 2,
+        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
-    auto newSource = collapseInnerMostShapeDims(rewriter, writeOp.getLoc(), 2,
-                                                adaptor.getSource());
-    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(writeOp, newVector,
-                                                         newSource, newIndices);
+    auto newSource = collapseInnerMostShapeDims(
+        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getSource());
+
+    auto newOp = rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
+        writeOp, newVector, newSource, newIndices);
+
+    auto inBoundsArrayAttrOpt = adaptor.getInBounds();
+    if (inBoundsArrayAttrOpt) {
+      SmallVector<bool> inBounds = llvm::to_vector(
+          inBoundsArrayAttrOpt.value().getAsValueRange<BoolAttr>());
+      SmallVector<bool> newInBounds({false});
+      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
+                                   [](bool v) { return v; });
+      newOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newInBounds));
+    }
 
     return success();
   }
