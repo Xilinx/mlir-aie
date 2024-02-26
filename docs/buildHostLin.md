@@ -382,10 +382,10 @@ This may hang after the following output if you have too many signed `.xclbin`s:
 Copy <your test>.xclbin to /lib/firmware/amdnpu/1502/<your test>.xclbin
 ```
 
-If this happens, clear all your previously signed `.xclbin`s as follows (you will of course have to re-sign the ones you remove in this step if you want to run them again, but chances are you have many old unneeded ones in there):
+If this happens, clear all your previously signed `.xclbin`s as follows (you will of course have to re-sign the ones you remove in this step if you want to run them again, but chances are you have many old unneeded `.xclbin`s in there):
 
 ```
-rm /lib/firmware/amdnpu/1502/*.xclbin
+rm /lib/firmware/amdnpu/1502/<your tests>.xclbin
 ```
 
 ## License Errors When Trying to Compile
