@@ -10,11 +10,16 @@ def arithmetic_intensity(xs):
     M, K, N = xs
     return M*N*K / (M*K + N*K + M*N)
 
+def macs_per_s(ys):
+    M, K, N, *ts = ys
+    return np.mean(ts) / (M*K*N)
+
 transforms = {
     'prod': np.prod,
     'sum': sum,
     'mean': np.mean,
-    'intens': arithmetic_intensity
+    'intens': arithmetic_intensity,
+    'macs': macs_per_s
 }
 
 def get_args():
@@ -38,6 +43,8 @@ def get_args():
     if args.ylabel is None:
         if args.ytrans == 'mean':
             args.ylabel = "Mean Runtime"
+        elif args.ytrans == 'macs':
+            args.ylabel = "MACs/s"
     args.xtrans = transforms[args.xtrans]
     args.ytrans = transforms[args.ytrans]
     return args
