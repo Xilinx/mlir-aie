@@ -2587,7 +2587,8 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
 // Pattern collection
 //===----------------------------------------------------------------------===//
 
-static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns) {
+static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
+                                               TargetBackend backend) {
   patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128, 512,
                                                 128, 256);
   // clang-format off
@@ -2603,7 +2604,8 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns) {
   // clang-format on
 }
 
-static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns) {
+static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
+                                               TargetBackend backend) {
   patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128,
                                                 1024, 256, 1024);
   // clang-format off
@@ -2712,7 +2714,8 @@ static bool isInSigmoidOperationChain(math::ExpOp expOp) {
   return true;
 }
 
-static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
+static void configureAIEVecCommonLegalizations(ConversionTarget &target,
+                                               TargetBackend backend) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect, arith::ArithDialect,
                          emitc::EmitCDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
@@ -2971,7 +2974,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
 }
 
-static void configureAIEVecV1Legalizations(ConversionTarget &target) {
+static void configureAIEVecV1Legalizations(ConversionTarget &target,
+                                           TargetBackend backend) {
   target.addDynamicallyLegalOp<arith::MulIOp>(
       [](arith::MulIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::MulFOp>(
@@ -3010,7 +3014,8 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target) {
   target.addLegalDialect<memref::MemRefDialect>();
 }
 
-static void configureAIEVecV2Legalizations(ConversionTarget &target) {
+static void configureAIEVecV2Legalizations(ConversionTarget &target,
+                                           TargetBackend backend) {
   target.addLegalOp<UnrealizedConversionCastOp>();
 
   // A set recording the vector lane size and element width supported
@@ -3242,6 +3247,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
   LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options)
       : LowerVectorToAIEVec() {
     aieTarget = options.aieTarget;
+    targetBackend = options.targetBackend;
   }
 
   // In case we want to register this pass as a standalone pass for test
@@ -3262,6 +3268,13 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
+  Option<std::string> targetBackend{
+      *this, "target-backend",
+      llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
+                     "will determine the aievec operations used to convert "
+                     "from vector dialect."),
+      llvm::cl::init("cpp")};
+
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
@@ -3278,13 +3291,30 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
       }
     }
 
-    configureAIEVecCommonLegalizations(target);
+    TargetBackend backend = TargetBackend::CPP;
+    if (!targetBackend.empty()) {
+      std::string backendStr = targetBackend;
+      if (backendStr == "llvmir") {
+        backend = TargetBackend::LLVMIR;
+        if (aieVersion == AIEArch::AIE) {
+          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
+          signalPassFailure();
+          return;
+        }
+      } else if (backendStr != "cpp") {
+        op->emitError() << "unknown target backend'" << targetBackend << "'";
+        signalPassFailure();
+        return;
+      }
+    }
+
+    configureAIEVecCommonLegalizations(target, backend);
     if (aieVersion == AIEArch::AIE) {
-      populateAIEVecV1ConversionPatterns(patterns);
-      configureAIEVecV1Legalizations(target);
+      populateAIEVecV1ConversionPatterns(patterns, backend);
+      configureAIEVecV1Legalizations(target, backend);
     } else {
-      populateAIEVecV2ConversionPatterns(patterns);
-      configureAIEVecV2Legalizations(target);
+      populateAIEVecV2ConversionPatterns(patterns, backend);
+      configureAIEVecV2Legalizations(target, backend);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))

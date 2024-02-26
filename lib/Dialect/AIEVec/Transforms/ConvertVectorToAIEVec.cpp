@@ -114,7 +114,7 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   buildCanonicalizeVectorForAIEVec(
       pm, options.getCanonicalizeVectorForAIEVecOptions());
   // NOTE: At this stage, all the Vector code in the IR can be mapped
-  // HOTE: to AIEVec operations.
+  // NOTE: to AIEVec operations.
 
   //============================================================================
   // Vector to AIEVec lowering: Vector to AIEVec conversion.
