@@ -284,6 +284,7 @@ def dma(
     num_blocks=1,
     loop=None,
     repeat_count=None,
+    sym_name=None,
     loc=None,
     ip=None,
 ):
@@ -296,6 +297,7 @@ def dma(
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
+        sym_name=sym_name,
         loc=loc,
         ip=ip,
     )
@@ -387,13 +389,13 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-def buffer(tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None):
+def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None):
     if name is not None and not name:
         name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
     return Buffer(
         tile,
         shape,
-        datatype,
+        dtype,
         name=name,
         initial_value=initial_value,
         loc=loc,
@@ -401,10 +403,10 @@ def buffer(tile, shape, datatype, name=None, initial_value=None, loc=None, ip=No
     ).result
 
 
-def external_buffer(shape, datatype, name=None, loc=None, ip=None):
+def external_buffer(shape, dtype, name=None, loc=None, ip=None):
     return ExternalBuffer(
         shape,
-        datatype,
+        dtype,
         name=name,
         loc=loc,
         ip=ip,

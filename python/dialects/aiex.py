@@ -373,12 +373,21 @@ def forward_bd(
 
 
 @contextmanager
-def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
-    aie.use_lock(acq_lock, LockAction.AcquireGreaterEqual, value=acq_val)
+def hold_lock(
+    acq_lock,
+    rel_lock,
+    *,
+    acq_action=LockAction.AcquireGreaterEqual,
+    acq_val=None,
+    acq_en=None,
+    rel_action=LockAction.Release,
+    rel_val=None,
+):
+    aie.use_lock(acq_lock, acq_action, value=acq_val, acq_en=acq_en)
     try:
         yield
     finally:
-        aie.use_lock(rel_lock, LockAction.Release, value=rel_val)
+        aie.use_lock(rel_lock, rel_action, value=rel_val)
 
 
 class Channel:
@@ -463,13 +472,50 @@ class Channel:
         )
 
 
+def _is_nd_list_of_tuples(thing):
+    if isinstance(thing, list):
+        return _is_nd_list_of_tuples(thing[0])
+    if isinstance(thing, tuple):
+        return np.dtype(type(thing[0])).char, len(thing)
+    return None
+
+
+# this is dumb but it's specfically to handle the special but also common case of [(K,)]
+def _convert_nd_list_of_tuples_to_np(thing):
+    def _get_outer_shape(thing):
+        if isinstance(thing, list):
+            return [len(thing)] + _get_outer_shape(thing[0])
+        return []
+
+    def _itemgetter(thing, idx):
+        if len(idx) == 1:
+            return thing[idx[0]]
+        else:
+            _itemgetter(thing[0], idx[1:])
+
+    shape = _get_outer_shape(thing)
+    res = np.empty(shape, dtype=object)
+    for idx, _ in np.ndenumerate(res):
+        res[idx] = _itemgetter(thing, idx)
+
+    return res
+
+
 def _broadcast_args_to(args, dest_shape=None):
     args = list(args)
     for i, arg in enumerate(args):
+        maybe_dtype_char_inner_len = _is_nd_list_of_tuples(arg)
+        if maybe_dtype_char_inner_len is not None:
+            dtype_char, inner_len = maybe_dtype_char_inner_len
+            if inner_len == 1:
+                arg = _convert_nd_list_of_tuples_to_np(arg)
+            else:
+                dtype = f"{dtype_char}," * inner_len
+                arg = np.array(arg, dtype=dtype).astype(object)
         arg = np.core.shape_base._atleast_nd(arg, len(dest_shape))
         assert (
             np.broadcast_shapes(arg.shape, dest_shape) == dest_shape
-        ), f"Only broadcasting from source to dest is supported: {arg=} {dest_shape=}"
+        ), f"Only broadcasting from source to dest is supported: {arg=} {arg.shape=} {dest_shape=}"
         args[i] = np.broadcast_to(arg, dest_shape)
     return args
 
@@ -501,7 +547,7 @@ class TileArray:
         kwargs = dict(
             zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
         )
-        r = np.vectorize(Channel)(*args, **kwargs)
+        r = np.vectorize(Channel, otypes=[object])(*args, **kwargs)
         if r.size == 1:
             r = r[0]
         return r
@@ -556,6 +602,26 @@ class TileArray:
     def buffers(self, **kwargs):
         return find_matching_buffers(self, **kwargs)
 
+    def buffer(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(aie.buffer, otypes=[object])(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
+
+    def lock(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(aie.lock, otypes=[object])(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
+
     def __iter__(self):
         for idx, v in np.ndenumerate(self.df):
             if v is not None:
@@ -568,7 +634,8 @@ class TileArray:
                     k: TileArray(df=np.array([v])) if v is not None else None
                     for k, v in find_neighbors(tile, logical=logical).__dict__.items()
                 }
-            )
+            ),
+            otypes=[object],
         )(self.df)
 
         if r.size == 1:

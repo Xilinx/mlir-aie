@@ -344,29 +344,64 @@ def nd_channels(module):
     def ipu():
         tiles = TileArray()
 
-        shapes = np.array([None])
-        shapes[0] = (10, 10)
+        shapes = np.array([(10, 10)], dtype="i,i").astype(object)
         c = tiles[2, 2].channel(shape=shapes, dtype=[T.i32()])
-        # CHECK: <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
+        # CHECK: <Channel: buffer=MemRef(%buffer_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_consumer_lock"})>
         print(c)
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_2_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_2_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_2_consumer_lock"})>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_0, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_2_0_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_0_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_0_consumer_lock"})>
         # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_2_3_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_consumer_lock"})>
         # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_2_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_consumer_lock"})>
         # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3, memref<10x10xi32>) producer_lock=Scalar(%buffer_3_3_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_consumer_lock"})>
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
 
-        shapes = np.frompyfunc(lambda *t: t, nin=2, nout=1)
-        shapes = shapes.outer(range(10, 12), range(20, 22))
+        shapes = np.array([[(1, 2), (3, 4)], [(5, 6), (7, 8)]], dtype="i,i").astype(
+            object
+        )
         cs = tiles[2:4, 2:4].channel(shape=shapes, dtype=[T.i32()])
         assert cs.shape == (2, 2)
 
-        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_4, memref<10x20xi32>) producer_lock=Scalar(%buffer_2_2_4_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_4_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_4_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_4_consumer_lock"})>
-        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3_5, memref<10x21xi32>) producer_lock=Scalar(%buffer_2_3_5_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_5_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_5_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_5_consumer_lock"})>
-        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2_6, memref<11x20xi32>) producer_lock=Scalar(%buffer_3_2_6_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_6_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_6_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_6_consumer_lock"})>
-        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3_7, memref<11x21xi32>) producer_lock=Scalar(%buffer_3_3_7_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_7_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_7_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_7_consumer_lock"})>
+        # CHECK: (0, 0) <Channel: buffer=MemRef(%buffer_2_2_1, memref<1x2xi32>) producer_lock=Scalar(%buffer_2_2_1_producer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_producer_lock"}) consumer_lock=Scalar(%buffer_2_2_1_consumer_lock = aie.lock(%tile_2_2) {sym_name = "buffer_2_2_1_consumer_lock"})>
+        # CHECK: (0, 1) <Channel: buffer=MemRef(%buffer_2_3_2, memref<3x4xi32>) producer_lock=Scalar(%buffer_2_3_2_producer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_2_producer_lock"}) consumer_lock=Scalar(%buffer_2_3_2_consumer_lock = aie.lock(%tile_2_3) {sym_name = "buffer_2_3_2_consumer_lock"})>
+        # CHECK: (1, 0) <Channel: buffer=MemRef(%buffer_3_2_3, memref<5x6xi32>) producer_lock=Scalar(%buffer_3_2_3_producer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_3_producer_lock"}) consumer_lock=Scalar(%buffer_3_2_3_consumer_lock = aie.lock(%tile_3_2) {sym_name = "buffer_3_2_3_consumer_lock"})>
+        # CHECK: (1, 1) <Channel: buffer=MemRef(%buffer_3_3_4, memref<7x8xi32>) producer_lock=Scalar(%buffer_3_3_4_producer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_4_producer_lock"}) consumer_lock=Scalar(%buffer_3_3_4_consumer_lock = aie.lock(%tile_3_3) {sym_name = "buffer_3_3_4_consumer_lock"})>
+        for idx, c in np.ndenumerate(cs):
+            print(idx, c)
+
+
+# CHECK-LABEL: buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this_file
+@construct_and_print_module
+def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this_file(
+    module,
+):
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray()
+
+        shapes = [(10, 10)]
+        c = tiles[2, 2].buffer(shape=shapes, dtype=[T.i32()])
+        # CHECK: MemRef(%buffer_2_2, memref<10x10xi32>)
+        print(c)
+        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        assert cs.shape == (2, 2)
+
+        # CHECK: (0, 0) MemRef(%buffer_2_2_0, memref<10x10xi32>)
+        # CHECK: (0, 1) MemRef(%buffer_2_3, memref<10x10xi32>)
+        # CHECK: (1, 0) MemRef(%buffer_3_2, memref<10x10xi32>)
+        # CHECK: (1, 1) MemRef(%buffer_3_3, memref<10x10xi32>)
+        for idx, c in np.ndenumerate(cs):
+            print(idx, c)
+
+        shapes = [[(1, 2), (3, 4)], [(5, 6), (7, 8)]]
+        cs = tiles[2:4, 2:4].buffer(shape=shapes, dtype=[T.i32()])
+        assert cs.shape == (2, 2)
+
+        # CHECK: (0, 0) MemRef(%buffer_2_2_1, memref<1x2xi32>)
+        # CHECK: (0, 1) MemRef(%buffer_2_3_2, memref<3x4xi32>)
+        # CHECK: (1, 0) MemRef(%buffer_3_2_3, memref<5x6xi32>)
+        # CHECK: (1, 1) MemRef(%buffer_3_3_4, memref<7x8xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
