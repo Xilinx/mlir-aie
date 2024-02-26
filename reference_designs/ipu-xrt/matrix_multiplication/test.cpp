@@ -41,7 +41,7 @@ constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
 constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 8192; 
+constexpr int TRACE_SIZE = 8192;
 
 constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
 
@@ -96,11 +96,11 @@ void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
   }
 }
 
-void write_out_trace(char *bufOut, std::string path)
-{
+void write_out_trace(char *bufOut, std::string path) {
   std::ofstream fout(path);
-  uint32_t *traceOut = (uint32_t *)((char *)bufOut + sizeof(C_DATATYPE)*C_VOLUME);
-  for(int i = 0; i < TRACE_SIZE/sizeof(traceOut[0]); i++) {
+  uint32_t *traceOut =
+      (uint32_t *)((char *)bufOut + sizeof(C_DATATYPE) * C_VOLUME);
+  for (int i = 0; i < TRACE_SIZE / sizeof(traceOut[0]); i++) {
     fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
     fout << std::endl;
   }
@@ -110,15 +110,19 @@ int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()
-      ("help,h", "produce help message")
-      ("xclbin,x", po::value<std::string>()->required(), "the input xclbin path")
-      ("kernel,k", po::value<std::string>()->required(), "the kernel name in the XCLBIN (for instance PP_PRE_FD)")
-      ("verbosity,v", po::value<int>()->default_value(0), "the verbosity of the output")
-      ("instr,i", po::value<std::string>()->required(), "path of file containing userspace instructions to be sent to the LX6");
-  if(ENABLE_TRACING) {
-    desc.add_options()
-      ("trace,t", po::value<std::string>()->default_value("trace.txt"), "where to store trace output");
+  desc.add_options()("help,h", "produce help message")(
+      "xclbin,x", po::value<std::string>()->required(),
+      "the input xclbin path")(
+      "kernel,k", po::value<std::string>()->required(),
+      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "verbosity,v", po::value<int>()->default_value(0),
+      "the verbosity of the output")(
+      "instr,i", po::value<std::string>()->required(),
+      "path of file containing userspace instructions to be sent to the LX6");
+  if (ENABLE_TRACING) {
+    desc.add_options()("trace,t",
+                       po::value<std::string>()->default_value("trace.txt"),
+                       "where to store trace output");
   }
   po::variables_map vm;
 
@@ -165,7 +169,7 @@ int main(int argc, const char *argv[]) {
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 if(verbosity >= 1) {
+                                 if (verbosity >= 1) {
                                    std::cout << "Name: " << name << std::endl;
                                  }
                                  return name.rfind(Node, 0) == 0;
@@ -233,7 +237,8 @@ int main(int argc, const char *argv[]) {
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C matrix
+  // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C
+  // matrix
   C_DATATYPE *COut = (C_DATATYPE *)bufOut;
 
   int errors = 0;
