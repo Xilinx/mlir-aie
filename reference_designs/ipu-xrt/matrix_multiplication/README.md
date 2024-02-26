@@ -24,3 +24,9 @@ To run the design:
 ```
 make run
 ```
+
+## Tracing
+
+To get tracing output, set `enable_tracing=True` in `aie2.py` and `ENABLE_TRACING=true` in `test.cpp`.
+
+By default, traces will be written out to `trace.txt`; another output file can be specified using the `--trace` (or `-t`) flag to the host code.

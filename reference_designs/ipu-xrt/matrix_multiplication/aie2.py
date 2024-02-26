@@ -12,9 +12,9 @@ from aie.extras.context import mlir_mod_ctx
 
 
 def my_matmul():
-    M = 128
-    K = 128
-    N = 128
+    M = 256
+    K = 256
+    N = 256
     m = 64
     k = 32
     n = 64
@@ -23,6 +23,10 @@ def my_matmul():
     t = 4
     word_size_in = 2
     word_size_out = 4
+
+    vectorized = True
+    enable_tracing = False
+    trace_size = 8192
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -47,8 +51,6 @@ def my_matmul():
     n_in_i32s_out = n * word_size_out // 4
     N_in_i32s_out = N * word_size_out // 4
     m_x_N_in_i32s_out = m * N * word_size_out // 4
-
-    vectorized = True
 
     with mlir_mod_ctx() as ctx:
 
@@ -76,7 +78,8 @@ def my_matmul():
             # Tile declarations
             shim_tile = tile(0, 0)
             mem_tile = tile(0, 1)
-            compute_tile2 = tile(0, 2)
+            compute_tile2_col, compute_tile2_row = 0, 2
+            compute_tile2 = tile(compute_tile2_col, compute_tile2_row)
 
             # AIE-array data movement with object fifos
             # Input A
@@ -133,6 +136,10 @@ def my_matmul():
             )
             objectfifo_link(["memC"], ["outC"])
 
+            # Set up a circuit-switched flow from core to shim for tracing information
+            if enable_tracing:
+                flow(compute_tile2, WireBundle.Trace, 0, shim_tile, WireBundle.DMA, 1)
+
             # Set up compute tiles
 
             # Compute tile 2
@@ -175,6 +182,87 @@ def my_matmul():
                 T.memref(C_sz_in_i32s, T.i32()),
             )
             def sequence(A, B, C):
+
+                # Configure tracing, see https://github.com/Xilinx/mlir-aie/blob/resnet/docs/Tracing.md
+                if enable_tracing:
+                    # 0x340D0: Trace Control 0
+                    #          0xAABB---C
+                    #            AA        <- Event to stop trace capture
+                    #              BB      <- Event to start trace capture
+                    #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
+                    # Configure so that "Event 1" (always true) causes tracing to start
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340D0,
+                        value=0x00010000,
+                    )
+                    # 0x340D4: Trace Control 1
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340D4,
+                        value=0x00000000,
+                    )
+                    # 0x340E0: Trace Event Group 1  (Which events to trace)
+                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340E0,
+                        value=0x4B222125,
+                    )
+                    # 0x340E4: Trace Event Group 2  (Which events to trace)
+                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340E4,
+                        value=0x2D2C1A4F,
+                    )
+
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x3FF00,
+                        value=0x00000121,
+                    )
+
+                    # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
+                    # out to host DDR memory
+                    trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
+                    output_size = C_sz_in_bytes
+                    ipu_writebd_shimtile(
+                        bd_id=trace_bd_id,
+                        buffer_length=trace_size,
+                        buffer_offset=output_size,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        column=0,
+                        column_num=1,
+                        d0_size=0,
+                        d0_stride=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d2_stride=0,
+                        ddr_id=2,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=0,
+                        lock_acq_id=0,
+                        lock_acq_val=0,
+                        lock_rel_id=0,
+                        lock_rel_val=0,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    # Set start BD to our shim bd_Id (3)
+                    ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
+
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
                 for tile_row_block in range(
