@@ -14,7 +14,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(ExternalProject)
 
 project("runtime-libs")
-#add_custom_target(runtime-libs ALL)
 
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 if(NOT x86_64_TOOLCHAIN_FILE)

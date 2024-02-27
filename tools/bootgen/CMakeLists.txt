@@ -1,7 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions. See
+# https://llvm.org/LICENSE.txt for license information. SPDX-License-Identifier:
+# Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Xilinx Inc.
 
@@ -80,59 +80,80 @@ set(libsources
     reginit.tab.cpp
     reginit.yy.cpp
     verifyimage-versal.cpp
-    verifyimage-zynqmp.cpp
-)
+    verifyimage-zynqmp.cpp)
 list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
 
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows|Darwin")
-# Windows fails CI because OpenSSL is not installed
-# Macos fails because no malloc.h???
-add_library(Bootgen STATIC ${libsources})
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set(bootgen_warning_ignores
-    -Wno-reorder
-    -Wno-register
-    -Wno-unused-private-field
-    -Wno-deprecated-register
-    -Wno-overloaded-virtual
-    -Wno-deprecated-declarations
-    -Wno-pointer-bool-conversion
-    -Wno-unused-const-variable
-    -Wno-tautological-overlap-compare
-    -Wno-dynamic-class-memaccess
-    -Wno-misleading-indentation
-    -Wno-suggest-override
-    -Wno-non-virtual-dtor
-    -Wno-deprecated-copy
-    -Wno-cast-qual
-    -Wno-date-time
-    -Wno-implicit-fallthrough
-    -Wno-incompatible-pointer-types-discards-qualifiers
-    -Wno-sign-compare
-    -Wno-covered-switch-default
-  )
-else()
-  set(bootgen_warning_ignores)
-endif()
-target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
-target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE})
-install(TARGETS Bootgen DESTINATION lib EXPORT Bootgen)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
+  # Windows fails CI because OpenSSL is not installed
 
-add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
-target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE})
-target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-target_link_libraries(bootgen Bootgen Bootgen ssl crypto)
-install(TARGETS bootgen)
+  # Macos fails because no malloc.h
+  # malloc.h is deprecated and should not be used
+  # https://stackoverflow.com/a/56463133
+  # If you want to use malloc, then include stdlib.h
+  file(READ ${BOOTGEN_SOURCE}/cdo-npi.c FILE_CONTENTS)
+  string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
+  file(WRITE ${BOOTGEN_SOURCE}/cdo-npi.c "${FILE_CONTENTS}")
 
-add_library(cdo_driver STATIC
-  ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c
-)
-target_include_directories(cdo_driver PUBLIC
-    $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
-    $<INSTALL_INTERFACE:include/cdo_driver>
-)
-target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
-install(TARGETS cdo_driver DESTINATION lib EXPORT cdo_driver)
-install(EXPORT cdo_driver DESTINATION lib/cmake/aie)
+  file(READ ${BOOTGEN_SOURCE}/cdo-alloc.c FILE_CONTENTS)
+  string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
+  file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
 
-endif() #NOT MSVC
+  find_package(OpenSSL REQUIRED)
+  if (OPENSSL_FOUND)
+    message (STATUS "OpenSSL found")
+    message (STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
+  else()
+    message (FATAL_ERROR "OpenSSL Not found.")
+  endif()
+
+  add_library(Bootgen STATIC ${libsources})
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    set(bootgen_warning_ignores
+        -Wno-reorder
+        -Wno-register
+        -Wno-unused-private-field
+        -Wno-deprecated-register
+        -Wno-overloaded-virtual
+        -Wno-deprecated-declarations
+        -Wno-pointer-bool-conversion
+        -Wno-unused-const-variable
+        -Wno-tautological-overlap-compare
+        -Wno-dynamic-class-memaccess
+        -Wno-misleading-indentation
+        -Wno-suggest-override
+        -Wno-non-virtual-dtor
+        -Wno-deprecated-copy
+        -Wno-cast-qual
+        -Wno-date-time
+        -Wno-implicit-fallthrough
+        -Wno-incompatible-pointer-types-discards-qualifiers
+        -Wno-sign-compare
+        -Wno-covered-switch-default)
+  else()
+    set(bootgen_warning_ignores)
+  endif()
+  target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
+  target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+  install(
+    TARGETS Bootgen
+    DESTINATION lib
+    EXPORT Bootgen)
+
+  add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
+  target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+  target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
+  target_link_libraries(bootgen Bootgen Bootgen OpenSSL::SSL)
+  install(TARGETS bootgen)
+
+  add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
+  target_include_directories(
+    cdo_driver PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
+                      $<INSTALL_INTERFACE:include/cdo_driver>)
+  target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
+  install(
+    TARGETS cdo_driver
+    DESTINATION lib
+    EXPORT cdo_driver)
+  install(EXPORT cdo_driver DESTINATION lib/cmake/aie)
+
+endif() # NOT MSVC
