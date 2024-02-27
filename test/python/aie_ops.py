@@ -261,7 +261,7 @@ def objFifoRelease():
 # CHECK-LABEL: cascadeFlowOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 3)
-# CHECK: aie.cascade_flow(%[[VAL_0]], %[[VAL_1]]) : memref<12xi32>
+# CHECK: aie.cascade_flow(%[[VAL_0]], %[[VAL_1]])
 @construct_and_print_module
 def cascadeFlowOp():
     t0 = tile(col=1, row=3)
