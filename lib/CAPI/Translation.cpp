@@ -55,10 +55,11 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-MlirLogicalResult
-aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
-                        bool bigEndian, bool emitUnified,
-                        bool axiDebug, bool aieSim, size_t partitionStartCol) {
+MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
+                                          MlirStringRef workDirPath,
+                                          bool bigEndian, bool emitUnified,
+                                          bool axiDebug, bool aieSim,
+                                          size_t partitionStartCol) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   auto status = AIETranslateToCDODirect(
       mod, llvm::StringRef(workDirPath.data, workDirPath.length), bigEndian,

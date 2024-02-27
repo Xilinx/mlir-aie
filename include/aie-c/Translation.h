@@ -8,10 +8,6 @@
 #ifndef AIE_C_TRANSLATION_H
 #define AIE_C_TRANSLATION_H
 
-extern "C" {
-#include "cdo_driver.h"
-}
-
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 

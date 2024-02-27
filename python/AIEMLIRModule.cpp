@@ -89,8 +89,8 @@ PYBIND11_MODULE(_aie, m) {
 
   m.def(
       "generate_cdo",
-      [](MlirOperation op, const std::string &workDirPath,
-         bool bigendian, bool emitUnified, bool axiDebug, bool aieSim,
+      [](MlirOperation op, const std::string &workDirPath, bool bigendian,
+         bool emitUnified, bool axiDebug, bool aieSim,
          size_t partitionStartCol) {
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
                 op, {workDirPath.data(), workDirPath.size()}, bigendian,

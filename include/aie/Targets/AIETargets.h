@@ -46,9 +46,9 @@ AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
 
 mlir::LogicalResult
 AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
-                        bool bigEndian = false,
-                        bool emitUnified = false, bool axiDebug = false,
-                        bool aieSim = false, size_t partitionStartCol = 1);
+                        bool bigEndian = false, bool emitUnified = false,
+                        bool axiDebug = false, bool aieSim = false,
+                        size_t partitionStartCol = 1);
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
