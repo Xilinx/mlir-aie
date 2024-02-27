@@ -70,7 +70,7 @@ module @test05_tiledma {
       aie.end
     }
     %mem_1_3 = aie.mem(%tile_1_3) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%interlock1, Acquire, 1)
         aie.dma_bd(%b13 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock1, Release, 0)
@@ -78,7 +78,7 @@ module @test05_tiledma {
       aie.end
     }
     %mem_3_3 = aie.mem(%tile_3_3) {
-      aie.dma(S2MM, 1, loop = false) [{
+      aie.dma(S2MM, 1) {loop = false} [{
         aie.use_lock(%interlock2, Acquire, 0)
         aie.dma_bd(%a33 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock2, Release, 1)

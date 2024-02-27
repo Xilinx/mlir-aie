@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
 from functools import partial
-import inspect
 import itertools
 from operator import itemgetter
 from typing import Union
@@ -10,24 +9,24 @@ from typing import Union
 import numpy as np
 
 from ._aiex_ops_gen import *
+from . import aie
 from .aie import (
     DMAChannelDir,
     LockAction,
+    Neighbors,
     TileOp,
-    dma,
-    dma_bd,
-    find_neighbors,
+    find_matching_buffers,
     find_matching_flows,
     find_matching_locks,
-    flow,
-    lock,
-    tile,
-    use_lock,
+    find_neighbors,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..ir import DictAttr, IntegerAttr, UnitAttr
+
+# noinspection PyUnresolvedReferences
+from ..extras.dialects.ext import memref
 
 
 # Comes from _aie
@@ -182,17 +181,17 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr=None):
     t_word0 = tensor_addr & 0xFFFFFFFC
     t_word1 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
 
-    base_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
+    write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(column, row, base_addr, iptr[2]),
-        *_ipu_write32(column, row, base_addr + 4, t_word0),
-        *_ipu_write32(column, row, base_addr + 8, t_word1),
-        *_ipu_write32(column, row, base_addr + 12, iptr[5]),
-        *_ipu_write32(column, row, base_addr + 16, iptr[6]),
-        *_ipu_write32(column, row, base_addr + 20, iptr[7]),
-        *_ipu_write32(column, row, base_addr + 24, iptr[8]),
-        *_ipu_write32(column, row, base_addr + 28, iptr[9]),
+        *_ipu_write32(column, row, write_addr, iptr[2]),
+        *_ipu_write32(column, row, write_addr + 4, t_word0),
+        *_ipu_write32(column, row, write_addr + 8, t_word1),
+        *_ipu_write32(column, row, write_addr + 12, iptr[5]),
+        *_ipu_write32(column, row, write_addr + 16, iptr[6]),
+        *_ipu_write32(column, row, write_addr + 20, iptr[7]),
+        *_ipu_write32(column, row, write_addr + 24, iptr[8]),
+        *_ipu_write32(column, row, write_addr + 28, iptr[9]),
     ]
     return words
 
@@ -305,17 +304,29 @@ def process_bd(
     buffer,
     rel_lock,
     *,
-    offset=None,
-    len=None,
-    dimensions=None,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
     acq_val=None,
     rel_val=None,
+    offset=None,
+    len=None,
+    dimensions=None,
 ):
-    use_lock(acq_lock, acq_action, value=acq_val)
-    dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
-    use_lock(rel_lock, rel_action, value=rel_val)
+    aie.use_lock(acq_lock, acq_action, value=acq_val)
+    aie.dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
+    aie.use_lock(rel_lock, rel_action, value=rel_val)
+
+
+def send_bd(channel, *args, **kwargs):
+    @aie.dma(DMAChannelDir.MM2S, channel)
+    def d():
+        process_bd(*args, **kwargs)
+
+
+def receive_bd(channel, *args, **kwargs):
+    @aie.dma(DMAChannelDir.S2MM, channel)
+    def d():
+        process_bd(*args, **kwargs)
 
 
 def forward_bd(
@@ -338,13 +349,13 @@ def forward_bd(
     if buffer_sym_name:
         buffer_sym_name = buffer_sym_name.value
     if read_in_lock is None:
-        read_in_lock = lock(
+        read_in_lock = aie.lock(
             tile,
             init=1,
             sym_name=(f"{buffer_sym_name}_read_in_lock" if buffer_sym_name else None),
         )
     if write_out_lock is None:
-        write_out_lock = lock(
+        write_out_lock = aie.lock(
             tile,
             init=0,
             sym_name=(f"{buffer_sym_name}_write_out_lock" if buffer_sym_name else None),
@@ -352,34 +363,194 @@ def forward_bd(
 
     loop = repeat_count is None
 
-    @dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
+    @aie.dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_incoming():
         process_bd(read_in_lock, buffer, write_out_lock)
 
-    @dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
+    @aie.dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_outgoing():
         process_bd(write_out_lock, buffer, read_in_lock)
 
 
 @contextmanager
-def hold_lock(acq_lock, rel_lock, *, acq_val=None, rel_val=None):
-    use_lock(acq_lock, LockAction.AcquireGreaterEqual, value=acq_val)
+def hold_lock(
+    acq_lock,
+    rel_lock,
+    *,
+    acq_action=LockAction.AcquireGreaterEqual,
+    acq_val=None,
+    acq_en=None,
+    rel_action=LockAction.Release,
+    rel_val=None,
+):
+    aie.use_lock(acq_lock, acq_action, value=acq_val, acq_en=acq_en)
     try:
         yield
     finally:
-        use_lock(rel_lock, LockAction.Release, value=rel_val)
+        aie.use_lock(rel_lock, rel_action, value=rel_val)
+
+
+class Channel:
+    def __init__(
+        self,
+        tile,
+        buffer=None,
+        shape=None,
+        dtype=None,
+        buffer_name=None,
+        initial_value=None,
+        producer_lock_id=None,
+        producer_lock_init=None,
+        producer_lock_sym_name=None,
+        producer_lock_annot=None,
+        consumer_lock_id=None,
+        consumer_lock_init=None,
+        consumer_lock_sym_name=None,
+        consumer_lock_annot=None,
+        loc=None,
+        ip=None,
+    ):
+        if buffer is None:
+            assert (
+                shape is not None and dtype is not None
+            ), f"must provide either existing buffer or buffer shape and dtype"
+            buffer = aie.buffer(
+                tile,
+                shape,
+                dtype,
+                name=buffer_name,
+                initial_value=initial_value,
+                loc=loc,
+                ip=ip,
+            )
+
+        self.buffer = buffer
+        if producer_lock_sym_name is None:
+            producer_lock_sym_name = (
+                f"{buffer.get_name().replace('%', '')}_producer_lock"
+            )
+        self.producer_lock = aie.lock(
+            tile,
+            lock_id=producer_lock_id,
+            init=producer_lock_init,
+            sym_name=producer_lock_sym_name,
+            annot=producer_lock_annot,
+            loc=loc,
+            ip=ip,
+        )
+        if consumer_lock_sym_name is None:
+            consumer_lock_sym_name = (
+                f"{buffer.get_name().replace('%', '')}_consumer_lock"
+            )
+        self.consumer_lock = aie.lock(
+            tile,
+            lock_id=consumer_lock_id,
+            init=consumer_lock_init,
+            sym_name=consumer_lock_sym_name,
+            annot=consumer_lock_annot,
+            loc=loc,
+            ip=ip,
+        )
+
+    @contextmanager
+    def put(self, *, acq_val=None, rel_val=None):
+        with hold_lock(
+            self.producer_lock, self.consumer_lock, acq_val=acq_val, rel_val=rel_val
+        ):
+            yield self.buffer
+
+    @contextmanager
+    def get(self, *, acq_val=None, rel_val=None):
+        with hold_lock(
+            self.consumer_lock, self.producer_lock, acq_val=acq_val, rel_val=rel_val
+        ):
+            yield self.buffer
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.buffer=} {self.producer_lock=} {self.consumer_lock=}>".replace(
+            "self.", ""
+        )
+
+
+def _is_nd_list_of_tuples(thing):
+    if isinstance(thing, list):
+        return _is_nd_list_of_tuples(thing[0])
+    if isinstance(thing, tuple):
+        return np.dtype(type(thing[0])).char, len(thing)
+    return None
+
+
+# this is dumb but it's specfically to handle the special but also common case of [(K,)]
+def _convert_nd_list_of_tuples_to_np(thing):
+    def _get_outer_shape(thing):
+        if isinstance(thing, list):
+            return [len(thing)] + _get_outer_shape(thing[0])
+        return []
+
+    def _itemgetter(thing, idx):
+        if len(idx) == 1:
+            return thing[idx[0]]
+        else:
+            _itemgetter(thing[0], idx[1:])
+
+    shape = _get_outer_shape(thing)
+    res = np.empty(shape, dtype=object)
+    for idx, _ in np.ndenumerate(res):
+        res[idx] = _itemgetter(thing, idx)
+
+    return res
+
+
+def _broadcast_args_to(args, dest_shape=None):
+    args = list(args)
+    for i, arg in enumerate(args):
+        maybe_dtype_char_inner_len = _is_nd_list_of_tuples(arg)
+        if maybe_dtype_char_inner_len is not None:
+            dtype_char, inner_len = maybe_dtype_char_inner_len
+            if inner_len == 1:
+                arg = _convert_nd_list_of_tuples_to_np(arg)
+            else:
+                dtype = f"{dtype_char}," * inner_len
+                arg = np.array(arg, dtype=dtype).astype(object)
+        arg = np.core.shape_base._atleast_nd(arg, len(dest_shape))
+        assert (
+            np.broadcast_shapes(arg.shape, dest_shape) == dest_shape
+        ), f"Only broadcasting from source to dest is supported: {arg=} {arg.shape=} {dest_shape=}"
+        args[i] = np.broadcast_to(arg, dest_shape)
+    return args
 
 
 class TileArray:
     def __init__(self, cols=5, rows=6, df=None):
         if df is None:
-            df = np.array(
-                [[tile(c, r) for r in range(rows)] for c in range(cols)],
-            )
+            if isinstance(cols, int):
+                cols = list(range(cols))
+            if isinstance(rows, int):
+                rows = list(range(rows))
+            assert isinstance(cols, (list, tuple)) and isinstance(rows, (list, tuple))
+            df = np.array([[aie.tile(c, r) for r in rows] for c in cols])
         self.df = df
+        self.channels = np.empty_like(df, dtype=object)
+
+    @property
+    def tile(self):
+        if isinstance(self.df, TileOp):
+            return self.df
+        assert len(self.df) == 1, f"convenience accessor only for getting a single tile"
+        return self.df[0]
 
     def flow(self, other, *args, **kwargs):
         return broadcast_flow(self.df, other.df, *args, **kwargs)
+
+    def channel(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(Channel, otypes=[object])(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
 
     def __rshift__(self, other):
         return broadcast_flow(self.df, other.df)
@@ -428,12 +599,53 @@ class TileArray:
     def locks(self, **kwargs):
         return find_matching_locks(self, **kwargs)
 
-    @property
-    def neighbors(self):
-        return np.vectorize(find_neighbors)(self.df)
+    def buffers(self, **kwargs):
+        return find_matching_buffers(self, **kwargs)
+
+    def buffer(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(aie.buffer, otypes=[object])(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
+
+    def lock(self, *args, **kwargs):
+        args = _broadcast_args_to((self.df,) + args, self.shape)
+        kwargs = dict(
+            zip(kwargs.keys(), _broadcast_args_to(kwargs.values(), self.shape))
+        )
+        r = np.vectorize(aie.lock, otypes=[object])(*args, **kwargs)
+        if r.size == 1:
+            r = r[0]
+        return r
+
+    def __iter__(self):
+        for idx, v in np.ndenumerate(self.df):
+            if v is not None:
+                yield idx, TileArray(df=np.array([v]))
+
+    def neighbors(self, logical=True):
+        r = np.vectorize(
+            lambda tile: Neighbors(
+                **{
+                    k: TileArray(df=np.array([v])) if v is not None else None
+                    for k, v in find_neighbors(tile, logical=logical).__dict__.items()
+                }
+            ),
+            otypes=[object],
+        )(self.df)
+
+        if r.size == 1:
+            r = r[0]
+        return r
 
     @property
     def shape(self):
+        if isinstance(self.df, TileOp):
+            return (1,)
         return self.df.shape
 
     def __repr__(self):
@@ -486,30 +698,26 @@ def broadcast_flow(
             dest_channel[idx] = _find_next_channel(used_channels[dst])
             used_channels[dst].add(dest_channel[idx])
 
-    args = [
-        source,
-        source_bundle,
-        source_channel,
-        dest,
-        dest_bundle,
-        dest_channel,
-        source_annot,
-        dest_annot,
-    ]
+    args = _broadcast_args_to(
+        [
+            source,
+            source_bundle,
+            source_channel,
+            dest,
+            dest_bundle,
+            dest_channel,
+            source_annot,
+            dest_annot,
+        ],
+        dest.shape,
+    )
     for i, arg in enumerate(args):
-        arg = np.core.shape_base._atleast_nd(arg, dest.ndim)
-        # only support broadcast from source to dest
-        assert (
-            np.broadcast_shapes(arg.shape, dest.shape) == dest.shape
-        ), f"Only broadcasting from source to dest is supported: {arg=} {dest=}"
-        arg = np.broadcast_to(arg, dest.shape)
-        # flatten so we can do the groupby below
         args[i] = arg.flatten()
     flows = []
     for _grp_name, grp in itertools.groupby(zip(*args), key=itemgetter(0)):
         for g in grp:
             *flow_args, source_annot, dest_annot = g
-            flow_ = flow(*flow_args)
+            flow_ = aie.flow(*flow_args)
             if source_annot is not None:
                 flow_.attributes["source_annot"] = DictAttr.get(
                     {source_annot: UnitAttr.get()}

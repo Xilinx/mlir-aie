@@ -23,7 +23,7 @@ module @benchmark_02_LM2DDR {
     %buf71_0 = aie.buffer(%tile_0_2) {sym_name = "buf71_0"} : memref<7168xi32>
     %buffer = aie.external_buffer {sym_name = "buffer"} : memref<7168xi32>
     %mem_0_2 = aie.mem(%tile_0_2) {
-      %0 = aie.dma(MM2S, 1, loop = false) [{
+      %0 = aie.dma(MM2S, 1) {loop = false} [{
         aie.use_lock(%lock_0_2, Acquire, 0)
         aie.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
         aie.use_lock(%lock_0_2, Release, 1)

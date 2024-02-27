@@ -90,7 +90,7 @@ module {
         aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32>, 0, 8)
         aie.use_lock(%objFifo_in1_cons_cons_lock, Release, 1)
       }]
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, 1)
         aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32>, 0, 8)
         aie.use_lock(%objFifo_out1_prod_lock, Release, 1)

@@ -200,6 +200,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   assert(!block.getOps<UseLockOp>().empty() &&
          "expected use_lock op in bb with dma_db op");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
+  bool acqEn;
   // switch (lock->getAc)
   for (auto op : block.getOps<UseLockOp>()) {
     // Only dyn_cast if you are going to check if it was of the type
@@ -210,6 +211,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
     switch (op.getAction()) {
     case LockAction::Acquire:
     case LockAction::AcquireGreaterEqual:
+      acqEn = op.getAcqEn();
       acqLockId = lock.getLockIDValue();
       acqValue = op.getLockValue();
       if (op.acquireGE())
@@ -232,10 +234,13 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
       relLockId.value() += MEM_TILE_LOCK_ID_INCR;
   }
 
-  auto acqLockInit = XAie_LockInit(acqLockId.value(), acqValue.value());
-  auto relLockIinit = XAie_LockInit(relLockId.value(), relValue.value());
-  TRY_XAIE_API_EMIT_ERROR((*block.getOps<UseLockOp>().begin()), XAie_DmaSetLock,
-                          &dmaTileBd, acqLockInit, relLockIinit);
+  // no RelEn in the arch spec even though the API requires you to set it?
+  bool relEn = true;
+  XAie_Lock acqLock = XAie_LockInit(acqLockId.value(), acqValue.value());
+  XAie_Lock relLock = XAie_LockInit(relLockId.value(), relValue.value());
+  TRY_XAIE_API_EMIT_ERROR((*block.getOps<UseLockOp>().begin()),
+                          dmaTileBd.DmaMod->SetLock, &dmaTileBd, acqLock,
+                          relLock, acqEn, relEn);
   return success();
 }
 
@@ -308,6 +313,10 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
 
   if (packetID) {
     assert(packetType && "must have packetType with packetID");
+    if (bdOp.getLenValue() == 0)
+      return bdOp.emitOpError(
+          "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
+          "set to 0, otherwise behavior is undefined (3.7.8 arch spec)");
     TRY_XAIE_API_EMIT_ERROR(
         bdOp, XAie_DmaSetPkt, &dmaTileBd,
         XAie_PacketInit(packetID.value(), packetType.value()));
