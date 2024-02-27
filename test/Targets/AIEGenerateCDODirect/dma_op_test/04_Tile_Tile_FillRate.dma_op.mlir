@@ -28,7 +28,7 @@ module @test04_tile_tiledma {
       aie.connect<South : 1, DMA : 1>
     }
     %mem_1_3 = aie.mem(%tile_1_3) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%input_lock, Acquire, 1)
         aie.dma_bd(%a13 : memref<512xi32>, 0, 512)
         aie.use_lock(%input_lock, Release, 0)
@@ -40,7 +40,7 @@ module @test04_tile_tiledma {
     %a14 = aie.buffer(%tile_1_4) {sym_name = "a14"} : memref<512xi32>
     %b14 = aie.buffer(%tile_1_4) {sym_name = "b14"} : memref<256xi32>
     %mem_1_4 = aie.mem(%tile_1_4) {
-      aie.dma(S2MM, 1, loop = false) [{
+      aie.dma(S2MM, 1) {loop = false} [{
         aie.use_lock(%lock_1_4, Acquire, 0)
         aie.dma_bd(%a14 : memref<512xi32>, 0, 512)
         aie.use_lock(%lock_1_4, Release, 1)

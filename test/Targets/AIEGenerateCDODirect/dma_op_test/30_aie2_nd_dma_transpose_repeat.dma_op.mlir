@@ -43,7 +43,7 @@ module @tutorial_2b {
       aie.end
     }
     %mem_1_4 = aie.mem(%tile_1_4) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%lock14_done, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 2, stride = 1>, <size = 8, stride = 1>, <size = 8, stride = 8>])
         aie.use_lock(%lock14_sent, Release, 1)
@@ -51,7 +51,7 @@ module @tutorial_2b {
       aie.end
     }
     %mem_3_4 = aie.mem(%tile_3_4) {
-      aie.dma(S2MM, 0, loop = false) [{
+      aie.dma(S2MM, 0) {loop = false} [{
         aie.use_lock(%lock34_wait, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf34 : memref<128xi32>, 0, 128)
         aie.use_lock(%lock34_recv, Release, 1)

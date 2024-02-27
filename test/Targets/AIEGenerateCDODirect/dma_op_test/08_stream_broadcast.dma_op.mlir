@@ -47,7 +47,7 @@ module @test08_stream_broadcast {
       aie.end
     }
     %mem_1_3 = aie.mem(%tile_1_3) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%interlock_1, Acquire, 1)
         aie.dma_bd(%b13 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock_1, Release, 0)
@@ -72,7 +72,7 @@ module @test08_stream_broadcast {
       aie.end
     }
     %mem_3_2 = aie.mem(%tile_3_2) {
-      aie.dma(S2MM, 1, loop = false) [{
+      aie.dma(S2MM, 1) {loop = false} [{
         aie.use_lock(%interlock_2, Acquire, 0)
         aie.dma_bd(%a32 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock_2, Release, 1)
@@ -98,7 +98,7 @@ module @test08_stream_broadcast {
       aie.end
     }
     %mem_3_3 = aie.mem(%tile_3_3) {
-      aie.dma(S2MM, 1, loop = false) [{
+      aie.dma(S2MM, 1) {loop = false} [{
         aie.use_lock(%interlock_3, Acquire, 0)
         aie.dma_bd(%a33 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock_3, Release, 1)
@@ -125,7 +125,7 @@ module @test08_stream_broadcast {
       aie.end
     }
     %mem_3_4 = aie.mem(%tile_3_4) {
-      aie.dma(S2MM, 1, loop = false) [{
+      aie.dma(S2MM, 1) {loop = false} [{
         aie.use_lock(%interlock_4, Acquire, 0)
         aie.dma_bd(%a34 : memref<256xi32>, 0, 256)
         aie.use_lock(%interlock_4, Release, 1)

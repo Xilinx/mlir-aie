@@ -31,7 +31,7 @@ module @test_chess_08_tile_locks {
     %done_lock_2 = aie.lock(%tile_1_3, 3) {sym_name = "done_lock_2"}
     aie.flow(%tile_1_3, DMA : 0, %tile_1_3, DMA : 0)
     %mem_1_3 = aie.mem(%tile_1_3) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%start_lock_1, AcquireGreaterEqual, 1)
         aie.dma_bd(%local : memref<256xi32>, 0, 2)
         aie.use_lock(%done_lock_1, Release, 1)
@@ -40,7 +40,7 @@ module @test_chess_08_tile_locks {
         aie.dma_bd(%local : memref<256xi32>, 4, 2)
         aie.use_lock(%done_lock_1, Release, 1)
       }]
-      aie.dma(S2MM, 0, loop = false) [{
+      aie.dma(S2MM, 0) {loop = false} [{
         aie.use_lock(%start_lock_2, AcquireGreaterEqual, 1)
         aie.dma_bd(%local : memref<256xi32>, 8, 2)
         aie.use_lock(%done_lock_2, Release, 1)

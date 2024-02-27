@@ -45,7 +45,7 @@ module @test14_stream_packet {
     %lock73 = aie.lock(%tile_1_4, 0) {sym_name = "lock73"}
     %lock71 = aie.lock(%tile_1_2, 0) {sym_name = "lock71"}
     %mem_1_3 = aie.mem(%tile_1_4) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%lock73, Acquire, 0)
         aie.dma_bd_packet(5, 13)
         aie.dma_bd(%buf73 : memref<256xi32>, 0, 256)
@@ -54,7 +54,7 @@ module @test14_stream_packet {
       aie.end
     }
     %mem_1_2 = aie.mem(%tile_1_2) {
-      aie.dma(MM2S, 0, loop = false) [{
+      aie.dma(MM2S, 0) {loop = false} [{
         aie.use_lock(%lock71, Acquire, 0)
         aie.dma_bd_packet(4, 12)
         aie.dma_bd(%buf71 : memref<256xi32>, 0, 256)
@@ -65,7 +65,7 @@ module @test14_stream_packet {
     %buf62 = aie.buffer(%tile_0_2) {sym_name = "buf62"} : memref<512xi32>
     %lock_0_2 = aie.lock(%tile_0_2, 0)
     %mem_0_2 = aie.mem(%tile_0_2) {
-      aie.dma(S2MM, 0, loop = false) [{
+      aie.dma(S2MM, 0) {loop = false} [{
         aie.use_lock(%lock_0_2, Acquire, 0)
         aie.dma_bd(%buf62 : memref<512xi32>, 0, 512)
         aie.use_lock(%lock_0_2, Release, 1)
