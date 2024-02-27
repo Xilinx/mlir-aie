@@ -2537,19 +2537,39 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
                                                 bool matMoveToAcc = true)
       : OpConversionPattern(context), matMoveToAcc(matMoveToAcc) {}
 
+  Value reshapeLeadingUnitDims(OpBuilder &b, Value v) const {
+    auto vecTy = dyn_cast<VectorType>(v.getType());
+    if (!vecTy)
+      return v;
+    auto vecShape = vecTy.getShape();
+
+    size_t numLeadUnitDims = 0;
+    while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
+      numLeadUnitDims++;
+
+    if (!numLeadUnitDims)
+      return v;
+
+    SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
+                                  vecShape.end());
+    auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
+    return b.create<vector::ShapeCastOp>(v.getLoc(), newVecTy, v).getResult();
+  }
+
   LogicalResult
   matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto lhs = adaptor.getLhs();
-    auto rhs = adaptor.getRhs();
-    auto acc = adaptor.getAcc();
+    auto lhs = reshapeLeadingUnitDims(rewriter, adaptor.getLhs());
+    auto rhs = reshapeLeadingUnitDims(rewriter, adaptor.getRhs());
+    auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
+    bool bReshapedAcc = (acc != adaptor.getAcc());
 
     if (matMoveToAcc)
       acc = rewriter.create<aievec::CastOp>(contractOp.getLoc(), acc.getType(),
                                             acc, true);
 
     auto matmulOp = rewriter.create<aievec::MatMulOp>(
-        contractOp.getLoc(), contractOp.getResult().getType(), lhs, rhs, acc);
+        contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
     {
       // Replace diagnostics handler to silence errors when verifying the
       // validity of the `aievec.matmul` ops being generated.
@@ -2560,34 +2580,37 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         // There is a possibility that, when the linalg op is converted to
         // contractions, lower precisions operands are cast to the target
         // precission outside the contraction. For those cases, we check.
+        lhs = adaptor.getLhs();
+        rhs = adaptor.getRhs();
         if (auto lhsExtSIOp = lhs.getDefiningOp<arith::ExtSIOp>())
-          lhs = lhsExtSIOp.getIn();
+          lhs = reshapeLeadingUnitDims(rewriter, lhsExtSIOp.getIn());
         else if (auto lhsExtUIOp = lhs.getDefiningOp<arith::ExtUIOp>())
-          lhs = lhsExtUIOp.getIn();
+          lhs = reshapeLeadingUnitDims(rewriter, lhsExtUIOp.getIn());
         else if (auto lhsExtFOp = lhs.getDefiningOp<arith::ExtFOp>())
-          lhs = lhsExtFOp.getIn();
+          lhs = reshapeLeadingUnitDims(rewriter, lhsExtFOp.getIn());
 
         if (auto rhsExtSIOp = rhs.getDefiningOp<arith::ExtSIOp>())
-          rhs = rhsExtSIOp.getIn();
+          rhs = reshapeLeadingUnitDims(rewriter, rhsExtSIOp.getIn());
         else if (auto rhsExtUIOp = rhs.getDefiningOp<arith::ExtUIOp>())
-          rhs = rhsExtUIOp.getIn();
+          rhs = reshapeLeadingUnitDims(rewriter, rhsExtUIOp.getIn());
         else if (auto rhsExtFOp = rhs.getDefiningOp<arith::ExtFOp>())
-          rhs = rhsExtFOp.getIn();
+          rhs = reshapeLeadingUnitDims(rewriter, rhsExtFOp.getIn());
 
         matmulOp = rewriter.create<aievec::MatMulOp>(
-            contractOp.getLoc(), contractOp.getResult().getType(), lhs, rhs,
-            acc);
+            contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
       }
       if (failed(matmulOp.verifyInvariants()))
         return failure();
     }
 
-    if (matMoveToAcc) {
-      auto resCastOp = rewriter.create<aievec::CastOp>(
-          contractOp.getLoc(), acc.getType(), matmulOp, false);
-      rewriter.replaceOp(contractOp, resCastOp);
-    } else
-      rewriter.replaceOp(contractOp, matmulOp);
+    Value result = matmulOp.getResult();
+    if (matMoveToAcc)
+      result = rewriter.create<aievec::CastOp>(contractOp.getLoc(),
+                                               acc.getType(), matmulOp, false);
+    if (bReshapedAcc)
+      result = rewriter.create<vector::ShapeCastOp>(
+          contractOp.getLoc(), adaptor.getAcc().getType(), result);
+    rewriter.replaceOp(contractOp, result);
 
     return success();
   }
@@ -3035,6 +3058,7 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                            TargetBackend backend) {
   target.addLegalOp<UnrealizedConversionCastOp>();
+  target.addLegalOp<vector::ShapeCastOp>();
 
   // A set recording the vector lane size and element width supported
   llvm::SmallSet<std::pair<unsigned, unsigned>, 16> laneSizeElWidthPairSet;
