@@ -1,10 +1,10 @@
 // (c) Copyright 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-//
-// RUN: export BASENAME=$(basename %s)
-// RUN: rm -rf *.elf* *.xclbin *.bin $BASENAME.cdo_direct $BASENAME.prj
-// RUN: mkdir $BASENAME.prj && pushd $BASENAME.prj && %python aiecc.py --aie-generate-cdo --no-compile-host --tmpdir $PWD %s && popd
+// RUN: aie-translate --aie-generate-cdo %s --cdo-axi-debug 2>&1 | FileCheck %s
+
+// CHECK: Generating: {{.*}}aie_cdo_error_handling.bin
+// CHECK: Generating: {{.*}}aie_cdo_init.bin
 
 module @test03_sync_with_locks {
   aie.device(ipu) {

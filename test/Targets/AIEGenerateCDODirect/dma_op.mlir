@@ -8,8 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: ryzen_ai
-
 // RUN: aie-translate --aie-generate-cdo %s --cdo-axi-debug 2>&1 | FileCheck %s
 
 // CHECK: Generating: {{.*}}aie_cdo_error_handling.bin
