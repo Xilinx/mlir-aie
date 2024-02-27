@@ -382,13 +382,15 @@ _An op to describe a set of DMA operations._
 Syntax:
 
 ```
-operation ::= `aie.dma` `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? (`,` `repeat_count` `=` $repeat_count^)? `)` `[`regions`]` attr-dict
+operation ::= `aie.dma` `(` $channel_dir `,` $channel_index `)`
+              attr-dict ` `
+              `[`regions`]`
 ```
 
 
 Traits: `HasParent<MemOp, MemTileDMAOp, ShimDMAOp>`, `NoTerminator`
 
-Interfaces: `InferTypeOpInterface`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`
 
 #### Attributes:
 
@@ -400,6 +402,7 @@ Interfaces: `InferTypeOpInterface`
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 #### Results:
@@ -2024,6 +2027,7 @@ MemTileDMAOp).
 <tr><td><code>blocking</code></td><td>xilinx::AIE::LockBlockingAttr</td><td><details><summary>lock operation is blocking</summary>{{% markdown %}}Enum cases:
 * NonBlocking (`NonBlocking`)
 * Blocking (`Blocking`){{% /markdown %}}</details></td></tr>
+<tr><td><code>acq_en</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
