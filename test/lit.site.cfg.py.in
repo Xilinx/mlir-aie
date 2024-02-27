@@ -56,7 +56,6 @@ config.python_passes = lit.util.pythonize_bool("@AIE_ENABLE_PYTHON_PASSES@")
 config.xrt_python_bindings = lit.util.pythonize_bool("@AIE_ENABLE_XRT_PYTHON_BINDINGS@")
 config.has_libxaie = lit.util.pythonize_bool("@LibXAIE_FOUND@")
 config.has_mlir_runtime_libraries = lit.util.pythonize_bool("@HAS_MLIR_RUNTIME_LIBRARIES@")
-config.has_cdo_direct_generation = lit.util.pythonize_bool("@AIE_ENABLE_GENERATE_CDO_DIRECT@")
 config.aie_enable_airbin = lit.util.pythonize_bool("@AIE_ENABLE_AIRBIN@")
 
 # pass on vitis settings
