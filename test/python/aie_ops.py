@@ -22,6 +22,7 @@ from aie.dialects.aie import (
     objectfifo_release,
     objectfifo_subview_access,
     tile,
+    cascade_flow,
 )
 from aie.ir import InsertionPoint, Block, TypeAttr
 from aie.extras.context import mlir_mod_ctx
@@ -255,6 +256,17 @@ def objFifoRelease():
         with InsertionPoint(bb):
             acq = objectfifo_release(ObjectFifoPort.Produce, "of0", 1)
             end()
+
+
+# CHECK-LABEL: cascadeFlowOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 3)
+# CHECK: aie.cascade_flow(%[[VAL_0]], %[[VAL_1]])
+@construct_and_print_module
+def cascadeFlowOp():
+    t0 = tile(col=1, row=3)
+    t1 = tile(col=2, row=3)
+    cascade_flow(t0, t1)
 
 
 # CHECK-LABEL: test_module_context
