@@ -2606,8 +2606,10 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                TargetBackend backend) {
-  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128,
-                                                1024, 256, 1024);
+  if (backend == TargetBackend::CPP) {
+    patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128,
+                                                  1024, 256, 1024);
+  }
   // clang-format off
   // TODO: Reorder these alphabetically
   patterns.add<
@@ -2718,7 +2720,9 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                                                TargetBackend backend) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect, arith::ArithDialect,
                          emitc::EmitCDialect>();
-  target.addIllegalOp<vector::TransferReadOp>();
+  if (backend == TargetBackend::CPP) {
+    target.addIllegalOp<vector::TransferReadOp>();
+  }
   target.addIllegalOp<vector::ExtractStridedSliceOp>();
   target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
     auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
