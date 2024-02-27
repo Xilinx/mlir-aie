@@ -83,10 +83,10 @@ def deviceOp():
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
-    b = Buffer(tile=t, size=(12,), datatype=T.i32())
+    b = Buffer(tile=t, shape=(12,), datatype=T.i32())
     b = Buffer(
         tile=t,
-        size=(2, 2),
+        shape=(2, 2),
         datatype=T.i32(),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
@@ -96,7 +96,7 @@ def bufferOp():
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
 @construct_and_print_module
 def externalBufferOp():
-    b = ExternalBuffer(size=(12,), datatype=T.i32())
+    b = ExternalBuffer(shape=(12,), datatype=T.i32())
 
 
 # CHECK-LABEL: objFifo

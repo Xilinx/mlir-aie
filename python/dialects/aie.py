@@ -1,6 +1,5 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 from dataclasses import dataclass
 import inspect
 from typing import List, Optional, Tuple, Union
@@ -17,6 +16,9 @@ from .._mlir_libs._aie import *
 from .._mlir_libs._aie import ObjectFifoSubviewType, ObjectFifoType
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
+
+# noinspection PyUnresolvedReferences
+from ..extras.dialects.ext import memref
 from ..extras.meta import region_op
 from ..extras.util import (
     Successor,
@@ -145,11 +147,11 @@ class Core(CoreOp):
         super().__init__(result=T.index(), tile=tile, link_with=link_with)
 
 
-# Create an aie buffer of (size x datatype) on given tile.
-# size examples: [256], [256, 256], [256, 256,]
+# Create an aie buffer of (shape x datatype) on given tile.
+# shape examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
     def __init__(
-        self, tile, size, datatype, name=None, initial_value=None, loc=None, ip=None
+        self, tile, shape, datatype, name=None, initial_value=None, loc=None, ip=None
     ):
         if initial_value is not None:
             assert isinstance(initial_value, np.ndarray)
@@ -159,7 +161,7 @@ class Buffer(BufferOp):
                 context=None,
             )
         super().__init__(
-            buffer=T.memref(*size, datatype),
+            buffer=T.memref(*shape, datatype),
             tile=tile,
             sym_name=name,
             initial_value=initial_value,
@@ -168,12 +170,12 @@ class Buffer(BufferOp):
         )
 
 
-# Create an aie external buffer of (size x datatype).
-# size examples: [256], [256, 256], [256, 256,]
+# Create an aie external buffer of (shape x datatype).
+# shape examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
-    def __init__(self, size, datatype, name=None, loc=None, ip=None):
+    def __init__(self, shape, datatype, name=None, loc=None, ip=None):
         super().__init__(
-            buffer=T.memref(*size, datatype),
+            buffer=T.memref(*shape, datatype),
             sym_name=name,
             loc=loc,
             ip=ip,
@@ -282,6 +284,7 @@ def dma(
     num_blocks=1,
     loop=None,
     repeat_count=None,
+    sym_name=None,
     loc=None,
     ip=None,
 ):
@@ -294,6 +297,7 @@ def dma(
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
+        sym_name=sym_name,
         loc=loc,
         ip=ip,
     )
@@ -385,23 +389,24 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-def buffer(tile, size, datatype, name=None, initial_value=None, loc=None, ip=None):
+def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None):
+    if name is not None and not name:
+        name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
     return Buffer(
         tile,
-        size,
-        datatype,
-        name=name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer"),
+        shape,
+        dtype,
+        name=name,
         initial_value=initial_value,
         loc=loc,
         ip=ip,
     ).result
 
 
-def external_buffer(size, datatype, name=None, loc=None, ip=None):
+def external_buffer(shape, dtype, name=None, loc=None, ip=None):
     return ExternalBuffer(
-        size,
-        datatype,
+        shape,
+        dtype,
         name=name,
         loc=loc,
         ip=ip,
@@ -414,12 +419,13 @@ _lock = lock
 def lock(
     tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
 ):
+    if sym_name is not None and not sym_name:
+        sym_name = _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock")
     l = _lock(
         tile,
         lock_id=lock_id,
         init=init,
-        sym_name=sym_name
-        or _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock"),
+        sym_name=sym_name,
         loc=loc,
         ip=ip,
     )
@@ -496,7 +502,19 @@ def find_matching_flows(
                 )
             )
 
-    return find_ops(device, _cb)
+    return sorted(
+        find_ops(device, _cb),
+        key=lambda a: (
+            int(a.source.owner.opview.col),
+            int(a.source.owner.opview.row),
+            int(a.source_bundle),
+            int(a.source_channel),
+            int(a.dest.owner.opview.col),
+            int(a.dest.owner.opview.row),
+            int(a.dest_bundle),
+            int(a.dest_channel),
+        ),
+    )
 
 
 def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
@@ -515,7 +533,40 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
                 )
             )
 
-    return find_ops(device, _cb)
+    return sorted(
+        [o.result for o in find_ops(device, _cb)],
+        key=lambda a: (
+            int(a.owner.opview.tile.owner.opview.col),
+            int(a.owner.opview.tile.owner.opview.row),
+            a.get_name(),
+        ),
+    )
+
+
+def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
+    if device is None:
+        device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+
+    def _cb(op):
+        if isinstance(op, BufferOp):
+            return (
+                op.tile.owner.opview in tiles
+                and (sym_name == str(op.sym_name) if sym_name is not None else True)
+                and (
+                    ("annot" in op.attributes and annot in op.attributes["annot"])
+                    if annot is not None
+                    else True
+                )
+            )
+
+    return sorted(
+        [o.result for o in find_ops(device, _cb)],
+        key=lambda a: (
+            int(a.owner.opview.tile.owner.opview.col),
+            int(a.owner.opview.tile.owner.opview.row),
+            a.get_name(),
+        ),
+    )
 
 
 @dataclass
@@ -525,7 +576,7 @@ class Neighbors:
     south: TileOp = None
 
 
-def find_neighbors(tile, device=None):
+def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
@@ -535,10 +586,19 @@ def find_neighbors(tile, device=None):
     col, row = map(int, (tile.col, tile.row))
     if col > 0 and row > 0 and not (col, row) == (1, 1):
         neighbors[col - 1, row] = "west"
-    if row > 1:
-        neighbors[col, row - 1] = "south"
-    if 0 < row < 5:
-        neighbors[col, row + 1] = "north"
+
+    if logical:
+        # can connect/talk/dma access
+        if row >= 3:
+            neighbors[col, row - 1] = "south"
+        if 2 <= row < 5:
+            neighbors[col, row + 1] = "north"
+    else:
+        # physical ie actually on the lattice nearby
+        if row >= 1:
+            neighbors[col, row - 1] = "south"
+        if 0 < row < 5:
+            neighbors[col, row + 1] = "north"
 
     neighbors_ = {"north": None, "west": None, "south": None}
 

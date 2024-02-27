@@ -8,9 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: chess
+// REQUIRES: peano
+
 // RUN: %PYTHON aiecc.py --xchesscc --no-link -nv --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %s | FileCheck %s --check-prefix=XCHESSCC
 // RUN: %PYTHON aiecc.py --no-xchesscc --no-link -nv --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %s | FileCheck %s --check-prefix=PEANO
-// REQUIRES: cdo_direct_generation
 
 // Note that llc determines the architecture from the llvm IR.
 // XCHESSCC-NOT: {{^[^ ]*llc}}

@@ -160,16 +160,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
 endif()
 
-find_library(CDO_DRIVER_LIBRARY cdo_driver
-  HINTS "${VITIS_AIETOOLS_DIR}/lib/lnx64.o"
-)
-cmake_dependent_option(AIE_ENABLE_GENERATE_CDO_DIRECT
-  "Enables building of direct bindings to libcdo." ON "CDO_DRIVER_LIBRARY" OFF)
-if(AIE_ENABLE_GENERATE_CDO_DIRECT)
-  add_library(cdo_driver SHARED IMPORTED)
-  set_property(TARGET cdo_driver PROPERTY IMPORTED_LOCATION "${CDO_DRIVER_LIBRARY}")
-endif()
-
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
 
@@ -251,9 +241,11 @@ endif()
 
 add_subdirectory(include)
 add_subdirectory(lib)
-add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
+  add_subdirectory(runtime_lib)
+endif()
 
 if(AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)

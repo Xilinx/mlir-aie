@@ -232,7 +232,7 @@ def chess_llvm_link(*file_strs, prefix="chess_llvm_link_output", input_prefixes=
     return output_str
 
 
-def make_core_elf(core_bcf, input_filename="input", debug=False):
+def make_core_elf(core_bcf, object_filename="input", debug=False):
     input_files = extract_input_files(core_bcf)
     core_name = re.findall(r"_symbol (.*?) _after _main_init", core_bcf, re.MULTILINE)
     assert len(core_name) == 1
@@ -243,7 +243,7 @@ def make_core_elf(core_bcf, input_filename="input", debug=False):
 
     cmd = [
         *XCHESS_ARGS(),
-        f"{input_filename}.o",
+        f"{object_filename}.o",
         *input_files,
         "+l",  # linker configuration file
         f"{core_name}.bcf",
@@ -365,7 +365,7 @@ def compile_with_vectorization(
                     output_filename=f"core_{col}_{row}",
                     debug=debug,
                 )
-        make_core_elf(core_bcf, input_filename=f"core_{col}_{row}", debug=debug)
+        make_core_elf(core_bcf, object_filename=f"core_{col}_{row}", debug=debug)
 
     input_physical = run_pipeline(
         mod_aie,
@@ -409,7 +409,7 @@ def compile_without_vectorization(module, *, debug=False, partition_start_col=1)
                 output_filename=f"core_{col}_{row}",
                 debug=debug,
             )
-        make_core_elf(core_bcf, input_filename=f"core_{col}_{row}", debug=debug)
+        make_core_elf(core_bcf, object_filename=f"core_{col}_{row}", debug=debug)
 
     input_physical = run_pipeline(
         module,

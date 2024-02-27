@@ -368,6 +368,26 @@ Aborted (core dumped)
 
 This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
 
+## Signing the `xclbin` hangs
+
+As outlined above, `.xclbin` files must be signed to be able to run on the device. Signing is done by running
+
+```
+/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
+```
+
+This may hang after the following output if you have too many signed `.xclbin`s:
+
+```
+Copy <your test>.xclbin to /lib/firmware/amdnpu/1502/<your test>.xclbin
+```
+
+If this happens, clear all your previously signed `.xclbin`s as follows (you will of course have to re-sign the ones you remove in this step if you want to run them again, but chances are you have many old unneeded `.xclbin`s in there):
+
+```
+rm /lib/firmware/amdnpu/1502/<your tests>.xclbin
+```
+
 ## License Errors When Trying to Compile
 
 The `v++` compiler for the NPU device code requires a valid Vitis license. If you are getting errors related to this:

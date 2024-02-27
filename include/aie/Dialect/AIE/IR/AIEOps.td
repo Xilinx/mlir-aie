@@ -902,7 +902,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 def AIE_DMAOp: AIE_Op<"dma", [
     ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
     NoTerminator,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to describe a set of DMA operations.";
@@ -911,13 +912,27 @@ def AIE_DMAOp: AIE_Op<"dma", [
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
         DefaultValuedAttr<BoolAttr, "true">:$loop,
-        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
+        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count,
+        OptionalAttr<StrAttr>:$sym_name
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index (`,` `loop` `=` $loop^)? (`,` `repeat_count` `=` $repeat_count^)? `)` `[`regions`]` attr-dict
+    `(` $channel_dir `,` $channel_index `)`
+    attr-dict ` `
+    `[`regions`]`
   }];
   let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    void $cppClass::getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      bool(getOperation()->getAttrOfType<mlir::StringAttr>(
+                mlir::SymbolTable::getSymbolAttrName()));
+      if (auto name = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
+        setNameFn(getResult(), name.str());
+    }
+  }];
 }
 
 
@@ -1146,7 +1161,8 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     ins Index:$lock,
         LockAction:$action,
         OptionalAttr<AIEI32Attr>:$value,
-        OptionalAttr<LockBlocking>:$blocking
+        OptionalAttr<LockBlocking>:$blocking,
+        DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en
   );
 
   let assemblyFormat = [{

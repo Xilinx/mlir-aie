@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import sys
 
-from aie.extras.dialects.ext import arith, func, linalg, scf, vector
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, scf, vector, memref
 from aie.extras.context import ExplicitlyManagedModule
 from filelock import FileLock
 import numpy as np
 
+from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.dialects import aie, aievec, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -78,8 +80,21 @@ def shim_tensor_slice(
     return ipu_insts
 
 
+def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
+    ipu_insts = []
+    ipu_insts.extend(
+        aiex.ipu.writebd_shimtile(
+            bd_id=bd_id, ddr_id=ddr_id, column=column, buffer_length=buffer_length
+        )
+    )
+    ipu_insts.extend(
+        aiex.ipu.shimtile_push_queue(direction, channel, column, bd_id=bd_id)
+    )
+    return ipu_insts
+
+
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2
-@construct_and_print_module
+# @construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2(module):
     M = N = 32
 
@@ -398,7 +413,7 @@ def matmul_i32_i32_already_vectorized(
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2_vectorized
-@construct_and_print_module
+# @construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
     M = N = 32
 
@@ -683,3 +698,306 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
                 print(A @ B)
                 print(wrap_C)
                 assert False
+
+
+# CHECK-LABEL: tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1
+# @construct_and_print_module
+def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
+    K = 32
+    cols = [0, 1, 2, 3]
+    rows = [0, 1, 2, 3, 4, 5]
+
+    dest_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        for i, ((col, row), t) in enumerate(tiles[:, 2:]):
+            b = aie.buffer(
+                t.tile,
+                (K,),
+                T.i32(),
+                initial_value=np.full((K,), i, dtype=np.int32),
+            )
+            aie.lock(t.tile, init=0)
+
+        for _, t in tiles[:, 5]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with aiex.hold_lock(self_lock, self_lock, acq_val=0):
+                    linalg.add(self_buffer, self_buffer, self_buffer)
+
+        for _, t in tiles[:, 2:5]:
+            north_lock = t.neighbors().north.locks()[0]
+            north_buffer = t.neighbors().north.buffers()[0]
+
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with (
+                    aiex.hold_lock(self_lock, self_lock, acq_val=0),
+                    aiex.hold_lock(north_lock, north_lock),
+                ):
+                    linalg.add(north_buffer, self_buffer, self_buffer)
+
+        tiles[:, 2] >> tiles[:, 1]
+
+        for _, t in tiles[:, 2]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+            flow = t.flows()[0]
+
+            @aie.mem(t.tile)
+            def mem():
+                aiex.send_bd(flow.source_channel, self_lock, self_buffer, self_lock)
+                aie.end()
+
+        tiles[:, 1] >> tiles[:, 0]
+
+        for ddr_id, ((col, row), t) in enumerate(tiles[:, 1]):
+            to_shim, to_mem = t.flows()
+
+            @aie.memtile_dma(t.tile)
+            def memtile_dma():
+                buffer = aie.buffer(t.tile, (K,), T.i32())
+
+                aiex.forward_bd(
+                    t.tile,
+                    buffer,
+                    s2mm_channel_idx=to_mem.dest_channel,
+                    mm2s_channel_idx=to_shim.source_channel,
+                )
+                aie.end()
+
+            dest_channels[col] = int(to_shim.dest_channel)
+
+    compile_without_vectorization(module)
+    buffer_args = [f"out_col_{c}" for c in cols]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
+
+        ipu_insts = aiex.ipu.get_prolog()
+        bd_id = 0
+        for col in cols:
+            dest_channel = dest_channels[col]
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                bd_id, buffer_length=K, column=col
+            )
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    writebd_shimtile_insts,
+                    tensor_addr=xclbin._get_buffer_host_address(col),
+                )
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
+            )
+            ipu_insts.extend(aiex.ipu.sync(column=col))
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)
+
+
+# CHECK-LABEL: double_pump_single_buffer
+@construct_and_print_module
+def double_pump_single_buffer(module):
+    K = 32
+
+    source_channels = {}
+    # dest_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols=[0], rows=[0, 1, 2])
+        buffer = tiles[0, 2].buffer([(K,)], [T.i32()], "double_buffer")
+
+        # available to be written to
+        lock_X = tiles[0, 2].lock(init=1, sym_name="lock_X")
+        # available to be read from
+        # whose turn it is to write
+        lock_Y = tiles[0, 2].lock(init=0, sym_name="lock_Y")
+        player_a_channel = 0
+        player_b_channel = 1
+
+        # For your case I guess you could have lock X represent whether the buffer is available to be written,
+        # lock Y represent whose turn it is to write. Lock X starts at 1 and lock Y starts at 0.
+        # and player B does the same thing but with acq_eq(Y, 1) and rel(Y, -1) instead. (e
+
+        @aie.mem(tiles[0, 2].tile)
+        def mem():
+
+            # Player A does acq_eq(Y, 0),zero_len,no_rel -> acq_eq(X, 1),data,rel(X, -1) -> no_acq,zero_len,rel(Y, 1)
+            @aie.dma(S2MM, player_a_channel, num_blocks=3, sym_name="player_a")
+            def player_a():
+                # rel_val=0 means no release because these are counting semaphores and hence
+                # this no change (DMA might not even issue a release)
+                with aiex.hold_lock(
+                    lock_Y, lock_Y, acq_action=LockAction.Acquire, acq_val=0, rel_val=0
+                ):
+                    aie.dma_bd(buffer, len=0)
+
+            @aie.another_bd(player_a)
+            def _():
+                with aiex.hold_lock(
+                    lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=1, rel_val=-1
+                ):
+                    aie.dma_bd(buffer)
+
+            @aie.another_bd(player_a)
+            def _():
+                with aiex.hold_lock(
+                    lock_Y,
+                    lock_Y,
+                    acq_action=LockAction.Acquire,
+                    acq_en=False,
+                    rel_val=1,
+                ):
+                    aie.dma_bd(buffer)
+
+            # Player B does acq_eq(Y, 1),zero_len,no_rel -> acq_eq(X, 1),data,rel(X, -1) -> no_acq,zero_len,rel(Y, -1)
+            @aie.dma(S2MM, player_b_channel, num_blocks=3, sym_name="player_b")
+            def player_b():
+                # rel_val=0 means no release because these are counting semaphores and hence
+                # this no change (DMA might not even issue a release)
+                with aiex.hold_lock(
+                    lock_Y, lock_Y, acq_action=LockAction.Acquire, acq_val=1, rel_val=0
+                ):
+                    aie.dma_bd(buffer, len=0)
+
+            @aie.another_bd(player_b)
+            def _():
+                with aiex.hold_lock(
+                    lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=1, rel_val=-1
+                ):
+                    aie.dma_bd(buffer)
+
+            @aie.another_bd(player_b)
+            def _():
+                with aiex.hold_lock(
+                    lock_Y,
+                    lock_Y,
+                    acq_action=LockAction.Acquire,
+                    acq_en=False,
+                    rel_val=-1,
+                ):
+                    aie.dma_bd(buffer)
+
+            aie.end()
+
+        @aie.core(tiles[0, 2].tile)
+        def core():
+            with aiex.hold_lock(
+                lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=0, rel_val=1
+            ):
+                linalg.add(buffer, buffer, buffer)
+
+        shim_to_mem_player_a_source_channel = shim_to_mem_player_a_dest_channel = (
+            player_a_channel
+        )
+        shim_to_mem_player_b_source_channel = shim_to_mem_player_b_dest_channel = (
+            player_b_channel
+        )
+
+        shim_to_mem_flow_1 = aie.flow(
+            tiles[0, 0].tile,
+            DMA,
+            shim_to_mem_player_a_source_channel,
+            tiles[0, 1].tile,
+            DMA,
+            shim_to_mem_player_a_dest_channel,
+        )
+        shim_to_mem_flow_2 = aie.flow(
+            tiles[0, 0].tile,
+            DMA,
+            shim_to_mem_player_b_source_channel,
+            tiles[0, 1].tile,
+            DMA,
+            shim_to_mem_player_b_dest_channel,
+        )
+
+        mem_to_core_flow_1 = aie.flow(
+            tiles[0, 1].tile,
+            DMA,
+            player_a_channel,
+            tiles[0, 2].tile,
+            DMA,
+            player_a_channel,
+        )
+        mem_to_core_flow_2 = aie.flow(
+            tiles[0, 1].tile,
+            DMA,
+            player_b_channel,
+            tiles[0, 2].tile,
+            DMA,
+            player_b_channel,
+        )
+
+        @aie.memtile_dma(tiles[0, 1].tile)
+        def memtile_dma():
+            buffer = aie.buffer(tiles[0, 1].tile, (K,), T.i32())
+            aiex.forward_bd(tiles[0, 1].tile, buffer, player_a_channel, repeat_count=10)
+            aiex.forward_bd(tiles[0, 1].tile, buffer, player_b_channel, repeat_count=10)
+            aie.end()
+
+        source_channels["player_a"] = shim_to_mem_player_a_source_channel
+        source_channels["player_b"] = shim_to_mem_player_b_source_channel
+        # dest_channels["player_a"] = shim_to_mem_player_a_dest_channel
+        # dest_channels["player_a"] = shim_to_mem_player_b_dest_channel
+
+    compile_without_vectorization(module)
+    buffer_args = [p for p in ["player_a", "player_b"]]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * 2, np.int32)
+
+        ipu_insts = aiex.ipu.get_prolog()
+        col = 0
+        for bd_id, player in enumerate(["player_a", "player_b"]):
+            source_channel = source_channels[player]
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                bd_id, buffer_length=K, column=col
+            )
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    writebd_shimtile_insts,
+                    tensor_addr=xclbin._get_buffer_host_address(col),
+                )
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(MM2S, source_channel, col, bd_id)
+            )
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)

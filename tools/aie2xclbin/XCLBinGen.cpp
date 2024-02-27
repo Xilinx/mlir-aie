@@ -38,10 +38,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <regex>
-
-extern "C" {
-#include "cdo_driver.h"
-}
+#include <unordered_map>
 
 #ifdef _WIN32
 #define setenv(name, var, ignore) _putenv_s(name, var)
