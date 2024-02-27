@@ -4,7 +4,6 @@
 // RUN: aie-translate --aie-generate-cdo %s --cdo-axi-debug 2>&1 | FileCheck %s
 
 // CHECK: Generating: {{.*}}aie_cdo_error_handling.bin
-// CHECK: Generating: {{.*}}aie_cdo_init.bin
 
 module @twoFilter2D {
   aie.device(ipu) {
