@@ -168,16 +168,12 @@ def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=
 
 
 # based on ExecWriteBdExtendShimTileOpt @ dpufw/src/include/RunInstOpt.h:666
-def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr=None):
+def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
     bd_id = iptr[0] & 0x0000000F
     column = (iptr[0] & 0x00FF0000) >> 16
-    _addr_incr = iptr[1]
-    addr_low = iptr[3]
+    buffer_offset = iptr[3]
     # upper 16 bits are for packets...
-    addr_high = iptr[4] & 0x0000FFFF
-    if tensor_addr is None:
-        tensor_addr = (addr_high << 32) | addr_low
-    tensor_addr += DDR_AIE_ADDR_OFFSET
+    tensor_addr += buffer_offset + DDR_AIE_ADDR_OFFSET
     t_word0 = tensor_addr & 0xFFFFFFFC
     t_word1 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
 
@@ -251,7 +247,9 @@ def _ipu_writebd_shimtile(
     # TODO: Address Incr
     words[1] = 0
     words[2] = buffer_length
+    # addr_low in the spec/docs
     words[3] = buffer_offset
+    # words[4] = addr_high & 0x0000FFFF
 
     # En Packet , OoO BD ID , Packet ID , Packet Type
     words[4] = (enable_packet & 0x1) << 30
