@@ -6,10 +6,10 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_subdirectory(aie-opt)
-if(NOT WIN32)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_subdirectory(aie-reset)
+  add_subdirectory(bootgen)
 endif()
 add_subdirectory(aie-translate)
-add_subdirectory(bootgen)
 add_subdirectory(chess-clang)
 add_subdirectory(aie2xclbin)

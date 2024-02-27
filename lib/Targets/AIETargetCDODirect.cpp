@@ -838,11 +838,11 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 // symbol in libAIETargets.a that then doesn't actually match the header?
 namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      bool bigendian, bool emitUnified,
+                                      bool bigEndian, bool emitUnified,
                                       bool axiDebug, bool aieSim,
                                       size_t partitionStartCol) {
   byte_ordering endianness =
-      bigendian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
+      bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
                                  axiDebug, aieSim, partitionStartCol);
 }

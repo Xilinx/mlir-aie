@@ -31,10 +31,6 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 
-extern "C" {
-#include "cdo_driver.h"
-}
-
 #define DEBUG_TYPE "aie-targets"
 
 using namespace mlir;
@@ -135,11 +131,8 @@ void registerAIETranslations() {
       "work-dir-path", llvm::cl::Optional,
       llvm::cl::desc("Absolute path to working directory"));
 
-  static llvm::cl::opt<byte_ordering> endianness(
-      "endianness", llvm::cl::init(byte_ordering::Little_Endian),
-      llvm::cl::desc("Endianness"),
-      llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
-      llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+  static llvm::cl::opt<bool> bigEndian("big-endian", llvm::cl::init(false),
+                                       llvm::cl::desc("Endianness"));
 
   static llvm::cl::opt<bool> cdoUnified(
       "cdo-unified", llvm::cl::init(false),
@@ -310,7 +303,7 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(), bigEndian,
                                        cdoUnified, axiDebug, cdoAieSim,
                                        cdoPartitionStartCol);
       },
