@@ -127,16 +127,12 @@ void registerAIETranslations() {
       llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
 #endif
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
       llvm::cl::desc("Absolute path to working directory"));
 
-  static llvm::cl::opt<byte_ordering> endianness(
-      "endianness", llvm::cl::init(byte_ordering::Little_Endian),
-      llvm::cl::desc("Endianness"),
-      llvm::cl::values(clEnumValN(byte_ordering::Little_Endian, "little", "")),
-      llvm::cl::values(clEnumValN(byte_ordering::Big_Endian, "big", "")));
+  static llvm::cl::opt<bool> bigEndian("big-endian", llvm::cl::init(false),
+                                       llvm::cl::desc("Endianness"));
 
   static llvm::cl::opt<bool> cdoUnified(
       "cdo-unified", llvm::cl::init(false),
@@ -149,7 +145,6 @@ void registerAIETranslations() {
   static llvm::cl::opt<size_t> cdoPartitionStartCol(
       "cdo-partition-start-col", llvm::cl::init(1),
       llvm::cl::desc("Partition starting column for CDO generation"));
-#endif
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -297,7 +292,6 @@ void registerAIETranslations() {
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
   TranslateFromMLIRRegistration registrationCDODirect(
       "aie-generate-cdo", "Generate libxaie for CDO directly",
       [](ModuleOp module, raw_ostream &) {
@@ -309,12 +303,11 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToCDODirect(module, workDirPath_.c_str(), endianness,
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(), bigEndian,
                                        cdoUnified, axiDebug, cdoAieSim,
                                        cdoPartitionStartCol);
       },
       registerDialects);
-#endif
   TranslateFromMLIRRegistration registrationIPU(
       "aie-ipu-instgen", "Generate instructions for IPU",
       [](ModuleOp module, raw_ostream &output) {

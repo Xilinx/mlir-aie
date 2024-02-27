@@ -87,25 +87,19 @@ PYBIND11_MODULE(_aie, m) {
       },
       "module"_a);
 
-#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
-  py::enum_<byte_ordering>(m, "byte_ordering")
-      .value("Little_Endian", Little_Endian)
-      .value("Big_Endian", Big_Endian);
-
   m.def(
       "generate_cdo",
-      [](MlirOperation op, const std::string &workDirPath,
-         byte_ordering endianness, bool emitUnified, bool axiDebug, bool aieSim,
+      [](MlirOperation op, const std::string &workDirPath, bool bigendian,
+         bool emitUnified, bool axiDebug, bool aieSim,
          size_t partitionStartCol) {
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
-                op, {workDirPath.data(), workDirPath.size()}, endianness,
+                op, {workDirPath.data(), workDirPath.size()}, bigendian,
                 emitUnified, axiDebug, aieSim, partitionStartCol)))
           throw std::runtime_error("Failed to generate cdo");
       },
-      "module"_a, "work_dir_path"_a, "endianness"_a = Little_Endian,
+      "module"_a, "work_dir_path"_a, "bigendian"_a = false,
       "emit_unified"_a = false, "axi_debug"_a = false, "aiesim"_a = false,
       "partition_start_col"_a = 1);
-#endif
 
   m.def(
       "ipu_instgen",
