@@ -64,9 +64,9 @@ def shim_tensor_slice(
     )
 
     ipu_insts = aiex.ipu.writebd_shimtile(
+        column=column,
         bd_id=bd_id,
         ddr_id=ddr_id,
-        column=column,
         buffer_length=(M // n_tile_rows) * (N // n_tile_cols),
         buffer_offset=buffer_offset,
         d1_size=d1_size,
@@ -84,7 +84,7 @@ def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
     ipu_insts = []
     ipu_insts.extend(
         aiex.ipu.writebd_shimtile(
-            bd_id=bd_id, ddr_id=ddr_id, column=column, buffer_length=buffer_length
+            column=column, bd_id=bd_id, ddr_id=ddr_id, buffer_length=buffer_length
         )
     )
     ipu_insts.extend(
@@ -790,7 +790,7 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
         for col in cols:
             dest_channel = dest_channels[col]
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                bd_id, buffer_length=K, column=col
+                col, bd_id, buffer_length=K
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -977,7 +977,7 @@ def double_pump_single_buffer(module):
         for bd_id, player in enumerate(["player_a", "player_b"]):
             source_channel = source_channels[player]
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                bd_id, buffer_length=K, column=col
+                col, bd_id, buffer_length=K
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(

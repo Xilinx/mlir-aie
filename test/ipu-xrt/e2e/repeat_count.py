@@ -106,6 +106,7 @@ def repeat_count(module):
         for i, bd_id in enumerate(range(repeat_count)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=K,
                     buffer_offset=i * K,

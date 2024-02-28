@@ -89,6 +89,7 @@ def nonsquare_matrix_mult(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=M * K,
                 buffer_offset=0,
@@ -103,6 +104,7 @@ def nonsquare_matrix_mult(module):
         bd_id += 1
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=K * N,
                 buffer_offset=0,
@@ -117,6 +119,7 @@ def nonsquare_matrix_mult(module):
         bd_id += 1
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=M * N,
                 buffer_offset=0,
@@ -306,6 +309,7 @@ def nonsquare_matrix_mult_sugar(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=M * K,
                 buffer_offset=0,
@@ -320,6 +324,7 @@ def nonsquare_matrix_mult_sugar(module):
         bd_id += 1
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=K * N,
                 buffer_offset=0,
@@ -334,6 +339,7 @@ def nonsquare_matrix_mult_sugar(module):
         bd_id += 1
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
+                col,
                 bd_id,
                 buffer_length=M * N,
                 buffer_offset=0,

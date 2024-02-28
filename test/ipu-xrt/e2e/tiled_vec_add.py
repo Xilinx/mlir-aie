@@ -93,6 +93,7 @@ def vec_add(module):
         for i, bd_id in enumerate(range(tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
@@ -109,6 +110,7 @@ def vec_add(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
@@ -125,6 +127,7 @@ def vec_add(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
@@ -313,6 +316,7 @@ def vec_add_sugar(module):
         for i, bd_id in enumerate(range(tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
@@ -330,6 +334,7 @@ def vec_add_sugar(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
@@ -347,6 +352,7 @@ def vec_add_sugar(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=k,
                     buffer_offset=offsets[i],
