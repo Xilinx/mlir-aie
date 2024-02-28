@@ -354,9 +354,9 @@ def manual_args_with_shim_dma(module):
     K = 32
     # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
-    cols = [3]
+    cols = [1]
 
-    iters = 90
+    iters = 100
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -379,7 +379,7 @@ def manual_args_with_shim_dma(module):
                 y = memref.alloc(K, T.i32())
                 for i in range_(iters):
                     with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                        linalg.fill(c, y)
+                        linalg.fill(c + 1, y)
                         linalg.add(y, buffer_weight, buffer_weight)
                     yield_()
 
@@ -425,6 +425,7 @@ def manual_args_with_shim_dma(module):
                     col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
                 )
             )
+        for i, col in enumerate(cols):
             ipu_insts.extend(aiex.ipu.sync(column=col))
 
         xclbin.load_ipu_instructions(ipu_insts)
