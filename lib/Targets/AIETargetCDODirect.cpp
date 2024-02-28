@@ -457,6 +457,11 @@ struct AIEControl {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
       auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
+      // XAIE for whatever reason does not adopt the same convention as the arch
+      // ie repeat_count = 0 => do the thing once; instead it takes
+      // repeat_count = 1 => do the thing once and then subtracts one off
+      // when doing the register write. so we keep the arch convention
+      repeatCount += 1;
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
                               tileLoc, chNum, direction, bdNum, repeatCount,
                               enTokenIssue);
@@ -466,7 +471,7 @@ struct AIEControl {
     };
 
     const AIETargetModel &targetModel = targetOp.getTargetModel();
-    auto isOddBd = [&targetModel](int col, int row, int channelIndex) {
+    auto isMemTileOddBd = [&targetModel](int col, int row, int channelIndex) {
       return targetModel.isMemTile(col, row) && channelIndex & 1;
     };
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
@@ -489,12 +494,12 @@ struct AIEControl {
           for (auto *bdRegionIt = bdRegions.begin();
                bdRegionIt != bdRegions.end();) {
             auto &block = bdRegionIt->getBlocks().front();
-            blockBdNumMap[&block] = isOddBd(col, row, dmaOp.getChannelIndex())
-                                        ? oddBdNum++
-                                        : evenBdNum++;
+            blockBdNumMap[&block] =
+                isMemTileOddBd(col, row, dmaOp.getChannelIndex()) ? oddBdNum++
+                                                                  : evenBdNum++;
             std::optional<int> nextBdNum;
             if (++bdRegionIt != bdRegions.end()) {
-              nextBdNum = isOddBd(col, row, dmaOp.getChannelIndex())
+              nextBdNum = isMemTileOddBd(col, row, dmaOp.getChannelIndex())
                               ? oddBdNum
                               : evenBdNum;
             } else if (dmaOp.getLoop()) {
@@ -542,7 +547,7 @@ struct AIEControl {
           if (block.getOps<DMABDOp>().empty())
             continue;
           assert(blockChannelMap.count(&block));
-          if (isOddBd(col, row, blockChannelMap[&block]))
+          if (isMemTileOddBd(col, row, blockChannelMap[&block]))
             blockBdNumMap[&block] = oddBdNum++;
           else
             blockBdNumMap[&block] = evenBdNum++;
@@ -711,8 +716,7 @@ struct AIEControl {
     }
 
     // Cascade configuration
-    const auto &target_model = xilinx::AIE::getTargetModel(targetOp);
-    if (target_model.getTargetArch() == AIEArch::AIE2) {
+    if (targetModel.getTargetArch() == AIEArch::AIE2) {
       for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
         TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
         auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());

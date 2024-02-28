@@ -94,7 +94,7 @@ def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2
-# @construct_and_print_module
+@construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2(module):
     M = N = 32
 
@@ -701,7 +701,7 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1
-# @construct_and_print_module
+@construct_and_print_module
 def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
     K = 32
     cols = [0, 1, 2, 3]
