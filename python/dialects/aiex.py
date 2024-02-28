@@ -192,13 +192,26 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
     return words
 
 
+def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
+    tensor_addr += buffer_offset + DDR_AIE_ADDR_OFFSET
+    t_word0 = tensor_addr & 0xFFFFFFFC
+    # wipes out packet routing info
+    t_word1 = 0xFFFF0000 | (tensor_addr >> 32)
+    write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
+    row = 0
+    return [
+        *_ipu_write32(column, row, write_addr + 4, t_word0),
+        *_ipu_write32(column, row, write_addr + 8, t_word1),
+    ]
+
+
 # corresponds to ExecWriteBdExtendShimTileOpt
 def _ipu_writebd_shimtile(
+    column,
     bd_id,
     buffer_length,
     buffer_offset=0,
     ddr_id=0,
-    column=0,
     d2_stride=1,
     d1_size=None,
     d1_stride=1,
@@ -295,6 +308,7 @@ class ipu:
     sync = _ipu_sync
     get_prolog = _get_prolog
     _exec_write_bd_extend_shim_tile_opt = _exec_write_bd_extend_shim_tile_opt
+    _update_tensor_addr_shim_tile = _update_tensor_addr_shim_tile
 
 
 def process_bd(

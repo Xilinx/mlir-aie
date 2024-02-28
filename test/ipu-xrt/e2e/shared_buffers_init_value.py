@@ -169,8 +169,8 @@ def foursome(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
-                bd_id=bd_id,
                 column=shim_tile_column,
+                bd_id=bd_id,
                 buffer_length=K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
@@ -188,7 +188,7 @@ def foursome(module):
             aiex.ipu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
-                direction=0,
+                direction=S2MM,
                 row=0,
             )
         )

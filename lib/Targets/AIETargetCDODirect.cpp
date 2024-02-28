@@ -267,19 +267,33 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   auto bdOp = *block.getOps<DMABDOp>().begin();
   // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
   ShapedType bufferType = bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
-  int bytesA = bufferType.getElementTypeBitWidth() / 8;
-  auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
-  assert(bufferOp.getAddress().has_value() && "buffer must have address");
-
-  int baseAddrA = bufferOp.getAddress().value();
-  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
-    baseAddrA += BASE_ADDR_A_INCR;
+  int bytes = bufferType.getElementTypeBitWidth() / 8;
+  int baseAddr = 0;
+  if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    assert(bufferOp.getAddress().has_value() && "buffer must have address");
+    baseAddr = bufferOp.getAddress().value();
+    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
+      baseAddr += BASE_ADDR_A_INCR;
+  }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                            baseAddrA + bdOp.getOffsetValue(),
-                            bdOp.getLenValue() * bytesA);
+                            baseAddr + bdOp.getOffsetValue(),
+                            bdOp.getLenValue() * bytes);
+    if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+      // write them out like this so they show up with names in debug prints
+      size_t smid = 0;
+      size_t burstLen = 4; // 00 config, 64 bytes?
+      size_t qOs = 0;
+      size_t cache = 0;
+      // uint8_t secure = XAIE_ENABLE;
+      size_t secure = 0;
+      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid, burstLen,
+                              qOs, cache, secure);
+    }
+
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
     dmaTileBdTensor.NumDim = dims->size();
@@ -301,8 +315,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     // TODO: Probably need special handling for NOC
     // TODO: Might need to adjust step sizes / wraps by -1
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                            &dmaTileBdTensor, baseAddrA + bdOp.getOffsetValue(),
-                            bdOp.getLenValue() * bytesA);
+                            &dmaTileBdTensor, baseAddr + bdOp.getOffsetValue(),
+                            bdOp.getLenValue() * bytes);
   }
 
   if (nextBdNum) {
@@ -442,10 +456,10 @@ struct AIEControl {
                int repeatCount) -> LogicalResult {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
-      auto xaieDisable = XAIE_DISABLE;
+      auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
                               tileLoc, chNum, direction, bdNum, repeatCount,
-                              /*EnTokenIssue*/ xaieDisable);
+                              enTokenIssue);
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc,
                               chNum, direction);
       return success();
@@ -457,6 +471,7 @@ struct AIEControl {
     };
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+    llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
@@ -721,6 +736,13 @@ struct AIEControl {
         TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &devInst, tileLoc);
     }
     return success();
+  }
+
+  void dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row, size_t addr,
+                       size_t bdNum) {
+    auto tileLoc = XAie_TileLoc(col, row);
+    TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr,
+                             bdNum);
   }
 };
 

@@ -1,6 +1,7 @@
 import __main__
 import collections
 import contextlib
+import hashlib
 import inspect
 from itertools import islice, zip_longest
 import json
@@ -152,6 +153,18 @@ def link_with_chess_intrinsic_wrapper(input_ll):
 
 
 def chess_compile(input_ll, output_filename="input", debug=False):
+    if (
+        Path(WORKDIR / f"{output_filename}.ll").exists()
+        and Path(WORKDIR / f"{output_filename}.o").exists()
+    ):
+        with open(WORKDIR / f"{output_filename}.ll", "r") as f:
+            if (
+                hashlib.sha256(f.read().encode("utf-8")).hexdigest()
+                == hashlib.sha256(input_ll.encode("utf-8")).hexdigest()
+            ):
+                if debug:
+                    print(f"using cached {output_filename}.o")
+                return
     with open(WORKDIR / f"{output_filename}.ll", "w") as f:
         f.write(input_ll)
 
@@ -377,6 +390,7 @@ def compile_with_vectorization(
             input_physical.operation,
             str(WORKDIR),
             partition_start_col=partition_start_col,
+            axi_debug=debug,
         )
 
     make_design_pdi()
@@ -421,6 +435,7 @@ def compile_without_vectorization(module, *, debug=False, partition_start_col=1)
             input_physical.operation,
             str(WORKDIR),
             partition_start_col=partition_start_col,
+            axi_debug=debug,
         )
 
     make_design_pdi()
