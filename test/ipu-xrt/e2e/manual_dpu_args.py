@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-
+import random
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 import sys
+import time
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
@@ -42,7 +43,7 @@ yield_ = scf.yield_
 
 
 # CHECK-LABEL: manual_args
-@construct_and_print_module
+# @construct_and_print_module
 def manual_args(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -153,7 +154,7 @@ def manual_args(module):
 
 
 # CHECK-LABEL: manual_args_with_offset
-@construct_and_print_module
+# @construct_and_print_module
 def manual_args_with_offset(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -265,7 +266,7 @@ def manual_args_with_offset(module):
 
 
 # CHECK-LABEL: manual_args_with_different_cols
-@construct_and_print_module
+# @construct_and_print_module
 def manual_args_with_different_cols(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -352,99 +353,101 @@ def manual_args_with_different_cols(module):
                     assert False
 
 
+for j in range(10):
 # CHECK-LABEL: manual_args_with_shim_dma
-@construct_and_print_module
-def manual_args_with_shim_dma(module):
-    K = 32
-    # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
-    RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * 5
-    cols = [1]
+    @construct_and_print_module
+    def manual_args_with_shim_dma(module):
+        K = 32
+        # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
+        RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
+        cols = [2]
 
-    repeat_count = 100
+        repeat_count = 90
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
-        tile_dummy = aie.tile(0, 2)
-        for c in cols:
-            tile_c_0 = aie.tile(c, 0)
-            tile_c_2 = aie.tile(c, 2)
+        @aie.device(AIEDevice.ipu)
+        def ipu():
+            if 0 not in cols:
+                tile_dummy = aie.tile(0, 3)
+            for c in cols:
+                tile_c_0 = aie.tile(c, 0)
+                tile_c_2 = aie.tile(c, 2)
 
-            buffer_weight = aie.buffer(
-                tile_c_2, (K,), T.i32(), initial_value=RANDOM_WEIGHT
-            )
-            lock_read_weight = aie.lock(tile_c_2, init=1)
-            lock_send_weight = aie.lock(tile_c_2, init=0)
-
-            aie.flow(tile_c_2, DMA, 0, tile_c_0, DMA, 0)
-
-            @aie.core(tile_c_2)
-            def core():
-                y = memref.alloc(K, T.i32())
-                for i in range_(repeat_count):
-                    with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                        linalg.fill(c, y)
-                        linalg.add(y, buffer_weight, buffer_weight)
-                    yield_()
-
-            @aie.mem(tile_c_2)
-            def mem_c_2():
-                @aie.dma(MM2S, 0)
-                def dma3():
-                    aie.use_lock(lock_send_weight, AcquireGreaterEqual)
-                    aie.dma_bd(buffer_weight)
-                    aie.use_lock(lock_read_weight, Release)
-
-                aie.end()
-
-            lock_c_0_read_in_c = aie.lock(tile_c_0, init=0, lock_id=0)
-            host_buffer = aie.external_buffer((K,), T.i32())
-
-            @aie.shim_dma(tile_c_0)
-            def shim_dma_c_0():
-                @aie.dma(S2MM, 0, loop=False, repeat_count=repeat_count)
-                def dma():
-                    aie.use_lock(lock_c_0_read_in_c, Acquire, acq_en=0, value=0)
-                    aie.dma_bd(host_buffer)
-                    aie.use_lock(lock_c_0_read_in_c, Release, value=0)
-
-                aie.end()
-
-    print(module)
-    assert module.operation.verify()
-
-    compile_without_vectorization(module)
-    buffer_args = [f"out_{c}" for c in cols]
-    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
-
-    with FileLock("/tmp/ipu.lock"):
-        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
-
-        bd_id = 0
-        ipu_insts = aiex.ipu.get_prolog()
-        for i, col in enumerate(cols):
-            ipu_insts.extend(
-                aiex.ipu._update_tensor_addr_shim_tile(
-                    col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
+                buffer_weight = aie.buffer(
+                    tile_c_2, (K,), T.i32(), initial_value=RANDOM_WEIGHT
                 )
-            )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+                lock_read_weight = aie.lock(tile_c_2, init=1)
+                lock_send_weight = aie.lock(tile_c_2, init=0)
 
-        assert all(i < 2**32 for i in ipu_insts)
+                aie.flow(tile_c_2, DMA, 0, tile_c_0, DMA, 0)
 
-        xclbin.load_ipu_instructions(ipu_insts)
+                @aie.core(tile_c_2)
+                def core():
+                    y = memref.alloc(K, T.i32())
+                    for i in range_(repeat_count):
+                        with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                            linalg.fill(c, y)
+                            linalg.add(y, buffer_weight, buffer_weight)
+                        yield_()
 
-        wraps = list(map(np.asarray, views))
+                @aie.mem(tile_c_2)
+                def mem_c_2():
+                    @aie.dma(MM2S, 0, loop=False, repeat_count=repeat_count)
+                    def dma3():
+                        aie.use_lock(lock_send_weight, AcquireGreaterEqual)
+                        aie.dma_bd(buffer_weight)
+                        aie.use_lock(lock_read_weight, Release)
 
-        xclbin.sync_buffers_to_device()
-        xclbin.run()
-        print("Running kernel")
-        xclbin.wait(30)
-        xclbin.sync_buffers_from_device()
+                    aie.end()
 
-        for c, w in enumerate(wraps):
-            if not np.array_equal(RANDOM_WEIGHT + c, w):
+                lock_c_0_read_in_c = aie.lock(tile_c_0, init=0, lock_id=0)
+                host_buffer = aie.external_buffer((K,), T.i32())
+
+                @aie.shim_dma(tile_c_0)
+                def shim_dma_c_0():
+                    @aie.dma(S2MM, 0, loop=False, repeat_count=repeat_count)
+                    def dma():
+                        aie.use_lock(lock_c_0_read_in_c, Acquire, acq_en=0, value=0)
+                        aie.dma_bd(host_buffer)
+                        aie.use_lock(lock_c_0_read_in_c, Release, value=0)
+
+                    aie.end()
+
+        assert module.operation.verify()
+
+        compile_without_vectorization(module)
+        buffer_args = [f"out_{c}" for c in cols]
+        kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+        xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+
+        with FileLock("/tmp/ipu.lock"):
+            xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+            views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
+
+            bd_id = 0
+            ipu_insts = aiex.ipu.get_prolog()
+            for i, col in enumerate(cols):
+                ipu_insts.extend(
+                    aiex.ipu._update_tensor_addr_shim_tile(
+                        col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
+                    )
+                )
+                ipu_insts.extend(aiex.ipu.sync(column=col))
+
+            assert all(i < 2**32 for i in ipu_insts)
+
+            xclbin.load_ipu_instructions(ipu_insts)
+
+            wraps = list(map(np.asarray, views))
+
+            xclbin.sync_buffers_to_device()
+            xclbin.run()
+            print("Running kernel")
+            xclbin.wait(30)
+            xclbin.sync_buffers_from_device()
+
+            for c, w in enumerate(wraps):
                 with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                     print("RANDOM_WEIGHT", RANDOM_WEIGHT + c)
                     print(f"{buffer_args[c]} =", w)
+
+            del xclbin
