@@ -602,7 +602,7 @@ struct AIEControl {
         auto slvPortNum = 0;
         auto mstrPortNum = 0;
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum)
+                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_AieToPlIntfEnable, &devInst,
                                 tileLoc, /*PortNum*/ 0, PLIF_WIDTH_32);
       }
