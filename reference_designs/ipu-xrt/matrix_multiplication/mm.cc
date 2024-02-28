@@ -131,11 +131,10 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
   event1();
 }
 
-
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
-void matmul_vectorized_unroll(const T_in *__restrict pA, const T_in *__restrict pB,
-                       T_out *__restrict pC) {
+void matmul_vectorized_unroll(const T_in *__restrict pA,
+                              const T_in *__restrict pB, T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
   event0();
@@ -153,9 +152,11 @@ void matmul_vectorized_unroll(const T_in *__restrict pA, const T_in *__restrict 
   for (unsigned z = 0; z < rowA; z += 2)
     chess_loop_range(2, ) {
       T_out *__restrict pC1 = pC + (z * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC1b = pC + (z * colB + 0) * MMUL::size_C + MMUL::size_C;
+      T_out *__restrict pC1b =
+          pC + (z * colB + 0) * MMUL::size_C + MMUL::size_C;
       T_out *__restrict pC2 = pC + ((z + 1) * colB + 0) * MMUL::size_C;
-      T_out *__restrict pC2b = pC + ((z + 1) * colB + 0) * MMUL::size_C + MMUL::size_C;
+      T_out *__restrict pC2b =
+          pC + ((z + 1) * colB + 0) * MMUL::size_C + MMUL::size_C;
 
       for (unsigned j = 0; j < colB; j += 2)
         chess_prepare_for_pipelining chess_loop_range(8, ) {
@@ -238,13 +239,13 @@ void matmul_vectorized_unroll(const T_in *__restrict pA, const T_in *__restrict 
           C11.mac(A1b, B1b);
 
           aie::store_v(pC1, C00.template to_vector<T_out>());
-          pC1 += 2*MMUL::size_C;
+          pC1 += 2 * MMUL::size_C;
           aie::store_v(pC1b, C01.template to_vector<T_out>());
-          pC1b += 2*MMUL::size_C;
+          pC1b += 2 * MMUL::size_C;
           aie::store_v(pC2, C10.template to_vector<T_out>());
-          pC2 += 2*MMUL::size_C;
+          pC2 += 2 * MMUL::size_C;
           aie::store_v(pC2b, C11.template to_vector<T_out>());
-          pC2b += 2*MMUL::size_C;
+          pC2b += 2 * MMUL::size_C;
         }
     }
 
@@ -278,8 +279,8 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized_unroll<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
-      pA, pB, pC);
+  return matmul_vectorized_unroll<bfloat16, bfloat16, m / r, k / s, n / t, r, s,
+                                  t>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>

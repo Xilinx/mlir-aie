@@ -250,7 +250,7 @@ int main(int argc, const char *argv[]) {
       output_ref0.push_back(0);
     matmul(AVec, BVec, output_ref0);
 
-    //const C_DATATYPE absTol = std::abs(0.1);
+    // const C_DATATYPE absTol = std::abs(0.1);
     const C_DATATYPE absTol = std::abs(5);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
       if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
