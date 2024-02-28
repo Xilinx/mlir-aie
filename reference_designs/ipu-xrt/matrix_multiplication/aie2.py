@@ -58,7 +58,6 @@ def my_matmul():
         def device_body():
             memref_a_ty = T.memref(m, k, T.bf16())
             memref_b_ty = T.memref(k, n, T.bf16())
-            # memref_c_ty = T.memref(m, n, T.f32())
             memref_c_ty = T.memref(m, n, T.bf16())
 
             ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
@@ -66,15 +65,6 @@ def my_matmul():
             ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
 
             # AIE Core Function declarations
-            # zero_scalar = external_func("zero_scalar_f32", inputs=[memref_c_ty])
-            # zero = external_func("zero_f32", inputs=[memref_c_ty])
-            # matmul_scalar = external_func(
-            #     "matmul_scalar_bf16_f32",
-            #     inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
-            # )
-            # matmul = external_func(
-            #     "matmul_bf16_f32", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
-            # )
             zero_scalar = external_func("zero_scalar_bf16", inputs=[memref_c_ty])
             zero = external_func("zero_bf16", inputs=[memref_c_ty])
             matmul_scalar = external_func(
