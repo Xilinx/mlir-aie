@@ -174,15 +174,15 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
     buffer_offset = iptr[3]
     # upper 16 bits are for packets...
     tensor_addr += buffer_offset + DDR_AIE_ADDR_OFFSET
-    t_word0 = tensor_addr & 0xFFFFFFFC
-    t_word1 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
+    word3 = tensor_addr & 0xFFFFFFFC
+    word4 = (iptr[4] & 0xFFFF0000) | (tensor_addr >> 32)
 
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
         *_ipu_write32(column, row, write_addr, iptr[2]),
-        *_ipu_write32(column, row, write_addr + 4, t_word0),
-        *_ipu_write32(column, row, write_addr + 8, t_word1),
+        *_ipu_write32(column, row, write_addr + 4, word3),
+        *_ipu_write32(column, row, write_addr + 8, word4),
         *_ipu_write32(column, row, write_addr + 12, iptr[5]),
         *_ipu_write32(column, row, write_addr + 16, iptr[6]),
         *_ipu_write32(column, row, write_addr + 20, iptr[7]),
@@ -193,16 +193,18 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
 
 
 def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
+    # upper 16 bits are for packets...
     tensor_addr += buffer_offset + DDR_AIE_ADDR_OFFSET
-    t_word0 = tensor_addr & 0xFFFFFFFC
-    # wipes out packet routing info
-    t_word1 = 0xFFFF0000 | (tensor_addr >> 32)
+    word3 = tensor_addr & 0xFFFFFFFC
+    word4 = 0xFFFF0000 | (tensor_addr >> 32)
+
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
-    return [
-        *_ipu_write32(column, row, write_addr + 4, t_word0),
-        *_ipu_write32(column, row, write_addr + 8, t_word1),
+    words = [
+        *_ipu_write32(column, row, write_addr + 4, word3),
+        *_ipu_write32(column, row, write_addr + 8, word4),
     ]
+    return words
 
 
 # corresponds to ExecWriteBdExtendShimTileOpt

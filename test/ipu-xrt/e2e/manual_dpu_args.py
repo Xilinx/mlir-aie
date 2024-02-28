@@ -10,7 +10,7 @@ import sys
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref
+from aie.extras.dialects.ext import arith, func, linalg, memref, scf
 from filelock import FileLock
 import numpy as np
 
@@ -37,9 +37,12 @@ Acquire = LockAction.Acquire
 AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
+range_ = scf.range_
+yield_ = scf.yield_
+
 
 # CHECK-LABEL: manual_args
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -129,7 +132,7 @@ def manual_args(module):
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
             ipu_insts.extend(aiex.ipu.sync(column=col))
-        assert all(i < 2 ** 32 for i in ipu_insts)
+        assert all(i < 2**32 for i in ipu_insts)
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -150,7 +153,7 @@ def manual_args(module):
 
 
 # CHECK-LABEL: manual_args_with_offset
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args_with_offset(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -241,7 +244,7 @@ def manual_args_with_offset(module):
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
             ipu_insts.extend(aiex.ipu.sync(column=col))
-        assert all(i < 2 ** 32 for i in ipu_insts)
+        assert all(i < 2**32 for i in ipu_insts)
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -262,7 +265,7 @@ def manual_args_with_offset(module):
 
 
 # CHECK-LABEL: manual_args_with_different_cols
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args_with_different_cols(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -272,7 +275,6 @@ def manual_args_with_different_cols(module):
     def ipu():
         for c in cols:
             tile_c_0 = aie.tile(c, 0)
-            tile_c_1 = aie.tile(c, 1)
             tile_c_2 = aie.tile(c, 2)
 
             weight = memref.global_(initial_value=RANDOM_WEIGHT, constant=True)
@@ -280,8 +282,7 @@ def manual_args_with_different_cols(module):
             lock_read_weight = aie.lock(tile_c_2, init=1)
             lock_send_weight = aie.lock(tile_c_2, init=0)
 
-            aie.flow(tile_c_2, DMA, 0, tile_c_1, DMA, 2)
-            aie.flow(tile_c_1, DMA, 2, tile_c_0, DMA, 0)
+            aie.flow(tile_c_2, DMA, 0, tile_c_0, DMA, 0)
 
             @aie.core(tile_c_2)
             def core():
@@ -300,26 +301,6 @@ def manual_args_with_different_cols(module):
                     # TODO(max): would prefer to be able to stick get_global here...
                     aie.dma_bd(buffer_weight)
                     aie.use_lock(lock_read_weight, Release)
-
-                aie.end()
-
-            @aie.memtile_dma(tile_c_1)
-            def memtile_dma_c_1():
-                lock_c_1_read_in_c = aie.lock(tile_c_1, init=1)
-                lock_c_1_write_out_c = aie.lock(tile_c_1, init=0)
-                buffer_c_1_c = aie.buffer(tile_c_1, (K,), T.i32())
-
-                @aie.dma(S2MM, 2)
-                def dma5():
-                    aie.use_lock(lock_c_1_read_in_c, AcquireGreaterEqual)
-                    aie.dma_bd(buffer_c_1_c)
-                    aie.use_lock(lock_c_1_write_out_c, Release)
-
-                @aie.dma(MM2S, 2)
-                def dma6():
-                    aie.use_lock(lock_c_1_write_out_c, AcquireGreaterEqual)
-                    aie.dma_bd(buffer_c_1_c)
-                    aie.use_lock(lock_c_1_read_in_c, Release)
 
                 aie.end()
 
@@ -351,7 +332,7 @@ def manual_args_with_different_cols(module):
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
             ipu_insts.extend(aiex.ipu.sync(column=col))
-        assert all(i < 2 ** 32 for i in ipu_insts)
+        assert all(i < 2**32 for i in ipu_insts)
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -376,40 +357,40 @@ def manual_args_with_different_cols(module):
 def manual_args_with_shim_dma(module):
     K = 32
     # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
-    RANDOM_WEIGHT = np.ones((K,), dtype=np.int32)
-    cols = [0]
+    RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * 5
+    cols = [1]
+
+    repeat_count = 100
 
     @aie.device(AIEDevice.ipu)
     def ipu():
+        tile_dummy = aie.tile(0, 2)
         for c in cols:
             tile_c_0 = aie.tile(c, 0)
-            tile_c_1 = aie.tile(c, 1)
             tile_c_2 = aie.tile(c, 2)
 
-            weight = memref.global_(initial_value=RANDOM_WEIGHT, constant=True)
-            buffer_weight = aie.buffer(tile_c_2, (K,), T.i32())
+            buffer_weight = aie.buffer(
+                tile_c_2, (K,), T.i32(), initial_value=RANDOM_WEIGHT
+            )
             lock_read_weight = aie.lock(tile_c_2, init=1)
             lock_send_weight = aie.lock(tile_c_2, init=0)
 
-            # aie.flow(tile_c_2, DMA, 0, tile_c_1, DMA, 2)
-            # aie.flow(tile_c_1, DMA, 2, tile_c_0, DMA, 0)
             aie.flow(tile_c_2, DMA, 0, tile_c_0, DMA, 0)
 
             @aie.core(tile_c_2)
             def core():
-                x = memref.get_global(weight.type_.value, weight.sym_name.value)
                 y = memref.alloc(K, T.i32())
-                with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                    linalg.fill(c, y)
-                    linalg.copy(x, buffer_weight)
-                    linalg.add(y, buffer_weight, buffer_weight)
+                for i in range_(repeat_count):
+                    with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                        linalg.fill(c, y)
+                        linalg.add(y, buffer_weight, buffer_weight)
+                    yield_()
 
             @aie.mem(tile_c_2)
             def mem_c_2():
                 @aie.dma(MM2S, 0)
                 def dma3():
                     aie.use_lock(lock_send_weight, AcquireGreaterEqual)
-                    # TODO(max): would prefer to be able to stick get_global here...
                     aie.dma_bd(buffer_weight)
                     aie.use_lock(lock_read_weight, Release)
 
@@ -420,14 +401,15 @@ def manual_args_with_shim_dma(module):
 
             @aie.shim_dma(tile_c_0)
             def shim_dma_c_0():
-                @aie.dma(S2MM, 0, loop=False)
+                @aie.dma(S2MM, 0, loop=False, repeat_count=repeat_count)
                 def dma():
-                    aie.use_lock(lock_c_0_read_in_c, Acquire, value=0, acq_en=0)
+                    aie.use_lock(lock_c_0_read_in_c, Acquire, acq_en=0, value=0)
                     aie.dma_bd(host_buffer)
                     aie.use_lock(lock_c_0_read_in_c, Release, value=0)
 
                 aie.end()
 
+    print(module)
     assert module.operation.verify()
 
     compile_without_vectorization(module)
@@ -441,15 +423,15 @@ def manual_args_with_shim_dma(module):
 
         bd_id = 0
         ipu_insts = aiex.ipu.get_prolog()
-        for col in cols:
+        for i, col in enumerate(cols):
             ipu_insts.extend(
                 aiex.ipu._update_tensor_addr_shim_tile(
-                    col, bd_id, tensor_addr=xclbin._get_buffer_host_address(col)
+                    col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
                 )
             )
             ipu_insts.extend(aiex.ipu.sync(column=col))
 
-        assert all(i < 2 ** 32 for i in ipu_insts)
+        assert all(i < 2**32 for i in ipu_insts)
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -466,4 +448,3 @@ def manual_args_with_shim_dma(module):
                 with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                     print("RANDOM_WEIGHT", RANDOM_WEIGHT + c)
                     print(f"{buffer_args[c]} =", w)
-                    assert False
