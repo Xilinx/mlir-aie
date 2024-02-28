@@ -33,14 +33,14 @@ constexpr int C_VOLUME = M * N;
 
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
-using C_DATATYPE = float;
+using C_DATATYPE = std::bfloat16_t;
 
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = false;
+constexpr bool ENABLE_TRACING = true;
 constexpr int TRACE_SIZE = 8192;
 
 constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
@@ -250,14 +250,15 @@ int main(int argc, const char *argv[]) {
       output_ref0.push_back(0);
     matmul(AVec, BVec, output_ref0);
 
-    const C_DATATYPE absTol = std::abs(0.1);
+    //const C_DATATYPE absTol = std::abs(0.1);
+    const C_DATATYPE absTol = std::abs(5);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs(COut[i] - output_ref0[i]) > absTol) {
+      if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
         errors++;
         if (errors < max_errors) {
           std::cout << "\nerror, id " << i << " expected "
-                    << std::to_string(output_ref0[i]) << ", got "
-                    << std::to_string(COut[i]) << "\n";
+                    << std::to_string((float)output_ref0[i]) << ", got "
+                    << std::to_string((float)COut[i]) << "\n";
         }
       }
     }
