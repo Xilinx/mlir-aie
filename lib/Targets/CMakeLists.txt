@@ -21,11 +21,15 @@ set(_sources
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp
+  xaie_elfloader.c
 )
 
 if(AIE_ENABLE_AIRBIN)
   list(APPEND _sources AIETargetAirbin.cpp)
 endif()
+
+set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
+include_directories(${BOOTGEN_SOURCE_DIR})
 
 add_mlir_library(AIETargets
   ${_sources}
@@ -34,7 +38,6 @@ add_mlir_library(AIETargets
 
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
-  $(CMAKE_CURRENT_SRC_DIR)/../../../include/aie/Targets
 
   LINK_COMPONENTS
   BinaryFormat

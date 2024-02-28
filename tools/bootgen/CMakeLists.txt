@@ -5,7 +5,7 @@
 #
 # (c) Copyright 2024 Xilinx Inc.
 
-set(BOOTGEN_SOURCE ${PROJECT_SOURCE_DIR}/third_party/bootgen)
+set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 set(libsources
     cdo-alloc.c
     cdo-binary.c
@@ -81,7 +81,7 @@ set(libsources
     reginit.yy.cpp
     verifyimage-versal.cpp
     verifyimage-zynqmp.cpp)
-list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
+list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE_DIR}/)
 
 if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   # Windows fails CI because OpenSSL is not installed
@@ -90,13 +90,13 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   # malloc.h is deprecated and should not be used
   # https://stackoverflow.com/a/56463133
   # If you want to use malloc, then include stdlib.h
-  file(READ ${BOOTGEN_SOURCE}/cdo-npi.c FILE_CONTENTS)
+  file(READ ${BOOTGEN_SOURCE_DIR}/cdo-npi.c FILE_CONTENTS)
   string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-  file(WRITE ${BOOTGEN_SOURCE}/cdo-npi.c "${FILE_CONTENTS}")
+  file(WRITE ${BOOTGEN_SOURCE_DIR}/cdo-npi.c "${FILE_CONTENTS}")
 
-  file(READ ${BOOTGEN_SOURCE}/cdo-alloc.c FILE_CONTENTS)
+  file(READ ${BOOTGEN_SOURCE_DIR}/cdo-alloc.c FILE_CONTENTS)
   string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-  file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
+  file(WRITE ${BOOTGEN_SOURCE_DIR}/cdo-alloc.c "${FILE_CONTENTS}")
 
   find_package(OpenSSL REQUIRED)
   if (OPENSSL_FOUND)
@@ -133,21 +133,21 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
     set(bootgen_warning_ignores)
   endif()
   target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
-  target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+  target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE_DIR} ${OPENSSL_INCLUDE_DIR})
   install(
     TARGETS Bootgen
     DESTINATION lib
     EXPORT Bootgen)
 
-  add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
-  target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+  add_executable(bootgen ${BOOTGEN_SOURCE_DIR}/main.cpp)
+  target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE_DIR} ${OPENSSL_INCLUDE_DIR})
   target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
   target_link_libraries(bootgen Bootgen Bootgen OpenSSL::SSL)
   install(TARGETS bootgen)
 
-  add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
+  add_library(cdo_driver STATIC ${BOOTGEN_SOURCE_DIR}/cdo-driver/cdo_driver.c)
   target_include_directories(
-    cdo_driver PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
+    cdo_driver PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE_DIR}/cdo-driver>
                       $<INSTALL_INTERFACE:include/cdo_driver>)
   target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
   install(

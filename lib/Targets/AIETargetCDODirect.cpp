@@ -46,13 +46,16 @@ extern "C" {
 extern "C" {
 #include "xaiengine/xaie_core.h"
 #include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
+}
+
+extern "C" {
+#include "xaie_elfloader.h"
 }
 
 #define DEBUG_TYPE "aie-generate-cdo"
