@@ -8,6 +8,12 @@
 #ifndef AIE_C_TRANSLATION_H
 #define AIE_C_TRANSLATION_H
 
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
+extern "C" {
+#include "cdo_driver.h"
+}
+#endif
+
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 
@@ -24,9 +30,11 @@ MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, int col,
                                                    int row);
 MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
                                              int nModules);
+#ifdef AIE_ENABLE_GENERATE_CDO_DIRECT
 MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
-    MlirOperation moduleOp, MlirStringRef workDirPath, bool bigEndian,
+    MlirOperation moduleOp, MlirStringRef workDirPath, byte_ordering endianness,
     bool emitUnified, bool axiDebug, bool aieSim, size_t partitionStartCol);
+#endif
 
 #ifdef __cplusplus
 }

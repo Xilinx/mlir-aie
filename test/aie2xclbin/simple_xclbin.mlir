@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie2xclbin -v --host-target=aarch64-linux-gnu --peano=%PEANO_INSTALL_DIR %s --xclbin-name=test.xclbin | FileCheck %s --check-prefix=PEANO
-// REQUIRES: peano
+// REQUIRES: cdo_direct_generation && peano
 
 // Note that llc determines the architecture from the llvm IR.
 // PEANO-NOT: xchesscc_wrapper

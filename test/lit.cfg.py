@@ -228,3 +228,5 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
+if config.has_cdo_direct_generation:
+    config.available_features.add("cdo_direct_generation")

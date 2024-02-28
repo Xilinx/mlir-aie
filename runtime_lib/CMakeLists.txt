@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(ExternalProject)
 
 project("runtime-libs")
+#add_custom_target(runtime-libs ALL)
 
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 if(NOT x86_64_TOOLCHAIN_FILE)
@@ -127,21 +128,148 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   endif()
 endforeach()
 
-include("xaiengine/aiert.cmake")
-set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
-
-add_aiert_headers(xaienginecdo_static
-        ${XAIE_SOURCE_DIR}
-        ${AIE_BINARY_DIR}/include
-        ${CMAKE_INSTALL_PREFIX}/include/xaiengine
+set(BOOTGEN_SOURCE ../third_party/bootgen)
+set(libsources
+    cdo-alloc.c
+    cdo-binary.c
+    cdo-command.c
+    cdo-load.c
+    cdo-metadata.c
+    cdo-npi.c
+    cdo-overlay.c
+    cdo-raw.c
+    cdo-source.c
+    cJSON.c
+    authentication.cpp
+    authentication-versal.cpp
+    authentication-zynq.cpp
+    authentication-zynqmp.cpp
+    authkeys.cpp
+    authkeys-versal.cpp
+    bifoptions.cpp
+    bif.tab.cpp
+    bif.yy.cpp
+    binary.cpp
+    binary-versal.cpp
+    binfile.cpp
+    bitutils.cpp
+    bitutils-versal.cpp
+    bootheader.cpp
+    bootheader-versal.cpp
+    bootheader-zynq.cpp
+    bootheader-zynqmp.cpp
+    bootimage.cpp
+    bootimage-versal.cpp
+    bootimage-zynq.cpp
+    bootimage-zynqmp.cpp
+    checksum.cpp
+    checksum-versal.cpp
+    cmdoptions.tab.cpp
+    cmdoptions.yy.cpp
+    elftools.cpp
+    encryption.cpp
+    encryption-versal.cpp
+    encryption-versalnet.cpp
+    encryption-zynq.cpp
+    encryption-zynqmp.cpp
+    encryptutils.cpp
+    hash.cpp
+    imageheadertable.cpp
+    imageheadertable-versal.cpp
+    imageheadertable-zynq.cpp
+    imageheadertable-zynqmp.cpp
+    kdf.cpp
+    Keccak-compact.cpp
+    Keccak-compact-versal.cpp
+    logger.cpp
+    # main.cpp
+    mcsfile.cpp
+    options.cpp
+    outputfile.cpp
+    outputfile-versal.cpp
+    parsing.cpp
+    partition.cpp
+    partitionheadertable.cpp
+    partitionheadertable-versal.cpp
+    partitionheadertable-zynq.cpp
+    partitionheadertable-zynqmp.cpp
+    partition-versal.cpp
+    postprocess.cpp
+    readimage.cpp
+    readimage-versal.cpp
+    readimage-zynq.cpp
+    readimage-zynqmp.cpp
+    reginit.cpp
+    reginit.tab.cpp
+    reginit.yy.cpp
+    verifyimage-versal.cpp
+    verifyimage-zynqmp.cpp
 )
-add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
+list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
 
-target_link_libraries(xaienginecdo_static PRIVATE cdo_driver)
-target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
+if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows|Darwin")
+# Windows fails CI because OpenSSL is not installed
+# Macos fails because no malloc.h???
+add_library(Bootgen STATIC ${libsources})
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set(bootgen_warning_ignores
+    -Wno-reorder
+    -Wno-unused-private-field
+    -Wno-deprecated-register
+    -Wno-overloaded-virtual
+    -Wno-deprecated-declarations
+    -Wno-pointer-bool-conversion
+    -Wno-unused-const-variable
+    -Wno-tautological-overlap-compare
+    -Wno-dynamic-class-memaccess
+    -Wno-misleading-indentation
+    -Wno-suggest-override
+    -Wno-non-virtual-dtor
+    -Wno-deprecated-copy
+    -Wno-cast-qual
+    -Wno-date-time
+    -Wno-implicit-fallthrough
+    -Wno-incompatible-pointer-types-discards-qualifiers
+    -Wno-sign-compare
+    -Wno-covered-switch-default
+  )
+else()
+  set(bootgen_warning_ignores)
+endif()
+target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
+target_include_directories(Bootgen PUBLIC ${BOOTGEN_SOURCE})
 
-# just to make cmake happy since AIETargets will need to re-export
-# make sure not abs path...
-# https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
-install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
-install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
+add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
+target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE})
+target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
+target_link_libraries(bootgen Bootgen Bootgen ssl crypto)
+
+install(TARGETS bootgen Bootgen)
+endif() #NOT MSVC
+
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  include("xaiengine/aiert.cmake")
+  set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
+
+  add_aiert_headers(xaienginecdo_static
+          ${XAIE_SOURCE_DIR}
+          ${AIE_BINARY_DIR}/include
+          ${CMAKE_INSTALL_PREFIX}/include/xaiengine
+  )
+  add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
+
+  target_link_libraries(xaienginecdo_static PUBLIC cdo_driver)
+  target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
+
+  # just to make cmake happy since AIETargets will need to re-export
+  # make sure not abs path...
+  # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
+  install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
+  install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
+  install(IMPORTED_RUNTIME_ARTIFACTS
+    cdo_driver
+    COMPONENT cdo_driver
+    LIBRARY
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+  )
+endif()

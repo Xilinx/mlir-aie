@@ -322,7 +322,10 @@ else ()
 
 endif ()
 
-target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
+if(AIE_ENABLE_GENERATE_CDO_DIRECT)
+  target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
+  target_compile_definitions(AIEPythonModules.extension._aie.dso PRIVATE AIE_ENABLE_GENERATE_CDO_DIRECT)
+endif()
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
 set(_runtime_deps
@@ -334,6 +337,9 @@ set(_runtime_deps
 
 if (TARGET mlir_rocm_runtime)
   list(APPEND _runtime_deps mlir_rocm_runtime)
+endif()
+if (TARGET cdo_driver)
+  list(APPEND _runtime_deps cdo_driver)
 endif()
 
 set(HAS_MLIR_RUNTIME_LIBRARIES ON PARENT_SCOPE)

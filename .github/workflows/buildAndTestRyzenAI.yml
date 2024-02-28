@@ -72,6 +72,7 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DXRT_ROOT=/opt/xilinx/xrt \
+            -DAIE_ENABLE_GENERATE_CDO_DIRECT=ON \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF

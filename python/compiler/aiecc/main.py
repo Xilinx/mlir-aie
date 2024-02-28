@@ -544,7 +544,12 @@ class FlowRunner:
             # fmt: on
 
     async def process_cdo(self):
-        from aie.dialects.aie import generate_cdo
+        try:
+            from aie.dialects.aie import generate_cdo
+        except ImportError:
+            raise Exception(
+                "cdo generation not supported, recompile with AIE_ENABLE_GENERATE_CDO_DIRECT"
+            )
 
         with Context(), Location.unknown():
             for elf in glob.glob("*.elf"):
