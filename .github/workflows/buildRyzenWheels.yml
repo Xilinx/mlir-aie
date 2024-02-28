@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.8'
 
       - name: Build mlir-aie distro
         run: |
@@ -81,7 +81,7 @@ jobs:
           
           auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
           WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
-          mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
+          mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp38-cp38/py3-none/"`"
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v3
