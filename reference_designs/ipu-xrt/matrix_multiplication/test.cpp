@@ -40,7 +40,7 @@ constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = true;
+constexpr bool ENABLE_TRACING = false;
 constexpr int TRACE_SIZE = 8192;
 
 constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
