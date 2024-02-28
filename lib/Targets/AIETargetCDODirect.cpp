@@ -603,8 +603,6 @@ struct AIEControl {
         auto mstrPortNum = 0;
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
                                 tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
-        TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_AieToPlIntfEnable, &devInst,
-                                tileLoc, /*PortNum*/ 0, PLIF_WIDTH_32);
       }
 
       Block &b = switchboxOp.getConnections().front();
