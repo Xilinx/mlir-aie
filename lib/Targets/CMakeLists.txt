@@ -55,11 +55,11 @@ add_mlir_library(AIETargets
   ADF
 )
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
-  target_link_libraries(AIETargets PUBLIC xaienginecdo_static cdo_driver)
-  add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
-endif()
+target_link_libraries(AIETargets PUBLIC xaienginecdo_static cdo_driver)
+add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
 target_include_directories(AIETargets PUBLIC ${VITIS_AIETOOLS_DIR}/include)
+set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
+target_include_directories(AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
 if(AIE_ENABLE_AIRBIN)
   target_link_libraries(AIETargets PRIVATE elf)
