@@ -926,8 +926,6 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      bool(getOperation()->getAttrOfType<mlir::StringAttr>(
-                mlir::SymbolTable::getSymbolAttrName()));
       if (auto name = getOperation()->getAttrOfType<mlir::StringAttr>(
               mlir::SymbolTable::getSymbolAttrName()))
         setNameFn(getResult(), name.str());
