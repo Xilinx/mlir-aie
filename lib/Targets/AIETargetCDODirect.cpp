@@ -602,23 +602,7 @@ struct AIEControl {
         auto slvPortNum = 0;
         auto mstrPortNum = 0;
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
-        // configure DMA_<S2MM/MM2S>_<chNum>_Ctrl register
-        assert(targetOp.getDevice() == AIEDevice::ipu &&
-               "Only IPU currently supported");
-        if (col != 0)
-          for (int chNum = 0; chNum <= 1; ++chNum) {
-            XAie_DmaChannelDesc dmaChannelDescInst;
-            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelDescInit,
-                                    &devInst, &dmaChannelDescInst, tileLoc);
-            auto controllerId = 0;
-            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaChannelSetControllerId,
-                                    &dmaChannelDescInst, controllerId);
-            TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_DmaWriteChannel, &devInst,
-                                    &dmaChannelDescInst, tileLoc, chNum,
-                                    DMA_S2MM);
-          }
-
+                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum)
         TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_AieToPlIntfEnable, &devInst,
                                 tileLoc, /*PortNum*/ 0, PLIF_WIDTH_32);
       }
