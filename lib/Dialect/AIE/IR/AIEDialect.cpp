@@ -1434,8 +1434,7 @@ LogicalResult MemTileDMAOp::verify() {
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
       // check if number of input and output channels is more than available
       // hardware
-      DMAChannel dmaChan = {startOp.getChannelDir(),
-                            startOp.getChannelIndex()};
+      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
       if (dmaChan.direction == DMAChannelDir::S2MM)
         inputChannels.push_back(dmaChan);
       else
