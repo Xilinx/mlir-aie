@@ -152,7 +152,7 @@ add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-target_link_libraries(bootgen bootgen-lib OpenSSL::SSL)
+target_link_libraries(bootgen bootgen-lib OpenSSL::SSL OpenSSL::applink)
 install(TARGETS bootgen)
 
 add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
