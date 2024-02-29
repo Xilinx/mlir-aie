@@ -81,7 +81,7 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  //return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  // return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
   std::default_random_engine gen;
   std::uniform_real_distribution<float> distribution(0.0, 1.0);
   return std::bfloat16_t(distribution(gen));
