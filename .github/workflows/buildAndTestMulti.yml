@@ -147,8 +147,6 @@ jobs:
             -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
           
           ninja
-          if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
-            ninja check-aie
-            ninja check-tutorials
-            ninja check-reference-designs
-          fi
+          ninja check-aie
+          ninja check-tutorials
+          ninja check-reference-designs
