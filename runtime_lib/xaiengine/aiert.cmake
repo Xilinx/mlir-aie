@@ -76,6 +76,10 @@ function(add_aiert_library TARGET XAIE_SOURCE)
     ${XAIE_SOURCE}/util)
 
   add_library(${TARGET} ${LIBTYPE} ${libsources})
-  target_compile_options(${TARGET} PRIVATE -fPIC -Wno-gnu-designator)
+  set_property(TARGET ${TARGET} PROPERTY C_STANDARD 99)
+
+  if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(${TARGET} PRIVATE -fPIC -Wno-gnu-designator)
+  endif()
 
 endfunction()
