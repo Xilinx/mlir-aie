@@ -17,9 +17,21 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
-namespace xilinx::aievec {
+namespace xilinx {
+
+namespace aievec {
+
 class AIEVecDialect;
-} // namespace xilinx::aievec
+
+} // namespace aievec
+
+namespace xllvm {
+
+class XLLVMDialect;
+
+} // namespace xllvm
+
+} // namespace xilinx
 
 namespace mlir {
 

@@ -4,8 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 add_subdirectory(ADF)
 add_subdirectory(AIE)
 add_subdirectory(AIEX)
 add_subdirectory(AIEVec)
+add_subdirectory(XLLVM)
