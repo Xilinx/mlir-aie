@@ -3,6 +3,9 @@ import json
 import argparse
 import sys
 import re
+import subprocess
+import shutil
+import os
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
@@ -14,9 +17,11 @@ NUM_EVENTS = 8  # number of events we can view per trace
 
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
 
-# DEBUG = True
 DEBUG = False
+verbose = False
 
+eventIRFile = "eventIR.txt"
+tmpTraceDirName = "tmpTrace"
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -24,6 +29,9 @@ def parse_args():
     parser.add_argument("--mlir", help="mlir source file", required=True)
     parser.add_argument(
         "--colshift", help="column shift adjustment to source mlir", required=False
+    )
+    parser.add_argument(
+        "--verbose", help="Trace commands as they are executed", required=False
     )
     # TODO tracelabels removed since we can have multiple sets of labels for each pkt_type & loc combination
     # parser.add_argument('--tracelabels',
@@ -969,35 +977,294 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
     #     print("Number of errors is "+errors)
 
 
+def create_target():
+    try:
+        with open('.target','wt') as f:
+            f.write('hw\n')
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+def print_config_json(pid_events):
+    for key, value in pid_events[0].items():
+        loc = key
+        eventArray = value
+    try:
+        with open('config.json','wt') as f:
+            f.write('{\n')
+            f.write('  "EventTraceConfigs": [\n')
+            f.write('    {\n')
+            f.write('      "datacorrelation": 0,\n')
+            f.write('      "date": "2023-09-06 12:18:08",\n')
+            f.write('      "timestamp": 0,\n')
+            f.write('      "TraceConfig": {\n')
+            f.write('        "TileTraceConfig": [\n')
+            f.write('          {\n')
+            f.write('            "column": '+str(loc[2])+',\n')
+            f.write('            "row": '+str(loc[0])+',\n')
+            f.write('            "event_trace_name": "functions",\n')
+            f.write('            "core_trace_config": {\n')
+            f.write('              "packet_type": 0,\n')
+            f.write('              "packet_id": 0,\n')
+            f.write('              "trace_mode": 0,\n')
+            f.write('              "start_event": 1,\n')
+            f.write('              "stop_event": 0,\n')
+            f.write('              "traced_events": [\n')
+            f.write('                '+str(eventArray[0])+',\n')
+            f.write('                '+str(eventArray[1])+',\n')
+            f.write('                '+str(eventArray[2])+',\n')
+            f.write('                '+str(eventArray[3])+',\n')
+            f.write('                '+str(eventArray[4])+',\n')
+            f.write('                '+str(eventArray[5])+',\n')
+            f.write('                '+str(eventArray[6])+',\n')
+            f.write('                '+str(eventArray[7])+'\n')
+            f.write('              ],\n')
+            f.write('              "group_event_config": {\n')
+            f.write('                "2": 0,\n')
+            f.write('                "15": 0,\n')
+            f.write('                "22": 0,\n')
+            f.write('                "32": 0,\n')
+            f.write('                "46": 0,\n')
+            f.write('                "47": 0,\n')
+            f.write('                "73": 0,\n')
+            f.write('                "106": 0,\n')
+            f.write('                "123": 0\n')
+            f.write('              },\n')
+            f.write('              "combo_event_config": {\n')
+            f.write('                "combo_input": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ],\n')
+            f.write('                "combo_control": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ]\n')
+            f.write('              },\n')
+            f.write('              "performance_counter_config": {\n')
+            f.write('                "counter_0": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                },\n')
+            f.write('                "counter_1": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                },\n')
+            f.write('                "counter_2": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                },\n')
+            f.write('                "counter_3": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                }\n')
+            f.write('              },\n')
+            f.write('              "PortTraceConfig": null,\n')
+            f.write('              "BroadcastTraceConfig": {\n')
+            f.write('                "broadcast_mask_south": 0,\n')
+            f.write('                "broadcast_mask_west": 0,\n')
+            f.write('                "broadcast_mask_north": 0,\n')
+            f.write('                "broadcast_mask_east": 0,\n')
+            f.write('                "internal_events_broadcast": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ]\n')
+            f.write('              }\n')
+            f.write('            },\n')
+            f.write('            "memory_trace_config": {\n')
+            f.write('              "packet_type": 1,\n')
+            f.write('              "packet_id": 0,\n')
+            f.write('              "start_event": 0,\n')
+            f.write('              "stop_event": 0,\n')
+            f.write('              "traced_events": [\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0,\n')
+            f.write('                0\n')
+            f.write('              ],\n')
+            f.write('              "group_event_config": {\n')
+            f.write('                "123": 0\n')
+            f.write('              },\n')
+            f.write('              "combo_event_config": {\n')
+            f.write('                "combo_input": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ],\n')
+            f.write('                "combo_control": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ]\n')
+            f.write('              },\n')
+            f.write('              "performance_counter_config": {\n')
+            f.write('                "counter_0": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                },\n')
+            f.write('                "counter_1": {\n')
+            f.write('                  "start_event": 0,\n')
+            f.write('                  "stop_event": 0,\n')
+            f.write('                  "reset_event": 0,\n')
+            f.write('                  "event_value": 0,\n')
+            f.write('                  "counter_value": 0\n')
+            f.write('                }\n')
+            f.write('              },\n')
+            f.write('              "BroadcastTraceConfig": {\n')
+            f.write('                "broadcast_mask_south": 0,\n')
+            f.write('                "broadcast_mask_west": 0,\n')
+            f.write('                "broadcast_mask_north": 0,\n')
+            f.write('                "broadcast_mask_east": 0,\n')
+            f.write('                "internal_events_broadcast": [\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0,\n')
+            f.write('                  0\n')
+            f.write('                ]\n')
+            f.write('              }\n')
+            f.write('            }\n')
+            f.write('          }\n')
+            f.write('        ],\n')
+            f.write('        "MemTileTraceConfig": [],\n')
+            f.write('        "InterfaceTileTraceConfig": []\n')
+            f.write('      }\n')
+            f.write('    }\n')
+            f.write('  ]\n')
+            f.write('}\n')
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+# Right now, we're just checking if trace file has 0x before it (needed for hwfrontend)
+# If not, we prepend it
+def fix_raw_trace_data(rawTraceFile, srcTraceFile):
+    with open(rawTraceFile,'rt') as inFile:
+        first_line = inFile.readline()
+        if(first_line[:2] != "0x"):
+            sed_cmd = "sed 's/^/0x/g' "+rawTraceFile+" > "+srcTraceFile
+            subprocess.call([sed_cmd], shell=True)
+        else:
+            shutil.copy(rawTraceFile, srcTraceFile)
+
+def run_hwfrontend(fileInName, fileOutName):
+    result = subprocess.run(["hwfrontend","--trace",fileInName,"--trace_config","config.json","--pkg-dir",".","--outfile",fileOutName], capture_output=True, text=True)
+    # print(result.stdout)
+    if(result.stderr):
+        print(result.stderr)
+        sys.exit(1)
+    #subprocess.run("hwfrontend --trace "+str(opts.filename)+" --trace_config config.json --pkg-dir . --outfile eventIR.txt")
+
+
+
+
 # ------------------------------------------------------------------------------
 # Script execution start - Open trace file and convert to commands
 # ------------------------------------------------------------------------------
+
+lines = list()
+pid_events = list()
+trace_events = list()
 
 opts = parse_args()
 
 # set colshift based on optional argument
 colshift = int(opts.colshift) if opts.colshift else 0
 
-lines = list()
+try:
+    os.mkdir(tmpTraceDirName)
+except FileExistsError:
+    pass
+if opts.verbose:
+    print("created temporary directory",tmpTraceDirName)
+tmpTraceDir = os.path.abspath(tmpTraceDirName)
 
-with open(opts.filename, "r") as f:
-    lines = f.read().split("\n")
-    ignore = [""]
-    lines = [l for l in lines if not l in ignore]
+mlirFile = os.path.abspath(opts.mlir)
+rawTraceFile = os.path.abspath(opts.filename)
+srcTraceFileName = "prep."+str(opts.filename)
+srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
+
+# Check source file and prepend 0x
+fix_raw_trace_data(rawTraceFile, srcTraceFile)
+
+if opts.mlir:
+    try:
+        with open(opts.mlir, "rt") as mf:
+            mlir_lines = mf.read().split("\n")
+            pid_events = parse_mlir_trace_events(mlir_lines)
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+os.chdir(tmpTraceDirName)
+
+create_target()
+
+print_config_json(pid_events)
+
+run_hwfrontend(srcTraceFile, eventIRFile)
+
+# with open(opts.filename, "r") as f:
+try:
+    with open(eventIRFile, "rt") as f:
+        lines = f.read().split("\n")
+        ignore = [""]
+        lines = [l for l in lines if not l in ignore]
+except Exception as e:
+    print(e)
+    sys.exit(1)
 
 if DEBUG:
     print("\nDEBUG: lines\n")
     print(lines)
     print("\n\n")
-
-pid_events = list()
-
-if opts.mlir:
-    with open(opts.mlir, "r") as mf:
-        mlir_lines = mf.read().split("\n")
-        pid_events = parse_mlir_trace_events(mlir_lines)
-
-trace_events = list()
 
 setup_trace_metadata(trace_events, pid_events)
 if DEBUG:
