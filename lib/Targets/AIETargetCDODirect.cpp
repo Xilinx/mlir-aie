@@ -8,7 +8,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Targets/AIETargets.h"
 extern "C" {
-#include "cdo_driver.h"
+#include "cdo-driver/cdo_driver.h"
 }
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
