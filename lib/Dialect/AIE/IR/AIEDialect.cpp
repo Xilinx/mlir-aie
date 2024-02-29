@@ -1389,8 +1389,9 @@ LogicalResult MemOp::verify() {
   if ((int)inputChannels.size() >
       getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
-  
-  if ((int)outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+
+  if ((int)outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
