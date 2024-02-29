@@ -98,10 +98,10 @@ string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
 
 if (WIN32)
-  set(OPENSSL_USE_STATIC_LIBS ON)
-  # since we link statically, this applink used in bootgen can be empty
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms)
-  file(TOUCH ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms/applink.c)
+#  set(OPENSSL_USE_STATIC_LIBS ON)
+#  # since we link statically, this applink used in bootgen can be empty
+#  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms)
+#  file(TOUCH ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms/applink.c)
 endif()
 
 find_package(OpenSSL REQUIRED)
