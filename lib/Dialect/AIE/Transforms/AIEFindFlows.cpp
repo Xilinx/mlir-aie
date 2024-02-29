@@ -233,7 +233,7 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
     LLVM_DEBUG(llvm::dbgs()
                << op << stringifyWireBundle(bundle) << " has "
                << op.getNumSourceConnections(bundle) << " Connections\n");
-    for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
+    for (int i = 0; i < (int)op.getNumSourceConnections(bundle); i++) {
       std::vector<PacketConnection> tiles =
           analysis.getConnectedTiles(op, {bundle, i});
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");

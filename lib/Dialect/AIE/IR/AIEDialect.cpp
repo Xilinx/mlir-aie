@@ -1023,7 +1023,7 @@ LogicalResult TileOp::verify() {
   return success();
 }
 
-int TileOp::getNumSourceConnections(WireBundle bundle) {
+size_t TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note dest is correct here, since direction is reversed.
@@ -1039,7 +1039,7 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
   return 0;
 }
 
-int TileOp::getNumDestConnections(WireBundle bundle) {
+size_t TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note source is correct here, since direction is reversed.
@@ -1150,14 +1150,14 @@ LogicalResult ShimMuxOp::verify() {
   return success();
 }
 
-int ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+size_t ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumSourceShimMuxConnections(tile.getCol(),
                                                     tile.getRow(), bundle);
 }
 
-int ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+size_t ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
@@ -1212,10 +1212,10 @@ LogicalResult ShimDMAOp::verify() {
     }
   }
 
-  if ((int)inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
   
-  if ((int)outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
@@ -1384,10 +1384,10 @@ LogicalResult MemOp::verify() {
                << "allocOp in MemOp region should have an id attribute";
   }
 
-  if ((int)inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
   
-  if ((int)outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
@@ -1494,10 +1494,10 @@ LogicalResult MemTileDMAOp::verify() {
     }
   }
 
-  if ((int)inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
   
-  if ((int)outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
@@ -1893,14 +1893,14 @@ LogicalResult UseLockOp::verify() {
 
 namespace xilinx::AIE {
 
-int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+size_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumSourceSwitchboxConnections(tile.getCol(),
                                                       tile.getRow(), bundle);
 }
 
-int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestSwitchboxConnections(tile.getCol(),

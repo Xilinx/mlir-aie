@@ -78,10 +78,10 @@ def Interconnect : OpInterface<"Interconnect"> {
       "int", "rowIndex", (ins )
     >,
     InterfaceMethod<[{}],
-      "int", "getNumSourceConnections", (ins "WireBundle":$bundle)
+      "size_t", "getNumSourceConnections", (ins "WireBundle":$bundle)
     >,
     InterfaceMethod<[{}],
-      "int", "getNumDestConnections", (ins "WireBundle":$bundle)
+      "size_t", "getNumDestConnections", (ins "WireBundle":$bundle)
     >
   ];
 }
