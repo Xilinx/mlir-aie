@@ -87,13 +87,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: ON
+# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -109,13 +110,14 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -330,9 +332,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -342,9 +344,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -393,41 +395,41 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: ON
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: ON
 
           - OS: windows-2019
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: ON
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: OFF
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: OFF
 
           - OS: windows-2019
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v3
