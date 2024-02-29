@@ -33,6 +33,10 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
+if ! hash python3.10; then
+   echo "This script requires python3.10"
+   return 1
+fi
 if ! hash virtualenv; then
   echo "virtualenv is not installed"
   return 1
