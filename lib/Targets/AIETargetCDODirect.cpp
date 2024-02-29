@@ -400,7 +400,7 @@ struct AIEControl {
                            .str();
           if (failed(addAieElfToCDO(
                   col, row,
-                  (llvm::Twine(workDirPath) + std::to_string(ps) + fileName)
+                  (llvm::Twine(workDirPath) + std::string(1, ps) + fileName)
                       .str(),
                   aieSim)))
             return failure();
@@ -748,7 +748,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
                                             DeviceOp &targetOp, bool aieSim) {
   if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::to_string(ps) +
+          (llvm::Twine(workDirPath) + std::string(1, ps) +
            "aie_cdo_error_handling.bin")
               .str(),
           std::bind(&AIEControl::addErrorHandlingToCDO, ctl))))
@@ -756,7 +756,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
 
   if (!targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_elfs.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
             return ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim);
@@ -764,14 +764,14 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
     return failure();
 
   if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_init.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
   if (!targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_enable.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
     return failure();
@@ -782,7 +782,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
 LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim) {
   return generateCDOBinary(
-      (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo.bin").str(),
+      (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim] {
         if (failed(ctl.addErrorHandlingToCDO()))
           return failure();
