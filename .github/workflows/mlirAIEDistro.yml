@@ -180,12 +180,10 @@ jobs:
       shell: bash
       run: |
         
-        curl -s https://codeload.github.com/Xilinx/mlir-aie/zip/${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} -o aie.zip
-        unzip -q aie.zip
-        rm -rf aie.zip
-        AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
-        mv mlir-aie-$AIE_PROJECT_COMMIT mlir-aie
-        ls -lh mlir-aie
+        git clone --recursive https://github.com/${{ github.repository }}.git
+        pushd mlir-aie
+        git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
+        popd
 
     # build
 

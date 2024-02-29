@@ -127,7 +127,7 @@ runs:
           rm -rf "$WORKSPACE_ROOT"
         fi 
         
-        git clone -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
+        git clone --recursive -b ${{ github.head_ref || github.ref_name }} https://github.com/${{ github.repository }}.git "$WORKSPACE_ROOT"
         ls "$WORKSPACE_ROOT"
         
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2019" ]; then
