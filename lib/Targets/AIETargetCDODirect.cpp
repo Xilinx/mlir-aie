@@ -334,28 +334,26 @@ struct AIEControl {
   AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
              const AIETargetModel &tm) {
     configPtr = XAie_Config{
-        .AieGen = XAIE_DEV_GEN_AIEML,
-        .BaseAddr = XAIE_BASE_ADDR,
-        .ColShift = XAIE_COL_SHIFT,
-        .RowShift = XAIE_ROW_SHIFT,
-        .NumRows = static_cast<uint8_t>(tm.rows()),
-        .NumCols = static_cast<uint8_t>(tm.columns()),
-        .ShimRowNum = XAIE_SHIM_ROW,
-        .MemTileRowStart = XAIE_MEM_TILE_ROW_START,
-        .MemTileNumRows = static_cast<uint8_t>(tm.getNumMemTileRows()),
-        .AieTileRowStart = static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START +
-                                                tm.getNumMemTileRows()),
-        .AieTileNumRows =
-            static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
-        .PartProp = {},
-    };
+        /*AieGen*/ XAIE_DEV_GEN_AIEML,
+        /*BaseAddr*/ XAIE_BASE_ADDR,
+        /*ColShift*/ XAIE_COL_SHIFT,
+        /*RowShift*/ XAIE_ROW_SHIFT,
+        /*NumRows*/ static_cast<uint8_t>(tm.rows()),
+        /*NumCols*/ static_cast<uint8_t>(tm.columns()),
+        /*ShimRowNum*/ XAIE_SHIM_ROW,
+        /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
+        /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
+        /*AieTileRowStart*/
+        static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
+        /*AieTileNumRows*/
+        static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
+        /*PartProp*/ {},
+        /*Backend*/ XAIE_IO_BACKEND_CDO};
+
     // Quoting: The instance of a device must be always declared using this
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
-
-    // Setting the backend to CDO
-    configPtr.Backend = XAIE_IO_BACKEND_CDO;
 
     devInst = _devInst;
     // TODO(max): what is the "partition"?
@@ -397,8 +395,9 @@ struct AIEControl {
           if (auto fileAttr = coreOp.getElfFile())
             fileName = fileAttr->str();
           else
-            fileName = std::string("core_") + std::to_string(col) + "_" +
-                       std::to_string(row) + ".elf";
+            fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
+                        std::to_string(row) + ".elf")
+                           .str();
           if (failed(addAieElfToCDO(col, row, workDirPath.str() + ps + fileName,
                                     aieSim)))
             return failure();
@@ -746,26 +745,31 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
                                             DeviceOp &targetOp, bool aieSim) {
   if (failed(generateCDOBinary(
-          workDirPath.str() + ps + "aie_cdo_error_handling.bin",
+          (llvm::Twine(workDirPath) + std::to_string(ps) +
+           "aie_cdo_error_handling.bin")
+              .str(),
           std::bind(&AIEControl::addErrorHandlingToCDO, ctl))))
     return failure();
 
   if (!targetOp.getOps<CoreOp>().empty() &&
-      failed(generateCDOBinary(workDirPath.str() + ps + "aie_cdo_elfs.bin",
-                               [&ctl, &targetOp, &workDirPath, &aieSim] {
-                                 return ctl.addAieElfsToCDO(
-                                     targetOp, workDirPath, aieSim);
-                               })))
+      failed(generateCDOBinary(
+          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_elfs.bin")
+              .str(),
+          [&ctl, &targetOp, &workDirPath, &aieSim] {
+            return ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim);
+          })))
     return failure();
 
   if (failed(generateCDOBinary(
-          workDirPath.str() + ps + "aie_cdo_init.bin",
+          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_init.bin")
+              .str(),
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
   if (!targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
-          workDirPath.str() + ps + "aie_cdo_enable.bin",
+          (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo_enable.bin")
+              .str(),
           [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
     return failure();
 
