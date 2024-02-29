@@ -642,7 +642,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     std::string optionsString = [&]() {
       std::ostringstream optionsStringStream;
       optionsStringStream << "target-backend=";
-      optionsStringStream << (TK.UseChess ? "llvmir" : "cpp");
+      optionsStringStream << (TK.UseChess ? "cpp" : "llvmir");
       optionsStringStream << ' ' << "aie-target=aieml";
       return optionsStringStream.str();
     }();
