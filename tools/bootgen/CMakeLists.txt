@@ -132,6 +132,8 @@ else()
   set(bootgen_warning_ignores)
 endif()
 target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
+# for windows
+target_compile_definitions(Bootgen PRIVATE -DYY_NO_UNISTD_H)
 target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
 install(
   TARGETS Bootgen
@@ -140,7 +142,8 @@ install(
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
-target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
+# for windows
+target_compile_definitions(bootgen PRIVATE -DYY_NO_UNISTD_H)
 target_link_libraries(bootgen Bootgen Bootgen OpenSSL::SSL)
 install(TARGETS bootgen)
 
