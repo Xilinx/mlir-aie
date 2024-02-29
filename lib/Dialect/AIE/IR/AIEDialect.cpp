@@ -1386,7 +1386,8 @@ LogicalResult MemOp::verify() {
                << "allocOp in MemOp region should have an id attribute";
   }
 
-  if ((int)inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if ((int)inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
   
   if ((int)outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
