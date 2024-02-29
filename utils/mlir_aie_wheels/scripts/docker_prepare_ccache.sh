@@ -6,7 +6,7 @@ if [[ -f "/etc/centos-release" ]]; then
   yum install -y epel-release
   # sometimes the epel server is down. retry 5 times
   for i in $(seq 1 5); do
-    yum install -y zlib-devel curl-devel expat-devel libpng-devel ccache wget ninja-build git && s=0 && break || s=$? && sleep 15
+    yum install -y zlib-devel curl-devel expat-devel libpng-devel ccache wget ninja-build git openssl openssl-devel && s=0 && break || s=$? && sleep 15
   done
 
   [ $s -eq 0 ] || exit $s

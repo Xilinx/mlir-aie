@@ -54,7 +54,7 @@ jobs:
         run: |
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/main | jq -r '.sha[:8]')
+            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.head_ref || github.ref_name }} | jq -r '.sha[:8]')
           else
             AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
           fi
@@ -87,17 +87,20 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: ON
+# disabled because openssl dep isn't being compiled from source
+# (and hence system openssl can't be linked against during cross-compile)
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -107,17 +110,20 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: OFF
-
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: OFF
+# disabled because openssl dep isn't being compiled from source
+# (and hence system openssl can't be linked against during cross-compile)
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: OFF
 
     steps:
 
@@ -180,12 +186,11 @@ jobs:
       shell: bash
       run: |
         
-        curl -s https://codeload.github.com/Xilinx/mlir-aie/zip/${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} -o aie.zip
-        unzip -q aie.zip
-        rm -rf aie.zip
-        AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
-        mv mlir-aie-$AIE_PROJECT_COMMIT mlir-aie
-        ls -lh mlir-aie
+        git clone --recursive https://github.com/${{ github.repository }}.git
+        pushd mlir-aie
+        git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
+        git submodule update
+        popd
 
     # build
 
@@ -211,6 +216,10 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        # https://askubuntu.com/a/729214
+        pushd /usr/include/openssl
+        sudo ln -s /usr/include/x86_64-linux-gnu/openssl/opensslconf.h opensslconf.h
+        popd
         
         export PIP_NO_BUILD_ISOLATION=false
         
@@ -323,9 +332,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -335,9 +344,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -386,41 +395,41 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: ON
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: ON
 
           - OS: windows-2019
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: ON
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: ON
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: ON
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-20.04
-            ARCH: aarch64
-            ENABLE_RTTI: OFF
+#          - OS: ubuntu-20.04
+#            ARCH: aarch64
+#            ENABLE_RTTI: OFF
 
           - OS: windows-2019
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
-
-          - OS: macos-11
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+#          - OS: macos-11
+#            ARCH: x86_64
+#            ENABLE_RTTI: OFF
+#
+#          - OS: macos-11
+#            ARCH: arm64
+#            ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v3

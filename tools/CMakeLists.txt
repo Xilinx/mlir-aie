@@ -8,6 +8,8 @@
 add_subdirectory(aie-opt)
 if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_subdirectory(aie-reset)
+endif()
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
   add_subdirectory(bootgen)
 endif()
 add_subdirectory(aie-translate)
