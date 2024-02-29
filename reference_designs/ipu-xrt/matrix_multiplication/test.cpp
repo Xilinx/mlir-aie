@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
@@ -80,7 +81,10 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  //return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  return std::bfloat16_t(distribution(gen));
 }
 
 template <typename Tin, typename Tout>
@@ -250,8 +254,7 @@ int main(int argc, const char *argv[]) {
       output_ref0.push_back(0);
     matmul(AVec, BVec, output_ref0);
 
-    // const C_DATATYPE absTol = std::abs(0.1);
-    const C_DATATYPE absTol = std::abs(5);
+    const C_DATATYPE absTol = std::abs(0.1);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
       if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
         errors++;

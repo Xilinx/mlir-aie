@@ -159,6 +159,8 @@ void matmul_vectorized_unroll(const T_in *__restrict pA,
           pC + ((z + 1) * colB + 0) * MMUL::size_C + MMUL::size_C;
 
       for (unsigned j = 0; j < colB; j += 2)
+        // chess_modulo_scheduling_budget_ratio(19000)
+        // chess_peel_pipelined_loop(1)
         chess_prepare_for_pipelining chess_loop_range(8, ) {
           const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
