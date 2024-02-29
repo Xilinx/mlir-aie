@@ -54,7 +54,7 @@ jobs:
         run: |
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/main | jq -r '.sha[:8]')
+            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.head_ref || github.ref_name }} | jq -r '.sha[:8]')
           else
             AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
           fi
