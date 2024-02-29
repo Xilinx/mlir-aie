@@ -183,6 +183,7 @@ jobs:
         git clone --recursive https://github.com/${{ github.repository }}.git
         pushd mlir-aie
         git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
+        git submodule update
         popd
 
     # build
