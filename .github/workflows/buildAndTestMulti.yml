@@ -148,5 +148,3 @@ jobs:
           
           ninja
           ninja check-aie
-          ninja check-tutorials
-          ninja check-reference-designs

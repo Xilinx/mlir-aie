@@ -210,6 +210,10 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        # https://askubuntu.com/a/729214
+        pushd /usr/include/openssl
+        sudo ln -s /usr/include/x86_64-linux-gnu/openssl/opensslconf.h opensslconf.h
+        popd
         
         export PIP_NO_BUILD_ISOLATION=false
         
