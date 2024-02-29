@@ -83,9 +83,6 @@ set(libsources
   verifyimage-zynqmp.cpp)
 list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
 
-# Windows fails CI because OpenSSL is not installed
-
-# Macos fails because no malloc.h
 # malloc.h is deprecated and should not be used
 # https://stackoverflow.com/a/56463133
 # If you want to use malloc, then include stdlib.h
@@ -97,12 +94,6 @@ file(READ ${BOOTGEN_SOURCE}/cdo-alloc.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
 
-if (WIN32)
-#  set(OPENSSL_USE_STATIC_LIBS ON)
-#  # since we link statically, this applink used in bootgen can be empty
-#  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms)
-#  file(TOUCH ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms/applink.c)
-endif()
 
 find_package(OpenSSL REQUIRED)
 if (OPENSSL_FOUND)
@@ -111,6 +102,11 @@ if (OPENSSL_FOUND)
 else()
   message (FATAL_ERROR "OpenSSL Not found.")
 endif()
+
+# since we explicitly link OpenSSL::applink
+file(READ ${BOOTGEN_SOURCE}/main.cpp FILE_CONTENTS)
+string(REPLACE "#include \"openssl/ms/applink.c\"" "" FILE_CONTENTS "${FILE_CONTENTS}")
+file(WRITE ${BOOTGEN_SOURCE}/main.cpp "${FILE_CONTENTS}")
 
 add_library(bootgen-lib STATIC ${libsources})
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -152,7 +148,8 @@ add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-target_link_libraries(bootgen bootgen-lib OpenSSL::SSL OpenSSL::applink)
+target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
+target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
 install(TARGETS bootgen)
 
 add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
