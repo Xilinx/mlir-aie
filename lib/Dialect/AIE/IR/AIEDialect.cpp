@@ -1212,10 +1212,12 @@ LogicalResult ShimDMAOp::verify() {
     }
   }
 
-  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if ((int)inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
-  
-  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+
+  if ((int)outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
@@ -1384,10 +1386,12 @@ LogicalResult MemOp::verify() {
                << "allocOp in MemOp region should have an id attribute";
   }
 
-  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if ((int)inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
-  
-  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+
+  if ((int)outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
@@ -1430,8 +1434,7 @@ LogicalResult MemTileDMAOp::verify() {
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
       // check if number of input and output channels is more than available
       // hardware
-      DMAChannel dmaChan = {startOp.getChannelDir(),
-                            startOp.getChannelIndex()};
+      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
       if (dmaChan.direction == DMAChannelDir::S2MM)
         inputChannels.push_back(dmaChan);
       else
@@ -1494,10 +1497,12 @@ LogicalResult MemTileDMAOp::verify() {
     }
   }
 
-  if (inputChannels.size() > getTileOp().getNumSourceConnections(WireBundle::DMA))
+  if ((int)inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
     return emitOpError("uses more input channels than available on this tile");
-  
-  if (outputChannels.size() > getTileOp().getNumDestConnections(WireBundle::DMA))
+
+  if ((int)outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
     return emitOpError("uses more output channels than available on this tile");
 
   return success();
