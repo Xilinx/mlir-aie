@@ -177,7 +177,7 @@ cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
 
 find_library(ELF_LIB elf)
 cmake_dependent_option(AIE_ENABLE_AIRBIN
-  "Enables emitting AIRBIN ELF binaries." ON "ELF_LIB" OFF)
+  "Enables emitting AIRBIN ELF binaries." OFF "ELF_LIB" OFF)
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)

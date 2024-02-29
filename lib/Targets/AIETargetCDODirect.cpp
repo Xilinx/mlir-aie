@@ -398,8 +398,11 @@ struct AIEControl {
             fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
                         std::to_string(row) + ".elf")
                            .str();
-          if (failed(addAieElfToCDO(col, row, workDirPath.str() + ps + fileName,
-                                    aieSim)))
+          if (failed(addAieElfToCDO(
+                  col, row,
+                  (llvm::Twine(workDirPath) + std::to_string(ps) + fileName)
+                      .str(),
+                  aieSim)))
             return failure();
         }
       }
@@ -779,7 +782,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
 LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim) {
   return generateCDOBinary(
-      workDirPath.str() + ps + "aie_cdo.bin",
+      (llvm::Twine(workDirPath) + std::to_string(ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim] {
         if (failed(ctl.addErrorHandlingToCDO()))
           return failure();
