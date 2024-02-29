@@ -46,6 +46,10 @@ function(add_aiert_library TARGET XAIE_SOURCE)
 
   file(GLOB libsources ${XAIE_SOURCE}/*/*.c ${XAIE_SOURCE}/*/*/*.c)
 
+  if(WIN32)
+    list(REMOVE_ITEM libsources ${XAIE_SOURCE}/io_backend/ext/xaie_amdair.c)
+  endif()
+
   include_directories(
     ${XAIE_SOURCE}
     ${XAIE_SOURCE}/common
