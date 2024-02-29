@@ -48,6 +48,30 @@ using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 
+namespace {
+
+// Apply the pass manager specific options of the XCLBinGenConfig to the pass
+// manager. These control when (if ever) and what IR gets printed between
+// passes, and whether the pass manager uses multi-theading.
+void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
+
+  pm.getContext()->disableMultithreading(TK.DisableThreading);
+
+  bool printBefore = TK.PrintIRBeforeAll;
+  auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
+    return printBefore;
+  };
+
+  bool printAfter = TK.PrintIRAfterAll;
+  auto shouldPrintAfterPass = [printAfter](Pass *, Operation *) {
+    return printAfter;
+  };
+
+  pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass,
+                      TK.PrintIRModuleScope);
+}
+} // namespace
+
 void xilinx::findVitis(XCLBinGenConfig &TK) {
   const char *env_vitis = ::getenv("VITIS");
   if (env_vitis == nullptr) {
@@ -298,6 +322,8 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   // This corresponds to `process_host_cgen`, which is listed as host
   // compilation in aiecc.py... not sure we need this.
   PassManager passManager(context, ModuleOp::getOperationName());
+  applyConfigToPassManager(TK, passManager);
+
   passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
   passManager.addNestedPass<AIE::DeviceOp>(
       AIEX::createAIEBroadcastPacketPass());
@@ -555,6 +581,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                                            XCLBinGenConfig &TK,
                                            const std::string &outputFile) {
   PassManager pm(context, moduleOp.getOperationName());
+  applyConfigToPassManager(TK, pm);
+
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(AIE::createAIECoreToStandardPass());
@@ -705,6 +733,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputIPU,
                                  StringRef OutputXCLBin) {
   PassManager pm(ctx, moduleOp.getOperationName());
+  applyConfigToPassManager(TK, pm);
+
   addAIELoweringPasses(pm);
 
   if (TK.Verbose) {
@@ -730,6 +760,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   // generateIPUInstructions
   {
     PassManager pm(ctx, moduleOp.getOperationName());
+    applyConfigToPassManager(TK, pm);
+
     pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToIpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
