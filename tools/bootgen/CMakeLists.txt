@@ -97,6 +97,13 @@ file(READ ${BOOTGEN_SOURCE}/cdo-alloc.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
 
+if (WIN32)
+  set(OPENSSL_USE_STATIC_LIBS ON)
+  # since we link statically, this applink used in bootgen can be empty
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms)
+  file(TOUCH ${CMAKE_CURRENT_BINARY_DIR}/include/openssl/ms/applink.c)
+endif()
+
 find_package(OpenSSL REQUIRED)
 if (OPENSSL_FOUND)
   message (STATUS "OpenSSL found")
@@ -105,7 +112,7 @@ else()
   message (FATAL_ERROR "OpenSSL Not found.")
 endif()
 
-add_library(Bootgen STATIC ${libsources})
+add_library(bootgen-lib STATIC ${libsources})
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
       -Wno-reorder
@@ -131,24 +138,31 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 else()
   set(bootgen_warning_ignores)
 endif()
-target_compile_options(Bootgen PRIVATE ${bootgen_warning_ignores})
-target_include_directories(Bootgen PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
+endif()
+target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
+target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
 install(
-  TARGETS Bootgen
+  TARGETS bootgen-lib
   DESTINATION lib
-  EXPORT Bootgen)
+  EXPORT bootgen-lib)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
-target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
+                                          ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
-target_link_libraries(bootgen Bootgen Bootgen OpenSSL::SSL)
+target_link_libraries(bootgen bootgen-lib OpenSSL::SSL)
 install(TARGETS bootgen)
 
 add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
 target_include_directories(
   cdo_driver PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
                     $<INSTALL_INTERFACE:include/cdo_driver>)
-target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
+if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
+endif()
+
 install(
   TARGETS cdo_driver
   DESTINATION lib
