@@ -1413,7 +1413,6 @@ Region *MemOp::getCallableRegion() { return &getBody(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult MemTileDMAOp::verify() {
-  Region &body = getBody();
   std::vector<DMAChannel> inputChannels;
   std::vector<DMAChannel> outputChannels;
 
