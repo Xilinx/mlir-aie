@@ -177,10 +177,11 @@ cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
 
 find_library(ELF_LIB elf)
 cmake_dependent_option(AIE_ENABLE_AIRBIN
-  "Enables emitting AIRBIN ELF binaries." ON "ELF_LIB" OFF)
+  "Enables emitting AIRBIN ELF binaries." OFF "ELF_LIB" OFF)
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
+add_flag_if_supported("-Werror=unused" WERROR_USED)
 
 # What happens when you have a non-void function with no return?
 # No `ret` instruction is generated and so execution of that function just
@@ -243,9 +244,7 @@ add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
-  add_subdirectory(runtime_lib)
-endif()
+add_subdirectory(runtime_lib)
 
 if(AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
