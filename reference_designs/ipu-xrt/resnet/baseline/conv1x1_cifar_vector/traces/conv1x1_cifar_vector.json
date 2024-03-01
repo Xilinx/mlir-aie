@@ -1,0 +1,188 @@
+{
+  "EventTraceConfigs": [
+    {
+      "datacorrelation": 0,
+      "date": "2023-09-06 12:18:08",
+      "timestamp": 0,
+      "TraceConfig": {
+        "TileTraceConfig": [
+          {
+            "column": 2,
+            "row": 2,
+            "event_trace_name": "functions",
+            "core_trace_config": {
+              "packet_type": 0,
+              "packet_id": 0,
+              "trace_mode": 0,
+              "start_event": 1,
+              "stop_event": 0,
+              "traced_events": [
+                37,
+                33,
+                34,
+                75,
+                79,
+                26,
+                44,
+                45
+              ],
+              "group_event_config": {
+                "2": 0,
+                "15": 0,
+                "22": 0,
+                "32": 0,
+                "46": 0,
+                "47": 0,
+                "73": 0,
+                "106": 0,
+                "123": 0
+              },
+              "combo_event_config": {
+                "combo_input": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "combo_control": [
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "performance_counter_config": {
+                "counter_0": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                },
+                "counter_1": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                },
+                "counter_2": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                },
+                "counter_3": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                }
+              },
+              "PortTraceConfig": null,
+              "BroadcastTraceConfig": {
+                "broadcast_mask_south": 0,
+                "broadcast_mask_west": 0,
+                "broadcast_mask_north": 0,
+                "broadcast_mask_east": 0,
+                "internal_events_broadcast": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "memory_trace_config": {
+              "packet_type": 1,
+              "packet_id": 0,
+              "start_event": 0,
+              "stop_event": 0,
+              "traced_events": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "group_event_config": {
+                "123": 0
+              },
+              "combo_event_config": {
+                "combo_input": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "combo_control": [
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "performance_counter_config": {
+                "counter_0": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                },
+                "counter_1": {
+                  "start_event": 0,
+                  "stop_event": 0,
+                  "reset_event": 0,
+                  "event_value": 0,
+                  "counter_value": 0
+                }
+              },
+              "BroadcastTraceConfig": {
+                "broadcast_mask_south": 0,
+                "broadcast_mask_west": 0,
+                "broadcast_mask_north": 0,
+                "broadcast_mask_east": 0,
+                "internal_events_broadcast": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            }
+          }
+        ],
+        "MemTileTraceConfig": [],
+        "InterfaceTileTraceConfig": []
+      }
+    }
+  ]
+}
