@@ -25,8 +25,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int m = 288;
-constexpr int k = 288;
+constexpr int m = 512;
+constexpr int k = 512;
 
 constexpr int aVolume = m * k;
 constexpr int bVolume = k;
@@ -204,8 +204,11 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
+
+  auto start = std::chrono::system_clock::now();
   auto run = kernel(boInstr, instrV.size(), boA, boB, boC);
   run.wait();
+  auto stop = std::chrono::system_clock::now();
 
   boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
@@ -218,6 +221,13 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < cVolume; i++)
     outputRef0.push_back(0);
   matvec(aVec, bVec, outputRef0);
+
+  std::cout << std::endl
+            << "NPU matmul time: "
+            << std::chrono::duration_cast<std::chrono::microseconds>((stop -
+                                                                     start))
+                   .count()
+            << "us." << std::endl;
 
   const float absTol = std::abs(0.1);
   for (uint32_t i = 0; i < cVolume; i++) {

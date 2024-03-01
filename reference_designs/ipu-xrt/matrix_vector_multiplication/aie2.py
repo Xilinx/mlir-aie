@@ -13,14 +13,14 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 288
-    K = 288
+    M = 512
+    K = 512
     m = 32
     k = 32
     word_size_in = 2
     word_size_out = 4
 
-    n_cores = 1
+    n_cores = 2
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * word_size_in // 4
@@ -198,7 +198,8 @@ def my_matmul():
                         strides=[0, 0, 0],
                     )
 
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                for i in range(n_cores):
+                    ipu_sync(column=i, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
