@@ -90,8 +90,8 @@ def AIE_TileOp: AIE_Op<"tile", [
   }];
 
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
     TileID getTileID() { return {getCol(), getRow()}; }
@@ -171,8 +171,8 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
@@ -234,8 +234,8 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
   }];
