@@ -250,7 +250,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
           moduleOp.emitOpError(errorMessage);
 
         std::string bcfFile = std::string(bcfFileIn->getBuffer());
-        std::regex r("^_include _file (.*)", std::regex::multiline);
+        std::regex r("_include _file (.*)");
         auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
         auto end = std::sregex_iterator();
         for (std::sregex_iterator i = begin; i != end; ++i)
@@ -713,9 +713,11 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
       if (!chessIntrinsicIn)
         moduleOp.emitOpError(errorMessage);
 
-      newIntrinsicsLL = std::regex_replace(
-          std::string(chessIntrinsicIn->getBuffer()),
-          std::regex("^target.*", std::regex::multiline), "");
+      newIntrinsicsLL =
+          std::regex_replace(std::string(chessIntrinsicIn->getBuffer()),
+                             std::regex("target datalayout.*"), "");
+      newIntrinsicsLL = std::regex_replace(newIntrinsicsLL,
+                                           std::regex("target triple.*"), "");
     }
     {
       auto chessIntrinsicOut = openOutputFile(chessIntrinsicsLL);

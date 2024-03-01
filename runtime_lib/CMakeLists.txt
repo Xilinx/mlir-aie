@@ -129,6 +129,7 @@ endforeach()
 
 include("xaiengine/aiert.cmake")
 set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
+set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/bootgen)
 
 add_aiert_headers(xaienginecdo_static
         ${XAIE_SOURCE_DIR}
@@ -139,6 +140,7 @@ add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver)
 target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
+target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
 # just to make cmake happy since AIETargets will need to re-export
 # make sure not abs path...
