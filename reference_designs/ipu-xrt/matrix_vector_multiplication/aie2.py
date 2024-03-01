@@ -13,14 +13,14 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 512
-    K = 512
+    M = 288
+    K = 288
     m = 32
     k = 32
     word_size_in = 2
     word_size_out = 4
 
-    n_cores = 2
+    n_cores = 3
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * word_size_in // 4
