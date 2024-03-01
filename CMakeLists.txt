@@ -181,6 +181,7 @@ cmake_dependent_option(AIE_ENABLE_AIRBIN
 
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
+add_flag_if_supported("-Werror=unused" WERROR_USED)
 
 # What happens when you have a non-void function with no return?
 # No `ret` instruction is generated and so execution of that function just

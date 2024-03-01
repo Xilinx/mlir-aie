@@ -111,26 +111,26 @@ file(WRITE ${BOOTGEN_SOURCE}/main.cpp "${FILE_CONTENTS}")
 add_library(bootgen-lib STATIC ${libsources})
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
-    -Wno-reorder
-    -Wno-register
-    -Wno-unused-private-field
-    -Wno-deprecated-register
-    -Wno-overloaded-virtual
-    -Wno-deprecated-declarations
-    -Wno-pointer-bool-conversion
-    -Wno-unused-const-variable
-    -Wno-tautological-overlap-compare
-    -Wno-dynamic-class-memaccess
-    -Wno-misleading-indentation
-    -Wno-suggest-override
-    -Wno-non-virtual-dtor
-    -Wno-deprecated-copy
     -Wno-cast-qual
+    -Wno-covered-switch-default
     -Wno-date-time
+    -Wno-deprecated-copy
+    -Wno-deprecated-declarations
+    -Wno-deprecated-register
+    -Wno-dynamic-class-memaccess
     -Wno-implicit-fallthrough
     -Wno-incompatible-pointer-types-discards-qualifiers
+    -Wno-misleading-indentation
+    -Wno-non-virtual-dtor
+    -Wno-overloaded-virtual
+    -Wno-pointer-bool-conversion
+    -Wno-register
+    -Wno-reorder
     -Wno-sign-compare
-    -Wno-covered-switch-default)
+    -Wno-suggest-override
+    -Wno-tautological-overlap-compare
+    -Wno-unused
+  )
 else()
   set(bootgen_warning_ignores)
 endif()
