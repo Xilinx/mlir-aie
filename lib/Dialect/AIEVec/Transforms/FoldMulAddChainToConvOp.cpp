@@ -245,7 +245,7 @@ struct LongestConvMACChainAnalysis {
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");
-      for (auto op : opBwdSlices) {
+      for ([[maybe_unused]] auto op : opBwdSlices) {
         LLVM_DEBUG(llvm::dbgs() << *op << "\n");
       }
       LLVM_DEBUG(llvm::dbgs() << "]\n");
