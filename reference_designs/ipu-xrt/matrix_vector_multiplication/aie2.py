@@ -20,7 +20,7 @@ def my_matmul():
     word_size_in = 2
     word_size_out = 4
 
-    n_cores = 3
+    n_cores = 1
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * word_size_in // 4
