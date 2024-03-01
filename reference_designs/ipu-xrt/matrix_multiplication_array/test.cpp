@@ -213,8 +213,6 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  // auto run0 = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
-  // run0.wait();
   auto start = std::chrono::high_resolution_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
