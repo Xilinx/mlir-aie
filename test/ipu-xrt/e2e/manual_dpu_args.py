@@ -42,7 +42,7 @@ yield_ = scf.yield_
 
 
 # CHECK-LABEL: manual_args
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -78,7 +78,6 @@ def manual_args(module):
             @aie.dma(MM2S, 0, loop=loop, repeat_count=iters - 1)
             def dma3():
                 aie.use_lock(lock_send_weight, AcquireGreaterEqual)
-                # TODO(max): would prefer to be able to stick get_global here...
                 aie.dma_bd(buffer_weight)
                 aie.use_lock(lock_read_weight, Release)
 
@@ -152,7 +151,7 @@ def manual_args(module):
 
 
 # CHECK-LABEL: manual_args_with_offset
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args_with_offset(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -188,7 +187,6 @@ def manual_args_with_offset(module):
             @aie.dma(MM2S, 0, loop=loop, repeat_count=iters - 1)
             def dma3():
                 aie.use_lock(lock_send_weight, AcquireGreaterEqual)
-                # TODO(max): would prefer to be able to stick get_global here...
                 aie.dma_bd(buffer_weight)
                 aie.use_lock(lock_read_weight, Release)
 
@@ -263,7 +261,7 @@ def manual_args_with_offset(module):
 
 
 # CHECK-LABEL: manual_args_with_different_cols
-# @construct_and_print_module
+@construct_and_print_module
 def manual_args_with_different_cols(module):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -295,7 +293,6 @@ def manual_args_with_different_cols(module):
                 @aie.dma(MM2S, 0)
                 def dma3():
                     aie.use_lock(lock_send_weight, AcquireGreaterEqual)
-                    # TODO(max): would prefer to be able to stick get_global here...
                     aie.dma_bd(buffer_weight)
                     aie.use_lock(lock_read_weight, Release)
 

@@ -275,6 +275,8 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << "));\n";
       } else {
+        // repeat_count==0 means "do it once" and don't repeat
+        int repeatCount = op.getRepeatCount() + 1;
         output << "__mlir_aie_try(XAie_DmaChannelSetStartQueue("
                << deviceInstRef << ", " << tileLocStr(col, row) << ", "
                << "/* ChNum */" << chNum
@@ -282,7 +284,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                // TODO hack until physical dialect changes
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << ", "
-               << "/* Repeat */ " << op.getRepeatCount() << ", "
+               << "/* Repeat */ " << repeatCount << ", "
                << "/* EnToken */ "
                << "XAIE_DISABLE"
                << "));\n";

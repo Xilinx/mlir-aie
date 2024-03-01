@@ -457,10 +457,7 @@ struct AIEControl {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
       auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
-      // XAIE for whatever reason does not adopt the same convention as the arch
-      // ie repeat_count = 0 => do the thing once; instead it takes
-      // repeat_count = 1 => do the thing once and then subtracts one off
-      // when doing the register write. so we keep the arch convention
+      // repeat_count==0 means "do it once" and don't repeat
       repeatCount += 1;
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
                               tileLoc, chNum, direction, bdNum, repeatCount,
