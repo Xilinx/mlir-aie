@@ -113,8 +113,8 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     DenseMap<Value, int> destChannel;
     for (auto op : device.getOps<MemcpyOp>()) {
       builder.setInsertionPoint(op);
-      TileOp srcTile = dyn_cast<TileOp>(op.getSrcTile().getDefiningOp());
-      TileOp dstTile = dyn_cast<TileOp>(op.getDstTile().getDefiningOp());
+      TileOp srcTile = cast<TileOp>(op.getSrcTile().getDefiningOp());
+      TileOp dstTile = cast<TileOp>(op.getDstTile().getDefiningOp());
       // TODO: perhaps a better approach is to not assert here, but rather have
       // a subsequent pass that legally relocates the ports
       assert(destChannel[op.getDstTile()] <= 2 &&

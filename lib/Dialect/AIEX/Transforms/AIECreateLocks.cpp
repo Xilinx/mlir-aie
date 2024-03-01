@@ -192,7 +192,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       assert(tileOp &&
              "Sorry, the lock users of this chain do not have a common lock");
 
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      TileOp tile = cast<TileOp>(tileOp);
       int lockID = getLockID(locks, tileOp);
       assert(lockID >= 0 && "No more locks to allocate!");
       LLVM_DEBUG(llvm::dbgs() << "Shared tile \n"; tileOp->print(llvm::dbgs()));

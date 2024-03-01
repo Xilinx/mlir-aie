@@ -325,12 +325,12 @@ struct AIERoutePacketFlowsPass
 
       for (Operation &Op : b.getOperations()) {
         if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-          auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+          auto srcTile = cast<TileOp>(pktSource.getTile().getDefiningOp());
           xSrc = srcTile.colIndex();
           ySrc = srcTile.rowIndex();
           sourcePort = pktSource.port();
         } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-          auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+          auto destTile = cast<TileOp>(pktDest.getTile().getDefiningOp());
           int xDest = destTile.colIndex();
           int yDest = destTile.rowIndex();
           Port destPort = pktDest.port();
@@ -488,7 +488,7 @@ struct AIERoutePacketFlowsPass
       WireBundle bundle = physPort.second.bundle;
       int channel = physPort.second.channel;
       assert(tileOp);
-      auto tile = dyn_cast<TileOp>(tileOp);
+      auto tile = cast<TileOp>(tileOp);
       LLVM_DEBUG(llvm::dbgs()
                  << "master " << tile << " " << stringifyWireBundle(bundle)
                  << " : " << channel << '\n');
@@ -572,7 +572,7 @@ struct AIERoutePacketFlowsPass
     LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
     for (auto map : slaveMasks) {
       auto port = map.first.first;
-      auto tile = dyn_cast<TileOp>(port.first);
+      auto tile = cast<TileOp>(port.first);
       WireBundle bundle = port.second.bundle;
       int channel = port.second.channel;
       int ID = map.first.second;
@@ -596,7 +596,7 @@ struct AIERoutePacketFlowsPass
     // Realize the routes in MLIR
     for (auto map : tiles) {
       Operation *tileOp = map.second;
-      auto tile = dyn_cast<TileOp>(tileOp);
+      auto tile = cast<TileOp>(tileOp);
 
       // Create a switchbox for the routes and insert inside it.
       builder.setInsertionPointAfter(tileOp);

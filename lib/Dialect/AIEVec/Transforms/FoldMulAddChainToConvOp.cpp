@@ -266,7 +266,7 @@ struct LongestConvMACChainAnalysis {
              isa<aievec::ExtOp>(opBwdSlices[sliceSz - 1]))) {
           convMacRhs = opBwdSlices[sliceSz - 3]->getOperand(0);
           convMacBcastIdx =
-              dyn_cast<aievec::BroadcastOp>(opBwdSlices[sliceSz - 2]).getIdx();
+              cast<aievec::BroadcastOp>(opBwdSlices[sliceSz - 2]).getIdx();
           return true;
         }
       }

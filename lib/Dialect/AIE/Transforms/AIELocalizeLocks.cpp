@@ -33,7 +33,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
       // Collect the locks used in this core.
       const auto &targetModel = getTargetModel(coreOp);
 
-      auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
+      auto thisTile = cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
       int row = thisTile.rowIndex();
 

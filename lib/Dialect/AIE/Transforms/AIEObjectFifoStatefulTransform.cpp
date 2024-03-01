@@ -367,7 +367,7 @@ struct AIEObjectFifoStatefulTransformPass
       creation_tile = op.getProducerTileOp();
     else {
       auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+          cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
       creation_tile = consumerTileOp;
     }
 
@@ -1203,7 +1203,7 @@ struct AIEObjectFifoStatefulTransformPass
         continue;
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
-        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+        auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
 
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
@@ -1276,7 +1276,7 @@ struct AIEObjectFifoStatefulTransformPass
       // loop unrolling pass
       objectFifoTiles.insert(createOp.getProducerTileOp());
       for (auto consumerTile : createOp.getConsumerTiles()) {
-        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+        auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
         objectFifoTiles.insert(consumerTileOp);
       }
 

@@ -2185,9 +2185,9 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // lhs of current FMAOp should be an upd operation with 512-bit vector width.
   // For AIE-ML, we can directly load 512 bits vectors. Thus, we can delete the
   // upd operation with index 1.
-  auto lUpdOp = dyn_cast<aievec::UPDOp>(lhs.getDefiningOp());
+  auto lUpdOp = cast<aievec::UPDOp>(lhs.getDefiningOp());
   if (lUpdOp.getIndex() == 1) {
-    auto lUpdOp0 = dyn_cast<aievec::UPDOp>(lUpdOp.getVector().getDefiningOp());
+    auto lUpdOp0 = cast<aievec::UPDOp>(lUpdOp.getVector().getDefiningOp());
     lUpdOp->replaceAllUsesWith(lUpdOp0);
     lUpdOp->erase();
   }
@@ -2195,7 +2195,7 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   // 2. Deal with the rhs:
   // Since vector size of current FMAOp rhs is 256 bits, we need to generate a
   // concat op to make the vector size to 512 bits.
-  auto rUpdOp = dyn_cast<aievec::UPDOp>(curOp->getOperand(1).getDefiningOp());
+  auto rUpdOp = cast<aievec::UPDOp>(curOp->getOperand(1).getDefiningOp());
   state->builder.setInsertionPointAfter(rUpdOp);
   AIEVecAttributes rstat = getOperandVecStats(curOp, state, 1);
   assert(rstat.vecSizeInBits % 256 == 0);
@@ -2212,7 +2212,7 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   Operation *convOp = nullptr;
   Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
   auto mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp);
-  auto fmaOp = dyn_cast<aievec::FMAOp>(mulOrFMAOp);
+  auto fmaOp = cast<aievec::FMAOp>(mulOrFMAOp);
   int32_t zStart;
 
   if (mulOp) {

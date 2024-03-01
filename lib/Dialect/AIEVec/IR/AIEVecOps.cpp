@@ -1172,14 +1172,14 @@ ConcatOp::inferReturnTypes(MLIRContext *, std::optional<Location>,
                              adaptor.getSources().end());
   unsigned totalLength = 0;
   for (auto source : srcs) {
-    VectorType type = llvm::dyn_cast<VectorType>(source.getType());
+    VectorType type = llvm::cast<VectorType>(source.getType());
     assert(type.getRank() == 1 &&
            "only rank 1 vectors currently supported by concat");
     totalLength += type.getDimSize(0);
   }
   inferredReturnTypes.push_back(VectorType::get(
       {totalLength},
-      srcs[0].getType().dyn_cast<VectorType>().getElementType()));
+      srcs[0].getType().cast<VectorType>().getElementType()));
   return success();
 }
 
