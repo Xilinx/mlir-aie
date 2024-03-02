@@ -413,7 +413,7 @@ def matmul_i32_i32_already_vectorized(
 
 
 # CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2_vectorized
-# @construct_and_print_module
+@construct_and_print_module
 def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
     M = N = 32
 

@@ -57,8 +57,7 @@ def repeat_count(module):
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
 
-        weight = memref.global_(initial_value=RANDOM_WEIGHT, constant=True)
-        buffer_weight = aie.buffer(tile_0_2, (K,), T.i32())
+        buffer_weight = aie.buffer(tile_0_2, (K,), T.i32(), initial_value=RANDOM_WEIGHT)
         lock_read_weight = aie.lock(tile_0_2, init=1)
         lock_send_weight = aie.lock(tile_0_2, init=0)
 
@@ -67,10 +66,9 @@ def repeat_count(module):
 
         @aie.core(tile_0_2)
         def core():
-            x = memref.get_global(weight.type_.value, weight.sym_name.value)
             for _ in range(iters):
                 with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                    linalg.copy(x, buffer_weight)
+                    linalg.copy(buffer_weight, buffer_weight)
 
         @aie.mem(tile_0_2)
         def mem_0_2():
@@ -122,7 +120,7 @@ def repeat_count(module):
             ipu_insts.extend(
                 aiex.ipu.sync(
                     channel=0,
-                    column=0,
+                    column=col,
                     column_num=1,
                     direction=0,
                     row=0,
@@ -162,7 +160,7 @@ def no_loop(module):
     K = 32
     # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
-    col = 0
+    col = 2
     iters = 10
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -250,6 +248,7 @@ def no_loop(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(f"{RANDOM_WEIGHT + (col * iters)=}")
                 print(f"{wraps[0]=}")
+                del xclbin
                 assert False
 
         del xclbin

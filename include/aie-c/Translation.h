@@ -26,7 +26,8 @@ MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
                                              int nModules);
 MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
     MlirOperation moduleOp, MlirStringRef workDirPath, bool bigEndian,
-    bool emitUnified, bool axiDebug, bool aieSim, size_t partitionStartCol);
+    bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
+    size_t partitionStartCol, bool enableCores);
 
 #ifdef __cplusplus
 }

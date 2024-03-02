@@ -106,6 +106,7 @@ XAIEMLGBL_NOC_MODULE_DMA_MM2S_0_TASK_QUEUE = 0x0001D214
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE = 0x0001D204
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK = 0x80000000
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
+XAIEMLGBL_CORE_MODULE_CORE_CONTROL = 0x00032000
 
 # from dpufw/include/RunInstOpt.h
 SHIM_DMA_BD0_BASE_ADDR = 0x1D000
@@ -193,7 +194,7 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
 
 
 def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
-    # upper 16 bits are for packets...
+    # note upper 16 bits are for packets and thus this clears them
     tensor_addr += buffer_offset + DDR_AIE_ADDR_OFFSET
     word3 = tensor_addr & 0xFFFFFFFC
     word4 = 0xFFFF0000 | (tensor_addr >> 32)
@@ -249,7 +250,6 @@ def _ipu_writebd_shimtile(
     out_of_order_id = 0
     packet_id = 0
     packet_type = 0
-    valid_bd = 1
 
     words = [None] * 10
     op_code = 6
@@ -289,6 +289,7 @@ def _ipu_writebd_shimtile(
     words[8] |= iteration_stride & 0xFFFFF
 
     # TODO: TLAST Suppress
+    valid_bd = 1
     words[9] = (next_bd & 0xF) << 27
     words[9] |= (use_next_bd & 0x1) << 26
     words[9] |= (valid_bd & 0x1) << 25
@@ -303,12 +304,26 @@ def _ipu_writebd_shimtile(
     return words
 
 
+def _ipu_noop():
+    words = [None] * 1
+    op_code = 0
+    words[0] = (op_code & 0xFF) << 24
+    return words
+
+
+def _ipu_core_enable(column, row):
+    # note this clears the reset bit
+    return _ipu_write32(column, row, XAIEMLGBL_CORE_MODULE_CORE_CONTROL, 1)
+
+
 class ipu:
+    noop = _ipu_noop
     write32 = _ipu_write32
     shimtile_push_queue = _ipu_shimtile_push_queue
     writebd_shimtile = _ipu_writebd_shimtile
     sync = _ipu_sync
     get_prolog = _get_prolog
+    enable_cores = _ipu_core_enable
     _exec_write_bd_extend_shim_tile_opt = _exec_write_bd_extend_shim_tile_opt
     _update_tensor_addr_shim_tile = _update_tensor_addr_shim_tile
 

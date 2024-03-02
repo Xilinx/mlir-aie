@@ -235,7 +235,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
-  bool relEn = true;
+  bool relEn = false;
   XAie_Lock acqLock = XAie_LockInit(acqLockId.value(), acqValue.value());
   XAie_Lock relLock = XAie_LockInit(relLockId.value(), relValue.value());
   TRY_XAIE_API_EMIT_ERROR((*block.getOps<UseLockOp>().begin()),
@@ -285,10 +285,10 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
       // write them out like this so they show up with names in debug prints
       size_t smid = 0;
-      size_t burstLen = 4; // 00 config, 64 bytes?
+      size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
+                            // 0x800000000 from targetipu)
       size_t qOs = 0;
       size_t cache = 0;
-      // uint8_t secure = XAIE_ENABLE;
       size_t secure = 0;
       TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid, burstLen,
                               qOs, cache, secure);
@@ -346,7 +346,7 @@ struct AIEControl {
   XAie_DevInst devInst;
 
   AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
-             const AIETargetModel &tm) {
+             bool xaieDebug, const AIETargetModel &tm) {
     configPtr = XAie_Config{
         /*AieGen*/ XAIE_DEV_GEN_AIEML,
         /*BaseAddr*/ XAIE_BASE_ADDR,
@@ -377,8 +377,14 @@ struct AIEControl {
     TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
     if (aieSim) {
       TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
+                               XAIE_IO_BACKEND_SIM);
+    } else if (xaieDebug)
+      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
+                               XAIE_IO_BACKEND_DEBUG);
+    else
+      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
                                XAIE_IO_BACKEND_CDO);
-    }
+
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
   }
 
@@ -457,7 +463,8 @@ struct AIEControl {
       XAie_DmaDirection direction =
           channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
       auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
-      // repeat_count==0 means "do it once" and don't repeat
+      // in english repeat_count==0 means "do it once" and don't repeat but
+      // libxaie treats repeat_count=1 as do it once.
       repeatCount += 1;
       TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst,
                               tileLoc, chNum, direction, bdNum, repeatCount,
@@ -749,9 +756,9 @@ struct AIEControl {
 
 } // namespace xilinx::AIE
 
-void initializeCDOGenerator(byte_ordering endianness, bool axiDebug) {
+void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
-  if (axiDebug)
+  if (cdoDebug)
     EnAXIdebug();
   setEndianness(endianness);
 };
@@ -769,7 +776,8 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
 
 LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
-                                            DeviceOp &targetOp, bool aieSim) {
+                                            DeviceOp &targetOp, bool aieSim,
+                                            bool enableCores) {
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) +
            "aie_cdo_error_handling.bin")
@@ -792,7 +800,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
-  if (!targetOp.getOps<CoreOp>().empty() &&
+  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
@@ -803,10 +811,11 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
 }
 
 LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim) {
+                                 DeviceOp &targetOp, bool aieSim,
+                                 bool enableCores) {
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
-      [&ctl, &targetOp, &workDirPath, &aieSim] {
+      [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (failed(ctl.addErrorHandlingToCDO()))
           return failure();
         if (!targetOp.getOps<CoreOp>().empty() &&
@@ -814,7 +823,7 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
           return failure();
         if (failed(ctl.addInitConfigToCDO(targetOp)))
           return failure();
-        if (!targetOp.getOps<CoreOp>().empty() &&
+        if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addCoreEnableToCDO(targetOp)))
           return failure();
         return success();
@@ -823,8 +832,10 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
 
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
-                                      bool emitUnified, bool axiDebug,
-                                      bool aieSim, size_t partitionStartCol) {
+                                      bool emitUnified, bool cdoDebug,
+                                      bool aieSim, bool xaieDebug,
+                                      size_t partitionStartCol,
+                                      bool enableCores) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -839,23 +850,26 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
     maxCol = std::max(tileOp.getCol(), maxCol);
   }
   size_t partitionNumCols = maxCol - minCol + 1;
-  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim,
+  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim, xaieDebug,
                  targetOp.getTargetModel());
-  initializeCDOGenerator(endianness, axiDebug);
+  initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim);
+    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
+  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
+                                       enableCores);
 }
 // Not sure why but defining this with xilinx::AIE will create a duplicate
 // symbol in libAIETargets.a that then doesn't actually match the header?
 namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
-                                      bool axiDebug, bool aieSim,
-                                      size_t partitionStartCol) {
+                                      bool cdoDebug, bool aieSim,
+                                      bool xaieDebug, size_t partitionStartCol,
+                                      bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 axiDebug, aieSim, partitionStartCol);
+                                 cdoDebug, aieSim, xaieDebug, partitionStartCol,
+                                 enableCores);
 }
 } // namespace xilinx::AIE

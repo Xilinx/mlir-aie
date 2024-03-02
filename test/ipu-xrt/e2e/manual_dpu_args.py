@@ -7,6 +7,7 @@
 
 import random
 import sys
+import time
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
@@ -349,11 +350,10 @@ def manual_args_with_different_cols(module):
 @construct_and_print_module
 def manual_args_with_shim_dma(module):
     K = 32
-    # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
-    RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
-    cols = [1]
+    cols = [2]
+    compute_tile_row = 2
 
-    iters = 100
+    iters = 21
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -361,10 +361,10 @@ def manual_args_with_shim_dma(module):
             tile_dummy = aie.tile(0, 3)
         for c in cols:
             tile_c_0 = aie.tile(c, 0)
-            tile_c_2 = aie.tile(c, 2)
+            tile_c_2 = aie.tile(c, compute_tile_row)
 
             buffer_weight = aie.buffer(
-                tile_c_2, (K,), T.i32(), initial_value=RANDOM_WEIGHT
+                tile_c_2, (K,), T.i32(), initial_value=np.ones((K,), dtype=np.int32) * c
             )
             lock_read_weight = aie.lock(tile_c_2, init=1)
             lock_send_weight = aie.lock(tile_c_2, init=0)
@@ -376,8 +376,8 @@ def manual_args_with_shim_dma(module):
                 y = memref.alloc(K, T.i32())
                 for i in range_(iters):
                     with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                        linalg.fill(c + 1, y)
-                        linalg.add(y, buffer_weight, buffer_weight)
+                        linalg.fill(i, y)
+                        linalg.copy(y, buffer_weight)
                     yield_()
 
             @aie.mem(tile_c_2)
@@ -405,7 +405,7 @@ def manual_args_with_shim_dma(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, enable_cores=False)
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(module, kernel_json=kernel_json)
@@ -417,13 +417,11 @@ def manual_args_with_shim_dma(module):
         bd_id = 0
         ipu_insts = aiex.ipu.get_prolog()
         for i, col in enumerate(cols):
-            ipu_insts.extend(
-                aiex.ipu._update_tensor_addr_shim_tile(
-                    col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
-                )
+            update_addrs = aiex.ipu._update_tensor_addr_shim_tile(
+                col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
             )
-        for i, col in enumerate(cols):
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+            ipu_insts.extend(update_addrs)
+            ipu_insts.extend(aiex.ipu.enable_cores(col, compute_tile_row))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -435,9 +433,10 @@ def manual_args_with_shim_dma(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
+        print(f"{iters=}")
         for col, w in zip(cols, wraps):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-                print("RANDOM_WEIGHT", RANDOM_WEIGHT + (col * iters))
+                print(f"{col=}")
                 print(w)
 
         del xclbin
