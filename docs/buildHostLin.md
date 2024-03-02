@@ -241,14 +241,6 @@ You will...
    cd mlir-aie
    ````
 
-1. Install quick setup prerequisite packages:
-
-   ```
-   sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt install \
-   python3.8 python3.8-distutils virtualenv
-   ```
-
 1. Source `utils/quick_setup.sh` to setup the prerequisites and
    install the mlir-aie and llvm compiler tools from whls.
 

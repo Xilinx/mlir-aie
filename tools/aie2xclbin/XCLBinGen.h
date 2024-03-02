@@ -31,6 +31,10 @@ struct XCLBinGenConfig {
   std::string XCLBinKernelID;
   std::string XCLBinInstanceName;
   bool UseChess = false;
+  bool DisableThreading = false;
+  bool PrintIRAfterAll = false;
+  bool PrintIRBeforeAll = false;
+  bool PrintIRModuleScope = false;
 };
 
 void findVitis(XCLBinGenConfig &TK);

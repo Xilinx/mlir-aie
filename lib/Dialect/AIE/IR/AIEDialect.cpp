@@ -1023,7 +1023,7 @@ LogicalResult TileOp::verify() {
   return success();
 }
 
-int TileOp::getNumSourceConnections(WireBundle bundle) {
+size_t TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note dest is correct here, since direction is reversed.
@@ -1039,7 +1039,7 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
   return 0;
 }
 
-int TileOp::getNumDestConnections(WireBundle bundle) {
+size_t TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note source is correct here, since direction is reversed.
@@ -1150,14 +1150,14 @@ LogicalResult ShimMuxOp::verify() {
   return success();
 }
 
-int ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+size_t ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumSourceShimMuxConnections(tile.getCol(),
                                                     tile.getRow(), bundle);
 }
 
-int ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+size_t ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
@@ -1177,6 +1177,11 @@ int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAOp::verify() {
+  Region &body = getBody();
+  DenseSet<DMAChannel> usedChannels;
+  std::vector<DMAChannel> inputChannels;
+  std::vector<DMAChannel> outputChannels;
+
   if (getBody().empty())
     return emitOpError("should have non-empty body");
 
@@ -1186,6 +1191,34 @@ LogicalResult ShimDMAOp::verify() {
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
+
+  for (auto &bodyOp : body.getOps()) {
+    // check for duplicate DMA channels within the same ShimDMAOp
+    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
+      DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                            dmaStart.getChannelIndex()};
+      if (usedChannels.count(dmaChan))
+        return dmaStart.emitOpError()
+               << "duplicate DMA channel "
+               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
+               << " in MemOp";
+      usedChannels.insert(dmaChan);
+      // check if number of input and output channels is more than available
+      // hardware
+      if (dmaChan.direction == DMAChannelDir::S2MM)
+        inputChannels.push_back(dmaChan);
+      else
+        outputChannels.push_back(dmaChan);
+    }
+  }
+
+  if (inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
+    return emitOpError("uses more input channels than available on this tile");
+
+  if (outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
+    return emitOpError("uses more output channels than available on this tile");
 
   return success();
 }
@@ -1319,6 +1352,8 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
 LogicalResult MemOp::verify() {
   Region &body = getBody();
   DenseSet<DMAChannel> usedChannels;
+  std::vector<DMAChannel> inputChannels;
+  std::vector<DMAChannel> outputChannels;
   if (body.empty())
     return emitOpError("should have non-empty body");
 
@@ -1337,6 +1372,12 @@ LogicalResult MemOp::verify() {
                << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
                << " in MemOp";
       usedChannels.insert(dmaChan);
+      // check if number of input and output channels is more than available
+      // hardware
+      if (dmaChan.direction == DMAChannelDir::S2MM)
+        inputChannels.push_back(dmaChan);
+      else
+        outputChannels.push_back(dmaChan);
     }
 
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp))
@@ -1344,6 +1385,14 @@ LogicalResult MemOp::verify() {
         return allocOp.emitOpError()
                << "allocOp in MemOp region should have an id attribute";
   }
+
+  if (inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
+    return emitOpError("uses more input channels than available on this tile");
+
+  if (outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
+    return emitOpError("uses more output channels than available on this tile");
 
   return success();
 }
@@ -1364,6 +1413,9 @@ Region *MemOp::getCallableRegion() { return &getBody(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult MemTileDMAOp::verify() {
+  std::vector<DMAChannel> inputChannels;
+  std::vector<DMAChannel> outputChannels;
+
   assert(getOperation()->getNumRegions() == 1 &&
          "MemTileDMAOp has zero region!");
   assert(!getBody().empty() && "MemTileDMAOp should have non-empty body");
@@ -1379,6 +1431,14 @@ LogicalResult MemTileDMAOp::verify() {
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
+      // check if number of input and output channels is more than available
+      // hardware
+      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
+      if (dmaChan.direction == DMAChannelDir::S2MM)
+        inputChannels.push_back(dmaChan);
+      else
+        outputChannels.push_back(dmaChan);
+
       if (startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
@@ -1435,6 +1495,14 @@ LogicalResult MemTileDMAOp::verify() {
       }
     }
   }
+
+  if (inputChannels.size() >
+      getTileOp().getNumSourceConnections(WireBundle::DMA))
+    return emitOpError("uses more input channels than available on this tile");
+
+  if (outputChannels.size() >
+      getTileOp().getNumDestConnections(WireBundle::DMA))
+    return emitOpError("uses more output channels than available on this tile");
 
   return success();
 }
@@ -1829,14 +1897,14 @@ LogicalResult UseLockOp::verify() {
 
 namespace xilinx::AIE {
 
-int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+size_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumSourceSwitchboxConnections(tile.getCol(),
                                                       tile.getRow(), bundle);
 }
 
-int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestSwitchboxConnections(tile.getCol(),
