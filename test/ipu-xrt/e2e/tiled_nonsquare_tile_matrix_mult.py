@@ -8,6 +8,10 @@
 
 import sys
 
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -23,11 +27,7 @@ from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
 
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -306,8 +306,8 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -566,8 +566,8 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

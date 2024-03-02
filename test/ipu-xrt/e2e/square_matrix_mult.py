@@ -8,10 +8,10 @@
 
 import sys
 
-from aie.extras.dialects.ext import arith, func, linalg
-from filelock import FileLock
-import numpy as np
-
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -20,13 +20,13 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
+from aie.extras.dialects.ext import arith, linalg
 import aie.extras.types as T
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -223,8 +223,8 @@ def square_matrix_mult(module):
             aie.use_lock(lock_0_2_read_in_b, Release)
             aie.use_lock(lock_0_2_write_out_c, Release)
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -393,8 +393,8 @@ def square_matrix_mult_sugar(module):
                 linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                 linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

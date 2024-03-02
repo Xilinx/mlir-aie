@@ -5,17 +5,13 @@
 # (c) Copyright 2023 AMD Inc.
 # RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
-import random
 import sys
-import time
-
-# this is to get the MemRefValue caster inside of aie-python-extras
-# noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref, scf
-from filelock import FileLock
-import numpy as np
 
 from aie.compiler.aiecc.main import emit_design_kernel_json
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -23,13 +19,16 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
+
+# this is to get the MemRefValue caster inside of aie-python-extras
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, memref, scf
 import aie.extras.types as T
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -106,10 +105,10 @@ def manual_args(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     buffer_args = [f"out_{i}" for i in range(iters)]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -215,10 +214,10 @@ def manual_args_with_offset(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     buffer_args = [f"out_{i}" for i in range(iters)]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -301,10 +300,10 @@ def manual_args_with_different_cols(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -405,10 +404,10 @@ def manual_args_with_shim_dma(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module, enable_cores=False)
+    compile_without_vectorization(module, WORKDIR, enable_cores=False)
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")

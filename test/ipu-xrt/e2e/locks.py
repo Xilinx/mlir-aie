@@ -8,21 +8,22 @@
 import random
 import sys
 
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
+from aie.dialects import aie, aiex
+from aie.dialects.aie import AIEDevice, DMAChannelDir
+
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref
+import aie.extras.types as T
+from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
 
-from aie.dialects import aie, aiex
-from aie.dialects.aie import AIEDevice, DMAChannelDir
-import aie.extras.types as T
-from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from util import WORKDIR, construct_and_print_module
 
 S2MM = DMAChannelDir.S2MM
 MM2S = DMAChannelDir.MM2S
@@ -132,8 +133,8 @@ def one_global(module):
             )
         )
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -271,8 +272,8 @@ def threesome(module):
             )
         )
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -431,8 +432,8 @@ def foursome(module):
             )
         )
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

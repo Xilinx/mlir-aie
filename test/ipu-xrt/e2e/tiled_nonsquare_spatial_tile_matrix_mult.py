@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import sys
 
-# noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, scf, vector, memref
-from aie.extras.context import ExplicitlyManagedModule
-from filelock import FileLock
-import numpy as np
-
 from aie.compiler.aiecc.main import emit_design_kernel_json
+from aie.compiler.util import (
+    compile_with_vectorization,
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aievec, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -25,16 +24,18 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.aiex import TileArray
+from aie.extras.context import ExplicitlyManagedModule
+
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, memref, scf, vector
 import aie.extras.types as T
 from aie.ir import UnitAttr
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    compile_with_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 range_ = scf.range_
 yield_ = scf.yield_
@@ -338,8 +339,8 @@ def tiled_nonsquare_tile_spatial_2x2(module):
             ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
         # fmt: on
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -667,9 +668,9 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
 
     mod_aie = mod_aie.finish()
 
-    compile_with_vectorization(mod_aie, mod_aievec)
+    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
 
-    xclbin_path = make_xclbin(mod_aie)
+    xclbin_path = make_xclbin(mod_aie, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -776,10 +777,10 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
 
             dest_channels[col] = int(to_shim.dest_channel)
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     buffer_args = [f"out_col_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -963,10 +964,10 @@ def double_pump_single_buffer(module):
         # dest_channels["player_a"] = shim_to_mem_player_a_dest_channel
         # dest_channels["player_a"] = shim_to_mem_player_b_dest_channel
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     buffer_args = [p for p in ["player_a", "player_b"]]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")

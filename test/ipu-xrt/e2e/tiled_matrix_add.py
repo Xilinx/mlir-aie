@@ -8,22 +8,22 @@
 
 import random
 
-from aie.extras.dialects.ext import arith, func, linalg
-from filelock import FileLock
-import numpy as np
-
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex
 from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext import arith, linalg
 import aie.extras.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -252,8 +252,8 @@ def tiled_matrix_add(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -492,8 +492,8 @@ def matrix_add_sugar(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

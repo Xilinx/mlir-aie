@@ -10,13 +10,10 @@ from __future__ import annotations
 
 import sys
 
-from aie.extras.context import ExplicitlyManagedModule
-from aie.extras.dialects.ext import arith, func, linalg
-from aie.extras.runtime.passes import Pipeline, run_pipeline
-from aie.extras.util import find_ops
-from filelock import FileLock
-import numpy as np
-
+from aie.compiler.util import (
+    compile_with_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex, builtin, pdl
 from aie.dialects.aie import (
     AIEDevice,
@@ -29,14 +26,17 @@ from aie.dialects.scf import for_ as range_, yield_
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.structured import structured_match
+from aie.extras.context import ExplicitlyManagedModule
+from aie.extras.dialects.ext import arith, func, linalg
+from aie.extras.runtime.passes import Pipeline, run_pipeline
 import aie.extras.types as T
+from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
-from util import (
-    compile_with_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -324,8 +324,8 @@ def vec_add_vectorized(_module):
         lambda x: "transform.target_tag" in x.attributes,
         single=True,
     )
-    compile_with_vectorization(mod_aie, mod_aievec)
-    xclbin_path = make_xclbin(mod_aie)
+    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
+    xclbin_path = make_xclbin(mod_aie, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -574,8 +574,8 @@ def vec_add_vectorized_sugar(_module):
         single=True,
     )
 
-    compile_with_vectorization(mod_aie, mod_aievec)
-    xclbin_path = make_xclbin(mod_aie)
+    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
+    xclbin_path = make_xclbin(mod_aie, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

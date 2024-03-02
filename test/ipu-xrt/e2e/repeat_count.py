@@ -4,9 +4,6 @@
 #
 # (c) Copyright 2023 AMD Inc.
 import random
-
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
-
 import sys
 
 from aie.dialects import aie, aiex, scf
@@ -16,6 +13,8 @@ from aie.dialects.aie import (
     LockAction,
     WireBundle,
 )
+
+# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 range_ = scf.for_
 yield_ = scf.yield_
@@ -28,9 +27,9 @@ from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
 
-from util import (
+from util import construct_and_print_module, WORKDIR
+from aie.compiler.util import (
     compile_without_vectorization,
-    construct_and_print_module,
     make_xclbin,
 )
 
@@ -130,8 +129,8 @@ def repeat_count(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -200,8 +199,8 @@ def no_loop(module):
 
     assert module.operation.verify()
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(module, WORKDIR)
+    xclbin_path = make_xclbin(module, WORKDIR)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")

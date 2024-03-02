@@ -8,12 +8,8 @@
 
 import random
 
-from aie.extras.dialects.ext import arith, func, memref
-from aie.extras.runtime.passes import run_pipeline
-from filelock import FileLock
-import numpy as np
-
 from aie.compiler.aiecc.main import DMA_TO_IPU
+from aie.compiler.util import compile_without_vectorization, make_xclbin
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -23,13 +19,14 @@ from aie.dialects.aie import (
     ipu_instgen,
 )
 from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext import arith, func, memref
+from aie.extras.runtime.passes import run_pipeline
 import aie.extras.types as T
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+
+from util import WORKDIR, construct_and_print_module
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -186,10 +183,10 @@ def add_256_using_dma_op_no_double_buffering(module):
 
             aie.end()
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(module, WORKDIR)
     generated_ipu_insts = run_pipeline(module, DMA_TO_IPU)
     ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
-    xclbin_path = make_xclbin(module)
+    xclbin_path = make_xclbin(module, WORKDIR)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
