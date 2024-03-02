@@ -108,8 +108,8 @@ def one_global(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
-                bd_id=bd_id,
                 column=column,
+                bd_id=bd_id,
                 buffer_length=K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
@@ -132,7 +132,6 @@ def one_global(module):
             )
         )
 
-    print(module)
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
@@ -153,6 +152,7 @@ def one_global(module):
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             print(f"{iv=}")
             print(f"c={wrap_C}")
+            assert False
 
 
 # CHECK-LABEL: threesome
@@ -247,8 +247,8 @@ def threesome(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
-                bd_id=bd_id,
                 column=shim_tile_column,
+                bd_id=bd_id,
                 buffer_length=K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
@@ -271,7 +271,6 @@ def threesome(module):
             )
         )
 
-    print(module)
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
@@ -293,6 +292,7 @@ def threesome(module):
             print(f"{iv1=}")
             print(f"{iv2=}")
             print(f"c={wrap_C}")
+            assert False
 
 
 # CHECK-LABEL: foursome
@@ -407,8 +407,8 @@ def foursome(module):
         bd_id = 0
         ipu_insts.extend(
             aiex.ipu.writebd_shimtile(
-                bd_id=bd_id,
                 column=shim_tile_column,
+                bd_id=bd_id,
                 buffer_length=K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
@@ -431,7 +431,6 @@ def foursome(module):
             )
         )
 
-    print(module)
     compile_without_vectorization(module)
     xclbin_path = make_xclbin(module)
     with FileLock("/tmp/ipu.lock"):
@@ -454,3 +453,4 @@ def foursome(module):
             print(f"{iv2=}")
             print(f"{iv3=}")
             print(f"c={wrap_C}")
+            assert False

@@ -100,6 +100,7 @@ def offsets_sizes_strides(module):
         for i, bd_id in enumerate(range(4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     64,
                     offsets[i],
@@ -120,6 +121,7 @@ def offsets_sizes_strides(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     64,
                     offsets[i],
@@ -140,6 +142,7 @@ def offsets_sizes_strides(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     64,
                     offsets[i],

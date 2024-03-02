@@ -1,6 +1,7 @@
 import __main__
 import collections
 import contextlib
+import hashlib
 import inspect
 from itertools import islice, zip_longest
 import json
@@ -152,6 +153,18 @@ def link_with_chess_intrinsic_wrapper(input_ll):
 
 
 def chess_compile(input_ll, output_filename="input", debug=False):
+    if (
+        Path(WORKDIR / f"{output_filename}.ll").exists()
+        and Path(WORKDIR / f"{output_filename}.o").exists()
+    ):
+        with open(WORKDIR / f"{output_filename}.ll", "r") as f:
+            if (
+                hashlib.sha256(f.read().encode("utf-8")).hexdigest()
+                == hashlib.sha256(input_ll.encode("utf-8")).hexdigest()
+            ):
+                if debug:
+                    print(f"using cached {output_filename}.o")
+                return
     with open(WORKDIR / f"{output_filename}.ll", "w") as f:
         f.write(input_ll)
 
@@ -253,9 +266,9 @@ def make_core_elf(core_bcf, object_filename="input", debug=False):
     _run_command(cmd, debug)
 
 
-def make_design_pdi():
+def make_design_pdi(enable_cores=True):
     with open(WORKDIR / "design.bif", "w") as f:
-        f.write(emit_design_bif(WORKDIR))
+        f.write(emit_design_bif(WORKDIR, enable_cores=enable_cores))
 
     cmd = [
         "bootgen",
@@ -308,8 +321,16 @@ def _global_debug(debug):
 
 
 def compile_with_vectorization(
-    mod_aie, mod_aievec, *, debug=False, partition_start_col=1
+    mod_aie,
+    mod_aievec,
+    *,
+    debug=False,
+    xaie_debug=False,
+    cdo_debug=False,
+    partition_start_col=1,
+    enable_cores=True,
 ):
+    debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
         mod_aie, INPUT_WITH_ADDRESSES_PIPELINE, enable_ir_printing=debug
     )
@@ -377,12 +398,24 @@ def compile_with_vectorization(
             input_physical.operation,
             str(WORKDIR),
             partition_start_col=partition_start_col,
+            cdo_debug=cdo_debug,
+            xaie_debug=xaie_debug,
+            enable_cores=enable_cores,
         )
 
-    make_design_pdi()
+    make_design_pdi(enable_cores)
 
 
-def compile_without_vectorization(module, *, debug=False, partition_start_col=1):
+def compile_without_vectorization(
+    module,
+    *,
+    debug=False,
+    xaie_debug=False,
+    cdo_debug=False,
+    partition_start_col=1,
+    enable_cores=True,
+):
+    debug = debug or xaie_debug or cdo_debug
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
         module,
@@ -421,9 +454,12 @@ def compile_without_vectorization(module, *, debug=False, partition_start_col=1)
             input_physical.operation,
             str(WORKDIR),
             partition_start_col=partition_start_col,
+            cdo_debug=cdo_debug,
+            xaie_debug=xaie_debug,
+            enable_cores=enable_cores,
         )
 
-    make_design_pdi()
+    make_design_pdi(enable_cores)
 
 
 def grouper(iterable, n, *, incomplete="fill", fill_value=None):

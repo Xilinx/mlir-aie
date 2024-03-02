@@ -128,6 +128,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
         for i, bd_id in enumerate(range(2)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
                     buffer_offset=offsets[i],
@@ -144,6 +145,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
         for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     buffer_offset=0,
@@ -161,6 +163,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     buffer_offset=d0_size_B * d0_stride_B,
@@ -188,6 +191,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
                     buffer_offset=offsets[i],
@@ -420,6 +424,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         for i, bd_id in enumerate(range(2)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
                     buffer_offset=offsets[i],
@@ -436,6 +441,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     buffer_offset=0,
@@ -453,6 +459,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
                     buffer_offset=d0_size_B * d0_stride_B,
@@ -480,6 +487,7 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
                     buffer_offset=offsets[i],

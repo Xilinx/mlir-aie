@@ -98,6 +98,7 @@ def tiled_matrix_add(module):
         for i, bd_id in enumerate(range(4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
@@ -118,6 +119,7 @@ def tiled_matrix_add(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
@@ -138,6 +140,7 @@ def tiled_matrix_add(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
@@ -356,6 +359,7 @@ def matrix_add_sugar(module):
         for i, bd_id in enumerate(range(4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
@@ -377,6 +381,7 @@ def matrix_add_sugar(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
@@ -398,6 +403,7 @@ def matrix_add_sugar(module):
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
             ipu_insts.extend(
                 aiex.ipu.writebd_shimtile(
+                    col,
                     bd_id,
                     tile_rows * tile_cols,
                     offsets[i],
