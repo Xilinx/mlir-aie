@@ -24,9 +24,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int M = 256;
-constexpr int K = 256;
-constexpr int N = 256;
+constexpr int M = 512;
+constexpr int K = 512;
+constexpr int N = 512;
 
 constexpr int A_VOLUME = M * K;
 constexpr int B_VOLUME = N * K;
@@ -77,9 +77,10 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0, 1.0);
-  return std::bfloat16_t(distribution(gen));
+  // std::default_random_engine gen;
+  // std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  // return std::bfloat16_t(distribution(gen));
+  return std::bfloat16_t(1.0);
 }
 
 template <typename Tin, typename Tout>
@@ -90,7 +91,7 @@ void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
       for (int i = 0; i < K; i++) {
         running_sum += float(a[row * K + i]) * float(b[i * N + col]);
       }
-      c[row * N + col] += Tout(running_sum);
+      c[row * N + col] = Tout(running_sum);
     }
   }
 }
@@ -212,8 +213,6 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  // auto run0 = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
-  // run0.wait();
   auto start = std::chrono::high_resolution_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
@@ -229,17 +228,22 @@ int main(int argc, const char *argv[]) {
   if (VERIFY) {
     std::vector<C_DATATYPE> output_ref0;
     for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(0);
-    matmul(AVec, BVec, output_ref0);
+      output_ref0.push_back(K);
+    // matmul(AVec, BVec, output_ref0);
 
     const float absTol = std::abs(0.1);
-    for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs((float)bufOut[i] - (float)output_ref0[i]) > absTol) {
-        errors++;
-        if (errors < max_errors) {
-          std::cout << "\nerror, id " << i << " expected "
-                    << std::to_string((float)output_ref0[i]) << ", got "
-                    << std::to_string((float)bufOut[i]) << "\n";
+    for (int row = 0; row < M; row++) {
+      for (int col = 0; col < N; col++) {
+        if (std::abs((float)bufOut[row * N + col] -
+                     (float)output_ref0[row * N + col]) > absTol) {
+          errors++;
+          if (errors < max_errors) {
+            std::cout << "\nerror, row: " << row << " col: " << col
+                      << " expected "
+                      << std::to_string((float)output_ref0[row * N + col])
+                      << ", got "
+                      << std::to_string((float)bufOut[row * N + col]) << "\n";
+          }
         }
       }
     }

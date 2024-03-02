@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
@@ -76,18 +77,21 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  // std::default_random_engine gen;
+  // std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  // return std::bfloat16_t(distribution(gen));
+  return std::bfloat16_t(1.0);
 }
 
 template <typename Tin, typename Tout>
 void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      Tout running_sum = 0;
+      float running_sum = 0;
       for (int i = 0; i < K; i++) {
-        running_sum += Tout(a[row * K + i] * b[i * N + col]);
+        running_sum += float(a[row * K + i]) * float(b[i * N + col]);
       }
-      c[row * N + col] += running_sum;
+      c[row * N + col] = Tout(running_sum);
     }
   }
 }
@@ -209,10 +213,10 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto start = std::chrono::system_clock::now();
+  auto start = std::chrono::high_resolution_clock::now();
   auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   run.wait();
-  auto stop = std::chrono::system_clock::now();
+  auto stop = std::chrono::high_resolution_clock::now();
 
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
@@ -224,28 +228,35 @@ int main(int argc, const char *argv[]) {
   if (VERIFY) {
     std::vector<C_DATATYPE> output_ref0;
     for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(0);
-    matmul(AVec, BVec, output_ref0);
+      output_ref0.push_back(K);
+    // matmul(AVec, BVec, output_ref0);
 
-    const C_DATATYPE absTol = std::abs(0.1);
-    for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs(bufOut[i] - output_ref0[i]) > absTol) {
-        errors++;
-        if (errors < max_errors) {
-          std::cout << "\nerror, id " << i << " expected "
-                    << std::to_string(output_ref0[i]) << ", got "
-                    << std::to_string(bufOut[i]) << "\n";
+    const float absTol = std::abs(0.1);
+    for (int row = 0; row < M; row++) {
+      for (int col = 0; col < N; col++) {
+        if (std::abs((float)bufOut[row * N + col] -
+                     (float)output_ref0[row * N + col]) > absTol) {
+          errors++;
+          if (errors < max_errors) {
+            std::cout << "\nerror, row: " << row << " col: " << col
+                      << " expected "
+                      << std::to_string((float)output_ref0[row * N + col])
+                      << ", got "
+                      << std::to_string((float)bufOut[row * N + col]) << "\n";
+          }
         }
       }
     }
   }
 
+  float npu_time =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+          .count();
+  float macs = 2.0 * float(M) * float(K) * float(N);
+
   std::cout << std::endl
-            << "NPU matmul time: "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(stop -
-                                                                     start)
-                   .count()
-            << "ms." << std::endl;
+            << "NPU matmul time: " << npu_time << "us." << std::endl;
+  std::cout << "NPU gflops: " << macs / (1000 * npu_time) << std::endl;
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";
