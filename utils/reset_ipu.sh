@@ -8,9 +8,9 @@ if [ x"$NUMBER" != x"" ]; then
   sudo modprobe drm_shmem_helper
   sudo modprobe amdxdna
 
-  if [ -f "/opt/xilinx/xrt/test/example_noop_test" ]; then
-    /opt/xilinx/xrt/test/example_noop_test /lib/firmware/amdipu/1502/validate.xclbin
-  fi
+#  if [ -f "/opt/xilinx/xrt/test/example_noop_test" ]; then
+#    /opt/xilinx/xrt/test/example_noop_test /lib/firmware/amdipu/1502/validate.xclbin
+#  fi
 else
   echo "couldn't find ipu"
 fi

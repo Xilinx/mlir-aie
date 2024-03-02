@@ -4,8 +4,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import sys
 
 from aie._mlir_libs._mlir.ir import MemRefType
@@ -26,12 +26,18 @@ from aie.dialects.scf import for_ as range_, yield_
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -41,9 +47,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: vec_dot
-@construct_and_print_module
-def vec_dot(module):
+def test_vec_dot(ctx: MLIRContext, workdir: Path):
     K = 32
     tiles = 4
     k = K // tiles
@@ -246,8 +250,8 @@ def vec_dot(module):
                 aie.use_lock(lock_0_2_write_out_c, Release)
                 yield_([])
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -280,9 +284,7 @@ def vec_dot(module):
                 assert False
 
 
-# CHECK-LABEL: vec_dot_sugar
-@construct_and_print_module
-def vec_dot_sugar(module):
+def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
     K = 32
     tiles = 4
     k = K // tiles
@@ -436,8 +438,8 @@ def vec_dot_sugar(module):
 
                 yield_([])
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

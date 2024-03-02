@@ -4,8 +4,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import random
 
 from aie.compiler.util import (
@@ -17,13 +17,19 @@ from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.dialects.scf import for_ as range_, yield_
 from aie.extras.dialects.ext import arith, linalg
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -33,9 +39,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: tiled_matrix_add
-@construct_and_print_module
-def tiled_matrix_add(module):
+def test_tiled_matrix_add(ctx: MLIRContext, workdir: Path):
     RANDOM_NUMBER = random.randint(0, 100)
     M = N = 16
     n_tile_rows = n_tile_cols = 2
@@ -252,8 +256,8 @@ def tiled_matrix_add(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -279,9 +283,7 @@ def tiled_matrix_add(module):
         assert np.array_equal(A + B + RANDOM_NUMBER, wrap_C)
 
 
-# CHECK-LABEL: matrix_add_sugar
-@construct_and_print_module
-def matrix_add_sugar(module):
+def test_matrix_add_sugar(ctx: MLIRContext, workdir: Path):
     RANDOM_NUMBER = random.randint(0, 100)
     M = N = 16
     n_tile_rows = n_tile_cols = 2
@@ -492,8 +494,8 @@ def matrix_add_sugar(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

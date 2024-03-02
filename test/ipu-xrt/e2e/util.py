@@ -1,46 +1,9 @@
-import __main__
 import collections
-import inspect
 from itertools import islice, zip_longest
-import os
-from pathlib import Path
 
 from aie.dialects import aie
 from aie.extras.util import find_ops
-from aie.ir import Context, InsertionPoint, Location, Module, UnitAttr
-
-WORKDIR = os.getenv("WORKDIR")
-if WORKDIR is None:
-    WORKDIR = Path(__main__.__file__).parent.absolute() / (
-        __main__.__file__[:-3] + "_workdir"
-    )
-else:
-    WORKDIR = Path(WORKDIR).absolute()
-
-WORKDIR.mkdir(exist_ok=True)
-
-
-def construct_and_print_module(f):
-    global WORKDIR
-    assert WORKDIR is not None and WORKDIR.exists()
-    WORKDIR = WORKDIR / (f.__name__ + "_workdir")
-    WORKDIR.mkdir(exist_ok=True)
-
-    print("\nTEST:", f.__name__)
-    with Context(), Location.unknown():
-        module = Module.create()
-        with InsertionPoint(module.body):
-            args = inspect.getfullargspec(f).args
-            if args:
-                if args[0] in {"module", "_module"}:
-                    module = f(module)
-                else:
-                    raise Exception(f"only `module` arg supported {args=}")
-            else:
-                f()
-        if module is not None:
-            assert module.operation.verify()
-            print(module)
+from aie.ir import UnitAttr
 
 
 def grouper(iterable, n, *, incomplete="fill", fill_value=None):

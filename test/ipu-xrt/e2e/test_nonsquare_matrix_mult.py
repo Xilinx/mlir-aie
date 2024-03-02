@@ -4,8 +4,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import sys
 
 from aie.compiler.util import (
@@ -21,12 +21,18 @@ from aie.dialects.aie import (
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.extras.dialects.ext import arith, linalg
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -36,10 +42,8 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: square_matrix_mult
-@construct_and_print_module
-def square_matrix_mult(module):
-    M = N = 16
+def test_nonsquare_matrix_mult(ctx: MLIRContext, workdir: Path):
+    M, K, N = 16, 32, 16
 
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -50,8 +54,8 @@ def square_matrix_mult(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, K), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (K, N), T.i32())
         # out
         buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
 
@@ -91,7 +95,7 @@ def square_matrix_mult(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                buffer_length=M * K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -106,7 +110,7 @@ def square_matrix_mult(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                buffer_length=K * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -141,8 +145,8 @@ def square_matrix_mult(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, K), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (K, N), T.i32())
             # output flow
             buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
@@ -152,11 +156,17 @@ def square_matrix_mult(module):
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
 
-            @aie.dma(MM2S, 0)
+            @aie.dma(MM2S, 0, num_blocks=2)
             def dma2():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
+
+            @aie.another_bd(dma2)
+            def dma2point5():
+                aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
+                aie.dma_bd(buffer_0_1_a)
+                aie.use_lock(lock_0_1_read_in_a, Release)
 
             @aie.dma(S2MM, 1)
             def dma3():
@@ -223,19 +233,19 @@ def square_matrix_mult(module):
             aie.use_lock(lock_0_2_read_in_b, Release)
             aie.use_lock(lock_0_2_write_out_c, Release)
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, K), (K, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
-        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, K), dtype=np.int32)
+        B = np.random.randint(0, 10, (K, N), dtype=np.int32)
         C = np.zeros((M, N), dtype=np.int32)
 
         np.copyto(wrap_A, A, casting="no")
@@ -255,10 +265,8 @@ def square_matrix_mult(module):
                 assert False
 
 
-# CHECK-LABEL: square_matrix_mult_sugar
-@construct_and_print_module
-def square_matrix_mult_sugar(module):
-    M = N = 16
+def test_nonsquare_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
+    M, K, N = 16, 32, 16
 
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -269,10 +277,14 @@ def square_matrix_mult_sugar(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, K), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (K, N), T.i32())
         # out
         buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
+
+        # input
+        lock_0_1_read_in_a = aie.lock(tile_0_1, lock_id=0, init=1)
+        lock_0_1_write_out_a = aie.lock(tile_0_1, lock_id=1, init=0)
 
         lock_0_2_read_in_a = aie.lock(tile_0_2, lock_id=0, init=1)
         lock_0_2_use_a = aie.lock(tile_0_2, lock_id=1, init=0)
@@ -301,7 +313,7 @@ def square_matrix_mult_sugar(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                buffer_length=M * K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -316,7 +328,7 @@ def square_matrix_mult_sugar(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                buffer_length=K * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -351,12 +363,25 @@ def square_matrix_mult_sugar(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, K), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (K, N), T.i32())
             # output flow
             buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
-            aiex.forward_bd(tile_0_1, buffer_0_1_a, 0)
+            @aie.dma(S2MM, 0)
+            def dma1():
+                aiex.process_bd(lock_0_1_read_in_a, buffer_0_1_a, lock_0_1_write_out_a)
+
+            @aie.dma(MM2S, 0, num_blocks=2)
+            def dma2():
+                aiex.process_bd(
+                    lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_write_out_a
+                )
+
+            @aie.another_bd(dma2)
+            def dma2point5():
+                aiex.process_bd(lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_read_in_a)
+
             aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
             aiex.forward_bd(tile_0_1, buffer_0_1_c, 2)
 
@@ -385,27 +410,24 @@ def square_matrix_mult_sugar(module):
             with (
                 aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
                 aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                aiex.hold_lock(
-                    lock_0_2_use_c,
-                    lock_0_2_write_out_c,
-                ),
+                aiex.hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
             ):
                 linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
                 linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, K), (K, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
-        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, K), dtype=np.int32)
+        B = np.random.randint(0, 10, (K, N), dtype=np.int32)
         C = np.zeros((M, N), dtype=np.int32)
 
         np.copyto(wrap_A, A, casting="no")

@@ -14,8 +14,6 @@ from aie.dialects.aie import (
     WireBundle,
 )
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
-
 range_ = scf.for_
 yield_ = scf.yield_
 
@@ -27,7 +25,16 @@ from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
 
-from util import construct_and_print_module, WORKDIR
+
+from pathlib import Path
+import pytest
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
+
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 from aie.compiler.util import (
     compile_without_vectorization,
     make_xclbin,
@@ -41,9 +48,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: repeat_count
-@construct_and_print_module
-def repeat_count(module):
+def test_repeat_count(ctx: MLIRContext, workdir: Path):
     K = 32
     iters = 4
     loop = False
@@ -127,10 +132,10 @@ def repeat_count(module):
                 )
             )
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -154,8 +159,7 @@ def repeat_count(module):
                 assert False
 
 
-@construct_and_print_module
-def no_loop(module):
+def test_no_loop(ctx: MLIRContext, workdir: Path):
     K = 32
     # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
@@ -197,10 +201,10 @@ def no_loop(module):
 
             aie.end()
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -247,7 +251,5 @@ def no_loop(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(f"{RANDOM_WEIGHT + (col * iters)=}")
                 print(f"{wraps[0]=}")
-                del xclbin
-                assert False
 
-        del xclbin
+                assert False

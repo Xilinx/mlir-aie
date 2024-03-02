@@ -4,10 +4,10 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 
 from aie.compiler.util import (
@@ -29,14 +29,20 @@ from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
 from aie.extras.dialects.ext import arith, func, linalg
 from aie.extras.runtime.passes import Pipeline, run_pipeline
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -59,9 +65,7 @@ def vec_add_i32_i32(
     linalg.add(a, b, c)
 
 
-# CHECK-LABEL: vec_add_vectorized
-@construct_and_print_module
-def vec_add_vectorized(_module):
+def test_vec_add_vectorized(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
@@ -305,7 +309,6 @@ def vec_add_vectorized(_module):
         .canonicalize()
         .cse(),
     )
-    print(affine_loops)
 
     super_vec = run_pipeline(
         affine_loops,
@@ -317,15 +320,14 @@ def vec_add_vectorized(_module):
         .lower_affine()
         .canonicalize(),
     )
-    print(super_vec)
 
     mod_aievec = find_ops(
         super_vec.operation,
         lambda x: "transform.target_tag" in x.attributes,
         single=True,
     )
-    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
-    xclbin_path = make_xclbin(mod_aie, WORKDIR)
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -356,9 +358,7 @@ def vec_add_vectorized(_module):
                 assert False
 
 
-# CHECK-LABEL: vec_add_vectorized_sugar
-@construct_and_print_module
-def vec_add_vectorized_sugar(_module):
+def test_vec_add_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
@@ -554,7 +554,6 @@ def vec_add_vectorized_sugar(_module):
         .canonicalize()
         .cse(),
     )
-    print(affine_loops)
 
     super_vec = run_pipeline(
         affine_loops,
@@ -566,7 +565,6 @@ def vec_add_vectorized_sugar(_module):
         .lower_affine()
         .canonicalize(),
     )
-    print(super_vec)
 
     mod_aievec = find_ops(
         super_vec.operation,
@@ -574,8 +572,8 @@ def vec_add_vectorized_sugar(_module):
         single=True,
     )
 
-    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
-    xclbin_path = make_xclbin(mod_aie, WORKDIR)
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import random
 import sys
 
@@ -18,20 +18,25 @@ from aie.dialects.aie import AIEDevice, DMAChannelDir
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
+pytest.mark.usefixtures("run_around_tests")
 
 S2MM = DMAChannelDir.S2MM
 MM2S = DMAChannelDir.MM2S
 
 
-# CHECK-LABEL: one_global
-@construct_and_print_module
-def one_global(module):
+def test_one_global(ctx: MLIRContext, workdir: Path):
     K = 32
     RANDOM_NUMBER = random.randint(0, 100)
     iv = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -133,8 +138,8 @@ def one_global(module):
             )
         )
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -149,16 +154,14 @@ def one_global(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-    if not np.array_equal(iv, wrap_C):
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            print(f"{iv=}")
-            print(f"c={wrap_C}")
-            assert False
+        if not np.array_equal(iv, wrap_C):
+            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                print(f"{iv=}")
+                print(f"c={wrap_C}")
+                assert False
 
 
-# CHECK-LABEL: threesome
-@construct_and_print_module
-def threesome(module):
+def test_threesome(ctx: MLIRContext, workdir: Path):
     K = 32
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -272,8 +275,8 @@ def threesome(module):
             )
         )
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -288,17 +291,15 @@ def threesome(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-    if not np.array_equal(iv1 + iv2, wrap_C):
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            print(f"{iv1=}")
-            print(f"{iv2=}")
-            print(f"c={wrap_C}")
-            assert False
+        if not np.array_equal(iv1 + iv2, wrap_C):
+            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                print(f"{iv1=}")
+                print(f"{iv2=}")
+                print(f"c={wrap_C}")
+                assert False
 
 
-# CHECK-LABEL: foursome
-@construct_and_print_module
-def foursome(module):
+def test_foursome(ctx: MLIRContext, workdir: Path):
     K = 32
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
@@ -432,8 +433,8 @@ def foursome(module):
             )
         )
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -448,10 +449,10 @@ def foursome(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-    if not np.array_equal(iv1 + iv2 + iv3, wrap_C):
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            print(f"{iv1=}")
-            print(f"{iv2=}")
-            print(f"{iv3=}")
-            print(f"c={wrap_C}")
-            assert False
+        if not np.array_equal(iv1 + iv2 + iv3, wrap_C):
+            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                print(f"{iv1=}")
+                print(f"{iv2=}")
+                print(f"{iv3=}")
+                print(f"c={wrap_C}")
+                assert False

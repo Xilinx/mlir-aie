@@ -4,8 +4,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import sys
 
 from aie.compiler.util import (
@@ -20,14 +20,19 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
-from aie.dialects.scf import for_ as range_, yield_
 from aie.extras.dialects.ext import arith, linalg
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -37,12 +42,8 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: vec_add
-@construct_and_print_module
-def vec_add(module):
-    K = 32
-    tiles = 4
-    k = K // tiles
+def test_square_matrix_mult(ctx: MLIRContext, workdir: Path):
+    M = N = 16
 
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -53,10 +54,10 @@ def vec_add(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (k,), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (k,), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(tile_0_2, (k,), T.i32())
+        buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
 
         # input
         lock_0_1_read_in_a = aie.lock(tile_0_1, lock_id=0, init=1)
@@ -89,72 +90,65 @@ def vec_add(module):
         # in A
         channel_index = 0
         ddr_id = 0
-        offsets = list(range(0, K, k))
-        for i, bd_id in enumerate(range(tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id = 0
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
-            )
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # in B
         channel_index = 1
         ddr_id = 1
-        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id += 1
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
-            )
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # out C
         channel_index = 0
         ddr_id = 2
-        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id += 1
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
+        ipu_insts.extend(
+            aiex.ipu.sync(
+                channel=0,
+                column=0,
+                column_num=1,
+                direction=0,
+                row=0,
+                row_num=1,
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0,
-                    column=0,
-                    column_num=1,
-                    direction=0,
-                    row=0,
-                    row_num=1,
-                )
-            )
+        )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (k,), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (k,), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
             # output flow
-            buffer_0_1_c = aie.buffer(tile_0_1, (k,), T.i32())
+            buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
             @aie.dma(S2MM, 0)
             def dma1():
@@ -166,7 +160,7 @@ def vec_add(module):
             def dma2():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
-                aie.use_lock(lock_0_1_read_in_a, Release)
+                aie.use_lock(lock_0_1_write_out_a, Release)
 
             @aie.dma(S2MM, 1)
             def dma3():
@@ -220,37 +214,33 @@ def vec_add(module):
 
         @aie.core(tile_0_2)
         def core():
-            for _ in range_(0, tiles):
-                # wait on both in and out to be ready
-                # these have to be acge for some reason...
-                aie.use_lock(lock_0_2_use_a, AcquireGreaterEqual)
-                aie.use_lock(lock_0_2_use_b, AcquireGreaterEqual)
-                aie.use_lock(lock_0_2_use_c, AcquireGreaterEqual)
+            # wait on both in and out to be ready
+            # these have to be acge for some reason...
+            aie.use_lock(lock_0_2_use_a, AcquireGreaterEqual)
+            aie.use_lock(lock_0_2_use_b, AcquireGreaterEqual)
+            aie.use_lock(lock_0_2_use_c, AcquireGreaterEqual)
 
-                linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
-                linalg.add(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+            linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
+            linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-                aie.use_lock(lock_0_2_read_in_a, Release)
-                aie.use_lock(lock_0_2_read_in_b, Release)
-                aie.use_lock(lock_0_2_write_out_c, Release)
-                yield_([])
+            aie.use_lock(lock_0_2_read_in_a, Release)
+            aie.use_lock(lock_0_2_read_in_b, Release)
+            aie.use_lock(lock_0_2_write_out_c, Release)
 
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(K,), (K,), (K,)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (K,), dtype=np.int32)
-        # A = np.zeros((K), dtype=np.int32)
-        # A[: K // 2], A[-K // 2 :] = 1, 2
-        B = np.random.randint(0, 10, (K,), dtype=np.int32)
-        C = np.zeros((K,), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        C = np.zeros((M, N), dtype=np.int32)
 
         np.copyto(wrap_A, A, casting="no")
         np.copyto(wrap_B, B, casting="no")
@@ -262,19 +252,15 @@ def vec_add(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-        if not np.array_equal(A + B, wrap_C):
+        if not np.array_equal(A @ B, wrap_C):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-                print(A + B)
+                print(A @ B)
                 print(wrap_C)
                 assert False
 
 
-# CHECK-LABEL: vec_add_sugar
-@construct_and_print_module
-def vec_add_sugar(module):
-    K = 32
-    tiles = 4
-    k = K // tiles
+def test_square_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
+    M = N = 16
 
     ipu_insts = aiex.ipu.get_prolog()
 
@@ -285,10 +271,10 @@ def vec_add_sugar(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (k,), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (k,), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
         # out
-        buffer_0_2_c = aie.buffer(tile_0_2, (k,), T.i32())
+        buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
 
         lock_0_2_read_in_a = aie.lock(tile_0_2, lock_id=0, init=1)
         lock_0_2_use_a = aie.lock(tile_0_2, lock_id=1, init=0)
@@ -312,74 +298,65 @@ def vec_add_sugar(module):
         # in A
         channel_index = 0
         ddr_id = 0
-        offsets = list(range(0, K, k))
-        for i, bd_id in enumerate(range(tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id = 0
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
-            )
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # in B
         channel_index = 1
-        col = 0
         ddr_id = 1
-        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id += 1
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
-            )
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # out C
         channel_index = 0
-        col = 0
         ddr_id = 2
-        for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
-                    col,
-                    bd_id,
-                    buffer_length=k,
-                    buffer_offset=offsets[i],
-                    ddr_id=ddr_id,
-                )
+        bd_id += 1
+        ipu_insts.extend(
+            aiex.ipu.writebd_shimtile(
+                col,
+                bd_id,
+                buffer_length=M * N,
+                buffer_offset=0,
+                ddr_id=ddr_id,
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+        )
+        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
+        ipu_insts.extend(
+            aiex.ipu.sync(
+                channel=0,
+                column=0,
+                column_num=1,
+                direction=0,
+                row=0,
+                row_num=1,
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0,
-                    column=0,
-                    column_num=1,
-                    direction=0,
-                    row=0,
-                    row_num=1,
-                )
-            )
+        )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (k,), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (k,), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
             # output flow
-            buffer_0_1_c = aie.buffer(tile_0_1, (k,), T.i32())
+            buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
             aiex.forward_bd(tile_0_1, buffer_0_1_a, 0)
             aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
@@ -407,31 +384,31 @@ def vec_add_sugar(module):
 
         @aie.core(tile_0_2)
         def core():
-            for _ in range_(0, tiles):
-                with (
-                    aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
-                    aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                    aiex.hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
-                ):
-                    linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
-                    linalg.add(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+            with (
+                aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
+                aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
+                aiex.hold_lock(
+                    lock_0_2_use_c,
+                    lock_0_2_write_out_c,
+                ),
+            ):
+                linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
+                linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
-                yield_([])
-
-    compile_without_vectorization(module, WORKDIR)
-    xclbin_path = make_xclbin(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(K,), (K,), (K,)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (K,), dtype=np.int32)
-        B = np.random.randint(0, 10, (K,), dtype=np.int32)
-        C = np.zeros((K,), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        C = np.zeros((M, N), dtype=np.int32)
 
         np.copyto(wrap_A, A, casting="no")
         np.copyto(wrap_B, B, casting="no")
@@ -443,8 +420,8 @@ def vec_add_sugar(module):
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-        if not np.array_equal(A + B, wrap_C):
+        if not np.array_equal(A @ B, wrap_C):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-                print(A + B)
+                print(A @ B)
                 print(wrap_C)
                 assert False

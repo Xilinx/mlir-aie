@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+
+from pathlib import Path
 import sys
 
 from aie.compiler.aiecc.main import emit_design_kernel_json
@@ -23,12 +24,18 @@ from aie.dialects.aie import (
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref, scf
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -41,9 +48,7 @@ range_ = scf.range_
 yield_ = scf.yield_
 
 
-# CHECK-LABEL: manual_args
-@construct_and_print_module
-def manual_args(module):
+def test_manual_args(ctx: MLIRContext, workdir: Path):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     iters = 10
@@ -103,12 +108,12 @@ def manual_args(module):
 
             aie.end()
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
     buffer_args = [f"out_{i}" for i in range(iters)]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -150,9 +155,7 @@ def manual_args(module):
                     assert False
 
 
-# CHECK-LABEL: manual_args_with_offset
-@construct_and_print_module
-def manual_args_with_offset(module):
+def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     iters = 10
@@ -212,12 +215,12 @@ def manual_args_with_offset(module):
 
             aie.end()
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
     buffer_args = [f"out_{i}" for i in range(iters)]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -260,9 +263,7 @@ def manual_args_with_offset(module):
                     assert False
 
 
-# CHECK-LABEL: manual_args_with_different_cols
-@construct_and_print_module
-def manual_args_with_different_cols(module):
+def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
     K = 32
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     cols = [0, 1, 2, 3]
@@ -298,12 +299,12 @@ def manual_args_with_different_cols(module):
 
                 aie.end()
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR)
+    compile_without_vectorization(ctx.module, workdir)
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -345,9 +346,7 @@ def manual_args_with_different_cols(module):
                     assert False
 
 
-# CHECK-LABEL: manual_args_with_shim_dma
-@construct_and_print_module
-def manual_args_with_shim_dma(module):
+def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
     K = 32
     cols = [2]
     compute_tile_row = 2
@@ -402,12 +401,12 @@ def manual_args_with_shim_dma(module):
 
                 aie.end()
 
-    assert module.operation.verify()
+    assert ctx.module.operation.verify()
 
-    compile_without_vectorization(module, WORKDIR, enable_cores=False)
+    compile_without_vectorization(ctx.module, workdir, enable_cores=False)
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, WORKDIR, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -437,5 +436,3 @@ def manual_args_with_shim_dma(module):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(f"{col=}")
                 print(w)
-
-        del xclbin

@@ -4,10 +4,10 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 
 from aie.compiler.util import (
@@ -29,14 +29,20 @@ from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
 from aie.extras.dialects.ext import arith, func, linalg
 from aie.extras.runtime.passes import Pipeline, run_pipeline
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.extras.util import find_ops
 from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import WORKDIR, construct_and_print_module
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -45,22 +51,21 @@ Acquire = LockAction.Acquire
 AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
-M, K, N = 16, 32, 16
+M = N = 16
 
 
 @func.func(sym_visibility="private")
 def matmul_i32_i32(
-    A: T.memref(M, K, T.i32()),
-    B: T.memref(K, N, T.i32()),
+    A: T.memref(M, N, T.i32()),
+    B: T.memref(M, N, T.i32()),
     C: T.memref(M, N, T.i32()),
 ):
     linalg.matmul(A, B, C)
 
 
-# CHECK-LABEL: nonsquare_matrix_mult_vectorized
-@construct_and_print_module
-def nonsquare_matrix_mult_vectorized(module):
+def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
+
     mod_aie = ExplicitlyManagedModule()
 
     @aie.device(AIEDevice.ipu)
@@ -71,8 +76,8 @@ def nonsquare_matrix_mult_vectorized(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (M, K), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (K, N), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
         # out
         buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
 
@@ -112,7 +117,7 @@ def nonsquare_matrix_mult_vectorized(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * K,
+                buffer_length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -127,7 +132,7 @@ def nonsquare_matrix_mult_vectorized(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=K * N,
+                buffer_length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -162,8 +167,8 @@ def nonsquare_matrix_mult_vectorized(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (M, K), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (K, N), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
             # output flow
             buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
@@ -197,7 +202,6 @@ def nonsquare_matrix_mult_vectorized(module):
                 aie.dma_bd(buffer_0_1_b)
                 aie.use_lock(lock_0_1_read_in_b, Release)
 
-            # output flow
             @aie.dma(S2MM, 2)
             def dma5():
                 aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual)
@@ -279,7 +283,6 @@ def nonsquare_matrix_mult_vectorized(module):
                 any_op_t(),
                 func,
                 "affine-super-vectorize",
-                # todo: smaller virtualvector (8)
                 options="virtual-vector-size=16",
             )
             func = apply_registered_pass(any_op_t(), func, "affine-scalrep")
@@ -294,9 +297,6 @@ def nonsquare_matrix_mult_vectorized(module):
 
     mod_aievec.finish()
 
-    print(mod_aie)
-    print(mod_aievec)
-
     affine_loops = run_pipeline(
         mod_aievec,
         Pipeline()
@@ -307,7 +307,6 @@ def nonsquare_matrix_mult_vectorized(module):
         .canonicalize()
         .cse(),
     )
-    print(affine_loops)
 
     super_vec = run_pipeline(
         affine_loops,
@@ -325,19 +324,19 @@ def nonsquare_matrix_mult_vectorized(module):
         single=True,
     )
 
-    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
-    xclbin_path = make_xclbin(mod_aie, WORKDIR)
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(M, K), (K, N), (M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (M, K), dtype=np.int32)
-        B = np.random.randint(0, 10, (K, N), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
         # B = np.identity(M, dtype=np.int32)
         C = np.zeros((M, N), dtype=np.int32)
 
@@ -358,9 +357,7 @@ def nonsquare_matrix_mult_vectorized(module):
                 assert False
 
 
-# CHECK-LABEL: nonsquare_matrix_mult_vectorized_sugar
-@construct_and_print_module
-def nonsquare_matrix_mult_vectorized_sugar(module):
+def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
@@ -372,8 +369,8 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
         tile_0_2 = aie.tile(0, 2)
 
         # in
-        buffer_0_2_a = aie.buffer(tile_0_2, (M, K), T.i32())
-        buffer_0_2_b = aie.buffer(tile_0_2, (K, N), T.i32())
+        buffer_0_2_a = aie.buffer(tile_0_2, (M, N), T.i32())
+        buffer_0_2_b = aie.buffer(tile_0_2, (M, N), T.i32())
         # out
         buffer_0_2_c = aie.buffer(tile_0_2, (M, N), T.i32())
 
@@ -408,7 +405,7 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * K,
+                buffer_length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -423,7 +420,7 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=K * N,
+                buffer_length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -458,8 +455,8 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
             # input flow
-            buffer_0_1_a = aie.buffer(tile_0_1, (M, K), T.i32())
-            buffer_0_1_b = aie.buffer(tile_0_1, (K, N), T.i32())
+            buffer_0_1_a = aie.buffer(tile_0_1, (M, N), T.i32())
+            buffer_0_1_b = aie.buffer(tile_0_1, (M, N), T.i32())
             # output flow
             buffer_0_1_c = aie.buffer(tile_0_1, (M, N), T.i32())
 
@@ -505,10 +502,13 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
             with (
                 aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
                 aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                aiex.hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
+                aiex.hold_lock(
+                    lock_0_2_use_c,
+                    lock_0_2_write_out_c,
+                ),
             ):
                 linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
-                matmul_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+                linalg.matmul(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
     mod_aie.finish()
     mod_aievec = ExplicitlyManagedModule()
@@ -538,7 +538,6 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
                 any_op_t(),
                 func,
                 "affine-super-vectorize",
-                # todo: smaller virtualvector (8)
                 options="virtual-vector-size=16",
             )
             func = apply_registered_pass(any_op_t(), func, "affine-scalrep")
@@ -553,9 +552,6 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
 
     mod_aievec.finish()
 
-    print(mod_aie)
-    print(mod_aievec)
-
     affine_loops = run_pipeline(
         mod_aievec,
         Pipeline()
@@ -566,7 +562,6 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
         .canonicalize()
         .cse(),
     )
-    print(affine_loops)
 
     super_vec = run_pipeline(
         affine_loops,
@@ -583,19 +578,20 @@ def nonsquare_matrix_mult_vectorized_sugar(module):
         lambda x: "transform.target_tag" in x.attributes,
         single=True,
     )
-    compile_with_vectorization(mod_aie, mod_aievec, WORKDIR)
-    xclbin_path = make_xclbin(mod_aie, WORKDIR)
+
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
-        views = xclbin.mmap_buffers([(M, K), (K, N), (M, N)], np.int32)
+        views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
         wrap_B = np.asarray(views[1])
         wrap_C = np.asarray(views[2])
 
-        A = np.random.randint(0, 10, (M, K), dtype=np.int32)
-        B = np.random.randint(0, 10, (K, N), dtype=np.int32)
+        A = np.random.randint(0, 10, (M, N), dtype=np.int32)
+        B = np.random.randint(0, 10, (M, N), dtype=np.int32)
         # B = np.identity(M, dtype=np.int32)
         C = np.zeros((M, N), dtype=np.int32)
 
