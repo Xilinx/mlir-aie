@@ -10,10 +10,10 @@ if [ x"$ENABLE_RTTI" == x"OFF" ]; then
 fi
 
 if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then
-  if [ x"$MATRIX_OS" == x"macos-11" ] && [ x"$CIBW_ARCHS" == x"arm64" ]; then
-    PLAT=macosx_11_0_arm64
+  if [ x"$MATRIX_OS" == x"macos-12" ] && [ x"$CIBW_ARCHS" == x"arm64" ]; then
+    PLAT=macosx_12_0_arm64
   elif [ x"$MATRIX_OS" == x"macos-14" ] && [ x"$CIBW_ARCHS" == x"arm64" ]; then
-    PLAT=macosx_11_0_arm64
+    PLAT=macosx_12_0_arm64
   elif [ x"$MATRIX_OS" == x"ubuntu-20.04" ] && [ x"$CIBW_ARCHS" == x"aarch64" ]; then
     PLAT=linux_aarch64
   fi
