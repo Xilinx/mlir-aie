@@ -4,10 +4,14 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import sys
 
+from aie.compiler.util import (
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -17,17 +21,19 @@ from aie.dialects.aie import (
 )
 from aie.dialects.scf import for_ as range_, yield_
 from aie.extras.dialects.ext import linalg
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
 from filelock import FileLock
 import numpy as np
+import pytest
 
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -37,9 +43,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_matrix_mult
-@construct_and_print_module
-def tiled_nonsquare_tile_matrix_mult(module):
+def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
     M = N = 32
 
     tile_rows_A, tile_cols_A = 2, 1
@@ -306,8 +310,8 @@ def tiled_nonsquare_tile_matrix_mult(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -338,9 +342,7 @@ def tiled_nonsquare_tile_matrix_mult(module):
                 assert False
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_matrix_mult_sugar
-@construct_and_print_module
-def tiled_nonsquare_tile_matrix_mult_sugar(module):
+def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
     M = N = 32
 
     tile_rows_A, tile_cols_A = 2, 1
@@ -566,8 +568,8 @@ def tiled_nonsquare_tile_matrix_mult_sugar(module):
                     yield_([])
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

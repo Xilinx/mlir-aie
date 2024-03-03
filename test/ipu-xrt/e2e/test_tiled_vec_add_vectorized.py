@@ -4,15 +4,17 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from __future__ import annotations
+
+from pathlib import Path
 import sys
 
-from aie.extras.dialects.ext import arith, func, linalg
-from filelock import FileLock
-import numpy as np
-
-from aie.dialects import aie, aiex
+from aie.compiler.util import (
+    compile_with_vectorization,
+    make_xclbin,
+)
+from aie.dialects import aie, aiex, builtin, pdl
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
@@ -21,13 +23,26 @@ from aie.dialects.aie import (
 )
 from aie.dialects.linalg.opdsl.ops.core_named_ops import fill as linalg_fill
 from aie.dialects.scf import for_ as range_, yield_
+from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
+from aie.dialects.transform.extras import named_sequence
+from aie.dialects.transform.structured import structured_match
+from aie.extras.context import ExplicitlyManagedModule
+from aie.extras.dialects.ext import arith, func, linalg
+from aie.extras.runtime.passes import Pipeline, run_pipeline
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
+from aie.extras.util import find_ops
+from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+import pytest
+
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -36,18 +51,27 @@ Acquire = LockAction.Acquire
 AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
+K = 512
+tiles = 4
+k = K // tiles
 
-# CHECK-LABEL: vec_add
-@construct_and_print_module
-def vec_add(module):
-    K = 32
-    tiles = 4
-    k = K // tiles
 
+@func.func(sym_visibility="private")
+def vec_add_i32_i32(
+    a: T.memref(k, T.i32()),
+    b: T.memref(k, T.i32()),
+    c: T.memref(k, T.i32()),
+):
+    linalg.add(a, b, c)
+
+
+def test_vec_add_vectorized(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
+    mod_aie = ExplicitlyManagedModule()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
+        vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -106,6 +130,7 @@ def vec_add(module):
 
         # in B
         channel_index = 1
+        col = 0
         ddr_id = 1
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
@@ -123,6 +148,7 @@ def vec_add(module):
 
         # out C
         channel_index = 0
+        col = 0
         ddr_id = 2
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
             ipu_insts.extend(
@@ -228,15 +254,80 @@ def vec_add(module):
                 aie.use_lock(lock_0_2_use_c, AcquireGreaterEqual)
 
                 linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
-                linalg.add(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
+                vec_add_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
 
                 aie.use_lock(lock_0_2_read_in_a, Release)
                 aie.use_lock(lock_0_2_read_in_b, Release)
                 aie.use_lock(lock_0_2_write_out_c, Release)
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    mod_aie.finish()
+    mod_aievec = ExplicitlyManagedModule()
+
+    @builtin.module(attrs={"transform.target_tag": StringAttr.get("payload")})
+    def payload():
+        vec_add_i32_i32.emit(force=True)
+
+    @builtin.module(attrs={"transform.with_named_sequence": UnitAttr.get()})
+    def mod_transform():
+        @named_sequence("affine_unroll", [any_op_t()], [])
+        def affine_unroll(target: any_op_t()):
+            func = structured_match(any_op_t(), target, ops=["func.func"])
+            new_func = apply_registered_pass(
+                any_op_t(), func, "convert-linalg-to-affine-loops"
+            )
+            m = structured_match(any_op_t(), new_func, ops=["arith.addi"])
+            loop = get_parent_op(pdl.op_t(), m, op_name="affine.for")
+            # unroll inner loop
+            # loop_unroll(loop, 32)
+
+        @named_sequence("affine_super_vectorize", [any_op_t()], [])
+        def super_vectorize(target: any_op_t()):
+            func = structured_match(any_op_t(), target, ops=["func.func"])
+            func = apply_registered_pass(
+                any_op_t(),
+                func,
+                "affine-super-vectorize",
+                options="virtual-vector-size=16",
+            )
+            mod = apply_registered_pass(
+                any_op_t(),
+                target,
+                "convert-vector-to-aievec",
+                options="aie-target=aieml",
+            )
+
+    mod_aievec.finish()
+
+    affine_loops = run_pipeline(
+        mod_aievec,
+        Pipeline()
+        .transform_interpreter(
+            entry_point="affine_unroll",
+            debug_payload_root_tag="payload",
+        )
+        .canonicalize()
+        .cse(),
+    )
+
+    super_vec = run_pipeline(
+        affine_loops,
+        Pipeline()
+        .transform_interpreter(
+            entry_point="affine_super_vectorize",
+            debug_payload_root_tag="payload",
+        )
+        .lower_affine()
+        .canonicalize(),
+    )
+
+    mod_aievec = find_ops(
+        super_vec.operation,
+        lambda x: "transform.target_tag" in x.attributes,
+        single=True,
+    )
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -247,8 +338,6 @@ def vec_add(module):
         wrap_C = np.asarray(views[2])
 
         A = np.random.randint(0, 10, (K,), dtype=np.int32)
-        # A = np.zeros((K), dtype=np.int32)
-        # A[: K // 2], A[-K // 2 :] = 1, 2
         B = np.random.randint(0, 10, (K,), dtype=np.int32)
         C = np.zeros((K,), dtype=np.int32)
 
@@ -269,17 +358,13 @@ def vec_add(module):
                 assert False
 
 
-# CHECK-LABEL: vec_add_sugar
-@construct_and_print_module
-def vec_add_sugar(module):
-    K = 32
-    tiles = 4
-    k = K // tiles
-
+def test_vec_add_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     ipu_insts = aiex.ipu.get_prolog()
+    mod_aie = ExplicitlyManagedModule()
 
     @aie.device(AIEDevice.ipu)
     def ipu():
+        vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -383,6 +468,7 @@ def vec_add_sugar(module):
 
             aiex.forward_bd(tile_0_1, buffer_0_1_a, 0)
             aiex.forward_bd(tile_0_1, buffer_0_1_b, 1)
+            # output flow
             aiex.forward_bd(tile_0_1, buffer_0_1_c, 2)
 
             aie.end()
@@ -411,15 +497,83 @@ def vec_add_sugar(module):
                 with (
                     aiex.hold_lock(lock_0_2_use_a, lock_0_2_read_in_a),
                     aiex.hold_lock(lock_0_2_use_b, lock_0_2_read_in_b),
-                    aiex.hold_lock(lock_0_2_use_c, lock_0_2_write_out_c),
+                    aiex.hold_lock(
+                        lock_0_2_use_c,
+                        lock_0_2_write_out_c,
+                    ),
                 ):
                     linalg_fill(arith.constant(0), outs=[buffer_0_2_c])
-                    linalg.add(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
-
+                    vec_add_i32_i32(buffer_0_2_a, buffer_0_2_b, buffer_0_2_c)
                 yield_([])
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    mod_aie.finish()
+    mod_aievec = ExplicitlyManagedModule()
+
+    @builtin.module(attrs={"transform.target_tag": StringAttr.get("payload")})
+    def payload():
+        vec_add_i32_i32.emit(force=True)
+
+    @builtin.module(attrs={"transform.with_named_sequence": UnitAttr.get()})
+    def mod_transform():
+        @named_sequence("affine_unroll", [any_op_t()], [])
+        def affine_unroll(target: any_op_t()):
+            func = structured_match(any_op_t(), target, ops=["func.func"])
+            new_func = apply_registered_pass(
+                any_op_t(), func, "convert-linalg-to-affine-loops"
+            )
+            m = structured_match(any_op_t(), new_func, ops=["arith.addi"])
+            loop = get_parent_op(pdl.op_t(), m, op_name="affine.for")
+            # unroll inner loop
+            # loop_unroll(loop, 32)
+
+        @named_sequence("affine_super_vectorize", [any_op_t()], [])
+        def super_vectorize(target: any_op_t()):
+            func = structured_match(any_op_t(), target, ops=["func.func"])
+            func = apply_registered_pass(
+                any_op_t(),
+                func,
+                "affine-super-vectorize",
+                options="virtual-vector-size=16",
+            )
+            mod = apply_registered_pass(
+                any_op_t(),
+                target,
+                "convert-vector-to-aievec",
+                options="aie-target=aieml",
+            )
+
+    mod_aievec.finish()
+
+    affine_loops = run_pipeline(
+        mod_aievec,
+        Pipeline()
+        .transform_interpreter(
+            entry_point="affine_unroll",
+            debug_payload_root_tag="payload",
+        )
+        .canonicalize()
+        .cse(),
+    )
+
+    super_vec = run_pipeline(
+        affine_loops,
+        Pipeline()
+        .transform_interpreter(
+            entry_point="affine_super_vectorize",
+            debug_payload_root_tag="payload",
+        )
+        .lower_affine()
+        .canonicalize(),
+    )
+
+    mod_aievec = find_ops(
+        super_vec.operation,
+        lambda x: "transform.target_tag" in x.attributes,
+        single=True,
+    )
+
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

@@ -12,14 +12,28 @@ from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import CallOp, FuncOp
 from .._mlir_libs import get_dialect_registry
-from .._mlir_libs._aie import *
-from .._mlir_libs._aie import ObjectFifoSubviewType, ObjectFifoType
+
+# noinspection PyUnresolvedReferences
+from .._mlir_libs._aie import (
+    ObjectFifoSubviewType,
+    ObjectFifoType,
+    aie_llvm_link,
+    generate_bcf,
+    generate_cdo,
+    generate_xaie,
+    ipu_instgen,
+    register_dialect,
+    translate_aie_vec_to_cpp,
+    translate_mlir_to_llvmir,
+)
 from ..extras import types as T
 from ..extras.dialects.ext.arith import constant
 
 # noinspection PyUnresolvedReferences
 from ..extras.dialects.ext import memref
 from ..extras.meta import region_op
+
+# this is inside the aie-python-extras (shared) namespace package
 from ..extras.util import (
     Successor,
     _get_sym_name,
@@ -28,6 +42,7 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+
 from ..ir import (
     ArrayAttr,
     Attribute,

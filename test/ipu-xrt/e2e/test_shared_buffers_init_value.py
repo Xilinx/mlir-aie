@@ -3,33 +3,36 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
+
+from pathlib import Path
 import random
 import sys
+
+from aie.compiler.util import compile_without_vectorization, make_xclbin
+from aie.dialects import aie, aiex
+from aie.dialects.aie import AIEDevice, DMAChannelDir
 
 # this is to get the MemRefValue caster inside aie-python-extras
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref
-from filelock import FileLock
-import numpy as np
 
-from aie.dialects import aie, aiex
-from aie.dialects.aie import AIEDevice, DMAChannelDir
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+import pytest
+
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 S2MM = DMAChannelDir.S2MM
 MM2S = DMAChannelDir.MM2S
 
 
-# CHECK-LABEL: foursome
-@construct_and_print_module
-def foursome(module):
+def test_foursome(ctx: MLIRContext, workdir: Path):
     K = 32
 
     init_weights = [np.random.randint(0, 10, (K,), dtype=np.int32) for _ in range(7)]
@@ -193,8 +196,8 @@ def foursome(module):
             )
         )
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
