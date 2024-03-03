@@ -86,11 +86,11 @@ runs:
       run: pip install cibuildwheel wheel
 
     - name: install rename
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
         
-        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-11" ]; then
+        if [ x"${{ inputs.MATRIX_OS }}" == x"macos-12" ] || [ x"${{ inputs.MATRIX_OS }}" == x"macos-14" ]; then
           brew install rename
         else
           sudo apt-get install -y rename
@@ -107,7 +107,7 @@ runs:
       shell: pwsh
 
     - run: echo "TEMP=/tmp" >> $GITHUB_ENV
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-11' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-20.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
 
     - name: Set workspace root

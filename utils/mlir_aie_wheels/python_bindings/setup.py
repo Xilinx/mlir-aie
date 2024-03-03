@@ -161,7 +161,8 @@ class CMakeBuild(build_ext):
                 build_args += ["--config", cfg]
 
         if sys.platform.startswith("darwin"):
-            cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=11.6"]
+            osx_version = os.getenv("OSX_VERSION", "11.6")
+            cmake_args += [f"-DCMAKE_OSX_DEPLOYMENT_TARGET={osx_version}"]
             # Cross-compile support for macOS - respect ARCHFLAGS if set
             archs = re.findall(r"-arch (\S+)", os.getenv("ARCHFLAGS", ""))
             if archs:
