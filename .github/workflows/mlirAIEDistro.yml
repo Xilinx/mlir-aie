@@ -84,14 +84,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
-#
-#          - OS: macos-11
-#            ARCH: arm64
-#            ENABLE_RTTI: ON
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: macos-14
+            ARCH: arm64
+            ENABLE_RTTI: ON
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -107,14 +106,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-# disabled because no bootgen means also no cdo-driver (which is linked everywhere)
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
-#
-#          - OS: macos-11
-#            ARCH: arm64
-#            ENABLE_RTTI: OFF
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-14
+            ARCH: arm64
+            ENABLE_RTTI: OFF
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
@@ -134,6 +132,13 @@ jobs:
         fi
         echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
+
+    - name: set ENV macos
+      if: contains(matrix.OS, 'macos')
+      shell: bash
+      run: |
+        
+        echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
       uses: actions/checkout@v3
@@ -287,7 +292,7 @@ jobs:
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
     - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
+      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -329,9 +334,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -341,9 +346,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -400,13 +405,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
-#
-#          - OS: macos-11
-#            ARCH: arm64
-#            ENABLE_RTTI: ON
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: macos-14
+            ARCH: arm64
+            ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -420,13 +425,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-#          - OS: macos-11
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
-#
-#          - OS: macos-11
-#            ARCH: arm64
-#            ENABLE_RTTI: OFF
+          - OS: macos-12
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: macos-14
+            ARCH: arm64
+            ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v3
