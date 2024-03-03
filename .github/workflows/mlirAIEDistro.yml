@@ -32,9 +32,6 @@ on:
         required: false
         default: ''
 
-  # this is only for debugging this same yamls
-  # comment it out when you're not working on these yamls
-
 jobs:
 
   get_aie_project_commit:

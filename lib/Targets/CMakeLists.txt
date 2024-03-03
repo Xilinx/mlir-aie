@@ -55,10 +55,12 @@ add_mlir_library(AIETargets
   ADF
 )
 
-target_link_libraries(AIETargets PUBLIC xaienginecdo_static cdo_driver_mlir_aie)
+target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
 add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
+# for #include <elf.h>
 set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 target_include_directories(AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
+target_include_directories(obj.AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
 if(AIE_ENABLE_AIRBIN)
   target_link_libraries(AIETargets PRIVATE elf)
