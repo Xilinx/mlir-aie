@@ -86,7 +86,7 @@ def bufferOp():
     b = buffer(t, (12,), T.i32())
     b = buffer(
         t,
-        (2, 2), 
+        (2, 2),
         T.i32(),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
@@ -159,10 +159,7 @@ def objFifoAcquire():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = of0.acquire(
-                port=ObjectFifoPort.Consume,
-                num_elem=1
-            )
+            acq = of0.acquire(port=ObjectFifoPort.Consume, num_elem=1)
             end()
 
 
@@ -185,7 +182,8 @@ def objFifoSubviewAccess():
         with InsertionPoint(bb):
             acq = objectfifo_acquire(
                 ObjectFifoSubviewType.get(T.memref(12, T.f16())),
-                ObjectFifoPort.Consume, "of0", 
+                ObjectFifoPort.Consume,
+                "of0", 
                 1,
             )
             subview = objectfifo_subview_access(

@@ -154,18 +154,30 @@ def my_matmul():
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         for _ in for_(tiles):
-                            elem_out = outC_fifos[outC_fifo_names[i]].acquire(ObjectFifoPort.Produce, 1)
+                            elem_out = outC_fifos[outC_fifo_names[i]].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
                             call(zero, [elem_out])
 
                             for _ in for_(K_div_k):
-                                elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(ObjectFifoPort.Consume, 1)
-                                elem_in_b = inB_fifos[inB_fifo_names[0]].acquire(ObjectFifoPort.Consume, 1)
+                                elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
+                                    ObjectFifoPort.Consume, 1
+                                )
+                                elem_in_b = inB_fifos[inB_fifo_names[0]].acquire(
+                                    ObjectFifoPort.Consume, 1
+                                )
                                 call(matmul, [elem_in_a, elem_in_b, elem_out])
-                                inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                                inB_fifos[inB_fifo_names[0]].release(ObjectFifoPort.Consume, 1)
+                                inA_fifos[inA_fifo_names[i]].release(
+                                    ObjectFifoPort.Consume, 1
+                                )
+                                inB_fifos[inB_fifo_names[0]].release(
+                                    ObjectFifoPort.Consume, 1
+                                )
                                 yield_([])
 
-                            outC_fifos[outC_fifo_names[i]].release(ObjectFifoPort.Produce, 1)
+                            outC_fifos[outC_fifo_names[i]].release(
+                                ObjectFifoPort.Produce, 1
+                            )
                             yield_([])
                         yield_([])
 

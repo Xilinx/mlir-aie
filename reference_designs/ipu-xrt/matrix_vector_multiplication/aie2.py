@@ -108,7 +108,9 @@ def my_matmul():
                         (1, 1),
                     ],
                 )
-                object_fifo_link(memA_fifos[memA_fifo_names[i]], inA_fifos[inA_fifo_names[i]])
+                object_fifo_link(
+                    memA_fifos[memA_fifo_names[i]], inA_fifos[inA_fifo_names[i]]
+                )
 
             # Input B
             inB_fifos[inB_fifo_names[0]] = object_fifo(
@@ -136,23 +138,35 @@ def my_matmul():
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         elem_out = outC_fifos[outC_fifo_names[i]].acquire(
-                            ObjectFifoPort.Produce, 1,
+                            ObjectFifoPort.Produce,
+                            1,
                         )
                         call(zero, [elem_out])
 
                         for _ in for_(K_div_k):
                             elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
-                                ObjectFifoPort.Consume, 1,
+                                ObjectFifoPort.Consume,
+                                1,
                             )
                             elem_in_b = inB_fifos[inB_fifo_names[0]].acquire(
-                                ObjectFifoPort.Consume, 1,
+                                ObjectFifoPort.Consume,
+                                1,
                             )
                             call(matvec, [elem_in_a, elem_in_b, elem_out])
-                            inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                            inB_fifos[inB_fifo_names[0]].release(ObjectFifoPort.Consume, 1)
+                            inA_fifos[inA_fifo_names[i]].release(
+                                ObjectFifoPort.Consume,
+                                1,
+                            )
+                            inB_fifos[inB_fifo_names[0]].release(
+                                ObjectFifoPort.Consume,
+                                1,
+                            )
                             yield_([])
 
-                        outC_fifos[outC_fifo_names[i]].release(ObjectFifoPort.Produce, 1)
+                        outC_fifos[outC_fifo_names[i]].release(
+                            ObjectFifoPort.Produce,
+                            1,
+                        )
                         yield_([])
 
             # To/from AIE-array data movement

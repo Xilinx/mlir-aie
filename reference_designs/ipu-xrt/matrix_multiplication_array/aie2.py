@@ -158,7 +158,12 @@ def my_matmul():
             _2_outC_fifos = {}
             _3_outC_fifo_names = ["memC03", "memC13", "memC23", "memC33"]
             _3_outC_fifos = {}
-            memC_fifo_names = [_0_outC_fifo_names, _1_outC_fifo_names, _2_outC_fifo_names, _3_outC_fifo_names]
+            memC_fifo_names = [
+                _0_outC_fifo_names,
+                _1_outC_fifo_names,
+                _2_outC_fifo_names,
+                _3_outC_fifo_names,
+            ]
             memC_fifos = [_0_outC_fifos, _1_outC_fifos, _2_outC_fifos, _3_outC_fifos]
             outC_fifo_names = ["outC0", "outC1", "outC2", "outC3"]
             outC_fifos = {}
@@ -167,7 +172,11 @@ def my_matmul():
             # Input A
             for i in range(n_cols):
                 inA_fifos[inA_fifo_names[i]] = object_fifo(
-                    inA_fifo_names[i], shims[i], [mems[i]], 2, memRef_inA_ty,
+                    inA_fifo_names[i],
+                    shims[i],
+                    mems[i],
+                    2,
+                    memRef_inA_ty,
                 )
                 memA_fifos[memA_fifo_names[i]] = object_fifo(
                     memA_fifo_names[i],
@@ -187,7 +196,11 @@ def my_matmul():
             # Input B
             for i in range(n_cols):
                 inB_fifos[inB_fifo_names[i]] = object_fifo(
-                    inB_fifo_names[i], shims[i], [mems[i]], 2, memRef_inB_ty,
+                    inB_fifo_names[i],
+                    shims[i],
+                    mems[i],
+                    2,
+                    memRef_inB_ty,
                 )
                 memB_fifos[memB_fifo_names[i]] = object_fifo(
                     memB_fifo_names[i],
