@@ -183,7 +183,7 @@ def objFifoSubviewAccess():
             acq = objectfifo_acquire(
                 ObjectFifoSubviewType.get(T.memref(12, T.f16())),
                 ObjectFifoPort.Consume,
-                "of0", 
+                "of0",
                 1,
             )
             subview = objectfifo_subview_access(
