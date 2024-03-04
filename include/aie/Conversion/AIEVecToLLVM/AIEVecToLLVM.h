@@ -11,6 +11,8 @@
 #ifndef AIE_CONVERSION_AIEVECTOLLVM_AIEVECTOLLVM_H
 #define AIE_CONVERSION_AIEVECTOLLVM_AIEVECTOLLVM_H
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
 #include <memory>
 
 namespace mlir {
