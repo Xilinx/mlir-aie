@@ -10,7 +10,7 @@ from aie.dialects.aie import (
     Device,
     Core,
     end,
-    Buffer,
+    buffer,
 )
 from aie.extras.dialects.ext import memref, arith
 from aie.ir import InsertionPoint, Block
@@ -21,14 +21,14 @@ from util import construct_and_print_module
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
 # CHECK:      %tile_1_4 = aie.tile(1, 4)
-# CHECK:      %buffer_1_4 = aie.buffer(%tile_1_4) : memref<256xi32>
+# CHECK:      %buff = aie.buffer(%tile_1_4) {sym_name = "buff"} : memref<256xi32>
 # CHECK:      %core_1_4 = aie.core(%tile_1_4) {
 # CHECK:        %c3 = arith.constant 3 : index
-# CHECK:        %0 = memref.load %buffer_1_4[%c3] : memref<256xi32>
+# CHECK:        %0 = memref.load %buff[%c3] : memref<256xi32>
 # CHECK:        %c4_i32 = arith.constant 4 : i32
 # CHECK:        %1 = arith.addi %0, %c4_i32 : i32
 # CHECK:        %c3_0 = arith.constant 3 : index
-# CHECK:        memref.store %1, %buffer_1_4[%c3_0] : memref<256xi32>
+# CHECK:        memref.store %1, %buff[%c3_0] : memref<256xi32>
 # CHECK:        aie.end
 # CHECK:      }
 # CHECK:    }
@@ -39,7 +39,7 @@ def simple_with_bindings_example():
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
         tile_a = tile(1, 4)
-        buff = Buffer(tile=tile_a, shape=(256,), datatype=T.i32())
+        buff = buffer(tile=tile_a, shape=(256,), dtype=T.i32())
 
         C = Core(tile_a)
         bb = Block.create_at_start(C.body)

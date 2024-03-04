@@ -83,58 +83,55 @@ def my_matmul():
 
             # AIE-array data movement with object fifos
             # Input A
-            objectfifo("inA", shim_tile, [mem_tile], 2, ofifo_memref_a_ty, [], [])
-            objectfifo(
+            inA = object_fifo("inA", shim_tile, mem_tile, 2, memref_a_ty)
+            memA = object_fifo(
                 "memA",
                 mem_tile,
-                [compute_tile2],
+                compute_tile2,
                 2,
-                ofifo_memref_a_ty,
+                memref_a_ty,
                 [
                     (m // r, r * k * word_size_in // 4),
                     (k // s, s * word_size_in // 4),
                     (r, k * word_size_in // 4),
                     (s * word_size_in // 4, 1),
                 ],
-                [],
             )
-            objectfifo_link(["inA"], ["memA"])
+            object_fifo_link(inA, memA)
 
             # Input B
-            objectfifo("inB", shim_tile, [mem_tile], 2, ofifo_memref_b_ty, [], [])
-            objectfifo(
+            inB = object_fifo("inB", shim_tile, mem_tile, 2, memref_b_ty)
+            memB = object_fifo(
                 "memB",
                 mem_tile,
-                [compute_tile2],
+                compute_tile2,
                 2,
-                ofifo_memref_b_ty,
+                memref_b_ty,
                 [
                     (k // s, s * n * word_size_in // 4),
                     (n // t, t * word_size_in // 4),
                     (s, n * word_size_in // 4),
                     (t * word_size_in // 4, 1),
                 ],
-                [],
             )
-            objectfifo_link(["inB"], ["memB"])
+            object_fifo_link(inB, memB)
 
             # Output C
-            objectfifo("memC", compute_tile2, [mem_tile], 2, ofifo_memref_c_ty, [], [])
-            objectfifo(
+            memC = object_fifo("memC", compute_tile2, mem_tile, 2, memref_c_ty)
+            outC = object_fifo(
                 "outC",
                 mem_tile,
-                [shim_tile],
+                shim_tile,
                 2,
-                ofifo_memref_c_ty,
+                memref_c_ty,
                 [
                     (m // r, r * n * word_size_out // 4),
                     (r, t * word_size_out // 4),
                     (n // t, r * t * word_size_out // 4),
                     (t * word_size_out // 4, 1),
                 ],
-                [],
             )
-            objectfifo_link(["memC"], ["outC"])
+            object_fifo_link(memC, outC)
 
             # Set up a circuit-switched flow from core to shim for tracing information
             if enable_tracing:
@@ -147,30 +144,24 @@ def my_matmul():
             def core_body():
                 for _ in for_(0xFFFFFFFF):
                     for _ in for_(tiles):
-                        elem_out = acquire(
-                            ObjectFifoPort.Produce, "memC", 1, memref_c_ty
-                        ).acquired_elem()
+                        elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         if vectorized:
-                            Call(zero, [elem_out])
+                            call(zero, [elem_out])
                         else:
-                            Call(zero_scalar, [elem_out])
+                            call(zero_scalar, [elem_out])
 
                         for _ in for_(K_div_k):
-                            elem_in_a = acquire(
-                                ObjectFifoPort.Consume, "memA", 1, memref_a_ty
-                            ).acquired_elem()
-                            elem_in_b = acquire(
-                                ObjectFifoPort.Consume, "memB", 1, memref_b_ty
-                            ).acquired_elem()
+                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
+                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
                             if vectorized:
-                                Call(matmul, [elem_in_a, elem_in_b, elem_out])
+                                call(matmul, [elem_in_a, elem_in_b, elem_out])
                             else:
-                                Call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
-                            objectfifo_release(ObjectFifoPort.Consume, "memA", 1)
-                            objectfifo_release(ObjectFifoPort.Consume, "memB", 1)
+                                call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
+                            memA.release(ObjectFifoPort.Consume, 1)
+                            memB.release(ObjectFifoPort.Consume, 1)
                             yield_([])
 
-                        objectfifo_release(ObjectFifoPort.Produce, "memC", 1)
+                        memC.release(ObjectFifoPort.Produce, 1)
                         yield_([])
                     yield_([])
 

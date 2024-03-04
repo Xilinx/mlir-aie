@@ -71,13 +71,6 @@ def my_matmul():
             memRef_B_ty = T.memref(k, n, T.bf16())
             memRef_C_ty = T.memref(m, n, T.bf16())
 
-            ofifo_memRef_inA_ty = TypeAttr.get(ObjectFifoType.get(memRef_inA_ty))
-            ofifo_memRef_inB_ty = TypeAttr.get(ObjectFifoType.get(memRef_inB_ty))
-            ofifo_memRef_outC_ty = TypeAttr.get(ObjectFifoType.get(memRef_outC_ty))
-            ofifo_memRef_A_ty = TypeAttr.get(ObjectFifoType.get(memRef_A_ty))
-            ofifo_memRef_B_ty = TypeAttr.get(ObjectFifoType.get(memRef_B_ty))
-            ofifo_memRef_C_ty = TypeAttr.get(ObjectFifoType.get(memRef_C_ty))
-
             # AIE Core Function declarations
             zero_scalar = external_func("zero_scalar_bf16", inputs=[memRef_C_ty])
             zero = external_func("zero_bf16", inputs=[memRef_C_ty])
@@ -149,57 +142,65 @@ def my_matmul():
             t_cores = [
                 [cores[j][i] for j in range(len(cores))] for i in range(len(cores[0]))
             ]
-            inA_fifos = ["inA0", "inA1", "inA2", "inA3"]
-            inB_fifos = ["inB0", "inB1", "inB2", "inB3"]
-            memA_fifos = ["memA0", "memA1", "memA2", "memA3"]
-            memB_fifos = ["memB0", "memB1", "memB2", "memB3"]
-            _0_outC_fifos = ["memC00", "memC10", "memC20", "memC30"]
-            _1_outC_fifos = ["memC01", "memC11", "memC21", "memC31"]
-            _2_outC_fifos = ["memC02", "memC12", "memC22", "memC32"]
-            _3_outC_fifos = ["memC03", "memC13", "memC23", "memC33"]
+            inA_fifos_names = ["inA0", "inA1", "inA2", "inA3"]
+            inA_fifos = {}
+            inB_fifo_names = ["inB0", "inB1", "inB2", "inB3"]
+            inB_fifos = {}
+            memA_fifos_names = ["memA0", "memA1", "memA2", "memA3"]
+            memA_fifos = {}
+            memB_fifos_names = ["memB0", "memB1", "memB2", "memB3"]
+            memB_fifos = {}
+            _0_outC_fifos_names = ["memC00", "memC10", "memC20", "memC30"]
+            _0_outC_fifos = {}
+            _1_outC_fifos_names = ["memC01", "memC11", "memC21", "memC31"]
+            _1_outC_fifos = {}
+            _2_outC_fifos_names = ["memC02", "memC12", "memC22", "memC32"]
+            _2_outC_fifos = {}
+            _3_outC_fifos_names = ["memC03", "memC13", "memC23", "memC33"]
+            _3_outC_fifos = {}
             memC_fifos = [_0_outC_fifos, _1_outC_fifos, _2_outC_fifos, _3_outC_fifos]
-            outC_fifos = ["outC0", "outC1", "outC2", "outC3"]
+            memC_fifos = {}
+            outC_fifos_names = ["outC0", "outC1", "outC2", "outC3"]
+            outC_fifos = {}
 
             # AIE-array data movement with object fifos
             # Input A
             for i in range(n_cols):
                 objectfifo(
-                    inA_fifos[i], shims[i], [mems[i]], 2, ofifo_memRef_inA_ty, [], []
+                    inA_fifos[i], shims[i], [mems[i]], 2, memRef_inA_ty,
                 )
                 objectfifo(
                     memA_fifos[i],
                     mems[i],
                     t_cores[i][0:n_cols],
                     2,
-                    ofifo_memRef_A_ty,
+                    memRef_A_ty,
                     [
                         (m // r, r * k * word_size_in // 4),
                         (k // s, s * word_size_in // 4),
                         (r, k * word_size_in // 4),
                         (s * word_size_in // 4, 1),
                     ],
-                    [],
                 )
                 objectfifo_link([inA_fifos[i]], [memA_fifos[i]])
 
             # Input B
             for i in range(n_cols):
                 objectfifo(
-                    inB_fifos[i], shims[i], [mems[i]], 2, ofifo_memRef_inB_ty, [], []
+                    inB_fifos[i], shims[i], [mems[i]], 2, memRef_inB_ty,
                 )
                 objectfifo(
                     memB_fifos[i],
                     mems[i],
                     cores[i][0:n_rows],
                     2,
-                    ofifo_memRef_B_ty,
+                    memRef_B_ty,
                     [
                         (k // s, s * n * word_size_in // 4),
                         (n // t, t * word_size_in // 4),
                         (s, n * word_size_in // 4),
                         (t * word_size_in // 4, 1),
                     ],
-                    [],
                 )
                 objectfifo_link([inB_fifos[i]], [memB_fifos[i]])
 
@@ -211,7 +212,7 @@ def my_matmul():
                         cores[i][j],
                         [mems[i]],
                         2,
-                        ofifo_memRef_C_ty,
+                        memRef_C_ty,
                         [],
                         [],
                     )
@@ -220,14 +221,13 @@ def my_matmul():
                     mems[i],
                     shims[i],
                     2,
-                    ofifo_memRef_outC_ty,
+                    memRef_outC_ty,
                     [
                         (m // r, r * n * word_size_out // 4),
                         (r, t * word_size_out // 4),
                         (n // t, r * t * word_size_out // 4),
                         (t * word_size_out // 4, 1),
                     ],
-                    [],
                 )
                 objectfifo_link(memC_fifos[i], [outC_fifos[i]])
 
@@ -245,7 +245,7 @@ def my_matmul():
                                     1,
                                     memRef_C_ty,
                                 ).acquired_elem()
-                                Call(zero, [elem_out])
+                                call(zero, [elem_out])
 
                                 for _ in for_(K_div_k):
                                     elem_in_a = acquire(
@@ -260,7 +260,7 @@ def my_matmul():
                                         1,
                                         memRef_B_ty,
                                     ).acquired_elem()
-                                    Call(matmul, [elem_in_a, elem_in_b, elem_out])
+                                    call(matmul, [elem_in_a, elem_in_b, elem_out])
                                     objectfifo_release(
                                         ObjectFifoPort.Consume, memA_fifos[i], 1
                                     )

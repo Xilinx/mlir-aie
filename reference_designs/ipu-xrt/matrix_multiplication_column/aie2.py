@@ -66,13 +66,6 @@ def my_matmul():
             memRef_B_ty = T.memref(k, n, T.bf16())
             memRef_C_ty = T.memref(m, n, T.f32())
 
-            ofifo_memRef_inA_ty = TypeAttr.get(ObjectFifoType.get(memRef_inA_ty))
-            ofifo_memRef_inB_ty = TypeAttr.get(ObjectFifoType.get(memRef_inB_ty))
-            ofifo_memRef_outC_ty = TypeAttr.get(ObjectFifoType.get(memRef_outC_ty))
-            ofifo_memRef_A_ty = TypeAttr.get(ObjectFifoType.get(memRef_A_ty))
-            ofifo_memRef_B_ty = TypeAttr.get(ObjectFifoType.get(memRef_B_ty))
-            ofifo_memRef_C_ty = TypeAttr.get(ObjectFifoType.get(memRef_C_ty))
-
             # AIE Core Function declarations
             zero_scalar = external_func("zero_scalar_f32", inputs=[memRef_C_ty])
             zero = external_func("zero_f32", inputs=[memRef_C_ty])
@@ -91,68 +84,68 @@ def my_matmul():
             ComputeTile4 = tile(0, 4)
             ComputeTile5 = tile(0, 5)
             cores = [ComputeTile2, ComputeTile3, ComputeTile4, ComputeTile5]
-            inA_fifos = ["memA0", "memA1", "memA2", "memA3"]
-            inB_fifos = ["memB"]
-            outC_fifos = ["memC0", "memC1", "memC2", "memC3"]
+            inA_fifo_names = ["memA0", "memA1", "memA2", "memA3"]
+            inA_fifos = {}
+            inB_fifo_names = ["memB"]
+            inB_fifos = {}
+            outC_fifo_names = ["memC0", "memC1", "memC2", "memC3"]
+            outC_fifos = {}
 
             # AIE-array data movement with object fifos
             # Input A
-            objectfifo("inA", ShimTile, [MemTile], 2, ofifo_memRef_inA_ty, [], [])
+            inA = object_fifo("inA", ShimTile, MemTile, 2, memRef_inA_ty)
             for i in range(n_cores):
-                objectfifo(
-                    inA_fifos[i],
+                inA_fifos[inA_fifo_names[i]] = object_fifo(
+                    inA_fifo_names[i],
                     MemTile,
-                    [cores[i]],
+                    cores[i],
                     2,
-                    ofifo_memRef_A_ty,
+                    memRef_A_ty,
                     [
                         (m // r, r * k * word_size_in // 4),
                         (k // s, s * word_size_in // 4),
                         (r, k * word_size_in // 4),
                         (s * word_size_in // 4, 1),
                     ],
-                    [],
                 )
-            objectfifo_link(["inA"], inA_fifos[0:n_cores])
+            object_fifo_link(inA, inA_fifo_names[0:n_cores])
 
             # Input B
-            objectfifo("inB", ShimTile, [MemTile], 2, ofifo_memRef_inB_ty, [], [])
-            objectfifo(
-                inB_fifos[0],
+            inB = object_fifo("inB", ShimTile, MemTile, 2, memRef_inB_ty)
+            inB_fifos[inB_fifo_names[0]] = object_fifo(
+                inB_fifo_names[0],
                 MemTile,
                 cores[0:n_cores],
                 2,
-                ofifo_memRef_B_ty,
+                memRef_B_ty,
                 [
                     (k // s, s * n * word_size_in // 4),
                     (n // t, t * word_size_in // 4),
                     (s, n * word_size_in // 4),
                     (t * word_size_in // 4, 1),
                 ],
-                [],
             )
-            objectfifo_link(["inB"], [inB_fifos[0]])
+            object_fifo_link(inB, [inB_fifo_names[0]])
 
             # Output C
             for i in range(n_cores):
-                objectfifo(
-                    outC_fifos[i], cores[i], [MemTile], 2, ofifo_memRef_C_ty, [], []
+                outC_fifos[outC_fifo_names[i]] = object_fifo(
+                    outC_fifo_names[i], cores[i], MemTile, 2, memRef_C_ty
                 )
-            objectfifo(
+            outC = object_fifo(
                 "outC",
                 MemTile,
-                [ShimTile],
+                ShimTile,
                 2,
-                ofifo_memRef_outC_ty,
+                memRef_outC_ty,
                 [
                     (m // r, r * n * word_size_out // 4),
                     (r, t * word_size_out // 4),
                     (n // t, r * t * word_size_out // 4),
                     (t * word_size_out // 4, 1),
                 ],
-                [],
             )
-            objectfifo_link(outC_fifos[0:n_cores], ["outC"])
+            object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
             # Set up compute tiles
             for i in range(n_cores):
@@ -161,28 +154,18 @@ def my_matmul():
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         for _ in for_(tiles):
-                            elem_out = acquire(
-                                ObjectFifoPort.Produce, outC_fifos[i], 1, memRef_C_ty
-                            ).acquired_elem()
-                            Call(zero, [elem_out])
+                            elem_out = outC_fifos[outC_fifo_names[i]].acquire(ObjectFifoPort.Produce, 1)
+                            call(zero, [elem_out])
 
                             for _ in for_(K_div_k):
-                                elem_in_a = acquire(
-                                    ObjectFifoPort.Consume, inA_fifos[i], 1, memRef_A_ty
-                                ).acquired_elem()
-                                elem_in_b = acquire(
-                                    ObjectFifoPort.Consume, inB_fifos[0], 1, memRef_B_ty
-                                ).acquired_elem()
-                                Call(matmul, [elem_in_a, elem_in_b, elem_out])
-                                objectfifo_release(
-                                    ObjectFifoPort.Consume, inA_fifos[i], 1
-                                )
-                                objectfifo_release(
-                                    ObjectFifoPort.Consume, inB_fifos[0], 1
-                                )
+                                elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(ObjectFifoPort.Consume, 1)
+                                elem_in_b = inB_fifos[inB_fifo_names[0]].acquire(ObjectFifoPort.Consume, 1)
+                                call(matmul, [elem_in_a, elem_in_b, elem_out])
+                                inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
+                                inB_fifos[inB_fifo_names[0]].release(ObjectFifoPort.Consume, 1)
                                 yield_([])
 
-                            objectfifo_release(ObjectFifoPort.Produce, outC_fifos[i], 1)
+                            outC_fifos[outC_fifo_names[i]].release(ObjectFifoPort.Produce, 1)
                             yield_([])
                         yield_([])
 

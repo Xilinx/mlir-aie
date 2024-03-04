@@ -59,7 +59,7 @@ def external_func(name, inputs, outputs=None, visibility="private"):
 
 
 # Wrapper for func CallOp.
-class Call(CallOp):
+class call(CallOp):
     """Specialize CallOp class constructor to take python integers"""
 
     def __init__(self, calleeOrResults, inputs=[], input_types=[]):
@@ -184,66 +184,80 @@ class ExternalBuffer(ExternalBufferOp):
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
 # depth examples: 2, [2,2,7]
-class OrderedObjectBuffer(ObjectFifoCreateOp):
+class object_fifo(ObjectFifoCreateOp):
     def __init__(
         self,
         name,
-        tile0,
-        tile1,
+        producerTile,
+        consumerTiles,
         depth,
         datatype,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
     ):
+        self.datatype = datatype
+        if not isinstance(consumerTiles, List):
+            consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
             dimensionsToStream = []
         int_ty = IntegerType.get_signless(32)
-        if isinstance(depth, int):
-            int_depth = IntegerAttr.get(int_ty, depth)
-        else:
-            int_depths = []
-            for d in depth:
-                int_depths.append(IntegerAttr.get(int_ty, d))
-            int_depth = ArrayAttr.get(int_depths)
-        of_Ty = ObjectFifoType.get(datatype)
+        of_Ty = TypeAttr.get(ObjectFifoType.get(datatype))
         super().__init__(
             sym_name=name,
-            producerTile=tile0,
-            consumerTiles=tile1,
-            elemNumber=int_depth,
-            elem_type=TypeAttr.get(of_Ty),
+            producerTile=producerTile,
+            consumerTiles=consumerTiles,
+            elemNumber=depth,
+            elemType=of_Ty,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
         )
 
+    def acquire(self, port, num_elem):
+        subview_t = ObjectFifoSubviewType.get(self.datatype)
+        acq = ObjectFifoAcquireOp(subview_t, port, self.sym_name.value, num_elem)
 
-# Create an aie objectFifo acquire op of given number of elements with given memref datatype,
-# from objFifo with given name.
-class ObjectFifoAcquireOp(ObjectFifoAcquireOp):
-    def __init__(self, port, of_name, num_elem, datatype):
-        subview_t = ObjectFifoSubviewType.get(datatype)
-        self.datatype = datatype
-        super().__init__(subview_t, port, of_name, num_elem)
-
-    def acquired_elem(self):
         objects = []
-        if self.size.value == 1:
+        if acq.size.value == 1:
             return ObjectFifoSubviewAccessOp(
-                self.datatype, self.subview, self.size.value - 1
+                self.datatype, acq.subview, acq.size.value - 1
             )
-        for i in range(self.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(self.datatype, self.subview, i))
+        for i in range(acq.size.value):
+            objects.append(ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i))
         return objects
 
+    def release(self, port, num_elem):
+        return objectfifo_release(port, self.sym_name.value, num_elem)
 
-def acquire(port, of_name, num_elem, datatype):
-    return ObjectFifoAcquireOp(port, of_name, num_elem, datatype)
+
+# Create an aie objectFifo_link between input and output objectFifos.
+class object_fifo_link(ObjectFifoLinkOp):
+    """Specialize ObjectFifoLinkOp class constructor to take python variables"""
+
+    def __init__(
+        self,
+        fifoIns,
+        fifoOuts,
+    ):
+        if not isinstance(fifoIns, List):
+            fifoIns = [fifoIns]
+        if not isinstance(fifoOuts, List):
+            fifoOuts = [fifoOuts]
+        fifoInRefs = map(
+            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoIns
+        )
+        fifoOutRefs = map(
+            lambda i: i if isinstance(i, str) else i.sym_name.value, fifoOuts
+        )
+        super().__init__(
+            fifoIns=fifoInRefs,
+            fifoOuts=fifoOutRefs,
+        )
 
 
 # Create a packet flow between source and destination tile ports.
-class PacketFlow(PacketFlowOp):
+class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(
