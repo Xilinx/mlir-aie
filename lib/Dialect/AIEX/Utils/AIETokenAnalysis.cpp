@@ -64,7 +64,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
   for (const auto &map : tokenAcqMap) {
     StringRef tokenName = map.first;
     for (auto Op : map.second) {
-      bool isReleased = false;
+      [[maybe_unused]] bool isReleased = false;
       if (auto op = dyn_cast<MemcpyOp>(Op))
         isReleased = true;
 

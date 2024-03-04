@@ -92,40 +92,20 @@ public:
 
   /// Given an AIE tile, returns its next usable master channel.
   DMAChannel getMasterDMAChannel(Value tile) {
-    if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
+    if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end())
       masterChannelsPerTile[tile] = 0;
-    } else {
-      assert([&] {
-        auto tileOp = tile.getDefiningOp<TileOp>();
-        int numChannels = tileOp.getNumSourceConnections(WireBundle::DMA);
-        if (masterChannelsPerTile[tile] >= numChannels - 1) {
-          printf("All tile DMA master channels are already in use.\n");
-          return false;
-        }
-        return true;
-      }());
+    else
       masterChannelsPerTile[tile]++;
-    }
     DMAChannel dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
     return dmaChan;
   }
 
   /// Given an AIE tile, returns its next usable slave channel.
   DMAChannel getSlaveDMAChannel(Value tile) {
-    if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
+    if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end())
       slaveChannelsPerTile[tile] = 0;
-    } else {
-      assert([&] {
-        auto tileOp = tile.getDefiningOp<TileOp>();
-        int numChannels = tileOp.getNumDestConnections(WireBundle::DMA);
-        if (slaveChannelsPerTile[tile] >= numChannels - 1) {
-          printf("All tile DMA slave channels are already in use.\n");
-          return false;
-        }
-        return true;
-      }());
+    else
       slaveChannelsPerTile[tile]++;
-    }
     DMAChannel dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
     return dmaChan;
   }
@@ -540,7 +520,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 1, bdBlock,
+                               channelIndex, /*repeatCount*/ 0, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -614,7 +594,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCout*/ 1, bdBlock,
+                               channelIndex, /*repeatCout*/ 0, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -750,7 +730,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 1, bdBlock,
+                               channelIndex, /*repeatCount*/ 0, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -1514,8 +1494,11 @@ struct AIEObjectFifoStatefulTransformPass
           // AcquireOp in program order
           acquiredIndices = acquiresPerFifo[{op, portNum}];
           // take into account what has been released in-between
-          assert(static_cast<size_t>(numRel) <= acquiredIndices.size() &&
-                 "Cannot release more elements than are already acquired.");
+          if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
+            acquireOp->emitOpError("cannot release more elements than are "
+                                   "already acquired");
+            return;
+          }
           for (int i = 0; i < numRel; i++)
             acquiredIndices.erase(acquiredIndices.begin());
         }

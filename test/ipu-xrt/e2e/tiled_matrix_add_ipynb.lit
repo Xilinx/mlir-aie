@@ -1,4 +1,0 @@
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// RUN: VITIS_DIR="$VITIS" WORKDIR="$PWD"/tiled_matrix_add_ipynb XRT_DIR="%XRT_DIR" jupyter execute %S/tiled_matrix_add.ipynb

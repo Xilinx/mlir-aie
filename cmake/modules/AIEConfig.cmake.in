@@ -28,6 +28,7 @@ set(AIE_LibXAIE_x86_64_DIR "@AIE_CONFIG_LibXAIE_x86_64_DIR@")
 set(AIE_LibXAIE_aarch64_DIR "@AIE_CONFIG_LibXAIE_aarch64_DIR@")
 
 # Provide all our library targets to users.
+include("@CDO_DRIVER_CONFIG_INCLUDE_EXPORTS_FILE@")
 include("@XAIENGINECDO_CONFIG_INCLUDE_EXPORTS_FILE@")
 include("@AIE_CONFIG_EXPORTS_FILE@")
 include("@MLIR_CONFIG_INCLUDE_EXPORTS_FILE@")

@@ -54,6 +54,7 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/AIEBinding.td
   SOURCES
     dialects/aie.py
+    _mlir_libs/_aie.pyi
   DIALECT_NAME aie
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
@@ -94,6 +95,7 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
+    compiler/util.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -101,6 +103,7 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     ADD_TO_PARENT AIEPythonSources
     SOURCES
       xrt.py
+      _mlir_libs/_xrt.pyi
   )
 endif()
 

@@ -90,8 +90,8 @@ def AIE_TileOp: AIE_Op<"tile", [
   }];
 
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
     TileID getTileID() { return {getCol(), getRow()}; }
@@ -171,8 +171,8 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
@@ -234,8 +234,8 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    size_t getNumSourceConnections(WireBundle bundle);
+    size_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
   }];
@@ -886,7 +886,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
+        // repeat_count==0 means "do it once" and don't repeat
+        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
@@ -912,7 +913,8 @@ def AIE_DMAOp: AIE_Op<"dma", [
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
         DefaultValuedAttr<BoolAttr, "true">:$loop,
-        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count,
+        // repeat_count==0 means "do it once" and don't repeat
+        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
         OptionalAttr<StrAttr>:$sym_name
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
