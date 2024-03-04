@@ -100,11 +100,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: arm64
             ENABLE_RTTI: ON
 
@@ -120,11 +120,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: arm64
             ENABLE_RTTI: OFF
 
@@ -140,6 +140,13 @@ jobs:
         fi
         echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
+
+    - name: set ENV macos
+      if: contains(matrix.OS, 'macos')
+      shell: bash
+      run: |
+        
+        echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
       uses: actions/checkout@v3
@@ -288,7 +295,7 @@ jobs:
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
     - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
+      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -325,8 +332,10 @@ jobs:
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ]; then
           PLAT="linux"
-        elif [ x"${{ matrix.OS }}" == x"macos-11" ]; then
-          PLAT="macosx_11_0"
+        elif [ x"${{ matrix.OS }}" == x"macos-12" ]; then
+          PLAT="macosx_12_0"
+        elif [ x"${{ matrix.OS }}" == x"macos-14" ]; then
+          PLAT="macosx_14_0"
         elif [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
           PLAT="win"
         fi
@@ -369,7 +378,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -381,7 +390,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -429,11 +438,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: arm64
             ENABLE_RTTI: ON
 
@@ -449,11 +458,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: macos-11
+          - OS: macos-12
             ARCH: arm64
             ENABLE_RTTI: OFF
 

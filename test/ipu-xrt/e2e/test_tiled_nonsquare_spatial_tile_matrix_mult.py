@@ -4,19 +4,18 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 
-# noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, scf, vector, memref
-from aie.extras.context import ExplicitlyManagedModule
-from filelock import FileLock
-import numpy as np
-
 from aie.compiler.aiecc.main import emit_design_kernel_json
+from aie.compiler.util import (
+    compile_with_vectorization,
+    compile_without_vectorization,
+    make_xclbin,
+)
 from aie.dialects import aie, aievec, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -25,16 +24,24 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.aiex import TileArray
+from aie.extras.context import ExplicitlyManagedModule
+
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, memref, scf, vector
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.ir import UnitAttr
 from aie.util import tiling_calculator_n_tiles
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    compile_with_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+import pytest
+
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 range_ = scf.range_
 yield_ = scf.yield_
@@ -64,9 +71,9 @@ def shim_tensor_slice(
     )
 
     ipu_insts = aiex.ipu.writebd_shimtile(
+        column=column,
         bd_id=bd_id,
         ddr_id=ddr_id,
-        column=column,
         buffer_length=(M // n_tile_rows) * (N // n_tile_cols),
         buffer_offset=buffer_offset,
         d1_size=d1_size,
@@ -84,7 +91,7 @@ def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
     ipu_insts = []
     ipu_insts.extend(
         aiex.ipu.writebd_shimtile(
-            bd_id=bd_id, ddr_id=ddr_id, column=column, buffer_length=buffer_length
+            column=column, bd_id=bd_id, ddr_id=ddr_id, buffer_length=buffer_length
         )
     )
     ipu_insts.extend(
@@ -93,9 +100,7 @@ def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
     return ipu_insts
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2
-# @construct_and_print_module
-def tiled_nonsquare_tile_spatial_2x2(module):
+def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
     M = N = 32
 
     tile_rows_A, tile_cols_A = 2, 1
@@ -338,8 +343,8 @@ def tiled_nonsquare_tile_spatial_2x2(module):
             ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
         # fmt: on
 
-    compile_without_vectorization(module)
-    xclbin_path = make_xclbin(module)
+    compile_without_vectorization(ctx.module, workdir)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -412,9 +417,7 @@ def matmul_i32_i32_already_vectorized(
         yield_([])
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_spatial_2x2_vectorized
-# @construct_and_print_module
-def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
+def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: Path):
     M = N = 32
 
     tile_rows_A, tile_cols_A = 2, 1
@@ -667,9 +670,9 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
 
     mod_aie = mod_aie.finish()
 
-    compile_with_vectorization(mod_aie, mod_aievec)
+    compile_with_vectorization(mod_aie, mod_aievec, workdir)
 
-    xclbin_path = make_xclbin(mod_aie)
+    xclbin_path = make_xclbin(mod_aie, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)
@@ -700,9 +703,9 @@ def tiled_nonsquare_tile_spatial_2x2_vectorized(module):
                 assert False
 
 
-# CHECK-LABEL: tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1
-# @construct_and_print_module
-def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
+def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
+    ctx: MLIRContext, workdir: Path
+):
     K = 32
     cols = [0, 1, 2, 3]
     rows = [0, 1, 2, 3, 4, 5]
@@ -776,10 +779,10 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
 
             dest_channels[col] = int(to_shim.dest_channel)
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(ctx.module, workdir)
     buffer_args = [f"out_col_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -790,7 +793,7 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
         for col in cols:
             dest_channel = dest_channels[col]
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                bd_id, buffer_length=K, column=col
+                col, bd_id, buffer_length=K
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -817,9 +820,7 @@ def tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(module):
                 print(w)
 
 
-# CHECK-LABEL: double_pump_single_buffer
-@construct_and_print_module
-def double_pump_single_buffer(module):
+def test_double_pump_single_buffer(ctx: MLIRContext, workdir: Path):
     K = 32
 
     source_channels = {}
@@ -963,10 +964,10 @@ def double_pump_single_buffer(module):
         # dest_channels["player_a"] = shim_to_mem_player_a_dest_channel
         # dest_channels["player_a"] = shim_to_mem_player_b_dest_channel
 
-    compile_without_vectorization(module)
+    compile_without_vectorization(ctx.module, workdir)
     buffer_args = [p for p in ["player_a", "player_b"]]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
-    xclbin_path = make_xclbin(module, kernel_json=kernel_json)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -977,7 +978,7 @@ def double_pump_single_buffer(module):
         for bd_id, player in enumerate(["player_a", "player_b"]):
             source_channel = source_channels[player]
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                bd_id, buffer_length=K, column=col
+                col, bd_id, buffer_length=K
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(

@@ -886,7 +886,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count
+        // repeat_count==0 means "do it once" and don't repeat
+        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
@@ -912,7 +913,8 @@ def AIE_DMAOp: AIE_Op<"dma", [
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
         DefaultValuedAttr<BoolAttr, "true">:$loop,
-        DefaultValuedAttr<AIEI32Attr, "1">:$repeat_count,
+        // repeat_count==0 means "do it once" and don't repeat
+        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
         OptionalAttr<StrAttr>:$sym_name
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);

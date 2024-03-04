@@ -152,16 +152,16 @@ target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
 install(TARGETS bootgen)
 
-add_library(cdo_driver STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
+add_library(cdo_driver_mlir_aie STATIC ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c)
 target_include_directories(
-  cdo_driver PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
+  cdo_driver_mlir_aie PUBLIC $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/cdo-driver>
   $<INSTALL_INTERFACE:include/cdo_driver>)
 if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  target_compile_options(cdo_driver PRIVATE -Wno-cast-qual -Wno-sign-compare)
+  target_compile_options(cdo_driver_mlir_aie PRIVATE -Wno-cast-qual -Wno-sign-compare)
 endif()
 
 install(
-  TARGETS cdo_driver
+  TARGETS cdo_driver_mlir_aie
   DESTINATION lib
-  EXPORT cdo_driver)
-install(EXPORT cdo_driver DESTINATION lib/cmake/aie)
+  EXPORT cdo_driver_mlir_aie)
+install(EXPORT cdo_driver_mlir_aie DESTINATION lib/cmake/aie)

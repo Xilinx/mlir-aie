@@ -31,7 +31,7 @@
 
      // Tile DMA
      %m73 = aie.mem(%t73) {
-         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, repeat_count = 4)
+         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, repeat_count = 3)
        ^bd0:
          // Note: acquire and release are different locks.
          aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)

@@ -1,9 +1,11 @@
-scripts
-wheelhouse
-requirements.txt
+.idea
 aie
 aie-python-extras-req.txt
 aie.egg-info
 build
-.idea
 cmake-build-debug
+mlir
+mlir_aie
+requirements.txt
+scripts
+wheelhouse

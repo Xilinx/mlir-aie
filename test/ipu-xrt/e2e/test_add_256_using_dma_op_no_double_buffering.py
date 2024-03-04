@@ -4,16 +4,12 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-# RUN: VITIS_DIR=$VITIS WORKDIR=$PWD XRT_DIR=%XRT_DIR %PYTHON %s
 
+from pathlib import Path
 import random
 
-from aie.extras.dialects.ext import arith, func, memref
-from aie.extras.runtime.passes import run_pipeline
-from filelock import FileLock
-import numpy as np
-
 from aie.compiler.aiecc.main import DMA_TO_IPU
+from aie.compiler.util import compile_without_vectorization, make_xclbin
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
     AIEDevice,
@@ -23,13 +19,20 @@ from aie.dialects.aie import (
     ipu_instgen,
 )
 from aie.dialects.scf import for_ as range_, yield_
+from aie.extras.dialects.ext import arith, func, memref
+from aie.extras.runtime.passes import run_pipeline
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
 from aie.xrt import XCLBin
-from util import (
-    compile_without_vectorization,
-    construct_and_print_module,
-    make_xclbin,
-)
+from filelock import FileLock
+import numpy as np
+import pytest
+
+# needed since the fix isn't defined here nor conftest.py
+pytest.mark.usefixtures("ctx")
+
 
 DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
@@ -39,9 +42,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-# CHECK-LABEL: add_256_using_dma_op_no_double_buffering
-@construct_and_print_module
-def add_256_using_dma_op_no_double_buffering(module):
+def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Path):
     RANDOM_NUMBER = random.randint(0, 100)
     LEN = 128
     LOCAL_MEM_SIZE = 32
@@ -186,10 +187,10 @@ def add_256_using_dma_op_no_double_buffering(module):
 
             aie.end()
 
-    compile_without_vectorization(module)
-    generated_ipu_insts = run_pipeline(module, DMA_TO_IPU)
+    compile_without_vectorization(ctx.module, workdir)
+    generated_ipu_insts = run_pipeline(ctx.module, DMA_TO_IPU)
     ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
-    xclbin_path = make_xclbin(module)
+    xclbin_path = make_xclbin(ctx.module, workdir)
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         xclbin.load_ipu_instructions(ipu_insts)

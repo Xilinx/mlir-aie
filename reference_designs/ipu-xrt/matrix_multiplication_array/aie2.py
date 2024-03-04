@@ -13,9 +13,9 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 256
-    K = 256
-    N = 256
+    M = 512
+    K = 512
+    N = 512
     m = 64
     k = 64
     n = 64
@@ -55,7 +55,7 @@ def my_matmul():
     # Output Matrix C: MxN
     n_in_i32s_out = n * word_size_out // 4
     N_in_i32s_out = N * word_size_out // 4
-    m_x_n_rows_x_N_in_i32s_out = m * n_cores * N_in_i32s_out
+    m_x_n_rows_x_N_in_i32s_out = m * n_rows * N_in_i32s_out
     n_x_n_cols_in_i32s_out = n_in_i32s_out * n_cols
 
     vectorized = True
@@ -320,6 +320,7 @@ def my_matmul():
                         for tile_row in range(num_tile_rows):
                             A_row_offset_in_i32s = (
                                 ((tile_row_block * rows_per_block) + tile_row)
+                                * n_rows
                                 * m
                                 * K
                                 * word_size_in
