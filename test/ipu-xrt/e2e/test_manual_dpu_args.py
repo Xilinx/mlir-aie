@@ -352,7 +352,7 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
     compute_tile_row = 2
     channel_index = 0
 
-    iters = 10
+    iters = 32
 
     @aie.device(AIEDevice.ipu)
     def ipu():

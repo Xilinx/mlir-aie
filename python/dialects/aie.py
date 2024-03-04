@@ -399,10 +399,19 @@ def dma_start(
     *,
     dest: Optional[Union[Successor, Block]] = None,
     chain: Optional[Union[Successor, Block]] = None,
+    repeat_count: Optional[int] = None,
     loc=None,
     ip=None,
 ):
-    op = DMAStartOp(channel_dir, channel_index, dest=dest, chain=chain, loc=loc, ip=ip)
+    op = DMAStartOp(
+        channel_dir,
+        channel_index,
+        dest=dest,
+        chain=chain,
+        repeat_count=repeat_count,
+        loc=loc,
+        ip=ip,
+    )
     return op.dest, op.chain
 
 
