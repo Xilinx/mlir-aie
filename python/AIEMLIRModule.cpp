@@ -90,16 +90,21 @@ PYBIND11_MODULE(_aie, m) {
   m.def(
       "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath, bool bigendian,
-         bool emitUnified, bool axiDebug, bool aieSim,
-         size_t partitionStartCol) {
+         bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
+         size_t partitionStartCol, bool enableCores) {
+        mlir::python::CollectDiagnosticsToStringScope scope(
+            mlirOperationGetContext(op));
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
                 op, {workDirPath.data(), workDirPath.size()}, bigendian,
-                emitUnified, axiDebug, aieSim, partitionStartCol)))
-          throw std::runtime_error("Failed to generate cdo");
+                emitUnified, cdoDebug, aieSim, xaieDebug, partitionStartCol,
+                enableCores)))
+          throw py::value_error("Failed to generate cdo because: " +
+                                scope.takeMessage());
       },
       "module"_a, "work_dir_path"_a, "bigendian"_a = false,
-      "emit_unified"_a = false, "axi_debug"_a = false, "aiesim"_a = false,
-      "partition_start_col"_a = 1);
+      "emit_unified"_a = false, "cdo_debug"_a = false, "aiesim"_a = false,
+      "xaie_debug"_a = false, "partition_start_col"_a = 1,
+      "enable_cores"_a = true);
 
   m.def(
       "ipu_instgen",

@@ -23,6 +23,8 @@ from textwrap import dedent
 import time
 
 from aie.extras.runtime.passes import Pipeline
+
+# this is inside the aie-python-extras (shared) namespace package
 from aie.extras.util import find_ops
 import aiofiles
 import rich.progress as progress
@@ -240,9 +242,9 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path, has_cores=True):
+def emit_design_bif(root_path, has_cores=True, enable_cores=True):
     elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
-    enable_file = f"file={root_path}/aie_cdo_enable.bin" if has_cores else ""
+    enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
     return dedent(
         f"""\
         all:

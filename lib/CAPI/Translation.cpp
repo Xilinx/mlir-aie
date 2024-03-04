@@ -55,15 +55,15 @@ MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, llvmir.size());
 }
 
-MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
-                                          MlirStringRef workDirPath,
-                                          bool bigEndian, bool emitUnified,
-                                          bool axiDebug, bool aieSim,
-                                          size_t partitionStartCol) {
+MlirLogicalResult
+aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
+                        bool bigEndian, bool emitUnified, bool cdoDebug,
+                        bool aieSim, bool xaieDebug, size_t partitionStartCol,
+                        bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   auto status = AIETranslateToCDODirect(
       mod, llvm::StringRef(workDirPath.data, workDirPath.length), bigEndian,
-      emitUnified, axiDebug, aieSim, partitionStartCol);
+      emitUnified, cdoDebug, aieSim, xaieDebug, partitionStartCol, enableCores);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())

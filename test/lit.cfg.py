@@ -228,3 +228,7 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
+
+if "LIT_AVAILABLE_FEATURES" in os.environ:
+    for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():
+        config.available_features.add(feature)

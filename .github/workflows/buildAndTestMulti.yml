@@ -38,7 +38,7 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
 
-        OS: [ ubuntu-20.04, ubuntu-22.04 ]
+        OS: [ ubuntu-20.04, ubuntu-22.04, macos-12 ]
         COMPILER: [ llvm, gcc ]
         ENABLE_ASSERTIONS: [ ON, OFF ]
         ENABLE_RTTI: [ ON, OFF ]
@@ -61,7 +61,7 @@ jobs:
             ENABLE_ASSERTIONS: OFF
             ENABLE_RTTI: OFF
         exclude:
-          - OS: macos-11
+          - OS: macos-12
             COMPILER: gcc
 
     steps:
