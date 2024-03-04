@@ -198,7 +198,8 @@ def my_matmul():
                         strides=[0, 0, 0],
                     )
 
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                for i in range(n_cores):
+                    ipu_sync(column=i, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
