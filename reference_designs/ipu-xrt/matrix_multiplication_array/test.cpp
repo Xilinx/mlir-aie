@@ -73,25 +73,40 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 }
 
 static inline std::int16_t random_int16_t() {
-  return ((std::int16_t)rand() % 0x10000);
+  // return ((std::int16_t)rand() % 0x10000);
+  return std::int16_t(rand() % 0x10);
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  // std::default_random_engine gen;
-  // std::uniform_real_distribution<float> distribution(0.0, 1.0);
-  // return std::bfloat16_t(distribution(gen));
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  return std::bfloat16_t(distribution(gen));
   return std::bfloat16_t(1.0);
+  // return std::bfloat16_t((float)(rand()) / (float)(RAND_MAX));
 }
 
 template <typename Tin, typename Tout>
+// void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
+//   for (int row = 0; row < M; row++) {
+//     for (int col = 0; col < N; col++) {
+//       float running_sum = 0;
+//       for (int i = 0; i < K; i++) {
+//         running_sum += float(a[row * K + i]) * float(b[i * N + col]);
+//       }
+//       c[row * N + col] = Tout(running_sum);
+//     }
+//   }
+// }
 void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
+  const int B = 64;
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      float running_sum = 0;
-      for (int i = 0; i < K; i++) {
-        running_sum += float(a[row * K + i]) * float(b[i * N + col]);
+      for (int k = 0; k < K / B; k++) {
+        float running_sum = 0;
+        for (int i = 0; i < B; i++) 
+          running_sum += float(a[row * K + k * B + i]) * float(b[i * N + k * B + col]);
+        c[row * N + col] += Tout(running_sum);
       }
-      c[row * N + col] = Tout(running_sum);
     }
   }
 }
@@ -127,6 +142,8 @@ int main(int argc, const char *argv[]) {
 
   check_arg_file_exists(vm, "xclbin");
   check_arg_file_exists(vm, "instr");
+
+  srand (time(NULL));
 
   std::vector<uint32_t> instr_v =
       load_instr_sequence(vm["instr"].as<std::string>());
@@ -228,10 +245,12 @@ int main(int argc, const char *argv[]) {
   if (VERIFY) {
     std::vector<C_DATATYPE> output_ref0;
     for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(K);
-    // matmul(AVec, BVec, output_ref0);
+      output_ref0.push_back(0);
+      // output_ref0.push_back(K);
+    matmul(AVec, BVec, output_ref0);
 
     const float absTol = std::abs(0.1);
+    // const float absTol = std::abs(5);
     for (int row = 0; row < M; row++) {
       for (int col = 0; col < N; col++) {
         if (std::abs((float)bufOut[row * N + col] -
@@ -258,7 +277,7 @@ int main(int argc, const char *argv[]) {
             << "NPU matmul time: " << npu_time << "us." << std::endl;
   std::cout << "NPU gflops: " << macs / (1000 * npu_time) << std::endl;
 
-  if (!errors) {
+  if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {

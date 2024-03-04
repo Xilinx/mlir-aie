@@ -103,7 +103,7 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 
           for (unsigned i = 1; i < colA; ++i)
             chess_prepare_for_pipelining chess_loop_range(7, ) {
-            // chess_unroll_loop() {
+              // chess_unroll_loop() {
               A0 = aie::load_v<MMUL::size_A>(pA1);
               pA1 += MMUL::size_A;
               A1 = aie::load_v<MMUL::size_A>(pA2);
@@ -132,7 +132,6 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
   event1();
 }
 
-
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
                                      const int16 *__restrict pB,
@@ -160,8 +159,8 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s,
-                                  t>(pA, pB, pC);
+  return matmul_vectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
+      pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
