@@ -246,8 +246,8 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
 LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                  Block &block,
                                  const AIETargetModel &targetModel,
-                                 XAie_LocType &tileLoc, int bdNum,
-                                 std::optional<int> nextBdNum) {
+                                 XAie_LocType &tileLoc, int bdId,
+                                 std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
@@ -317,10 +317,10 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffset, lenInBytes);
   }
 
-  if (nextBdNum) {
+  if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
-                            nextBdNum.value(), enableNextBd);
+                            nextBdId.value(), enableNextBd);
   }
 
   if (packetID) {
@@ -335,14 +335,14 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
   TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
   TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &devInst, &dmaTileBd, tileLoc,
-                          bdNum);
+                          bdId);
   LLVM_DEBUG(llvm::dbgs() << "\nend configuring bds\n");
   return success();
 };
 
 LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
                                      XAie_LocType &tileLoc, int chNum,
-                                     const DMAChannelDir &channelDir, int bdNum,
+                                     const DMAChannelDir &channelDir, int bdId,
                                      int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
@@ -351,7 +351,7 @@ LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
   TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst, tileLoc,
-                          chNum, direction, bdNum, repeatCount, enTokenIssue);
+                          chNum, direction, bdId, repeatCount, enTokenIssue);
   TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc, chNum,
                           direction);
   return success();
@@ -679,10 +679,10 @@ struct AIEControl {
   }
 
   void dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row, size_t addr,
-                       size_t bdNum) {
+                       size_t bdId) {
     auto tileLoc = XAie_TileLoc(col, row);
     TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr,
-                             bdNum);
+                             bdId);
   }
 };
 

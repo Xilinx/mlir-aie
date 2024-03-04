@@ -23,11 +23,11 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct BdNumGenerator {
-  BdNumGenerator(int col, int row, const AIETargetModel &targetModel)
+struct BdIdGenerator {
+  BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
       : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
 
-  int32_t nextBDNum(int channelIndex) {
+  int32_t nextBdId(int channelIndex) {
     int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
     while (bdIdAlreadyAssigned(bdId))
       bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
@@ -62,7 +62,7 @@ struct AIEAssignBufferDescriptorIDsPass
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
-      BdNumGenerator gen(col, row, targetModel);
+      BdIdGenerator gen(col, row, targetModel);
 
       auto dmaOps = llvm::to_vector_of<DMAOp>(
           memOp.getOperation()->getRegion(0).getOps<DMAOp>());
@@ -75,7 +75,7 @@ struct AIEAssignBufferDescriptorIDsPass
             if (bd.getBdId().has_value())
               gen.assignBdId(bd.getBdId().value());
             else
-              bd.setBdId(gen.nextBDNum(dmaOp.getChannelIndex()));
+              bd.setBdId(gen.nextBdId(dmaOp.getChannelIndex()));
           }
         }
       } else {
@@ -105,7 +105,7 @@ struct AIEAssignBufferDescriptorIDsPass
           if (bd.getBdId().has_value())
             gen.assignBdId(bd.getBdId().value());
           else
-            bd.setBdId(gen.nextBDNum(blockChannelMap[&block]));
+            bd.setBdId(gen.nextBdId(blockChannelMap[&block]));
         }
       }
     }
@@ -119,48 +119,48 @@ struct AIEAssignBufferDescriptorIDsPass
                bdRegionIt != bdRegions.end();) {
             auto &block = bdRegionIt->getBlocks().front();
             DMABDOp bd = *block.getOps<DMABDOp>().begin();
-            std::optional<int> nextBdNum;
+            std::optional<int> nextBdId;
             if (++bdRegionIt != bdRegions.end())
-              nextBdNum =
+              nextBdId =
                   (*bdRegionIt->getBlocks().front().getOps<DMABDOp>().begin())
                       .getBdId();
             else if (dmaOp.getLoop())
-              nextBdNum = (*bdRegions.front()
-                                .getBlocks()
-                                .front()
-                                .getOps<DMABDOp>()
-                                .begin())
-                              .getBdId();
-            bd.setNextBdId(nextBdNum);
+              nextBdId = (*bdRegions.front()
+                               .getBlocks()
+                               .front()
+                               .getOps<DMABDOp>()
+                               .begin())
+                             .getBdId();
+            bd.setNextBdId(nextBdId);
           }
         }
       else {
-        DenseMap<Block *, int> blockBdNumMap;
+        DenseMap<Block *, int> blockBdIdMap;
         for (Block &block : memOp.getOperation()->getRegion(0)) {
           if (block.getOps<DMABDOp>().empty())
             continue;
           DMABDOp bd = *block.getOps<DMABDOp>().begin();
           assert(bd.getBdId().has_value() &&
                  "DMABDOp should have bd_id assigned by now");
-          blockBdNumMap[&block] = bd.getBdId().value();
+          blockBdIdMap[&block] = bd.getBdId().value();
         }
 
         for (Block &block : memOp.getOperation()->getRegion(0)) {
           if (block.getOps<DMABDOp>().empty())
             continue;
           DMABDOp bd = *block.getOps<DMABDOp>().begin();
-          std::optional<int> nextBdNum;
+          std::optional<int> nextBdId;
           if (block.getNumSuccessors()) {
             assert(llvm::range_size(block.getSuccessors()) == 1 &&
                    "should have only one successor block");
             Block *nextBlock = block.getSuccessor(0);
-            if (!blockBdNumMap.contains(nextBlock))
+            if (!blockBdIdMap.contains(nextBlock))
               assert(nextBlock->getOperations().size() == 1 &&
                      isa<EndOp>(nextBlock->getOperations().front()) &&
                      "bb that's not in blockMap can only have aie.end");
             else
-              nextBdNum = blockBdNumMap[nextBlock];
-            bd.setNextBdId(nextBdNum);
+              nextBdId = blockBdIdMap[nextBlock];
+            bd.setNextBdId(nextBdId);
           }
         }
       }
