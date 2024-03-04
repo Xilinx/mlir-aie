@@ -99,6 +99,11 @@ def AIELocalizeLocks : Pass<"aie-localize-locks", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIELocalizeLocksPass()";
 }
 
+def AIEAssignBufferDescriptorIDs : Pass<"aie-assign-bd-ids", "DeviceOp"> {
+  let summary = "Assign bd ids to aie.dma_bd ops.";
+  let constructor = "xilinx::AIE::createAIEAssignBufferDescriptorIDsPass()";
+}
+
 def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{

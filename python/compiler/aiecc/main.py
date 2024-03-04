@@ -23,7 +23,6 @@ from textwrap import dedent
 import time
 
 from aie.extras.runtime.passes import Pipeline
-
 # this is inside the aie-python-extras (shared) namespace package
 from aie.extras.util import find_ops
 import aiofiles
@@ -44,6 +43,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         "aie.device",
         Pipeline()
         .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-assign-bd-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass("aie-objectFifo-stateful-transform")
         .add_pass("aie-lower-cascade-flows")
