@@ -19,9 +19,9 @@ def main():
         prog='AIE Matrix Multiplication MLIR Design (Whole Array)',
         description='Emits MLIR code for a matrix multiplication design of the given input size'
     )
-    argparser.add_argument('-M', type=int, default=256)
-    argparser.add_argument('-K', type=int, default=256)
-    argparser.add_argument('-N', type=int, default=256)
+    argparser.add_argument('-M', type=int, default=512)
+    argparser.add_argument('-K', type=int, default=512)
+    argparser.add_argument('-N', type=int, default=512)
     args = argparser.parse_args()
     my_matmul(args.M, args.K, args.N)
 
