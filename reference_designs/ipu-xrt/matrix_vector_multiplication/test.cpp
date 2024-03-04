@@ -224,8 +224,8 @@ int main(int argc, const char *argv[]) {
 
   std::cout << std::endl
             << "NPU matmul time: "
-            << std::chrono::duration_cast<std::chrono::microseconds>((stop -
-                                                                     start))
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   (stop - start))
                    .count()
             << "us." << std::endl;
 
