@@ -327,6 +327,8 @@ def dma(
 ):
     if isinstance(channel_index, IntegerAttr):
         channel_index = channel_index.value
+    if repeat_count is not None:
+        loop = False
     return DMAOp(
         valid=T.bool(),
         channel_dir=channel_dir,
@@ -441,6 +443,8 @@ def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None)
 
 
 def external_buffer(shape, dtype, name=None, loc=None, ip=None):
+    if name is not None and not name:
+        name = _get_sym_name(inspect.currentframe().f_back, "aie\\.external|external")
     return ExternalBuffer(
         shape,
         dtype,

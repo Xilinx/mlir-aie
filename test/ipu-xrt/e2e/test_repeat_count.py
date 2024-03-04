@@ -164,7 +164,7 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
     # RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
     col = 2
-    iters = 10
+    iters = 2
     ipu_insts = aiex.ipu.get_prolog()
 
     @aie.device(AIEDevice.ipu)

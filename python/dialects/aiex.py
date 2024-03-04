@@ -8,8 +8,8 @@ from typing import Union
 
 import numpy as np
 
-from ._aiex_ops_gen import *
 from . import aie
+from ._aiex_ops_gen import *
 from .aie import (
     DMAChannelDir,
     LockAction,
@@ -23,11 +23,10 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr
 
 # noinspection PyUnresolvedReferences
 from ..extras.dialects.ext import memref
-
+from ..ir import DictAttr, IntegerAttr, UnitAttr
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -107,6 +106,12 @@ XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE = 0x0001D204
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK = 0x80000000
 XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_START_BD_ID_MASK = 0x0000000F
 XAIEMLGBL_CORE_MODULE_CORE_CONTROL = 0x00032000
+XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_CTRL = 0x0001D200
+XAIEMLGBL_NOC_MODULE_LOCK_REQUEST = 0x00040000
+XAIEML_LOCK_VALUE_MASK = 0x7F
+XAIEML_LOCK_VALUE_SHIFT = 0x2
+XAIEML_LOCK_RESULT_SUCCESS = 1
+XAIEML_LOCK_RESULT_LSB = 0x0
 
 # from dpufw/include/RunInstOpt.h
 SHIM_DMA_BD0_BASE_ADDR = 0x1D000
@@ -120,7 +125,9 @@ def _get_prolog():
 
 
 # based on https://github.com/Xilinx/mlir-aie/blob/cb232a43383ef3b8efd8b408545c9b74885578ad/lib/Targets/AIETargetIPU.cpp
-def _ipu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
+def _ipu_sync(
+    column, row=0, direction=DMAChannelDir.S2MM, channel=0, column_num=1, row_num=1
+):
     if isinstance(channel, IntegerAttr):
         channel = int(channel)
     words = [None] * 2
@@ -149,7 +156,33 @@ def _ipu_write32(column, row, address, value):
     return words
 
 
-def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=0):
+def _ipu_read32(column, row, address):
+    words = [None] * 2
+    op_code = 14
+    words[0] = (op_code & 0xFF) << 24
+    words[0] |= (column & 0xFF) << 16
+    words[0] |= (row & 0xFF) << 8
+    words[1] = address
+    assert not any(w is None for w in words)
+    return words
+
+
+def _ipu_read32_poll(column, row, address, cmp_val, loop_cnt):
+    words = [None] * 4
+    op_code = 15
+    words[0] = (op_code & 0xFF) << 24
+    words[0] |= (column & 0xFF) << 16
+    words[0] |= (row & 0xFF) << 8
+    words[1] = address
+    words[2] = cmp_val
+    words[3] = loop_cnt
+    assert not any(w is None for w in words)
+    return words
+
+
+def _ipu_shimtile_push_queue(
+    channel_dir: DMAChannelDir, channel_index, column, bd_id, repeats=0
+):
     if isinstance(channel_index, IntegerAttr):
         channel_index = int(channel_index)
     if channel_dir == DMAChannelDir.MM2S:
@@ -181,14 +214,14 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(column, row, write_addr, iptr[2]),
-        *_ipu_write32(column, row, write_addr + 4, word3),
-        *_ipu_write32(column, row, write_addr + 8, word4),
-        *_ipu_write32(column, row, write_addr + 12, iptr[5]),
-        *_ipu_write32(column, row, write_addr + 16, iptr[6]),
-        *_ipu_write32(column, row, write_addr + 20, iptr[7]),
-        *_ipu_write32(column, row, write_addr + 24, iptr[8]),
-        *_ipu_write32(column, row, write_addr + 28, iptr[9]),
+        *_ipu_write32(column, row, write_addr + 0 * 4, iptr[2]),
+        *_ipu_write32(column, row, write_addr + 1 * 4, word3),
+        *_ipu_write32(column, row, write_addr + 2 * 4, word4),
+        *_ipu_write32(column, row, write_addr + 3 * 4, iptr[5]),
+        *_ipu_write32(column, row, write_addr + 4 * 4, iptr[6]),
+        *_ipu_write32(column, row, write_addr + 5 * 4, iptr[7]),
+        *_ipu_write32(column, row, write_addr + 6 * 4, iptr[8]),
+        *_ipu_write32(column, row, write_addr + 7 * 4, iptr[9]),
     ]
     return words
 
@@ -202,8 +235,8 @@ def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(column, row, write_addr + 4, word3),
-        *_ipu_write32(column, row, write_addr + 8, word4),
+        *_ipu_write32(column, row, write_addr + 1 * 4, word3),
+        *_ipu_write32(column, row, write_addr + 2 * 4, word4),
     ]
     return words
 
@@ -304,6 +337,63 @@ def _ipu_writebd_shimtile(
     return words
 
 
+def _enable_bd(
+    col,
+    bd_id,
+    lock_acq_enable=0,
+    lock_acq_id=0,
+    lock_acq_val=0,
+    lock_rel_id=0,
+    lock_rel_val=0,
+    next_bd=0,
+    use_next_bd=0,
+):
+    row = 0
+    valid_bd = 1
+    word = (next_bd & 0xF) << 27
+    word |= (use_next_bd & 0x1) << 26
+    word |= (valid_bd & 0x1) << 25
+    word |= (lock_rel_val & 0xEF) << 18
+    word |= (lock_rel_id & 0xF) << 13
+    word |= (lock_acq_enable & 0x1) << 12
+    word |= (lock_acq_val & 0xEF) << 5
+    word |= lock_acq_id & 0xF
+
+    write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
+    return _ipu_write32(col, row, write_addr + 7 * 4, word)
+
+
+# based on XAie_DmaChannelPauseStream @ runtime_lib/xaiengine/aie-rt/driver/src/dma/xaie_dma.c:1008
+def _unpause_stream(col, channel_index, direction, unpause=True):
+    row = 0
+    ch_ctrl_base = XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_CTRL
+    # This is the offset between each channel
+    ch_idx_offset = 0x8
+    num_channels = 2
+    # note this clears everything else in the register (pause_mem, ooo mode, task-complete-token id, fot mode)
+    pause = int(not unpause)
+    write_addr = (
+        ch_ctrl_base
+        + (channel_index * ch_idx_offset)
+        + (direction * ch_idx_offset * num_channels)
+    )
+    return _ipu_write32(col, row, write_addr, pause)
+
+
+def lock_release(col, lock_id, lock_val, timeout=0):
+    # timeout in microseconds (but actually loop iters?)
+    lock_id_off = 0x400
+    reg_off = (
+        XAIEMLGBL_NOC_MODULE_LOCK_REQUEST
+        + (lock_id * lock_id_off)
+        + ((lock_val & XAIEML_LOCK_VALUE_MASK) << XAIEML_LOCK_VALUE_SHIFT)
+    )
+    row = 0
+    # this isn't correct because this should actually be a masked poll
+    cmp_val = XAIEML_LOCK_RESULT_SUCCESS << XAIEML_LOCK_RESULT_LSB
+    return _ipu_read32_poll(col, row, reg_off, cmp_val, timeout)
+
+
 def _ipu_noop():
     words = [None] * 1
     op_code = 0
@@ -326,6 +416,8 @@ class ipu:
     enable_cores = _ipu_core_enable
     _exec_write_bd_extend_shim_tile_opt = _exec_write_bd_extend_shim_tile_opt
     _update_tensor_addr_shim_tile = _update_tensor_addr_shim_tile
+    enable_bd = _enable_bd
+    lock_release = lock_release
 
 
 def process_bd(
@@ -346,16 +438,66 @@ def process_bd(
     aie.use_lock(rel_lock, rel_action, value=rel_val)
 
 
-def send_bd(channel, *args, **kwargs):
-    @aie.dma(DMAChannelDir.MM2S, channel)
+def send_bd(
+    channel,
+    acq_lock,
+    buffer,
+    rel_lock,
+    *,
+    acq_action=LockAction.AcquireGreaterEqual,
+    rel_action=LockAction.Release,
+    acq_val=None,
+    rel_val=None,
+    offset=None,
+    len=None,
+    dimensions=None,
+    repeat_count=None,
+):
+    @aie.dma(DMAChannelDir.MM2S, channel, repeat_count=repeat_count)
     def d():
-        process_bd(*args, **kwargs)
+        process_bd(
+            acq_lock,
+            buffer,
+            rel_lock,
+            acq_action=acq_action,
+            rel_action=rel_action,
+            acq_val=acq_val,
+            rel_val=rel_val,
+            offset=offset,
+            len=len,
+            dimensions=dimensions,
+        )
 
 
-def receive_bd(channel, *args, **kwargs):
-    @aie.dma(DMAChannelDir.S2MM, channel)
+def receive_bd(
+    channel,
+    acq_lock,
+    buffer,
+    rel_lock,
+    *,
+    acq_action=LockAction.AcquireGreaterEqual,
+    rel_action=LockAction.Release,
+    acq_val=None,
+    rel_val=None,
+    offset=None,
+    len=None,
+    dimensions=None,
+    repeat_count=None,
+):
+    @aie.dma(DMAChannelDir.S2MM, channel, repeat_count=repeat_count)
     def d():
-        process_bd(*args, **kwargs)
+        process_bd(
+            acq_lock,
+            buffer,
+            rel_lock,
+            acq_action=acq_action,
+            rel_action=rel_action,
+            acq_val=acq_val,
+            rel_val=rel_val,
+            offset=offset,
+            len=len,
+            dimensions=dimensions,
+        )
 
 
 def forward_bd(

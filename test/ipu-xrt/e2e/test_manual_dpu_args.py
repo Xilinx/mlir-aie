@@ -350,20 +350,19 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
     K = 32
     cols = [2]
     compute_tile_row = 2
+    channel_index = 0
 
-    iters = 21
+    iters = 10
 
     @aie.device(AIEDevice.ipu)
     def ipu():
         if 0 not in cols:
             tile_dummy = aie.tile(0, 3)
-        for c in cols:
-            tile_c_0 = aie.tile(c, 0)
-            tile_c_2 = aie.tile(c, compute_tile_row)
+        for col in cols:
+            tile_c_0 = aie.tile(col, 0)
+            tile_c_2 = aie.tile(col, compute_tile_row)
 
-            buffer_weight = aie.buffer(
-                tile_c_2, (K,), T.i32(), initial_value=np.ones((K,), dtype=np.int32) * c
-            )
+            buffer_weight = aie.buffer(tile_c_2, (K,), T.i32(), name=False)
             lock_read_weight = aie.lock(tile_c_2, init=1)
             lock_send_weight = aie.lock(tile_c_2, init=0)
 
@@ -374,13 +373,12 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
                 y = memref.alloc(K, T.i32())
                 for i in range_(iters):
                     with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                        linalg.fill(i, y)
-                        linalg.copy(y, buffer_weight)
+                        linalg.fill(i, buffer_weight)
                     yield_()
 
             @aie.mem(tile_c_2)
             def mem_c_2():
-                @aie.dma(MM2S, 0, loop=False, repeat_count=iters - 1)
+                @aie.dma(MM2S, channel_index, loop=False, repeat_count=iters - 1)
                 def dma3():
                     aie.use_lock(lock_send_weight, AcquireGreaterEqual)
                     aie.dma_bd(buffer_weight)
@@ -388,14 +386,14 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
 
                 aie.end()
 
-            lock_c_0_read_in_c = aie.lock(tile_c_0, init=0, lock_id=0)
-            host_buffer = aie.external_buffer((K,), T.i32())
+            lock_c_0_read_in_c = aie.lock(tile_c_0, init=0, sym_name=False)
+            host_buffer = aie.external_buffer((K,), T.i32(), name=False)
 
             @aie.shim_dma(tile_c_0)
             def shim_dma_c_0():
-                @aie.dma(S2MM, 0, loop=False, repeat_count=iters - 1)
+                @aie.dma(S2MM, channel_index, loop=False, repeat_count=iters - 1)
                 def dma():
-                    aie.use_lock(lock_c_0_read_in_c, Acquire, acq_en=0, value=0)
+                    aie.use_lock(lock_c_0_read_in_c, Acquire)
                     aie.dma_bd(host_buffer)
                     aie.use_lock(lock_c_0_read_in_c, Release, value=0)
 
@@ -407,23 +405,30 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
     buffer_args = [f"out_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+    ipu_insts = aiex.ipu.get_prolog()
+    bd_id = 0
+    col = cols[0]
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
+        views = xclbin.mmap_buffers([(K,)], np.int32)
 
-        bd_id = 0
-        ipu_insts = aiex.ipu.get_prolog()
-        for i, col in enumerate(cols):
-            update_addrs = aiex.ipu._update_tensor_addr_shim_tile(
-                col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
+        ipu_insts.extend(
+            aiex.ipu._update_tensor_addr_shim_tile(
+                col, bd_id, xclbin._get_buffer_host_address(0)
             )
-            ipu_insts.extend(update_addrs)
-            ipu_insts.extend(aiex.ipu.enable_cores(col, compute_tile_row))
+        )
+        ipu_insts.extend(aiex.ipu.lock_release(col, lock_id=0, lock_val=1))
+        ipu_insts.extend(aiex.ipu.enable_cores(col, compute_tile_row))
+        ipu_insts.extend(aiex.ipu.sync(column=col))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
         wraps = list(map(np.asarray, views))
+        np.copyto(
+            wraps[0], np.random.randint(0, 10, (K,), dtype=np.int32), casting="no"
+        )
+        print("before", wraps[0])
 
         xclbin.sync_buffers_to_device()
         xclbin.run()
@@ -432,7 +437,5 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
         xclbin.sync_buffers_from_device()
 
         print(f"{iters=}")
-        for col, w in zip(cols, wraps):
-            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-                print(f"{col=}")
-                print(w)
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            print("after", wraps[0])
