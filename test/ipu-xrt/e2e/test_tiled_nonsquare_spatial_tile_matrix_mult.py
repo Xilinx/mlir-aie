@@ -837,3 +837,146 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             for w in wraps:
                 print(w)
+
+
+def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_5_cols(
+    ctx: MLIRContext, workdir: Path
+):
+    K = 32
+    cols = [0, 1, 2, 3, 4]
+    rows = [0, 1, 2, 3, 4, 5]
+
+    dest_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        tiles[0, 1].tile.erase()
+
+        for i, t in enumerate(tiles[:, 2:]):
+            b = aie.buffer(
+                t.tile,
+                (K,),
+                T.i32(),
+                initial_value=np.full((K,), i, dtype=np.int32),
+            )
+            aie.lock(t.tile, init=0)
+
+        for t in tiles[:, 5]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with aiex.hold_lock(self_lock, self_lock, acq_val=0):
+                    linalg.add(self_buffer, self_buffer, self_buffer)
+
+        for t in tiles[:, 2:5]:
+            north_lock = t.neighbors().north.locks()[0]
+            north_buffer = t.neighbors().north.buffers()[0]
+
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+
+            @aie.core(t.tile)
+            def core():
+                with (
+                    aiex.hold_lock(self_lock, self_lock, acq_val=0),
+                    aiex.hold_lock(north_lock, north_lock),
+                ):
+                    linalg.add(north_buffer, self_buffer, self_buffer)
+
+        tiles[1:, 2] >> tiles[1:, 1]
+        # tiles[0, 2] >> tiles[0, 0]
+
+        for t in tiles[1:, 2]:
+            self_lock = t.locks()[0]
+            self_buffer = t.buffers()[0]
+            flow = t.flows()[0]
+
+            @aie.mem(t.tile)
+            def mem():
+                aiex.send_bd(flow.source_channel, self_lock, self_buffer, self_lock)
+                aie.end()
+
+        tiles[1:, 1] >> tiles[1:, 0]
+
+        for t in tiles[1:, 1]:
+            to_shim, to_mem = t.flows()
+
+            @aie.memtile_dma(t.tile)
+            def memtile_dma():
+                buffer = aie.buffer(t.tile, (K,), T.i32())
+
+                aiex.forward_bd(
+                    t.tile,
+                    buffer,
+                    s2mm_channel_idx=to_mem.dest_channel,
+                    mm2s_channel_idx=to_shim.source_channel,
+                )
+                aie.end()
+
+        host_buffer = aie.external_buffer((K,), T.i32(), name=False)
+        for t in tiles[1:, 0]:
+            flow = t.flows()[0]
+
+            shim_start_lock = aie.lock(t.tile, init=0, sym_name=False)
+
+            @aie.shim_dma(t.tile)
+            def shim_dma_c():
+                aiex.receive_bd(
+                    int(flow.dest_channel),
+                    shim_start_lock,
+                    host_buffer,
+                    acq_action=Acquire,
+                    rel_val=0,
+                    repeat_count=4,
+                )
+
+                aie.end()
+
+            dest_channels[int(t.tile.col)] = int(flow.dest_channel)
+
+    compile_without_vectorization(
+        ctx.module, workdir, enable_cores=False, partition_start_col=0
+    )
+    buffer_args = [f"out_col_{c}" for c in cols[1:]]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(
+        ctx.module, workdir, kernel_json=kernel_json, start_columns=[0]
+    )
+    ipu_insts = aiex.ipu.get_prolog()
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * (len(cols) - 1), np.int32)
+
+        bd_id = 0
+        for i, col in enumerate(cols[1:]):
+            ipu_insts.extend(
+                aiex.ipu._update_tensor_addr_shim_tile(
+                    col, bd_id, xclbin._get_buffer_host_address(i)
+                )
+            )
+            ipu_insts.extend(aiex.ipu.lock_release(col, lock_id=0, lock_val=1))
+            for r in rows:
+                if r in {0, 1}:
+                    continue
+                ipu_insts.extend(aiex.ipu.enable_cores(col, r))
+        for col in cols[1:]:
+            dest_channel = dest_channels[col]
+            ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel))
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)

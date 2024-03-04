@@ -798,7 +798,7 @@ class TileArray:
     def __iter__(self):
         for idx, v in np.ndenumerate(self.df):
             if v is not None:
-                yield idx, TileArray(df=np.array([v]))
+                yield TileArray(df=np.array([v]))
 
     def neighbors(self, logical=True):
         r = np.vectorize(
