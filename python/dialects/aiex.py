@@ -473,7 +473,7 @@ def receive_bd(
     channel,
     acq_lock,
     buffer,
-    rel_lock,
+    rel_lock=None,
     *,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
@@ -484,6 +484,8 @@ def receive_bd(
     dimensions=None,
     repeat_count=None,
 ):
+    if rel_lock is None:
+        rel_lock = acq_lock
     @aie.dma(DMAChannelDir.S2MM, channel, repeat_count=repeat_count)
     def d():
         process_bd(

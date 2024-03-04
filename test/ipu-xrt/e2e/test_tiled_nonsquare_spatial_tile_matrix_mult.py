@@ -762,7 +762,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
         tiles[:, 1] >> tiles[:, 0]
 
-        for ddr_id, ((col, row), t) in enumerate(tiles[:, 1]):
+        for _, t in tiles[:, 1]:
             to_shim, to_mem = t.flows()
 
             @aie.memtile_dma(t.tile)
@@ -777,34 +777,53 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
                 )
                 aie.end()
 
-            dest_channels[col] = int(to_shim.dest_channel)
+        host_buffer = aie.external_buffer((K,), T.i32(), name=False)
+        for (col, _row), t in tiles[:, 0]:
+            flow = t.flows()[0]
 
-    compile_without_vectorization(ctx.module, workdir)
+            shim_start_lock = aie.lock(t.tile, init=0, sym_name=False)
+
+            @aie.shim_dma(t.tile)
+            def shim_dma_c():
+                aiex.receive_bd(
+                    int(flow.dest_channel),
+                    shim_start_lock,
+                    host_buffer,
+                    acq_action=Acquire,
+                    rel_val=0,
+                    repeat_count=4,
+                )
+
+                aie.end()
+
+            dest_channels[col] = int(flow.dest_channel)
+
+    compile_without_vectorization(ctx.module, workdir, enable_cores=False)
     buffer_args = [f"out_col_{c}" for c in cols]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+    ipu_insts = aiex.ipu.get_prolog()
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
 
-        ipu_insts = aiex.ipu.get_prolog()
         bd_id = 0
-        for col in cols:
-            dest_channel = dest_channels[col]
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                col, bd_id, buffer_length=K
-            )
+        for i, col in enumerate(cols):
             ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
-                    writebd_shimtile_insts,
-                    tensor_addr=xclbin._get_buffer_host_address(col),
+                aiex.ipu._update_tensor_addr_shim_tile(
+                    col, bd_id, xclbin._get_buffer_host_address(i)
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
-            )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+            ipu_insts.extend(aiex.ipu.lock_release(col, lock_id=0, lock_val=1))
+            for r in rows:
+                if r in {0, 1}:
+                    continue
+                ipu_insts.extend(aiex.ipu.enable_cores(col, r))
+        for col in cols:
+            dest_channel = dest_channels[col]
+            ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel))
+
         xclbin.load_ipu_instructions(ipu_insts)
 
         wraps = list(map(np.asarray, views))
