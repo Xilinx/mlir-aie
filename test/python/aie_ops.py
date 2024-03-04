@@ -78,8 +78,8 @@ def deviceOp():
 
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "b"} : memref<12xi32>
-# CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "b"} : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
