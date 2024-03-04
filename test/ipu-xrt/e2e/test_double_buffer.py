@@ -171,92 +171,77 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
     player_a_channel = 0
     player_b_channel = 1
     result_channel = 0
-    source_channels = {}
-    dest_channels = {}
+    iters = 6
 
     @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray(cols=[0], rows=[0, 1, 2])
-        buffer = aie.buffer(tiles[0, 2].tile, (K,), T.i32(), name="double_buffer")
-        result_buffer = aie.buffer(
-            tiles[0, 2].tile,
-            (K,),
-            T.i32(),
-            name="result_buffer",
-            initial_value=np.ones((K,), dtype=np.int32) * 3,
-        )
+        double_buffer = aie.buffer(tiles[0, 2].tile, (K,), T.i32(), name=False)
+        result_buffer = aie.buffer(tiles[0, 2].tile, (K,), T.i32(), name=False)
 
-        # available to be written to
-        lock_X = tiles[0, 2].lock(init=1, sym_name="lock_X")
         # available to be read from
         # whose turn it is to write
-        lock_Y = tiles[0, 2].lock(init=0, sym_name="lock_Y")
+        lock_Y = aie.lock(tiles[0, 2].tile, init=0, sym_name=False)
+        # available to be written to
+        lock_X = aie.lock(tiles[0, 2].tile, init=1, sym_name=False)
 
-        result_prod_lock = tiles[0, 2].lock(init=1, sym_name=False)
-        result_cons_lock = tiles[0, 2].lock(init=0, sym_name=False)
-
-        # For your case I guess you could have lock X represent whether the buffer is available to be written,
-        # lock Y represent whose turn it is to write. Lock X starts at 1 and lock Y starts at 0.
-        # and player B does the same thing but with acq_eq(Y, 1) and rel(Y, -1) instead. (e
+        input_prod_lock = aie.lock(tiles[0, 2].tile, init=1, sym_name=False)
+        input_cons_lock = aie.lock(tiles[0, 2].tile, init=0, sym_name=False)
+        result_prod_lock = aie.lock(tiles[0, 2].tile, init=1, sym_name=False)
+        result_cons_lock = aie.lock(tiles[0, 2].tile, init=0, sym_name=False)
 
         @aie.mem(tiles[0, 2].tile)
         def mem():
-
-            # Player A does acq_eq(Y, 0),zero_len,no_rel -> acq_eq(X, 1),data,rel(X, -1) -> no_acq,zero_len,rel(Y, 1)
-            @aie.dma(S2MM, player_a_channel, num_blocks=3, sym_name="player_a")
+            @aie.dma(
+                S2MM,
+                player_a_channel,
+                num_blocks=3,
+                sym_name="player_a",
+                # repeat_count=iters - 1,
+            )
             def player_a():
-                # rel_val=0 means no release because these are counting semaphores and hence
-                # this no change (DMA might not even issue a release)
                 with aiex.hold_lock(
-                    lock_Y, lock_Y, acq_action=LockAction.Acquire, acq_val=0, rel_val=0
+                    lock_Y, lock_Y, acq_action=Acquire, acq_val=0, rel_val=0
                 ):
-                    aie.dma_bd(buffer, len=0)
+                    aie.dma_bd(double_buffer, len=0)
 
             @aie.another_bd(player_a)
             def _():
-                with aiex.hold_lock(
-                    lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=1, rel_val=-1
-                ):
-                    aie.dma_bd(buffer)
+                with aiex.hold_lock(input_prod_lock, input_cons_lock):
+                    aie.dma_bd(double_buffer)
 
             @aie.another_bd(player_a)
             def _():
                 with aiex.hold_lock(
                     lock_Y,
                     lock_Y,
-                    acq_action=LockAction.Acquire,
                     acq_en=False,
                     rel_val=1,
                 ):
-                    aie.dma_bd(buffer)
+                    aie.dma_bd(double_buffer, len=0)
 
-            # Player B does acq_eq(Y, 1),zero_len,no_rel -> acq_eq(X, 1),data,rel(X, -1) -> no_acq,zero_len,rel(Y, -1)
-            @aie.dma(S2MM, player_b_channel, num_blocks=3, sym_name="player_b")
+            @aie.dma(
+                S2MM,
+                player_b_channel,
+                num_blocks=3,
+                sym_name="player_b",
+                # repeat_count=iters - 1,
+            )
             def player_b():
-                # rel_val=0 means no release because these are counting semaphores and hence
-                # this no change (DMA might not even issue a release)
                 with aiex.hold_lock(
-                    lock_Y, lock_Y, acq_action=LockAction.Acquire, acq_val=1, rel_val=0
+                    lock_Y, lock_Y, acq_action=Acquire, acq_val=1, rel_val=0
                 ):
-                    aie.dma_bd(buffer, len=0)
+                    aie.dma_bd(double_buffer, len=0)
 
             @aie.another_bd(player_b)
             def _():
-                with aiex.hold_lock(
-                    lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=1, rel_val=-1
-                ):
-                    aie.dma_bd(buffer)
+                with aiex.hold_lock(input_prod_lock, input_cons_lock):
+                    aie.dma_bd(double_buffer)
 
             @aie.another_bd(player_b)
             def _():
-                with aiex.hold_lock(
-                    lock_Y,
-                    lock_Y,
-                    acq_action=LockAction.Acquire,
-                    acq_en=False,
-                    rel_val=-1,
-                ):
-                    aie.dma_bd(buffer)
+                with aiex.hold_lock(lock_Y, lock_Y, acq_en=False, rel_val=-1):
+                    aie.dma_bd(double_buffer, len=0)
 
             aiex.send_bd(
                 result_channel, result_cons_lock, result_buffer, result_prod_lock
@@ -266,75 +251,42 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
 
         @aie.core(tiles[0, 2].tile)
         def core():
-            with (
-                # aiex.hold_lock(
-                #     lock_X, lock_X, acq_action=LockAction.Acquire, acq_val=0, rel_val=1
-                # ),
-                aiex.hold_lock(result_prod_lock, result_cons_lock),
-            ):
-                linalg.copy(buffer, result_buffer)
-
-        shim_to_mem_player_a_source_channel = shim_to_mem_player_a_dest_channel = (
-            player_a_channel
-        )
-        shim_to_mem_player_b_source_channel = shim_to_mem_player_b_dest_channel = (
-            player_b_channel
-        )
+            y = memref.alloc(K, T.i32())
+            for i in range_(iters):
+                with (
+                    aiex.hold_lock(input_cons_lock, input_prod_lock),
+                    aiex.hold_lock(result_prod_lock, result_cons_lock),
+                ):
+                    linalg.fill(i, y)
+                    linalg.add(double_buffer, y, double_buffer)
+                    linalg.copy(double_buffer, result_buffer)
+                yield_()
 
         shim_to_mem_flow_1 = aie.flow(
             tiles[0, 0].tile,
             DMA,
-            shim_to_mem_player_a_source_channel,
-            tiles[0, 1].tile,
+            player_a_channel,
+            tiles[0, 2].tile,
             DMA,
-            shim_to_mem_player_a_dest_channel,
+            player_a_channel,
         )
         shim_to_mem_flow_2 = aie.flow(
             tiles[0, 0].tile,
             DMA,
-            shim_to_mem_player_b_source_channel,
-            tiles[0, 1].tile,
-            DMA,
-            shim_to_mem_player_b_dest_channel,
-        )
-
-        mem_to_core_flow_1 = aie.flow(
-            tiles[0, 1].tile,
-            DMA,
-            player_a_channel,
-            tiles[0, 2].tile,
-            DMA,
-            player_a_channel,
-        )
-        mem_to_core_flow_2 = aie.flow(
-            tiles[0, 1].tile,
-            DMA,
             player_b_channel,
             tiles[0, 2].tile,
             DMA,
             player_b_channel,
         )
-
         tile_1_0 = aie.tile(1, 0)
-        core_to_shim_flow = aie.flow(
-            tiles[0, 2].tile, DMA, result_channel, tile_1_0, DMA, result_channel
-        )
-        dest_channels["result"] = int(core_to_shim_flow.dest_channel)
+        aie.flow(tiles[0, 2].tile, DMA, result_channel, tile_1_0, DMA, result_channel)
 
-        @aie.memtile_dma(tiles[0, 1].tile)
-        def memtile_dma():
-            buffer = aie.buffer(tiles[0, 1].tile, (K,), T.i32())
-            aiex.forward_bd(tiles[0, 1].tile, buffer, player_a_channel, repeat_count=10)
-            aiex.forward_bd(tiles[0, 1].tile, buffer, player_b_channel, repeat_count=10)
-            aie.end()
-
-        source_channels["player_a"] = shim_to_mem_player_a_source_channel
-        source_channels["player_b"] = shim_to_mem_player_b_source_channel
-
-    print(ctx.module)
-
-    compile_without_vectorization(ctx.module, workdir)
-    buffer_args = ["player_a", "player_b", "result"]
+    compile_without_vectorization(ctx.module, workdir, debug=True)
+    buffer_args = [
+        "player_a",
+        "player_b",
+        "result",
+    ]
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
@@ -344,9 +296,8 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
 
         ipu_insts = aiex.ipu.get_prolog()
         col = 0
-        for i, player in enumerate(["player_a", "player_b"]):
+        for i, source_channel in enumerate([player_a_channel, player_b_channel]):
             bd_id = i
-            source_channel = source_channels[player]
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
                 col, bd_id, buffer_length=K
             )
@@ -357,26 +308,30 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
                 )
             )
             ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, source_channel, col, bd_id)
+                aiex.ipu.shimtile_push_queue(
+                    MM2S, source_channel, col, bd_id, repeats=iters - 1
+                )
             )
 
         col = 1
         bd_id = 0
-        dest_channel = dest_channels["result"]
         writebd_shimtile_insts = aiex.ipu.writebd_shimtile(col, bd_id, buffer_length=K)
         ipu_insts.extend(
             aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                 writebd_shimtile_insts,
-                tensor_addr=xclbin._get_buffer_host_address(2),
+                tensor_addr=xclbin._get_buffer_host_address(len(buffer_args) - 1),
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id))
-        ipu_insts.extend(aiex.ipu.sync(col, channel=dest_channel))
+        ipu_insts.extend(
+            aiex.ipu.shimtile_push_queue(
+                S2MM, result_channel, col, bd_id, repeats=iters - 2
+            )
+        )
+        ipu_insts.extend(aiex.ipu.sync(col, channel=result_channel))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
         player_a_data, player_b_data, result_data = list(map(np.asarray, views))
-        print(f"{result_data=}")
         A = np.random.randint(0, 10, (K,), dtype=np.int32)
         B = np.random.randint(0, 10, (K,), dtype=np.int32)
 
@@ -390,4 +345,7 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
         xclbin.sync_buffers_from_device()
 
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            print(f"{A=}")
+            print(f"{B=}")
+            print(f"{iters=}")
             print(result_data)

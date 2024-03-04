@@ -863,7 +863,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
+    `(` $buffer `:` type($buffer) `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -934,7 +934,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1136,7 +1136,7 @@ def AIE_LockOp: AIE_Op<"lock", [
       OptionalAttr<StrAttr>:$sym_name
   );
 
-  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile `)` attr-dict }];
 
   let extraClassDeclaration = [{
     bool hasName() {
@@ -1209,7 +1209,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   );
 
   let assemblyFormat = [{
-    `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
+    `(` $lock `,` $action `)` attr-dict
   }];
 
   let hasVerifier = 1;
