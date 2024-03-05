@@ -115,21 +115,21 @@ def edge_detect():
                 ComputeTile2,
                 ComputeTile3,
                 4,
-                line_bytes_ty,
+                line_ty,
             )
             OF_3to4 = object_fifo(
                 "OF_3to4",
                 ComputeTile3,
                 ComputeTile4,
                 2,
-                line_bytes_ty,
+                line_ty,
             )
             OF_4to5 = object_fifo(
                 "OF_4to5",
                 ComputeTile4,
                 ComputeTile5,
                 2,
-                line_bytes_ty,
+                line_ty,
             )
             OF_5to5 = object_fifo(
                 "OF_5to5",
