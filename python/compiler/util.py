@@ -309,7 +309,9 @@ def compile_with_vectorization(
 ):
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
-        mod_aie, INPUT_WITH_ADDRESSES_PIPELINE, enable_ir_printing=debug
+        mod_aie,
+        Pipeline().convert_linalg_to_affine_loops() + INPUT_WITH_ADDRESSES_PIPELINE,
+        enable_ir_printing=debug,
     )
 
     aievec_cpp = translate_aie_vec_to_cpp(mod_aievec.operation, aieml=True)
@@ -367,7 +369,9 @@ def compile_with_vectorization(
 
     input_physical = run_pipeline(
         mod_aie,
-        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
+        CREATE_PATH_FINDER_FLOWS
+        + Pipeline().convert_linalg_to_affine_loops()
+        + INPUT_WITH_ADDRESSES_PIPELINE,
         enable_ir_printing=debug,
     )
     with _global_debug(debug):
