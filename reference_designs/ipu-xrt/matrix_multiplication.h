@@ -14,8 +14,13 @@
 #ifndef MATRIX_MULTIPLICATION_H
 #define MATRIX_MULTIPLICATION_H
 
+<<<<<<< HEAD
 #include <boost/program_options.hpp>
 #include <cmath>
+=======
+#include <cmath>
+#include <boost/program_options.hpp>
+>>>>>>> 5723bb6e (faster matrix multiplication verification code; eliminate some code duplication)
 
 namespace matmul_common {
 
