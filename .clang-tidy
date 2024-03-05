@@ -90,14 +90,3 @@ CheckOptions:
     value:           camelBack
   - key:             readability-identifier-naming.VariableCase
     value:           camelBack
-  # Ours
-  - key:             readability-identifier-naming.GlobalConstantCase
-    value:           UPPER_CASE
-  - key:             readability-identifier-naming.LocalConstantCase
-    value:           UPPER_CASE
-  - key:             readability-identifier-naming.StaticConstantCase
-    value:           UPPER_CASE
-  - key:             readability-identifier-naming.ConstantCase
-    value:           UPPER_CASE
-  - key:             readability-identifier-naming.ConstexprVariableCase
-    value:           UPPER_CASE
