@@ -451,7 +451,7 @@ public:
 };
 
 class IPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3, 4};
+  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
 
 public:
   IPUTargetModel() = default;
