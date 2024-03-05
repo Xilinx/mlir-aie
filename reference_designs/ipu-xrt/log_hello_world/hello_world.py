@@ -18,7 +18,6 @@ def printf():
         @device(AIEDevice.ipu)
         def device_body():
             memRef_ty = T.memref(N, T.i32())
-            ofifo_memRef_ty = TypeAttr.get(ObjectFifoType.get(memRef_ty))
 
             # AIE Core Function declarations
             kernel = external_func("kernel", inputs=[memRef_ty, memRef_ty, memRef_ty])
@@ -28,28 +27,22 @@ def printf():
             ComputeTile2 = tile(0, 2)
 
             # AIE-array data movement with object fifos
-            objectfifo("inOF", ShimTile, [ComputeTile2], 2, ofifo_memRef_ty, [], [])
-            objectfifo("outOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
-            objectfifo("logoutOF", ComputeTile2, [ShimTile], 2, ofifo_memRef_ty, [], [])
+            inOF = object_fifo("inOF", ShimTile, ComputeTile2, 2, memRef_ty)
+            outOF = object_fifo("outOF", ComputeTile2, ShimTile, 2, memRef_ty)
+            logoutOF = object_fifo("logoutOF", ComputeTile2, ShimTile, 2, memRef_ty)
 
             # Set up compute tiles
 
             # Compute tile 2
             @core(ComputeTile2, "kernel.o")
             def core_body():
-                elemOut = acquire(
-                    ObjectFifoPort.Produce, "outOF", 1, memRef_ty
-                ).acquired_elem()
-                elemIn = acquire(
-                    ObjectFifoPort.Consume, "inOF", 1, memRef_ty
-                ).acquired_elem()
-                elemLogout = acquire(
-                    ObjectFifoPort.Produce, "logoutOF", 1, memRef_ty
-                ).acquired_elem()
-                Call(kernel, [elemIn, elemOut, elemLogout])
-                objectfifo_release(ObjectFifoPort.Consume, "inOF", 1)
-                objectfifo_release(ObjectFifoPort.Produce, "outOF", 1)
-                objectfifo_release(ObjectFifoPort.Produce, "logoutOF", 1)
+                elemOut = outOF.acquire(ObjectFifoPort.Produce, 1)
+                elemIn = inOF.acquire(ObjectFifoPort.Consume, 1)
+                elemLogout = logoutOF.acquire(ObjectFifoPort.Produce, 1)
+                call(kernel, [elemIn, elemOut, elemLogout])
+                inOF.release(ObjectFifoPort.Consume, 1)
+                outOF.release(ObjectFifoPort.Produce, 1)
+                logoutOF.release(ObjectFifoPort.Produce, 1)
 
             # To/from AIE-array data movement
             @FuncOp.from_py_func(memRef_ty, memRef_ty, memRef_ty)

@@ -8,8 +8,8 @@ from aie.dialects.aie import (
     AIEDevice,
     ObjectFifoType,
     bd_dim_layout,
-    objectfifo,
-    objectfifo_link,
+    object_fifo,
+    object_fifo_link,
     tile,
     Device,
 )
@@ -40,32 +40,16 @@ def link_example():
         T0 = tile(2, 2)
         T1 = tile(2, 3)
 
-        objectfifo(
-            "of0",
-            S,
-            [M],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "of1",
-            M,
-            [T0, T1],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(64, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo_link(["of0"], ["of1"])
+        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of1 = object_fifo("of1", M, [T0, T1], 2, T.memref(64, T.i32()))
+        object_fifo_link(of0, of1)
 
-        objectfifo(
+        object_fifo(
             "of2",
             M,
             [T0, T1],
             [2, 2, 7],
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.ui8()))),
+            T.memref(256, T.ui8()),
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)], [bd_dim_layout(size=1, stride=2)]],
         )

@@ -6,16 +6,13 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    Call,
+    call,
     Core,
     Device,
     ObjectFifoPort,
-    ObjectFifoType,
-    acquire,
     external_func,
-    objectfifo,
-    objectfifo_link,
-    objectfifo_release,
+    object_fifo,
+    object_fifo_link,
     tile,
     end,
 )
@@ -65,34 +62,16 @@ def core_ext_kernel():
         M = tile(1, 2)
         N = tile(3, 3)
 
-        objectfifo(
-            "of0",
-            S,
-            [M],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(256, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo(
-            "of1",
-            M,
-            [N],
-            2,
-            TypeAttr.get(ObjectFifoType.get(T.memref(8, 8, T.i32()))),
-            [],
-            [],
-        )
-        objectfifo_link(["of0"], ["of1"])
+        of0 = object_fifo("of0", S, M, 2, T.memref(256, T.i32()))
+        of1 = object_fifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
+        object_fifo_link(of0, of1)
 
         C = Core(N, "test.o")
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             for _ in range_(10):
-                elem0 = acquire(
-                    ObjectFifoPort.Consume, "of1", 1, T.memref(8, 8, T.i32())
-                ).acquired_elem()
-                res = Call("test_func", [elem0, arith.constant(4)], [T.i32()])
-                objectfifo_release(ObjectFifoPort.Consume, "of1", 1)
+                elem0 = of1.acquire(ObjectFifoPort.Consume, 1)
+                res = call("test_func", [elem0, arith.constant(4)], [T.i32()])
+                of1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
             end()
