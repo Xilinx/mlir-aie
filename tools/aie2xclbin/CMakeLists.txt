@@ -26,13 +26,16 @@ target_link_libraries(aie2xclbin
   MLIRParser
   MLIRSCFToControlFlow
   MLIRAffineToStandard
+  MLIRAIEVecDialect
+  MLIRAIEVecToLLVM
+  MLIRAIEVecTransforms
+  MLIRAIEVecToLLVMIRTranslation
   ADF
   AIE
   AIETransforms
   AIETargets
   AIEX
-  AIEXTransforms
-  MLIRAIEVecDialect)
+  AIEXTransforms)
 
 install(TARGETS aie2xclbin
   EXPORT AIE2XCLBIN

@@ -10,9 +10,12 @@
 
 #include "XCLBinGen.h"
 
+#include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
+#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -38,6 +41,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <regex>
+#include <sstream>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -135,15 +139,21 @@ static void addAIELoweringPasses(OpPassManager &pm) {
 static void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass());
+
   pm.addPass(createConvertVectorToLLVMPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
   pm.addPass(createLowerAffinePass());
   pm.addPass(createConvertMathToLLVMPass());
   pm.addPass(createArithToLLVMConversionPass());
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   ConvertFuncToLLVMPassOptions opts;
   opts.useBarePtrCallConv = true;
   pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   pm.addPass(createConvertControlFlowToLLVMPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
@@ -576,6 +586,41 @@ static std::string chesshack(const std::string &input) {
   return result;
 }
 
+// A pass which removes the alignment attribute from llvm load operations, if
+// the alignment is 2.
+//
+// Example replaces:
+//
+// ```
+//  %113 = llvm.load %112 {alignment = 2 : i64} : !llvm.ptr -> vector<32xbf16>
+// ```
+//
+// with
+//
+// ```
+//  %113 = llvm.load %112 : !llvm.ptr -> vector<32xbf16>
+// ```
+//
+// If this pass is not included in the pipeline, there is an alignment error
+// later in the compilation. This is a temporary workaround while a better
+// solution is found: propagation of memref.assume_alignment is one option. See
+// also https://jira.xilinx.com/projects/AIECC/issues/AIECC-589
+namespace {
+struct RemoveAlignment2FromLLVMLoadPass
+    : public PassWrapper<RemoveAlignment2FromLLVMLoadPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    getOperation().walk([](Operation *op) {
+      if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
+        auto alignmentAttr = loadOp.getAlignmentAttr();
+        if (alignmentAttr && alignmentAttr.getValue() == 2)
+          loadOp.setAlignment(std::optional<uint64_t>());
+      }
+    });
+  }
+};
+} // namespace
+
 static LogicalResult generateUnifiedObject(MLIRContext *context,
                                            ModuleOp moduleOp,
                                            XCLBinGenConfig &TK,
@@ -583,11 +628,35 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
+  xilinx::aievec::registerAIEVecDialectTranslation(*context);
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(AIE::createAIECoreToStandardPass());
   pm.addPass(AIEX::createAIEXToStandardPass());
+
+  // Convert specific vector dialect ops (like vector.contract) to the AIEVec
+  // dialect
+  {
+    xilinx::aievec::ConvertVectorToAIEVecOptions vectorToAIEVecOptions{};
+
+    std::string optionsString = [&]() {
+      std::ostringstream optionsStringStream;
+      optionsStringStream << "target-backend=";
+      optionsStringStream << (TK.UseChess ? "cpp" : "llvmir");
+      optionsStringStream << ' ' << "aie-target=aieml";
+      return optionsStringStream.str();
+    }();
+
+    if (failed(vectorToAIEVecOptions.parseFromString(optionsString))) {
+      return moduleOp.emitOpError("Failed to parse options from '")
+             << optionsString
+             << "': Failed to construct ConvertVectorToAIEVecOptions.";
+    }
+    xilinx::aievec::buildConvertVectorToAIEVec(pm, vectorToAIEVecOptions);
+  }
+
   addLowerToLLVMPasses(pm);
+  pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 
   if (TK.Verbose) {
     llvm::outs() << "Running: ";
