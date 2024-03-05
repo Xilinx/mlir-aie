@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
@@ -33,7 +34,7 @@ constexpr int C_VOLUME = M * N;
 
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
-using C_DATATYPE = float;
+using C_DATATYPE = std::bfloat16_t;
 
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
@@ -80,7 +81,10 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  // return ((std::bfloat16_t)rand() / (std::bfloat16_t)INT_MAX);
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  return std::bfloat16_t(distribution(gen));
 }
 
 template <typename Tin, typename Tout>
@@ -252,12 +256,12 @@ int main(int argc, const char *argv[]) {
 
     const C_DATATYPE absTol = std::abs(0.1);
     for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs(COut[i] - output_ref0[i]) > absTol) {
+      if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
         errors++;
         if (errors < max_errors) {
           std::cout << "\nerror, id " << i << " expected "
-                    << std::to_string(output_ref0[i]) << ", got "
-                    << std::to_string(COut[i]) << "\n";
+                    << std::to_string((float)output_ref0[i]) << ", got "
+                    << std::to_string((float)COut[i]) << "\n";
         }
       }
     }

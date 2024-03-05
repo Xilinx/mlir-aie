@@ -64,7 +64,7 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 
       for (unsigned j = 0; j < colB; j += 2)
         // chess_loop_range(2, ) {
-        chess_prepare_for_pipelining chess_loop_range(16, ) {
+        chess_prepare_for_pipelining chess_loop_range(8, ) {
           const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
           const T_in *__restrict pB1 = pB + (0 * colB + j) * MMUL::size_B;
@@ -103,6 +103,7 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 
           for (unsigned i = 1; i < colA; ++i)
             chess_prepare_for_pipelining chess_loop_range(7, ) {
+              // chess_unroll_loop() {
               A0 = aie::load_v<MMUL::size_A>(pA1);
               pA1 += MMUL::size_A;
               A1 = aie::load_v<MMUL::size_A>(pA2);
