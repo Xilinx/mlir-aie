@@ -503,6 +503,8 @@ for(int i = 0; i < 8 /*size_2*/; i++)
 <tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>len</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>dimensions</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>next_bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
