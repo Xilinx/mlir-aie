@@ -8,9 +8,9 @@
 
 include ../makefile-common
 
-M?=256
-K?=256
-N?=256
+M?=512
+K?=512
+N?=512
 
 m?=64
 k?=64
@@ -51,7 +51,7 @@ build/final.xclbin: build/aie.mlir build/mm.o
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: test.cpp ../matrix_multiplication.h
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
