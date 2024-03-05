@@ -103,8 +103,9 @@ void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
     for (int col = 0; col < N; col++) {
       for (int k = 0; k < K / B; k++) {
         float running_sum = 0;
-        for (int i = 0; i < B; i++) 
-          running_sum += float(a[row * K + k * B + i]) * float(b[i * N + k * B + col]);
+        for (int i = 0; i < B; i++)
+          running_sum +=
+              float(a[row * K + k * B + i]) * float(b[i * N + k * B + col]);
         c[row * N + col] += Tout(running_sum);
       }
     }
@@ -143,7 +144,7 @@ int main(int argc, const char *argv[]) {
   check_arg_file_exists(vm, "xclbin");
   check_arg_file_exists(vm, "instr");
 
-  srand (time(NULL));
+  srand(time(NULL));
 
   std::vector<uint32_t> instr_v =
       load_instr_sequence(vm["instr"].as<std::string>());
@@ -246,7 +247,7 @@ int main(int argc, const char *argv[]) {
     std::vector<C_DATATYPE> output_ref0;
     for (uint32_t i = 0; i < C_VOLUME; i++)
       output_ref0.push_back(0);
-      // output_ref0.push_back(K);
+    // output_ref0.push_back(K);
     matmul(AVec, BVec, output_ref0);
 
     const float absTol = std::abs(0.1);
