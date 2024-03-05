@@ -1,12 +1,10 @@
-//===- AIEAssignBufferDescriptorIDs.cpp
-//---------------------------------------*- C++
-//-*-===//
+//===- AIEAssignBufferDescriptorIDs.cpp -------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 AMD Inc.
+// (c) Copyright 2024 Advanced Micro Devices Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -62,10 +60,14 @@ struct AIEAssignBufferDescriptorIDsPass
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
-      BdIdGenerator gen(col, row, targetModel);
 
-      auto dmaOps = llvm::to_vector_of<DMAOp>(
-          memOp.getOperation()->getRegion(0).getOps<DMAOp>());
+      BdIdGenerator gen(col, row, targetModel);
+      memOp->walk<WalkOrder::PreOrder>([&](DMABDOp bd) {
+        if (bd.getBdId().has_value())
+          gen.assignBdId(bd.getBdId().value());
+      });
+
+      auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
       if (!dmaOps.empty()) {
         for (auto dmaOp : dmaOps) {
           auto bdRegions = dmaOp.getBds();
@@ -73,7 +75,9 @@ struct AIEAssignBufferDescriptorIDsPass
             auto &block = bdRegion.getBlocks().front();
             DMABDOp bd = *block.getOps<DMABDOp>().begin();
             if (bd.getBdId().has_value())
-              gen.assignBdId(bd.getBdId().value());
+              assert(
+                  gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
+                  "bdId assigned by user but not found during previous walk");
             else
               bd.setBdId(gen.nextBdId(dmaOp.getChannelIndex()));
           }
@@ -103,16 +107,16 @@ struct AIEAssignBufferDescriptorIDsPass
           assert(blockChannelMap.count(&block));
           DMABDOp bd = (*block.getOps<DMABDOp>().begin());
           if (bd.getBdId().has_value())
-            gen.assignBdId(bd.getBdId().value());
+            assert(gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
+                   "bdId assigned by user but not found during previous walk");
           else
             bd.setBdId(gen.nextBdId(blockChannelMap[&block]));
         }
       }
     }
     for (TileElement memOp : memOps) {
-      auto dmaOps = llvm::to_vector_of<DMAOp>(
-          memOp.getOperation()->getRegion(0).getOps<DMAOp>());
-      if (!dmaOps.empty())
+      auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
+      if (!dmaOps.empty()) {
         for (auto dmaOp : dmaOps) {
           auto bdRegions = dmaOp.getBds();
           for (auto *bdRegionIt = bdRegions.begin();
@@ -134,7 +138,7 @@ struct AIEAssignBufferDescriptorIDsPass
             bd.setNextBdId(nextBdId);
           }
         }
-      else {
+      } else {
         DenseMap<Block *, int> blockBdIdMap;
         for (Block &block : memOp.getOperation()->getRegion(0)) {
           if (block.getOps<DMABDOp>().empty())

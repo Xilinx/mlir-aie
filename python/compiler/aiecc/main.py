@@ -37,16 +37,15 @@ from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = (
     Pipeline()
-    .convert_linalg_to_affine_loops()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
     .Nested(
         "aie.device",
         Pipeline()
         .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-assign-bd-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass("aie-objectFifo-stateful-transform")
+        .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-create-packet-flows")
@@ -961,23 +960,9 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = ",".join(
-                [
-                    "lower-affine",
-                    "aie-canonicalize-device",
-                    "aie.device(" + "aie-assign-lock-ids",
-                    "aie-register-objectFifos",
-                    "aie-objectFifo-stateful-transform",
-                    "aie-lower-cascade-flows",
-                    "aie-lower-broadcast-packet",
-                    "aie-create-packet-flows",
-                    "aie-lower-multicast",
-                    "aie-assign-buffer-addresses)",
-                    "convert-scf-to-cf",
-                ]
-            )
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE.materialize(module=True)
             run_passes(
-                "builtin.module(" + pass_pipeline + ")",
+                pass_pipeline,
                 self.mlir_module_str,
                 file_with_addresses,
                 self.opts.verbose,

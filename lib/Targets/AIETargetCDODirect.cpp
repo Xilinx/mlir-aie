@@ -357,8 +357,7 @@ LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
   return success();
 };
 
-LogicalResult
-configureLocksinBdAndBdInBlockAnd(XAie_DevInst &devInst, Block &block,
+LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
                                   XAie_LocType tileLoc,
                                   const AIETargetModel &targetModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
@@ -509,16 +508,15 @@ struct AIEControl {
         for (auto dmaOp : dmaOps)
           for (auto &bdRegion : dmaOp.getBds()) {
             Block &block = bdRegion.getBlocks().front();
-            if (failed(configureLocksinBdAndBdInBlockAnd(devInst, block,
-                                                         tileLoc, targetModel)))
+            if (failed(
+                    configureLocksAndBd(devInst, block, tileLoc, targetModel)))
               return failure();
           }
       } else {
         for (Block &block : memOp.getOperation()->getRegion(0)) {
           if (block.getOps<DMABDOp>().empty())
             continue;
-          if (failed(configureLocksinBdAndBdInBlockAnd(devInst, block, tileLoc,
-                                                       targetModel)))
+          if (failed(configureLocksAndBd(devInst, block, tileLoc, targetModel)))
             return failure();
         }
       }
