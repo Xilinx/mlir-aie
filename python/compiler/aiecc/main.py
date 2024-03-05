@@ -43,7 +43,6 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         "aie.device",
         Pipeline()
         .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-assign-bd-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass("aie-objectFifo-stateful-transform")
         .add_pass("aie-assign-bd-ids")
