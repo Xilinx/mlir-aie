@@ -39,7 +39,7 @@ ${xclbin_target}: ${mlir_target} build/mm.o
 ${targetname}.exe: test.cpp ../matrix_multiplication.h
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -53,7 +53,7 @@ sign: ${xclbin_target}
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target} sign
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N --verify ${verify}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N --verify ${verify} -v 1
 
 .PHONY: clean
 clean:
