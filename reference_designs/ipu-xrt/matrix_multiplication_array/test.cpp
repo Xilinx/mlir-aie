@@ -24,6 +24,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "../matrix_multiplication.h"
+
 constexpr int M = 512;
 constexpr int K = 512;
 constexpr int N = 512;
@@ -44,112 +46,18 @@ constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
-static inline std::int16_t random_int16_t() {
-  // return ((std::int16_t)rand() % 0x10000);
-  return std::int16_t(rand() % 0x10);
-}
-
-static inline std::bfloat16_t random_bfloat16_t() {
-  std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0, 1.0);
-  return std::bfloat16_t(distribution(gen));
-  return std::bfloat16_t(1.0);
-  // return std::bfloat16_t((float)(rand()) / (float)(RAND_MAX));
-}
-
-template <typename Tin, typename Tout>
-// void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
-//   for (int row = 0; row < M; row++) {
-//     for (int col = 0; col < N; col++) {
-//       float running_sum = 0;
-//       for (int i = 0; i < K; i++) {
-//         running_sum += float(a[row * K + i]) * float(b[i * N + col]);
-//       }
-//       c[row * N + col] = Tout(running_sum);
-//     }
-//   }
-// }
-void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
-  const int B = 64;
-  for (int row = 0; row < M; row++) {
-    for (int col = 0; col < N; col++) {
-      for (int k = 0; k < K / B; k++) {
-        float running_sum = 0;
-        for (int i = 0; i < B; i++)
-          running_sum +=
-              float(a[row * K + k * B + i]) * float(b[i * N + k * B + col]);
-        c[row * N + col] += Tout(running_sum);
-      }
-    }
-  }
-}
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
-
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  matmul_common::add_default_options(desc);
+  matmul_common::parse_options(argc, argv, desc, vm);
+  int verbosity = vm["verbosity"].as<int>();
 
   srand(time(NULL));
 
-  std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
-
-  int verbosity = vm["verbosity"].as<int>();
+  std::vector<uint32_t> instr_v = matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -206,19 +114,19 @@ int main(int argc, const char *argv[]) {
     std::cout << "Writing data into buffer objects.\n";
   srand(static_cast<unsigned>(time(0)));
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
-  std::vector<A_DATATYPE> AVec;
-  for (int i = 0; i < A_VOLUME; i++)
-    AVec.push_back(random_bfloat16_t());
+  std::vector<A_DATATYPE> AVec(A_VOLUME);
+  for (int i = 0; i < A_VOLUME; i++) {
+    AVec[i] = matmul_common::random_bfloat16_t();
+  }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
-  std::vector<B_DATATYPE> BVec;
-  for (int i = 0; i < B_VOLUME; i++)
-    BVec.push_back(random_bfloat16_t());
+  std::vector<B_DATATYPE> BVec(B_VOLUME);
+  for (int i = 0; i < B_VOLUME; i++) {
+    BVec[i] = matmul_common::random_bfloat16_t();
+  }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
-  std::vector<C_DATATYPE> CVec;
-  for (int i = 0; i < C_VOLUME; i++)
-    CVec.push_back(0);
+  std::vector<C_DATATYPE> CVec(C_VOLUME);
   memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -248,36 +156,41 @@ int main(int argc, const char *argv[]) {
     auto stop = std::chrono::high_resolution_clock::now();
 
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
 
-    C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
-
-    int max_errors = 100;
-
+    int errors = 0;
+    int max_printable_errors = 500;
+    std::vector<C_DATATYPE> CVecRef(C_VOLUME);
     if (VERIFY) {
-      std::cout << "Verifying against reference matmul ..." << std::endl;
+      if(verbosity >= 1) {
+        std::cout << "Verifying against reference matmul ..." << std::endl;
+      }
       auto vstart = std::chrono::system_clock::now();
-      std::vector<C_DATATYPE> output_ref0;
-      for (uint32_t i = 0; i < C_VOLUME; i++)
-        output_ref0.push_back(0);
-      // output_ref0.push_back(K);
-      matmul(AVec, BVec, output_ref0);
+      matmul_common::matmul(M, N, K, AVec, BVec, CVecRef);
 
-      const float absTol = std::abs(0.1);
-      // const float absTol = std::abs(5);
+      const float absTol = 0.5;
+      const float relTol = 0.5;
       for (int row = 0; row < M; row++) {
         for (int col = 0; col < N; col++) {
-          if (std::abs((float)bufOut[row * N + col] -
-                       (float)output_ref0[row * N + col]) > absTol) {
+          if(!matmul_common::nearly_equal(CVecRef[row*N+col], CVec[row*N+col], relTol, absTol)) {
             errors++;
-            if (errors < max_errors) {
-              std::cout << "\nerror, row: " << row << " col: " << col
-                        << " expected "
-                        << std::to_string((float)output_ref0[row * N + col])
+            if (errors < max_printable_errors) {
+              std::cout << "Error in row " << row << ", col " << col << ". "
+                        << "Expected "
+                        << std::setw(4) << (float)CVecRef[row * N + col]
                         << ", got "
-                        << std::to_string((float)bufOut[row * N + col]) << "\n";
+                        << std::setw(4) << (float)CVec[row * N + col] 
+                        << "." << std::endl;
             }
           }
         }
+      }
+      if (errors >= max_printable_errors) {
+        std::cout << "...and " << std::setw(0) << errors << " further errors." << std::endl;
+        std::cout << std::endl << "Reference:" << std::endl;
+        matmul_common::print_matrix(CVecRef, N);
+        std::cout << std::endl << "Output:" << std::endl;
+        matmul_common::print_matrix(CVec, N);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
@@ -316,8 +229,8 @@ int main(int argc, const char *argv[]) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    std::cout << "\nerror count: " << errors << "\n\n";
-    std::cout << "\nfailed.\n\n";
+    std::cout << "\nError count: " << errors << "\n\n";
+    std::cout << "\nFailed.\n\n";
     return 1;
   }
 }
