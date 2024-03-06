@@ -24,6 +24,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "../matrix_multiplication.h"
+
 constexpr int M = 256;
 constexpr int K = 128;
 constexpr int N = 128;
@@ -44,94 +46,18 @@ constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
-static inline std::int16_t random_int16_t() {
-  return ((std::int16_t)rand() % 0x10000);
-}
-
-static inline std::bfloat16_t random_bfloat16_t() {
-  // std::default_random_engine gen;
-  // std::uniform_real_distribution<float> distribution(0.0, 1.0);
-  // return std::bfloat16_t(distribution(gen));
-  return std::bfloat16_t(1.0);
-}
-
-template <typename Tin, typename Tout>
-void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
-  for (int row = 0; row < M; row++) {
-    for (int col = 0; col < N; col++) {
-      float running_sum = 0;
-      for (int i = 0; i < K; i++) {
-        running_sum += float(a[row * K + i]) * float(b[i * N + col]);
-      }
-      c[row * N + col] = Tout(running_sum);
-    }
-  }
-}
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
-
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-
-  std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
-
+  matmul_common::add_default_options(desc);
+  matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+
+  srand(time(NULL));
+
+  std::vector<uint32_t> instr_v = matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -186,21 +112,19 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
-  srand(static_cast<unsigned>(time(0)));
+
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
-  std::vector<A_DATATYPE> AVec;
+  std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++)
-    AVec.push_back(random_bfloat16_t());
+    AVec[i] = matmul_common::random_bfloat16_t();
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
-  std::vector<B_DATATYPE> BVec;
+  std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++)
-    BVec.push_back(random_bfloat16_t());
+    BVec[i] = matmul_common::random_bfloat16_t();
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
-  std::vector<C_DATATYPE> CVec;
-  for (int i = 0; i < C_VOLUME; i++)
-    CVec.push_back(0);
+  std::vector<C_DATATYPE> CVec(C_VOLUME);
   memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -219,34 +143,11 @@ int main(int argc, const char *argv[]) {
   auto stop = std::chrono::high_resolution_clock::now();
 
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-  C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
+  memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
 
   int errors = 0;
-  int max_errors = 100;
-
   if (VERIFY) {
-    std::vector<C_DATATYPE> output_ref0;
-    for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(K);
-    // matmul(AVec, BVec, output_ref0);
-
-    const float absTol = std::abs(0.1);
-    for (int row = 0; row < M; row++) {
-      for (int col = 0; col < N; col++) {
-        if (std::abs((float)bufOut[row * N + col] -
-                     (float)output_ref0[row * N + col]) > absTol) {
-          errors++;
-          if (errors < max_errors) {
-            std::cout << "\nerror, row: " << row << " col: " << col
-                      << " expected "
-                      << std::to_string((float)output_ref0[row * N + col])
-                      << ", got "
-                      << std::to_string((float)bufOut[row * N + col]) << "\n";
-          }
-        }
-      }
-    }
+    errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
   }
 
   float npu_time =

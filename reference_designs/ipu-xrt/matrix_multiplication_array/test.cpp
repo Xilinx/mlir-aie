@@ -157,9 +157,6 @@ int main(int argc, const char *argv[]) {
 
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
-
-    int errors = 0;
-    int max_printable_errors = 500;
     std::vector<C_DATATYPE> CVecRef(C_VOLUME);
     if (VERIFY) {
       if(verbosity >= 1) {
@@ -167,31 +164,7 @@ int main(int argc, const char *argv[]) {
       }
       auto vstart = std::chrono::system_clock::now();
       matmul_common::matmul(M, N, K, AVec, BVec, CVecRef);
-
-      const float absTol = 0.5;
-      const float relTol = 0.5;
-      for (int row = 0; row < M; row++) {
-        for (int col = 0; col < N; col++) {
-          if(!matmul_common::nearly_equal(CVecRef[row*N+col], CVec[row*N+col], relTol, absTol)) {
-            errors++;
-            if (errors < max_printable_errors) {
-              std::cout << "Error in row " << row << ", col " << col << ". "
-                        << "Expected "
-                        << std::setw(4) << (float)CVecRef[row * N + col]
-                        << ", got "
-                        << std::setw(4) << (float)CVec[row * N + col] 
-                        << "." << std::endl;
-            }
-          }
-        }
-      }
-      if (errors >= max_printable_errors) {
-        std::cout << "...and " << std::setw(0) << errors << " further errors." << std::endl;
-        std::cout << std::endl << "Reference:" << std::endl;
-        matmul_common::print_matrix(CVecRef, N);
-        std::cout << std::endl << "Output:" << std::endl;
-        matmul_common::print_matrix(CVec, N);
-      }
+      errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
@@ -209,6 +182,7 @@ int main(int argc, const char *argv[]) {
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
+
   }
 
   std::cout << std::endl

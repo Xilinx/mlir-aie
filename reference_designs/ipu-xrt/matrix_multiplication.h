@@ -251,6 +251,45 @@ void print_matrix(const std::vector<T> matrix,
   #undef print_row
 }
 
+template<typename Tin, typename Tout>
+int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B, std::vector<Tout> C) {
+  int errors = 0;
+  int max_printable_errors = 500;
+  const float absTol = 0.5;
+  const float relTol = 0.5;
+
+  std::vector<Tout> CRef(M*N);
+  matmul(M, N, K, A, B, CRef);
+
+  for (int row = 0; row < M; row++) {
+    for (int col = 0; col < N; col++) {
+      if(!nearly_equal(CRef[row*N+col], C[row*N+col], relTol, absTol)) {
+        errors++;
+        if (errors < max_printable_errors) {
+          std::cout << "Error in row " << row << ", col " << col << ". "
+                    << "Expected "
+                    << std::setw(4) << (float)CRef[row * N + col]
+                    << ", got "
+                    << std::setw(4) << (float)C[row * N + col] 
+                    << "." << std::endl;
+        }
+      }
+    }
+  }
+
+  if (errors >= max_printable_errors) {
+    std::cout << "...and " << std::setw(0) << errors << " further errors." << std::endl;
+  }
+  if (errors > 0) {
+    std::cout << std::endl << "Reference:" << std::endl;
+    matmul_common::print_matrix(CRef, N);
+    std::cout << std::endl << "Output:" << std::endl;
+    matmul_common::print_matrix(C, N);
+  }
+
+  return errors;
+}
+
 }
 
 #endif

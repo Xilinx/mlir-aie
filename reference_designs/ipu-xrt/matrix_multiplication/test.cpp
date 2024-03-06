@@ -185,34 +185,14 @@ int main(int argc, const char *argv[]) {
     // matrix
     memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
 
-    int max_printable_errors = 100;
-
     std::vector<C_DATATYPE> CVecRef(C_VOLUME);
     if (VERIFY) {
       if(verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-
-      const float absTol = 0.5;
-      const float relTol = 0.5;
       matmul_common::matmul(M, N, K, AVec, BVec, CVecRef);
-
-      for (int row = 0; row < M; row++) {
-        for (int col = 0; col < N; col++) {
-          if(!matmul_common::nearly_equal(CVecRef[row*N+col], CVec[row*N+col], relTol, absTol)) {
-            errors++;
-            if (errors < max_printable_errors) {
-              std::cout << "Error in row " << row << ", col " << col << ". "
-                        << "Expected "
-                        << std::setw(4) << (float)CVecRef[row * N + col]
-                        << ", got "
-                        << std::setw(4) << (float)CVec[row * N + col] 
-                        << "." << std::endl;
-            }
-          }
-        }
-      }
+      errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
