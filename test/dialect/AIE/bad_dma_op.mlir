@@ -10,7 +10,7 @@
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK: error: 'aie.dma' op DMA op can only appear in single block region
+// CHECK: error: 'aie.dma' op DMAOp can only appear in single block region
 module {
   aie.device(ipu) {
     %tile_0_1 = aie.tile(0, 1)
