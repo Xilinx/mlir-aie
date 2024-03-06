@@ -101,9 +101,7 @@ static inline std::int16_t random_int16_t() {
 }
 
 static inline std::bfloat16_t random_bfloat16_t() {
-  std::default_random_engine gen;
-  std::uniform_real_distribution<float> distribution(0.0, 1.0);
-  return std::bfloat16_t(distribution(gen));
+  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
 }
 
 template <typename Tin, typename Tout>
