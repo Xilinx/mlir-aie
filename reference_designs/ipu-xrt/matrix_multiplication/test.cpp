@@ -199,7 +199,7 @@ int main(int argc, const char *argv[]) {
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
               .count();
-      if(verbosity >= 1) {
+      if (verbosity >= 1) {
         std::cout << "Verify time: " << vtime << "secs." << std::endl;
       }
     } else {
