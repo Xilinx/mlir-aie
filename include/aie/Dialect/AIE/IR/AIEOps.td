@@ -822,7 +822,10 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ins AnyMemRef:$buffer,
         OptionalAttr<AIEI32Attr>:$offset,
         OptionalAttr<AIEI32Attr>:$len,
-        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions
+        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+        OptionalAttr<AIEI32Attr>:$bd_id,
+        // should never be assigned by user...
+        OptionalAttr<AIEI32Attr>:$next_bd_id
   );
 
   let hasVerifier = 1;

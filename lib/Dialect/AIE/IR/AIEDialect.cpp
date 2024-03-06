@@ -1514,9 +1514,22 @@ LogicalResult MemTileDMAOp::verify() {
 LogicalResult DMAOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
-    return emitOpError("DMA op can only appear in single block region");
+    return emitOpError("DMAOp can only appear in single block region");
   if (!parentOp->getRegion(0).getOps<DMAStartOp>().empty())
-    return emitOpError("DMA op is not compatible with DMAStart ops");
+    return emitOpError("DMAOp is not compatible with DMAStart ops");
+  auto bdRegions = getBds();
+  for (auto &bdRegion : bdRegions) {
+    if (!bdRegion.hasOneBlock())
+      return emitOpError("DMAOp regions must have only one block");
+    auto bds = llvm::to_vector_of<DMABDOp>(bdRegion.front().getOps<DMABDOp>());
+    if (bds.size() != 1)
+      return emitOpError("DMAOp regions/blocks must have exactly one DMABDOp");
+    auto useLocks =
+        llvm::to_vector_of<UseLockOp>(bdRegion.front().getOps<UseLockOp>());
+    if (useLocks.size() != 2)
+      return emitOpError(
+          "DMAOp regions/blocks must have exactly two UseLock ops");
+  }
   return success();
 }
 
