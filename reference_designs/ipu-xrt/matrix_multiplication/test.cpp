@@ -42,7 +42,7 @@ constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
 constexpr bool VERIFY = true;
 constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 8192;
+constexpr int TRACE_SIZE = 16384;
 
 constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
 
@@ -234,53 +234,85 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto start = std::chrono::system_clock::now();
-  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
-  run.wait();
-  auto stop = std::chrono::system_clock::now();
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-  // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C
-  // matrix
-  C_DATATYPE *COut = (C_DATATYPE *)bufOut;
+  unsigned num_iter = 10;
+  float npu_time_total = 0;
+  float npu_time_min = 9999999;
+  float npu_time_max = 0;
 
   int errors = 0;
-  int max_errors = 100;
+  float macs = 2.0 * float(M) * float(K) * float(N);
 
-  if (VERIFY) {
-    std::vector<C_DATATYPE> output_ref0;
-    for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(0);
-    matmul(AVec, BVec, output_ref0);
+  for (unsigned iter=0; iter<num_iter; iter++) {
 
-    const C_DATATYPE absTol = std::abs(0.1);
-    for (uint32_t i = 0; i < C_VOLUME; i++) {
-      if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
-        errors++;
-        if (errors < max_errors) {
-          std::cout << "\nerror, id " << i << " expected "
-                    << std::to_string((float)output_ref0[i]) << ", got "
-                    << std::to_string((float)COut[i]) << "\n";
+    auto start = std::chrono::system_clock::now();
+    auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
+    run.wait();
+    auto stop = std::chrono::system_clock::now();
+
+    bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+    // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C
+    // matrix
+    C_DATATYPE *COut = (C_DATATYPE *)bufOut;
+
+    int max_errors = 100;
+
+    if (VERIFY) {
+      std::cout << "Verifying against reference matmul ..." << std::endl;
+      auto vstart = std::chrono::system_clock::now();
+      std::vector<C_DATATYPE> output_ref0;
+      for (uint32_t i = 0; i < C_VOLUME; i++)
+        output_ref0.push_back(0);
+      matmul(AVec, BVec, output_ref0);
+
+      const C_DATATYPE absTol = std::abs(0.1);
+      for (uint32_t i = 0; i < C_VOLUME; i++) {
+        if (std::abs((float)COut[i] - (float)output_ref0[i]) > absTol) {
+          errors++;
+          if (errors < max_errors) {
+            std::cout << "\nerror, id " << i << " expected "
+                      << std::to_string((float)output_ref0[i]) << ", got "
+                      << std::to_string((float)COut[i]) << "\n";
+          }
         }
       }
+      auto vstop = std::chrono::system_clock::now();
+      float vtime =
+          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+              .count();
+      std::cout << "Verify time: " << vtime << "secs." << std::endl;
+    } else {
+      if (verbosity >= 1)
+        std::cout << "WARNING: matmul results not verified." << std::endl;
     }
-  } else {
-    std::cout << "WARNING: matmul results not verified." << std::endl;
-  }
 
-  if (ENABLE_TRACING) {
-    write_out_trace(bufOut, vm["trace"].as<std::string>());
+    if (ENABLE_TRACING) {
+      write_out_trace(bufOut, vm["trace"].as<std::string>());
+    }
+
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    npu_time_total += npu_time;
+    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
+    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
   }
 
   std::cout << std::endl
-            << "NPU matmul time: "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(stop -
-                                                                     start)
-                   .count()
-            << "ms." << std::endl;
+            << "Avg NPU matmul time: " << npu_time_total/num_iter << "us." << std::endl;
+  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total/num_iter) << std::endl;
 
-  if (!errors) {
+  std::cout << std::endl
+            << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
+
+  std::cout << std::endl
+            << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
+  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
+
+  if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
