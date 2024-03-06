@@ -33,10 +33,8 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
 else
   echo "Environment is WSL"
 fi
-if ! hash python3.8; then
-  echo "This script requires python3.8"
-  echo "https://linuxgenie.net/how-to-install-python-3-8-on-ubuntu-22-04/"
-  echo "Don't forget python3.8-distutils!"
+if ! hash python3.10; then
+  echo "This script requires python3.10"
   return 1
 fi
 if ! hash virtualenv; then
@@ -47,7 +45,6 @@ if ! hash unzip; then
   echo "unzip is not installed"
   return 1
 fi
-alias python3=python3.8
 # if an install is already present, remove it to start from a clean slate
 rm -rf ironenv
 rm -rf my_install
