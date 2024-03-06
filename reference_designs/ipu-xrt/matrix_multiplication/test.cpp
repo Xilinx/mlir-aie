@@ -150,8 +150,8 @@ int main(int argc, const char *argv[]) {
 
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
-  memset(bufOut, 0, OUT_SIZE);
   std::vector<C_DATATYPE> CVec(C_VOLUME);
+  memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
 
   // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
@@ -161,9 +161,6 @@ int main(int argc, const char *argv[]) {
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-  if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
 
   unsigned num_iter = 10;
   float npu_time_total = 0;
@@ -175,14 +172,18 @@ int main(int argc, const char *argv[]) {
 
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
-    auto start = std::chrono::system_clock::now();
+    if (verbosity >= 1) {
+      std::cout << "Running Kernel.\n";
+    }
+
+    auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
     run.wait();
-    auto stop = std::chrono::system_clock::now();
+    auto stop = std::chrono::high_resolution_clock::now();
 
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    // Reinterpret first C_VOLUME bytes of bufOut as our output C_DATATYPE C
+    // Reinterpret first C_VOLUME items of bufOut as our output C_DATATYPE C
     // matrix
     memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
 
@@ -198,7 +199,9 @@ int main(int argc, const char *argv[]) {
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
               .count();
-      std::cout << "Verify time: " << vtime << "secs." << std::endl;
+      if(verbosity >= 1) {
+        std::cout << "Verify time: " << vtime << "secs." << std::endl;
+      }
     } else {
       if (verbosity >= 1)
         std::cout << "WARNING: matmul results not verified." << std::endl;

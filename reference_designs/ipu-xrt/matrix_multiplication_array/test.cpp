@@ -79,9 +79,11 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
+                                 if (verbosity >= 1) {
+                                  std::cout << "Name: " << name << std::endl;
+                                 }
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
@@ -113,7 +115,7 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
-  srand(static_cast<unsigned>(time(0)));
+
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
@@ -138,10 +140,7 @@ int main(int argc, const char *argv[]) {
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
-
-  int num_iter = 10;
+  unsigned num_iter = 10;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
@@ -151,6 +150,9 @@ int main(int argc, const char *argv[]) {
 
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
+    if (verbosity >= 1) {
+      std::cout << "Running Kernel.\n";
+    }
     auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
     run.wait();
@@ -170,7 +172,9 @@ int main(int argc, const char *argv[]) {
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
               .count();
-      std::cout << "Verify time: " << vtime << "secs." << std::endl;
+      if(verbosity >= 1) {
+        std::cout << "Verify time: " << vtime << "secs." << std::endl;
+      }
     } else {
       if (verbosity >= 1)
         std::cout << "WARNING: matmul results not verified." << std::endl;
