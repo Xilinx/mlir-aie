@@ -437,10 +437,12 @@ def next_bd(dest: Optional[Union[Successor, Block]] = None, loc=None, ip=None):
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None):
+def buffer(
+    tile, shape, dtype, name=None, initial_value=None, annot=None, loc=None, ip=None
+):
     if name is not None and not name:
         name = _get_sym_name(inspect.currentframe().f_back, "aie\\.buffer|buffer")
-    return Buffer(
+    b = Buffer(
         tile,
         shape,
         dtype,
@@ -449,6 +451,9 @@ def buffer(tile, shape, dtype, name=None, initial_value=None, loc=None, ip=None)
         loc=loc,
         ip=ip,
     ).result
+    if annot is not None:
+        b.owner.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
+    return b
 
 
 def external_buffer(shape, dtype, name=None, loc=None, ip=None):
@@ -568,7 +573,9 @@ def find_matching_flows(
                 int(a.dest_channel),
             ),
         )
-        if len(r) == 0:
+        if len(r) == 1:
+            r = r[0]
+        elif len(r) == 0:
             r = None
     return r
 
@@ -601,7 +608,9 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None, single=Fa
                 a.get_name(),
             ),
         )
-        if len(r) == 0:
+        if len(r) == 1:
+            r = r[0]
+        elif len(r) == 0:
             r = None
     return r
 
@@ -634,7 +643,9 @@ def find_matching_buffers(tiles, sym_name=None, annot=None, device=None, single=
                 a.get_name(),
             ),
         )
-        if len(r) == 0:
+        if len(r) == 1:
+            r = r[0]
+        elif len(r) == 0:
             r = None
     return r
 

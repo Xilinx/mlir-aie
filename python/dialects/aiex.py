@@ -873,7 +873,11 @@ def broadcast_flow(
             matching_flows = find_matching_flows([s], filter_source=True)
             used_channels = set()
             if matching_flows is not None:
-                used_channels.update(int(f.source_channel) for f in matching_flows)
+                if isinstance(matching_flows, (tuple, list)):
+                    used_channels.update(int(f.source_channel) for f in matching_flows)
+                else:
+                    assert isinstance(matching_flows, aie.FlowOp)
+                    used_channels.add(int(matching_flows.source_channel))
             source_channel.flat[indices] = _find_next_channel(used_channels)
 
     if dest_channel is None or np.all(np.array(dest_channel) == None):
@@ -881,7 +885,11 @@ def broadcast_flow(
         for d in np.unique(dest):
             matching_flows = find_matching_flows([d], filter_dest=True)
             if matching_flows is not None:
-                used_channels[d] = set(int(f.dest_channel) for f in matching_flows)
+                if isinstance(matching_flows, (tuple, list)):
+                    used_channels[d] = set(int(f.dest_channel) for f in matching_flows)
+                else:
+                    assert isinstance(matching_flows, aie.FlowOp)
+                    used_channels[d] = {int(matching_flows.dest_channel)}
             else:
                 used_channels[d] = set()
         dest_channel = np.empty_like(dest, dtype=None)

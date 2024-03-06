@@ -1015,7 +1015,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             aie.slsl(f"col={col} return c from col {col}")
             # skip col 4, 5 for now (not enough incoming on memtiles and
             # can't route directly to shim tiles - router flubs and connects south to south???)
-            tiles[col, 1].rflow(tiles[col, 2:4], source_annot="c", dest_annot="c")
+            tiles[col, 1].rflow(tiles[col, 2::2], source_annot="c", dest_annot="c")
             # connect 5th row directly to shim because mem tile is out of connections
             # tiles[col, 0].rflow(tiles[col, 4], source_annot="c", dest_annot="c_1")
 
@@ -1059,7 +1059,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                     mm2s_channel_idx=out_b_fl.source_channel,
                     repeat_count=iters - 1,
                 )
-                c_1_buffer = aie.buffer(t.tile, (K,), T.i32())
+                c_1_buffer = aie.buffer(t.tile, (2 * K,), T.i32())
                 aiex.forward_bd(
                     t.tile,
                     c_1_buffer,
@@ -1067,7 +1067,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                     mm2s_channel_idx=out_c_1_fl.source_channel,
                     repeat_count=iters - 1,
                 )
-                c_2_buffer = aie.buffer(t.tile, (K,), T.i32())
+                c_2_buffer = aie.buffer(t.tile, (2 * K,), T.i32())
                 aiex.forward_bd(
                     t.tile,
                     c_2_buffer,
@@ -1079,7 +1079,8 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                 aie.end()
 
         aie.slsl("configure core mem dmas")
-        for t in tiles[cols, 2:]:
+        # reverse so that northern neighbors are done before
+        for t in list(tiles[cols, 2:])[::-1]:
             in_a_fl = t.flows(filter_dest=True, dest_annot="a", single=True)
             in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
             out_c_fl = t.flows(filter_source=True, source_annot="c", single=True)
@@ -1092,9 +1093,14 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                 out_c_prod_lock = aie.lock(t.tile, init=1, sym_name=False)
                 out_c_cons_lock = aie.lock(t.tile, init=0, sym_name=False)
 
-            a_buffer = aie.buffer(t.tile, (K,), T.i32())
-            b_buffer = aie.buffer(t.tile, (K,), T.i32())
-            c_buffer = aie.buffer(t.tile, (K,), T.i32())
+            a_buffer = t.buffer([(K,)], T.i32(), annot="a")
+            b_buffer = t.buffer([(K,)], T.i32(), annot="b")
+            # even row - recipient of odd row results
+            if out_c_fl is not None:
+                c_buffer = t.buffer([(2 * K,)], T.i32(), annot="c")
+                north_c_buffer = t.neighbors().north.buffers(annot="c", single=True)
+            else:
+                c_buffer = aie.buffer(t.tile, (K,), T.i32(), annot="c")
 
             @aie.mem(t.tile)
             def mem():
@@ -1119,6 +1125,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                         c_buffer,
                         out_c_prod_lock,
                         repeat_count=iters - 1,
+                        len=2 * K,
                     )
 
                 aie.end()
@@ -1126,8 +1133,13 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             @aie.core(t.tile)
             def core():
                 y = memref.alloc(K, T.i32())
+                if out_c_fl is not None:
+                    c_own_slice = c_buffer[:K]
+                    c_north_neigbhor_slice = c_buffer[K:]
+                else:
+                    c_own_slice = c_buffer
                 for i in range_(iters):
-                    linalg.fill(i, y)
+                    linalg.fill(0, y)
                     with ExitStack() as stack:
                         stack.enter_context(
                             aiex.hold_lock(in_a_cons_lock, in_a_prod_lock)
@@ -1139,11 +1151,12 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                             stack.enter_context(
                                 aiex.hold_lock(out_c_prod_lock, out_c_cons_lock)
                             )
-                        linalg.add(a_buffer, b_buffer, c_buffer)
-                        linalg.add(y, c_buffer, c_buffer)
+                        linalg.add(a_buffer, b_buffer, c_own_slice)
+                        linalg.add(y, c_own_slice, c_own_slice)
+                        if out_c_fl is not None:
+                            # TODO(max): right now this isn't synced at all but still works
+                            linalg.copy(north_c_buffer, c_north_neigbhor_slice)
                     yield_()
-
-    print(ctx.module)
 
     compile_without_vectorization(ctx.module, workdir)
     buffer_args = list(
@@ -1163,14 +1176,25 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        views = xclbin.mmap_buffers([(K,)] * len(buffer_args), np.int32)
+        buffer_lengths = []
+        for a in buffer_args:
+            if "_c_" in a:
+                buffer_lengths.append((2 * K,))
+            else:
+                buffer_lengths.append((K,))
+        views = xclbin.mmap_buffers(buffer_lengths, np.int32)
         buffer_idx = -1
         for col in cols:
             for bd_id in [0, 1, 2, 3]:
                 buffer_idx += 1
-                writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                    column=col, bd_id=bd_id, buffer_length=K
-                )
+                if bd_id in {0, 1}:
+                    writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                        column=col, bd_id=bd_id, buffer_length=K
+                    )
+                else:
+                    writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                        column=col, bd_id=bd_id, buffer_length=2 * K
+                    )
                 ipu_insts.extend(
                     aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                         writebd_shimtile_insts,
@@ -1199,15 +1223,15 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
         xclbin.load_ipu_instructions(ipu_insts)
 
+        As = {c: np.random.randint(0, 10, (K,), dtype=np.int32) for c in cols}
+        Bs = {c: np.random.randint(0, 10, (K,), dtype=np.int32) for c in cols}
         wraps = list(map(np.asarray, views))
         for col in cols:
-            A = np.random.randint(0, 10, (K,), dtype=np.int32)
-            B = np.random.randint(0, 10, (K,), dtype=np.int32)
-            C1 = np.zeros((K,), dtype=np.int32)
-            C2 = np.zeros((K,), dtype=np.int32)
+            C1 = np.zeros((2 * K,), dtype=np.int32)
+            C2 = np.zeros((2 * K,), dtype=np.int32)
 
-            np.copyto(wraps[4 * col + 0], A, casting="no")
-            np.copyto(wraps[4 * col + 1], B, casting="no")
+            np.copyto(wraps[4 * col + 0], As[col], casting="no")
+            np.copyto(wraps[4 * col + 1], Bs[col], casting="no")
             np.copyto(wraps[4 * col + 2], C1, casting="no")
             np.copyto(wraps[4 * col + 3], C2, casting="no")
 
@@ -1217,9 +1241,19 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
+        wrap_r = []
+        for col in cols:
+            wrap_r.append(
+                np.concatenate([wraps[4 * col + 2], wraps[4 * col + 3]]).reshape(4, 32)
+            )
+        wrap_r = np.concatenate(wrap_r).reshape(4, 4, 32)
+        r = np.empty((len(As), len(Bs), 32), dtype=np.int32)
+        for ci in cols:
+            for cj in cols:
+                r[ci, cj][:] = As[ci] + Bs[cj]
+
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            for i, w in enumerate(wraps):
-                print(buffer_args[i], w)
+            assert np.array_equal(wrap_r, r)
 
 
 def test_tiled_nonsquare_tile_spatial_4x4_broadcast_with_shim_dma_broken(
@@ -1405,8 +1439,6 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_with_shim_dma_broken(
                         linalg.add(a_buffer, b_buffer, c_buffer)
                         linalg.add(y, c_buffer, c_buffer)
                     yield_()
-
-    print(ctx.module)
 
     enable_cores = False
     compile_without_vectorization(ctx.module, workdir, enable_cores=enable_cores)
