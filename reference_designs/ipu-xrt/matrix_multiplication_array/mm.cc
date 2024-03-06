@@ -135,7 +135,7 @@ void matmul_vectorized(const T_in *__restrict pA, const T_in *__restrict pB,
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
 void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
-                       T_out *__restrict pC) {
+                           T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
 
   event0();
@@ -195,36 +195,36 @@ void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
           aie::vector<T_out, MMUL::size_C> acc_C01 =
               aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C02 =
-              aie::load_v<MMUL::size_C>(pC1 + 2*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC1 + 2 * MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C03 =
-              aie::load_v<MMUL::size_C>(pC1 + 3*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC1 + 3 * MMUL::size_C);
 
           aie::vector<T_out, MMUL::size_C> acc_C10 =
               aie::load_v<MMUL::size_C>(pC2);
           aie::vector<T_out, MMUL::size_C> acc_C11 =
               aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C12 =
-              aie::load_v<MMUL::size_C>(pC2 + 2*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC2 + 2 * MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C13 =
-              aie::load_v<MMUL::size_C>(pC2 + 3*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC2 + 3 * MMUL::size_C);
 
           aie::vector<T_out, MMUL::size_C> acc_C20 =
               aie::load_v<MMUL::size_C>(pC3);
           aie::vector<T_out, MMUL::size_C> acc_C21 =
               aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C22 =
-              aie::load_v<MMUL::size_C>(pC3 + 2*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC3 + 2 * MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C23 =
-              aie::load_v<MMUL::size_C>(pC3 + 3*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC3 + 3 * MMUL::size_C);
 
           aie::vector<T_out, MMUL::size_C> acc_C30 =
               aie::load_v<MMUL::size_C>(pC4);
           aie::vector<T_out, MMUL::size_C> acc_C31 =
               aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C32 =
-              aie::load_v<MMUL::size_C>(pC4 + 2*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC4 + 2 * MMUL::size_C);
           aie::vector<T_out, MMUL::size_C> acc_C33 =
-              aie::load_v<MMUL::size_C>(pC4 + 3*MMUL::size_C);
+              aie::load_v<MMUL::size_C>(pC4 + 3 * MMUL::size_C);
 
           MMUL C00(acc_C00);
           MMUL C01(acc_C01);
@@ -316,7 +316,7 @@ void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
           pC1 += MMUL::size_C;
           aie::store_v(pC1, C03.template to_vector<T_out>());
           pC1 += MMUL::size_C;
-         
+
           aie::store_v(pC2, C10.template to_vector<T_out>());
           pC2 += MMUL::size_C;
           aie::store_v(pC2, C11.template to_vector<T_out>());
@@ -377,8 +377,8 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
   // return matmul_vectorized<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
-  return matmul_vectorized_2x2<bfloat16, bfloat16, m / r, k / s, n / t, r, s, t>(
-      pA, pB, pC);
+  return matmul_vectorized_2x2<bfloat16, bfloat16, m / r, k / s, n / t, r, s,
+                               t>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>

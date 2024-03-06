@@ -243,7 +243,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
   float macs = 2.0 * float(M) * float(K) * float(N);
 
-  for (unsigned iter=0; iter<num_iter; iter++) {
+  for (unsigned iter = 0; iter < num_iter; iter++) {
 
     auto start = std::chrono::system_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
@@ -301,8 +301,10 @@ int main(int argc, const char *argv[]) {
   }
 
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total/num_iter << "us." << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total/num_iter) << std::endl;
+            << "Avg NPU matmul time: " << npu_time_total / num_iter << "us."
+            << std::endl;
+  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / num_iter)
+            << std::endl;
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;

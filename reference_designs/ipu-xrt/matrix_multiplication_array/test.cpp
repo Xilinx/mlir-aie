@@ -240,7 +240,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
   float macs = 2.0 * float(M) * float(K) * float(N);
 
-  for (unsigned iter=0; iter<num_iter; iter++) {
+  for (unsigned iter = 0; iter < num_iter; iter++) {
 
     auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
@@ -267,7 +267,7 @@ int main(int argc, const char *argv[]) {
       for (int row = 0; row < M; row++) {
         for (int col = 0; col < N; col++) {
           if (std::abs((float)bufOut[row * N + col] -
-                      (float)output_ref0[row * N + col]) > absTol) {
+                       (float)output_ref0[row * N + col]) > absTol) {
             errors++;
             if (errors < max_errors) {
               std::cout << "\nerror, row: " << row << " col: " << col
@@ -299,8 +299,10 @@ int main(int argc, const char *argv[]) {
   }
 
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total/num_iter << "us." << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total/num_iter) << std::endl;
+            << "Avg NPU matmul time: " << npu_time_total / num_iter << "us."
+            << std::endl;
+  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / num_iter)
+            << std::endl;
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
@@ -309,7 +311,6 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl
             << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
   std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
-
 
   if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
