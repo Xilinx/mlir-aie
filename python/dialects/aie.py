@@ -519,10 +519,15 @@ def find_matching_flows(
     source_annot=None,
     dest_annot=None,
     device=None,
+    single=False,
 ):
     assert not (filter_source and filter_dest), "Can only filter by source XOR dest"
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+    if source_annot is None:
+        source_annot = "DONT EVER USE THIS ANNOTATION"
+    if dest_annot is None:
+        dest_annot = "DONT EVER USE THIS ANNOTATION"
 
     def _cb(op):
         if isinstance(op, FlowOp):
@@ -531,45 +536,48 @@ def find_matching_flows(
             if filter_dest and op.dest.owner.opview not in tiles:
                 return False
 
-            return (
-                op.source.owner.opview in tiles
-                or op.dest.owner.opview in tiles
+            r = (
+                (op.source.owner.opview in tiles or op.dest.owner.opview in tiles)
                 and (
-                    (
-                        "source_annot" in op.attributes
-                        and source_annot in op.attributes["source_annot"]
-                    )
-                    if source_annot is not None
+                    "source_annot" in op.attributes
+                    and source_annot in op.attributes["source_annot"]
+                    if source_annot != "DONT EVER USE THIS ANNOTATION"
                     else True
                 )
                 and (
-                    (
-                        "dest_annot" in op.attributes
-                        and dest_annot in op.attributes["dest_annot"]
-                    )
-                    if dest_annot is not None
+                    "dest_annot" in op.attributes
+                    and dest_annot in op.attributes["dest_annot"]
+                    if dest_annot != "DONT EVER USE THIS ANNOTATION"
                     else True
                 )
             )
+            return r
 
-    return sorted(
-        find_ops(device, _cb),
-        key=lambda a: (
-            int(a.source.owner.opview.col),
-            int(a.source.owner.opview.row),
-            int(a.source_bundle),
-            int(a.source_channel),
-            int(a.dest.owner.opview.col),
-            int(a.dest.owner.opview.row),
-            int(a.dest_bundle),
-            int(a.dest_channel),
-        ),
-    )
+    r = find_ops(device, _cb, single=single)
+    if isinstance(r, list):
+        r = sorted(
+            r,
+            key=lambda a: (
+                int(a.source.owner.opview.col),
+                int(a.source.owner.opview.row),
+                int(a.source_bundle),
+                int(a.source_channel),
+                int(a.dest.owner.opview.col),
+                int(a.dest.owner.opview.row),
+                int(a.dest_bundle),
+                int(a.dest_channel),
+            ),
+        )
+        if len(r) == 0:
+            r = None
+    return r
 
 
-def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
+def find_matching_locks(tiles, sym_name=None, annot=None, device=None, single=False):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+    if annot is None:
+        annot = "DONT EVER USE THIS ANNOTATION"
 
     def _cb(op):
         if isinstance(op, LockOp):
@@ -577,25 +585,32 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
                 op.tile.owner.opview in tiles
                 and (sym_name == str(op.sym_name) if sym_name is not None else True)
                 and (
-                    ("annot" in op.attributes and annot in op.attributes["annot"])
-                    if annot is not None
+                    "annot" in op.attributes and annot in op.attributes["annot"]
+                    if annot != "DONT EVER USE THIS ANNOTATION"
                     else True
                 )
             )
 
-    return sorted(
-        [o.result for o in find_ops(device, _cb)],
-        key=lambda a: (
-            int(a.owner.opview.tile.owner.opview.col),
-            int(a.owner.opview.tile.owner.opview.row),
-            a.get_name(),
-        ),
-    )
+    r = find_ops(device, _cb, single=single)
+    if isinstance(r, list):
+        r = sorted(
+            [o.result for o in r],
+            key=lambda a: (
+                int(a.owner.opview.tile.owner.opview.col),
+                int(a.owner.opview.tile.owner.opview.row),
+                a.get_name(),
+            ),
+        )
+        if len(r) == 0:
+            r = None
+    return r
 
 
-def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
+def find_matching_buffers(tiles, sym_name=None, annot=None, device=None, single=False):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
+    if annot is None:
+        annot = "DONT EVER USE THIS ANNOTATION"
 
     def _cb(op):
         if isinstance(op, BufferOp):
@@ -603,20 +618,25 @@ def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
                 op.tile.owner.opview in tiles
                 and (sym_name == str(op.sym_name) if sym_name is not None else True)
                 and (
-                    ("annot" in op.attributes and annot in op.attributes["annot"])
-                    if annot is not None
+                    "annot" in op.attributes and annot in op.attributes["annot"]
+                    if annot != "DONT EVER USE THIS ANNOTATION"
                     else True
                 )
             )
 
-    return sorted(
-        [o.result for o in find_ops(device, _cb)],
-        key=lambda a: (
-            int(a.owner.opview.tile.owner.opview.col),
-            int(a.owner.opview.tile.owner.opview.row),
-            a.get_name(),
-        ),
-    )
+    r = find_ops(device, _cb, single=single)
+    if isinstance(r, list):
+        r = sorted(
+            [o.result for o in r],
+            key=lambda a: (
+                int(a.owner.opview.tile.owner.opview.col),
+                int(a.owner.opview.tile.owner.opview.row),
+                a.get_name(),
+            ),
+        )
+        if len(r) == 0:
+            r = None
+    return r
 
 
 @dataclass

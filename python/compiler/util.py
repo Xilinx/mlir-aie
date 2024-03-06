@@ -72,12 +72,12 @@ ENV = {
 }
 
 
-XCHESS_ARGS = lambda workdir: [
+XCHESS_ARGS = lambda workdir, jobs: [
     f"{AIETOOLS_DIR}/bin/unwrapped/lnx64.o/xchesscc",
     "+P",
-    "4",  # parallel compilation (function + file level)
+    str(jobs),  # compilation parallelism (function + file level)
     "-p",
-    "me",  # parallel compilation (function level only)
+    "me",
     "-C",
     "Release_LLVM",  # configuration
     "-D__AIENGINE__",
@@ -120,7 +120,7 @@ def aie_llvm_link_with_chess_intrinsic_wrapper(input_ll):
     return chesshack(aie_llvm_link([input_ll, _CHESS_INTRINSIC_WRAPPER_LL]))
 
 
-def chess_compile(input_ll, workdir, output_filename="input", debug=False):
+def chess_compile(input_ll, workdir, *, output_filename="input", debug=False, jobs=1):
     if (
         Path(workdir / f"{output_filename}.ll").exists()
         and Path(workdir / f"{output_filename}.o").exists()
@@ -138,7 +138,7 @@ def chess_compile(input_ll, workdir, output_filename="input", debug=False):
 
     # chess compile
     cmd = [
-        *XCHESS_ARGS(workdir),
+        *XCHESS_ARGS(workdir, jobs),
         "-c",  # compile/assemble only, do not link
         f"{output_filename}.ll",
         "-o",
@@ -147,7 +147,7 @@ def chess_compile(input_ll, workdir, output_filename="input", debug=False):
     _run_command(cmd, workdir, debug=debug)
 
 
-def chess_compile_cpp_to_ll(cpp, workdir, prefix="aievec", debug=False):
+def chess_compile_cpp_to_ll(cpp, workdir, *, prefix="aievec", debug=False, jobs=1):
     with tempfile.NamedTemporaryFile(
         delete=False, mode="w", prefix=f"{workdir}/{prefix}_", suffix=".cpp"
     ) as temp_xchess_input:
@@ -156,7 +156,7 @@ def chess_compile_cpp_to_ll(cpp, workdir, prefix="aievec", debug=False):
 
         output_path = temp_xchess_input.name + ".ll"
         cmd = [
-            *XCHESS_ARGS(workdir),
+            *XCHESS_ARGS(workdir, jobs),
             "-c",
             "-f",
             "+f",  # only run LLVM frontend (emits IR)
@@ -219,7 +219,7 @@ def chess_llvm_link(
     return output_str
 
 
-def make_core_elf(core_bcf, workdir, object_filename="input", debug=False):
+def make_core_elf(core_bcf, workdir, *, object_filename="input", debug=False, jobs=1):
     input_files = extract_input_files(core_bcf)
     core_name = re.findall(r"_symbol (.*?) _after _main_init", core_bcf, re.MULTILINE)
     assert len(core_name) == 1
@@ -229,7 +229,7 @@ def make_core_elf(core_bcf, workdir, object_filename="input", debug=False):
         f.write(core_bcf)
 
     cmd = [
-        *XCHESS_ARGS(workdir),
+        *XCHESS_ARGS(workdir, jobs),
         f"{object_filename}.o",
         *input_files,
         "+l",  # linker configuration file
@@ -306,6 +306,7 @@ def compile_with_vectorization(
     cdo_debug=False,
     partition_start_col=1,
     enable_cores=True,
+    jobs=1,
 ):
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
@@ -322,7 +323,11 @@ def compile_with_vectorization(
     if kernel:
         print("compiling kernel")
         chess_compile(
-            aievec_ll, workdir, output_filename=f"{kernel.sym_name.value}", debug=debug
+            aievec_ll,
+            workdir,
+            output_filename=f"{kernel.sym_name.value}",
+            debug=debug,
+            jobs=jobs,
         )
 
     for col, row, _ in generate_cores_list(str(mod_aie)):
@@ -343,6 +348,7 @@ def compile_with_vectorization(
                     workdir,
                     output_filename=f"core_{col}_{row}",
                     debug=debug,
+                    jobs=jobs,
                 )
             else:
                 fullylinked_ll = chess_llvm_link(
@@ -362,9 +368,14 @@ def compile_with_vectorization(
                     workdir,
                     output_filename=f"core_{col}_{row}",
                     debug=debug,
+                    jobs=jobs,
                 )
         make_core_elf(
-            core_bcf, workdir, object_filename=f"core_{col}_{row}", debug=debug
+            core_bcf,
+            workdir,
+            object_filename=f"core_{col}_{row}",
+            debug=debug,
+            jobs=jobs,
         )
 
     input_physical = run_pipeline(
@@ -396,6 +407,7 @@ def compile_without_vectorization(
     cdo_debug=False,
     partition_start_col=1,
     enable_cores=True,
+    jobs=1,
 ):
     debug = debug or xaie_debug or cdo_debug
     module = run_pipeline(module, Pipeline().canonicalize())
@@ -424,9 +436,14 @@ def compile_without_vectorization(
                 workdir,
                 output_filename=f"core_{col}_{row}",
                 debug=debug,
+                jobs=jobs,
             )
         make_core_elf(
-            core_bcf, workdir, object_filename=f"core_{col}_{row}", debug=debug
+            core_bcf,
+            workdir,
+            object_filename=f"core_{col}_{row}",
+            debug=debug,
+            jobs=jobs,
         )
 
     input_physical = run_pipeline(

@@ -524,6 +524,12 @@ bool AIE2TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
   if (srcBundle == WireBundle::South && dstBundle == WireBundle::North &&
       srcChan != dstChan)
     return false;
+  if (srcBundle == WireBundle::South && dstBundle == WireBundle::South &&
+      srcChan != dstChan)
+    return false;
+  if (srcBundle == WireBundle::North && dstBundle == WireBundle::North &&
+      srcChan != dstChan)
+    return false;
   // Memtile has no east or west connections
   if (srcBundle == WireBundle::East)
     return false;

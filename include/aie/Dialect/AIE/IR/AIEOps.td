@@ -28,7 +28,8 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove,
+    OpAsmOpInterface
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -62,6 +63,9 @@ def AIE_DeviceOp: AIE_Op<"device", [
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
   let hasVerifier = 1;
 }
@@ -1187,6 +1191,12 @@ def AIE_LockOp: AIE_Op<"lock", [
     }]>
   ];
   let hasVerifier = 1;
+}
+
+def AIE_Comment: AIE_Op<"slsl", [Pure]> {
+  let summary = "no-op just for inserting a \"comment\" (that disappears after CSE) into the source at some point";
+  let arguments = (ins StrAttr:$comment);
+  let assemblyFormat = [{ $comment attr-dict }];
 }
 
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {

@@ -423,7 +423,7 @@ class ipu:
 def process_bd(
     acq_lock,
     buffer,
-    rel_lock,
+    rel_lock=None,
     *,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
@@ -433,6 +433,8 @@ def process_bd(
     len=None,
     dimensions=None,
 ):
+    if rel_lock is None:
+        rel_lock = acq_lock
     aie.use_lock(acq_lock, acq_action, value=acq_val)
     aie.dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
     aie.use_lock(rel_lock, rel_action, value=rel_val)
@@ -442,7 +444,7 @@ def send_bd(
     channel,
     acq_lock,
     buffer,
-    rel_lock,
+    rel_lock=None,
     *,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
@@ -453,6 +455,9 @@ def send_bd(
     dimensions=None,
     repeat_count=None,
 ):
+    if rel_lock is None:
+        rel_lock = acq_lock
+
     @aie.dma(DMAChannelDir.MM2S, channel, repeat_count=repeat_count)
     def d():
         process_bd(
@@ -486,6 +491,7 @@ def receive_bd(
 ):
     if rel_lock is None:
         rel_lock = acq_lock
+
     @aie.dma(DMAChannelDir.S2MM, channel, repeat_count=repeat_count)
     def d():
         process_bd(
@@ -548,7 +554,7 @@ def forward_bd(
 @contextmanager
 def hold_lock(
     acq_lock,
-    rel_lock,
+    rel_lock=None,
     *,
     acq_action=LockAction.AcquireGreaterEqual,
     acq_val=None,
@@ -556,6 +562,8 @@ def hold_lock(
     rel_action=LockAction.Release,
     rel_val=None,
 ):
+    if rel_lock is None:
+        rel_lock = acq_lock
     aie.use_lock(acq_lock, acq_action, value=acq_val, acq_en=acq_en)
     try:
         yield
@@ -712,8 +720,8 @@ class TileArray:
         assert len(self.df) == 1, f"convenience accessor only for getting a single tile"
         return self.df[0]
 
-    def flow(self, other, *args, **kwargs):
-        return broadcast_flow(self.df, other.df, *args, **kwargs)
+    def flow(self, other, **kwargs):
+        return broadcast_flow(self.df, other.df, **kwargs)
 
     def channel(self, *args, **kwargs):
         args = _broadcast_args_to((self.df,) + args, self.shape)
@@ -728,13 +736,18 @@ class TileArray:
     def __rshift__(self, other):
         return broadcast_flow(self.df, other.df)
 
-    def __lshift__(self, other):
-        r = np.frompyfunc(partial(broadcast_flow), 2, 1).outer(other.df, self.df)
+    def rflow(self, other, **kwargs):
+        r = np.frompyfunc(partial(broadcast_flow, **kwargs), 2, 1).outer(
+            other.df, self.df
+        )
         if isinstance(r, np.ndarray):
             r = r.flatten().tolist()
             if len(r) == 1:
                 r = r[0]
         return r
+
+    def __lshift__(self, other):
+        return self.rflow(other)
 
     def __getitem__(self, item):
         # https://numpy.org/doc/stable/user/basics.indexing.html#integer-array-indexing
@@ -858,14 +871,19 @@ def broadcast_flow(
         source_channel = np.empty_like(source, dtype=None)
         for s, indices in zip(*map(list, np.unique(source, return_index=True))):
             matching_flows = find_matching_flows([s], filter_source=True)
-            used_channels = set(int(f.source_channel) for f in matching_flows)
+            used_channels = set()
+            if matching_flows is not None:
+                used_channels.update(int(f.source_channel) for f in matching_flows)
             source_channel.flat[indices] = _find_next_channel(used_channels)
 
     if dest_channel is None or np.all(np.array(dest_channel) == None):
         used_channels = {}
         for d in np.unique(dest):
             matching_flows = find_matching_flows([d], filter_dest=True)
-            used_channels[d] = set(int(f.dest_channel) for f in matching_flows)
+            if matching_flows is not None:
+                used_channels[d] = set(int(f.dest_channel) for f in matching_flows)
+            else:
+                used_channels[d] = set()
         dest_channel = np.empty_like(dest, dtype=None)
         for idx, dst in np.ndenumerate(dest):
             dest_channel[idx] = _find_next_channel(used_channels[dst])

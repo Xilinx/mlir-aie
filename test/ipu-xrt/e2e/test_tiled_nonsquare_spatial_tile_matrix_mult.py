@@ -715,7 +715,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
     @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray(cols, rows)
-        for i, ((col, row), t) in enumerate(tiles[:, 2:]):
+        for i, t in enumerate(tiles[:, 2:]):
             b = aie.buffer(
                 t.tile,
                 (K,),
@@ -724,7 +724,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
             )
             aie.lock(t.tile, init=0)
 
-        for _, t in tiles[:, 5]:
+        for t in tiles[:, 5]:
             self_lock = t.locks()[0]
             self_buffer = t.buffers()[0]
 
@@ -733,7 +733,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
                 with aiex.hold_lock(self_lock, self_lock, acq_val=0):
                     linalg.add(self_buffer, self_buffer, self_buffer)
 
-        for _, t in tiles[:, 2:5]:
+        for t in tiles[:, 2:5]:
             north_lock = t.neighbors().north.locks()[0]
             north_buffer = t.neighbors().north.buffers()[0]
 
@@ -750,7 +750,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
         tiles[:, 2] >> tiles[:, 1]
 
-        for _, t in tiles[:, 2]:
+        for t in tiles[:, 2]:
             self_lock = t.locks()[0]
             self_buffer = t.buffers()[0]
             flow = t.flows()[0]
@@ -762,7 +762,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
         tiles[:, 1] >> tiles[:, 0]
 
-        for _, t in tiles[:, 1]:
+        for t in tiles[:, 1]:
             to_shim, to_mem = t.flows()
 
             @aie.memtile_dma(t.tile)
@@ -778,7 +778,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
                 aie.end()
 
         host_buffer = aie.external_buffer((K,), T.i32(), name=False)
-        for (col, _row), t in tiles[:, 0]:
+        for t in tiles[:, 0]:
             flow = t.flows()[0]
 
             shim_start_lock = aie.lock(t.tile, init=0, sym_name=False)
@@ -796,7 +796,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
                 aie.end()
 
-            dest_channels[col] = int(flow.dest_channel)
+            dest_channels[int(t.tile.col)] = int(flow.dest_channel)
 
     compile_without_vectorization(ctx.module, workdir, enable_cores=False)
     buffer_args = [f"out_col_{c}" for c in cols]
@@ -966,6 +966,214 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_5_cols(
         for col in cols[1:]:
             dest_channel = dest_channels[col]
             ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel))
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)
+
+
+def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: Path):
+    K = 32
+    cols = [0, 1, 2, 3]
+    rows = [0, 1, 2, 3, 4, 5]
+
+    dest_channels = {}
+    iters = 10
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        aie.slsl("shim to mem a")
+        tiles[cols, 0].flow(tiles[cols, 1], source_annot="a", dest_annot="a")
+        aie.slsl("shim to mem b")
+        tiles[cols, 0].flow(tiles[cols, 1], source_annot="b", dest_annot="b")
+
+        # do this in a loop instead of broadcasting to preserve comments in the right places..
+        for col in cols:
+            # broadcast out to the row
+            aie.slsl(f"col={col} send a to col {col}")
+            tiles[col, 1].flow(tiles[col, 2:4], source_annot="a", dest_annot="a")
+
+            # broadcast out to the col
+            aie.slsl(f"col={col} send b to row {col + 2}")
+            tiles[col, 1].flow(tiles[:, col + 2], source_annot="b", dest_annot="b")
+
+            # get result back
+            aie.slsl(f"col={col} return c from col {col}")
+            # skip col 4, 5 for now (not enough incoming on memtiles and can't route directly to shim tiles - router flubs and connects south to south???)
+            tiles[col, 1].rflow(tiles[col, 2:4], source_annot="c", dest_annot="c")
+            # connect 5th row directly to shim because mem tile is out of connections
+            # tiles[col, 0].rflow(tiles[col, 4], source_annot="c", dest_annot="c_1")
+
+        aie.slsl("mem to shim")
+        tiles[cols, 1].flow(tiles[cols, 0], source_annot="c", dest_annot="c")
+
+        aie.slsl("configure shim dmas")
+        host_buffer = aie.external_buffer((K,), T.i32(), name=False)
+        for t in tiles[cols, 0]:
+            out_a_fl = t.flows(filter_source=True, source_annot="a", single=True)
+            out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
+            in_c_fl = t.flows(filter_dest=True, dest_annot="c", single=True)
+
+            @aie.shim_dma(t.tile)
+            def shim_dma_c():
+                shim_start_lock_a = aie.lock(t.tile, init=0, lock_id=0, sym_name=False)
+                aiex.send_bd(
+                    int(out_a_fl.source_channel),
+                    shim_start_lock_a,
+                    host_buffer,
+                    acq_action=Acquire,
+                    rel_val=0,
+                    repeat_count=iters - 1,
+                )
+                shim_start_lock_b = aie.lock(t.tile, init=0, lock_id=1, sym_name=False)
+                aiex.send_bd(
+                    int(out_b_fl.source_channel),
+                    shim_start_lock_b,
+                    host_buffer,
+                    acq_action=Acquire,
+                    rel_val=0,
+                    repeat_count=iters - 1,
+                )
+                shim_start_lock_c = aie.lock(t.tile, init=0, lock_id=2, sym_name=False)
+                dest_channel = int(in_c_fl.dest_channel)
+                aiex.receive_bd(
+                    dest_channel,
+                    shim_start_lock_c,
+                    host_buffer,
+                    acq_action=Acquire,
+                    rel_val=0,
+                    repeat_count=iters - 1,
+                )
+                dest_channels[int(t.tile.col)] = dest_channel
+
+                aie.end()
+
+        aie.slsl("configure mem tile dmas")
+        for t in tiles[cols, 1]:
+            in_a_fl = t.flows(filter_dest=True, dest_annot="a", single=True)
+            out_a_fl = t.flows(filter_source=True, source_annot="a", single=True)
+            in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
+            out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
+            in_c_fl = t.flows(filter_dest=True, dest_annot="c", single=True)
+            out_c_fl = t.flows(filter_source=True, source_annot="c", single=True)
+
+            @aie.memtile_dma(t.tile)
+            def mem():
+                a_buffer = aie.buffer(t.tile, (K,), T.i32())
+                aiex.forward_bd(
+                    t.tile,
+                    a_buffer,
+                    s2mm_channel_idx=in_a_fl.dest_channel,
+                    mm2s_channel_idx=out_a_fl.source_channel,
+                )
+                b_buffer = aie.buffer(t.tile, (K,), T.i32())
+                aiex.forward_bd(
+                    t.tile,
+                    b_buffer,
+                    s2mm_channel_idx=in_b_fl.dest_channel,
+                    mm2s_channel_idx=out_b_fl.source_channel,
+                )
+                c_buffer = aie.buffer(t.tile, (K,), T.i32())
+                aiex.forward_bd(
+                    t.tile,
+                    c_buffer,
+                    s2mm_channel_idx=in_c_fl.dest_channel,
+                    mm2s_channel_idx=out_c_fl.source_channel,
+                )
+
+                aie.end()
+
+        aie.slsl("configure mem tile dmas")
+        for t in tiles[cols, 2:4]:
+            in_a_fl = t.flows(filter_dest=True, dest_annot="a", single=True)
+            in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
+            out_c_fl = t.flows(filter_source=True, source_annot="c", single=True)
+
+            in_a_prod_lock = aie.lock(t.tile, init=1, sym_name=False)
+            in_a_cons_lock = aie.lock(t.tile, init=0, sym_name=False)
+            in_b_prod_lock = aie.lock(t.tile, init=1, sym_name=False)
+            in_b_cons_lock = aie.lock(t.tile, init=0, sym_name=False)
+            out_c_prod_lock = aie.lock(t.tile, init=1, sym_name=False)
+            out_c_cons_lock = aie.lock(t.tile, init=0, sym_name=False)
+
+            a_buffer = aie.buffer(t.tile, (K,), T.i32())
+            b_buffer = aie.buffer(t.tile, (K,), T.i32())
+            c_buffer = aie.buffer(t.tile, (K,), T.i32())
+
+            @aie.mem(t.tile)
+            def mem():
+                aiex.receive_bd(
+                    int(in_a_fl.dest_channel), in_a_prod_lock, a_buffer, in_a_cons_lock
+                )
+                aiex.receive_bd(
+                    int(in_b_fl.dest_channel), in_b_prod_lock, b_buffer, in_b_cons_lock
+                )
+                aiex.send_bd(
+                    int(out_c_fl.source_channel),
+                    out_c_cons_lock,
+                    c_buffer,
+                    out_c_prod_lock,
+                )
+
+                aie.end()
+
+            @aie.core(t.tile)
+            def core():
+                with (
+                    aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
+                    aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
+                    aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
+                ):
+                    linalg.add(a_buffer, b_buffer, c_buffer)
+
+    print(ctx.module)
+
+    compile_without_vectorization(ctx.module, workdir, enable_cores=False)
+    buffer_args = (
+        [f"col_{c}_a" for c in cols]
+        + [f"col_{c}_b" for c in cols]
+        + [f"col_{c}_c" for c in cols]
+    )
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+    ipu_insts = aiex.ipu.get_prolog()
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * len(buffer_args), np.int32)
+        buffer_idx = 0
+        for col in cols:
+            for bd_id in [0, 1, 2]:
+                ipu_insts.extend(
+                    aiex.ipu._update_tensor_addr_shim_tile(
+                        col, bd_id, xclbin._get_buffer_host_address(buffer_idx)
+                    )
+                )
+                buffer_idx += 1
+                lock_id = bd_id
+                ipu_insts.extend(
+                    aiex.ipu.lock_release(col, lock_id=lock_id, lock_val=1)
+                )
+
+            for r in rows:
+                if r in {0, 1}:
+                    continue
+                ipu_insts.extend(aiex.ipu.enable_cores(col, r))
+
+        for col in cols:
+            dest_channel = dest_channels[col]
+            # ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
