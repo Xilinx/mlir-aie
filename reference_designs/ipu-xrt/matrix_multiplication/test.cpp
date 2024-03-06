@@ -77,7 +77,8 @@ int main(int argc, const char *argv[]) {
 
   srand(time(NULL));
 
-  std::vector<uint32_t> instr_v = matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
+  std::vector<uint32_t> instr_v =
+      matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -187,7 +188,7 @@ int main(int argc, const char *argv[]) {
 
     std::vector<C_DATATYPE> CVecRef(C_VOLUME);
     if (VERIFY) {
-      if(verbosity >= 1) {
+      if (verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
