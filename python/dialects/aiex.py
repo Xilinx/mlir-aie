@@ -517,6 +517,12 @@ def forward_bd(
     read_in_lock=None,
     write_out_lock=None,
     repeat_count=None,
+    read_offset=None,
+    read_len=None,
+    read_dimensions=None,
+    write_offset=None,
+    write_len=None,
+    write_dimensions=None,
 ):
     if isinstance(s2mm_channel_idx, IntegerAttr):
         s2mm_channel_idx = int(s2mm_channel_idx)
@@ -542,13 +548,34 @@ def forward_bd(
 
     loop = repeat_count is None
 
+    a_args = [read_offset, read_len, read_dimensions]
+    b_args = [write_offset, write_len, write_dimensions]
+    for i, b_arg in enumerate(b_args):
+        if b_arg is None:
+            b_args[i] = a_args[i]
+    write_offset, write_len, write_dimensions = b_args
+
     @aie.dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_incoming():
-        process_bd(read_in_lock, buffer, write_out_lock)
+        process_bd(
+            read_in_lock,
+            buffer,
+            write_out_lock,
+            offset=read_offset,
+            len=read_len,
+            dimensions=read_dimensions,
+        )
 
     @aie.dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_outgoing():
-        process_bd(write_out_lock, buffer, read_in_lock)
+        process_bd(
+            write_out_lock,
+            buffer,
+            read_in_lock,
+            offset=write_offset,
+            len=write_len,
+            dimensions=write_dimensions,
+        )
 
 
 @contextmanager
