@@ -231,52 +231,86 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto start = std::chrono::high_resolution_clock::now();
-  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
-  run.wait();
-  auto stop = std::chrono::high_resolution_clock::now();
 
-  bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-  C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
+  int num_iter = 10;
+  float npu_time_total = 0;
+  float npu_time_min = 9999999;
+  float npu_time_max = 0;
 
   int errors = 0;
-  int max_errors = 100;
+  float macs = 2.0 * float(M) * float(K) * float(N);
 
-  if (VERIFY) {
-    std::vector<C_DATATYPE> output_ref0;
-    for (uint32_t i = 0; i < C_VOLUME; i++)
-      output_ref0.push_back(0);
-    // output_ref0.push_back(K);
-    matmul(AVec, BVec, output_ref0);
+  for (unsigned iter = 0; iter < num_iter; iter++) {
 
-    const float absTol = std::abs(0.1);
-    // const float absTol = std::abs(5);
-    for (int row = 0; row < M; row++) {
-      for (int col = 0; col < N; col++) {
-        if (std::abs((float)bufOut[row * N + col] -
-                     (float)output_ref0[row * N + col]) > absTol) {
-          errors++;
-          if (errors < max_errors) {
-            std::cout << "\nerror, row: " << row << " col: " << col
-                      << " expected "
-                      << std::to_string((float)output_ref0[row * N + col])
-                      << ", got "
-                      << std::to_string((float)bufOut[row * N + col]) << "\n";
+    auto start = std::chrono::high_resolution_clock::now();
+    auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
+    run.wait();
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+    C_DATATYPE *bufOut = bo_c.map<C_DATATYPE *>();
+
+    int max_errors = 100;
+
+    if (VERIFY) {
+      std::cout << "Verifying against reference matmul ..." << std::endl;
+      auto vstart = std::chrono::system_clock::now();
+      std::vector<C_DATATYPE> output_ref0;
+      for (uint32_t i = 0; i < C_VOLUME; i++)
+        output_ref0.push_back(0);
+      // output_ref0.push_back(K);
+      matmul(AVec, BVec, output_ref0);
+
+      const float absTol = std::abs(0.1);
+      // const float absTol = std::abs(5);
+      for (int row = 0; row < M; row++) {
+        for (int col = 0; col < N; col++) {
+          if (std::abs((float)bufOut[row * N + col] -
+                       (float)output_ref0[row * N + col]) > absTol) {
+            errors++;
+            if (errors < max_errors) {
+              std::cout << "\nerror, row: " << row << " col: " << col
+                        << " expected "
+                        << std::to_string((float)output_ref0[row * N + col])
+                        << ", got "
+                        << std::to_string((float)bufOut[row * N + col]) << "\n";
+            }
           }
         }
       }
+      auto vstop = std::chrono::system_clock::now();
+      float vtime =
+          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+              .count();
+      std::cout << "Verify time: " << vtime << "secs." << std::endl;
+    } else {
+      if (verbosity >= 1)
+        std::cout << "WARNING: matmul results not verified." << std::endl;
     }
+
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    npu_time_total += npu_time;
+    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
+    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
   }
 
-  float npu_time =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
-          .count();
-  float macs = 2.0 * float(M) * float(K) * float(N);
+  std::cout << std::endl
+            << "Avg NPU matmul time: " << npu_time_total / num_iter << "us."
+            << std::endl;
+  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / num_iter)
+            << std::endl;
 
   std::cout << std::endl
-            << "NPU matmul time: " << npu_time << "us." << std::endl;
-  std::cout << "NPU gflops: " << macs / (1000 * npu_time) << std::endl;
+            << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
+
+  std::cout << std::endl
+            << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
+  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
   if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
