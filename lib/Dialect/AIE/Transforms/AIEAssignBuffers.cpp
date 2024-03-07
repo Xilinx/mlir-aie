@@ -124,7 +124,7 @@ struct AIEAssignBufferAddressesPass
             buffer->setAttr("address", builder.getI32IntegerAttr(startAddr));
             bankIndex++;
             break;
-          } 
+          }
           if (i == (numBanks - 1)) {
             nextAddrInBanks[bankIndex] = endAddr;
             buffer->setAttr("address", builder.getI32IntegerAttr(startAddr));
