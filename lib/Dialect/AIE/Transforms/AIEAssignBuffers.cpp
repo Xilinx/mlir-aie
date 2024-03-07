@@ -108,8 +108,6 @@ struct AIEAssignBufferAddressesPass
 
       int bankIndex = 0;
       for (auto buffer : buffers) {
-        //address += assignAddress(buffer, bankSize, nextAddrInBanks, builder);
-
         Operation *Op = buffer.getOperation();
         builder.setInsertionPointToEnd(Op->getBlock());
 
