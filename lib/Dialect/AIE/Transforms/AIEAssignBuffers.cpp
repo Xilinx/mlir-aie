@@ -44,8 +44,8 @@ struct AIEAssignBufferAddressesPass
 
     for (auto tile : device.getOps<TileOp>()) {
       // Address range owned by the MemTile is 0x80000.
-      // Address range owned by the tile is 0x8000 in 
-      // AIE1 and 0x10000 in AIE2, but we need room at 
+      // Address range owned by the tile is 0x8000 in
+      // AIE1 and 0x10000 in AIE2, but we need room at
       // the bottom for stack.
       const auto &targetModel = getTargetModel(tile);
       int maxDataMemorySize = 0;
@@ -55,10 +55,10 @@ struct AIEAssignBufferAddressesPass
         maxDataMemorySize = targetModel.getLocalMemorySize();
 
       int numBanks = 0;
-        if (tile.isMemTile())
-          numBanks = 1;
-        else 
-          numBanks = 4;
+      if (tile.isMemTile())
+        numBanks = 1;
+      else
+        numBanks = 4;
       auto bankSize = maxDataMemorySize / numBanks;
       int stacksize = 0;
       int address = 0;
@@ -122,7 +122,7 @@ struct AIEAssignBufferAddressesPass
             buffer->setAttr("address", builder.getI32IntegerAttr(startAddr));
             bankIndex++;
             break;
-          } 
+          }
           if (i == (numBanks - 1)) {
             nextAddrInBanks[bankIndex] = endAddr;
             buffer->setAttr("address", builder.getI32IntegerAttr(startAddr));
