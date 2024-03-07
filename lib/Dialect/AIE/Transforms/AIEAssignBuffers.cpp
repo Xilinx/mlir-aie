@@ -43,12 +43,12 @@ struct AIEAssignBufferAddressesPass
     });
 
     for (auto tile : device.getOps<TileOp>()) {
-      const auto &targetModel = getTargetModel(tile);
+      std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tile);
       int maxDataMemorySize = 0;
       if (tile.isMemTile())
-        maxDataMemorySize = targetModel.getMemTileSize();
+        maxDataMemorySize = targetModel->getMemTileSize();
       else
-        maxDataMemorySize = targetModel.getLocalMemorySize();
+        maxDataMemorySize = targetModel->getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
       device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {

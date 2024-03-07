@@ -27,7 +27,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
+    HasParent<"mlir::ModuleOp">,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
@@ -61,7 +61,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     `(` $device `)` regions attr-dict
   }];
   let extraClassDeclaration = [{
-    const xilinx::AIE::AIETargetModel &getTargetModel();
+    std::shared_ptr<xilinx::AIE::AIETargetModel> getTargetModel();
   }];
   let hasVerifier = 1;
 }

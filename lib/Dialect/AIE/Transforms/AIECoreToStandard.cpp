@@ -180,9 +180,9 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
   matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
     std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
+    if (targetModel->getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.put.";
     else
       funcName = "llvm.aie2.put.";
@@ -199,7 +199,7 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE1) {
+    if (targetModel->getTargetArch() == AIEArch::AIE1) {
       args.push_back(op.getChannel());
       args.push_back(op.getStreamValue());
     } else {
@@ -226,9 +226,9 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
   matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
     std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
+    if (targetModel->getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.get.";
     else
       funcName = "llvm.aie2.get.";
@@ -245,7 +245,7 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
+    if (targetModel->getTargetArch() == AIEArch::AIE1)
       args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                    getSSFunc, args);
@@ -267,9 +267,9 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
   matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
     std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
+    if (targetModel->getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.put.mcd";
     else
       funcName = "llvm.aie2.mcd.write.vec";
@@ -279,7 +279,7 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
              << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (targetModel->getTargetArch() == AIEArch::AIE2)
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -302,9 +302,9 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
   matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
     std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
+    if (targetModel->getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.get.scd";
     else
       funcName = "llvm.aie2.scd.read.vec";
@@ -313,7 +313,7 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (targetModel->getTargetArch() == AIEArch::AIE2)
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -340,11 +340,11 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       if (!device) {
         return module.emitOpError("Device Not found!");
       }
-      const auto &targetModel = device.getTargetModel();
+      std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
 
       // Generate the intrinsic name
       std::string funcName;
-      if (targetModel.getTargetArch() == AIEArch::AIE1)
+      if (targetModel->getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
       else
         funcName = "llvm.aie2.";
@@ -352,7 +352,7 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         funcName += "acquire";
       else if (useLock.release())
         funcName += "release";
-      if (targetModel.getTargetArch() == AIEArch::AIE1)
+      if (targetModel->getTargetArch() == AIEArch::AIE1)
         funcName += ".reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
@@ -529,13 +529,13 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
       return signalPassFailure();
     }
     DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                builder.getStringAttr(
-                   getArchIntrinsicString(targetModel.getTargetArch())));
+                   getArchIntrinsicString(targetModel->getTargetArch())));
 
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
 
@@ -544,7 +544,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     // peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look
     // at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
     builder.setInsertionPointToStart(m.getBody());
-    declareAIEIntrinsics(targetModel.getTargetArch(), builder);
+    declareAIEIntrinsics(targetModel->getTargetArch(), builder);
 
     IRMapping mapper;
     ConversionTarget target(getContext());

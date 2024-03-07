@@ -31,7 +31,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
 
     for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
-      const auto &targetModel = getTargetModel(coreOp);
+      std::shared_ptr<AIETargetModel> targetModel = getTargetModel(coreOp);
 
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
@@ -41,7 +41,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
       SmallVector<TileOp, 4> accessibleTiles;
       for (auto tile : deviceOp.getOps<TileOp>())
         if (int dstRow = tile.rowIndex();
-            targetModel.isLegalMemAffinity(col, row, tile.colIndex(), dstRow))
+            targetModel->isLegalMemAffinity(col, row, tile.colIndex(), dstRow))
           accessibleTiles.push_back(tile);
 
       for (auto tile : accessibleTiles) {
@@ -49,17 +49,17 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
 
-        const auto &targetModel = getTargetModel(tile);
-        int numLocks = targetModel.getNumLocks(dstCol, dstRow);
+        std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tile);
+        int numLocks = targetModel->getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (targetModel.isMemSouth(col, row, dstCol, dstRow))
+            if (targetModel->isMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
-            else if (targetModel.isMemWest(col, row, dstCol, dstRow))
+            else if (targetModel->isMemWest(col, row, dstCol, dstRow))
               cardinalMemOffset = numLocks;
-            else if (targetModel.isMemNorth(col, row, dstCol, dstRow))
+            else if (targetModel->isMemNorth(col, row, dstCol, dstRow))
               cardinalMemOffset = 2 * numLocks;
-            else if (targetModel.isMemEast(col, row, dstCol, dstRow))
+            else if (targetModel->isMemEast(col, row, dstCol, dstRow))
               cardinalMemOffset = 3 * numLocks;
             else
               llvm_unreachable("Found illegal lock user!");

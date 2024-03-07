@@ -194,9 +194,10 @@ auto ps = std::filesystem::path::preferred_separator;
 
 namespace xilinx::AIE {
 
-LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
-                                      const AIETargetModel &targetModel,
-                                      XAie_LocType &tileLoc) {
+LogicalResult
+configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
+                        std::shared_ptr<AIETargetModel> targetModel,
+                        XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn;
@@ -226,7 +227,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   assert(acqValue && relValue && acqLockId && relLockId &&
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
-  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+  if (targetModel->isMemTile(tileLoc.Col, tileLoc.Row)) {
     if (acqLockId)
       acqLockId.value() += MEM_TILE_LOCK_ID_INCR;
     if (relLockId)
@@ -245,7 +246,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
 
 LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                  Block &block,
-                                 const AIETargetModel &targetModel,
+                                 std::shared_ptr<AIETargetModel> targetModel,
                                  XAie_LocType &tileLoc, int bdId,
                                  std::optional<int> nextBdId) {
   std::optional<int> packetType;
@@ -261,7 +262,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
 
   auto bdOp = *block.getOps<DMABDOp>().begin();
 
-  if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  if (targetModel->isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
@@ -275,12 +276,12 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
 
   // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
   int baseAddr = 0;
-  if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  if (!targetModel->isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
     if (!bufferOp.getAddress())
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
+    if (targetModel->isMemTile(tileLoc.Col, tileLoc.Row))
       baseAddr += BASE_ADDR_A_INCR;
   }
 
@@ -369,7 +370,7 @@ LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
 
 LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
                                   XAie_LocType tileLoc,
-                                  const AIETargetModel &targetModel) {
+                                  std::shared_ptr<AIETargetModel> targetModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -391,21 +392,21 @@ struct AIEControl {
   XAie_DevInst devInst;
 
   AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
-             bool xaieDebug, const AIETargetModel &tm) {
+             bool xaieDebug, std::shared_ptr<AIETargetModel> tm) {
     configPtr = XAie_Config{
         /*AieGen*/ XAIE_DEV_GEN_AIEML,
         /*BaseAddr*/ XAIE_BASE_ADDR,
         /*ColShift*/ XAIE_COL_SHIFT,
         /*RowShift*/ XAIE_ROW_SHIFT,
-        /*NumRows*/ static_cast<uint8_t>(tm.rows()),
-        /*NumCols*/ static_cast<uint8_t>(tm.columns()),
+        /*NumRows*/ static_cast<uint8_t>(tm->rows()),
+        /*NumCols*/ static_cast<uint8_t>(tm->columns()),
         /*ShimRowNum*/ XAIE_SHIM_ROW,
         /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
-        /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
+        /*MemTileNumRows*/ static_cast<uint8_t>(tm->getNumMemTileRows()),
         /*AieTileRowStart*/
-        static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
+        static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm->getNumMemTileRows()),
         /*AieTileNumRows*/
-        static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
+        static_cast<uint8_t>(tm->rows() - tm->getNumMemTileRows() - 1),
         /*PartProp*/ {},
         /*Backend*/ XAIE_IO_BACKEND_CDO};
 
@@ -501,7 +502,7 @@ struct AIEControl {
                    << "lock op missing either id or init" << lockOp << "\n");
     });
 
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
@@ -660,7 +661,7 @@ struct AIEControl {
     }
 
     // Cascade configuration
-    if (targetModel.getTargetArch() == AIEArch::AIE2) {
+    if (targetModel->getTargetArch() == AIEArch::AIE2) {
       for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
         TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
         auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());

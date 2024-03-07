@@ -101,20 +101,13 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   return success();
 }
 
-static VC1902TargetModel VC1902model;
-static VE2302TargetModel VE2302model;
-static VE2802TargetModel VE2802model;
-static IPUTargetModel IPUmodel;
-
-const AIETargetModel &getTargetModel(Operation *op) {
-  if (auto t = dyn_cast<AIETarget>(op))
+std::shared_ptr<AIETargetModel> getTargetModel(Operation *op) {
+  if (auto t = llvm::dyn_cast<DeviceOp>(op))
     return t.getTargetModel();
-  if (auto t = op->getParentOfType<AIETarget>())
+  if (auto t = op->getParentOfType<DeviceOp>())
     return t.getTargetModel();
 
-  // For backward compatibility, return a basic device model compatible with
-  // the VCK190
-  return VC1902model;
+  return std::make_shared<VC1902TargetModel>();
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
@@ -134,7 +127,7 @@ struct UsesAreAccessable {
     auto thisElement = cast<TileElement>(op);
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
-    const auto &targetModel = getTargetModel(op);
+    std::shared_ptr<AIETargetModel> targetModel = getTargetModel(op);
     for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
@@ -143,8 +136,8 @@ struct UsesAreAccessable {
       if (auto element = getParentTileElement(user)) {
 
         auto tileID = element.getTileID();
-        if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
-                                            thisID.row))
+        if (!targetModel->isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+                                             thisID.row))
           return (op->emitOpError("in Column ")
                   << thisID.col << " and Row " << thisID.row
                   << " is accessed from an unreachable tile in Column "
@@ -394,9 +387,9 @@ struct HasSomeTerminator {
 template <typename ConcreteType>
 LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
-  const auto &targetModel = getTargetModel(op);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(op);
   int bdMax =
-      targetModel.getNumBDs(element.getTileID().col, element.getTileID().row);
+      targetModel->getNumBDs(element.getTileID().col, element.getTileID().row);
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -876,14 +869,14 @@ LogicalResult CascadeFlowOp::verify() {
 
   if (src.isShimTile() || dst.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
-  if (t.isMemTile(src.colIndex(), src.rowIndex()) ||
-      t.isMemTile(dst.colIndex(), dst.rowIndex()))
+  if (t->isMemTile(src.colIndex(), src.rowIndex()) ||
+      t->isMemTile(dst.colIndex(), dst.rowIndex()))
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
+  if (!t->isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t->isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t->isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
+      !t->isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
     return emitOpError("tiles must be adjacent");
   }
   return success();
@@ -902,29 +895,29 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConfigureCascadeOp::verify() {
-  const auto &t = getTargetModel(*this);
+  std::shared_ptr<AIETargetModel> t = getTargetModel(*this);
   TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
   CascadeDir outputDir = getOutputDir();
 
   if (tile.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
-  if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
+  if (t->isMemTile(tile.colIndex(), tile.rowIndex()))
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (t.getTargetArch() == AIEArch::AIE2) {
+  if (t->getTargetArch() == AIEArch::AIE2) {
     if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
       return emitOpError("input direction of cascade must be North or West on ")
-             << stringifyAIEArch(t.getTargetArch());
+             << stringifyAIEArch(t->getTargetArch());
     }
     if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
       return emitOpError(
                  "output direction of cascade must be South or East on ")
-             << stringifyAIEArch(t.getTargetArch());
+             << stringifyAIEArch(t->getTargetArch());
     }
   } else {
     return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(t.getTargetArch());
+           << stringifyAIEArch(t->getTargetArch());
   }
   return success();
 }
@@ -934,19 +927,19 @@ LogicalResult ConfigureCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult PutCascadeOp::verify() {
-  const auto &targetModel = getTargetModel(*this);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+  if (targetModel->getTargetArch() == AIEArch::AIE1) {
     if (bits != 384)
       return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
+  } else if (targetModel->getTargetArch() == AIEArch::AIE2) {
     if (bits != 512)
       return emitOpError("must be a 512-bit type");
   } else
     return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+           << stringifyAIEArch(targetModel->getTargetArch());
   return success();
 }
 
@@ -955,19 +948,19 @@ LogicalResult PutCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult GetCascadeOp::verify() {
-  const auto &targetModel = getTargetModel(*this);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
+  if (targetModel->getTargetArch() == AIEArch::AIE1) {
     if (bits != 384)
       return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
+  } else if (targetModel->getTargetArch() == AIEArch::AIE2) {
     if (bits != 512)
       return emitOpError("must be a 512-bit type");
   } else
     return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+           << stringifyAIEArch(targetModel->getTargetArch());
   return success();
 }
 
@@ -975,18 +968,18 @@ LogicalResult GetCascadeOp::verify() {
 // DeviceOp
 //===----------------------------------------------------------------------===//
 
-const AIETargetModel &DeviceOp::getTargetModel() {
+std::shared_ptr<AIETargetModel> DeviceOp::getTargetModel() {
   switch (getDevice()) {
-  case AIEDevice::xcvc1902:
-    return VC1902model;
   case AIEDevice::xcve2302:
-    return VE2302model;
+    return std::make_shared<VE2302TargetModel>();
   case AIEDevice::xcve2802:
-    return VE2802model;
+    return std::make_shared<VE2802TargetModel>();
   case AIEDevice::ipu:
-    return IPUmodel;
+    return std::make_shared<IPUTargetModel>();
+  case AIEDevice::xcvc1902:
+  default:
+    return std::make_shared<VC1902TargetModel>();
   }
-  return VC1902model;
 }
 
 LogicalResult DeviceOp::verify() { return success(); }
@@ -996,9 +989,9 @@ LogicalResult DeviceOp::verify() { return success(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult TileOp::verify() {
-  const auto &targetModel = getTargetModel(*this);
-  int columns = targetModel.columns();
-  int rows = targetModel.rows();
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  int columns = targetModel->columns();
+  int rows = targetModel->rows();
   if (colIndex() >= columns)
     return emitOpError("column index (")
            << colIndex()
@@ -1024,75 +1017,75 @@ LogicalResult TileOp::verify() {
 }
 
 size_t TileOp::getNumSourceConnections(WireBundle bundle) {
-  const auto &targetModel = getTargetModel(*this);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note dest is correct here, since direction is reversed.
   {
     // Note dest is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
-      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
-                                                      bundle);
-    return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
-                                                      bundle);
+    if (targetModel->isShimNOCTile(getCol(), getRow()) ||
+        targetModel->isShimPLTile(getCol(), getRow()))
+      return targetModel->getNumDestShimMuxConnections(getCol(), getRow(),
+                                                       bundle);
+    return targetModel->getNumDestSwitchboxConnections(getCol(), getRow(),
+                                                       bundle);
   }
   return 0;
 }
 
 size_t TileOp::getNumDestConnections(WireBundle bundle) {
-  const auto &targetModel = getTargetModel(*this);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
   // Note source is correct here, since direction is reversed.
   {
     // Note source is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
-      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
-                                                      bundle);
-    return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
-                                                        bundle);
+    if (targetModel->isShimNOCTile(getCol(), getRow()) ||
+        targetModel->isShimPLTile(getCol(), getRow()))
+      return targetModel->getNumDestShimMuxConnections(getCol(), getRow(),
+                                                       bundle);
+    return targetModel->getNumSourceSwitchboxConnections(getCol(), getRow(),
+                                                         bundle);
   }
   return 0;
 }
 
 bool TileOp::isMemTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isMemTile(getCol(), getRow());
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->isMemTile(getCol(), getRow());
 }
 
 bool TileOp::isShimNOCTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCTile(getCol(), getRow());
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->isShimNOCTile(getCol(), getRow());
 }
 
 bool TileOp::isShimPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimPLTile(getCol(), getRow());
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->isShimPLTile(getCol(), getRow());
 }
 
 bool TileOp::isShimNOCorPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCorPLTile(getCol(), getRow());
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->isShimNOCorPLTile(getCol(), getRow());
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
+bool isLegalMemtileConnection(std::shared_ptr<AIETargetModel> targetModel,
                               MasterSetOp masterOp, PacketRulesOp slaveOp) {
   auto srcBundle = masterOp.destPort().bundle;
   auto srcChan = masterOp.destPort().channel;
   auto dstBundle = slaveOp.sourcePort().bundle;
   auto dstChan = slaveOp.sourcePort().channel;
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+  return targetModel->isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
+bool isLegalMemtileConnection(std::shared_ptr<AIETargetModel> targetModel,
                               ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
   auto dstChan = connectOp.getDestChannel();
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+  return targetModel->isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1152,16 +1145,16 @@ LogicalResult ShimMuxOp::verify() {
 
 size_t ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.getNumSourceShimMuxConnections(tile.getCol(),
-                                                    tile.getRow(), bundle);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->getNumSourceShimMuxConnections(tile.getCol(),
+                                                     tile.getRow(), bundle);
 }
 
 size_t ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
-                                                  bundle);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
+                                                   bundle);
 }
 
 TileOp ShimMuxOp::getTileOp() {
@@ -1648,7 +1641,7 @@ LogicalResult SwitchboxOp::verify() {
   DenseSet<Port> sourceset;
   DenseSet<Port> destset;
   auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(tile);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
@@ -1713,9 +1706,9 @@ LogicalResult SwitchboxOp::verify() {
         return connectOp.emitOpError("Trace port cannot be a destination");
 
       if (connectOp.getSourceBundle() == WireBundle::Trace &&
-          !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                          connectOp.getDestBundle(),
-                                          connectOp.getDestChannel()))
+          !targetModel->isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                           connectOp.getDestBundle(),
+                                           connectOp.getDestChannel()))
         return connectOp.emitOpError("illegal Trace destination");
 
     } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
@@ -1766,9 +1759,9 @@ LogicalResult SwitchboxOp::verify() {
           return connectOp.emitOpError("Trace port cannot be a destination");
         for (auto s : slvs) {
           if (s.sourcePort().bundle == WireBundle::Trace &&
-              !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                              m.destPort().bundle,
-                                              m.destPort().channel))
+              !targetModel->isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                               m.destPort().bundle,
+                                               m.destPort().channel))
             return amselOp.emitOpError("illegal Trace destination");
 
           // Memtile stream switch connection constraints
@@ -1819,10 +1812,10 @@ LogicalResult LockOp::verify() {
     return result;
 
   if (getLockID().has_value()) {
-    const auto &targetModel = getTargetModel(getTileOp());
+    std::shared_ptr<AIETargetModel> targetModel = getTargetModel(getTileOp());
     auto tileOp = getTileOp();
     if (int numLocks =
-            targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+            targetModel->getNumLocks(tileOp.getCol(), tileOp.getRow());
         getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
@@ -1886,8 +1879,8 @@ LogicalResult UseLockOp::verify() {
   if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>((*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
 
-  const auto &targetModel = getTargetModel(*this);
-  if (targetModel.getTargetArch() == AIEArch::AIE1 && acquireGE())
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  if (targetModel->getTargetArch() == AIEArch::AIE1 && acquireGE())
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 
@@ -1897,7 +1890,7 @@ LogicalResult UseLockOp::verify() {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    if (targetModel.getTargetArch() == AIEArch::AIE1 &&
+    if (targetModel->getTargetArch() == AIEArch::AIE1 &&
         UsesOneLockInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(
           "used in a DMA block that have multiple locks.");
@@ -1931,16 +1924,16 @@ namespace xilinx::AIE {
 
 size_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.getNumSourceSwitchboxConnections(tile.getCol(),
-                                                      tile.getRow(), bundle);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->getNumSourceSwitchboxConnections(tile.getCol(),
+                                                       tile.getRow(), bundle);
 }
 
 size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.getNumDestSwitchboxConnections(tile.getCol(),
-                                                    tile.getRow(), bundle);
+  std::shared_ptr<AIETargetModel> targetModel = getTargetModel(*this);
+  return targetModel->getNumDestSwitchboxConnections(tile.getCol(),
+                                                     tile.getRow(), bundle);
 }
 
 WireBundle getConnectingBundle(WireBundle dir) {

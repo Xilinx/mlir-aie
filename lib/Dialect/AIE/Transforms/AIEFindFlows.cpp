@@ -274,7 +274,7 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
 
     DeviceOp d = getOperation();
     ConnectivityAnalysis analysis(d);
-    d.getTargetModel().validate();
+    d.getTargetModel()->validate();
 
     OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {

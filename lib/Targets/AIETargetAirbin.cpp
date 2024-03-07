@@ -1060,8 +1060,9 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
 }
 
 static void configureCascade(DeviceOp &targetOp) {
-  const auto &target_model = xilinx::AIE::getTargetModel(targetOp);
-  if (target_model.getTargetArch() == AIEArch::AIE2) {
+  std::shared_ptr<AIETargetModel> target_model =
+      xilinx::AIE::getTargetModel(targetOp);
+  if (target_model->getTargetArch() == AIEArch::AIE2) {
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto inputDir = stringifyCascadeDir(configOp.getInputDir()).upper();
