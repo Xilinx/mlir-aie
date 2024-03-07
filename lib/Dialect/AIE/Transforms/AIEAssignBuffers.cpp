@@ -44,8 +44,8 @@ struct AIEAssignBufferAddressesPass
 
     for (auto tile : device.getOps<TileOp>()) {
       // Address range owned by the MemTile is 0x80000.
-      // Address range owned by the tile is 0x8000 in 
-      // AIE1 and 0x10000 in AIE2, but we need room at 
+      // Address range owned by the tile is 0x8000 in
+      // AIE1 and 0x10000 in AIE2, but we need room at
       // the bottom for stack.
       const auto &targetModel = getTargetModel(tile);
       int maxDataMemorySize = 0;
