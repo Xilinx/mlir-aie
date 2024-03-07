@@ -81,7 +81,7 @@ static constexpr auto ME_SS_SLAVE_SLOT_BASE = 0x3F200u;
 /*
   Tile DMA
 */
-static constexpr auto ME_DMA_BD_COUNT = 16;
+static constexpr auto ME_DMA_BD_COUNT = 48;
 static constexpr auto ME_DMA_BD_SIZE = 0x20;
 
 struct MERegDMABD {
@@ -595,14 +595,12 @@ static BDInfo getBDInfo(Block &block) {
   BDInfo bdInfo;
   for (auto op : block.getOps<DMABDOp>()) {
     bdInfo.foundBD = true;
-    auto bufferType = op.getBuffer().getType().cast<::mlir::MemRefType>();
-
     assert(op.getBufferOp().getAddress().has_value() &&
            "buffer op should have address");
     bdInfo.baseAddrA = op.getBufferOp().getAddress().value();
-    bdInfo.lenA = op.getLenValue();
-    bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
-    bdInfo.offsetA = op.getOffsetValue();
+    bdInfo.lenA = op.getLenIn32bWords() * 4;
+    bdInfo.bytesA = op.getBufferElementTypeWidthInBytes();
+    bdInfo.offsetA = op.getOffset() * 4;
     bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
     bdInfo.hasA = true;
   }

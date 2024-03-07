@@ -745,44 +745,66 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
-  let summary = "Declare a dma block descriptor op";
+def AIE_DMABDOp: AIE_Op<"dma_bd", [
+    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp"]>,
+  ]> {
+  let summary = "Declare a dma buffer descriptor op";
   let description = [{
-    This operation describes a block descriptor for DMA operations. In particular, it specifies
-    what buffer addresss to use, the transfer length, and the buffer type (A or B).
+    This operation describes a buffer descriptor for DMA operations. In particular, it specifies
+    what buffer to use, and optionally:
 
-    This operation must be used in an MLIR block that lives inside a MemOp's region.
-    The block descriptor specifies what lock to use and the buffer configuration.
+        1. the offset into the buffer;
+        2. the transfer length;
+        3. the sizes and strides for n-d tensor addressing (described below);
+        4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
+
+    `offset`, `len`, `size`s and `stride`s are all denominated in 32 bits; e.g., transferring the whole of
+    `memref<512xi32>` means `len == 512`, while transferring the whole of `memref<512xi16>` means `len == 1024`.
+
+    `dma_bd` ops must appear in their own bbs (basic blocks) and such bbs can (optionally) include `use_lock`
+    operations (specifying an "acquire" and a "release" lock; see the `use_lock` operation) and subsequent bds in
+    a "chain" of bds (using `next_bd` as a "jump" to the next bb which contains a `dma_bd`).
 
     Example:
     ```
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
         aie.use_lock(%lck, "Acquire", 0)
-        aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        // transfer the first 32 elements of the memref
+        aie.dma_bd(<$buf0 : memref<128xi32>, 0, 32)
         aie.use_lock(%lck, "Release", 1)
-        br ^bd6 // point to the next Block, which is also a different Block Descriptor
+        aie.next_bd ^bd6 // point to the next bb, which describes the next buffer descriptor
+      ^bd6:
+        aie.use_lock(%lck, "Acquire", 1)
+        // transfer the last 32 elements of the memref
+        aie.dma_bd(<$buf1 : memref<128xi32>, 96, 32)
+        aie.use_lock(%lck, "Release", 0)
+        aie.next_bd ^end
 
       ...
 
       // this defines a BD that does not use any lock
       ^bd8:
-        aie.dma_bd(<$buf1 : memref<64xi32>, 0, 64>, 0)
+        aie.dma_bd(<$buf2 : memref<64xi32>, 0, 64)
     ```
-    A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
-    There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
+
+    ## Background/context:
+
+    A DMA channel in a Memory Module can process one buffer descriptor after another by chaining them.
+    There are 16 buffer descriptors per Core memory module and 48 buffer descriptors per Memtile memory module.
+    They are shared by four DMA channels (or 12).
 
     ## DMA Data Layout Transformations on AIE-ML Devices
 
     AIE-ML devices can apply data layout transformations at the buffer
     descriptor level. These transformation are described by strides and sizes in up to three dimensions (four
     dimensions on memtiles). Strides and sizes can be supplied to the `dma_bd`
-    through an optional argument, an array of tuples `<size, stride>`.
+    through an optional argument, an array of "tuple-like" attributes `bd_dim_layout<size, stride>`.
 
-    The first element of this array gives the _highest-dimension_ stride and
-    size, the last element of the array gives the lowest-dimension.
+    The first element of this array gives the outer-most dimension's stride and
+    size, the last element of the array gives the inner-most dimension's stride and size.
 
-    Strides are always expressed in units of `i32`s; this is an architectural
+    Sizes and strides are always expressed in units of 32 bits; this is an architectural
     requirement, as data is moved by the DMA at this fundamental size.
 
     We can model the access pattern strides and sizes generate by a series of
@@ -824,7 +846,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        OptionalAttr<AIEI32Attr>:$offset,
+        // in words (multiples of 32b) not bytes
+        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
+        // in words (multiples of 32b) not bytes
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<AIEI32Attr>:$bd_id,
@@ -840,8 +864,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
-    int getOffsetValue() { return getOffset().value_or(0); }
-    int getLenValue() { return getLen().value_or(getBuffer().getType().getNumElements()); }
+    int32_t getBufferElementTypeWidthInBytes() {
+      return getBuffer().getType().getElementTypeBitWidth() / 8;
+    }
+    int32_t getLenIn32bWords() {
+      if (std::optional<int32_t> len = getLen())
+        return len.value() * getBufferElementTypeWidthInBytes() / 4;
+      else
+        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes() / 4;
+    }
+    int32_t getOffsetIn32bWords() { return getOffset() * getBufferElementTypeWidthInBytes() / 4; }
   }];
 
   let hasVerifier = 1;

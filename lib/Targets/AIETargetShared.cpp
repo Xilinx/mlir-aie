@@ -86,7 +86,7 @@ static std::string tileDMATensorStr(int col, int row, int bdNum) {
 void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
                                     ArrayRef<BDDimLayoutAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
-                                    int offsetA, int lenA, int bytesA,
+                                    int offsetA, int lenA,
                                     const char *errorRetval) {
   std::string tensor = tileDMATensorStr(col, row, bdNum);
   output << "XAie_DmaTensor " << tensor << " = {};\n";
@@ -108,11 +108,13 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
            << " = { /* StepSize */ " << std::to_string(dims[i].getStride())
            << ", /* Size */ " << std::to_string(dims[i].getSize()) << "};\n";
   }
+  if ((baseAddrA + offsetA) % 4)
+    llvm::report_fatal_error("bd address must be 4B (32b) aligned");
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
          << tileDMAInstRefStr(col, row, bdNum) << ", "
          << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
-         << " /* len */ " << lenA << " * " << bytesA << "));\n";
+         << " /* len */ " << lenA << "));\n";
   // TODO: Probably need special handling for NOC
   // TODO: Might need to adjust strides / sizes by -1
 }

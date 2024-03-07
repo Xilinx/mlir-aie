@@ -1545,11 +1545,45 @@ LogicalResult DMABDOp::verify() {
   if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
+
+  int32_t lenInBytes;
+  if (std::optional<int32_t> len = getLen())
+    lenInBytes = *len * getBufferElementTypeWidthInBytes();
+  else
+    lenInBytes = getBuffer().getType().getNumElements() *
+                 getBufferElementTypeWidthInBytes();
+  if (lenInBytes % 4)
+    return emitOpError("transfer length must be multiple of 4B (32b)");
+
   if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
     if (auto bufferOp = getBufferOp();
         bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
         bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
-      return emitOpError("can only access a buffer in the same tile.");
+      return emitOpError(
+          "Core tile DMAs can only access a buffer in the same tile.");
+    if (std::optional<int32_t> bdId = getBdId(); *bdId > 15)
+      return emitOpError("Core tile DMAs have at most 16 buffer descriptors");
+    if (std::optional<int32_t> nextBdId = getNextBdId(); *nextBdId > 15)
+      return emitOpError("Core tile DMAs have at most 16 buffer descriptors");
+  } else if (getOperation()->getParentOfType<ShimDMAOp>()) {
+    if (!isa<ExternalBufferOp>(getBuffer().getDefiningOp()))
+      return emitOpError("Shim tile DMAs can only access external buffers");
+    if (std::optional<int32_t> bdId = getBdId(); *bdId > 15)
+      return emitOpError("Shim tile DMAs have at most 16 buffer descriptors");
+    if (std::optional<int32_t> nextBdId = getNextBdId(); *nextBdId > 15)
+      return emitOpError("Shim tile DMAs have at most 16 buffer descriptors");
+  } else {
+    assert(getOperation()->getParentOfType<MemTileDMAOp>() &&
+           "expected MemTileDMAOp parent");
+    if (auto bufferOp = getBufferOp();
+        bufferOp.getTileOp().rowIndex() != memOp.rowIndex() ||
+        std::abs(bufferOp.getTileOp().colIndex() - memOp.colIndex()) > 1)
+      return emitOpError("Mem tile DMAs can only access adjacent mem tiles");
+    // TODO(max): check even channel -> <24; odd channel -> > 24
+    if (std::optional<int32_t> bdId = getBdId(); *bdId > 47)
+      return emitOpError("Memtile DMAs have at most 48 buffer descriptors");
+    if (std::optional<int32_t> nextBdId = getNextBdId(); *nextBdId > 47)
+      return emitOpError("Memtile DMAs have at most 48 buffer descriptors");
   }
 
   // The following checks only apply if non-default strides/wraps are defined.

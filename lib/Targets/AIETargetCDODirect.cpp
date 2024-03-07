@@ -273,26 +273,25 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             qOs, cache, secure);
   }
 
-  // deref here because this is a const iter and the various getters below
-  // aren't const (even though they probably should be...)
   // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-  ShapedType bufferType = bdOp.getBuffer().getType().cast<::mlir::MemRefType>();
-  int bytes = bufferType.getElementTypeBitWidth() / 8;
   int baseAddr = 0;
   if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
-    assert(bufferOp.getAddress().has_value() && "buffer must have address");
+    if (!bufferOp.getAddress())
+      return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
     if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
       baseAddr += BASE_ADDR_A_INCR;
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-  int lenInBytes = bdOp.getLenValue() * bytes;
-  int basePlusOffset = baseAddr + bdOp.getOffsetValue();
+  int lenIn32bWords = bdOp.getLenIn32bWords();
+  int basePlusOffsetInBytes = baseAddr + (bdOp.getOffsetIn32bWords() * 4);
+  if (basePlusOffsetInBytes % 4)
+    return bdOp.emitOpError("bd address must be 4B (32b) aligned");
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                            basePlusOffset, lenInBytes);
+                            basePlusOffsetInBytes, lenIn32bWords);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
     dmaTileBdTensor.NumDim = dims->size();
@@ -300,21 +299,18 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
         calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
-    // TODO(max): rethink this?
     for (size_t i = 0; i < dims->size(); i++) {
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
       // access a multi-dim C array, with the highest dimension first.
       int j = dims->size() - i - 1;
       // Assume AIE-ML architecture; we assert this above
-      // TODO(max): no we don't
       dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride(),
                                              dims.value()[i].getSize()};
     }
-    // TODO: Probably need special handling for NOC
-    // TODO: Might need to adjust step sizes / wraps by -1
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
-                            &dmaTileBdTensor, basePlusOffset, lenInBytes);
+                            &dmaTileBdTensor, basePlusOffsetInBytes,
+                            lenIn32bWords);
   }
 
   if (nextBdId) {
@@ -324,8 +320,9 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
 
   if (packetID) {
-    assert(packetType && "must have packetType with packetID");
-    if (bdOp.getLenValue() == 0)
+    if (!packetType)
+      bdOp.emitError("must have packetType with packetID");
+    if (bdOp.getLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
           "set to 0, otherwise behavior is undefined (3.7.8 arch spec)");
