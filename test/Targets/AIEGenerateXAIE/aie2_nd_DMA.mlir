@@ -19,7 +19,7 @@
 // CHECK: dma_tile_2_1_bd_0_tensor.Dim[2].AieMlDimDesc = { /* StepSize */ 2, /* Size */ 3};
 // CHECK: dma_tile_2_1_bd_0_tensor.Dim[1].AieMlDimDesc = { /* StepSize */ 4, /* Size */ 2};
 // CHECK: dma_tile_2_1_bd_0_tensor.Dim[0].AieMlDimDesc = { /* StepSize */ 1, /* Size */ 1};
-// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 128 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 512));
 
 module @aie_module  {
  aie.device(xcve2302) {

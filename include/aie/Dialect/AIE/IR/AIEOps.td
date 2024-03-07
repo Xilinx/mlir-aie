@@ -847,7 +847,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let arguments = (
     ins AnyMemRef:$buffer,
         // in words (multiples of 32b) not bytes
-        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$offset,
         // in words (multiples of 32b) not bytes
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
