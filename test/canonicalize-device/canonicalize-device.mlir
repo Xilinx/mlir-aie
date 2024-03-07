@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-canonicalize-device %s | FileCheck %s
-// CHECK: aie.device(xcvc1902) {
+// CHECK: aie.device(xcvc1902, virtualized = true) {
 // CHECK:   %[[T0:.*]] = aie.tile(0, 1)
 // CHECK:   %[[T1:.*]] = aie.tile(1, 2)
 // CHECK:   %[[T2:.*]] = aie.tile(0, 2)
