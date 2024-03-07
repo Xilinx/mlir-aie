@@ -107,6 +107,12 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
+declare_mlir_python_sources(AIEPythonSources.AIERTX
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    aiertx.py
+)
+
 ################################################################################
 # Extensions
 ################################################################################
@@ -171,6 +177,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
     list(APPEND _py_libs xrt_coreutil uuid)
   endif()
+  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTXModule.cpp)
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
@@ -293,6 +300,19 @@ else ()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
+
+  declare_mlir_python_extension(AIEPythonExtensions.AIERTX
+    MODULE_NAME _aiertx
+    ADD_TO_PARENT AIEPythonExtensions
+    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+
+    PARTIAL_SOURCES_INTENDED
+    SOURCES
+      AIERTXModule.cpp
+
+    PRIVATE_LINK_LIBS
+      LLVMSupport
+  )
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules

@@ -19,7 +19,7 @@ add_mlir_library(AIERTX
   ENABLE_AGGREGATION
 
   ADDITIONAL_HEADER_DIRS
-  $(CMAKE_CURRENT_SRC_DIR)/../../../include/aie/Targets
+  ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
 )
 
 target_link_libraries(AIERTX PRIVATE xaienginecdo_static)
@@ -53,7 +53,7 @@ add_mlir_library(AIETargets
 
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
-  $(CMAKE_CURRENT_SRC_DIR)/../../../include/aie/Targets
+  ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
 
   LINK_COMPONENTS
   BinaryFormat

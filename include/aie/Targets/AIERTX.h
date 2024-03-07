@@ -9,19 +9,13 @@
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
-#include "llvm/Support/raw_ostream.h"
-
 extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaiegbl.h"
 #include "xaiengine/xaiegbl_defs.h"
+// above needs to go first for u32, u64 typedefs
+#include "xaiengine/xaie_txn.h"
+#include "xaiengine/xaiegbl.h"
 }
+#include "llvm/Support/raw_ostream.h"
 
 #include <map>
 #include <optional>
@@ -56,6 +50,20 @@ static const std::map<AieRC, std::string> AIERCTOSTR = {
     {AIERC_STR(XAIE_INVALID_BACKEND)},
     {AIERC_STR(XAIE_INSUFFICIENT_BUFFER_SIZE)},
     {AIERC_STR(XAIE_ERR_MAX)}};
+
+static const std::map<XAie_TxnOpcode, std::string> AIETXNOPCODETOSTR = {
+    {AIERC_STR(XAIE_IO_WRITE)},
+    {AIERC_STR(XAIE_IO_BLOCKWRITE)},
+    {AIERC_STR(XAIE_IO_BLOCKSET)},
+    {AIERC_STR(XAIE_IO_MASKWRITE)},
+    {AIERC_STR(XAIE_IO_MASKPOLL)},
+    {AIERC_STR(XAIE_CONFIG_SHIMDMA_BD)},
+    {AIERC_STR(XAIE_CONFIG_SHIMDMA_DMABUF_BD)},
+    {AIERC_STR(XAIE_IO_CUSTOM_OP_BEGIN)},
+    {AIERC_STR(XAIE_IO_CUSTOM_OP_TCT)},
+    {AIERC_STR(XAIE_IO_CUSTOM_OP_DDR_PATCH)},
+    {AIERC_STR(XAIE_IO_CUSTOM_OP_NEXT)},
+    {AIERC_STR(XAIE_IO_CUSTOM_OP_MAX)}};
 #undef AIERC_STR
 
 static const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
@@ -152,7 +160,7 @@ struct AIERTXControl {
   const AIETargetModel &targetModel;
 
   AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
-             const xilinx::AIE::AIETargetModel &tm);
+                const xilinx::AIE::AIETargetModel &tm);
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
   mlir::LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd,
@@ -171,8 +179,9 @@ struct AIERTXControl {
   mlir::LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
                                               mlir::Block &block,
                                               XAie_LocType &tileLoc);
-  mlir::LogicalResult dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row,
-                                      size_t addr, size_t bdId);
+  void startTransaction();
+  void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
+  void exportSerializedTransaction();
 };
 
 } // namespace xilinx::AIE

@@ -9,6 +9,17 @@
 
 #include "mlir/Support/LogicalResult.h"
 
+extern "C" {
+#include "xaiengine/xaie_core.h"
+#include "xaiengine/xaie_dma.h"
+#include "xaiengine/xaie_interrupt.h"
+#include "xaiengine/xaie_locks.h"
+#include "xaiengine/xaie_plif.h"
+#include "xaiengine/xaie_ss.h"
+#include "xaiengine/xaiegbl.h"
+#include "xaiengine/xaiegbl_defs.h"
+}
+
 using namespace mlir;
 
 #define DEBUG_TYPE "aie-aiertx"
@@ -34,7 +45,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 namespace xilinx::AIE {
 AIERTXControl::AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
-                       const AIETargetModel &tm)
+                             const AIETargetModel &tm)
     : targetModel(tm) {
   configPtr = XAie_Config{
       /*AieGen*/ XAIE_DEV_GEN_AIEML,
@@ -77,8 +88,8 @@ LogicalResult AIERTXControl::setIOBackend(bool aieSim, bool xaieDebug) {
 }
 
 LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
-                                                  Block &block,
-                                                  XAie_LocType &tileLoc) {
+                                                     Block &block,
+                                                     XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn;
@@ -126,9 +137,9 @@ LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
 }
 
 LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
-                                             Block &block,
-                                             XAie_LocType &tileLoc, int bdId,
-                                             std::optional<int> nextBdId) {
+                                                Block &block,
+                                                XAie_LocType &tileLoc, int bdId,
+                                                std::optional<int> nextBdId) {
   std::optional<int> packetType;
   std::optional<int> packetID;
   auto maybePacketOps = block.getOps<DMABDPACKETOp>();
@@ -221,10 +232,9 @@ LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
   return success();
 };
 
-LogicalResult
-AIERTXControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
-                                   int chNum, const DMAChannelDir &channelDir,
-                                   int bdId, int repeatCount) {
+LogicalResult AIERTXControl::pushToBdQueueAndEnable(
+    Operation &op, XAie_LocType &tileLoc, int chNum,
+    const DMAChannelDir &channelDir, int bdId, int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
@@ -239,7 +249,7 @@ AIERTXControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
 };
 
 LogicalResult AIERTXControl::configureLocksAndBd(Block &block,
-                                              XAie_LocType tileLoc) {
+                                                 XAie_LocType tileLoc) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -417,12 +427,31 @@ LogicalResult AIERTXControl::enableCoresInDevice(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIERTXControl::dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row,
-                                          size_t addr, size_t bdId) {
+void AIERTXControl::dmaUpdateBdAddr(int col, int row, size_t addr,
+                                    size_t bdId) {
   auto tileLoc = XAie_TileLoc(col, row);
-  TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_DmaUpdateBdAddr, &devInst, tileLoc,
-                          addr, bdId);
-  return success();
+  TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr, bdId);
+}
+
+void AIERTXControl::startTransaction() {
+  TRY_XAIE_API_FATAL_ERROR(XAie_StartTransaction, &devInst,
+                           XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+}
+
+void AIERTXControl::exportSerializedTransaction() {
+  XAie_TxnInst *txnInst = XAie_ExportTransactionInstance(&devInst);
+  std::ios_base::fmtflags f(std::cout.flags());
+  for (size_t i = 0; i < txnInst->NumCmds; ++i) {
+    std::cout.flags(f);
+    std::cout << "Txn OpCode: " << std::hex
+              << AIETXNOPCODETOSTR.at(txnInst->CmdBuf[i].Opcode) << "\n";
+    std::cout.flags(f);
+    std::cout << "RegOff: 0x" << std::hex << txnInst->CmdBuf[i].RegOff << "\n";
+    std::cout.flags(f);
+    std::cout << "Value: 0x" << std::hex << txnInst->CmdBuf[i].Value << "\n";
+    std::cout.flags(f);
+    std::cout << "Mask: 0x" << std::hex << txnInst->CmdBuf[i].Mask << "\n";
+  }
 }
 
 } // namespace xilinx::AIE

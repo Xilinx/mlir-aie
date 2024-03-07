@@ -5,7 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Targets/AIERTX.h"
 #include "aie/Targets/AIETargets.h"
 extern "C" {
@@ -17,9 +16,7 @@ extern "C" {
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Region.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -27,17 +24,11 @@ extern "C" {
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 
 #include <algorithm>
 #include <cassert>
-#include <cstddef> // size_t
-#include <cstdint> // uint
-#include <cstdlib> // calloc
 #include <filesystem>
 #include <functional>
-#include <map>
-#include <optional>
 #include <string>
 
 #ifndef NDEBUG
@@ -45,15 +36,9 @@ extern "C" {
 #endif
 
 extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
 #include "xaiengine/xaie_elfloader.h"
 #include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
 }
 
 #define DEBUG_TYPE "aie-generate-cdo"
@@ -221,7 +206,8 @@ LogicalResult generateCDOBinariesSeparately(AIERTXControl &ctl,
   return success();
 }
 
-LogicalResult generateCDOUnified(AIERTXControl &ctl, const StringRef workDirPath,
+LogicalResult generateCDOUnified(AIERTXControl &ctl,
+                                 const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim,
                                  bool enableCores) {
   return generateCDOBinary(
@@ -262,7 +248,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   }
   size_t partitionNumCols = maxCol - minCol + 1;
   AIERTXControl ctl(partitionStartCol, partitionNumCols,
-                 targetOp.getTargetModel());
+                    targetOp.getTargetModel());
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
   initializeCDOGenerator(endianness, cdoDebug);
