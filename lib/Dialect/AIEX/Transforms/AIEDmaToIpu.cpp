@@ -332,6 +332,30 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
   }
 };
 
+void insertIpuSyncOpForResults(AIE::DeviceOp device) {
+  device.walk([&](mlir::func::FuncOp f) {
+    SmallVector<AIEX::IpuDmaMemcpyNdOp> dmas;
+    f.walk([&](AIEX::IpuDmaMemcpyNdOp dma) { dmas.push_back(dma); });
+    for (auto dma : dmas) {
+      if (auto infoOp = getAllocOpForSymbol(device, dma.getMetadata())) {
+        if (infoOp->getChannelDir() == AIE::DMAChannelDir::S2MM) {
+          // Found dma op copying results to host
+          OpBuilder builder(dma);
+          auto col = builder.getI32IntegerAttr(infoOp->getCol());
+          auto row = builder.getI32IntegerAttr(0);
+          auto dir = builder.getI32IntegerAttr(0);
+          auto chan = builder.getI32IntegerAttr(infoOp->getChannelIndex());
+          auto col_num = builder.getI32IntegerAttr(1);
+          auto row_num = builder.getI32IntegerAttr(1);
+          builder.setInsertionPointAfter(dma);
+          builder.create<AIEX::IpuSyncOp>(dma->getLoc(), col, row, dir, chan,
+                                          col_num, row_num);
+        }
+      }
+    }
+  });
+}
+
 struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
   void runOnOperation() override {
 
@@ -349,6 +373,9 @@ struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
     patterns.insert<DmaToIpuPattern>(&getContext());
     patterns.insert<PushToIpuPattern>(&getContext());
     patterns.insert<RtpToIpuPattern>(&getContext());
+
+    // Insert sync op after copying data out to host
+    insertIpuSyncOpForResults(device);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
