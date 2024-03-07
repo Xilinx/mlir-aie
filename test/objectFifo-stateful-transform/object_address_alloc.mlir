@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectfifo-stateful-transform %s | aie-opt --aie-assign-buffer-addresses | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform %s | aie-opt --aie-assign-buffer-addresses | FileCheck %s
 
 // CHECK: module @addr_alloc {
 // CHECK:   aie.device(xcve2302) {
