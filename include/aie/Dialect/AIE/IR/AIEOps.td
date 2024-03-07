@@ -758,7 +758,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
 
-    `offset`, `len`, `size`s and `stride`s are all denominated in 32 bit words; e.g., transferring the whole of
+    `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, while transferring the whole of `memref<512xi16>` means `len == 256`.
 
     `dma_bd` ops must appear in their own BBs (basic blocks) and such BBs can (optionally) include `use_lock`
@@ -846,9 +846,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        // in words (multiples of 32b) not bytes
+        // in words (multiples of element width) not bytes
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$offset,
-        // in words (multiples of 32b) not bytes
+        // in words (multiples of element width) not bytes
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<AIEI32Attr>:$bd_id,

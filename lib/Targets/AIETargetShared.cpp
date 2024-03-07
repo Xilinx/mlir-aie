@@ -87,7 +87,9 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
                                     ArrayRef<BDDimLayoutAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
                                     int offsetA, int lenA,
+                                    int elementWidthInBytes,
                                     const char *errorRetval) {
+  uint16_t elementWidthIn32bWords = elementWidthInBytes / 4;
   std::string tensor = tileDMATensorStr(col, row, bdNum);
   output << "XAie_DmaTensor " << tensor << " = {};\n";
   output << tensor << ".NumDim = " << std::to_string(ndims) << ";\n";
@@ -105,7 +107,8 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
     int j = ndims - i - 1;
     // Assume AIE-ML architecture; we assert this above
     output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
-           << " = { /* StepSize */ " << std::to_string(dims[i].getStride())
+           << " = { /* StepSize */ "
+           << std::to_string(dims[i].getStride() * elementWidthIn32bWords)
            << ", /* Size */ " << std::to_string(dims[i].getSize()) << "};\n";
   }
   if ((baseAddrA + offsetA) % 4)

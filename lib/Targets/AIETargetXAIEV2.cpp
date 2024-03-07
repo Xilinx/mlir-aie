@@ -91,6 +91,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int lenA = 0;
     int offsetA = 0;
     int BaseAddrA = 0;
+    int elementWidthInBytes = 0;
     int ndims = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
@@ -116,6 +117,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
+      elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
       if ((BaseAddrA + offsetA) % 4)
         return op.emitOpError("bd address must be 4B (32b) aligned");
 
@@ -216,7 +218,8 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         }
       } else
         generateXAieDmaSetMultiDimAddr(output, ndims, dims, col, row, bdNum,
-                                       BaseAddrA, offsetA, lenA, "1");
+                                       BaseAddrA, offsetA, lenA,
+                                       elementWidthInBytes, "1");
 
       if (block.getNumSuccessors() > 0) {
         Block *nextBlock = block.getSuccessors()[0]; // should have only one
