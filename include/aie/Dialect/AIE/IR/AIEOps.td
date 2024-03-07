@@ -758,12 +758,12 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
 
-    `offset`, `len`, `size`s and `stride`s are all denominated in 32 bits; e.g., transferring the whole of
-    `memref<512xi32>` means `len == 512`, while transferring the whole of `memref<512xi16>` means `len == 1024`.
+    `offset`, `len`, `size`s and `stride`s are all denominated in 32 bit words; e.g., transferring the whole of
+    `memref<512xi32>` means `len == 512`, while transferring the whole of `memref<512xi16>` means `len == 256`.
 
-    `dma_bd` ops must appear in their own bbs (basic blocks) and such bbs can (optionally) include `use_lock`
-    operations (specifying an "acquire" and a "release" lock; see the `use_lock` operation) and subsequent bds in
-    a "chain" of bds (using `next_bd` as a "jump" to the next bb which contains a `dma_bd`).
+    `dma_bd` ops must appear in their own BBs (basic blocks) and such BBs can (optionally) include `use_lock`
+    operations (specifying an "acquire" and a "release" lock; see the `use_lock` operation) and subsequent BDs in
+    a "chain" of BDs (using `next_bd` as a "jump" to the next BB which contains a `dma_bd`).
 
     Example:
     ```
@@ -868,7 +868,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
     int32_t getLenIn32bWords() {
-      if (std::optional<int32_t> len = getLen())
+      if (std::optional<int32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes() / 4;
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes() / 4;
