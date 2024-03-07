@@ -114,8 +114,8 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         }
       }
 
-      lenA = op.getLenIn32bWords() * 4;
-      offsetA = op.getOffsetIn32bWords() * 4;
+      lenA = op.getLenInBytes();
+      offsetA = op.getOffsetInBytes();
       if ((BaseAddrA + offsetA) % 4)
         return op.emitOpError("bd address must be 4B (32b) aligned");
 
@@ -547,7 +547,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           blockMap[&block] = bdNum;
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
-            offset = op.getOffsetIn32bWords() * 4;
+            offset = op.getOffsetInBytes();
             auto buffer =
                 cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
 

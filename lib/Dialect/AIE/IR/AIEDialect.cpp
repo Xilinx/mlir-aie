@@ -1548,13 +1548,7 @@ LogicalResult DMABDOp::verify() {
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
 
-  int32_t lenInBytes;
-  if (std::optional<int32_t> len = getLen(); len.has_value())
-    lenInBytes = *len * getBufferElementTypeWidthInBytes();
-  else
-    lenInBytes = getBuffer().getType().getNumElements() *
-                 getBufferElementTypeWidthInBytes();
-  if (lenInBytes % 4)
+  if (getLenInBytes() % 4)
     return emitOpError("transfer length must be multiple of 4B (32b)");
 
   if (getOperation()->getParentOfType<MemOp>()) {

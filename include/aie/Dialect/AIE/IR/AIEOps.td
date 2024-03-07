@@ -867,13 +867,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
     int32_t getBufferElementTypeWidthInBytes() {
       return getBuffer().getType().getElementTypeBitWidth() / 8;
     }
-    int32_t getLenIn32bWords() {
+    int32_t getLenInBytes() {
       if (std::optional<int32_t> len = getLen(); len.has_value())
-        return len.value() * getBufferElementTypeWidthInBytes() / 4;
+        return len.value() * getBufferElementTypeWidthInBytes();
       else
-        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes() / 4;
+        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
     }
-    int32_t getOffsetIn32bWords() { return getOffset() * getBufferElementTypeWidthInBytes() / 4; }
+    int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
   }];
 
   let hasVerifier = 1;

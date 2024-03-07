@@ -285,13 +285,13 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
-  int lenIn32bWords = bdOp.getLenIn32bWords();
-  int basePlusOffsetInBytes = baseAddr + (bdOp.getOffsetIn32bWords() * 4);
+  int lenInBytes = bdOp.getLenInBytes();
+  int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (basePlusOffsetInBytes % 4)
     return bdOp.emitOpError("bd address must be 4B (32b) aligned");
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
-                            basePlusOffsetInBytes, lenIn32bWords);
+                            basePlusOffsetInBytes, lenInBytes);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
     dmaTileBdTensor.NumDim = dims->size();
@@ -310,7 +310,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     }
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,
-                            lenIn32bWords);
+                            lenInBytes);
   }
 
   if (nextBdId) {
