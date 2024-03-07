@@ -55,10 +55,10 @@ struct AIEAssignBufferAddressesPass
         maxDataMemorySize = targetModel.getLocalMemorySize();
 
       int numBanks = 0;
-        if (tile.isMemTile())
-          numBanks = 1;
-        else 
-          numBanks = 4;
+      if (tile.isMemTile())
+        numBanks = 1;
+      else
+        numBanks = 4;
       auto bankSize = maxDataMemorySize / numBanks;
       int stacksize = 0;
       int address = 0;
