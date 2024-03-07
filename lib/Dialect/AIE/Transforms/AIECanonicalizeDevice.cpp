@@ -27,9 +27,9 @@ struct AIECanonicalizeDevicePass
 
     ModuleOp moduleOp = getOperation();
 
-    for (auto deviceOp : moduleOp.getOps<AIETarget>()) {
+    for (auto deviceOp : moduleOp.getOps<DeviceOp>()) {
       (void)deviceOp;
-      // We have a device..  Nothing to do.
+      // We have a device...  Nothing to do.
       return;
     }
 
@@ -39,8 +39,8 @@ struct AIECanonicalizeDevicePass
 
     Location location = builder.getUnknownLoc();
     auto deviceOp = builder.create<DeviceOp>(
-        location,
-        AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902));
+        location, AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),
+        /*virtualized*/ builder.getBoolAttr(true));
 
     deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());
     new (&moduleOp->getRegion(0)) Region(moduleOp);

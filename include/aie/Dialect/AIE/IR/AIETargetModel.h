@@ -53,8 +53,12 @@ using TileID = struct TileID {
 };
 
 class AIETargetModel {
+  bool virtualized;
+
 public:
-  AIETargetModel() = default;
+  AIETargetModel(bool virtualized = true) : virtualized(virtualized) {}
+
+  bool isVirtualized() const { return virtualized; }
 
   virtual ~AIETargetModel();
 
@@ -451,8 +455,6 @@ public:
 };
 
 class IPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
-
 public:
   using AIE2TargetModel::AIE2TargetModel;
 
@@ -466,11 +468,17 @@ public:
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
+    if (row == 0 && !isVirtualized())
+      return col >= 1;
+    if (row == 0)
+      return col >= 0;
+    return false;
   }
 
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
+    if (row == 0 && !isVirtualized())
+      return col == 0;
+    return false;
   }
 
   bool isShimNOCorPLTile(int col, int row) const override {

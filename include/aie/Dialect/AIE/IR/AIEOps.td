@@ -55,10 +55,13 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins AIEDevice:$device,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$virtualized
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device (`,` `virtualized` `=` $virtualized^)? `)` regions attr-dict
   }];
   let extraClassDeclaration = [{
     std::shared_ptr<xilinx::AIE::AIETargetModel> getTargetModel();

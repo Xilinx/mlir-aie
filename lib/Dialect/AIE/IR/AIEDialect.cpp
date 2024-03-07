@@ -352,10 +352,12 @@ void AIEDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
+
       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
@@ -969,16 +971,17 @@ LogicalResult GetCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::shared_ptr<AIETargetModel> DeviceOp::getTargetModel() {
+  bool virtualized = getVirtualized();
   switch (getDevice()) {
   case AIEDevice::xcve2302:
-    return std::make_shared<VE2302TargetModel>();
+    return std::make_shared<VE2302TargetModel>(virtualized);
   case AIEDevice::xcve2802:
-    return std::make_shared<VE2802TargetModel>();
+    return std::make_shared<VE2802TargetModel>(virtualized);
   case AIEDevice::ipu:
-    return std::make_shared<IPUTargetModel>();
+    return std::make_shared<IPUTargetModel>(virtualized);
   case AIEDevice::xcvc1902:
   default:
-    return std::make_shared<VC1902TargetModel>();
+    return std::make_shared<VC1902TargetModel>(virtualized);
   }
 }
 
