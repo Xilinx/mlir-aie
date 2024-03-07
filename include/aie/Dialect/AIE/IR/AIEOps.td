@@ -28,7 +28,8 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove,
+    OpAsmOpInterface
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -50,7 +51,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
     aie.device(xcvc1902) {
       %tile = aie.tile(1, 1)
-      %CORE = aie.core(%tile) { ... }
+      %core = aie.core(%tile) { ... }
     }
     ```
   }];
@@ -60,14 +61,20 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let assemblyFormat = [{
     `(` $device `)` regions attr-dict
   }];
+
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
+
   let hasVerifier = 1;
+
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
-    FlowEndPoint,
+    FlowEndPoint, OpAsmOpInterface,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
@@ -146,7 +153,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
 }
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [
-    Interconnect, TileElement,
+    Interconnect, TileElement, OpAsmOpInterface,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
@@ -177,12 +184,16 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int rowIndex();
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
     SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    OpAsmOpInterface
   ]>, Results<(outs Index)> {
   let arguments = (ins AIEI32Attr:$col);
   let summary = "Declare a switch in the PL shim";
@@ -201,14 +212,19 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
 
   }];
   let regions = (region AnyRegion:$connections);
+  let extraClassDeclaration = [{
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
+  }];
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
   let hasVerifier = 1;
 }
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
-    Interconnect, TileElement, IsShimTile,
+    Interconnect, TileElement, IsShimTile, OpAsmOpInterface,
     SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -238,12 +254,15 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     size_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
 def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     FlowEndPoint, TileElement, HasValidBDs,
-    HasValidDMAChannels, IsShimNOCTile,
+    HasValidDMAChannels, IsShimNOCTile, OpAsmOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
@@ -281,11 +300,14 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int rowIndex();
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
-    FlowEndPoint, IsCoreTile, TileElement,
+    FlowEndPoint, IsCoreTile, TileElement, OpAsmOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
@@ -335,6 +357,9 @@ def AIE_CoreOp: AIE_Op<"core", [
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 
   let builders = [
@@ -556,7 +581,9 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   }];
 }
 
-def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_PacketRulesOp: AIE_Op<"packet_rules", [
+    SingleBlockImplicitTerminator<"EndOp">, OpAsmOpInterface
+  ]> {
   let arguments = (
     ins WireBundle:$source_bundle,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel
@@ -578,6 +605,9 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return {getSourceBundle(), sourceIndex()}; }
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
@@ -630,7 +660,9 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 }
 
 
-def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_PacketFlowOp: AIE_Op<"packet_flow", [
+    SingleBlockImplicitTerminator<"EndOp">, OpAsmOpInterface
+  ]> {
   let arguments = (ins AIEI8Attr:$ID);
   let regions = (region AnyRegion:$ports);
   let summary = "Packet switched flow";
@@ -654,6 +686,9 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
   let extraClassDeclaration = [{
     int IDInt() { return getID(); }
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
@@ -905,7 +940,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 
 def AIE_DMAOp: AIE_Op<"dma", [
     ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
-    NoTerminator,
+    NoTerminator, OpAsmOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]>, Results<(outs I1:$valid)> {
@@ -928,6 +963,12 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
   let hasVerifier = 1;
 
+  let extraClassDeclaration = [{
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
+  }];
+
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
@@ -944,7 +985,8 @@ def AIE_DMAOp: AIE_Op<"dma", [
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, FlowEndPoint, CallableOpInterface,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    OpAsmOpInterface
   ]>, Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -983,6 +1025,9 @@ def AIE_MemOp: AIE_Op<"mem", [
     llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
@@ -991,7 +1036,8 @@ def AIE_MemOp: AIE_Op<"mem", [
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     TileElement, FlowEndPoint, CallableOpInterface,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    OpAsmOpInterface
   ]>, Results<(outs Index)> {
   let summary = "Declare a memtile_dma op";
   let description = [{
@@ -1033,6 +1079,9 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
+    static ::llvm::StringRef getDefaultDialect() {
+      return "aie";
+    }
   }];
 }
 
