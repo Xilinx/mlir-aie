@@ -33,7 +33,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 
 namespace xilinx::AIE {
-AIEControl::AIEControl(size_t partitionStartCol, size_t partitionNumCols,
+AIERTXControl::AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
                        const AIETargetModel &tm)
     : targetModel(tm) {
   configPtr = XAie_Config{
@@ -61,7 +61,7 @@ AIEControl::AIEControl(size_t partitionStartCol, size_t partitionNumCols,
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
 }
 
-LogicalResult AIEControl::setIOBackend(bool aieSim, bool xaieDebug) {
+LogicalResult AIERTXControl::setIOBackend(bool aieSim, bool xaieDebug) {
   // Quoting: The instance of a device must be always declared using this
   // macro. In the future, the same macro will be expanded to
   // allocate more memory from the user application for resource
@@ -76,7 +76,7 @@ LogicalResult AIEControl::setIOBackend(bool aieSim, bool xaieDebug) {
   return success();
 }
 
-LogicalResult AIEControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
+LogicalResult AIERTXControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
                                                   Block &block,
                                                   XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
@@ -125,7 +125,7 @@ LogicalResult AIEControl::configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd,
   return success();
 }
 
-LogicalResult AIEControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
+LogicalResult AIERTXControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
                                              Block &block,
                                              XAie_LocType &tileLoc, int bdId,
                                              std::optional<int> nextBdId) {
@@ -222,7 +222,7 @@ LogicalResult AIEControl::configureBdInBlock(XAie_DmaDesc &dmaTileBd,
 };
 
 LogicalResult
-AIEControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
+AIERTXControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
                                    int chNum, const DMAChannelDir &channelDir,
                                    int bdId, int repeatCount) {
   XAie_DmaDirection direction =
@@ -238,7 +238,7 @@ AIEControl::pushToBdQueueAndEnable(Operation &op, XAie_LocType &tileLoc,
   return success();
 };
 
-LogicalResult AIEControl::configureLocksAndBd(Block &block,
+LogicalResult AIERTXControl::configureLocksAndBd(Block &block,
                                               XAie_LocType tileLoc) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
@@ -256,7 +256,7 @@ LogicalResult AIEControl::configureLocksAndBd(Block &block,
   return success();
 }
 
-LogicalResult AIEControl::initLocks(DeviceOp &targetOp) {
+LogicalResult AIERTXControl::initLocks(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
@@ -285,7 +285,7 @@ LogicalResult AIEControl::initLocks(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIEControl::configureSwitches(DeviceOp &targetOp) {
+LogicalResult AIERTXControl::configureSwitches(DeviceOp &targetOp) {
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -407,7 +407,7 @@ LogicalResult AIEControl::configureSwitches(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIEControl::enableCoresInDevice(DeviceOp &targetOp) {
+LogicalResult AIERTXControl::enableCoresInDevice(DeviceOp &targetOp) {
   // Start execution of all the cores.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
@@ -417,7 +417,7 @@ LogicalResult AIEControl::enableCoresInDevice(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult AIEControl::dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row,
+LogicalResult AIERTXControl::dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row,
                                           size_t addr, size_t bdId) {
   auto tileLoc = XAie_TileLoc(col, row);
   TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_DmaUpdateBdAddr, &devInst, tileLoc,

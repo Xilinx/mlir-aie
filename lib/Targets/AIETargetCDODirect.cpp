@@ -107,7 +107,7 @@ LogicalResult addAieElfsToCDO(XAie_DevInst &devInst, DeviceOp &targetOp,
   return success();
 }
 
-LogicalResult addInitConfigToCDO(AIEControl &ctl, DeviceOp &targetOp) {
+LogicalResult addInitConfigToCDO(AIERTXControl &ctl, DeviceOp &targetOp) {
   if (failed(ctl.initLocks(targetOp)))
     return failure();
 
@@ -186,7 +186,7 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
   return success();
 }
 
-LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
+LogicalResult generateCDOBinariesSeparately(AIERTXControl &ctl,
                                             const StringRef workDirPath,
                                             DeviceOp &targetOp, bool aieSim,
                                             bool enableCores) {
@@ -221,7 +221,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
   return success();
 }
 
-LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
+LogicalResult generateCDOUnified(AIERTXControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim,
                                  bool enableCores) {
   return generateCDOBinary(
@@ -261,7 +261,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
     maxCol = std::max(tileOp.getCol(), maxCol);
   }
   size_t partitionNumCols = maxCol - minCol + 1;
-  AIEControl ctl(partitionStartCol, partitionNumCols,
+  AIERTXControl ctl(partitionStartCol, partitionNumCols,
                  targetOp.getTargetModel());
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();

@@ -146,12 +146,12 @@ static_assert(XAIE_OK == 0);
 #define BASE_ADDR_A_INCR 0x80000
 
 namespace xilinx::AIE {
-struct AIEControl {
+struct AIERTXControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
   const AIETargetModel &targetModel;
 
-  AIEControl(size_t partitionStartCol, size_t partitionNumCols,
+  AIERTXControl(size_t partitionStartCol, size_t partitionNumCols,
              const xilinx::AIE::AIETargetModel &tm);
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
