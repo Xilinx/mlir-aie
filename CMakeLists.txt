@@ -243,6 +243,7 @@ endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(aie_runtime_lib)
+add_subdirectory(aie_kernels)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
