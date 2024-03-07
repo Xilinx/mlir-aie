@@ -25,7 +25,7 @@ target_link_libraries(aie-translate
   AIEXTransforms
   AIEXUtils
   AIETargets
-  MLIRAIEVecToLLVMIRTranslation
+  MLIRXLLVMToLLVMIRTranslation
   MLIRIR
   MLIRParser
   MLIRPass

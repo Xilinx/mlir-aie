@@ -16,7 +16,6 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 #define DEBUG_TYPE "aievec-utils"
@@ -95,32 +94,5 @@ getTransferReadAlignmentOffset(vector::TransferReadOp readOp, VectorType vType,
 template std::optional<int64_t>
 getTransferReadAlignmentOffset(vector::TransferReadOp::Adaptor readOp,
                                VectorType vType, int64_t alignment);
-
-static llvm::Function *
-getNamedIntrinsicDeclaration(llvm::Module *M, llvm::StringRef fullName,
-                             llvm::Type *resTy, ArrayRef<llvm::Type *> argsTy) {
-  auto *FT = llvm::FunctionType::get(resTy, argsTy, /*isVarArg=*/false);
-  return cast<llvm::Function>(M->getOrInsertFunction(fullName, FT).getCallee());
-}
-
-llvm::CallInst *
-createExternalIntrinsicCall(llvm::IRBuilderBase &builder,
-                            LLVM::ModuleTranslation &moduleTranslation,
-                            Operation *intrOp, llvm::StringRef intrinsicName) {
-  // We support 0 or 1 results
-  assert(intrOp->getNumResults() <= 1 &&
-         "external multi-result intrinsics not supported");
-  llvm::Type *resTy = nullptr;
-  if (intrOp->getNumResults())
-    resTy = moduleTranslation.convertType(*(intrOp->getResultTypes().begin()));
-  auto operands = moduleTranslation.lookupValues(intrOp->getOperands());
-  SmallVector<llvm::Type *> types;
-  for (auto op : operands)
-    types.push_back(op->getType());
-  llvm::Module *module = builder.GetInsertBlock()->getModule();
-  llvm::Function *llvmIntr =
-      getNamedIntrinsicDeclaration(module, intrinsicName, resTy, types);
-  return builder.CreateCall(llvmIntr, operands);
-}
 
 } // namespace xilinx::aievec

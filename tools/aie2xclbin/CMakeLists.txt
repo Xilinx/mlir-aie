@@ -29,13 +29,15 @@ target_link_libraries(aie2xclbin
   MLIRAIEVecDialect
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
-  MLIRAIEVecToLLVMIRTranslation
+  MLIRXLLVMToLLVMIRTranslation
   ADF
   AIE
   AIETransforms
   AIETargets
   AIEX
-  AIEXTransforms)
+  AIEXTransforms
+  MLIRAIEVecDialect
+  MLIRXLLVMDialect)
 
 install(TARGETS aie2xclbin
   EXPORT AIE2XCLBIN

@@ -1,45 +1,31 @@
-#ifndef AIE_DIALECT_AIEVEC_IR_AIEVECLLVMINTROP_TD
-#define AIE_DIALECT_AIEVEC_IR_AIEVECLLVMINTROP_TD
+//===- XLLVMAIE2IntrOps.td - XLLVM AIE2 intr. op defs. ----*- tablegen -*-====//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+// Defines external LLVM (XLLVM) intrinsic operations for AIE2 devices.
+//===----------------------------------------------------------------------===//
 
-include "aie/Dialect/AIE/IR/AIEAttrs.td"
-include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
-include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 
+#ifndef AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
+#define AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
+
+include "aie/Dialect/XLLVM/IR/XLLVM.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
-
-class ExtIntrOpBase<Dialect dialect,
-                    string opName,
-                    string enumName,
-                    list<Trait> traits,
-                    int numResults
-> : LLVM_OpBase<dialect, opName, traits>,
-    Results<!if(!gt(numResults, 0), (outs LLVM_Type:$res), (outs))> {
-    string llvmBuilder = [{
-      auto *inst = ::xilinx::aievec::createExternalIntrinsicCall(builder, moduleTranslation, &opInst, "llvm.}] #
-      enumName # [{");
-      (void) inst;
-      $res = inst;
-    }];
-    string mlirBuilder = "";
-    list<int> llvmArgIndices = [];
-}
-
-// TODO: Create an aievecllvm dialect so it can be marked legal all at once.
-// TODO: That will require moving AIEVecLLVMIntrOp.td _out_ of AIEVecOps.td
-// TODO: header, which is how these are being generated.
 
 // For AIE2 only
 class AIEVec2_IntrOp<string mnemonic,
                      list<Trait> traits = [],
                      int numResults = 1> :
-    ExtIntrOpBase<AIEVec_Dialect,
-                  /*opName =*/"intr." # mnemonic,
+    ExtIntrOpBase</*opName =*/"intr.aie2." # mnemonic,
                   /*enumName =*/"aie2." # mnemonic,
                   traits,
                   numResults>;
-
 
 // TODO: Find better names for these
 def MacConfAcc32IntrOp :
@@ -77,4 +63,4 @@ def VectorSetI512I256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
                    I32:$pos)>;
 
-#endif // AIE_DIALECT_AIEVEC_IR_AIEVECLLVMINTROP_TD
+#endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
