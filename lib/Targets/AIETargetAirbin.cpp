@@ -81,7 +81,7 @@ static constexpr auto ME_SS_SLAVE_SLOT_BASE = 0x3F200u;
 /*
   Tile DMA
 */
-static constexpr auto ME_DMA_BD_COUNT = 48;
+static constexpr auto ME_DMA_BD_COUNT = 16;
 static constexpr auto ME_DMA_BD_SIZE = 0x20;
 
 struct MERegDMABD {
