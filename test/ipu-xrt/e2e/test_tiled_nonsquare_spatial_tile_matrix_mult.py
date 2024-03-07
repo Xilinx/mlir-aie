@@ -1265,6 +1265,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
 
     shim_channels = {}
     iters = 20
+    BYTES_PER_INT32 = 4
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -1307,10 +1308,8 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
             out_a_fl = t.flows(filter_source=True, source_annot="a", single=True)
             in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
             out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
-            in_c_1_fl, in_c_2_fl, in_c_3_fl, in_c_4_fl = t.flows(
-                filter_dest=True, dest_annot="c"
-            )
-            out_c_1_fl, out_c_2_fl = t.flows(filter_source=True, source_annot="c")
+            in_c_flows = t.flows(filter_dest=True, dest_annot="c")
+            out_c_flows = t.flows(filter_source=True, source_annot="c")
 
             @aie.memtile_dma(t.tile)
             def mem():
@@ -1348,41 +1347,62 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
                     T.i32(),
                     name=f"memtile_{int(t.tile.col)}_c_2_buffer",
                 )
-                aiex.forward_bd(
-                    t.tile,
-                    c_1_buffer,
-                    s2mm_channel_idx=in_c_1_fl.dest_channel,
-                    mm2s_channel_idx=out_c_1_fl.source_channel,
-                    repeat_count=iters - 1,
-                    read_len=K,
-                )
-                aiex.forward_bd(
-                    t.tile,
-                    c_1_buffer,
-                    s2mm_channel_idx=in_c_2_fl.dest_channel,
-                    mm2s_channel_idx=out_c_1_fl.source_channel,
-                    repeat_count=iters - 1,
-                    read_len=K,
-                    write_offset=K,
-                )
+                in_c_read_in_locks = [
+                    aie.lock(t.tile, init=1, sym_name=f"in_c_{i}_read_in_lock")
+                    for i in range(len(in_c_flows))
+                ]
+                out_c_write_out_locks = [
+                    aie.lock(t.tile, init=0, sym_name=f"out_c_{i}_write_out_lock")
+                    for i in range(len(in_c_flows))
+                ]
 
-                aiex.forward_bd(
-                    t.tile,
-                    c_2_buffer,
-                    s2mm_channel_idx=in_c_3_fl.dest_channel,
-                    mm2s_channel_idx=out_c_2_fl.source_channel,
-                    repeat_count=iters - 1,
-                    read_len=K,
-                )
-                aiex.forward_bd(
-                    t.tile,
-                    c_2_buffer,
-                    s2mm_channel_idx=in_c_4_fl.dest_channel,
-                    mm2s_channel_idx=out_c_2_fl.source_channel,
-                    repeat_count=iters - 1,
-                    read_len=K,
-                    write_offset=K,
-                )
+                for in_flow, read_in_lock, write_out_lock, buffer, offset in zip(
+                    in_c_flows,
+                    in_c_read_in_locks,
+                    out_c_write_out_locks,
+                    [c_1_buffer, c_1_buffer, c_2_buffer, c_2_buffer],
+                    [0, K, 0, K],
+                ):
+                    aiex.receive_bd(
+                        in_flow.dest_channel,
+                        read_in_lock,
+                        buffer,
+                        write_out_lock,
+                        len=K,
+                        offset=offset * BYTES_PER_INT32,
+                        repeat_count=iters - 1,
+                    )
+                for (
+                    out_flow,
+                    (left_half_write_out_lock, right_half_write_out_lock),
+                    (left_half_read_in_lock, right_half_read_in_lock),
+                    buffer,
+                ) in zip(
+                    out_c_flows,
+                    [out_c_write_out_locks[:2], out_c_write_out_locks[2:]],
+                    [in_c_read_in_locks[:2], in_c_read_in_locks[2:]],
+                    [c_1_buffer, c_2_buffer],
+                ):
+                    dma = aiex.send_bd(
+                        out_flow.source_channel,
+                        left_half_write_out_lock,
+                        buffer,
+                        left_half_read_in_lock,
+                        offset=0,
+                        len=K,
+                        repeat_count=iters - 1,
+                        num_blocks=2,
+                    )
+
+                    @aie.another_bd(dma)
+                    def second_half():
+                        aiex.process_bd(
+                            right_half_write_out_lock,
+                            buffer,
+                            right_half_read_in_lock,
+                            offset=K * BYTES_PER_INT32,
+                            len=K,
+                        )
 
                 aie.end()
 
@@ -1537,8 +1557,13 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
             for cj in cols:
                 r[ci, cj][:] = As[ci] + Bs[cj]
 
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            assert np.array_equal(wrap_r, r)
+        if not np.array_equal(wrap_r, r):
+            with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+                print("correct")
+                print(r)
+                print("output")
+                print(wrap_r)
+                assert False
 
 
 def test_tiled_nonsquare_tile_spatial_4x4_broadcast_with_shim_dma_broken(
