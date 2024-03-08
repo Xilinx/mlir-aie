@@ -294,9 +294,10 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
-    dmaTileBdTensor.NumDim = dims->size();
+    dmaTileBdTensor.NumDim =
+        targetModel.isMemTile(tileLoc.Col, tileLoc.Row) ? 4 : 3;
     dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-        calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
+        calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
     // libxaie requires stride in multiples of 32b
@@ -306,12 +307,25 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
       // access a multi-dim C array, with the highest dimension first.
-      int j = dims->size() - i - 1;
+      int j = dmaTileBdTensor.NumDim - i - 1;
+      uint16_t size;
+      uint32_t stride;
+      if (j > 0) {
+        stride = static_cast<uint32_t>(dims.value()[i].getStride() *
+                                       elementWidthIn32bWords);
+        size = dims.value()[i].getSize();
+      } else {
+        stride = dims.value()[i].getStride();
+        size = static_cast<uint16_t>(dims.value()[i].getSize() *
+                                     elementWidthIn32bWords);
+      }
+      stride = stride > 0 ? stride : 1;
       // Assume AIE-ML architecture; we assert this above
-      dmaTileBdTensor.Dim[j].AieMlDimDesc = {
-          static_cast<uint32_t>(dims.value()[i].getStride() *
-                                elementWidthIn32bWords),
-          dims.value()[i].getSize()};
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {stride, size};
+    }
+    for (size_t i = dims->size(); i < dmaTileBdTensor.NumDim; i++) {
+      int j = dmaTileBdTensor.NumDim - i - 1;
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {1, 0};
     }
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,

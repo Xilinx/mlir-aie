@@ -200,7 +200,7 @@ def my_matmul(M=512, K=512, N=512):
                         (m // r, r * k),
                         (k // s, s),
                         (r, k),
-                        (s * word_size_in // 4, 2),
+                        (s, 1),
                     ],
                 )
                 object_fifo_link(inA_fifo_names[i], memA_fifo_names[i])
@@ -224,7 +224,7 @@ def my_matmul(M=512, K=512, N=512):
                         (k // s, s * n),
                         (n // t, t),
                         (s, n),
-                        (t * word_size_in // 4, 2),
+                        (t, 1),
                     ],
                 )
                 object_fifo_link(inB_fifo_names[i], memB_fifo_names[i])
@@ -246,10 +246,10 @@ def my_matmul(M=512, K=512, N=512):
                     2,
                     memRef_outC_ty,
                     [
-                        (m // r, r * n * word_size_out // 2),
-                        (r, t * word_size_out // 2),
-                        (n // t, r * t * word_size_out // 2),
-                        (t * word_size_out // 4, 2),
+                        (m // r, r * n),
+                        (r, t),
+                        (n // t, r * t),
+                        (t, 1),
                     ],
                 )
                 object_fifo_link(memC_fifo_names[i], outC_fifo_names[i])

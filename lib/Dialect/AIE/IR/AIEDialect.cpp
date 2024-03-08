@@ -1585,6 +1585,17 @@ LogicalResult DMABDOp::verify() {
     if (std::optional<int32_t> nextBdId = getNextBdId();
         nextBdId.has_value() && *nextBdId > 47)
       return emitOpError("Memtile DMAs have at most 48 buffer descriptors");
+    if (auto dims = getDimensions(); dims.has_value()) {
+      TileElement tile = getParentTileElement(getOperation());
+      if (getTargetModel(getOperation())
+              .isMemTile(tile.getTileID().col, tile.getTileID().row)) {
+        if (dims->size() == 4 && dims->back().getStride() != 1)
+          return emitOpError(
+              "Only stride = 1 supported for inner-most (4th) dim");
+      } else if (dims->size() == 4 && dims->back().getStride() != 1)
+        return emitOpError(
+            "Only stride = 1 supported for inner-most (4th) dim");
+    }
   }
 
   // The following checks only apply if non-default strides/wraps are defined.
@@ -1623,24 +1634,6 @@ LogicalResult DMABDOp::verify() {
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
-    // If the bd_dim_layout array is "full" (len 4 for memtiles, len 3
-    // otherwise), we check to make sure that the inner-most dim's stride is
-    // a multiple of 32/element_width (because of stream width restrictions that
-    // require the inner-most stride is >=32b). For example, for an i16 element
-    // width, stride must be k * (32 / 16) = k * 2, which means we stride 2*k
-    // i16 elements in the inner-most dimension.
-    //
-    // See 3.7.1.2 Limitations of Address Generation in the spec
-    // Note, in the context of compression this is no longer valid
-    // (See 3.10.1.1 Limitations).
-    uint32_t requiredInnerStrideScale = 4 / getBufferElementTypeWidthInBytes();
-    if (dims.size() == maxNDims &&
-        dims.back().getStride() % requiredInnerStrideScale)
-      return emitOpError() << "Inner-most dim stride must be a multiple of "
-                           << requiredInnerStrideScale
-                           << "; in fact there's a remainder of "
-                           << dims.back().getStride() %
-                                  requiredInnerStrideScale;
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())

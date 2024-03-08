@@ -103,9 +103,8 @@ def my_matmul():
                     2,
                     memRef_A_ty,
                     [
-                        (k_in_i32s, 2),
-                        (m, k_in_i32s * 2),
-                        (1, 2),
+                        (m, k),
+                        (k, 1),
                     ],
                 )
                 object_fifo_link(
