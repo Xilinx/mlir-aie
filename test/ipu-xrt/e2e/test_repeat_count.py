@@ -121,6 +121,16 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
+            ipu_insts.extend(
+                aiex.ipu.sync(
+                    channel=0,
+                    column=col,
+                    column_num=1,
+                    direction=0,
+                    row=0,
+                    row_num=1,
+                )
+            )
 
     assert ctx.module.operation.verify()
 
@@ -214,6 +224,16 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
         ipu_insts.extend(
             aiex.ipu.shimtile_push_queue(
                 S2MM, channel_index, col, bd_id, repeats=iters - 1
+            )
+        )
+        ipu_insts.extend(
+            aiex.ipu.sync(
+                channel=0,
+                column=col,
+                column_num=1,
+                direction=S2MM,
+                row=0,
+                row_num=1,
             )
         )
 

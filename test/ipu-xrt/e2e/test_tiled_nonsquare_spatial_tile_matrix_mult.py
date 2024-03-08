@@ -340,6 +340,7 @@ def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
         # fmt: off
         for i, (column, channel, bd_id) in enumerate(channels):
             ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
+            ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
         # fmt: on
 
     compile_without_vectorization(ctx.module, workdir)
@@ -664,6 +665,7 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
         # fmt: off
         for i, (column, channel, bd_id) in enumerate(channels):
             ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
+            ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
         # fmt: on
 
     mod_aie = mod_aie.finish()
@@ -802,6 +804,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
             )
+            ipu_insts.extend(aiex.ipu.sync(column=col))
         xclbin.load_ipu_instructions(ipu_insts)
 
         wraps = list(map(np.asarray, views))
