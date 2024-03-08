@@ -598,9 +598,9 @@ static BDInfo getBDInfo(Block &block) {
     assert(op.getBufferOp().getAddress().has_value() &&
            "buffer op should have address");
     bdInfo.baseAddrA = op.getBufferOp().getAddress().value();
-    bdInfo.lenA = op.getLenIn32bWords() * 4;
+    bdInfo.lenA = op.getLenInBytes();
     bdInfo.bytesA = op.getBufferElementTypeWidthInBytes();
-    bdInfo.offsetA = op.getOffset() * 4;
+    bdInfo.offsetA = op.getOffsetInBytes();
     bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
     bdInfo.hasA = true;
   }
