@@ -91,9 +91,9 @@ def my_matmul():
                 2,
                 memref_a_ty,
                 [
-                    (m // r, r * k * word_size_in // 2),
-                    (k // s, s * word_size_in // 2),
-                    (r, k * word_size_in // 2),
+                    (m // r, r * k),
+                    (k // s, s),
+                    (r, k),
                     (s * word_size_in // 4, 2),
                 ],
             )
@@ -108,9 +108,9 @@ def my_matmul():
                 2,
                 memref_b_ty,
                 [
-                    (k // s, s * n * word_size_in // 2),
-                    (n // t, t * word_size_in // 2),
-                    (s, n * word_size_in // 2),
+                    (k // s, s * n),
+                    (n // t, t),
+                    (s, n),
                     (t * word_size_in // 4, 2),
                 ],
             )
