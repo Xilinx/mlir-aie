@@ -335,7 +335,7 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 void insertIpuSyncOpForResults(AIE::DeviceOp device) {
   device.walk([&](mlir::func::FuncOp f) {
     SmallVector<AIEX::IpuDmaMemcpyNdOp> dmas;
-    Operation* returnOp = nullptr;
+    Operation *returnOp = nullptr;
     f.walk([&](mlir::func::ReturnOp op) { returnOp = op.getOperation(); });
     f.walk([&](AIEX::IpuDmaMemcpyNdOp dma) { dmas.push_back(dma); });
     for (auto dma : dmas) {
