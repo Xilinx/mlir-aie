@@ -300,17 +300,18 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
     // libxaie denominates these in 32b
-    uint16_t elementWidthIn32bWords =
-        bdOp.getBufferElementTypeWidthInBytes() / 4;
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
     for (size_t i = 0; i < dims->size(); i++) {
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
       // access a multi-dim C array, with the highest dimension first.
       int j = dims->size() - i - 1;
       // Assume AIE-ML architecture; we assert this above
-      dmaTileBdTensor.Dim[j].AieMlDimDesc = {dims.value()[i].getStride() *
-                                                 elementWidthIn32bWords,
-                                             dims.value()[i].getSize()};
+      dmaTileBdTensor.Dim[j].AieMlDimDesc = {
+          static_cast<uint32_t>(dims.value()[i].getStride() *
+                                elementWidthIn32bWords),
+          dims.value()[i].getSize()};
     }
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,

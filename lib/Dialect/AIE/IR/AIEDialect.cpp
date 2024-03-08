@@ -1587,22 +1587,10 @@ LogicalResult DMABDOp::verify() {
 
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
-    MemRefType buffer = getBuffer().getType();
-    // We are not restrictive about the type of the memref used as the input
-    // to the DMABD when used with multi-dimensional strides/wraps. Since the
-    // BD will use the memref as a base address and copy from it in 32 bit
-    // chunks, while assuming the layout of the memref is contiguous. We
-    // assume the user/compiler understands and accounts for this.
-    uint64_t memrefSize = 1; // in bytes
-    uint64_t maxIdx = 0;
-    for (int64_t memrefDim : buffer.getShape())
-      memrefSize *= 4 * memrefDim;
-
     ArrayRef<BDDimLayoutAttr> dims = *getDimensions();
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
       maxNDims = 4;
-
     if (dims.size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
@@ -1610,28 +1598,46 @@ LogicalResult DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims.size()) << " dimensions).";
 
+    MemRefType buffer = getBuffer().getType();
+    int64_t maxIdx = 0;
     for (BDDimLayoutAttr dim : dims) {
       maxIdx += dim.getStride() * (dim.getSize() - 1);
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
-      if (dim.getStride() > memrefSize)
+      if (dim.getStride() > buffer.getNumElements())
         return emitOpError()
-               << "Step size " << std::to_string(dim.getStride() * 4) << " "
-               << "bytes exceeds memref size " << std::to_string(memrefSize);
+               << "Step size " << std::to_string(dim.getStride()) << " "
+               << "exceeds memref size "
+               << std::to_string(buffer.getNumElements());
       if (dim.getSize() >= (1UL << 9) + 1)
         return emitOpError() << "Size may not exceed 1023.";
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
 
-    if (memrefSize <= 4 * maxIdx)
+    if (buffer.getNumElements() <= maxIdx)
       return emitOpError() << "Specified stride(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << ", accessing at "
-                           << std::to_string(4 * maxIdx)
-                           << " byte offset in memref of length "
-                           << std::to_string(memrefSize) << ".";
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(buffer.getNumElements()) << ".";
+    // If the bd_dim_layout array is "full" (len 4 for memtiles, len 3
+    // otherwise), we check to make sure that the inner-most dim's stride is
+    // a multiple of 32/element_width (since the stream of stream width
+    // restrictions is that the inner-most stride is 32b). For example, for an
+    // i16 element width, stride must be k * (32 / 16) = k * 2, which means we
+    // stride 2*k i16 elements in the inner-most dimension.
+    // See 3.7.1.2 Limitations of Address Generation in the spec
+    // Note, in the context of compression this is no longer valid
+    // (See 3.10.1.1 Limitations).
+    uint32_t requiredInnerStrideScale = 4 / getBufferElementTypeWidthInBytes();
+    if (dims.size() == maxNDims &&
+        dims.back().getStride() % requiredInnerStrideScale)
+      return emitOpError() << "Inner-most dim stride must be a multiple of "
+                           << requiredInnerStrideScale
+                           << "; in fact there's a remainder of "
+                           << dims.back().getStride() %
+                                  requiredInnerStrideScale;
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())
