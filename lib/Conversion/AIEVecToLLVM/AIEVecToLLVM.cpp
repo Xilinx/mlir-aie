@@ -14,6 +14,7 @@
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -36,7 +37,7 @@ inline static Value bitcastValueToType(OpBuilder &builder, Location loc,
 inline static Value widen128bVectorValueTo512b(OpBuilder &builder, Location loc,
                                                Value val) {
   return builder
-      .create<aievec::VectorSetI512I128IntrOp>(
+      .create<xllvm::VectorSetI512I128IntrOp>(
           loc, VectorType::get({16}, builder.getI32Type()),
           bitcastValueToType(builder, loc, val,
                              VectorType::get({4}, builder.getI32Type())))
@@ -52,7 +53,7 @@ inline static Value widen256bVectorValueTo512b(OpBuilder &builder, Location loc,
   auto cst0 =
       builder.create<LLVM::ConstantOp>(loc, builder.getI32Type(), (int32_t)0);
   return builder
-      .create<aievec::VectorSetI512I256IntrOp>(
+      .create<xllvm::VectorSetI512I256IntrOp>(
           loc, VectorType::get({16}, builder.getI32Type()),
           bitcastValueToType(builder, loc, val,
                              VectorType::get({8}, builder.getI32Type())),
@@ -936,7 +937,7 @@ class MatMulOpConversion
     if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::BF16)
       matMulResVal =
           rewriter
-              .create<aievec::MacConfBF16IntrOp>(
+              .create<xllvm::MacConfBF16IntrOp>(
                   loc, VectorType::get({8}, rewriter.getI64Type()),
                   forceCastOperandsToSignature(
                       rewriter, loc, operands,
@@ -952,14 +953,14 @@ class MatMulOpConversion
       VectorType v16xi64ty = VectorType::get({16}, rewriter.getI64Type());
       if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I32)
         matMulResVal = rewriter
-                           .create<aievec::MacConfAcc32IntrOp>(
+                           .create<xllvm::MacConfAcc32IntrOp>(
                                loc, v16xi64ty,
                                forceCastOperandsToSignature(
                                    rewriter, loc, operands, intrFuncSig))
                            .getResult();
       else
         matMulResVal = rewriter
-                           .create<aievec::MacConfAcc64IntrOp>(
+                           .create<xllvm::MacConfAcc64IntrOp>(
                                loc, v16xi64ty,
                                forceCastOperandsToSignature(
                                    rewriter, loc, operands, intrFuncSig))
@@ -1012,11 +1013,8 @@ struct ConvertAIEVecToLLVMPass
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<AIEVecDialect>();
-    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect>();
-    target
-        .addLegalOp<aievec::MacConfAcc32IntrOp, aievec::MacConfAcc64IntrOp,
-                    aievec::MacConfBF16IntrOp, aievec::VectorSetI512I128IntrOp,
-                    aievec::VectorSetI512I256IntrOp>();
+    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
+                           xilinx::xllvm::XLLVMDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();

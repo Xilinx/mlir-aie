@@ -15,7 +15,7 @@
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
-#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -127,6 +127,7 @@ static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
   OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
   devicePM.addPass(AIE::createAIEAssignLockIDsPass());
+  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIE::createAIEObjectFifoRegisterProcessPass());
   devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
   devicePM.addPass(AIEX::createAIEBroadcastPacketPass());
@@ -628,7 +629,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  xilinx::aievec::registerAIEVecDialectTranslation(*context);
+  xilinx::xllvm::registerXLLVMDialectTranslation(*context);
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(AIE::createAIECoreToStandardPass());

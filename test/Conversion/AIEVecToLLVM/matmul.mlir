@@ -19,7 +19,7 @@ func.func @matmul(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
 // CHECK-SAME:                      vector<4x4xf32> to vector<16xf32>
 // CHECK:      %[[CONF:.*]] = llvm.mlir.constant(28 : i32) : i32
 // CHECK:      %[[BCACC:.*]] = llvm.bitcast %[[FC]] : vector<16xf32> to vector<8xi64>
-// CHECK:      %[[RACC:.*]] = "aievec.intr.bf.mac16.conf"(
+// CHECK:      %[[RACC:.*]] = "xllvm.intr.aie2.bf.mac16.conf"(
 // CHECK-SAME:         %[[FA]], %[[FB]], %[[BCACC]], %[[CONF]]) :
 // CHECK-SAME:         (vector<32xbf16>, vector<32xbf16>, vector<8xi64>, i32)
 // CHECK-SAME:         -> vector<8xi64>
@@ -50,13 +50,13 @@ func.func @matmul(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 // CHECK:      %[[CONF:.*]] = llvm.mlir.constant(776 : i32) : i32
 // CHECK:      %[[C0I32:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK:      %[[IFA2512b:.*]] = llvm.bitcast %[[FA]] : vector<32xi8> to vector<8xi32>
-// CHECK:      %[[IFA:.*]] = "aievec.intr.set.I512.I256"(%[[IFA2512b]],
+// CHECK:      %[[IFA:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[IFA2512b]],
 // CHECK-SAME:               %[[C0I32]]) : (vector<8xi32>, i32) -> vector<16xi32>
 // CHECK:      %[[BCA:.*]] = llvm.bitcast %[[IFA]] : vector<16xi32> to vector<64xi8>
 // CHECK:      %[[BCB:.*]] = llvm.bitcast %[[FB]] : vector<64xi8> to vector<16xi32>
 // CHECK:      %[[BCC:.*]] = llvm.bitcast %[[FC]] : vector<32xi32> to vector<16xi64>
 // CHECK:      %[[RACC:.*]] =
-// CHECK-SAME:         "aievec.intr.I512.I512.ACC1024.acc32.mac.conf"(
+// CHECK-SAME:         "xllvm.intr.aie2.I512.I512.ACC1024.acc32.mac.conf"(
 // CHECK-SAME:           %[[BCA]], %[[BCB]], %[[BCC]], %[[CONF]]) :
 // CHECK-SAME:           (vector<64xi8>, vector<16xi32>, vector<16xi64>, i32)
 // CHECK-SAME:           -> vector<16xi64>
@@ -88,19 +88,19 @@ func.func @matmul(%A : vector<4x2xi32>, %B : vector<2x4xi16>,
 // CHECK:      %[[C0I32:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK:      %[[IFA2512b:.*]] = llvm.bitcast %[[FA]] : vector<8xi32> to
 // CHECK-SAME:                      vector<8xi32>
-// CHECK:      %[[IFA:.*]] = "aievec.intr.set.I512.I256"(%[[IFA2512b]],
+// CHECK:      %[[IFA:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[IFA2512b]],
 // CHECK-SAME:                      %[[C0I32]]) : (vector<8xi32>, i32) ->
 // CHECK-SAME:                      vector<16xi32>
 // CHECK:      %[[BCA:.*]] = llvm.bitcast %[[IFA]] : vector<16xi32> to
 // CHECK-SAME:                      vector<64xi8>
 // CHECK:      %[[IFB2512b:.*]] = llvm.bitcast %[[FB]] : vector<8xi16> to
 // CHECK-SAME:                      vector<4xi32>
-// CHECK:      %[[IFB:.*]] = "aievec.intr.set.I512.I128"(%[[IFB2512b]]) :
+// CHECK:      %[[IFB:.*]] = "xllvm.intr.aie2.set.I512.I128"(%[[IFB2512b]]) :
 // CHECK-SAME:                      (vector<4xi32>) -> vector<16xi32>
 // CHECK:      %[[BCB:.*]] = llvm.bitcast %[[IFB]] : vector<16xi32> to
 // CHECK-SAME:                      vector<16xi32>
 // CHECK:      %[[RACC:.*]] =
-// CHECK-SAME:         "aievec.intr.I512.I512.ACC1024.acc64.mac.conf"(
+// CHECK-SAME:         "xllvm.intr.aie2.I512.I512.ACC1024.acc64.mac.conf"(
 // CHECK-SAME:           %[[BCA]], %[[BCB]], %[[FC]], %[[CONF]]) :
 // CHECK-SAME:           (vector<64xi8>, vector<16xi32>, vector<16xi64>, i32)
 // CHECK-SAME:           -> vector<16xi64>

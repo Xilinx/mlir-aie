@@ -14,7 +14,6 @@
 #define AIEVEC_OPS
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
-include "aie/Dialect/AIEVec/IR/AIEVecLLVMIntrOp.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 
