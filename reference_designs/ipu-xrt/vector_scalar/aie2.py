@@ -22,7 +22,7 @@ def my_vector_scalar():
     buffer_depth = 2
 
     vectorized = True
-    enable_tracing = True
+    enable_tracing = False
     trace_size = 8192
 
     with mlir_mod_ctx() as ctx:

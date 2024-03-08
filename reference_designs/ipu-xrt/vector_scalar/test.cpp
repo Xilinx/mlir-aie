@@ -25,7 +25,7 @@
 #include "xrt/xrt_kernel.h"
 
 constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = true;
+constexpr bool ENABLE_TRACING = false;
 constexpr int TRACE_SIZE = 8192;
 
 constexpr int IN_SIZE = 4096;
@@ -197,23 +197,31 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < IN_SIZE; i++) {
-    uint32_t ref = (i + 1) * 3;
-    if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                << std::endl;
-      errors++;
-    } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                << std::endl;
+  if(VERIFY) {
+    if (verbosity >= 1) {
+      std::cout << "Verifying results ..." << std::endl;
     }
+    for (uint32_t i = 0; i < IN_SIZE; i++) {
+      uint32_t ref = (i + 1) * 3;
+      if (*(bufOut + i) != ref) {
+        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+                  << std::endl;
+        errors++;
+      } else {
+        std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+                  << std::endl;
+      }
+    }
+  } else { 
+      if (verbosity >= 1)
+        std::cout << "WARNING: vector-scalar results not verified." << std::endl;   
   }
 
   if (ENABLE_TRACING) {
     write_out_trace(bufOut, vm["trace"].as<std::string>());
   }
 
-  if (!errors) {
+  if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
