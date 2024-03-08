@@ -187,14 +187,6 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
                 bd_id=bd_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
-                channel=flow_to_shim.dest_channel,
-                column=shim_tile_column,
-                direction=S2MM,
-                row=0,
-            )
-        )
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)

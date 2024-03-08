@@ -335,6 +335,8 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
 void insertIpuSyncOpForResults(AIE::DeviceOp device) {
   device.walk([&](mlir::func::FuncOp f) {
     SmallVector<AIEX::IpuDmaMemcpyNdOp> dmas;
+    Operation* returnOp = nullptr;
+    f.walk([&](mlir::func::ReturnOp op) { returnOp = op.getOperation(); });
     f.walk([&](AIEX::IpuDmaMemcpyNdOp dma) { dmas.push_back(dma); });
     for (auto dma : dmas) {
       if (auto infoOp = getAllocOpForSymbol(device, dma.getMetadata())) {
@@ -347,7 +349,7 @@ void insertIpuSyncOpForResults(AIE::DeviceOp device) {
           auto chan = builder.getI32IntegerAttr(infoOp->getChannelIndex());
           auto col_num = builder.getI32IntegerAttr(1);
           auto row_num = builder.getI32IntegerAttr(1);
-          builder.setInsertionPointAfter(dma);
+          builder.setInsertionPoint(returnOp);
           builder.create<AIEX::IpuSyncOp>(dma->getLoc(), col, row, dir, chan,
                                           col_num, row_num);
         }

@@ -158,11 +158,6 @@ def test_tiled_matrix_add(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
-                )
-            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -419,11 +414,6 @@ def test_matrix_add_sugar(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(
                     S2MM, output_c_tile_0_1_to_tile_0_0.dest_channel, col, bd_id
-                )
-            )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
                 )
             )
 

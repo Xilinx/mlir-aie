@@ -312,7 +312,6 @@ def edge_detect():
                     mem=I,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

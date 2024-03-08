@@ -132,9 +132,6 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
                 [0, 0, 0],
             )
 
-            aiex.ipu_sync(
-                channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
-            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():

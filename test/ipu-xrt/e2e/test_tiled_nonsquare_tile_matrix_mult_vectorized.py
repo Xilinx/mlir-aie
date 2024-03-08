@@ -234,16 +234,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0,
-                    column=0,
-                    column_num=1,
-                    direction=0,
-                    row=0,
-                    row_num=1,
-                )
-            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -596,16 +586,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0,
-                    column=0,
-                    column_num=1,
-                    direction=0,
-                    row=0,
-                    row_num=1,
-                )
-            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():
@@ -950,16 +930,6 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                 )
             )
             ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
-            ipu_insts.extend(
-                aiex.ipu.sync(
-                    channel=0,
-                    column=0,
-                    column_num=1,
-                    direction=0,
-                    row=0,
-                    row_num=1,
-                )
-            )
 
         @aie.memtile_dma(tile_0_1)
         def memtile_dma_0_1():

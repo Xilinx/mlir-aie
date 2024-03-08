@@ -354,8 +354,6 @@ def my_matmul():
                                 sizes=[N_div_n_div_n_cols, K_div_k, k, n_in_i32s],
                                 strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
                             )
-                    for i in range(n_cols):
-                        ipu_sync(column=i, row=0, direction=0, channel=0)
 
     # print(ctx.module.operation.verify())
     print(ctx.module)

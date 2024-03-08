@@ -56,7 +56,6 @@ def printf():
                 ipu_dma_memcpy_nd(
                     metadata="logoutOF", bd_id=2, mem=logout, sizes=[1, 1, 1, N]
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

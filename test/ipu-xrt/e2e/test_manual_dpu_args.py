@@ -135,7 +135,6 @@ def test_manual_args(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -243,7 +242,6 @@ def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -326,7 +324,6 @@ def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
             ipu_insts.extend(
                 aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
