@@ -759,7 +759,10 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
-    `memref<512xi32>` means `len == 512`, while transferring the whole of `memref<512xi16>` means `len == 256`.
+    `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
+
+    The only caveat to this "everything-is-in-terms-of-element-width" rule is regarding the inner-most dimension's stride
+    (see [Important gotcha regarding strides](#important-gotcha-regarding-strides) below).
 
     `dma_bd` ops must appear in their own BBs (basic blocks) and such BBs can (optionally) include `use_lock`
     operations (specifying an "acquire" and a "release" lock; see the `use_lock` operation) and subsequent BDs in
@@ -803,10 +806,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
 
     The first element of this array gives the outer-most dimension's stride and
     size, the last element of the array gives the inner-most dimension's stride and size.
-
-    Sizes and strides are always expressed in units of 32 bits; this is an architectural
-    requirement, as data is moved by the DMA at this fundamental size.
-
     We can model the access pattern strides and sizes generate by a series of
     nested loops. In general, a set of strides and sizes like this...
 
@@ -842,6 +841,15 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         for(int k = 0; k < 8 /*size_0*/; k++)
           // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
     ```
+
+    ## Important gotcha regarding strides
+
+    All strides are expressed in multiples of the element width (just like `len` and `offset`)
+    **with the caveat that the inner-most dimension's stride must be a multiple of 32b**.
+    I.e., `(stride_0 * element_width) % 32 == 0`. For example, if you are striding a `memref<512xi16>`,
+    `stride_0` cannot be 1 (or 3, or 5, ...). The reason for this requirement is stream access to DMA memory is 32b
+    aligned (and thus, for the `memref<512xi16>` example, a stride of 1 would require 16b, half-word, access, which isn't possible).
+
   }];
 
   let arguments = (

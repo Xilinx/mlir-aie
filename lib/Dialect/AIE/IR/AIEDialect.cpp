@@ -359,10 +359,12 @@ void AIEDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
+
       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
@@ -1623,10 +1625,11 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(buffer.getNumElements()) << ".";
     // If the bd_dim_layout array is "full" (len 4 for memtiles, len 3
     // otherwise), we check to make sure that the inner-most dim's stride is
-    // a multiple of 32/element_width (since the stream of stream width
-    // restrictions is that the inner-most stride is 32b). For example, for an
-    // i16 element width, stride must be k * (32 / 16) = k * 2, which means we
-    // stride 2*k i16 elements in the inner-most dimension.
+    // a multiple of 32/element_width (because of stream width restrictions that
+    // require the inner-most stride is >=32b). For example, for an i16 element
+    // width, stride must be k * (32 / 16) = k * 2, which means we stride 2*k
+    // i16 elements in the inner-most dimension.
+    //
     // See 3.7.1.2 Limitations of Address Generation in the spec
     // Note, in the context of compression this is no longer valid
     // (See 3.10.1.1 Limitations).

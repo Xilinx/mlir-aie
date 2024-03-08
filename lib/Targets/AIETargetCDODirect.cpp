@@ -299,7 +299,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
         calloc(dims->size(), sizeof(XAie_DmaDimDesc)));
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
-    // libxaie denominates these in 32b
+    // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
     for (size_t i = 0; i < dims->size(); i++) {

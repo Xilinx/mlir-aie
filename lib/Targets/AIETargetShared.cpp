@@ -89,6 +89,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
                                     int offsetA, int lenA,
                                     int elementWidthInBytes,
                                     const char *errorRetval) {
+  // libxaie requires stride in multiples of 32b
   double elementWidthIn32bWords =
       static_cast<double>(elementWidthInBytes) / 4.0;
   std::string tensor = tileDMATensorStr(col, row, bdNum);

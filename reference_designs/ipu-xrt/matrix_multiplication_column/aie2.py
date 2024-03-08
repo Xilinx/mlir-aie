@@ -102,10 +102,10 @@ def my_matmul():
                     2,
                     memRef_A_ty,
                     [
-                        (m // r, r * k * word_size_in // 4),
-                        (k // s, s * word_size_in // 4),
-                        (r, k * word_size_in // 4),
-                        (s * word_size_in // 4, 1),
+                        (m // r, r * k * word_size_in // 2),
+                        (k // s, s * word_size_in // 2),
+                        (r, k * word_size_in // 2),
+                        (s * word_size_in // 4, 2),
                     ],
                 )
             object_fifo_link(inA, inA_fifo_names[0:n_cores])
@@ -119,10 +119,10 @@ def my_matmul():
                 2,
                 memRef_B_ty,
                 [
-                    (k // s, s * n * word_size_in // 4),
-                    (n // t, t * word_size_in // 4),
-                    (s, n * word_size_in // 4),
-                    (t * word_size_in // 4, 1),
+                    (k // s, s * n * word_size_in // 2),
+                    (n // t, t * word_size_in // 2),
+                    (s, n * word_size_in // 2),
+                    (t * word_size_in // 4, 2),
                 ],
             )
             object_fifo_link(inB, [inB_fifo_names[0]])
