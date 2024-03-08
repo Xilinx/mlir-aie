@@ -7,8 +7,6 @@ set(AIE_LSP_LIBS
 
 add_llvm_tool(aie-lsp-server
   aie-lsp-server.cpp
-#  DEPENDS
-#  ${AIE_LSP_LIBS}
 )
 
 target_link_libraries(aie-lsp-server PRIVATE ${AIE_LSP_LIBS})
