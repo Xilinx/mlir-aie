@@ -29,7 +29,7 @@ constexpr bool ENABLE_TRACING = false;
 constexpr int TRACE_SIZE = 8192;
 
 constexpr int IN_SIZE = 4096;
-constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + TRACE_SIZE/4 : IN_SIZE;
+constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + TRACE_SIZE / 4 : IN_SIZE;
 // constexpr int OUT_SIZE = 4096;
 
 namespace po = boost::program_options;
@@ -72,11 +72,11 @@ void write_out_trace(uint32_t *bufOut, std::string path) {
   }
 }
 
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");  if (ENABLE_TRACING) {
+  po::options_description desc("Allowed options");
+  if (ENABLE_TRACING) {
     desc.add_options()("trace,t",
                        po::value<std::string>()->default_value("trace.txt"),
                        "where to store trace output");
@@ -197,7 +197,7 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  if(VERIFY) {
+  if (VERIFY) {
     if (verbosity >= 1) {
       std::cout << "Verifying results ..." << std::endl;
     }
@@ -212,9 +212,9 @@ int main(int argc, const char *argv[]) {
                   << std::endl;
       }
     }
-  } else { 
-      if (verbosity >= 1)
-        std::cout << "WARNING: vector-scalar results not verified." << std::endl;   
+  } else {
+    if (verbosity >= 1)
+      std::cout << "WARNING: vector-scalar results not verified." << std::endl;
   }
 
   if (ENABLE_TRACING) {

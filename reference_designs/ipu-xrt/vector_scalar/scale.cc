@@ -36,17 +36,17 @@ template <typename T_in, typename T_out, const int N>
 void scale_vectorized(T_in *a, T_out *c, T_in factor) {
   constexpr int vec_factor = 16;
   event0();
-  T_in * __restrict pA1 = a;
-  T_out * __restrict pC1 = c;
-  const int F = N/vec_factor;
-  for (int i = 0; i < F; i++) 
+  T_in *__restrict pA1 = a;
+  T_out *__restrict pC1 = c;
+  const int F = N / vec_factor;
+  for (int i = 0; i < F; i++)
     chess_prepare_for_pipelining chess_loop_range(16, ) {
-    aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-    pA1 += vec_factor;
-    aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
-    aie::store_v(pC1, cout.to_vector<T_out>(0));
-    pC1 += vec_factor;
-  }
+      aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+      pA1 += vec_factor;
+      aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
+      aie::store_v(pC1, cout.to_vector<T_out>(0));
+      pC1 += vec_factor;
+    }
   event1();
 }
 
