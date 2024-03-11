@@ -16,6 +16,7 @@ set(_sources
   AIETargetIPU.cpp
   AIETargetLdScript.cpp
   AIETargetXAIEV2.cpp
+  AIETargetHSA.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
   ADFGenerateCppGraph.cpp
