@@ -98,6 +98,17 @@ MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {
   return mlirStringRefCreate(cStr, xaie.size());
 }
 
+MlirStringRef aieTranslateToHSA(MlirOperation moduleOp) {
+  std::string xaie;
+  llvm::raw_string_ostream os(xaie);
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  if (failed(AIETranslateToHSA(mod, os)))
+    return mlirStringRefCreate(nullptr, 0);
+  char *cStr = static_cast<char *>(malloc(xaie.size()));
+  xaie.copy(cStr, xaie.size());
+  return mlirStringRefCreate(cStr, xaie.size());
+}
+
 MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row) {
   std::string bcf;
   llvm::raw_string_ostream os(bcf);

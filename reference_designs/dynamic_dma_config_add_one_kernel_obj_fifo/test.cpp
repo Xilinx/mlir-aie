@@ -23,6 +23,7 @@
 #include "memory_allocator.h"
 
 #include "aie_inc.cpp"
+#include "aie_data_movement.cpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
@@ -99,61 +100,13 @@ int main(int argc, char *argv[]) {
     dst[i] = 0xdeface;
   }
 
-  /*for (int i = 0; i < 8; i++) {
-    mlir_aie_write_buffer_ping_in(xaie, i, 0xabbaba00 + i);
-    mlir_aie_write_buffer_pong_in(xaie, i, 0xdeeded00 + i);
-    mlir_aie_write_buffer_ping_out(xaie, i, 0x12345670 + i);
-    mlir_aie_write_buffer_pong_out(xaie, i, 0x76543210 + i);
-  }*/
-
-  //
-  // send the data
-  //
-
-  uint64_t wr_idx = hsa_queue_add_write_index_relaxed(queues[0], 1);
-  uint64_t packet_id = wr_idx % queues[0]->size;
-  hsa_agent_dispatch_packet_t write_pkt;
-  air_packet_nd_memcpy(&write_pkt, 0, col, 1, 0, 4, 2,
-                       reinterpret_cast<uint64_t>(src),
-                       DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
-  air_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
-                              &write_pkt);
-
-  //
-  // read the data
-  //
-
-  wr_idx = hsa_queue_add_write_index_relaxed(queues[0], 1);
-  packet_id = wr_idx % queues[0]->size;
-  hsa_agent_dispatch_packet_t read_pkt;
-  air_packet_nd_memcpy(&read_pkt, 0, col, 0, 0, 4, 2,
-                       reinterpret_cast<uint64_t>(dst),
-                       DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
-  air_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
-                              &read_pkt);
+  invoke_data_movement(queues[0], &agents[0], src, dst);
 
   int errors = 0;
-
-  /*for (int i = 0; i < 8; i++) {
-    uint32_t d0 = mlir_aie_read_buffer_ping_in(xaie, i);
-    uint32_t d1 = mlir_aie_read_buffer_pong_in(xaie, i);
-    uint32_t d2 = mlir_aie_read_buffer_ping_out(xaie, i);
-    uint32_t d3 = mlir_aie_read_buffer_pong_out(xaie, i);
-    if (d0 + 1 != d2) {
-      printf("mismatch ping %x != %x\n", d0, d2);
-      errors++;
-    }
-    if (d1 + 1 != d3) {
-      printf("mismatch pong %x != %x\n", d1, d3);
-      errors++;
-    }
-  }*/
 
   for (int i = 0; i < DMA_COUNT; i++) {
     uint32_t s = src[i];
     uint32_t d = dst[i];
-    //printf("src[%d] = 0x%lx\n", i, src[i]);
-    //printf("dst[%d] = 0x%lx\n", i, dst[i]);
     if (d != (s + 1)) {
       errors++;
       printf("mismatch %x != 1 + %x\n", d, s);

@@ -659,6 +659,20 @@ class FlowRunner:
                     ],
                 )
 
+            if opts.link_against_hsa:
+                file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-hsa",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+              
+
             cmd = ["clang++", "-std=c++11"]
             if opts.host_target:
                 cmd += ["--target=" + opts.host_target]
