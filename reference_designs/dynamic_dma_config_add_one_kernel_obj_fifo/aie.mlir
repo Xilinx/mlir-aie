@@ -15,6 +15,14 @@ module {
     aie.objectfifo @objFifo_in0(%t70, {%t72}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo @objFifo_out0(%t72, {%t70}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
 
+    // Need to define the data movement before any other func
+    func.func @sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>, %arg2: memref<16xi32>) {
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0]) {id = 0 : i64, metadata = @objFifo_out0} : memref<16xi32>
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0]) {id = 1 : i64, metadata = @objFifo_in0} : memref<16xi32>
+      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      return
+    }
+
     func.func private @func(%AL: memref<8xi32>, %BL: memref<8xi32>) -> ()
 
     aie.core(%t72) {
@@ -37,6 +45,7 @@ module {
     aie.end
 
     } { link_with = "kernel.o" }
+    
   }
-
 }
+
