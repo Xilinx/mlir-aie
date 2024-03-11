@@ -33,7 +33,9 @@ def my_vector_scalar():
 
             # AIE Core Function declarations
 
-            scale_scalar_int32 = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty])
+            scale_scalar_int32 = external_func(
+                "scale_scalar_int32", inputs=[memRef_ty, memRef_ty]
+            )
             scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
 
             # Tile declarations
