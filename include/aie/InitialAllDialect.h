@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 
 #include "mlir/IR/Dialect.h"
 
@@ -28,9 +29,10 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
     ADF::ADFDialect,
-    aievec::AIEVecDialect,
     AIE::AIEDialect,
-    AIEX::AIEXDialect
+    aievec::AIEVecDialect,
+    AIEX::AIEXDialect,
+    xllvm::XLLVMDialect
   >();
   // clang-format on
 }

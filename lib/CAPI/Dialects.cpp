@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 
 #include "mlir/CAPI/Registration.h"
 
@@ -17,6 +18,7 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIE, aie, xilinx::AIE::AIEDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEX, aiex, xilinx::AIEX::AIEXDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec,
                                       xilinx::aievec::AIEVecDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(XLLVM, xllvm, xilinx::xllvm::XLLVMDialect)
 
 //===---------------------------------------------------------------------===//
 // ObjectFifoType

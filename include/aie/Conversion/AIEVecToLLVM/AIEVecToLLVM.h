@@ -18,7 +18,7 @@
 namespace mlir {
 class LLVMTypeConverter;
 class RewritePatternSet;
-class Pass;
+class ModuleOp;
 } // namespace mlir
 
 namespace xilinx {

@@ -13,7 +13,7 @@
 #  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
 #  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.23)
 
 set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
 

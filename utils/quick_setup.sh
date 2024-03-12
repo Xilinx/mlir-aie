@@ -62,7 +62,7 @@ if test -f "$VPP"; then
   mkdir -p my_install
   pushd my_install
   # pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024030613+315a9f3-py3-none-manylinux_2_35_x86_64.whl 
+  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024030621+5164b34-py3-none-manylinux_2_35_x86_64.whl 
   unzip -q mlir_aie-*_x86_64.whl
   # pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
   wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024030308+800de14f-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl 
