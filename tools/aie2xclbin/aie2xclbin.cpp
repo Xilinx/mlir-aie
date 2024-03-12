@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Dialect/Affine/Passes.h"
@@ -196,6 +197,7 @@ int main(int argc, char *argv[]) {
   xilinx::registerAllDialects(registry);
   registerBuiltinDialectTranslation(registry);
   registerLLVMDialectTranslation(registry);
+  xilinx::xllvm::registerXLLVMDialectTranslation(registry);
   ctx.appendDialectRegistry(registry);
 
   OwningOpRef<ModuleOp> owning =

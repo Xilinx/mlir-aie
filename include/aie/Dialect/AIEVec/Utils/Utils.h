@@ -16,24 +16,12 @@
 #include <optional>
 #include <type_traits>
 
-namespace llvm {
-
-class CallInst;
-class IRBuilderBase;
-class StringRef;
-
-} // namespace llvm
-
 namespace mlir {
 
 class AffineExpr;
 class AffineForOp;
 class AffineMap;
 class Operation;
-
-namespace LLVM {
-class ModuleTranslation;
-} // namespace LLVM
 
 } // namespace mlir
 
@@ -48,12 +36,6 @@ template <
 std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
                                                       mlir::VectorType vType,
                                                       int64_t alignment);
-
-llvm::CallInst *
-createExternalIntrinsicCall(llvm::IRBuilderBase &builder,
-                            mlir::LLVM::ModuleTranslation &moduleTranslation,
-                            mlir::Operation *intrOp,
-                            llvm::StringRef intrinsicName);
 
 } // namespace xilinx::aievec
 

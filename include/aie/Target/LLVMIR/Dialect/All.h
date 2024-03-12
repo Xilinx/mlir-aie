@@ -16,7 +16,7 @@
 #ifndef AIE_TARGET_LLVMIR_DIALECT_ALL_H
 #define AIE_TARGET_LLVMIR_DIALECT_ALL_H
 
-#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 
 namespace mlir {
 class DialectRegistry;
@@ -25,7 +25,7 @@ class DialectRegistry;
 namespace xilinx {
 static inline void
 registerAllAIEToLLVMIRTranslations(mlir::DialectRegistry &registry) {
-  aievec::registerAIEVecDialectTranslation(registry);
+  xllvm::registerXLLVMDialectTranslation(registry);
 }
 } // namespace xilinx
 

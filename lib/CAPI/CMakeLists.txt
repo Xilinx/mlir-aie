@@ -19,6 +19,7 @@ add_mlir_public_c_api_library(AIECAPI
   MLIRAIEVecTransforms
   MLIRAIEVecUtils
   MLIRTargetAIEVecCpp
+  MLIRXLLVMToLLVMIRTranslation
 )
 
 target_include_directories(AIECAPI PUBLIC ${VITIS_AIETOOLS_DIR}/include)

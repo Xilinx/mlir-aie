@@ -1,2 +1,2 @@
-add_subdirectory(AIEVec)
+add_subdirectory(XLLVM)
 

@@ -1,4 +1,4 @@
-//======- AIEVecToLLVMIRTranslation.cpp - Translate AIEVec to LLVM IR -=======//
+//===- XLLVMToLLVMIRTranslation.cpp - Translate AIEVec to LLVM IR ---------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,10 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Target/LLVMIR/Dialect/AIEVec/AIEVecToLLVMIRTranslation.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
-#include "aie/Dialect/AIEVec/Utils/Utils.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
@@ -28,8 +26,8 @@ using namespace mlir::LLVM;
 
 namespace {
 /// Implementation of the dialect interface that converts operations belonging
-/// to the AIEVec dialect to LLVM IR.
-class AIEVecDialectLLVMIRTranslationInterface
+/// to the XLLVM dialect to LLVM IR.
+class XLLVMDialectLLVMIRTranslationInterface
     : public LLVMTranslationDialectInterface {
 public:
   using LLVMTranslationDialectInterface::LLVMTranslationDialectInterface;
@@ -40,23 +38,22 @@ public:
   convertOperation(Operation *op, llvm::IRBuilderBase &builder,
                    LLVM::ModuleTranslation &moduleTranslation) const final {
     Operation &opInst = *op;
-#include "aie/Dialect/AIEVec/IR/AIEVecConversions.inc"
+#include "aie/Dialect/XLLVM/IR/XLLVMConversions.inc"
 
     return failure();
   }
 };
 } // namespace
 
-void xilinx::aievec::registerAIEVecDialectTranslation(
-    DialectRegistry &registry) {
-  registry.insert<aievec::AIEVecDialect>();
-  registry.addExtension(+[](MLIRContext *ctx, aievec::AIEVecDialect *dialect) {
-    dialect->addInterfaces<AIEVecDialectLLVMIRTranslationInterface>();
+void xilinx::xllvm::registerXLLVMDialectTranslation(DialectRegistry &registry) {
+  registry.insert<xllvm::XLLVMDialect>();
+  registry.addExtension(+[](MLIRContext *ctx, xllvm::XLLVMDialect *dialect) {
+    dialect->addInterfaces<XLLVMDialectLLVMIRTranslationInterface>();
   });
 }
 
-void xilinx::aievec::registerAIEVecDialectTranslation(MLIRContext &context) {
+void xilinx::xllvm::registerXLLVMDialectTranslation(MLIRContext &context) {
   DialectRegistry registry;
-  registerAIEVecDialectTranslation(registry);
+  registerXLLVMDialectTranslation(registry);
   context.appendDialectRegistry(registry);
 }
