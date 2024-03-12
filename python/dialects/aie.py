@@ -276,9 +276,17 @@ class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(
-        self, pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel
+        self,
+        pkt_id,
+        source,
+        source_port,
+        source_channel,
+        dest,
+        dest_port,
+        dest_channel,
+        keep_pkt_header: Optional[bool] = None,
     ):
-        super().__init__(ID=pkt_id)
+        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
             src = PacketSourceOp(source, source_port, source_channel)
