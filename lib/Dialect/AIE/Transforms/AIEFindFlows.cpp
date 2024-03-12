@@ -249,7 +249,8 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                                   destPort.channel);
         } else {
           auto flowOp =
-              rewriter.create<PacketFlowOp>(Op->getLoc(), maskValue.value, nullptr);
+              rewriter.create<PacketFlowOp>(Op->getLoc(),
+                                            maskValue.value, nullptr);
           PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,
                                          Op->getLoc());
           OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
