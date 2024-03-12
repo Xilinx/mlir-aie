@@ -38,18 +38,21 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-void add_default_options(po::options_description &desc)
-{
-  desc.add_options()
-      ("help,h", "produce help message")
-      ("xclbin,x", po::value<std::string>()->required(), "the input xclbin path")
-      ("kernel,k", po::value<std::string>()->required(), "the kernel name in the XCLBIN (for instance PP_PRE_FD)")
-      ("verbosity,v", po::value<int>()->default_value(0), "the verbosity of the output")
-      ("instr,i", po::value<std::string>()->required(), "path of file containing userspace instructions to be sent to the LX6")
-      ("verify", po::value<bool>()->default_value(true), "whether to verify the AIE computed output")
-      ("M,M", po::value<int>()->default_value(512), "Matrix size M")
-      ("K,K", po::value<int>()->default_value(512), "Matrix size K")
-      ("N,N", po::value<int>()->default_value(512), "Matrix size N");
+void add_default_options(po::options_description &desc) {
+  desc.add_options()("help,h", "produce help message")(
+      "xclbin,x", po::value<std::string>()->required(),
+      "the input xclbin path")(
+      "kernel,k", po::value<std::string>()->required(),
+      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "verbosity,v", po::value<int>()->default_value(0),
+      "the verbosity of the output")(
+      "instr,i", po::value<std::string>()->required(),
+      "path of file containing userspace instructions to be sent to the LX6")(
+      "verify", po::value<bool>()->default_value(true),
+      "whether to verify the AIE computed output")(
+      "M,M", po::value<int>()->default_value(512), "Matrix size M")(
+      "K,K", po::value<int>()->default_value(512), "Matrix size K")(
+      "N,N", po::value<int>()->default_value(512), "Matrix size N");
 }
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
