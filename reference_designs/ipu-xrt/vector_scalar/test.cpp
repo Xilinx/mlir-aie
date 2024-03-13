@@ -8,12 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -24,13 +21,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 8192;
-
 constexpr int IN_SIZE = 4096;
-constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + TRACE_SIZE / 4 : IN_SIZE;
-// constexpr int OUT_SIZE = 4096;
+constexpr int OUT_SIZE = 4096;
 
 namespace po = boost::program_options;
 
@@ -62,26 +54,10 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-void write_out_trace(uint32_t *bufOut, std::string path) {
-  std::ofstream fout(path);
-  uint32_t *traceOut =
-      (uint32_t *)((char *)bufOut + sizeof(uint32_t) * IN_SIZE);
-  for (int i = 0; i < TRACE_SIZE / sizeof(traceOut[0]); i++) {
-    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
-    fout << std::endl;
-  }
-}
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  if (ENABLE_TRACING) {
-    desc.add_options()("trace,t",
-                       po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
-  }
-
   desc.add_options()("help,h", "produce help message")(
       "xclbin,x", po::value<std::string>()->required(),
       "the input xclbin path")(
@@ -92,11 +68,6 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
-  if (ENABLE_TRACING) {
-    desc.add_options()("trace,t",
-                       po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
-  }
 
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -197,31 +168,19 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  if (VERIFY) {
-    if (verbosity >= 1) {
-      std::cout << "Verifying results ..." << std::endl;
+  for (uint32_t i = 0; i < OUT_SIZE; i++) {
+    uint32_t ref = (i + 1) * 3;
+    if (*(bufOut + i) != ref) {
+      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+                << std::endl;
+      errors++;
+    } else {
+      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+                << std::endl;
     }
-    for (uint32_t i = 0; i < IN_SIZE; i++) {
-      uint32_t ref = (i + 1) * 3;
-      if (*(bufOut + i) != ref) {
-        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                  << std::endl;
-        errors++;
-      } else {
-        std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                  << std::endl;
-      }
-    }
-  } else {
-    if (verbosity >= 1)
-      std::cout << "WARNING: vector-scalar results not verified." << std::endl;
   }
 
-  if (ENABLE_TRACING) {
-    write_out_trace(bufOut, vm["trace"].as<std::string>());
-  }
-
-  if (VERIFY && !errors) {
+  if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
