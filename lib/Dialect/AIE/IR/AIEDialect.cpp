@@ -1634,6 +1634,13 @@ LogicalResult DMABDOp::verify() {
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
+
+    // Since streams read 32b words, there's no way to read eg 16b with stride
+    // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
+    // CDODirect/XAIEV2 scale the size by 4/getBufferElementTypeWidthInBytes).
+    if (getBufferElementTypeWidthInBytes() < 4 && dims.back().getStride() != 1)
+      return emitOpError()
+             << "For <32b width datatypes, inner-most dim stride must be 1";
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())

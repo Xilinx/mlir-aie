@@ -108,7 +108,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
     // Pass down dimensions in reverse order; in the MLIR, this allows us
     // to specify strides/sizes in the same order as we would access a
     // multi-dim C array, with the highest dimension first.
-    int j = ndims - i - 1;
+    int j = dims.size() - i - 1;
     if (j > 0) {
       stride =
           static_cast<uint32_t>(dims[i].getStride() * elementWidthIn32bWords);
@@ -123,11 +123,6 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
            << " = { /* Stride */ " << std::to_string(stride) << ", /* Size */ "
            << std::to_string(size) << "};\n";
   }
-  for (int i = dims.size(); i < ndims; i++) {
-    int j = ndims - i - 1;
-    output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
-           << " = { /* Stride */ 1, /* Size */ 0};\n";
-  }
   if ((baseAddrA + offsetA) % 4)
     llvm::report_fatal_error("bd address must be 4B (32b) aligned");
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
@@ -135,8 +130,6 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
          << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << "));\n";
-  // TODO: Probably need special handling for NOC
-  // TODO: Might need to adjust strides / sizes by -1
 }
 
 } // namespace xilinx::AIE

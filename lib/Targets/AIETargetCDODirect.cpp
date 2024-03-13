@@ -294,8 +294,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
-    dmaTileBdTensor.NumDim =
-        targetModel.isMemTile(tileLoc.Col, tileLoc.Row) ? 4 : 3;
+    dmaTileBdTensor.NumDim = dims->size();
     dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
         calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
     if (!dmaTileBdTensor.Dim)
@@ -307,7 +306,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
       // access a multi-dim C array, with the highest dimension first.
-      int j = dmaTileBdTensor.NumDim - i - 1;
+      int j = dims->size() - i - 1;
       uint16_t size;
       uint32_t stride;
       if (j > 0) {
@@ -320,12 +319,10 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                      elementWidthIn32bWords);
       }
       stride = stride > 0 ? stride : 1;
-      // Assume AIE-ML architecture; we assert this above
+      std::cerr << "stride: " << stride << "\n";
+      // Assume AIE-ML architecture (ie use AieMlDimDesc instead of AieDimDesc);
+      // asserted in AIETranslateToCDODirect).
       dmaTileBdTensor.Dim[j].AieMlDimDesc = {stride, size};
-    }
-    for (size_t i = dims->size(); i < dmaTileBdTensor.NumDim; i++) {
-      int j = dmaTileBdTensor.NumDim - i - 1;
-      dmaTileBdTensor.Dim[j].AieMlDimDesc = {1, 0};
     }
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,

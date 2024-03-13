@@ -123,7 +123,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
       if (op.getDimensions()) {
         dims = *op.getDimensions();
-        ndims = targetModel.isMemTile(col, row) ? 4 : 3;
+        ndims = dims.size();
       }
     }
 
