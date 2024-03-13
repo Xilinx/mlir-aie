@@ -45,9 +45,20 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for python
 llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
 
+if config.hsa_found:
+    if not "hsa" in config.aieHostTarget:
+        print("ROCm found, but disabled because host target '{config.aieHostTarget}'")
+    # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
+    # directory so need to go up three directories
+    rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
+    print("Found ROCm:", rocm_root)
+    config.substitutions.append(('%HSA_DIR%', "{}".format(rocm_root)))
+else:
+    print("ROCm not found")
+
 if config.enable_board_tests:
     config.substitutions.append(
-        ("%run_on_board", "echo %T >> /home/xilinx/testlog | sync | sudo")
+        ("%run_on_board", "sudo flock /tmp/board.lock")
     )
 else:
     config.substitutions.append(("%run_on_board", "echo"))
