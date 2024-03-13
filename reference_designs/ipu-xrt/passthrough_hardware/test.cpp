@@ -13,9 +13,11 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <numeric>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -63,8 +65,10 @@ int main(int argc, const char *argv[]) {
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
-      "length,l", po::value<int>()->default_value(4096),
-      "the length of the transfer in int32_t");
+      "length,l", po::value<long long>()->default_value(4096),
+      "the length of the transfer in int32_t")(
+      "iters", po::value<int>()->default_value(10))(
+      "warmup", po::value<int>()->default_value(1));
   po::variables_map vm;
 
   try {
@@ -91,11 +95,14 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
-  int N = vm["length"].as<int>();
+  long long N = vm["length"].as<long long>();
   if ((N % 1024)) {
-    std::cerr << "Length must be a multiple of 1024." << std::endl;
+    std::cerr << "Length must be a multiple of 1024, but got " << N << "." << std::endl;
     return 1;
   }
+
+  int iters = vm["iters"].as<int>();
+  int warmup = vm["warmup"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -116,9 +123,11 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
+                                 if(verbosity >= 1) {
                                  std::cout << "Name: " << name << std::endl;
+                                 }
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
@@ -152,9 +161,10 @@ int main(int argc, const char *argv[]) {
     std::cout << "Writing data into buffer objects." << std::endl;
 
   int32_t *bufInA = bo_inA.map<int32_t *>();
-  std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < N; i++)
-    srcVecA.push_back(i + 1);
+  std::vector<uint32_t> srcVecA(N);
+  for (int i = 0; i < N; i++) {
+    srcVecA[i] = i + 1;
+  }
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -163,32 +173,58 @@ int main(int argc, const char *argv[]) {
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  if (verbosity >= 1)
-    std::cout << "Running Kernel." << std::endl;
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
-  run.wait();
+  typedef std::chrono::system_clock::duration duration_t;
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
-
+  std::vector<duration_t> runtimes(iters);
   int errors = 0;
 
-  for (uint32_t i = 0; i < N; i++) {
-    uint32_t ref = (i + 1);
-    if (*(bufOut + i) != ref) {
-      errors++;
+  for(int i = 0; i < iters + warmup; i++) {
+    if (verbosity >= 1)
+      std::cout << "Running Kernel." << std::endl;
+    auto start = std::chrono::system_clock::now();
+    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+    run.wait();
+    auto stop = std::chrono::system_clock::now();
+    if(i < warmup) {
+      continue;
+    }
+    runtimes[i-warmup] = stop - start;
+
+    bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    uint32_t *bufOut = bo_out.map<uint32_t *>();
+
+    for (uint32_t i = 0; i < N; i++) {
+      uint32_t ref = (i + 1);
+      if (*(bufOut + i) != ref) {
+        errors++;
+      }
     }
   }
 
+  duration_t sum = std::accumulate(runtimes.begin(), runtimes.end(), duration_t(0));
+  duration_t mean = sum / runtimes.size();
+  std::pair<std::vector<duration_t>::iterator, std::vector<duration_t>::iterator> minmax = std::minmax_element(runtimes.begin(), runtimes.end());
+  duration_t min = *minmax.first;
+  duration_t max = *minmax.second;
+
+  long long n_bytes = srcVecA.size() * sizeof(srcVecA[0]);
+  double mean_bps = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(mean).count();
+  double max_bps  = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(min) .count();
+  double min_bps  = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(max) .count();
+
+  std::cout << iters << " runs, each pushed " << srcVecA.size()*sizeof(srcVecA[0]) << " bytes of data." << std::endl
+  << "Mean: " << std::setw(8) << mean.count() << " us  / " << mean_bps << " bytes/s" << std::endl
+  << "Min:  " << std::setw(8) << min.count()  << " us  / " << max_bps  << " bytes/s" << std::endl
+  << "Max:  " << std::setw(8) << max.count()  << " us  / " << min_bps  << " bytes/s" << std::endl;
+
   if (!errors) {
-    std::cout << std::endl << "PASS!" << std::endl << std::endl;
+    std::cout << std::endl << "PASS!" << std::endl;
     return 0;
   } else {
     std::cout << std::endl
               << errors << " mismatches." << std::endl
               << std::endl;
-    std::cout << std::endl << "fail." << std::endl << std::endl;
+    std::cout << std::endl << "fail." << std::endl;
     return 1;
   }
 }
