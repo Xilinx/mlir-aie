@@ -45,7 +45,7 @@ module {
       // CHECK: 00000000
       // CHECK: 00600005
       // CHECK: 80800007
-      // CHECK: 00000009
+      // CHECK: 02000009
       // CHECK: 2CD0000C
       // CHECK: 2E107041
       aiex.ipu.writebd_shimtile { bd_id = 6 : i32,
