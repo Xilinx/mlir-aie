@@ -65,8 +65,8 @@ struct AIEBroadcastPacketPass
           Block &b_bpid = r_bpid.front();
           int flowID = bpid.IDInt();
           builder.setInsertionPointAfter(broadcastpacket);
-          PacketFlowOp pkFlow =
-              builder.create<PacketFlowOp>(builder.getUnknownLoc(), flowID);
+          PacketFlowOp pkFlow = builder.create<PacketFlowOp>(
+              builder.getUnknownLoc(), flowID, nullptr);
           Region &r_pkFlow = pkFlow.getPorts();
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);
