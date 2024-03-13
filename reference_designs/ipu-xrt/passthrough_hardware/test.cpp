@@ -12,12 +12,12 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <numeric>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -97,7 +97,8 @@ int main(int argc, const char *argv[]) {
 
   long long N = vm["length"].as<long long>();
   if ((N % 1024)) {
-    std::cerr << "Length must be a multiple of 1024, but got " << N << "." << std::endl;
+    std::cerr << "Length must be a multiple of 1024, but got " << N << "."
+              << std::endl;
     return 1;
   }
 
@@ -125,8 +126,8 @@ int main(int argc, const char *argv[]) {
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 if(verbosity >= 1) {
-                                 std::cout << "Name: " << name << std::endl;
+                                 if (verbosity >= 1) {
+                                   std::cout << "Name: " << name << std::endl;
                                  }
                                  return name.rfind(Node, 0) == 0;
                                });
@@ -178,17 +179,17 @@ int main(int argc, const char *argv[]) {
   std::vector<duration_t> runtimes(iters);
   int errors = 0;
 
-  for(int i = 0; i < iters + warmup; i++) {
+  for (int i = 0; i < iters + warmup; i++) {
     if (verbosity >= 1)
       std::cout << "Running Kernel." << std::endl;
     auto start = std::chrono::system_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
     run.wait();
     auto stop = std::chrono::system_clock::now();
-    if(i < warmup) {
+    if (i < warmup) {
       continue;
     }
-    runtimes[i-warmup] = stop - start;
+    runtimes[i - warmup] = stop - start;
 
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     uint32_t *bufOut = bo_out.map<uint32_t *>();
@@ -201,21 +202,35 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  duration_t sum = std::accumulate(runtimes.begin(), runtimes.end(), duration_t(0));
+  duration_t sum =
+      std::accumulate(runtimes.begin(), runtimes.end(), duration_t(0));
   duration_t mean = sum / runtimes.size();
-  std::pair<std::vector<duration_t>::iterator, std::vector<duration_t>::iterator> minmax = std::minmax_element(runtimes.begin(), runtimes.end());
+  std::pair<std::vector<duration_t>::iterator,
+            std::vector<duration_t>::iterator>
+      minmax = std::minmax_element(runtimes.begin(), runtimes.end());
   duration_t min = *minmax.first;
   duration_t max = *minmax.second;
 
   long long n_bytes = srcVecA.size() * sizeof(srcVecA[0]);
-  double mean_bps = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(mean).count();
-  double max_bps  = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(min) .count();
-  double min_bps  = (double)n_bytes / std::chrono::duration_cast<std::chrono::duration<double>>(max) .count();
+  double mean_bps =
+      (double)n_bytes /
+      std::chrono::duration_cast<std::chrono::duration<double>>(mean).count();
+  double max_bps =
+      (double)n_bytes /
+      std::chrono::duration_cast<std::chrono::duration<double>>(min).count();
+  double min_bps =
+      (double)n_bytes /
+      std::chrono::duration_cast<std::chrono::duration<double>>(max).count();
 
-  std::cout << iters << " runs, each pushed " << srcVecA.size()*sizeof(srcVecA[0]) << " bytes of data." << std::endl
-  << "Mean: " << std::setw(8) << mean.count() << " us  / " << mean_bps << " bytes/s" << std::endl
-  << "Min:  " << std::setw(8) << min.count()  << " us  / " << max_bps  << " bytes/s" << std::endl
-  << "Max:  " << std::setw(8) << max.count()  << " us  / " << min_bps  << " bytes/s" << std::endl;
+  std::cout << iters << " runs, each pushed "
+            << srcVecA.size() * sizeof(srcVecA[0]) << " bytes of data."
+            << std::endl
+            << "Mean: " << std::setw(8) << mean.count() << " us  / " << mean_bps
+            << " bytes/s" << std::endl
+            << "Min:  " << std::setw(8) << min.count() << " us  / " << max_bps
+            << " bytes/s" << std::endl
+            << "Max:  " << std::setw(8) << max.count() << " us  / " << min_bps
+            << " bytes/s" << std::endl;
 
   if (!errors) {
     std::cout << std::endl << "PASS!" << std::endl;
