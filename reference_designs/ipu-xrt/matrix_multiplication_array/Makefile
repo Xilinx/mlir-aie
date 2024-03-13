@@ -11,7 +11,7 @@ include ../makefile-common
 M?=512
 K?=512
 N?=512
-verify?=1
+runargs?=-v 1 --verify 0 --warmup 10 --iters 10
 
 xclbin_sign=/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh 
 targetname = matrixMultiplication
@@ -52,8 +52,9 @@ sign: ${xclbin_target}
 	${xclbin_sign} -dev Phoenix -xclbin $<
 
 .PHONY: run
-run: ${targetname}.exe ${xclbin_target} ${insts_target} sign
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N --verify ${verify} -v 1
+run: ${targetname}.exe ${xclbin_target} ${insts_target} #sign
+	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
 
 .PHONY: clean
 clean:

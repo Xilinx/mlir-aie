@@ -2,8 +2,8 @@
 
 csv_out=sweep.csv
 log_out=sweep.log
-verify=0
-iterations=10
+runargs="--verify 0 --iters 10 --warmup 10"
+iterations=1
 
 M_lo=256
 M_step=256
@@ -32,12 +32,12 @@ for M in $Ms; do
         for N in $Ns; do
             echo ${M}x${K}x${N} 1>&2
             rm -r /lib/firmware/amdnpu/1502/*.xclbin  # Signing step may hang otherwise
-            M=${M} K=${K} N=${N} verify=${verify} make all 1>>$log_out 2>&1
+            M=${M} K=${K} N=${N} make all 1>>$log_out 2>&1
             printf "${M},\t${K},\t${N}" >>$csv_out
             for i in $(seq 1 $iterations); do
-                M=${M} K=${K} N=${N} verify=${verify} make run >.tmp_run.log
+                M=${M} K=${K} N=${N} runargs=${runargs} make run >.tmp_run.log
                 cat .tmp_run.log $run_output >>$log_out
-                t=$(cat .tmp_run.log | sed -rn 's/^NPU matmul time: ([0-9]+)us.$/\1/p')
+                t=$(cat .tmp_run.log | sed -rn 's/^Avg NPU matmul time: ([0-9]+)us.$/\1/p')
                 printf ",\t${t}" >>$csv_out
             done
             printf "\n" >>$csv_out

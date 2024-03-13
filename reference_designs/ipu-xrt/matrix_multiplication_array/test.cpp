@@ -50,8 +50,7 @@ int main(int argc, const char *argv[]) {
   int N = vm["N"].as<int>();
 
   if (verbosity >= 1) {
-    std::cout << "Matrix size " << M 
-              << "x" << K << "x" << N << std::endl;
+    std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
   }
 
   int A_VOLUME = M * K;
@@ -165,7 +164,7 @@ int main(int argc, const char *argv[]) {
     auto stop = std::chrono::high_resolution_clock::now();
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    if(iter < n_warmup_iterations) {
+    if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
       continue;
     }
