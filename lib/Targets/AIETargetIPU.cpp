@@ -112,7 +112,8 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
   words[6] |= op.getD1Stride() & 0xfffff;
 
   // TODO: SIMID, AxCache, AXQoS
-  words[7] = op.getD2Stride() & 0xfffff;
+  words[7] = 0x2000000; // AxCache = 0x2
+  words[7] |= op.getD2Stride() & 0xfffff;
 
   words[8] |= (op.getIterationCurrent() & 0x3f) << 26;
   words[8] |= (op.getIterationSize() & 0x3f) << 20;
