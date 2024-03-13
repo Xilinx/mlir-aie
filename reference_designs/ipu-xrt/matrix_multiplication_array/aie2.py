@@ -14,16 +14,18 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
+
 def main():
     argparser = argparse.ArgumentParser(
-        prog='AIE Matrix Multiplication MLIR Design (Whole Array)',
-        description='Emits MLIR code for a matrix multiplication design of the given input size'
+        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        description="Emits MLIR code for a matrix multiplication design of the given input size",
     )
-    argparser.add_argument('-M', type=int, default=512)
-    argparser.add_argument('-K', type=int, default=512)
-    argparser.add_argument('-N', type=int, default=512)
+    argparser.add_argument("-M", type=int, default=512)
+    argparser.add_argument("-K", type=int, default=512)
+    argparser.add_argument("-N", type=int, default=512)
     args = argparser.parse_args()
     my_matmul(args.M, args.K, args.N)
+
 
 def my_matmul(M=512, K=512, N=512):
     m = 64
@@ -369,6 +371,7 @@ def my_matmul(M=512, K=512, N=512):
 
     # print(ctx.module.operation.verify())
     print(ctx.module)
+
 
 if __name__ == "__main__":
     main()
