@@ -1,7 +1,7 @@
 // (c) Copyright 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai, chess
+// REQUIRES: ryzen_ai
 //
 // RUN: %python %S/aie2.py ipu 0 > ./aie.mlir
 // RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir

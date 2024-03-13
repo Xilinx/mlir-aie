@@ -198,8 +198,9 @@ int main(int argc, const char *argv[]) {
     xrt::device device;
     xrt::kernel kernel;
 
-    initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
-                      vm["kernel"].as<std::string>());
+    test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                     vm["xclbin"].as<std::string>(),
+                                     vm["kernel"].as<std::string>());
 
     /*
      ****************************************************************************

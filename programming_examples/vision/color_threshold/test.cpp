@@ -71,19 +71,6 @@ int main(int argc, const char *argv[]) {
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
 
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-
   /*
    ****************************************************************************
    * Load instruction sequence
@@ -104,8 +91,9 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
-                    vm["kernel"].as<std::string>());
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   /*
    ****************************************************************************

@@ -48,6 +48,7 @@ target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 target_include_directories (${currentTarget} PUBLIC 
     ${XRT_INC_DIR}
     ${Boost_INCLUDE_DIRS}
+    ../../../programming_examples/utils
 )
 
 target_link_directories(${currentTarget} PUBLIC
