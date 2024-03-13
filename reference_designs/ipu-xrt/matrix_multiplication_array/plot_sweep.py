@@ -9,25 +9,43 @@ import matplotlib.pyplot as plt
 import sys
 
 
+def n_bytes(M, K, N):
+    dtype_sz = 2
+    return (M * K + K * N + M * N) * dtype_sz
+
+
+def macs(M, K, N):
+    return M * K * N
+
+
+def flops(M, K, N):
+    # Each MAC consists of a multiply and an add, i.e. 2 flops
+    return 2 * macs(M, K, N)
+
+
 def arithmetic_intensity(xs):
     M, K, N = xs
-    return M * N * K / (M * K + N * K + M * N)
+    return macs(M, K, N) / n_bytes(M, K, N)
+
+
+def arithmetic_intensity_flops(xs):
+    M, K, N = xs
+    return flops(M, K, N) / n_bytes(M, K, N)
 
 
 def macs_per_s(ys):
     M, K, N, *ts = ys
-    n_macs = M * K * N
-    return n_macs / (np.mean(ts) / 1e6)
+    return macs(M, K, N) / (np.mean(ts) / 1e6)
 
 
-def gflops(ys):
-    macs = macs_per_s(ys)
-    return 2 * macs / 1e9
+def gflops_per_s(ys):
+    M, K, N, *ts = ys
+    return flops(M, K, N) / 1e9 / (np.mean(ts) / 1e6)
 
 
-def tflops(ys):
-    macs = macs_per_s(ys)
-    return 2 * macs / 1e12
+def tflops_per_s(ys):
+    M, K, N, *ts = ys
+    return flops(M, K, N) / 1e12 / (np.mean(ts) / 1e6)
 
 
 def throughput(ys):
@@ -42,9 +60,10 @@ transforms = {
     "sum": sum,
     "mean": np.mean,
     "intens": arithmetic_intensity,
+    "intens_f": arithmetic_intensity_flops,
     "macs": macs_per_s,
-    "gflops": gflops,
-    "tflops": tflops,
+    "gflops": gflops_per_s,
+    "tflops": tflops_per_s,
     "thru": throughput,
 }
 
@@ -64,12 +83,16 @@ def get_args():
     argparser.add_argument("--ytrans", choices=transforms, default="mean")
     argparser.add_argument("--ylabel", type=str)
     argparser.add_argument("--filter", type=str, action="append", default=[])
+    argparser.add_argument("--xlog", action="store_true", default=False)
+    argparser.add_argument("--ylog", action="store_true", default=False)
     args = argparser.parse_args()
     if not args.xnames:
         args.xnames = ["M", "K", "N"]
     if args.xlabel is None:
         if args.xtrans == "intens":
-            args.xlabel = "Arithmetic Intensity M*K*N/(M*K+N*K+M*N)"
+            args.xlabel = "Arithmetic Intensity [MAC/byte]"
+        elif args.xtrans == "intens_f":
+            args.xlabel = "Arithmetic Intensity [FLOP/byte]"
         elif args.xtrans == "prod":
             args.xlabel = "*".join(args.xnames)
     if args.ylabel is None:
@@ -78,9 +101,9 @@ def get_args():
         elif args.ytrans == "macs":
             args.ylabel = "MACs/s"
         elif args.ytrans == "gflops":
-            args.ylabel = "GFLOPS"
+            args.ylabel = "GFLOP/s"
         elif args.ytrans == "tflops":
-            args.ylabel = "TFLOPS"
+            args.ylabel = "TFLOP/s"
         elif args.ytrans == "thru":
             args.ylabel = "Throughput [bytes/s]"
     if args.output is None:
@@ -130,19 +153,69 @@ def get_plot_values(csv_file, x_names, y_names, x_trans, y_trans, filters=[]):
         sys.stderr.write(
             "Warning: Invalid data in row(s) {}.\n".format(", ".join(map(str, errors)))
         )
-    print(
-        "{}: {} rows, {} data points".format(
-            csv_file.name, len(ys), len(ys) * len(y_names)
-        )
-    )
+    print("{}: {} rows".format(csv_file.name, len(ys)))
     return xs, ys
 
 
-def plot(ax, xs, ys, title, xlabel, ylabel):
+def plot(ax, xs, ys, title, xlabel, ylabel, xlog=False, ylog=False):
     ax.scatter(xs, ys, marker=".")
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
+    if xlog:
+        ax.set_xscale("log")
+    if ylog:
+        ax.set_yscale("log")
+
+
+def plot_max(ax, xs, ys, xtrans, ytrans):
+    """Draw the roofline"""
+
+    bandwidth = 2e9  # 2 GB/s peak memory bandwidth per channel
+    max_flops = 1e12  # 1 TFLOP/s / core for bf16
+    n_channels = 8
+    n_cores = 4
+
+    max_flops *= n_cores
+    bandwidth *= n_channels
+
+    slope = bandwidth  # [byte/s]
+    max_y = max_flops  # [FLOP/s]
+
+    # In bandwidth-bound area, # ops per second is equal to # bytes per second movable
+    # times arithmetic intensity (ops per each received byte), because processing is
+    # faster than data movement.
+
+    if xtrans == transforms["intens"]:
+        # 1 [FLOP/byte] = 2 [MAC/byte]
+        slope *= 2
+    elif xtrans == transforms["intens_f"]:
+        pass
+    else:
+        # Not a roofline plot
+        return
+
+    if ytrans == transforms["macs"]:
+        # 1 [FLOP] = 2 [MACs]
+        max_y /= 2
+        slope /= 2
+    elif ytrans == transforms["gflops"]:
+        max_y /= 1e9
+        slope /= 1e9
+    elif ytrans == transforms["tflops"]:
+        max_y /= 1e12
+        slope /= 1e12
+    else:
+        # Not a roofline plot
+        return
+
+    max_x = max(xs)
+    # ridge point x is where max_y == slope*x
+    ridge_point_x = min(max_y / slope, max_x)
+    ridge_point_y = min(max_y, ridge_point_x * slope)
+    max_y = min(max_y, max_x * slope)
+
+    ax.plot([0, ridge_point_x, max_x], [0, ridge_point_y, max_y])
 
 
 def main():
@@ -151,7 +224,8 @@ def main():
         args.input, args.xnames, args.ynames, args.xtrans, args.ytrans, args.filter
     )
     fig, ax = plt.subplots()
-    plot(ax, xs, ys, args.title, args.xlabel, args.ylabel)
+    plot(ax, xs, ys, args.title, args.xlabel, args.ylabel, args.xlog, args.ylog)
+    plot_max(ax, xs, ys, args.xtrans, args.ytrans)
     plt.savefig(args.output, format=args.outputfmt)
 
 
