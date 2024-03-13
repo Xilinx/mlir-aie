@@ -631,8 +631,6 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
-  let arguments = (ins AIEI8Attr:$ID);
-  let regions = (region AnyRegion:$ports);
   let summary = "Packet switched flow";
   let description = [{
     A logical packet-switched flow between tiles.  During place and
@@ -648,6 +646,12 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
       }
     ```
   }];
+
+  let arguments = (
+    ins AIEI8Attr:$ID,
+        OptionalAttr<BoolAttr>:$keep_pkt_header
+  );
+  let regions = (region AnyRegion:$ports);
 
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let hasVerifier = 1;

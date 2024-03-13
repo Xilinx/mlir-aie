@@ -22,6 +22,8 @@ from aie.dialects.aie import (
     objectfifo_subview_access,
     tile,
     cascade_flow,
+    WireBundle,
+    packetflow,
 )
 from aie.ir import InsertionPoint, Block, TypeAttr
 from aie.extras.context import mlir_mod_ctx
@@ -221,6 +223,27 @@ def cascadeFlowOp():
     t0 = tile(col=1, row=3)
     t1 = tile(col=2, row=3)
     cascade_flow(t0, t1)
+
+
+# CHECK-LABEL: packetFlowOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: aie.packet_flow(16) {
+# CHECK:   aie.packet_source<%[[VAL_0]], Core : 0>
+# CHECK:   aie.packet_dest<%[[VAL_0]], Core : 0>
+# CHECK: } {keep_pkt_header = true}
+@construct_and_print_module
+def packetFlowOp():
+    t0 = tile(col=1, row=3)
+    packetflow(
+        pkt_id=0x10,
+        source=t0,
+        source_port=WireBundle.Core,
+        source_channel=0,
+        dest=t0,
+        dest_port=WireBundle.Core,
+        dest_channel=0,
+        keep_pkt_header=True,
+    )
 
 
 # CHECK-LABEL: test_module_context
