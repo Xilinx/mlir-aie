@@ -38,7 +38,7 @@ def my_matmul():
     M_div_m_div_n_rows = M // (m * n_rows)
     K_div_k = K // k
     N_div_n = N // n
-    tiles = M_div_m * N_div_n // n_rows
+    tiles = M_div_m * N_div_n // n_cores
     N_div_n_div_n_cols = N_div_n // n_cols
 
     # Matrix A: MxK, submatrices a: mxk
@@ -64,8 +64,8 @@ def my_matmul():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * k * n_rows, T.bf16())
-            memRef_inB_ty = T.memref(k * n * 1, T.bf16())
+            memRef_inA_ty = T.memref(m * k, T.bf16())
+            memRef_inB_ty = T.memref(k * n, T.bf16())
             memRef_outC_ty = T.memref(m * n * n_rows, T.bf16())
             memRef_A_ty = T.memref(m, k, T.bf16())
             memRef_B_ty = T.memref(k, n, T.bf16())
