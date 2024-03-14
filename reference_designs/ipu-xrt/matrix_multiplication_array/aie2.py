@@ -5,6 +5,9 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import sys
+import argparse
+
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
@@ -12,10 +15,19 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
 
-def my_matmul():
-    M = 512
-    K = 512
-    N = 512
+def main():
+    argparser = argparse.ArgumentParser(
+        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        description="Emits MLIR code for a matrix multiplication design of the given input size",
+    )
+    argparser.add_argument("-M", type=int, default=512)
+    argparser.add_argument("-K", type=int, default=512)
+    argparser.add_argument("-N", type=int, default=512)
+    args = argparser.parse_args()
+    my_matmul(args.M, args.K, args.N)
+
+
+def my_matmul(M=512, K=512, N=512):
     m = 64
     k = 64
     n = 64
@@ -361,4 +373,8 @@ def my_matmul():
     print(ctx.module)
 
 
-my_matmul()
+if __name__ == "__main__":
+    main()
+else:
+    print("Not meant to be imported")
+    sys.exit(1)

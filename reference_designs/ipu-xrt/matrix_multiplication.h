@@ -47,7 +47,14 @@ void add_default_options(po::options_description &desc) {
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
+      "path of file containing userspace instructions sent to the NPU")(
+      "verify", po::value<bool>()->default_value(true),
+      "whether to verify the AIE computed output")(
+      "M,M", po::value<int>()->default_value(512), "Matrix size M")(
+      "K,K", po::value<int>()->default_value(512), "Matrix size K")(
+      "N,N", po::value<int>()->default_value(512),
+      "Matrix size N")("iters", po::value<int>()->default_value(10))(
+      "warmup", po::value<int>()->default_value(1));
 }
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
