@@ -306,6 +306,12 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
                           "me_basic.o");
         flags.emplace_back(meBasicPath);
+#ifndef _WIN32
+        SmallString<64> libcPath(TK.PeanoDir);
+        sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
+                          "libc.a");
+        flags.emplace_back(libcPath);
+#endif
         flags.push_back("-Wl,--gc-sections");
         std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
         flags.push_back(ldScriptFlag);
