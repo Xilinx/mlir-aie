@@ -52,6 +52,7 @@ if config.hsa_found:
     # directory so need to go up three directories
     rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
     print("Found ROCm:", rocm_root)
+    config.available_features.add("hsa")
     config.substitutions.append(('%HSA_DIR%', "{}".format(rocm_root)))
 else:
     print("ROCm not found")
@@ -109,7 +110,7 @@ else:
 config.substitutions.append(("%opencv_flags", opencv_flags))
 
 VitisSysrootFlag = ""
-if config.aieHostTarget == "x86_64":
+if "x86_64" in config.aieHostTarget:
     config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))
 elif config.aieHostTarget == "aarch64":
     config.substitutions.append(("%aieHostTargetTriplet%", "aarch64-linux-gnu"))
