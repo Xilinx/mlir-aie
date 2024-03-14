@@ -99,7 +99,7 @@ config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 
 VitisSysrootFlag = ""
-if config.aieHostTarget == "x86_64":
+if "x86_64" in config.aieHostTarget:
     config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))
 elif config.aieHostTarget == "aarch64":
     config.substitutions.append(("%aieHostTargetTriplet%", "aarch64-linux-gnu"))
