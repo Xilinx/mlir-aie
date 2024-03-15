@@ -58,6 +58,10 @@ def efficiency(ys):
     return tflops_per_s(ys) / 4.096 * 100
 
 
+def efficiency(ys):
+    return tflops_per_s(ys) / 4.096 * 100
+
+
 transforms = {
     "prod": np.prod,
     "sum": sum,
