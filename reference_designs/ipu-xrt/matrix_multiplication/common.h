@@ -14,11 +14,11 @@
 #ifndef MATRIX_MULTIPLICATION_H
 #define MATRIX_MULTIPLICATION_H
 
+#include <algorithm>
 #include <boost/program_options.hpp>
 #include <cmath>
-#include <algorithm>
-#include <ostream>
 #include <optional>
+#include <ostream>
 
 namespace matmul_common {
 
@@ -179,8 +179,8 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
 }
 
 template <typename Tin, typename Tout>
-Tout mul_acc(int M, int N, int K, int row, int col, 
-             const std::vector<Tin> A, const std::vector<Tin> B) {
+Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
+             const std::vector<Tin> B) {
   Tout running_sum = 0;
   for (int k = 0; k < K; k++) {
     running_sum += Tout(A[row * K + k] * B[k * N + col]);
@@ -280,34 +280,34 @@ struct error {
 
 template <typename Tout>
 std::optional<struct error<Tout>>
-verify_single(std::ostream& os, int row, int col, Tout expected, Tout actual) {
+verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual) {
   const float absTol = 0.5;
   const float relTol = 0.5;
   if (!nearly_equal(expected, actual, relTol, absTol)) {
-    return (struct error<Tout>) { row, col, expected, actual };
+    return (struct error<Tout>){row, col, expected, actual};
   }
   return std::nullopt;
 }
 
 template <typename Tout>
-void print_error_summary(std::ostream& os, int n_errors, std::vector<struct error<Tout>> &errors) {
-  for (struct error<Tout>& err : errors) {
-    os << "[" << std::setw(5) << err.row << ", " << std::setw(5) << err.col << "] " << 
-        std::setw(4) << std::setprecision(2) << std::fixed <<
-        (float)err.actual <<  " =!= "  
-        << std::setw(4) << std::setprecision(2) << std::fixed << (float)err.expected << std::endl;
+void print_error_summary(std::ostream &os, int n_errors,
+                         std::vector<struct error<Tout>> &errors) {
+  for (struct error<Tout> &err : errors) {
+    os << "[" << std::setw(5) << err.row << ", " << std::setw(5) << err.col
+       << "] " << std::setw(4) << std::setprecision(2) << std::fixed
+       << (float)err.actual << " =!= " << std::setw(4) << std::setprecision(2)
+       << std::fixed << (float)err.expected << std::endl;
   }
   if (n_errors >= max_printable_errors) {
-    os << "...and " << std::setw(0) << n_errors-max_printable_errors << " further errors."
-       << std::endl;
+    os << "...and " << std::setw(0) << n_errors - max_printable_errors
+       << " further errors." << std::endl;
   }
 }
 
-void print_progress_bar(std::ostream& os, double progress, int len=75) {
-  os << "\r" 
-     << std::string((int)(progress*len), '|') 
-     << std::string(len-(int)(progress*len), ' ')
-     << std::setw(4) << std::fixed << std::setprecision(0) << progress*100 << "%"
+void print_progress_bar(std::ostream &os, double progress, int len = 75) {
+  os << "\r" << std::string((int)(progress * len), '|')
+     << std::string(len - (int)(progress * len), ' ') << std::setw(4)
+     << std::fixed << std::setprecision(0) << progress * 100 << "%"
      << "\r";
 }
 
@@ -322,10 +322,11 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      std::optional<struct error<Tout>> error = verify_single(std::cout, row, col, CRef[row * N + col], C[row * N + col]);
-      if(error.has_value()) {
+      std::optional<struct error<Tout>> error = verify_single(
+          std::cout, row, col, CRef[row * N + col], C[row * N + col]);
+      if (error.has_value()) {
         n_errors++;
-        if(n_errors < max_printable_errors) {
+        if (n_errors < max_printable_errors) {
           errors.push_back(*error);
         }
       }
@@ -344,7 +345,8 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 }
 
 template <typename Tin, typename Tout>
-int verify_stochastic(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B, std::vector<Tout> C, int n_samples) {
+int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
+                      std::vector<Tin> B, std::vector<Tout> C, int n_samples) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -356,17 +358,18 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> 
 
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
-  for (std::tuple<size_t, std::tuple<int &, int&>> cell: 
+  for (std::tuple<size_t, std::tuple<int &, int &>> cell :
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
     int i = std::get<0>(cell);
     int row = std::get<0>(std::get<1>(cell));
     int col = std::get<1>(std::get<1>(cell));
-    print_progress_bar(std::cout, (double)i/n_samples);
+    print_progress_bar(std::cout, (double)i / n_samples);
     Tout ref = mul_acc<Tin, Tout>(M, N, K, row, col, A, B);
-    std::optional<struct error<Tout>> error = verify_single(std::cout, row, col, ref, C[row * N + col]);
-    if(error.has_value()) {
+    std::optional<struct error<Tout>> error =
+        verify_single(std::cout, row, col, ref, C[row * N + col]);
+    if (error.has_value()) {
       n_errors++;
-      if(n_errors < max_printable_errors) {
+      if (n_errors < max_printable_errors) {
         errors.push_back(*error);
       }
     }
