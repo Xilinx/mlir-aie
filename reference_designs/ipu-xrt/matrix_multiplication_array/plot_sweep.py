@@ -55,6 +55,10 @@ def throughput(ys):
     return float(n_bytes) / (np.mean(ts) / 1e6)
 
 
+def efficiency(ys):
+    return tflops_per_s(ys) / 4.096 * 100
+
+
 transforms = {
     "prod": np.prod,
     "sum": sum,
@@ -65,6 +69,7 @@ transforms = {
     "gflops": gflops_per_s,
     "tflops": tflops_per_s,
     "thru": throughput,
+    "eff": efficiency,
 }
 
 
@@ -106,6 +111,8 @@ def get_args():
             args.ylabel = "TFLOP/s"
         elif args.ytrans == "thru":
             args.ylabel = "Throughput [bytes/s]"
+        elif args.ytrans == "eff":
+            args.ylabel = "Percent Throughput Efficiency [achieved/peak]"
     if args.output is None:
         args.output = "{0}.{1}".format(
             os.path.basename(args.input.name), args.outputfmt
@@ -118,7 +125,7 @@ def get_args():
         ]
         if args.ytrans == "mean":
             args.ynames = iteration_ys
-        elif args.ytrans in {"macs", "gflops", "tflops", "thru"}:
+        elif args.ytrans in {"macs", "gflops", "tflops", "thru", "eff"}:
             args.ynames = ["M", "K", "N"] + iteration_ys
     args.xtrans = transforms[args.xtrans]
     args.ytrans = transforms[args.ytrans]
