@@ -33,6 +33,9 @@ using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = std::bfloat16_t;
 #endif
 
+constexpr long long verify_stochastic_threshold = 512*512*512;
+constexpr int verify_stochastic_n_samples = 1000;
+
 namespace po = boost::program_options;
 
 int main(int argc, const char *argv[]) {
@@ -41,7 +44,6 @@ int main(int argc, const char *argv[]) {
   po::options_description desc("Allowed options");
   po::variables_map vm;
   matmul_common::add_default_options(desc);
-
   matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
@@ -146,11 +148,7 @@ int main(int argc, const char *argv[]) {
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  // memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
   memset(bufOut, 0, OUT_SIZE);
-  // if(trace_size > 0) {
-  //   memset(bufOut + C_SIZE, 0, trace_size);
-  // }
 
   // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
@@ -187,11 +185,18 @@ int main(int argc, const char *argv[]) {
 
     memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
     if (do_verify) {
-      if (verbosity >= 1) {
-        std::cout << "Verifying against reference matmul ..." << std::endl;
-      }
       auto vstart = std::chrono::system_clock::now();
-      errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
+      if ((long long)M*N*K <= verify_stochastic_threshold) {
+        if (verbosity >= 1) {
+          std::cout << "Verifying against reference matmul ..." << std::endl;
+        }
+        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
+      } else {
+        if (verbosity >= 1) {
+          std::cout << "Verifying " << verify_stochastic_n_samples << " random samples against reference matmul ..." << std::endl;
+        }
+        errors = matmul_common::verify_stochastic(M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples);
+      }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
