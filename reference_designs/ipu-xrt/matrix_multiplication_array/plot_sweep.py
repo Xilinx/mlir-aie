@@ -49,9 +49,9 @@ def tflops_per_s(ys):
 
 
 def throughput(ys):
-    m, k, n, *ts = ys
+    M, K, N, *ts = ys
     dtype_size = 2
-    n_bytes = (m * k + k * n + m * n) * dtype_size
+    n_bytes = (M * K + K * N + M * N) * dtype_size
     return float(n_bytes) / (np.mean(ts) / 1e6)
 
 def efficiency(ys):
