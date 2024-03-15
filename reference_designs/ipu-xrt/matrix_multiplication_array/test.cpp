@@ -200,8 +200,8 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl
             << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us."
             << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / n_iterations)
-            << std::endl;
+  std::cout << "Avg NPU gflops: "
+            << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
