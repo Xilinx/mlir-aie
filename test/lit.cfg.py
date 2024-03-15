@@ -81,9 +81,9 @@ if config.xrt_lib_dir:
             if m:
                 print("Found Ryzen AI device:", m.group().split()[0])
                 if len(m.groups()) == 2:
-                  # Prepare the future
-                  aie_model = m.group(2)
-                  print("\tmodel:", aie_model)
+                    # Prepare the future
+                    aie_model = m.group(2)
+                    print("\tmodel:", aie_model)
                 config.available_features.add("ryzen_ai")
                 run_on_ipu = (
                     f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
