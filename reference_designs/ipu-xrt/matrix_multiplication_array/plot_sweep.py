@@ -54,9 +54,6 @@ def throughput(ys):
     n_bytes = (M * K + K * N + M * N) * dtype_size
     return float(n_bytes) / (np.mean(ts) / 1e6)
 
-def efficiency(ys):
-    return tflops_per_s(ys) / 4.096 * 100
-
 
 def efficiency(ys):
     return tflops_per_s(ys) / 4.096 * 100
