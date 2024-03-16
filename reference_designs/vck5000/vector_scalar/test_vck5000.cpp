@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
     uint32_t d = out[i];
     printf("s[%d] = 0x%x\n", i, s);
     printf("d[%d] = 0x%x\n", i, d);
-    if (d != (s + 1)) {
+    if (d != (s * 3)) {
       errors++;
       printf("mismatch %x != 1 + %x\n", d, s);
     }

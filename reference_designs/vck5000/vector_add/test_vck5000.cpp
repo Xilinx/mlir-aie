@@ -104,18 +104,20 @@ int main(int argc, char *argv[]) {
   }
 
   // Pass arguments in the order of dma_memcpys in the mlir
-  invoke_data_movement(queues[0], &agents[0], out, in_a);
+  invoke_data_movement(queues[0], &agents[0], out, in_a, in_b);
 
   int errors = 0;
 
   for (int i = 0; i < DMA_COUNT; i++) {
-    uint32_t s = in_a[i];
+    uint32_t s0 = in_a[i];
+    uint32_t s1 = in_b[i];
     uint32_t d = out[i];
-    printf("s[%d] = 0x%x\n", i, s);
+    printf("s0[%d] = 0x%x\n", i, s0);
+    printf("s1[%d] = 0x%x\n", i, s1);
     printf("d[%d] = 0x%x\n", i, d);
-    if (d != (s + 1)) {
+    if (d != (s0 + s1)) {
       errors++;
-      printf("mismatch %x != 1 + %x\n", d, s);
+      printf("mismatch 0x%x != 0x%x + 0x%x\n", d, s0, s1);
     }
   }
 
