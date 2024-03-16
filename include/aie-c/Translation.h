@@ -10,6 +10,7 @@
 
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
+#include "mlir/CAPI/Wrap.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,20 @@ MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
     MlirOperation moduleOp, MlirStringRef workDirPath, bool bigEndian,
     bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
     size_t partitionStartCol, bool enableCores);
+
+struct AieRtxControl {
+  void *ptr;
+};
+using AieRtxControl = struct AieRtxControl;
+
+MLIR_CAPI_EXPORTED AieRtxControl getAieRtxControl(size_t partitionStartCol,
+                                                  size_t partitionNumCols);
+MLIR_CAPI_EXPORTED void freeAieRtxControl(AieRtxControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtxStartTransaction(AieRtxControl aieCtl);
+MLIR_CAPI_EXPORTED void aieRtxDmaUpdateBdAddr(AieRtxControl aieCtl, int col,
+                                              int row, size_t addr,
+                                              size_t bdId);
+MLIR_CAPI_EXPORTED void aieRtxExportSerializedTransaction(AieRtxControl aieCtl);
 
 #ifdef __cplusplus
 }
