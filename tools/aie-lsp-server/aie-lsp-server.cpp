@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// (c) Copyright 2024 AMD Inc.
+//
 // A server exposing AIE dialects to be used by IDE & editors supporting LSP
 // https://microsoft.github.io/language-server-protocol like Emacs, VScode, etc.
 //===----------------------------------------------------------------------===//
