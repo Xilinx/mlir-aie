@@ -19,14 +19,14 @@ module @duplicate_dma  {
     %15 = aie.dma_start(MM2S, 0, ^bb1, ^bb4)
   ^bb1:  // pred: ^bb0
     aiex.useToken @token0(Acquire, 1)
-    aie.dma_bd(%1 : memref<256xi32>, 0, 256)
+    aie.dma_bd(%1 : memref<256xi32>) { len = 256 : i32 }
     aiex.useToken @token0(Release, 2)
     aie.next_bd ^bb2
   ^bb2:  
     %16 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
   ^bb3:  
     aiex.useToken @token1(Acquire, 1)
-    aie.dma_bd(%1 : memref<256xi32>, 0, 256)
+    aie.dma_bd(%1 : memref<256xi32>) { len = 256 : i32 }
     aiex.useToken @token1(Release, 2)
     aie.next_bd ^bb4
   ^bb4:  // 4 preds: ^bb0, ^bb1, ^bb2, ^bb3

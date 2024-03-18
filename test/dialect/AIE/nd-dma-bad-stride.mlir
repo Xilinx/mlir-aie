@@ -22,7 +22,7 @@ module @tutorial_2b {
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-error@+1 {{'aie.dma_bd' op For <32b width datatypes, inner-most dim stride must be 1}}
-        aie.dma_bd(%buf14 : memref<128xi16>, 0, 128, [<size = 32, stride = 2>])
+        aie.dma_bd(%buf14 : memref<128xi16>, dims = [<size = 32, stride = 2>]) { len = 128 : i32 }
         aie.next_bd ^end
       ^end:
         aie.end

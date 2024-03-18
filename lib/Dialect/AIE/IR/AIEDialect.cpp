@@ -1567,7 +1567,7 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
-  if (auto dims = getDimensions(); dims.has_value()) {
+  if (auto dims = getDims(); dims.has_value()) {
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
       maxNDims = 4;

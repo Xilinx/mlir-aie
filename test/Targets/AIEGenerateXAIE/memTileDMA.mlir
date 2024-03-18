@@ -58,22 +58,22 @@ module @aie_module  {
       %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_1, "Release", 1)
       aie.next_bd ^bd0
     ^bd1:
       aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_0, "Release", 1)
       aie.next_bd ^bd1
     ^bd2:
       aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_3, "Release", 1)
       aie.next_bd ^bd2
     ^bd3:
       aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_2, "Release", 1)
       aie.next_bd ^bd3
     ^end:

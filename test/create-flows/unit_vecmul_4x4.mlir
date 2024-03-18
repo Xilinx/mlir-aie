@@ -26,21 +26,21 @@
 // CHECK:             %[[VAL_12:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_9]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_9]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_13:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_7]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_7]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_14:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_5]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -80,21 +80,21 @@
 // CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_29]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_30]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_30]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_29]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_33:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_27]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_28]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_28]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_27]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_34:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_25]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_26]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_26]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_25]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -134,21 +134,21 @@
 // CHECK:             %[[VAL_52:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_49]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_50]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_50]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_49]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_53:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_47]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_48]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_48]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_47]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_54:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_45]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_46]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_46]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_45]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -188,21 +188,21 @@
 // CHECK:             %[[VAL_72:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_69]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_70]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_70]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_69]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_73:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_67]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_68]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_68]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_67]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_74:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_65]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_66]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_66]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_65]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -241,21 +241,21 @@
 // CHECK:             %[[VAL_91:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_88]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_89]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_89]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_88]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_92:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_86]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_87]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_87]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_86]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_93:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_84]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_85]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_85]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_84]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -294,21 +294,21 @@
 // CHECK:             %[[VAL_110:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_107]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_108]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_108]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_107]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_111:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_105]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_106]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_106]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_105]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_112:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_103]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_104]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_104]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_103]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -348,21 +348,21 @@
 // CHECK:             %[[VAL_130:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_127]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_128]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_128]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_127]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_131:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_125]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_126]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_126]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_125]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_132:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_123]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_124]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_124]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_123]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -402,21 +402,21 @@
 // CHECK:             %[[VAL_150:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_147]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_148]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_148]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_147]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_151:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_145]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_146]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_146]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_145]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_152:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_143]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_144]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_144]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_143]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -455,21 +455,21 @@
 // CHECK:             %[[VAL_169:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_166]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_167]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_167]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_166]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_170:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_164]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_165]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_165]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_164]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_171:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_162]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_163]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_163]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_162]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -508,21 +508,21 @@
 // CHECK:             %[[VAL_188:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_185]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_186]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_186]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_185]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_189:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_183]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_184]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_184]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_183]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_190:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_181]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_182]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_182]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_181]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -562,21 +562,21 @@
 // CHECK:             %[[VAL_208:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_205]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_206]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_206]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_205]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_209:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_203]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_204]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_204]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_203]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_210:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_201]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_202]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_202]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_201]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -615,21 +615,21 @@
 // CHECK:             %[[VAL_227:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_224]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_225]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_225]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_224]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_228:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_222]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_223]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_223]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_222]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_229:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_220]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_221]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_221]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_220]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -667,21 +667,21 @@
 // CHECK:             %[[VAL_245:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_242]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_243]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_243]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_242]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_246:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_240]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_241]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_241]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_240]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_247:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_238]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_239]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_239]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_238]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -720,21 +720,21 @@
 // CHECK:             %[[VAL_264:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_261]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_262]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_262]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_261]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_265:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_259]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_260]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_260]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_259]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_266:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_257]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_258]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_258]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_257]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -774,21 +774,21 @@
 // CHECK:             %[[VAL_284:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_281]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_282]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_282]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_281]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_285:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_279]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_280]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_280]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_279]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_286:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_277]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_278]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_278]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_277]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -828,21 +828,21 @@
 // CHECK:             %[[VAL_304:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_301]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_302]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_302]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_301]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_305:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_299]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_300]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_300]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_299]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_306:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_297]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_298]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.dma_bd(%[[VAL_298]] : memref<64xi32, 2>) {len = 64 : i32}
 // CHECK:             aie.use_lock(%[[VAL_297]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
@@ -2971,21 +2971,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%9, Acquire, 0)
-      aie.dma_bd(%10 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%10 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%9, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%7, Acquire, 0)
-      aie.dma_bd(%8 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%8 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%7, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%5, Acquire, 1)
-      aie.dma_bd(%6 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%6 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%5, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3025,21 +3025,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%22, Acquire, 0)
-      aie.dma_bd(%23 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%23 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%22, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%20, Acquire, 0)
-      aie.dma_bd(%21 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%21 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%20, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%18, Acquire, 1)
-      aie.dma_bd(%19 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%19 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%18, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3079,21 +3079,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%35, Acquire, 0)
-      aie.dma_bd(%36 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%36 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%35, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%33, Acquire, 0)
-      aie.dma_bd(%34 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%34 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%33, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%31, Acquire, 1)
-      aie.dma_bd(%32 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%32 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%31, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3133,21 +3133,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%48, Acquire, 0)
-      aie.dma_bd(%49 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%49 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%48, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%46, Acquire, 0)
-      aie.dma_bd(%47 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%47 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%46, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%44, Acquire, 1)
-      aie.dma_bd(%45 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%45 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%44, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3186,21 +3186,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%60, Acquire, 0)
-      aie.dma_bd(%61 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%61 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%60, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%58, Acquire, 0)
-      aie.dma_bd(%59 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%59 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%58, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%56, Acquire, 1)
-      aie.dma_bd(%57 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%57 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%56, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3239,21 +3239,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%72, Acquire, 0)
-      aie.dma_bd(%73 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%73 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%72, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%70, Acquire, 0)
-      aie.dma_bd(%71 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%71 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%70, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%68, Acquire, 1)
-      aie.dma_bd(%69 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%69 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%68, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3293,21 +3293,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%85, Acquire, 0)
-      aie.dma_bd(%86 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%86 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%85, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%83, Acquire, 0)
-      aie.dma_bd(%84 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%84 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%83, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%81, Acquire, 1)
-      aie.dma_bd(%82 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%82 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%81, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3347,21 +3347,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%98, Acquire, 0)
-      aie.dma_bd(%99 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%99 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%98, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%96, Acquire, 0)
-      aie.dma_bd(%97 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%97 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%96, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%94, Acquire, 1)
-      aie.dma_bd(%95 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%95 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%94, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3400,21 +3400,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%110, Acquire, 0)
-      aie.dma_bd(%111 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%111 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%110, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%108, Acquire, 0)
-      aie.dma_bd(%109 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%109 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%108, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%106, Acquire, 1)
-      aie.dma_bd(%107 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%107 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%106, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3453,21 +3453,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%122, Acquire, 0)
-      aie.dma_bd(%123 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%123 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%122, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%120, Acquire, 0)
-      aie.dma_bd(%121 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%121 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%120, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%118, Acquire, 1)
-      aie.dma_bd(%119 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%119 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%118, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3507,21 +3507,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%135, Acquire, 0)
-      aie.dma_bd(%136 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%136 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%135, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%133, Acquire, 0)
-      aie.dma_bd(%134 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%134 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%133, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%131, Acquire, 1)
-      aie.dma_bd(%132 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%132 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%131, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3560,21 +3560,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%147, Acquire, 0)
-      aie.dma_bd(%148 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%148 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%147, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%145, Acquire, 0)
-      aie.dma_bd(%146 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%146 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%145, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%143, Acquire, 1)
-      aie.dma_bd(%144 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%144 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%143, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3612,21 +3612,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%158, Acquire, 0)
-      aie.dma_bd(%159 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%159 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%158, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%156, Acquire, 0)
-      aie.dma_bd(%157 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%157 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%156, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%154, Acquire, 1)
-      aie.dma_bd(%155 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%155 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%154, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3665,21 +3665,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%170, Acquire, 0)
-      aie.dma_bd(%171 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%171 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%170, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%168, Acquire, 0)
-      aie.dma_bd(%169 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%169 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%168, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%166, Acquire, 1)
-      aie.dma_bd(%167 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%167 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%166, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3719,21 +3719,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%183, Acquire, 0)
-      aie.dma_bd(%184 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%184 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%183, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%181, Acquire, 0)
-      aie.dma_bd(%182 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%182 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%181, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%179, Acquire, 1)
-      aie.dma_bd(%180 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%180 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%179, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2
@@ -3773,21 +3773,21 @@ module @vecmul_4x4  {
       %200 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%196, Acquire, 0)
-      aie.dma_bd(%197 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%197 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%196, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb4
       %201 = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
     ^bb3:  // 2 preds: ^bb2, ^bb3
       aie.use_lock(%194, Acquire, 0)
-      aie.dma_bd(%195 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%195 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%194, Release, 1)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb0
       %202 = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
     ^bb5:  // 2 preds: ^bb4, ^bb5
       aie.use_lock(%192, Acquire, 1)
-      aie.dma_bd(%193 : memref<64xi32, 2>, 0, 64)
+      aie.dma_bd(%193 : memref<64xi32, 2>) { len = 64 : i32 }
       aie.use_lock(%192, Release, 0)
       aie.next_bd ^bb5
     ^bb6:  // pred: ^bb2

@@ -71,22 +71,22 @@ module @test_chess_05_shim_dma_core_function {
         %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
       ^bd0:
         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_a_ping : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buf_a_ping : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%lock_a_read, Release, 1)
         aie.next_bd ^bd1
       ^bd1:
         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_a_pong : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buf_a_pong : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%lock_a_read, Release, 1)
         aie.next_bd ^bd0
       ^bd2:
         aie.use_lock(%lock_b_read, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_b_ping : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buf_b_ping : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%lock_b_write, Release, 1)
         aie.next_bd ^bd3
       ^bd3:
         aie.use_lock(%lock_b_read, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_b_pong : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buf_b_pong : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%lock_b_write, Release, 1)
         aie.next_bd ^bd2
       ^end:
@@ -112,12 +112,12 @@ module @test_chess_05_shim_dma_core_function {
         aie.dma_start(S2MM, 0, ^bd1, ^end)
       ^bd0:
         aie.use_lock(%lock1_read, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_in : memref<32 x i32>, 0, 32)
+        aie.dma_bd(%buffer_in : memref<32 x i32>) { len = 32 : i32 }
         aie.use_lock(%lock1_write, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
         aie.use_lock(%lock2_write, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_out : memref<32 x i32>, 0, 32)
+        aie.dma_bd(%buffer_out : memref<32 x i32>) { len = 32 : i32 }
         aie.use_lock(%lock2_read, Release, 1)
         aie.next_bd ^bd1
       ^end:

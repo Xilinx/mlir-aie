@@ -54,7 +54,7 @@ There are 2 tile DMAs connected to the local switchbox, each with a read and wri
     %dma1 = AIE.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
         AIE.use_lock(%lock14_6, "Acquire", 1)
-        AIE.dma_bd(%buf14: memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf14: memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
         AIE.use_lock(%lock14_6, "Release", 0)
         AIE.next_bd ^end
     ^end:
@@ -105,22 +105,22 @@ In a common scenario where we may declare 2x DMAs (1x MM2S, 1x S2MM), each with 
         %dma2 = AIE.dma_start("S2MM", 0, ^bd3, ^end)
     ^bd0:
         AIE.use_lock(%lock14_6, "Acquire", 0)
-        AIE.dma_bd(%buf14_1: memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf14_1: memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
         AIE.use_lock(%lock14_6, "Release", 1)
         AIE.next_bd ^bd1
     ^bd1:
         AIE.use_lock(%lock14_7, "Acquire", 0)
-        AIE.dma_bd(%buf14_2: memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf14_2: memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
         AIE.use_lock(%lock14_7, "Release", 1)
         AIE.next_bd ^bd0
     ^bd3:
         AIE.use_lock(%lock14_10, "Acquire", 0)
-        AIE.dma_bd(%buf14_3: memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf14_3: memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
         AIE.use_lock(%lock14_10, "Release", 1)
         AIE.next_bd ^bd4
     ^bd4:
         AIE.use_lock(%lock14_11, "Acquire", 0)
-        AIE.dma_bd(%buf14_4: memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf14_4: memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
         AIE.use_lock(%lock14_11, "Release", 1)
         AIE.next_bd ^bd3
     ^end:

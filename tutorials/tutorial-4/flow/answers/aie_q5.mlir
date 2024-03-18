@@ -56,7 +56,7 @@ module @tutorial_4 {
         aie.dma_start("MM2S", 0, ^bd0, ^end)
         ^bd0:
             aie.use_lock(%lock14_6, Acquire, 1)
-            aie.dma_bd(%buf14 : memref<256xi32>, 0, 256)
+            aie.dma_bd(%buf14 : memref<256xi32>) { offset = 0 : i32, len = 256 : i32 }
             aie.use_lock(%lock14_6, Release, 0)
             aie.next_bd ^bd0
         ^end:

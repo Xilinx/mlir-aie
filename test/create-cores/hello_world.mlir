@@ -17,7 +17,7 @@
 // CHECK:           %[[VAL_3:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<512xi32>, 0, 512)
+// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<512xi32>) {len = 512 : i32}
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
@@ -29,7 +29,7 @@
 // CHECK:           %[[VAL_7:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_5]] : memref<512xi32>, 0, 512)
+// CHECK:           aie.dma_bd(%[[VAL_5]] : memref<512xi32>) {len = 512 : i32}
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:

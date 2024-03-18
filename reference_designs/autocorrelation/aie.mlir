@@ -57,12 +57,12 @@ module @autocorrelation {
      aie.dma_start("S2MM", 0, ^bdout, ^end)
     ^bdin:
       aie.use_lock(%input_lock, "Acquire", 1)
-      aie.dma_bd(%input : memref<1024xi32>, 0, 1024)
+      aie.dma_bd(%input : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
       aie.use_lock(%input_lock, "Release", 0)
       aie.next_bd ^end
     ^bdout:
       aie.use_lock(%output_lock, "Acquire", 0)
-      aie.dma_bd(%output : memref<1024xi32>, 0, 1024)
+      aie.dma_bd(%output : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
       aie.use_lock(%output_lock, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -85,12 +85,12 @@ module @autocorrelation {
     aie.dma_start("MM2S", 0, ^bd1, ^end)
   ^bd0: 
     aie.use_lock(%buf1_in_lock, Acquire, 0)
-    aie.dma_bd(%buf1_in : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf1_in : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%buf1_in_lock, Release, 1)
     aie.next_bd ^end
   ^bd1: 
     aie.use_lock(%buf1_out_lock, Acquire, 1)
-    aie.dma_bd(%buf1_out : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf1_out : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%buf1_out_lock, Release, 0)
     aie.next_bd ^end
   ^end:
@@ -101,7 +101,7 @@ module @autocorrelation {
     aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     aie.use_lock(%buf2_in_lock, Acquire, 0)
-    aie.dma_bd(%buf2_in : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf2_in : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%buf2_in_lock, Release, 1)
     aie.next_bd ^end
   ^end:
@@ -112,7 +112,7 @@ module @autocorrelation {
     aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     aie.use_lock(%buf3_in_lock, Acquire, 0)
-    aie.dma_bd(%buf3_in : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf3_in : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%buf3_in_lock, Release, 1)
     aie.next_bd ^end
   ^end:
@@ -123,7 +123,7 @@ module @autocorrelation {
     aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0: 
     aie.use_lock(%buf4_in_lock, Acquire, 0)
-    aie.dma_bd(%buf4_in : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf4_in : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%buf4_in_lock, Release, 1)
     aie.next_bd ^end
   ^end:

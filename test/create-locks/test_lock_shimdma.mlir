@@ -25,7 +25,7 @@
 // CHECK:     %10 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
 // CHECK:     aie.use_lock(%2, Acquire, 0)
-// CHECK:     aie.dma_bd(%0 : memref<256xi32>, 0, 256)
+// CHECK:     aie.dma_bd(%0 : memref<256xi32>) {len = 256 : i32}
 // CHECK:     aie.use_lock(%2, Release, 1)
 // CHECK:     aie.next_bd ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
@@ -43,7 +43,7 @@
 // CHECK:     %10 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
 // CHECK:     aie.use_lock(%6, Acquire, 1)
-// CHECK:     aie.dma_bd(%7 : memref<256xi32>, 0, 256)
+// CHECK:     aie.dma_bd(%7 : memref<256xi32>) {len = 256 : i32}
 // CHECK:     aie.use_lock(%6, Release, 0)
 // CHECK:     aie.next_bd ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
@@ -73,7 +73,7 @@ module @test_lock_shimdma {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf_ext : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf_ext : memref<256xi32>) { len = 256 : i32 }
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^end:
@@ -91,7 +91,7 @@ module @test_lock_shimdma {
       %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33 : memref<256xi32>) { len = 256 : i32 }
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^end:
