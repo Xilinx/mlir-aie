@@ -8,11 +8,12 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Vector Scalar</ins>
+# <ins>Vector min</ins>
 
-Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector*scalar compute. The scale code is contained in scale.cc and linked against aie2.py which programs the data movement and connectivity of tiles. 
+Single tile traverses through a vector in memory and returns the min value in the vector. The tile that performs the operation is tile (6, 2) and the data is read from and written to external memory through Shim tile (6, 0). A buffer in tile (6, 2) is used to store the temporary min value during processing, which is then pushed through an object FIFO to the Shim tile when processing is complete.
 
-To compile the design:
+
+To compile design:
 ```
 make
 ```

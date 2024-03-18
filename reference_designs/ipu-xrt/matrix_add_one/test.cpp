@@ -10,7 +10,6 @@
 
 #include <boost/program_options.hpp>
 #include <cstdint>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -21,8 +20,13 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 64;
-constexpr int OUT_SIZE = 1;
+constexpr int IMAGE_WIDTH = 128;
+constexpr int IMAGE_HEIGHT = 16;
+constexpr int IMAGE_SIZE = (IMAGE_WIDTH * IMAGE_HEIGHT);
+
+constexpr int TILE_WIDTH = 16;
+constexpr int TILE_HEIGHT = 8;
+constexpr int TILE_SIZE = (TILE_WIDTH * TILE_HEIGHT);
 
 namespace po = boost::program_options;
 
@@ -135,24 +139,21 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
+  auto bo_inA = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
+  auto bo_inB = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  int32_t *bufInA = bo_inA.map<int32_t *>();
+  uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
+  for (int i = 0; i < IMAGE_SIZE; i++)
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-
-  bufInA[IN_SIZE / 2] = 654321; 
-  bufInA[IN_SIZE - 1] = 100;
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -170,18 +171,28 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  
-  uint32_t max_val = 0;
-  for (uint32_t i = 0; i < IN_SIZE; i++) {
-    uint32_t ref = (i + 1) * 3;
-    if (*(bufInA + i) > max_val) {
-      max_val = *(bufInA + i);
-    }
-  }
 
-  if(*bufOut != max_val) {
-    std::cout << "[ERROR] Maximum value is " << max_val << " but kernel returned " << *bufOut << "\n";
-    errors++;
+  for (int i = 0; i < IMAGE_SIZE; i++) {
+    uint32_t row = i / IMAGE_WIDTH;
+    uint32_t col = i % IMAGE_WIDTH;
+    uint32_t s = bufInA[i];
+    uint32_t d = bufOut[i];
+
+    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
+      if(d != s + 1) {
+        errors++;
+        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
+      }
+    }
+    else {
+      if(d == s + 1) {
+        errors++;
+        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed to be changed\n", row, col, s, d);
+      }
+    }
+
+    printf("s[%d, %d] = 0x%x\n", row, col, s);
+    printf("d[%d, %d] = 0x%x\n", row, col, d);
   }
 
   if (!errors) {
