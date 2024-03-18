@@ -10,21 +10,27 @@ include ../makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
-targetname = vectorScalar
+SHELL := /bin/bash
+
+targetname = passThroughHardware
+LENGTH ?= 4096
 
 all: build/final.xclbin build/insts.txt
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${LENGTH} > $@
 
-build/final.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+.PHONY: inst/insts.txt
+inst/insts.txt: aie2.py
+	rm -rf inst
+	mkdir -p inst 
+	python3 $< ${LENGTH} > inst/aie.mlir
+	pushd inst && aiecc.py --aie-only-generate-ipu --ipu-insts-name=insts.txt aie.mlir && popd
+	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 vck5000: build/aie.mlir
-	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+	aiecc.py -v --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
 						-I/opt/xaiengine/include \
 						-I$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/include \
             -I${ROCM_ROOT}/include \
@@ -37,6 +43,11 @@ vck5000: build/aie.mlir
             -Wl,-rpath,${ROCM_ROOT}/lib \
 						-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
+build/final.xclbin: build/aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
@@ -48,8 +59,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+run: ${targetname}.exe build/final.xclbin build/insts.txt
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf
