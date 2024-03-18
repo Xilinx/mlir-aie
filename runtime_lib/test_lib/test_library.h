@@ -20,6 +20,14 @@
 #include "hsa_ext_air.h"
 #endif
 
+
+#ifdef HSA_RUNTIME
+  template <typename T>
+  inline void mlir_aie_write_pkt(hsa_queue_t *q, uint32_t packet_id, T *pkt) {
+    reinterpret_cast<T *>(q->base_address)[packet_id] = *pkt;
+  }
+#endif
+
 extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
@@ -133,6 +141,8 @@ hsa_status_t mlir_aie_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q
                                          uint64_t packet_id, uint64_t doorbell,
                                          hsa_agent_dispatch_packet_t *pkt,
                                          bool destroy_signal = true);
+
+
 
 
 #endif

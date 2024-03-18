@@ -55,4 +55,4 @@ run: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf scale.o
+	rm -rf build _build inst aie.mlir.prj core_* test.elf scale.o*
