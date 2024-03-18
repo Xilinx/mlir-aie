@@ -61,7 +61,7 @@ module @aie_module {
       %10 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%5, Acquire, 0)
-      aie.dma_bd(%6 : memref<32xi32, 2>, 0, 32)
+      aie.dma_bd(%6 : memref<32xi32, 2>) { len = 32 : i32 }
       aie.use_lock(%5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0
@@ -73,7 +73,7 @@ module @aie_module {
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%10, Acquire, 1)
       aie.dma_bd_packet(6, 10)
-      aie.dma_bd(%7 : memref<32xi32>, 0, 32)
+      aie.dma_bd(%7 : memref<32xi32>) { len = 32 : i32 }
       aie.use_lock(%10, Release, 0)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0

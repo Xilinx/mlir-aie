@@ -25,19 +25,19 @@ aie.device(xcve2802) {
     ^dma1:
     aie.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf : memref<256xi32>) { len = 256 : i32 }
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf0 : memref<256xi32>) { len = 256 : i32 }
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf2 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf2 : memref<256xi32>) { len = 256 : i32 }
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf : memref<256xi32>) { len = 256 : i32 }
       aie.next_bd ^bd16
     ^bd16:
-      aie.dma_bd(%buf : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf : memref<256xi32>) { len = 256 : i32 }
       aie.end
   }
 }

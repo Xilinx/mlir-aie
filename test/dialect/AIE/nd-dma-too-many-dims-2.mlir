@@ -21,7 +21,7 @@ module @tutorial_2b {
           %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             //expected-error@+1 {{Cannot give more than 3 dimensions}}
-            aie.dma_bd(%buf33 : memref<128xi32>, 0, 128, [<size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>])
+            aie.dma_bd(%buf33 : memref<128xi32>, dims = [<size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>]) { len = 128 : i32 }
             aie.next_bd ^end
           ^end: 
             aie.end

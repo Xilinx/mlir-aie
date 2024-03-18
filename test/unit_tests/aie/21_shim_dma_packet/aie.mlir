@@ -34,7 +34,7 @@ module @kernel_gemm  {
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%5, Acquire, 1)
     aie.dma_bd_packet(0, 2)
-    aie.dma_bd(%6 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%6 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%5, Release, 0)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
@@ -64,14 +64,14 @@ module @kernel_gemm  {
     %43 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%13, Acquire, 0)
-    aie.dma_bd(%16 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%16 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%13, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
     %44 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
   ^bb3:  // 2 preds: ^bb2, ^bb3
     aie.use_lock(%11, Acquire, 1)
-    aie.dma_bd(%15 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%15 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%11, Release, 0)
     aie.next_bd ^bb3
   ^bb4:  // pred: ^bb2
@@ -79,7 +79,7 @@ module @kernel_gemm  {
   ^bb5:  // 2 preds: ^bb4, ^bb5
     aie.use_lock(%12, Acquire, 1)
     aie.dma_bd_packet(0, 3)
-    aie.dma_bd(%14 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%14 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%12, Release, 0)
     aie.next_bd ^bb5
   ^bb6:  // pred: ^bb4
@@ -134,7 +134,7 @@ module @kernel_gemm  {
     %43 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%22, Acquire, 0)
-    aie.dma_bd(%31 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%31 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%22, Release, 1)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
@@ -142,20 +142,20 @@ module @kernel_gemm  {
   ^bb3:  // 2 preds: ^bb2, ^bb4
     aie.use_lock(%24, Acquire, 0)
     aie.dma_bd_packet(0, 2)
-    aie.dma_bd(%29 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%29 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%24, Release, 1)
     aie.next_bd ^bb4
   ^bb4:  // pred: ^bb3
     aie.use_lock(%23, Acquire, 0)
     aie.dma_bd_packet(0, 3)
-    aie.dma_bd(%30 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%30 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%23, Release, 1)
     aie.next_bd ^bb3
   ^bb5:  // pred: ^bb2
     %45 = aie.dma_start(MM2S, 0, ^bb6, ^bb7)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     aie.use_lock(%25, Acquire, 1)
-    aie.dma_bd(%26 : memref<32x32xi32>, 0, 1024)
+    aie.dma_bd(%26 : memref<32x32xi32>) { len = 1024 : i32 }
     aie.use_lock(%25, Release, 0)
     aie.next_bd ^bb6
   ^bb7:  // pred: ^bb5

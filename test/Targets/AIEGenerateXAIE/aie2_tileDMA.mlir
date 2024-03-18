@@ -35,7 +35,7 @@ module @aie_module  {
       ^bd0:
         // Note: acquire and release are different locks.
         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_a_ping : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_a_ping : memref<256xi32>) { len = 256 : i32 }
         aie.use_lock(%lock_a_read, Release, 1)
         aie.next_bd ^end
       ^end:

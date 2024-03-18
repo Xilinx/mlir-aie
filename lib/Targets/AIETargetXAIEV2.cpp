@@ -118,8 +118,8 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
-      if (op.getDimensions()) {
-        dims = *op.getDimensions();
+      if (op.getDims()) {
+        dims = *op.getDims();
         ndims = dims.size();
       }
     }
@@ -205,14 +205,11 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                  << "/* QoS */ 0, "
                  << "/* Cache */ 0, "
                  << "/* Secure */ " << enable << "));\n";
-        } else {
-          if ((BaseAddrA + offsetA) % 4)
-            return memOp.emitError("bd address must be 4B (32b) aligned");
+        } else
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
                  << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
                  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
                  << " /* len */ " << lenA << "));\n";
-        }
       } else
         generateXAieDmaSetMultiDimAddr(output, ndims, dims, col, row, bdNum,
                                        BaseAddrA, offsetA, lenA,

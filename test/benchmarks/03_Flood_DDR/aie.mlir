@@ -35,7 +35,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l21_0, "Acquire", 0)
-      aie.dma_bd(%buf21_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf21_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l21_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -50,7 +50,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%l20, Acquire, 1)
-      aie.dma_bd(%buffer_out_20 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_20 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l20, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -78,7 +78,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l31_0, "Acquire", 0)
-      aie.dma_bd(%buf31_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf31_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l31_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -94,7 +94,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_30 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_30 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -122,7 +122,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l61_0, "Acquire", 0)
-      aie.dma_bd(%buf61_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf61_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l61_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -137,7 +137,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_60 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_60 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -168,7 +168,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l71_0, "Acquire", 0)
-      aie.dma_bd(%buf71_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf71_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l71_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -184,7 +184,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_70 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_70 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -215,7 +215,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l101_0, "Acquire", 0)
-      aie.dma_bd(%buf101_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf101_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l101_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -230,7 +230,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_100 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_100 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -258,7 +258,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l111_0, "Acquire", 0)
-      aie.dma_bd(%buf111_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf111_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l111_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -273,7 +273,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_110 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_110 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -301,7 +301,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l181_0, "Acquire", 0)
-      aie.dma_bd(%buf181_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf181_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l181_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -317,7 +317,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_180 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_180 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -346,7 +346,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l191_0, "Acquire", 0)
-      aie.dma_bd(%buf191_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf191_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l191_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -361,7 +361,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_190 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_190 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -389,7 +389,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l261_0, "Acquire", 0)
-      aie.dma_bd(%buf261_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf261_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l261_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -405,7 +405,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_260 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_260 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -434,7 +434,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l271_0, "Acquire", 0)
-      aie.dma_bd(%buf271_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf271_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l271_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -450,7 +450,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_270 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_270 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -478,7 +478,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l341_0, "Acquire", 0)
-      aie.dma_bd(%buf341_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf341_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l341_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -493,7 +493,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_340 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_340 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -521,7 +521,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l351_0, "Acquire", 0)
-      aie.dma_bd(%buf351_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf351_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l351_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -536,7 +536,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_350 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_350 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -557,7 +557,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l421, "Acquire", 0)
-      aie.dma_bd(%buf421_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf421_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l421, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -573,7 +573,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out_420 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_420 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -601,7 +601,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l431_0, "Acquire", 0)
-      aie.dma_bd(%buf431_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf431_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l431_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -617,7 +617,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%l430, Acquire, 1)
-      aie.dma_bd(%buffer_out_430 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_430 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l430, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -646,7 +646,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l461_0, "Acquire", 0)
-      aie.dma_bd(%buf461_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf461_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l461_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -661,7 +661,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%l460, Acquire, 1)
-      aie.dma_bd(%buffer_out_460 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_460 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l460, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -690,7 +690,7 @@ module @benchmark03_Flood_DDR {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
       ^bd0:
       aie.use_lock(%l471_0, "Acquire", 0)
-      aie.dma_bd(%buf471_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf471_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l471_0, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -706,7 +706,7 @@ module @benchmark03_Flood_DDR {
 
     ^bd0:
       aie.use_lock(%l470, Acquire, 1)
-      aie.dma_bd(%buffer_out_470 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out_470 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l470, Release, 0)
       aie.next_bd ^bd0
     ^end:

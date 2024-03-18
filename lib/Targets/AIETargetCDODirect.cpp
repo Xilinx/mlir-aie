@@ -282,7 +282,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
       baseAddr += BASE_ADDR_A_INCR;
   }
 
-  std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
+  std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDims();
   int lenInBytes = bdOp.getLenInBytes();
   int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {

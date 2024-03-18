@@ -151,22 +151,22 @@ module {
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
     ^bb2:  // 2 preds: ^bb0, ^bb3
       aie.use_lock(%lock_6_2, Acquire, 0)
-      aie.dma_bd(%buffer_6_2 : memref<8xi32>, 0, 8)
+      aie.dma_bd(%buffer_6_2 : memref<8xi32>) { len = 8 : i32 }
       aie.use_lock(%lock_6_2, Release, 1)
       aie.next_bd ^bb3
     ^bb3:  // pred: ^bb2
       aie.use_lock(%lock_6_2_3, Acquire, 0)
-      aie.dma_bd(%buffer_6_2_1 : memref<8xi32>, 0, 8)
+      aie.dma_bd(%buffer_6_2_1 : memref<8xi32>) { len = 8 : i32 }
       aie.use_lock(%lock_6_2_3, Release, 1)
       aie.next_bd ^bb2
     ^bb4:  // 2 preds: ^bb1, ^bb5
       aie.use_lock(%lock_6_2_4, Acquire, 1)
-      aie.dma_bd(%buffer_6_2_0 : memref<8xi32>, 0, 8)
+      aie.dma_bd(%buffer_6_2_0 : memref<8xi32>) { len = 8 : i32 }
       aie.use_lock(%lock_6_2_4, Release, 0)
       aie.next_bd ^bb5
     ^bb5:  // pred: ^bb4
       aie.use_lock(%lock_6_2_5, Acquire, 1)
-      aie.dma_bd(%buffer_6_2_2 : memref<8xi32>, 0, 8)
+      aie.dma_bd(%buffer_6_2_2 : memref<8xi32>) { len = 8 : i32 }
       aie.use_lock(%lock_6_2_5, Release, 0)
       aie.next_bd ^bb4
     ^bb6:  // pred: ^bb1

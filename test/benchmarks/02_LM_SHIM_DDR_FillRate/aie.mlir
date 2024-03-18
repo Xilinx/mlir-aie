@@ -26,7 +26,7 @@ module @benchmark_02_LM2DDR {
       %srcDma = aie.dma_start(MM2S, 1, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock_a_ping, "Acquire", 0)
-      aie.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buf71_0 : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock_a_ping, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -40,7 +40,7 @@ module @benchmark_02_LM2DDR {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
