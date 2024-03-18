@@ -173,7 +173,6 @@ int main(int argc, const char *argv[]) {
   
   uint32_t max_val = 0;
   for (uint32_t i = 0; i < IN_SIZE; i++) {
-    uint32_t ref = (i + 1) * 3;
     if (*(bufInA + i) > max_val) {
       max_val = *(bufInA + i);
     }

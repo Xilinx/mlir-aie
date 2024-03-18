@@ -8,16 +8,15 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Add One (with ObjectFIFOs)</ins>
+# <ins>Matrix Addition</ins>
 
-Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
+Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back. The DMA in the Shim tile is programmed to bring the bottom left `8x16` portion of a larger `16x128` matrix into the tile to perform the operation.
 
-The kernel executes on AIE tile (0, 2). Input data is brought to the local memory of the tile from Shim tile (0, 0), through Mem tile (0, 1). The size of the input data from the Shim tile is `16xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `8xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
+The kernel executes on AIE tile (6, 2). Input data is brought to the local memory of the tile from Shim tile (6, 0). The Shim tile is programmed with a 2D DMA to only bring a 2D submatrix into the AIE tile for processing. 
 
-To compile desing in Windows:
+To compile the design:
 ```
 make
-make build/addOneObjfifo.exe
 ```
 
 To run the design:

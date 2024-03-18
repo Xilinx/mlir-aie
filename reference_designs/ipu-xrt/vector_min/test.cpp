@@ -147,11 +147,11 @@ int main(int argc, const char *argv[]) {
 
   int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_SIZE; i++)
+  for (int i = 100; i < 100 + IN_SIZE; i++)
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  bufInA[IN_SIZE / 2] = 654321; 
+  bufInA[IN_SIZE / 2] = 4; 
   bufInA[IN_SIZE - 1] = 100;
 
   void *bufInstr = bo_instr.map<void *>();
@@ -171,16 +171,15 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
   
-  uint32_t max_val = 0;
+  uint32_t min_val = 1000000;
   for (uint32_t i = 0; i < IN_SIZE; i++) {
-    uint32_t ref = (i + 1) * 3;
-    if (*(bufInA + i) > max_val) {
-      max_val = *(bufInA + i);
+    if (*(bufInA + i) < min_val) {
+      min_val = *(bufInA + i);
     }
   }
 
-  if(*bufOut != max_val) {
-    std::cout << "[ERROR] Maximum value is " << max_val << " but kernel returned " << *bufOut << "\n";
+  if(*bufOut != min_val) {
+    std::cout << "[ERROR] Min value is " << min_val << " but kernel returned " << *bufOut << "\n";
     errors++;
   }
 

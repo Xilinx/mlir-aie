@@ -15,7 +15,6 @@ Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` 
 To compile desing in Windows:
 ```
 make
-make build/vectorScalar.exe
 ```
 
 To run the design:

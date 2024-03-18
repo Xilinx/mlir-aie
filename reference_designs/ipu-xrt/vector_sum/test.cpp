@@ -171,16 +171,13 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
   
-  uint32_t max_val = 0;
+  uint32_t sum_val = 0;
   for (uint32_t i = 0; i < IN_SIZE; i++) {
-    uint32_t ref = (i + 1) * 3;
-    if (*(bufInA + i) > max_val) {
-      max_val = *(bufInA + i);
-    }
+    sum_val += *(bufInA + i);
   }
 
-  if(*bufOut != max_val) {
-    std::cout << "[ERROR] Maximum value is " << max_val << " but kernel returned " << *bufOut << "\n";
+  if(*bufOut != sum_val) {
+    std::cout << "[ERROR] Maximum value is " << sum_val << " but kernel returned " << *bufOut << "\n";
     errors++;
   }
 

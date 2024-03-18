@@ -10,12 +10,13 @@
 
 # <ins>Vector Scalar</ins>
 
-Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector*scalar compute.
+Single tile performs a very simple `+` operations from two vectors loaded into memory. The tile then stores the sum of those two vectors back to external memory. 
 
-To compile desing in Windows:
+The kernel executes on AIE tile (6, 2). Both input vectors are brought into the tile from Shim tile (6, 0). The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
+
+To compile the design:
 ```
 make
-make build/vectorScalar.exe
 ```
 
 To run the design:
