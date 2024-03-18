@@ -129,6 +129,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
   // have been created and should be used
+  DenseMap<ObjectFifoCreateOp, int>
+      objFifoMemBanks; // maps each ObjectFifoCreateOp to the index of the
+  // next bank to use for its lowered AIE.buffer object
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -212,6 +215,54 @@ struct AIEObjectFifoStatefulTransformPass
     return size;
   }
 
+  void updateMemBanksIndex(ObjectFifoCreateOp op) {
+    int current = objFifoMemBanks[op];
+    int next = (current + 1) % 4;
+    objFifoMemBanks[op] = next;
+  }
+
+  int getMemBank(ObjectFifoCreateOp op, TileOp tile) {
+    if (tile.isMemTile())
+      return -1;
+
+    if (op.size() > 2)
+      return -1;
+
+    int mem_bank = 0;
+    // check if mem_bank for this objfifo already exists
+    if (objFifoMemBanks.find(op) != objFifoMemBanks.end()) {
+      mem_bank = objFifoMemBanks[op];
+      updateMemBanksIndex(op);
+      return mem_bank;
+
+    } else {
+      // check if this objfifo must avoid sharing banks with another
+      if (op->hasAttr("objFifo_name")) {
+        ObjectFifoCreateOp other_op = op.getOtherObjectFifo();
+        // check if other objfifo was split
+        for (auto pair : splitFifos) {
+          if (pair.first.name() == other_op.name()) {
+            // if yes, get sym_name of split end
+            for (auto consumer : pair.second) {
+              if (consumer.getProducerTile() == tile.getResult()) {
+                other_op = consumer;
+                break;
+              }
+            }
+          }
+        }
+        if (objFifoMemBanks.find(other_op) != objFifoMemBanks.end()) {
+          mem_bank = objFifoMemBanks[other_op];
+        }
+      }
+      objFifoMemBanks[op] = mem_bank;
+      updateMemBanksIndex(op);
+      return mem_bank;
+    }
+
+    return -1;
+  }
+
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
@@ -235,7 +286,7 @@ struct AIEObjectFifoStatefulTransformPass
     auto ofName = builder.getStringAttr(name);
     auto fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype,
-        dimensionsToStream, dimensionsFromStreamPerConsumer);
+        dimensionsToStream, dimensionsFromStreamPerConsumer, nullptr);
     return fifo;
   }
 
@@ -362,11 +413,23 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile,
-            builder.getStringAttr(op.name().str() + "_buff_" +
-                                  std::to_string(of_elem_index)),
-            /*address*/ nullptr, /*initial_value*/ nullptr);
+        int mem_bank = getMemBank(op, creation_tile);
+        BufferOp buff;
+        if (mem_bank >= 0) {
+          buff = builder.create<BufferOp>(
+              builder.getUnknownLoc(), elemType, creation_tile,
+              builder.getStringAttr(op.name().str() + "_buff_" +
+                                    std::to_string(of_elem_index)),
+              /*address*/ nullptr, /*initial_value*/ nullptr,
+              builder.getI32IntegerAttr(mem_bank));
+        } else {
+          buff = builder.create<BufferOp>(
+              builder.getUnknownLoc(), elemType, creation_tile,
+              builder.getStringAttr(op.name().str() + "_buff_" +
+                                    std::to_string(of_elem_index)),
+              /*address*/ nullptr, /*initial_value*/ nullptr,
+              /*mem_bank*/ nullptr);
+        }
         buffers.push_back(buff);
       }
       of_elem_index++;
@@ -1217,6 +1280,8 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
+        consumerFifo->setAttr("objFifo_name", 
+            createOp->getAttrOfType<FlatSymbolRefAttr>("objFifo_name"));
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo

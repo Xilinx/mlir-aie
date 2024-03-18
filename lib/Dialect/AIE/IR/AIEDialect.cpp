@@ -543,6 +543,18 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   }
 }
 
+ObjectFifoCreateOp ObjectFifoCreateOp::getOtherObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName().value());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
+    }
+  }
+  return {};
+}
+
 } // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
