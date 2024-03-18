@@ -359,12 +359,10 @@ void AIEDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
-
       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
-
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
@@ -1549,71 +1547,40 @@ LogicalResult DMABDOp::verify() {
         "BDs only support BufferOp or ExternalBufferOp operands.");
 
   if (getLenInBytes() % 4)
-    return emitOpError("transfer length must be multiple of 4B (32b)");
+    return emitOpError("transfer length must be multiple of 4 (i.e., represent "
+                       "4 byte aligned address)");
 
-  if (getOperation()->getParentOfType<MemOp>()) {
-    auto memOp = getOperation()->getParentOfType<MemOp>();
-    if (auto bufferOp = getBufferOp();
-        bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
-        bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
-      return emitOpError(
-          "Core tile DMAs can only access a buffer in the same tile.");
-    if (std::optional<int32_t> bdId = getBdId(); bdId.has_value() && *bdId > 15)
-      return emitOpError("Core tile DMAs have at most 16 buffer descriptors");
-    if (std::optional<int32_t> nextBdId = getNextBdId();
-        nextBdId.has_value() && *nextBdId > 15)
-      return emitOpError("Core tile DMAs have at most 16 buffer descriptors");
-  } else if (getOperation()->getParentOfType<ShimDMAOp>()) {
-    if (!isa<ExternalBufferOp>(getBuffer().getDefiningOp()))
-      return emitOpError("Shim tile DMAs can only access external buffers");
-    if (std::optional<int32_t> bdId = getBdId(); bdId.has_value() && *bdId > 15)
-      return emitOpError("Shim tile DMAs have at most 16 buffer descriptors");
-    if (std::optional<int32_t> nextBdId = getNextBdId();
-        nextBdId.has_value() && *nextBdId > 15)
-      return emitOpError("Shim tile DMAs have at most 16 buffer descriptors");
-  } else {
-    assert(getOperation()->getParentOfType<MemTileDMAOp>() &&
-           "expected MemTileDMAOp parent");
-    auto memOp = getOperation()->getParentOfType<MemTileDMAOp>();
-    if (auto bufferOp = getBufferOp();
-        bufferOp.getTileOp().rowIndex() != memOp.rowIndex() ||
-        std::abs(bufferOp.getTileOp().colIndex() - memOp.colIndex()) > 1)
-      return emitOpError("Mem tile DMAs can only access adjacent mem tiles");
-    // TODO(max): check even channel -> <24; odd channel -> > 24
-    if (std::optional<int32_t> bdId = getBdId(); bdId.has_value() && *bdId > 47)
-      return emitOpError("Memtile DMAs have at most 48 buffer descriptors");
-    if (std::optional<int32_t> nextBdId = getNextBdId();
-        nextBdId.has_value() && *nextBdId > 47)
-      return emitOpError("Memtile DMAs have at most 48 buffer descriptors");
-    if (auto dims = getDimensions(); dims.has_value()) {
-      TileElement tile = getParentTileElement(getOperation());
-      if (getTargetModel(getOperation())
-              .isMemTile(tile.getTileID().col, tile.getTileID().row)) {
-        if (dims->size() == 4 && dims->back().getStride() != 1)
-          return emitOpError(
-              "Only stride = 1 supported for inner-most (4th) dim");
-      } else if (dims->size() == 4 && dims->back().getStride() != 1)
-        return emitOpError(
-            "Only stride = 1 supported for inner-most (4th) dim");
-    }
-  }
+  TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
-  // The following checks only apply if non-default strides/wraps are defined.
-  if (getDimensions()) {
-    ArrayRef<BDDimLayoutAttr> dims = *getDimensions();
+  if (getOperation()->getParentOfType<MemOp>() &&
+      (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
+       getBufferOp().getTileOp().rowIndex() != parentTileId.row))
+    return emitOpError(
+        "Core tile DMAs can only access a buffer in the same tile.");
+
+  const AIETargetModel &targetModel = getTargetModel(getOperation());
+
+  uint32_t maxBds = targetModel.getNumBDs(parentTileId.col, parentTileId.row);
+  if (std::optional<int32_t> bdId = getBdId();
+      bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds)
+    return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
+  if (std::optional<int32_t> nextBdId = getNextBdId();
+      nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
+    return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+  if (auto dims = getDimensions(); dims.has_value()) {
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
       maxNDims = 4;
-    if (dims.size() > maxNDims)
+    if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
                            << " dimensions for step sizes and wraps in this "
                               " tile (got "
-                           << std::to_string(dims.size()) << " dimensions).";
+                           << std::to_string(dims->size()) << " dimensions).";
 
     MemRefType buffer = getBuffer().getType();
     int64_t maxIdx = 0;
-    for (BDDimLayoutAttr dim : dims) {
+    for (BDDimLayoutAttr dim : *dims) {
       maxIdx += dim.getStride() * (dim.getSize() - 1);
       if (0 == dim.getStride())
         return emitOpError()
@@ -1638,9 +1605,19 @@ LogicalResult DMABDOp::verify() {
     // Since streams read 32b words, there's no way to read eg 16b with stride
     // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
     // CDODirect/XAIEV2 scale the size by 4/getBufferElementTypeWidthInBytes).
-    if (getBufferElementTypeWidthInBytes() < 4 && dims.back().getStride() != 1)
-      return emitOpError()
-             << "For <32b width datatypes, inner-most dim stride must be 1";
+    if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
+      return emitOpError(
+          "For <32b width datatypes, inner-most dim stride must be 1");
+  }
+  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
+      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+    if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
+      int offsetInBytes = *baseAddr + getOffsetInBytes();
+      if (offsetInBytes % 4)
+        return emitOpError(
+                   "bd address must be 4 byte (32b) aligned; got base+offset: ")
+               << offsetInBytes << " (bytes)";
+    }
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())

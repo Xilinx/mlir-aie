@@ -845,18 +845,14 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
     ## Important gotcha regarding strides
 
     All strides are expressed in multiples of the element width (just like `len` and `offset`)
-    **with the caveat that the inner-most dimension's stride must be a multiple of 32b**.
-    I.e., `(stride_0 * element_width) % 32 == 0`. For example, if you are striding a `memref<512xi16>`,
-    `stride_0` cannot be 1 (or 3, or 5, ...). The reason for this requirement is stream access to DMA memory is 32b
-    aligned (and thus, for the `memref<512xi16>` example, a stride of 1 would require 16b, half-word, access, which isn't possible).
-
+    **with the caveat that the inner-most dimension's stride must be 1**.
   }];
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        // in words (multiples of element width) not bytes
+        // in multiples of element width (not bytes)
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$offset,
-        // in words (multiples of element width) not bytes
+        // in multiples of element width (not bytes)
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<AIEI32Attr>:$bd_id,

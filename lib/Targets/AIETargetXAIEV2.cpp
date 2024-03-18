@@ -118,9 +118,6 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
-      if ((BaseAddrA + offsetA) % 4)
-        return op.emitOpError("bd address must be 4B (32b) aligned");
-
       if (op.getDimensions()) {
         dims = *op.getDimensions();
         ndims = dims.size();

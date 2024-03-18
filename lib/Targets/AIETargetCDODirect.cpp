@@ -287,8 +287,6 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
   int lenInBytes = bdOp.getLenInBytes();
   int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
-  if (basePlusOffsetInBytes % 4)
-    return bdOp.emitOpError("bd address must be 4B (32b) aligned");
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
@@ -319,7 +317,6 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                                      elementWidthIn32bWords);
       }
       stride = stride > 0 ? stride : 1;
-      std::cerr << "stride: " << stride << "\n";
       // Assume AIE-ML architecture (ie use AieMlDimDesc instead of AieDimDesc);
       // asserted in AIETranslateToCDODirect).
       dmaTileBdTensor.Dim[j].AieMlDimDesc = {stride, size};
