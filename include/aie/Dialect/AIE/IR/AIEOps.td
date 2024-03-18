@@ -863,7 +863,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
+    `(` $buffer `:` type($buffer) (`,` $dimensions^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
