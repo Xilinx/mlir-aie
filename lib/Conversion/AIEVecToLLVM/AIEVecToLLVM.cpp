@@ -364,6 +364,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
+    // TODO: datatype and vector lane checks
+
     // create constant for config
     auto confCst = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(824));
@@ -406,6 +408,8 @@ public:
   matchAndRewrite(aievec::SRSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
+
+    // TODO: datatype and vector lane checks
 
     // create constant for sign
     auto signCst = rewriter.create<LLVM::ConstantOp>(
