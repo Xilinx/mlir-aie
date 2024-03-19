@@ -365,6 +365,7 @@ public:
     Location loc = op.getLoc();
 
     // TODO: datatype and vector lane checks
+    // TODO: support of various datatypes and vector lanes
 
     // create constant for config
     auto confCst = rewriter.create<LLVM::ConstantOp>(
@@ -410,6 +411,7 @@ public:
     Location loc = op.getLoc();
 
     // TODO: datatype and vector lane checks
+    // TODO: support of various datatypes and vector lanes
 
     // create constant for sign
     auto signCst = rewriter.create<LLVM::ConstantOp>(
