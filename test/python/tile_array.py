@@ -17,6 +17,7 @@ from aie.dialects.aie import (
     WireBundle,
     find_neighbors,
 )
+from aie.util import extract_patches
 from aie.dialects.aiex import TileArray, Channel
 from util import construct_and_print_module
 
@@ -275,7 +276,6 @@ def neighbors(module):
 # CHECK-LABEL: channels_basic
 @construct_and_print_module
 def channels_basic(module):
-
     # CHECK-LABEL: test-basic
     print("test-basic")
 
@@ -405,3 +405,15 @@ def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this
         # CHECK: (1, 1) MemRef(%buffer_3_3_4, memref<7x8xi32>)
         for idx, c in np.ndenumerate(cs):
             print(idx, c)
+
+
+@lambda f: f()
+def test_extract_patches():
+    sizes = (32, 32)
+    image = np.zeros(sizes, dtype=np.int32)
+    patch_shape = (8, 8)
+    extracted_patches = extract_patches(
+        image, patch_shape=patch_shape, extraction_step=patch_shape
+    )
+    print(extracted_patches.shape)
+    print(np.array(extracted_patches.strides) // 4)

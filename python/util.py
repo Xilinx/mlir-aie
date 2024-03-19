@@ -1,11 +1,12 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-import inspect
 import multiprocessing
 import numbers
 import os
 from collections import defaultdict
 from typing import List, Tuple, Dict, Set
+import numpy as np
+from numpy.lib.stride_tricks import as_strided
 
 
 def build_graph(max_cols, max_rows, target_model):
@@ -505,3 +506,28 @@ def _to_js(sizes_strides):
         {sizes_strides}
     ])
     """
+
+
+# based on https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/feature_extraction/image.py#L290
+def extract_patches(arr, patch_shape=8, extraction_step=1):
+    arr_ndim = arr.ndim
+
+    if isinstance(patch_shape, numbers.Number):
+        patch_shape = tuple([patch_shape] * arr_ndim)
+    if isinstance(extraction_step, numbers.Number):
+        extraction_step = tuple([extraction_step] * arr_ndim)
+
+    patch_strides = arr.strides
+
+    slices = tuple(slice(None, None, st) for st in extraction_step)
+    indexing_strides = arr[slices].strides
+
+    patch_indices_shape = (
+        (np.array(arr.shape) - np.array(patch_shape)) // np.array(extraction_step)
+    ) + 1
+
+    shape = tuple(list(patch_indices_shape) + list(patch_shape))
+    strides = tuple(list(indexing_strides) + list(patch_strides))
+
+    patches = as_strided(arr, shape=shape, strides=strides)
+    return patches
