@@ -7,9 +7,7 @@
 
 add_subdirectory(AIEVecToCpp)
 
-set(LLVM_OPTIONAL_SOURCES AIETargetAirbin.cpp)
-
-set(_sources
+add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
@@ -21,15 +19,8 @@ set(_sources
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp
-)
 
-if(AIE_ENABLE_AIRBIN)
-  list(APPEND _sources AIETargetAirbin.cpp)
-endif()
-
-add_mlir_library(AIETargets
-  ${_sources}
-
+  PARTIAL_SOURCES_INTENDED
   ENABLE_AGGREGATION
 
   ADDITIONAL_HEADER_DIRS
@@ -55,6 +46,26 @@ add_mlir_library(AIETargets
   ADF
 )
 
+if(AIE_ENABLE_AIRBIN)
+  add_mlir_library(AIETargetAirbin
+    AIETargetAirbin.cpp
+
+    PARTIAL_SOURCES_INTENDED
+
+    LINK_COMPONENTS
+    Support
+
+    LINK_LIBS PRIVATE
+    elf
+
+    LINK_LIBS PUBLIC
+    AIE
+    AIEX
+  )
+  target_link_libraries(AIETargets PUBLIC AIETargetAirbin)
+  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_AIRBIN)
+endif()
+
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
 add_dependencies(obj.AIETargets xaienginecdo_static xaienginecdo_static-headers)
 # for #include <elf.h>
@@ -62,7 +73,3 @@ set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 target_include_directories(AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 target_include_directories(obj.AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
 
-if(AIE_ENABLE_AIRBIN)
-  target_link_libraries(AIETargets PRIVATE elf)
-  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_AIRBIN)
-endif()

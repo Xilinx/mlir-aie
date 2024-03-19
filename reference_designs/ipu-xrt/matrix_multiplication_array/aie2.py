@@ -5,6 +5,9 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import sys
+import argparse
+
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
@@ -12,10 +15,19 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 
 
-def my_matmul():
-    M = 512
-    K = 512
-    N = 512
+def main():
+    argparser = argparse.ArgumentParser(
+        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        description="Emits MLIR code for a matrix multiplication design of the given input size",
+    )
+    argparser.add_argument("-M", type=int, default=512)
+    argparser.add_argument("-K", type=int, default=512)
+    argparser.add_argument("-N", type=int, default=512)
+    args = argparser.parse_args()
+    my_matmul(args.M, args.K, args.N)
+
+
+def my_matmul(M=512, K=512, N=512):
     m = 64
     k = 64
     n = 64
@@ -38,7 +50,7 @@ def my_matmul():
     M_div_m_div_n_rows = M // (m * n_rows)
     K_div_k = K // k
     N_div_n = N // n
-    tiles = M_div_m * N_div_n // n_rows
+    tiles = M_div_m * N_div_n // n_cores
     N_div_n_div_n_cols = N_div_n // n_cols
 
     # Matrix A: MxK, submatrices a: mxk
@@ -64,8 +76,8 @@ def my_matmul():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * k * n_rows, T.bf16())
-            memRef_inB_ty = T.memref(k * n * 1, T.bf16())
+            memRef_inA_ty = T.memref(m * k, T.bf16())
+            memRef_inB_ty = T.memref(k * n, T.bf16())
             memRef_outC_ty = T.memref(m * n * n_rows, T.bf16())
             memRef_A_ty = T.memref(m, k, T.bf16())
             memRef_B_ty = T.memref(k, n, T.bf16())
@@ -185,10 +197,10 @@ def my_matmul():
                     2,
                     memRef_A_ty,
                     [
-                        (m // r, r * k * word_size_in // 4),
-                        (k // s, s * word_size_in // 4),
-                        (r, k * word_size_in // 4),
-                        (s * word_size_in // 4, 1),
+                        (m // r, r * k),
+                        (k // s, s),
+                        (r, k),
+                        (s, 1),
                     ],
                 )
                 object_fifo_link(inA_fifo_names[i], memA_fifo_names[i])
@@ -209,10 +221,10 @@ def my_matmul():
                     2,
                     memRef_B_ty,
                     [
-                        (k // s, s * n * word_size_in // 4),
-                        (n // t, t * word_size_in // 4),
-                        (s, n * word_size_in // 4),
-                        (t * word_size_in // 4, 1),
+                        (k // s, s * n),
+                        (n // t, t),
+                        (s, n),
+                        (t, 1),
                     ],
                 )
                 object_fifo_link(inB_fifo_names[i], memB_fifo_names[i])
@@ -234,10 +246,10 @@ def my_matmul():
                     2,
                     memRef_outC_ty,
                     [
-                        (m // r, r * n * word_size_out // 4),
-                        (r, t * word_size_out // 4),
-                        (n // t, r * t * word_size_out // 4),
-                        (t * word_size_out // 4, 1),
+                        (m // r, r * n),
+                        (r, t),
+                        (n // t, r * t),
+                        (t, 1),
                     ],
                 )
                 object_fifo_link(memC_fifo_names[i], outC_fifo_names[i])
@@ -361,4 +373,8 @@ def my_matmul():
     print(ctx.module)
 
 
-my_matmul()
+if __name__ == "__main__":
+    main()
+else:
+    print("Not meant to be imported")
+    sys.exit(1)

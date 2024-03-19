@@ -25,24 +25,9 @@
 #include "xrt/xrt_kernel.h"
 
 #include "../matrix_multiplication.h"
-
-constexpr int M = 512;
-constexpr int K = 512;
-constexpr int N = 512;
-
-constexpr int A_VOLUME = M * K;
-constexpr int B_VOLUME = N * K;
-constexpr int C_VOLUME = M * N;
-
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = std::bfloat16_t;
-
-constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
-constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
-constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
-
-constexpr bool VERIFY = true;
 
 namespace po = boost::program_options;
 
@@ -54,11 +39,31 @@ int main(int argc, const char *argv[]) {
   matmul_common::add_default_options(desc);
   matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+  int do_verify = vm["verify"].as<bool>();
+  int n_iterations = vm["iters"].as<int>();
+  int n_warmup_iterations = vm["warmup"].as<int>();
 
   srand(time(NULL));
 
+  int M = vm["M"].as<int>();
+  int K = vm["K"].as<int>();
+  int N = vm["N"].as<int>();
+
+  if (verbosity >= 1) {
+    std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
+  }
+
+  int A_VOLUME = M * K;
+  int B_VOLUME = N * K;
+  int C_VOLUME = M * N;
+
+  int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
+  int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
+  int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
+
   std::vector<uint32_t> instr_v =
       matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
+
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -140,7 +145,7 @@ int main(int argc, const char *argv[]) {
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  unsigned num_iter = 10;
+  unsigned num_iter = n_iterations + n_warmup_iterations;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
@@ -157,16 +162,19 @@ int main(int argc, const char *argv[]) {
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
-
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+    if (iter < n_warmup_iterations) {
+      /* Warmup iterations do not count towards average runtime. */
+      continue;
+    }
+
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
-    std::vector<C_DATATYPE> CVecRef(C_VOLUME);
-    if (VERIFY) {
+    if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      matmul_common::matmul(M, N, K, AVec, BVec, CVecRef);
       errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
@@ -190,20 +198,20 @@ int main(int argc, const char *argv[]) {
   }
 
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total / num_iter << "us."
+            << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us."
             << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / num_iter)
-            << std::endl;
+  std::cout << "Avg NPU gflops: "
+            << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
-  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
+  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
 
   std::cout << std::endl
             << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
-  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
+  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
-  if (VERIFY && !errors) {
+  if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
