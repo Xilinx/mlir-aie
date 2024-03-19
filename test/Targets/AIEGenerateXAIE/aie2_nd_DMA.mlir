@@ -15,11 +15,11 @@
 // CHECK: if(NULL == dma_tile_2_1_bd_0_tensor.Dim){
 // CHECK:   return 1;
 // CHECK: }
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[3].AieMlDimDesc = { /* StepSize */ 1, /* Size */ 2};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[2].AieMlDimDesc = { /* StepSize */ 2, /* Size */ 3};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[1].AieMlDimDesc = { /* StepSize */ 4, /* Size */ 2};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[0].AieMlDimDesc = { /* StepSize */ 1, /* Size */ 1};
-// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 128 * 4));
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[3].AieMlDimDesc = { /* Stride */ 1, /* Size */ 2};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[2].AieMlDimDesc = { /* Stride */ 2, /* Size */ 3};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[1].AieMlDimDesc = { /* Stride */ 4, /* Size */ 2};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[0].AieMlDimDesc = { /* Stride */ 1, /* Size */ 1};
+// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 512));
 
 module @aie_module  {
  aie.device(xcve2302) {
@@ -44,22 +44,22 @@ module @aie_module  {
       %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>])
+      aie.dma_bd(%buf01_0 : memref<16xi32>, dims = [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>]) { len = 128 : i32 }
       aie.use_lock(%l01_1, "Release", 1)
       aie.next_bd ^bd0
     ^bd1:
       aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_0, "Release", 1)
       aie.next_bd ^bd1
     ^bd2:
       aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_3, "Release", 1)
       aie.next_bd ^bd2
     ^bd3:
       aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_2, "Release", 1)
       aie.next_bd ^bd3
     ^end:

@@ -89,20 +89,14 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int packetID = 0;
     bool foundBd = false;
     int lenA = 0;
-    int lenB = 0;
-    int bytesA = 0;
-    int bytesB = 0;
     int offsetA = 0;
     int BaseAddrA = 0;
-    bool hasA = false;
-    bool hasB = false;
+    int elementWidthInBytes = 0;
     int ndims = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block.template getOps<DMABDOp>()) {
       foundBd = true;
-      ShapedType bufferType =
-          op.getBuffer().getType().template cast<::mlir::MemRefType>();
       if (!targetModel.isShimNOCTile(col, row)) {
         assert(op.getBufferOp().getAddress() &&
                "buffer must have address assigned");
@@ -121,13 +115,11 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         }
       }
 
-      lenA = op.getLenValue();
-      bytesA = bufferType.getElementTypeBitWidth() / 8;
-      offsetA = op.getOffsetValue() * bytesA;
-      hasA = true;
-
-      if (op.getDimensions()) {
-        dims = *op.getDimensions();
+      lenA = op.getLenInBytes();
+      offsetA = op.getOffsetInBytes();
+      elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
+      if (op.getDims()) {
+        dims = *op.getDims();
         ndims = dims.size();
       }
     }
@@ -136,13 +128,6 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       return memOp.emitOpError("DMA contains at least one multi-dimensional "
                                "buffer descriptor. This is currently only "
                                "supported for AIE-ML devices.");
-
-    if (hasA && hasB) {
-      if (lenA != lenB)
-        llvm::errs() << "ABmode must have matching lengths.\n";
-      if (bytesA != bytesB)
-        llvm::errs() << "ABmode must have matching element data types.\n";
-    }
 
     int acqValue = 0, relValue = 0;
     bool hasAcq = false, hasRel = false;
@@ -186,8 +171,6 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
     int bdNum = blockMap[&block];
     if (foundBd) {
-      // TODO AB mode separated
-
       // TODO For now, we are going to name each dma desc with loc and bd
       // which we assume is unique. This is strictly not enforced but in
       // practice, this is true
@@ -214,7 +197,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                  << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
                  << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
                  << bdNum << "(), "
-                 << " /* len */ " << lenA << " * " << bytesA << "));\n";
+                 << " /* len */ " << lenA << "));\n";
           output << "__mlir_aie_try(XAie_DmaSetAxi("
                  << tileDMAInstRefStr(col, row, bdNum) << ", "
                  << "/* smid */ 0, "
@@ -226,10 +209,11 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
                  << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
                  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
-                 << " /* len */ " << lenA << " * " << bytesA << "));\n";
+                 << " /* len */ " << lenA << "));\n";
       } else
         generateXAieDmaSetMultiDimAddr(output, ndims, dims, col, row, bdNum,
-                                       BaseAddrA, offsetA, lenA, bytesA, "1");
+                                       BaseAddrA, offsetA, lenA,
+                                       elementWidthInBytes, "1");
 
       if (block.getNumSuccessors() > 0) {
         Block *nextBlock = block.getSuccessors()[0]; // should have only one
@@ -560,7 +544,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           blockMap[&block] = bdNum;
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
-            offset = op.getOffsetValue();
+            offset = op.getOffsetInBytes();
             auto buffer =
                 cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
 
@@ -809,7 +793,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     int row = coord.row;
     auto loc = tileLocStr(col, row);
 
-    auto bufferAccessor = [&](std::optional<TileID> tile, BufferOp buf) {
+    auto bufferAccessor = [&](BufferOp buf) {
       // int32_t mlir_aie_read_buffer_a13(int index) {
       // void mlir_aie_write_buffer_a13(int index, int32_t value) {
       std::string bufName(buf.name().getValue());
@@ -866,7 +850,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
     // if(tiles.count(tile.getValue()))
     for (auto buf : buffers[tileOp])
-      bufferAccessor(coord, buf);
+      bufferAccessor(buf);
   }
 
   auto lockAccessor = [&](LockOp lock) {

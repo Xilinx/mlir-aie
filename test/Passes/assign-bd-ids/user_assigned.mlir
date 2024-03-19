@@ -16,10 +16,10 @@
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
 // CHECK:  %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "double_buffer"} : memref<32xi32>
 // CHECK:  %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) : memref<32xi32>
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 0 : i32, next_bd_id = 1 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 1 : i32, next_bd_id = 2 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 2 : i32, next_bd_id = 0 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 3 : i32, next_bd_id = 4 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 3 : i32, next_bd_id = 4 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 4 : i32, next_bd_id = 5 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 5 : i32, next_bd_id = 3 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 0 : i32}
@@ -39,7 +39,7 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %player_a = aie.dma(S2MM, 0) {sym_name = "player_a"} [{
         aie.use_lock(%lock_Y, Acquire, 0)
-        aie.dma_bd(%double_buffer : memref<32xi32>, 0) {bd_id = 0 : i32}
+        aie.dma_bd(%double_buffer : memref<32xi32>) {bd_id = 0 : i32}
         aie.use_lock(%lock_Y, Release, 0)
       }, {
         aie.use_lock(%lock_X, Acquire, 1)
@@ -52,7 +52,7 @@ module {
       }]
       %player_b = aie.dma(S2MM, 1) {sym_name = "player_b"} [{
         aie.use_lock(%lock_Y, Acquire, 1)
-        aie.dma_bd(%double_buffer : memref<32xi32>, 0)
+        aie.dma_bd(%double_buffer : memref<32xi32>)
         aie.use_lock(%lock_Y, Release, 0)
       }, {
         aie.use_lock(%lock_X, Acquire, 1)
@@ -101,10 +101,10 @@ module {
 // CHECK:  %[[VAL_0:.*]] = aie.tile(2, 1)
 // CHECK:  %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {address = 8192 : i32, sym_name = "in"} : memref<16xi32>
 // CHECK:  %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {address = 1824 : i32, sym_name = "out"} : memref<16xi32>
-// CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>]) {bd_id = 0 : i32, next_bd_id = 0 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 16) {bd_id = 24 : i32, next_bd_id = 24 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_2]] : memref<16xi32>, 0, 16) {bd_id = 25 : i32, next_bd_id = 25 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_2]] : memref<16xi32>, 0, 16) {bd_id = 1 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32>, dims = [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>]) {bd_id = 0 : i32, len = 128 : i32, next_bd_id = 0 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_1]] : memref<16xi32>) {bd_id = 24 : i32, len = 16 : i32, next_bd_id = 24 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_2]] : memref<16xi32>) {bd_id = 25 : i32, len = 16 : i32, next_bd_id = 25 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_2]] : memref<16xi32>) {bd_id = 1 : i32, len = 16 : i32, next_bd_id = 1 : i32}
 
 module @aie_module  {
   aie.device(xcve2302) {
@@ -127,22 +127,22 @@ module @aie_module  {
         %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
       ^bd0:
         aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-        aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 128, [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>])
+        aie.dma_bd(%buf01_0 : memref<16xi32>, dims = [<size = 2, stride = 1>, <size = 3, stride = 2>, <size = 2, stride = 4>, <size = 1, stride = 1>]) { len = 128 : i32 }
         aie.use_lock(%l01_1, "Release", 1)
         aie.next_bd ^bd0
       ^bd1:
         aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-        aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16) {bd_id = 24 : i32}
+        aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32, bd_id = 24 : i32 }
         aie.use_lock(%l01_0, "Release", 1)
         aie.next_bd ^bd1
       ^bd2:
         aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-        aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%l01_3, "Release", 1)
         aie.next_bd ^bd2
       ^bd3:
         aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-        aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16) {bd_id = 1 : i32}
+        aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32, bd_id = 1 : i32 }
         aie.use_lock(%l01_2, "Release", 1)
         aie.next_bd ^bd3
       ^end:
@@ -159,10 +159,10 @@ module @aie_module  {
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
 // CHECK:  %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "double_buffer"} : memref<32xi32>
 // CHECK:  %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) : memref<32xi32>
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 5 : i32, next_bd_id = 4 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 5 : i32, next_bd_id = 4 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 4 : i32, next_bd_id = 3 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 3 : i32, next_bd_id = 5 : i32}
-// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>, 0) {bd_id = 2 : i32, next_bd_id = 1 : i32}
+// CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 2 : i32, next_bd_id = 1 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 1 : i32, next_bd_id = 0 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_3]] : memref<32xi32>) {bd_id = 0 : i32, next_bd_id = 2 : i32}
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 0 : i32}
@@ -182,7 +182,7 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %player_a = aie.dma(S2MM, 0) {sym_name = "player_a"} [{
         aie.use_lock(%lock_Y, Acquire, 0)
-        aie.dma_bd(%double_buffer : memref<32xi32>, 0) {bd_id = 5 : i32}
+        aie.dma_bd(%double_buffer : memref<32xi32>) {bd_id = 5 : i32}
         aie.use_lock(%lock_Y, Release, 0)
       }, {
         aie.use_lock(%lock_X, Acquire, 1)
@@ -195,7 +195,7 @@ module {
       }]
       %player_b = aie.dma(S2MM, 1) {sym_name = "player_b"} [{
         aie.use_lock(%lock_Y, Acquire, 1)
-        aie.dma_bd(%double_buffer : memref<32xi32>, 0) {bd_id = 2 : i32}
+        aie.dma_bd(%double_buffer : memref<32xi32>) {bd_id = 2 : i32}
         aie.use_lock(%lock_Y, Release, 0)
       }, {
         aie.use_lock(%lock_X, Acquire, 1)

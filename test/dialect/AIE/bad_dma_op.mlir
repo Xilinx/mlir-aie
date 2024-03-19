@@ -22,7 +22,7 @@ module {
     ^bb0:
       aie.dma(S2MM, 0) [{
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 16)
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>) { len = 16 : i32 }
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }]
       aie.next_bd ^bb1

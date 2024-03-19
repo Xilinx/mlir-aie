@@ -14,7 +14,7 @@
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,0),XAie_LockInit(0,1))
 // CHECK: [[bd0]].LockDesc.LockAcqEn = XAIE_DISABLE;
-// CHECK: XAie_DmaSetAddrLen(&([[bd0]]), /* addrA */ 0x0,  /* len */ 16 * 4)
+// CHECK: XAie_DmaSetAddrLen(&([[bd0]]), /* addrA */ 0x0,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 1,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd0]]))
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1),  /* bd */ 0)
@@ -23,7 +23,7 @@
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd1]]), XAie_LockInit(0,0),XAie_LockInit(64,1))
 // CHECK: [[bd1]].LockDesc.LockAcqEn = XAIE_DISABLE;
-// CHECK: XAie_DmaSetAddrLen(&([[bd1]]), /* addrA */ 0x80000,  /* len */ 16 * 4)
+// CHECK: XAie_DmaSetAddrLen(&([[bd1]]), /* addrA */ 0x80000,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd1]]),  /* nextbd */ 2,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd1]]))
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1),  /* bd */ 1)
@@ -32,7 +32,7 @@
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd2]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd2]]), XAie_LockInit(0,0),XAie_LockInit(128,1))
 // CHECK: [[bd2]].LockDesc.LockAcqEn = XAIE_DISABLE;
-// CHECK: XAie_DmaSetAddrLen(&([[bd2]]), /* addrA */ 0x100000,  /* len */ 16 * 4)
+// CHECK: XAie_DmaSetAddrLen(&([[bd2]]), /* addrA */ 0x100000,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd2]]),  /* nextbd */ 0,  /* enableNextBd */ 0)
 // CHECK: XAie_DmaEnableBd(&([[bd2]]))
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd2]]), XAie_TileLoc(2,1),  /* bd */ 2)
@@ -53,15 +53,15 @@ module @aie_module  {
   %m01 = aie.memtile_dma(%t01) {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf_w : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf_w : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%lock_w, "Release", 1)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf_l : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf_l : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%lock_l, "Release", 1)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf_e : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf_e : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%lock_e, "Release", 1)
       aie.next_bd ^end
     ^end:

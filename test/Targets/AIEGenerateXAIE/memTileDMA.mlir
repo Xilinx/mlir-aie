@@ -14,25 +14,25 @@
 
 // CHECK: XAie_DmaDesc [[bd0:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x82000,  /* len */ 16 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x82000,  /* len */ 64));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]), {{.*}} 0, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1), {{.*}} 0));
 
 // CHECK: XAie_DmaDesc [[bd24:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd24]]), XAie_TileLoc(2,1)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd24]]),  /* addrA */ 0x82000,  /* len */ 16 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd24]]),  /* addrA */ 0x82000,  /* len */ 64));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd24]]), {{.*}} 24, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd24]]), XAie_TileLoc(2,1), {{.*}} 24));
 
 // CHECK: XAie_DmaDesc [[bd25:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd25]]), XAie_TileLoc(2,1)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd25]]),  /* addrA */ 0x80720,  /* len */ 16 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd25]]),  /* addrA */ 0x80720,  /* len */ 64));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd25]]), {{.*}} 25, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd25]]), XAie_TileLoc(2,1), {{.*}} 25));
 
 // CHECK: XAie_DmaDesc [[bd1:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]),  /* addrA */ 0x80720,  /* len */ 16 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]),  /* addrA */ 0x80720,  /* len */ 64));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd1]]), {{.*}} 1, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1), {{.*}} 1));
 
@@ -58,22 +58,22 @@ module @aie_module  {
       %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_1, "Release", 1)
       aie.next_bd ^bd0
     ^bd1:
       aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_0 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_0, "Release", 1)
       aie.next_bd ^bd1
     ^bd2:
       aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_3, "Release", 1)
       aie.next_bd ^bd2
     ^bd3:
       aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32>, 0, 16)
+      aie.dma_bd(%buf01_1 : memref<16xi32>) { len = 16 : i32 }
       aie.use_lock(%l01_2, "Release", 1)
       aie.next_bd ^bd3
     ^end:

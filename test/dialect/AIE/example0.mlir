@@ -49,12 +49,12 @@ module @example0 {
       %dmaSt1 = aie.dma_start("MM2S", 1, ^bd1, ^end)
     ^bd0:
       aie.use_lock(%l33_0, Acquire, 1)
-      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l33_0, Release, 0)
       aie.next_bd ^end
     ^bd1:
       aie.use_lock(%l33_1, Acquire, 0)
-      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l33_1, Release, 1)
       aie.next_bd ^end
     ^end:
@@ -65,7 +65,7 @@ module @example0 {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l42_0, Acquire, 0)
-      aie.dma_bd(%buf42 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf42 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l42_0, Release, 1)
       aie.next_bd ^end
     ^end:
@@ -76,7 +76,7 @@ module @example0 {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l44_0, Acquire, 1)
-      aie.dma_bd(%buf44 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf44 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l44_0, Release, 0)
       aie.next_bd ^end
     ^end:

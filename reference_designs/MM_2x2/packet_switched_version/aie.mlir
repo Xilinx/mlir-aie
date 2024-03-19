@@ -105,25 +105,25 @@ module @MM_2x2 {
     ^bd4:
       aie.use_lock(%lock60_0, "Acquire", 1)
       aie.dma_bd_packet(0x0, 0x0)
-      aie.dma_bd(%buffer0 : memref<1024xi32>, 0, 1024)    //send LHS_tile0 with Pack_ID=0
+      aie.dma_bd(%buffer0 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send LHS_tile0 with Pack_ID=0
       aie.use_lock(%lock60_0, "Release", 0)
       aie.next_bd ^bd5
     ^bd5:
       aie.use_lock(%lock60_1, "Acquire", 1)
       aie.dma_bd_packet(0x1, 0x1)
-      aie.dma_bd(%buffer1 : memref<1024xi32>, 0, 1024)    //send LHS_tile1 with Pack_ID=1
+      aie.dma_bd(%buffer1 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send LHS_tile1 with Pack_ID=1
       aie.use_lock(%lock60_1, "Release", 0)
       aie.next_bd ^bd4
     ^bd6:
       aie.use_lock(%lock60_2, "Acquire", 1)
       aie.dma_bd_packet(0x2, 0x2)
-      aie.dma_bd(%buffer2 : memref<1024xi32>, 0, 1024)    //send RHS_tile0 with Pack_ID=2
+      aie.dma_bd(%buffer2 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send RHS_tile0 with Pack_ID=2
       aie.use_lock(%lock60_2, "Release", 0)
       aie.next_bd ^bd7
     ^bd7:
       aie.use_lock(%lock60_3, "Acquire", 1)
       aie.dma_bd_packet(0x3, 0x3)
-      aie.dma_bd(%buffer3 : memref<1024xi32>, 0, 1024)    //send RHS_tile1 with Pack_ID=3
+      aie.dma_bd(%buffer3 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send RHS_tile1 with Pack_ID=3
       aie.use_lock(%lock60_3, "Release", 0)
       aie.next_bd ^bd6
     ^end:
@@ -137,20 +137,20 @@ module @MM_2x2 {
     ^bd4:
       aie.use_lock(%lock70_0, "Acquire", 1)
       aie.dma_bd_packet(0x4, 0x4)
-      aie.dma_bd(%buffer4 : memref<1024xi32>, 0, 1024)    //send RHS_tile2 with Pack_ID=4
+      aie.dma_bd(%buffer4 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send RHS_tile2 with Pack_ID=4
       aie.use_lock(%lock70_0, "Release", 0)
       aie.next_bd ^bd5
     ^bd5:
       aie.use_lock(%lock70_1, "Acquire", 1)
       aie.dma_bd_packet(0x5, 0x5)
-      aie.dma_bd(%buffer5 : memref<1024xi32>, 0, 1024)    //send RHS_tile3 with Pack_ID=5
+      aie.dma_bd(%buffer5 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }    //send RHS_tile3 with Pack_ID=5
       aie.use_lock(%lock70_1, "Release", 0)
       aie.next_bd ^bd4
     ^bd6:
-      aie.dma_bd(%buffer6 : memref<1025xi32>, 0, 1025)    //send Out_tile0 with Pack_ID=6
+      aie.dma_bd(%buffer6 : memref<1025xi32>) { offset = 0 : i32, len = 1025 : i32 }    //send Out_tile0 with Pack_ID=6
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buffer7 : memref<1025xi32>, 0, 1025)    //send Out_tile1 with Pack_ID=7
+      aie.dma_bd(%buffer7 : memref<1025xi32>) { offset = 0 : i32, len = 1025 : i32 }    //send Out_tile1 with Pack_ID=7
       aie.next_bd ^bd6
     ^end:
       aie.end
@@ -165,12 +165,12 @@ module @MM_2x2 {
     aie.dma_start("S2MM", 1, ^bd1, ^end)
   ^bd0: 
     aie.use_lock(%lock63_0, Acquire, 0)
-    aie.dma_bd(%buf63_0 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf63_0 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock63_0, Release, 1)
     aie.next_bd ^bd0
   ^bd1: 
     aie.use_lock(%lock63_1, Acquire, 0)
-    aie.dma_bd(%buf63_1 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf63_1 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock63_1, Release, 1)
     aie.next_bd ^bd1
   ^end: 
@@ -187,12 +187,12 @@ module @MM_2x2 {
     aie.dma_start("S2MM", 1, ^bd1, ^dma1)
   ^bd0: 
     aie.use_lock(%lock64_0, Acquire, 0)
-    aie.dma_bd(%buf64_0 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf64_0 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock64_0, Release, 1)
     aie.next_bd ^bd0
   ^bd1: 
     aie.use_lock(%lock64_1, Acquire, 0)
-    aie.dma_bd(%buf64_1 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf64_1 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock64_1, Release, 1)
     aie.next_bd ^bd1
   ^dma1:
@@ -200,7 +200,7 @@ module @MM_2x2 {
   ^bd2:
     aie.use_lock(%lock64_2, Acquire, 1)
     aie.dma_bd_packet(0x0, 0x6)
-    aie.dma_bd(%buf64_2 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf64_2 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock64_2, Release, 0)
     aie.next_bd ^bd2
   ^end: 
@@ -247,12 +247,12 @@ module @MM_2x2 {
     aie.dma_start("S2MM", 1, ^bd1, ^end)
   ^bd0: 
     aie.use_lock(%lock73_0, Acquire, 0)
-    aie.dma_bd(%buf73_0 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf73_0 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock73_0, Release, 1)
     aie.next_bd ^bd0
   ^bd1: 
     aie.use_lock(%lock73_1, Acquire, 0)
-    aie.dma_bd(%buf73_1 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf73_1 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock73_1, Release, 1)
     aie.next_bd ^bd1
   ^end: 
@@ -269,12 +269,12 @@ module @MM_2x2 {
     aie.dma_start("S2MM", 1, ^bd1, ^dma1)
   ^bd0: 
     aie.use_lock(%lock74_0, Acquire, 0)
-    aie.dma_bd(%buf74_0 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf74_0 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock74_0, Release, 1)
     aie.next_bd ^bd0
   ^bd1: 
     aie.use_lock(%lock74_1, Acquire, 0)
-    aie.dma_bd(%buf74_1 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf74_1 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock74_1, Release, 1)
     aie.next_bd ^bd1
   ^dma1:
@@ -282,7 +282,7 @@ module @MM_2x2 {
   ^bd2:
     aie.use_lock(%lock74_2, Acquire, 1)
     aie.dma_bd_packet(0x0, 0x7)
-    aie.dma_bd(%buf74_2 : memref<1024xi32>, 0, 1024)
+    aie.dma_bd(%buf74_2 : memref<1024xi32>) { offset = 0 : i32, len = 1024 : i32 }
     aie.use_lock(%lock74_2, Release, 0)
     aie.next_bd ^bd2
   ^end: 

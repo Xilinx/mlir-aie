@@ -38,7 +38,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer : memref<7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -54,7 +54,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l71_0, "Acquire", 0)
-      aie.dma_bd(%buf71_0 : memref< 7168xi32>, 0, 7168)
+      aie.dma_bd(%buf71_0 : memref< 7168xi32>) { len = 7168 : i32 }
       aie.use_lock(%l71_0, "Release", 1)
       aie.next_bd ^end
     ^end:

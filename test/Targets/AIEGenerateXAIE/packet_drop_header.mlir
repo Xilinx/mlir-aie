@@ -69,13 +69,13 @@ module @aie_module {
     ^bb2:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%4, Acquire, 0)
       aie.dma_bd_packet(2, 3)
-      aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
+      aie.dma_bd(%5 : memref<16xi32, 2>) { len = 16 : i32 }
       aie.use_lock(%4, Release, 1)
       aie.next_bd ^bb2
     ^bb3:  // 2 preds: ^bb1, ^bb3
       aie.use_lock(%4, Acquire, 1)
       aie.dma_bd_packet(6, 10)
-      aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
+      aie.dma_bd(%5 : memref<16xi32, 2>) { len = 16 : i32 }
       aie.use_lock(%4, Release, 0)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb1

@@ -14,14 +14,14 @@
 // CHECK: XAie_DmaDesc [[bd0:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,1),XAie_LockInit(0,0)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]), {{.*}}0x1000, {{.*}}256 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]), {{.*}}0x1000, {{.*}}1024));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]), {{.*}}0, {{.*}}0));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(3,3), {{.*}}0));
 // CHECK: XAie_DmaDesc [[bd1:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd1]]), XAie_LockInit(1,1),XAie_LockInit(1,0)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]), {{.*}}0x1400, {{.*}}256 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]), {{.*}}0x1400, {{.*}}1024));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd1]]), {{.*}}0, {{.*}}0));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd1]])));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(3,3), {{.*}}1));
@@ -47,12 +47,12 @@ module @test_xaie3 {
       %destDma = aie.dma_start(S2MM, 0, ^bd1, ^end)
     ^bd0:
       aie.use_lock(%l33_0, Acquire, 1)
-      aie.dma_bd(%buf33_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33_0 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l33_0, Release, 0)
       aie.next_bd ^end
     ^bd1:
       aie.use_lock(%l33_1, Acquire, 1)
-      aie.dma_bd(%buf33_1 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33_1 : memref<256xi32>) { len = 256 : i32 }
       aie.use_lock(%l33_1, Release, 0)
       aie.next_bd ^end
     ^end:

@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'aie.dma_bd' op can only access a buffer in the same tile.
+// CHECK: error{{.*}}'aie.dma_bd' op Core tile DMAs can only access a buffer in the same tile.
 
 module @test {
     %t63 = aie.tile(6, 3)
@@ -33,19 +33,19 @@ module @test {
       ^dma1:
         %dstDma = aie.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
-        aie.dma_bd(%buf_e : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_e : memref<256xi32>) { len = 256 : i32 }
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32>) { len = 256 : i32 }
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^end
       ^bd2:
-        aie.dma_bd(%buf_n : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_n : memref<256xi32>) { len = 256 : i32 }
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd3
       ^bd3:
-        aie.dma_bd(%buf_s : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_s : memref<256xi32>) { len = 256 : i32 }
         aie.use_lock(%lock_s, Release, 1)
         aie.next_bd ^end
       ^end:
