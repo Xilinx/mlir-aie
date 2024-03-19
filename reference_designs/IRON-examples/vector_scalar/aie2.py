@@ -13,6 +13,7 @@ from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext import memref, arith
 
+import sys
 
 def my_vector_scalar():
     N = 64
@@ -23,15 +24,25 @@ def my_vector_scalar():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.xcvc1902)
+        if(len(sys.argv) != 3):
+          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Row)")
+        
+        if sys.argv[1] == 'ipu':
+          dev = AIEDevice.ipu
+        elif sys.argv[1] == 'xcvc1902':
+          dev = AIEDevice.xcvc1902
+        else:
+          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
+        @device(dev)
         def device_body():
             memRef_ty = T.memref(n, T.i32())
 
             # AIE Core Function declarations
 
             # Tile declarations
-            ShimTile = tile(6, 0)
-            ComputeTile2 = tile(6, 2)
+            ShimTile = tile(int(sys.argv[2]), 0)
+            ComputeTile2 = tile(int(sys.argv[2]), 2)
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)

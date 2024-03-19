@@ -1,127 +1,182 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
+//===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
-// Copyright (C) 2020-2022, Xilinx Inc.
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <fcntl.h>
+#include <boost/program_options.hpp>
+#include <cstdint>
+#include <fstream>
 #include <iostream>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <thread>
-#include <unistd.h>
+#include <sstream>
+#include <string>
 #include <vector>
-#include <xaiengine.h>
 
-#include "test_library.h"
-#include "memory_allocator.h"
+#include "xrt/xrt_bo.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
 
-#include "aie_inc.cpp"
-#include "aie_data_movement.cpp"
+constexpr int IMAGE_WIDTH = 128;
+constexpr int IMAGE_HEIGHT = 16;
+constexpr int IMAGE_SIZE = (IMAGE_WIDTH * IMAGE_HEIGHT);
 
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
+constexpr int TILE_WIDTH = 16;
+constexpr int TILE_HEIGHT = 8;
+constexpr int TILE_SIZE = (TILE_WIDTH * TILE_HEIGHT);
 
-#define XAIE_NUM_COLS 10
+namespace po = boost::program_options;
 
-#define IMAGE_WIDTH 128
-#define IMAGE_HEIGHT 16
-#define IMAGE_SIZE (IMAGE_WIDTH * IMAGE_HEIGHT)
-
-#define TILE_WIDTH 16
-#define TILE_HEIGHT 8
-#define TILE_SIZE (TILE_WIDTH * TILE_HEIGHT)
-
-#define NUM_3D (IMAGE_WIDTH / TILE_WIDTH)
-#define NUM_4D (IMGAE_HEIGHT / TILE_HEIGHT)
-
-void hsa_check_status(const std::string func_name, hsa_status_t status) {
-  if (status != HSA_STATUS_SUCCESS) {
-    const char *status_string(new char[1024]);
-    hsa_status_string(status, &status_string);
-    std::cout << func_name << " failed: " << status_string << std::endl;
-    delete[] status_string;
+void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
+  if (!vm_in.count(name)) {
+    throw std::runtime_error("Error: no " + name + " file was provided\n");
   } else {
-    std::cout << func_name << " success" << std::endl;
+    std::ifstream test(vm_in[name].as<std::string>());
+    if (!test) {
+      throw std::runtime_error("The " + name + " file " +
+                               vm_in[name].as<std::string>() +
+                               " does not exist.\n");
+    }
   }
 }
 
-int main(int argc, char *argv[]) {
-  uint64_t row = 0;
-  uint64_t col = 6;
+std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+  std::ifstream instr_file(instr_path);
+  std::string line;
+  std::vector<uint32_t> instr_v;
+  while (std::getline(instr_file, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    if (!(iss >> std::hex >> a)) {
+      throw std::runtime_error("Unable to parse instruction file\n");
+    }
+    instr_v.push_back(a);
+  }
+  return instr_v;
+}
 
-  std::vector<hsa_queue_t *> queues;
-  uint32_t aie_max_queue_size(0);
+int main(int argc, const char *argv[]) {
 
-  aie_libxaie_ctx_t *xaie = mlir_aie_init_libxaie();
+  // Program arguments parsing
+  po::options_description desc("Allowed options");
+  desc.add_options()("help,h", "produce help message")(
+      "xclbin,x", po::value<std::string>()->required(),
+      "the input xclbin path")(
+      "kernel,k", po::value<std::string>()->required(),
+      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "verbosity,v", po::value<int>()->default_value(0),
+      "the verbosity of the output")(
+      "instr,i", po::value<std::string>()->required(),
+      "path of file containing userspace instructions to be sent to the LX6");
+  po::variables_map vm;
 
-  // This is going to initialize HSA, create a queue
-  // and get an agent
-  int ret = mlir_aie_init_device(xaie);
+  try {
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
 
-  if(ret) {
-    std::cout << "[ERROR] Error when calling mlir_aie_init_device)" << std::endl;
-    return -1;
+    if (vm.count("help")) {
+      std::cout << desc << "\n";
+      return 1;
+    }
+  } catch (const std::exception &ex) {
+    std::cerr << ex.what() << "\n\n";
+    std::cerr << "Usage:\n" << desc << "\n";
+    return 1;
   }
 
-  // Getting access to all of the HSA agents
-  std::vector<hsa_agent_t> agents = xaie->agents;
+  check_arg_file_exists(vm, "xclbin");
+  check_arg_file_exists(vm, "instr");
 
-  if (agents.empty()) {
-    std::cout << "No agents found. Exiting." << std::endl;
-    return -1;
-  }
+  std::vector<uint32_t> instr_v =
+      load_instr_sequence(vm["instr"].as<std::string>());
 
-  std::cout << "Found " << agents.size() << " agents" << std::endl;
+  int verbosity = vm["verbosity"].as<int>();
+  if (verbosity >= 1)
+    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
-  hsa_queue_t *q = xaie->cmd_queue;
+  // Start the XRT test code
+  // Get a device handle
+  unsigned int device_index = 0;
+  auto device = xrt::device(device_index);
 
-  // Adding to our vector of queues
-  queues.push_back(q);
-  assert(queues.size() > 0 && "No queues were sucesfully created!");
+  // Load the xclbin
+  if (verbosity >= 1)
+    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
+  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
 
-  mlir_aie_configure_cores(xaie);
-  mlir_aie_configure_switchboxes(xaie);
-  mlir_aie_initialize_locks(xaie);
-  mlir_aie_configure_dmas(xaie);
-  mlir_aie_start_cores(xaie);
+  if (verbosity >= 1)
+    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
+  std::string Node = vm["kernel"].as<std::string>();
 
-  // Allocating some device memory
-  ext_mem_model_t buf0, buf1, buf2;
-  uint32_t *in_a = (uint32_t *)mlir_aie_mem_alloc(xaie, buf0, IMAGE_SIZE);
-  uint32_t *in_b = (uint32_t *)mlir_aie_mem_alloc(xaie, buf1, IMAGE_SIZE);
-  uint32_t *out = (uint32_t *)mlir_aie_mem_alloc(xaie, buf2, IMAGE_SIZE);
-  mlir_aie_sync_mem_dev(buf0);
-  mlir_aie_sync_mem_dev(buf1);
-  mlir_aie_sync_mem_dev(buf2);
+  // Get the kernel from the xclbin
+  auto xkernels = xclbin.get_kernels();
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [Node](xrt::xclbin::kernel &k) {
+                                 auto name = k.get_name();
+                                 std::cout << "Name: " << name << std::endl;
+                                 return name.rfind(Node, 0) == 0;
+                               });
+  auto kernelName = xkernel.get_name();
 
-  if (in_a == NULL || in_b == NULL || out == NULL) {
-    std::cout << "Could not allocate in device memory" << std::endl;
-    return -1;
-  }
+  if (verbosity >= 1)
+    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
+              << "\n";
 
-  for (int i = 0; i < IMAGE_SIZE; i++) {
-    in_a[i] = i + 1;
-    in_b[i] = 1;
-    out[i] = 0xdeface;
-  }
+  device.register_xclbin(xclbin);
 
-  // Pass arguments in the order of dma_memcpys in the mlir
-  invoke_data_movement(queues[0], &agents[0], out, in_a);
+  // get a hardware context
+  if (verbosity >= 1)
+    std::cout << "Getting hardware context.\n";
+  xrt::hw_context context(device, xclbin.get_uuid());
+
+  // get a kernel handle
+  if (verbosity >= 1)
+    std::cout << "Getting handle to kernel:" << kernelName << "\n";
+  auto kernel = xrt::kernel(context, kernelName);
+
+  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+  auto bo_inA = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_inB = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+
+  if (verbosity >= 1)
+    std::cout << "Writing data into buffer objects.\n";
+
+  uint32_t *bufInA = bo_inA.map<uint32_t *>();
+  std::vector<uint32_t> srcVecA;
+  for (int i = 0; i < IMAGE_SIZE; i++)
+    srcVecA.push_back(i + 1);
+  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
+
+  void *bufInstr = bo_instr.map<void *>();
+  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
+
+  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  if (verbosity >= 1)
+    std::cout << "Running Kernel.\n";
+  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  run.wait();
+
+  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+  uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
 
   for (int i = 0; i < IMAGE_SIZE; i++) {
     uint32_t row = i / IMAGE_WIDTH;
     uint32_t col = i % IMAGE_WIDTH;
-    uint32_t s = in_a[i];
-    uint32_t d = out[i];
+    uint32_t s = bufInA[i];
+    uint32_t d = bufOut[i];
 
     if (row < TILE_HEIGHT && col < TILE_WIDTH) {
       if(d != s + 1) {
@@ -140,17 +195,11 @@ int main(int argc, char *argv[]) {
     printf("d[%d, %d] = 0x%x\n", row, col, d);
   }
 
-  // destroying the queue
-  hsa_queue_destroy(queues[0]);
-  
-  // Shutdown AIR and HSA
-  mlir_aie_deinit_libxaie(xaie);
-
   if (!errors) {
-    printf("PASS!\n");
+    std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    printf("fail %d/%d.\n", errors, IMAGE_SIZE);
-    return -1;
+    std::cout << "\nfailed.\n\n";
+    return 1;
   }
 }
