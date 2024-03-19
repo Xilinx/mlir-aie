@@ -354,6 +354,38 @@ public:
   }
 };
 
+class MulElemOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MulElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MulElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MulElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    // create constant for config
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(824));
+
+    // create xllvm intrinsic
+    SmallVector<Value> operands({adaptor.getLhs(), adaptor.getRhs(), confCst});
+    auto mulElemOp = rewriter.create<xllvm::MulConfAcc32IntrOp>(
+        loc, VectorType::get({16}, rewriter.getI64Type()),
+        forceCastOperandsToSignature(
+            rewriter, loc, operands,
+            {VectorType::get({64}, rewriter.getI8Type()),
+             VectorType::get({16}, rewriter.getI32Type()),
+             rewriter.getI32Type()}));
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 mulElemOp);
+
+    return success();
+  }
+};
+
 class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::UPSOp>::ConvertOpToLLVMPattern;
@@ -370,54 +402,25 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::SRSOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::SRSOp op) {
-    std::stringstream ss;
-    ss << "llvm.aie.";
-
-    // Determine the prefix
-    auto sourceType = cast<VectorType>(op.getSource().getType());
-    auto resultType = cast<VectorType>(op.getResult().getType());
-    auto sourceElType = cast<IntegerType>(sourceType.getElementType());
-    auto resultElType = cast<IntegerType>(resultType.getElementType());
-
-    auto sourceElWidth = sourceElType.getWidth();
-    auto resultElWidth = resultElType.getWidth();
-
-    if (sourceElWidth == 48 && resultElWidth == 8) {
-      ss << (resultElType.getSignedness() == IntegerType::Unsigned ? 'u' : 'b');
-    } else if ((sourceElWidth == 48 && resultElWidth == 32) ||
-               (sourceElWidth == 80 && resultElWidth == 64)) {
-      ss << 'l';
-    }
-    ss << "srs." << getVectorTypeString(resultType, true) << "."
-       << getVectorTypeString(sourceType, false, true);
-
-    return ss.str();
-  }
-
   LogicalResult
   matchAndRewrite(aievec::SRSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-    auto shiftType = IntegerType::get(context, 32);
+    Location loc = op.getLoc();
 
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType(), shiftType}));
-    }
+    // create constant for sign
+    auto signCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
 
-    // Create a constant for the shift value
-    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, func, ValueRange{op.getSource(), op.getShift()});
+    // create xllvm intrinsic
+    SmallVector<Value> operands(
+        {adaptor.getSource(), adaptor.getShift(), signCst});
+    rewriter.replaceOpWithNewOp<xllvm::I512V32Acc32SrsIntrOp>(
+        op, VectorType::get({32}, rewriter.getI16Type()),
+        forceCastOperandsToSignature(
+            rewriter, loc, operands,
+            {VectorType::get({16}, rewriter.getI64Type()),
+             rewriter.getI32Type(), rewriter.getI32Type()}));
+
     return success();
   }
 };
@@ -994,6 +997,7 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                UnpackOpConversion,
                BroadcastOpConversion,
                FMAElemOpConversion,
+               MulElemOpConversion,
                MatMulOpConversion>(converter);
   // clang-format on
 }
