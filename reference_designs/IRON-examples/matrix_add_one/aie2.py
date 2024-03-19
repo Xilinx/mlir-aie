@@ -11,6 +11,8 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
+import sys
+
 # Size of the entire image
 IMAGE_HEIGHT = 16
 IMAGE_WIDTH = 128
@@ -26,16 +28,26 @@ NUM_4D = IMAGE_HEIGHT / TILE_HEIGHT
 
 objfifo_capacity = 4
 
-def my_add_one_objFifo():
+def my_matrix_add_one():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.xcvc1902)
+        if(len(sys.argv) != 3):
+          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Row)")
+        
+        if sys.argv[1] == 'ipu':
+          dev = AIEDevice.ipu
+        elif sys.argv[1] == 'xcvc1902':
+          dev = AIEDevice.xcvc1902
+        else:
+          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
+        @device(dev)
         def device_body():
             memRef_ty = T.memref(TILE_SIZE, T.i32())
 
             # Tile declarations
-            ShimTile = tile(6, 0)
-            ComputeTile2 = tile(6, 2)
+            ShimTile = tile(int(sys.argv[2]), 0)
+            ComputeTile2 = tile(int(sys.argv[2]), 2)
 
             # AIE-array data movement with object fifos
             # Input
@@ -79,4 +91,4 @@ def my_add_one_objFifo():
     print(ctx.module)
 
 
-my_add_one_objFifo()
+my_matrix_add_one()
