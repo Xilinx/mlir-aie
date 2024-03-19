@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Vector Scalar</ins>
+# <ins>Vector Add</ins>
 
 Single tile performs a very simple `+` operations from two vectors loaded into memory. The tile then stores the sum of those two vectors back to external memory. 
 
