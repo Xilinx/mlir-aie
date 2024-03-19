@@ -299,17 +299,25 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         std::string targetLower = StringRef(TK.TargetArch).lower();
         SmallVector<std::string, 10> flags;
         flags.push_back("-O2");
+#ifdef _WIN32
+        // TODO: Windows tries to load the wrong builtins path.
+        std::string targetFlag = "--target=" + targetLower;
+#else
         std::string targetFlag = "--target=" + targetLower + "-none-elf";
+#endif
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.InstallDir);
         sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
                           "me_basic.o");
         flags.emplace_back(meBasicPath);
+#ifndef _WIN32
+        // TODO: No libc build on windows
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");
         flags.emplace_back(libcPath);
+#endif
         flags.push_back("-Wl,--gc-sections");
         std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
         flags.push_back(ldScriptFlag);
@@ -619,6 +627,10 @@ struct RemoveAlignment2FromLLVMLoadPass
       }
     });
   }
+
+public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      RemoveAlignment2FromLLVMLoadPass);
 };
 } // namespace
 
@@ -785,7 +797,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(OptLLVMIRFile, "input.opt.ll");
     if (runTool(peanoOptBin,
                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
-                 "-o", std::string(OptLLVMIRFile)},
+                 "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
                 TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to optimize");
 
