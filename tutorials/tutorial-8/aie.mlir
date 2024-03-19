@@ -8,14 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%host_runtime_lib%/  %extraAieCcFlags% %host_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.exe
+// aiecc.py -j4 -%VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o tutorial-8.exe
 
 // REQUIRES: valid_xchess_license
 // RUN: make -C %S
 // RUN: %run_on_board ./tutorial-8.exe
 // RUN: make -C %S clean
 
-// Declare this MLIR module. A wrapper that can contain all 
+// Declare this MLIR module. A wrapper that can contain all
 // AIE tiles, buffers, and data movement
 module @tutorial_8 {
 
@@ -42,7 +42,7 @@ module @tutorial_8 {
         // Locks init value is Release 0, so this will always succeed first
         // aie.use_lock(%lock13_1, "Acquire", 0)
 
-		// %val = arith.constant 14 : i384 
+		// %val = arith.constant 14 : i384
         // aie.putCascade(%val : i384)
 
         func.call @extern_kernel1() : () -> ()
@@ -62,10 +62,10 @@ module @tutorial_8 {
 
         // %cas1 = aie.get_cascade() : i384
         // %d1   = arith.trunci %cas1 : i384 to i32
-        // %c1   = arith.constant 100 : i32 
+        // %c1   = arith.constant 100 : i32
         // %d2   = arith.addi %d1, %c1 : i32
 		// %idx2 = arith.constant 5 : index
-		// memref.store %d2, %buf[%idx2] : memref<256xi32> 
+		// memref.store %d2, %buf[%idx2] : memref<256xi32>
 
         func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
 
