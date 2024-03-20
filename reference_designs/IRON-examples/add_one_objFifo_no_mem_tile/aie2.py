@@ -18,7 +18,7 @@ def my_add_one_objFifo():
     with mlir_mod_ctx() as ctx:
 
         if(len(sys.argv) != 3):
-          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Row)")
+          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
         
         if sys.argv[1] == 'ipu':
           dev = AIEDevice.ipu
