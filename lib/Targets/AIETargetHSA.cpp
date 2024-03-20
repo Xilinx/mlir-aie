@@ -141,12 +141,6 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     llvm::reverse(op.getMixedOffsets()),
     [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
-    // buffer_length
-    int32_t repeat_length = 0;
-    for (int32_t index_3d = 0; index_3d < sizes[2]; index_3d++)
-      for (int32_t index_2d = 0; index_2d < sizes[1]; index_2d++)
-        repeat_length += sizes[0];
-
     // buffer_offset
     size_t stride = 1;
     size_t offset = 0;
