@@ -56,7 +56,6 @@ getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
   return std::nullopt;
 }
 
-
 mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
 
   DenseMap<TileID, Operation *> tiles;
@@ -66,22 +65,21 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     return module.emitOpError("expected AIE.device operation at toplevel");
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
-  // Putting the standard header 
+  // Putting the standard header
   output << hsa_cpp_file_header;
 
   // Getting the func op which has the data movement
-  if(targetOp.getOps<mlir::func::FuncOp>().empty()) {
+  if (targetOp.getOps<mlir::func::FuncOp>().empty()) {
     return success();
   }
 
   // Getting the sequence function op which contains the instructions
   mlir::func::FuncOp funcOp;
   for (auto op : targetOp.getOps<mlir::func::FuncOp>()) {
-    if(op.getName().str().compare("sequence") == 0) {
+    if (op.getName().str().compare("sequence") == 0) {
       funcOp = op;
     }
   }
-
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -89,7 +87,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Generate dynamic data movement
   output << "void invoke_data_movement(hsa_queue_t *q, hsa_agent_t *a";
 
-  // Looping over every Memcpy operation so we take the correct number of buffers
+  // Looping over every Memcpy operation so we take the correct number of
+  // buffers
   int num_ops = 0;
   for (auto op : funcOp.getOps<IpuDmaMemcpyNdOp>()) {
     // Getting the IDs of the buffers
@@ -112,14 +111,14 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   output << "\tuint64_t wr_idx = 0;\n";
   output << "\tuint64_t packet_id = 0;\n";
 
-  int op_count = 0; 
+  int op_count = 0;
   for (auto op : funcOp.getOps<IpuDmaMemcpyNdOp>()) {
     auto dev = funcOp->getParentOfType<AIE::DeviceOp>();
     if (!dev) {
       op.emitOpError("couldn't get DeviceOp");
       return failure();
     }
-    
+
     auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
     if (!infoOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
@@ -132,14 +131,14 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     int col = infoOp->getCol();
 
     llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
-    llvm::reverse(op.getMixedStrides()),
-    [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+        llvm::reverse(op.getMixedStrides()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     ::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
-    llvm::reverse(op.getMixedSizes()),
-    [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+        llvm::reverse(op.getMixedSizes()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     ::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
-    llvm::reverse(op.getMixedOffsets()),
-    [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+        llvm::reverse(op.getMixedOffsets()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
     // buffer_offset
     size_t stride = 1;
@@ -171,24 +170,39 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     output << "\thsa_agent_dispatch_packet_t pkt" << op_count << " ;\n";
     output << "\twr_idx  = hsa_queue_add_write_index_relaxed(q, 1);\n";
     output << "\tpacket_id  = wr_idx % q->size;\n";
-    output << "\tmlir_aie_packet_nd_memcpy(&pkt" << op_count << ", 0 /* herd_id */, " << col << " /* col */, " << isMM2S << " /* dir */, " << ChannelId << "/* channel */, 4 /* Burst length */, 2 /* Memory space */, (uint64_t)buf" << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4 << " /* 1d_length */, " <<  (strides[0] ? sizes[1] : 1) << " /* 2d_length */, " << (strides[0] ? strides[0] * 4: 0) << " /* 2d_stride */, " << (strides[1] ? sizes[2] : 1) << " /* 3d_length */, "  << (strides[1] ? strides[1] * 4: 0) << " /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n";
+    output << "\tmlir_aie_packet_nd_memcpy(&pkt" << op_count
+           << ", 0 /* herd_id */, " << col << " /* col */, " << isMM2S
+           << " /* dir */, " << ChannelId
+           << "/* channel */, 4 /* Burst length */, 2 /* Memory space */, "
+              "(uint64_t)buf"
+           << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4
+           << " /* 1d_length */, " << (strides[0] ? sizes[1] : 1)
+           << " /* 2d_length */, " << (strides[0] ? strides[0] * 4 : 0)
+           << " /* 2d_stride */, " << (strides[1] ? sizes[2] : 1)
+           << " /* 3d_length */, " << (strides[1] ? strides[1] * 4 : 0)
+           << " /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n";
 
     bool last_op = op_count == (num_ops - 1);
     // Only ring the doorbell on the last packet
-    if(last_op) {
-      output << "\tmlir_aie_queue_dispatch_and_wait(a, q, packet_id, wr_idx, &pkt" << op_count << ", false);\n\n";
+    if (last_op) {
+      output
+          << "\tmlir_aie_queue_dispatch_and_wait(a, q, packet_id, wr_idx, &pkt"
+          << op_count << ", false);\n\n";
+    } else {
+      output << "\thsa_amd_signal_create_on_agent(1, 0, nullptr, a, 0, &pkt"
+             << op_count << ".completion_signal);\n";
+      output << "\tmlir_aie_write_pkt<hsa_agent_dispatch_packet_t>(q, "
+                "packet_id, &pkt"
+             << op_count << ");\n\n";
     }
-    else {
-      output << "\thsa_amd_signal_create_on_agent(1, 0, nullptr, a, 0, &pkt" << op_count << ".completion_signal);\n";
-      output << "\tmlir_aie_write_pkt<hsa_agent_dispatch_packet_t>(q, packet_id, &pkt" << op_count << ");\n\n";
-    }
-    
+
     op_count++;
   }
 
   // Waiting to make sure each DMA is complete
   for (int i = 0; i < op_count; i++) {
-    output << "\twhile (hsa_signal_wait_scacquire(pkt" << i << ".completion_signal,\n";
+    output << "\twhile (hsa_signal_wait_scacquire(pkt" << i
+           << ".completion_signal,\n";
     output << "\tHSA_SIGNAL_CONDITION_EQ, 0, 0x80000,\n";
     output << "\tHSA_WAIT_STATE_ACTIVE) != 0);\n";
   }
@@ -199,7 +213,6 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   }
 
   output << "}\n";
-
 
   return success();
 }

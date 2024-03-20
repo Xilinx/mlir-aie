@@ -26,7 +26,7 @@
 
 #ifdef HSA_RUNTIME
 hsa_status_t mlir_aie_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
-                                        uint64_t va) {
+                                             uint64_t va) {
 
   pkt->arg[0] = 0;
   pkt->arg[0] = va;
@@ -37,14 +37,13 @@ hsa_status_t mlir_aie_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t
-mlir_aie_packet_nd_memcpy(hsa_agent_dispatch_packet_t *pkt, uint16_t herd_id,
-                     uint8_t col, uint8_t direction, uint8_t channel,
-                     uint8_t burst_len, uint8_t memory_space,
-                     uint64_t phys_addr, uint32_t transfer_length1d,
-                     uint32_t transfer_length2d, uint32_t transfer_stride2d,
-                     uint32_t transfer_length3d, uint32_t transfer_stride3d,
-                     uint32_t transfer_length4d, uint32_t transfer_stride4d) {
+hsa_status_t mlir_aie_packet_nd_memcpy(
+    hsa_agent_dispatch_packet_t *pkt, uint16_t herd_id, uint8_t col,
+    uint8_t direction, uint8_t channel, uint8_t burst_len, uint8_t memory_space,
+    uint64_t phys_addr, uint32_t transfer_length1d, uint32_t transfer_length2d,
+    uint32_t transfer_stride2d, uint32_t transfer_length3d,
+    uint32_t transfer_stride3d, uint32_t transfer_length4d,
+    uint32_t transfer_stride4d) {
 
   pkt->arg[0] = 0;
   pkt->arg[0] |= ((uint64_t)memory_space) << 16;
@@ -106,10 +105,9 @@ hsa_status_t get_global_mem_pool(hsa_amd_memory_pool_t pool, void *data) {
   return status;
 }
 
-hsa_status_t mlir_aie_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q,
-                                         uint64_t packet_id, uint64_t doorbell,
-                                         hsa_agent_dispatch_packet_t *pkt,
-                                         bool destroy_signal) {
+hsa_status_t mlir_aie_queue_dispatch_and_wait(
+    hsa_agent_t *agent, hsa_queue_t *q, uint64_t packet_id, uint64_t doorbell,
+    hsa_agent_dispatch_packet_t *pkt, bool destroy_signal) {
 
   // dispatch and wait has blocking semantics so we can internally create the
   // signal
@@ -137,7 +135,7 @@ hsa_status_t mlir_aie_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q
 }
 
 hsa_status_t mlir_aie_packet_device_init(hsa_agent_dispatch_packet_t *pkt,
-                                    uint32_t num_cols) {
+                                         uint32_t num_cols) {
 
   pkt->arg[0] = 0;
   pkt->arg[0] |= (AIR_ADDRESS_ABSOLUTE_RANGE << 48);
@@ -226,7 +224,7 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx, uint32_t device_id) {
   hsa_agent_dispatch_packet_t shim_pkt;
   mlir_aie_packet_device_init(&shim_pkt, 50);
   mlir_aie_queue_dispatch_and_wait(&(ctx->agents[0]), q, packet_id, wr_idx,
-                              &shim_pkt, true);
+                                   &shim_pkt, true);
 
   // Attaching the queue to the context so we can send more packets if needed
   ctx->cmd_queue = q;

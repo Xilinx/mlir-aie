@@ -176,13 +176,14 @@ int main(int argc, const char *argv[]) {
 
   for (uint32_t i = 0; i < 64; i++) {
     uint32_t ref = i + 2;
-    if (*(bufOut + i) != *(bufInA + i) * *(bufInB + i) ) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << *(bufInA + i) << " + " << *(bufInB + i)
+    if (*(bufOut + i) != *(bufInA + i) * *(bufInB + i)) {
+      std::cout << "Error in output " << *(bufOut + i)
+                << " != " << *(bufInA + i) << " + " << *(bufInB + i)
                 << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << *(bufInA + i) * *(bufInB + i)
-                << std::endl;
+      std::cout << "Correct output " << *(bufOut + i)
+                << " == " << *(bufInA + i) * *(bufInB + i) << std::endl;
     }
   }
 

@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 template <typename T_in, typename T_out, int N>
 void scale(T_in *a, T_out *c, T_in factor) {
   for (int i = 0; i < N; i++) {
