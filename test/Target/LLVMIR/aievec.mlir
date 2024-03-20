@@ -43,3 +43,21 @@ llvm.func @vector_set_256b_into_512b(%v : vector<8xi32>) -> vector<16xi32> {
                                         (vector<8xi32>, i32) -> vector<16xi32>
     llvm.return %1 : vector<16xi32>
 }
+
+// CHECK-LABEL: define <16 x i64> @mul_conf_512b_512b_acc32
+llvm.func @mul_conf_512b_512b_acc32(%v1 : vector<64xi8>, %v2 : vector<16xi32>) -> vector<16xi64> {
+    %0 = llvm.mlir.constant(0 : i32) : i32
+    // CHECK: call <16 x i64> @llvm.aie2.I512.I512.acc32.mul.conf(<64 x i8>
+    %1 = "xllvm.intr.aie2.I512.I512.acc32.mul.conf"(%v1, %v2, %0) : 
+                                        (vector<64xi8>, vector<16xi32>, i32) -> vector<16xi64>
+    llvm.return %1 : vector<16xi64>
+}
+
+// CHECK-LABEL: define <32 x i16> @srs_512b_v32_acc32
+llvm.func @srs_512b_v32_acc32(%v : vector<16xi64>) -> vector<32xi16> {
+    %0 = llvm.mlir.constant(0 : i32) : i32
+    // CHECK: call <32 x i16> @llvm.aie2.I512.v32.acc32.srs(<16 x i64> 
+    %1 ="xllvm.intr.aie2.I512.v32.acc32.srs"(%v, %0, %0) :
+                                        (vector<16xi64>, i32, i32) -> vector<32xi16>
+    llvm.return %1 : vector<32xi16>
+}
