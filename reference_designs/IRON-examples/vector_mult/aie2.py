@@ -24,6 +24,9 @@ def my_vector_add():
 
     with mlir_mod_ctx() as ctx:
 
+        if(len(sys.argv) != 3):
+          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
         if sys.argv[1] == 'ipu':
           dev = AIEDevice.ipu
         elif sys.argv[1] == 'xcvc1902':
