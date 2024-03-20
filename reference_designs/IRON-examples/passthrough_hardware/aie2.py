@@ -13,7 +13,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import sys
 
-N = 64
+N = 4096
 
 def my_add_one_objFifo():
     with mlir_mod_ctx() as ctx:
