@@ -19,11 +19,11 @@
 #include <vector>
 #include <xaiengine.h>
 
-#include "test_library.h"
 #include "memory_allocator.h"
+#include "test_library.h"
 
-#include "aie_inc.cpp"
 #include "aie_data_movement.cpp"
+#include "aie_inc.cpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
@@ -54,8 +54,9 @@ int main(int argc, char *argv[]) {
   // and get an agent
   int ret = mlir_aie_init_device(xaie);
 
-  if(ret) {
-    std::cout << "[ERROR] Error when calling mlir_aie_init_device)" << std::endl;
+  if (ret) {
+    std::cout << "[ERROR] Error when calling mlir_aie_init_device)"
+              << std::endl;
     return -1;
   }
 
@@ -121,7 +122,7 @@ int main(int argc, char *argv[]) {
 
   // destroying the queue
   hsa_queue_destroy(queues[0]);
-  
+
   // Shutdown AIR and HSA
   mlir_aie_deinit_libxaie(xaie);
 

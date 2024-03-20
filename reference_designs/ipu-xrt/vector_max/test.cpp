@@ -151,7 +151,7 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  bufInA[IN_SIZE / 2] = 654321; 
+  bufInA[IN_SIZE / 2] = 654321;
   bufInA[IN_SIZE - 1] = 100;
 
   void *bufInstr = bo_instr.map<void *>();
@@ -170,7 +170,7 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  
+
   uint32_t max_val = 0;
   for (uint32_t i = 0; i < IN_SIZE; i++) {
     if (*(bufInA + i) > max_val) {
@@ -178,8 +178,9 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  if(*bufOut != max_val) {
-    std::cout << "[ERROR] Maximum value is " << max_val << " but kernel returned " << *bufOut << "\n";
+  if (*bufOut != max_val) {
+    std::cout << "[ERROR] Maximum value is " << max_val
+              << " but kernel returned " << *bufOut << "\n";
     errors++;
   }
 

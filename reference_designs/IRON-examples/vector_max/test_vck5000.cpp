@@ -19,11 +19,11 @@
 #include <vector>
 #include <xaiengine.h>
 
-#include "test_library.h"
 #include "memory_allocator.h"
+#include "test_library.h"
 
-#include "aie_inc.cpp"
 #include "aie_data_movement.cpp"
+#include "aie_inc.cpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
@@ -54,8 +54,9 @@ int main(int argc, char *argv[]) {
   // and get an agent
   int ret = mlir_aie_init_device(xaie);
 
-  if(ret) {
-    std::cout << "[ERROR] Error when calling mlir_aie_init_device)" << std::endl;
+  if (ret) {
+    std::cout << "[ERROR] Error when calling mlir_aie_init_device)"
+              << std::endl;
     return -1;
   }
 
@@ -87,7 +88,8 @@ int main(int argc, char *argv[]) {
   ext_mem_model_t buf0, buf1, buf2;
   uint32_t *in_a = (uint32_t *)mlir_aie_mem_alloc(xaie, buf0, DMA_COUNT);
   uint32_t *in_b = (uint32_t *)mlir_aie_mem_alloc(xaie, buf1, DMA_COUNT);
-  uint32_t *out = (uint32_t *)mlir_aie_mem_alloc(xaie, buf2, 4 /* For some reason can't do 1 */);
+  uint32_t *out = (uint32_t *)mlir_aie_mem_alloc(
+      xaie, buf2, 4 /* For some reason can't do 1 */);
   mlir_aie_sync_mem_dev(buf0);
   mlir_aie_sync_mem_dev(buf1);
   mlir_aie_sync_mem_dev(buf2);
@@ -97,16 +99,16 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  
   out[0] = 0xdeface;
   for (int i = 0; i < DMA_COUNT; i++) {
     in_a[i] = i + 1;
   }
 
-  in_a[DMA_COUNT / 2] = 123456; 
+  in_a[DMA_COUNT / 2] = 123456;
   in_a[DMA_COUNT - 1] = 100;
 
-  //printf("[EDDIE DEBUG] max_val before data movement is %d\n", mlir_aie_read_buffer_max_val(xaie, 0));
+  // printf("[EDDIE DEBUG] max_val before data movement is %d\n",
+  // mlir_aie_read_buffer_max_val(xaie, 0));
 
   // Pass arguments in the order of dma_memcpys in the mlir
   invoke_data_movement(queues[0], &agents[0], out, in_a);
@@ -116,21 +118,23 @@ int main(int argc, char *argv[]) {
   uint32_t max_val = 0;
   for (int i = 0; i < DMA_COUNT; i++) {
     uint32_t s = in_a[i];
-    if(max_val < s) {
+    if (max_val < s) {
       max_val = s;
     }
   }
 
-  //printf("[EDDIE DEBUG] max_val before data movement is %d\n", mlir_aie_read_buffer_max_val(xaie, 0));
+  // printf("[EDDIE DEBUG] max_val before data movement is %d\n",
+  // mlir_aie_read_buffer_max_val(xaie, 0));
 
-  if(*out != max_val) {
+  if (*out != max_val) {
     errors++;
-    printf("[ERROR] Maximum value is %d but kernel returned %d\n", max_val, *out);
+    printf("[ERROR] Maximum value is %d but kernel returned %d\n", max_val,
+           *out);
   }
 
   // destroying the queue
   hsa_queue_destroy(queues[0]);
-  
+
   // Shutdown AIR and HSA
   mlir_aie_deinit_libxaie(xaie);
 

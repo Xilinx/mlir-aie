@@ -19,11 +19,11 @@
 #include <vector>
 #include <xaiengine.h>
 
-#include "test_library.h"
 #include "memory_allocator.h"
+#include "test_library.h"
 
-#include "aie_inc.cpp"
 #include "aie_data_movement.cpp"
+#include "aie_inc.cpp"
 
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
@@ -65,8 +65,9 @@ int main(int argc, char *argv[]) {
   // and get an agent
   int ret = mlir_aie_init_device(xaie);
 
-  if(ret) {
-    std::cout << "[ERROR] Error when calling mlir_aie_init_device)" << std::endl;
+  if (ret) {
+    std::cout << "[ERROR] Error when calling mlir_aie_init_device)"
+              << std::endl;
     return -1;
   }
 
@@ -124,15 +125,16 @@ int main(int argc, char *argv[]) {
     uint32_t d = out[i];
 
     if (row < TILE_HEIGHT && col < TILE_WIDTH) {
-      if(d != s + 1) {
+      if (d != s + 1) {
         errors++;
         printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
       }
-    }
-    else {
-      if(d == s + 1) {
+    } else {
+      if (d == s + 1) {
         errors++;
-        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed to be changed\n", row, col, s, d);
+        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
+               "to be changed\n",
+               row, col, s, d);
       }
     }
 
@@ -142,7 +144,7 @@ int main(int argc, char *argv[]) {
 
   // destroying the queue
   hsa_queue_destroy(queues[0]);
-  
+
   // Shutdown AIR and HSA
   mlir_aie_deinit_libxaie(xaie);
 
