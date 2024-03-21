@@ -21,7 +21,7 @@ xclbin_target=build/final_${M}x${K}x${N}.xclbin
 insts_target=build/insts_${M}x${K}x${N}.txt
 
 .PHONY: all
-all: ${xclbin_target} ${insts_target} ${targetname}.exe sign
+all: ${xclbin_target} ${insts_target} ${targetname}.exe
 
 build/%.o: %.cc
 	mkdir -p ${@D}
