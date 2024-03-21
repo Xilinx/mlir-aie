@@ -1271,8 +1271,9 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
-        consumerFifo->setAttr("objFifo_to_avoid_at_alloc", 
-            createOp->getAttrOfType<FlatSymbolRefAttr>("objFifo_to_avoid_at_alloc"));
+        consumerFifo->setAttr("objFifo_to_avoid_at_alloc",
+                              createOp->getAttrOfType<FlatSymbolRefAttr>(
+                                  "objFifo_to_avoid_at_alloc"));
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo
