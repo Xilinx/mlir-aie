@@ -113,10 +113,10 @@ int main(int argc, char *argv[]) {
   uint64_t wr_idx = hsa_queue_add_write_index_relaxed(queues[0], 1);
   uint64_t packet_id = wr_idx % queues[0]->size;
   hsa_agent_dispatch_packet_t write_pkt;
-  air_packet_nd_memcpy(&write_pkt, 0, col, 1, 0, 4, 2,
+  mlir_aie_packet_nd_memcpy(&write_pkt, 0, col, 1, 0, 4, 2,
                        reinterpret_cast<uint64_t>(src),
                        DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
-  air_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
+  mlir_aie_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
                               &write_pkt);
 
   //
@@ -126,10 +126,10 @@ int main(int argc, char *argv[]) {
   wr_idx = hsa_queue_add_write_index_relaxed(queues[0], 1);
   packet_id = wr_idx % queues[0]->size;
   hsa_agent_dispatch_packet_t read_pkt;
-  air_packet_nd_memcpy(&read_pkt, 0, col, 0, 0, 4, 2,
+  mlir_aie_packet_nd_memcpy(&read_pkt, 0, col, 0, 0, 4, 2,
                        reinterpret_cast<uint64_t>(dst),
                        DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
-  air_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
+  mlir_aie_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
                               &read_pkt);
 
   int errors = 0;
