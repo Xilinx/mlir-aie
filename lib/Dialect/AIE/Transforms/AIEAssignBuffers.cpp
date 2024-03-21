@@ -203,7 +203,8 @@ struct AIEAssignBufferAddressesPass
       // Set addresses for remaining buffers.
       int bankIndex = 0;
       for (auto buffer : buffers)
-        bankIndex = setBufferAddress(tile, buffer, numBanks, bankSize, bankIndex);
+        bankIndex =
+            setBufferAddress(tile, buffer, numBanks, bankSize, bankIndex);
 
       // Sort by smallest address.
       std::sort(allBuffers.begin(), allBuffers.end(),
