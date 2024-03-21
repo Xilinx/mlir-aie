@@ -237,8 +237,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     } else {
       // check if this objfifo must avoid sharing banks with another
-      if (op->hasAttr("objFifo_name")) {
-        ObjectFifoCreateOp other_op = op.getOtherObjectFifo();
+      if (op->hasAttr("objFifo_to_avoid_at_alloc")) {
+        ObjectFifoCreateOp other_op = op.getObjectFifoToAvoidAtAlloc();
         // check if other objfifo was split
         for (auto pair : splitFifos) {
           if (pair.first.name() == other_op.name()) {
@@ -414,7 +414,7 @@ struct AIEObjectFifoStatefulTransformPass
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
         int mem_bank = -1;
-        if (op->hasAttr("objFifo_name"))
+        if (op->hasAttr("objFifo_to_avoid_at_alloc"))
           mem_bank = getMemBank(op, creation_tile);
         BufferOp buff;
         if (mem_bank >= 0) {
@@ -1282,8 +1282,8 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
-        consumerFifo->setAttr("objFifo_name", 
-            createOp->getAttrOfType<FlatSymbolRefAttr>("objFifo_name"));
+        consumerFifo->setAttr("objFifo_to_avoid_at_alloc", 
+            createOp->getAttrOfType<FlatSymbolRefAttr>("objFifo_to_avoid_at_alloc"));
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo

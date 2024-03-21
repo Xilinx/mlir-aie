@@ -1573,7 +1573,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        OptionalAttr<FlatSymbolRefAttr>:$objFifo_name
+        OptionalAttr<FlatSymbolRefAttr>:$objFifo_to_avoid_at_alloc
   );
 
   let assemblyFormat = [{
@@ -1606,7 +1606,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       return getOperation()->getAttrOfType<mlir::StringAttr>(
           mlir::SymbolTable::getSymbolAttrName());
     }
-    ObjectFifoCreateOp getOtherObjectFifo();
+    ObjectFifoCreateOp getObjectFifoToAvoidAtAlloc();
   }];
 
   let builders = [

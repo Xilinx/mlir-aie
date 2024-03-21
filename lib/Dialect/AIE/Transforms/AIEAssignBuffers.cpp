@@ -30,86 +30,87 @@ struct AIEAssignBufferAddressesPass
     int64_t endAddr;
   } BankLimits;
 
-  std::vector<int64_t> nextAddrInBanks; // each entry is the next address available for use for that bank (e.g. nextAddrInBanks[1] = next available address in bank 1)
-  std::vector<BankLimits> bankLimits;
+  std::map<TileOp, std::vector<int64_t>> nextAddrInBanks; // each entry is the next address available for use for that bank (e.g. nextAddrInBanks[1] = next available address in bank 1)
+  std::map<TileOp, std::vector<BankLimits>> bankLimits;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
   }
 
-  void fillBankLimits(int numBanks, int bankSize) {
+  void fillBankLimits(TileOp tile, int numBanks, int bankSize) {
     for (int i = 0; i < numBanks; i++) {
       auto startAddr = bankSize * i;
       auto endAddr = bankSize * (i + 1);
-      bankLimits.push_back({startAddr, endAddr});
+      if (bankLimits.find(tile) == bankLimits.end()) {
+        std::vector<BankLimits> limits;
+        bankLimits[tile] = limits;
+      }
+      bankLimits[tile].push_back({startAddr, endAddr});
     }
   }
 
-  bool checkAndAddBufferWithAddress(BufferOp buffer, int bankSize) {
+  void setAndUpdateAddressInBank(TileOp tile, BufferOp buffer,
+                                 int64_t start, int64_t end) {
+    // Fixme: alignment
+    buffer.setAddress(start);
+    nextAddrInBanks[tile][buffer.getMemBank().value()] = end;
+  }
+
+  bool checkAndAddBufferWithAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize) {
     if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
       int addr = addrAttr.getInt();
-      if ((0 <= addr) && (addr < bankSize)) {
-        if (addr >= nextAddrInBanks[0])
-          nextAddrInBanks[0] = addr + buffer.getAllocationSize();
-      } else if (addr < bankSize * 2) {
-        if (addr >= nextAddrInBanks[1])
-          nextAddrInBanks[1] = addr + buffer.getAllocationSize();
-      } else if (addr < bankSize * 3) {
-        if (addr >= nextAddrInBanks[2])
-          nextAddrInBanks[2] = addr + buffer.getAllocationSize();
-      } else {
-        if (addr >= nextAddrInBanks[3])
-          nextAddrInBanks[3] = addr + buffer.getAllocationSize();
+      for (int i = 0; i < numBanks; i++) {
+        if (bankLimits[tile][i].startAddr <= addr && addr < bankLimits[tile][i].endAddr) {
+          if (addr >= nextAddrInBanks[tile][i]) {
+            nextAddrInBanks[tile][i] = addr + buffer.getAllocationSize();
+            buffer.setMemBank(i);
+          } else {
+            buffer->emitWarning("Overriding existing address");
+            return false;
+          }
+        }
       }
       return true;
     }
     return false;
   }
 
-  bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks, int bankSize) {
+  bool checkAndAddBufferWithMemBank(TileOp tile, BufferOp buffer, int numBanks, int bankSize) {
     if (auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank")) {
       int mem_bank = memBankAttr.getInt();
-      int64_t startAddr = nextAddrInBanks[mem_bank];
+      int64_t startAddr = nextAddrInBanks[tile][mem_bank];
       int64_t endAddr = startAddr + buffer.getAllocationSize();
-      if (endAddr <= bankLimits[mem_bank].endAddr) {
-        nextAddrInBanks[mem_bank] = endAddr;
-        // Fixme: alignment
-        buffer.setAddress(startAddr);
+      if (endAddr <= bankLimits[tile][mem_bank].endAddr) {
+        setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
       } else {
         buffer->emitWarning("Overriding existing mem_bank");
         int bankIndex = mem_bank;
         for (int i = 0; i < numBanks; i++) {
-          bankIndex %= numBanks;
-          startAddr = nextAddrInBanks[bankIndex];
-          endAddr = startAddr + buffer.getAllocationSize();
-          if (endAddr <= bankLimits[bankIndex].endAddr) {
-            break;
-          }
           bankIndex++;
+          bankIndex %= numBanks;
+          startAddr = nextAddrInBanks[tile][bankIndex];
+          endAddr = startAddr + buffer.getAllocationSize();
+          if (endAddr <= bankLimits[tile][bankIndex].endAddr || i == numBanks - 1) {
+            buffer.setMemBank(bankIndex);
+            setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
+          }
         }
-        nextAddrInBanks[bankIndex] = endAddr;
-        // Fixme: alignment
-        buffer.setAddress(startAddr);
       }
-      buffer->removeAttr("mem_bank");
       return true;
     }
     return false;
   }
 
-  int setBufferAddress(BufferOp buffer, int numBanks, int bankSize, int startBankIndex) {
+  int setBufferAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize, int startBankIndex) {
     int bankIndex = startBankIndex;
-    int64_t startAddr = 0;
-    int64_t endAddr = 0;
     for (int i = 0; i < numBanks; i++) {
       bankIndex %= numBanks;
-      startAddr = nextAddrInBanks[bankIndex];
-      endAddr = startAddr + buffer.getAllocationSize();
-      if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) {
-        nextAddrInBanks[bankIndex] = endAddr;
-        // Fixme: alignment
-        buffer.setAddress(startAddr);
+      int64_t startAddr = nextAddrInBanks[tile][bankIndex];
+      int64_t endAddr = startAddr + buffer.getAllocationSize();
+      if (endAddr <= bankLimits[tile][bankIndex].endAddr || i == numBanks - 1) {
+        buffer.setMemBank(bankIndex);
+        setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
         bankIndex++;
         break;
       }
@@ -152,27 +153,30 @@ struct AIEAssignBufferAddressesPass
         numBanks = 4;
       int bankSize = maxDataMemorySize / numBanks;
       int stacksize = 0;
+      if (nextAddrInBanks.find(tile) == nextAddrInBanks.end()) {
+        std::vector<int64_t> nextAddresses;
+        nextAddrInBanks[tile] = nextAddresses;
+      }
       for (int i = 0; i < numBanks; i++)
-        nextAddrInBanks.push_back(bankSize * i);
+        nextAddrInBanks[tile].push_back(bankSize * i);
       if (auto core = tile.getCoreOp()) {
         stacksize = core.getStackSize();
-        nextAddrInBanks[0] = 0;
-        nextAddrInBanks[0] += stacksize;
+        nextAddrInBanks[tile][0] += stacksize;
       }
-      fillBankLimits(numBanks, bankSize);
+      fillBankLimits(tile, numBanks, bankSize);
 
       SmallVector<BufferOp, 4> buffers;
       SmallVector<BufferOp, 4> allBuffers;
       // Collect all the buffers for this tile.
-      // The buffers with an already specified address will not be 
+      // If possible, the buffers with an already specified address will not be 
       // overwritten (the available address range of the bank the buffers 
       // are in will start AFTER the specified adress + buffer size).
       // Buffers with a specified mem_bank will be assigned first, after 
       // the above.
       for (auto buffer : device.getOps<BufferOp>()) {
         if (buffer.getTileOp() == tile) {
-          bool has_addr = checkAndAddBufferWithAddress(buffer, bankSize);
-          bool has_bank = checkAndAddBufferWithMemBank(buffer, numBanks, bankSize);
+          bool has_addr = checkAndAddBufferWithAddress(tile, buffer, numBanks, bankSize);
+          bool has_bank = checkAndAddBufferWithMemBank(tile, buffer, numBanks, bankSize);
           if (!has_addr && !has_bank)
             buffers.push_back(buffer);
           allBuffers.push_back(buffer);
@@ -181,60 +185,63 @@ struct AIEAssignBufferAddressesPass
 
       // Sort by largest allocation size.
       std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+        assert(buffer.getAddress().has_value() &&
+            "buffer must have address assigned");
         return a.getAllocationSize() > b.getAllocationSize();
       });
 
       // Set addresses for remaining buffers.
       int bankIndex = 0;
-      for (auto buffer : buffers) {
-        bankIndex = setBufferAddress(buffer, numBanks, bankSize, bankIndex);
-      }
+      for (auto buffer : buffers)
+        bankIndex = setBufferAddress(tile, buffer, numBanks, bankSize, bankIndex);
+
+      // Sort by smallest address.
+      std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
+        return a.getAddress().value() < b.getAddress().value();
+      });
 
       // Check if memory was exceeded on any bank and print debug info.
-      if (!tile.isMemTile() && !tile.isShimTile()) {
-        bool foundOverflow = false;
-        std::vector<int> overflow_banks;
+      bool foundOverflow = false;
+      std::vector<int> overflow_banks;
+      for (int i = 0; i < numBanks; i++) {
+        if (nextAddrInBanks[tile][i] > bankLimits[tile][i].endAddr) {
+          foundOverflow = true;
+          overflow_banks.push_back(i);
+        }
+      }
+      if (foundOverflow) {
+        InFlightDiagnostic error =
+            tile.emitOpError("allocated buffers exceeded available memory\n");
+        auto &note = error.attachNote() << "Error in bank(s) : "; 
+        for (auto bank : overflow_banks)
+          note << bank << " ";
+        note << "\n";
+        note << "MemoryMap:\n";
+        auto printbuffer = [&](StringRef name, int address, int size) {
+          note << "\t" << "\t" << name << " \t"
+              << ": 0x" << llvm::utohexstr(address) << "-0x"
+              << llvm::utohexstr(address + size - 1) << " \t(" << size
+              << " bytes)\n";
+        };
         for (int i = 0; i < numBanks; i++) {
-          if (nextAddrInBanks[i] > bankLimits[i].endAddr) {
-            foundOverflow = true;
-            overflow_banks.push_back(i);
+          note << "\t" << "bank : " << i << "\t"
+              << "0x" << llvm::utohexstr(bankLimits[tile][i].startAddr)
+              << "-0x" << llvm::utohexstr(bankLimits[tile][i].endAddr - 1)
+              << "\n";
+          if (i == 0) {
+            if (stacksize > 0)
+              printbuffer("(stack)", 0, stacksize);
+            else
+              error << "(no stack allocated)\n";
+          }
+          for (auto buffer : allBuffers) {
+            auto addr = buffer.getAddress().value();
+            auto mem_bank = buffer.getMemBank().value();
+            if (mem_bank == i) 
+              printbuffer(buffer.name(), addr, buffer.getAllocationSize());
           }
         }
-        if (foundOverflow) {
-          InFlightDiagnostic error =
-              tile.emitOpError("allocated buffers exceeded available memory\n");
-          auto &note = error.attachNote() << "Error in bank(s) : "; 
-          for (auto bank : overflow_banks)
-            note << bank << " ";
-          note << "\n";
-          note << "MemoryMap:\n";
-          auto printbuffer = [&](StringRef name, int address, int size) {
-            note << "\t" << "\t" << name << " \t"
-                << ": 0x" << llvm::utohexstr(address) << "-0x"
-                << llvm::utohexstr(address + size - 1) << " \t(" << size
-                << " bytes)\n";
-          };
-          for (int i = 0; i < numBanks; i++) {
-            note << "\t" << "bank : " << i << "\t"
-                << "0x" << llvm::utohexstr(bankLimits[i].startAddr)
-                << "-0x" << llvm::utohexstr(bankLimits[i].endAddr - 1)
-                << "\n";
-            if (i == 0) {
-              if (stacksize > 0)
-                printbuffer("(stack)", 0, stacksize);
-              else
-                error << "(no stack allocated)\n";
-            }
-            for (auto buffer : allBuffers) {
-              assert(buffer.getAddress().has_value() &&
-                    "buffer must have address assigned");
-              auto addr = buffer.getAddress().value();
-              if (bankLimits[i].startAddr <= addr && addr < bankLimits[i].endAddr) 
-                printbuffer(buffer.name(), addr, buffer.getAllocationSize());
-            }
-          }
-          return signalPassFailure();
-        }
+        return signalPassFailure();
       }
     }
   }
