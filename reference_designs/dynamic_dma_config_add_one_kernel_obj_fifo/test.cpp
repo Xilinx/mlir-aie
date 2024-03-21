@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
     dst[i] = 0xdeface;
   }
 
-  invoke_data_movement(queues[0], &agents[0], src, dst);
+  invoke_data_movement(queues[0], &agents[0], dst, src);
 
   int errors = 0;
 

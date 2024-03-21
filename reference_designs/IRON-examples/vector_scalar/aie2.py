@@ -15,6 +15,7 @@ from aie.extras.dialects.ext import memref, arith
 
 import sys
 
+
 def my_vector_scalar():
     N = 64
     n = 16
@@ -24,15 +25,15 @@ def my_vector_scalar():
 
     with mlir_mod_ctx() as ctx:
 
-        if(len(sys.argv) != 3):
-          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-        
-        if sys.argv[1] == 'ipu':
-          dev = AIEDevice.ipu
-        elif sys.argv[1] == 'xcvc1902':
-          dev = AIEDevice.xcvc1902
+        if len(sys.argv) != 3:
+            raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+        if sys.argv[1] == "ipu":
+            dev = AIEDevice.ipu
+        elif sys.argv[1] == "xcvc1902":
+            dev = AIEDevice.xcvc1902
         else:
-          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+            raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
         @device(dev)
         def device_body():
@@ -60,10 +61,10 @@ def my_vector_scalar():
                         elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                         elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                         for i in for_(n):
-                          v0 = memref.load(elem_in, [i])
-                          v1 = arith.muli(v0, arith.constant(3, T.i32()))
-                          memref.store(v1, elem_out, [i])
-                          yield_([])
+                            v0 = memref.load(elem_in, [i])
+                            v1 = arith.muli(v0, arith.constant(3, T.i32()))
+                            memref.store(v1, elem_out, [i])
+                            yield_([])
                         of_in.release(ObjectFifoPort.Consume, 1)
                         of_out.release(ObjectFifoPort.Produce, 1)
                         yield_([])

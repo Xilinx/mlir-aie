@@ -15,6 +15,7 @@ from aie.extras.dialects.ext import memref, arith
 
 import sys
 
+
 def my_vector_max():
     N = 64
 
@@ -22,15 +23,15 @@ def my_vector_max():
 
     with mlir_mod_ctx() as ctx:
 
-        if(len(sys.argv) != 3):
-          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-        
-        if sys.argv[1] == 'ipu':
-          dev = AIEDevice.ipu
-        elif sys.argv[1] == 'xcvc1902':
-          dev = AIEDevice.xcvc1902
+        if len(sys.argv) != 3:
+            raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+        if sys.argv[1] == "ipu":
+            dev = AIEDevice.ipu
+        elif sys.argv[1] == "xcvc1902":
+            dev = AIEDevice.xcvc1902
         else:
-          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+            raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
         @device(dev)
         def device_body():
@@ -59,12 +60,12 @@ def my_vector_max():
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(N):
-                      v0 = memref.load(elem_in, [i])
-                      v1 = memref.load(max_val, [0])
-                      v2 = arith.maxui(v1, v0)
-                      memref.store(v2, max_val, [0])
-                      yield_([])
-                    
+                        v0 = memref.load(elem_in, [i])
+                        v1 = memref.load(max_val, [0])
+                        v2 = arith.maxui(v1, v0)
+                        memref.store(v2, max_val, [0])
+                        yield_([])
+
                     v3 = memref.load(max_val, [0])
                     memref.store(v3, elem_out, [0])
                     of_in.release(ObjectFifoPort.Consume, 1)

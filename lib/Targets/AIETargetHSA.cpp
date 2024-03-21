@@ -74,11 +74,16 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   }
 
   // Getting the sequence function op which contains the instructions
-  mlir::func::FuncOp funcOp;
+  mlir::func::FuncOp funcOp = NULL;
   for (auto op : targetOp.getOps<mlir::func::FuncOp>()) {
     if (op.getName().str().compare("sequence") == 0) {
       funcOp = op;
     }
+  }
+
+  // If no funcOp then just return
+  if (funcOp == NULL) {
+    return success();
   }
 
   collectTiles(targetOp, tiles);
