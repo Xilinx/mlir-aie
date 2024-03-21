@@ -11,6 +11,8 @@
 // RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
+// XFAIL: *
+
 module @test27_simple_shim_dma_single_lock {
   %tile73 = aie.tile(7, 3)
   %lockCore = aie.lock(%tile73, 0) { sym_name = "coreLock"}

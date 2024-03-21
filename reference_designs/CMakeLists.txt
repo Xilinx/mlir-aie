@@ -57,7 +57,12 @@ option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ${DEFAULT_ENABLE
 if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
   set(DEFAULT_ENABLE_BOARD_TESTS ON)
 else()
-  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
+  # If we are on a x86 and find hsa-runtiem64 run the tests on the board
+  if(hsa-runtime64_FOUND)
+    set(ENABLE_BOARD_TESTS ON)
+  else()
+    set(ENABLE_BOARD_TESTS OFF)
+  endif()
 endif()
 option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
 

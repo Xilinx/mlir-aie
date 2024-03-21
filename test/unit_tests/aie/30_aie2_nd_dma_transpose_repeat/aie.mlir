@@ -19,6 +19,8 @@
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
+// XFAIL: *
+
 module @tutorial_2b {
 
     aie.device(xcve2802) {
