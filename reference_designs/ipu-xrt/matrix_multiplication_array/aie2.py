@@ -30,6 +30,7 @@ def main():
 def my_matmul(M=512, K=512, N=512):
     m = 64
     k = 64
+    mtk = 256
     n = 64
     r = 4
     s = 8
@@ -49,12 +50,14 @@ def my_matmul(M=512, K=512, N=512):
     M_div_m = M // m
     M_div_m_div_n_rows = M // (m * n_rows)
     K_div_k = K // k
+    K_div_mtk = K // mtk
     N_div_n = N // n
     tiles = M_div_m * N_div_n // n_cores
     N_div_n_div_n_cols = N_div_n // n_cols
 
     # Matrix A: MxK, submatrices a: mxk
     k_in_i32s = k * word_size_in // 4
+    mtk_in_i32s = mtk * word_size_in // 4
     K_in_i32s = K * word_size_in // 4
     m_x_n_rows = m * n_rows
 
@@ -76,7 +79,7 @@ def my_matmul(M=512, K=512, N=512):
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * k, T.bf16())
+            memRef_inA_ty = T.memref(m * mtk, T.bf16())
             memRef_inB_ty = T.memref(k * n, T.bf16())
             memRef_outC_ty = T.memref(m * n * n_rows, T.bf16())
             memRef_A_ty = T.memref(m, k, T.bf16())
@@ -189,6 +192,12 @@ def my_matmul(M=512, K=512, N=512):
                     mems[i],
                     2,
                     memRef_inA_ty,
+                    [],
+                    [[
+                        (m, k),
+                        (mtk // k, m * k),
+                        (k, 1),
+                    ]],
                 )
                 memA_fifos[memA_fifo_names[i]] = object_fifo(
                     memA_fifo_names[i],
@@ -197,11 +206,16 @@ def my_matmul(M=512, K=512, N=512):
                     2,
                     memRef_A_ty,
                     [
-                        (m // r, r * k),
+                        (mtk // k, m * k),
                         (k // s, s),
-                        (r, k),
+                        (m, k),
                         (s, 1),
                     ],
+                    [[
+                        (k // s, r * s),
+                        (m // r, r * k),
+                        (r * s, 1),
+                    ]],
                 )
                 object_fifo_link(inA_fifo_names[i], memA_fifo_names[i])
 
@@ -355,9 +369,11 @@ def my_matmul(M=512, K=512, N=512):
                                     0,
                                     A_col_offset_in_i32s + A_row_offset_in_i32s,
                                 ],
-                                sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
-                                strides=[0, k_in_i32s, K_in_i32s],
+                                sizes=[N_div_n_div_n_cols, K_div_mtk, m, mtk_in_i32s],
+                                strides=[0, mtk_in_i32s, K_in_i32s],
                             )
+                               # sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
+                               # strides=[0, k_in_i32s, K_in_i32s],
                             ipu_dma_memcpy_nd(
                                 metadata=inB_fifo_names[i],
                                 bd_id=2 * tile_row + 2,
