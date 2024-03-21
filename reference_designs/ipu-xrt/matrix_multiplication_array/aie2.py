@@ -79,9 +79,9 @@ def my_matmul(M=512, K=512, N=512):
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_inA_ty = T.memref(m * mtk, T.bf16())
-            memRef_inB_ty = T.memref(k * n, T.bf16())
-            memRef_outC_ty = T.memref(m * n * n_rows, T.bf16())
+            memRef_inA_ty = T.memref(m, mtk, T.bf16())
+            memRef_inB_ty = T.memref(k, n, T.bf16())
+            memRef_outC_ty = T.memref(m * n_rows, n, T.bf16())
             memRef_A_ty = T.memref(m, k, T.bf16())
             memRef_B_ty = T.memref(k, n, T.bf16())
             memRef_C_ty = T.memref(m, n, T.bf16())
