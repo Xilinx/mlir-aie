@@ -217,7 +217,7 @@ struct AIEAssignBufferAddressesPass
       if (foundOverflow) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory\n");
-        auto &note = error.attachNote() << "Error in bank(s) : "; 
+        auto &note = error.attachNote() << "Error in bank(s) : ";
         for (auto bank : overflow_banks)
           note << bank << " ";
         note << "\n";
