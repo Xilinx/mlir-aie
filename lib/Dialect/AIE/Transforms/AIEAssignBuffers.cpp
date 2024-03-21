@@ -65,7 +65,8 @@ struct AIEAssignBufferAddressesPass
     if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
       int addr = addrAttr.getInt();
       for (int i = 0; i < numBanks; i++) {
-        if (bankLimits[tile][i].startAddr <= addr && addr < bankLimits[tile][i].endAddr) {
+        if (bankLimits[tile][i].startAddr <= addr &&
+            addr < bankLimits[tile][i].endAddr) {
           if (addr >= nextAddrInBanks[tile][i]) {
             nextAddrInBanks[tile][i] = addr + buffer.getAllocationSize();
             buffer.setMemBank(i);
