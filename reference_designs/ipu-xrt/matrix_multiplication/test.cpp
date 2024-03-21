@@ -228,11 +228,11 @@ int main(int argc, const char *argv[]) {
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
-  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
+  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
 
   std::cout << std::endl
             << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
-  std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
+  std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
   if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";

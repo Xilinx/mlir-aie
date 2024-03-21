@@ -207,14 +207,6 @@ struct AIEObjectFifoStatefulTransformPass
     return !hasSharedMemory || atLeastOneConsumerWantsTransform;
   }
 
-  /// Function to multiply all dimensions of a memref.
-  int64_t getMemrefTypeSize(MemRefType memref) {
-    int64_t size = 1;
-    for (auto dim : memref.getShape())
-      size *= dim;
-    return size;
-  }
-
   void updateMemBanksIndex(ObjectFifoCreateOp op) {
     int current = objFifoMemBanks[op];
     int next = (current + 1) % 4;
@@ -376,14 +368,14 @@ struct AIEObjectFifoStatefulTransformPass
                               .getElemType()
                               .cast<AIEObjectFifoType>();
         auto elemInType = fifoInType.getElementType().cast<MemRefType>();
-        int inSize = getMemrefTypeSize(elemInType);
+        int inSize = elemInType.getNumElements();
 
         auto fifoOutType = linkOp->getOutputObjectFifos()[0]
                                .getElemType()
                                .cast<AIEObjectFifoType>();
         auto elemOutType = fifoOutType.getElementType().cast<MemRefType>();
 
-        if (int outSize = getMemrefTypeSize(elemOutType); inSize >= outSize) {
+        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
           if (op.name() != fifoIn.name())
             return;
         } else {
@@ -539,11 +531,10 @@ struct AIEObjectFifoStatefulTransformPass
 
     int acqNum = 1;
     int relNum = 1;
-    int offset = 0;
 
     auto fifo = op.getElemType().cast<AIEObjectFifoType>();
     auto elemType = fifo.getElementType().cast<MemRefType>();
-    int len = getMemrefTypeSize(elemType);
+    int len = elemType.getNumElements();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -604,8 +595,8 @@ struct AIEObjectFifoStatefulTransformPass
 
       builder.setInsertionPointToStart(curr);
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], offset, len,
-                              channelDir, blockIndex, succ, dims);
+                              buffersPerFifo[target][blockIndex], /*offset*/ 0,
+                              len, channelDir, blockIndex, succ, dims);
       curr = succ;
       blockIndex++;
     }
@@ -623,7 +614,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     int acqNum = 1;
     int relNum = 1;
-    int offset = 0;
 
     // search for ShimDMAOp
     Operation *producerDMA = nullptr;
@@ -677,12 +667,12 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
 
       MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
-      int len = getMemrefTypeSize(buffer);
+      int len = buffer.getNumElements();
       builder.setInsertionPointToStart(curr);
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
                                       externalBuffersPerFifo[op][blockIndex],
-                                      offset, len, channelDir, blockIndex, succ,
-                                      dims);
+                                      /*offset*/ 0, len, channelDir, blockIndex,
+                                      succ, dims);
       curr = succ;
       blockIndex++;
     }
@@ -698,11 +688,9 @@ struct AIEObjectFifoStatefulTransformPass
     if (numBlocks == 0)
       return;
 
-    int offset = 0;
     auto fifo = op.getElemType().cast<AIEObjectFifoType>();
     auto elemType = fifo.getElementType().cast<MemRefType>();
-    int lenOut = getMemrefTypeSize(elemType);
-    int bytes = elemType.getElementTypeBitWidth() / 8;
+    int lenOut = elemType.getNumElements();
     int acqNum = 1;
     int relNum = 1;
 
@@ -728,7 +716,7 @@ struct AIEObjectFifoStatefulTransformPass
               auto elemType = fifoType.getElementType().cast<MemRefType>();
               if (fifoIn.name() == op.name())
                 break;
-              extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += elemType.getNumElements();
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -743,7 +731,7 @@ struct AIEObjectFifoStatefulTransformPass
               auto elemType = fifoType.getElementType().cast<MemRefType>();
               if (fifoOut.name() == op.name())
                 break;
-              extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += elemType.getNumElements();
             }
           }
         } else {
@@ -751,7 +739,7 @@ struct AIEObjectFifoStatefulTransformPass
             auto targetFifo = target.getElemType().cast<AIEObjectFifoType>();
             auto targetElemType =
                 targetFifo.getElementType().cast<MemRefType>();
-            lenOut = getMemrefTypeSize(targetElemType);
+            lenOut = targetElemType.getNumElements();
           }
         }
 
@@ -813,8 +801,9 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
 
       builder.setInsertionPointToStart(curr);
+      int offset = 0;
       if (isDistribute || isJoin)
-        offset = extraOffset * bytes;
+        offset = extraOffset;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], offset,
                               lenOut, channelDir, blockIndex, succ, dims);
