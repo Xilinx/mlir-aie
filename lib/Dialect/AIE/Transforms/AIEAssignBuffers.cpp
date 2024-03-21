@@ -53,8 +53,8 @@ struct AIEAssignBufferAddressesPass
     }
   }
 
-  void setAndUpdateAddressInBank(TileOp tile, BufferOp buffer,
-                                 int64_t start, int64_t end) {
+  void setAndUpdateAddressInBank(TileOp tile, BufferOp buffer, int64_t start,
+                                 int64_t end) {
     // Fixme: alignment
     buffer.setAddress(start);
     nextAddrInBanks[tile][buffer.getMemBank().value()] = end;
