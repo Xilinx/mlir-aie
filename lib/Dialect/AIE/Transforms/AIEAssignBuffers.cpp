@@ -97,7 +97,8 @@ struct AIEAssignBufferAddressesPass
           bankIndex %= numBanks;
           startAddr = nextAddrInBanks[tile][bankIndex];
           endAddr = startAddr + buffer.getAllocationSize();
-          if (endAddr <= bankLimits[tile][bankIndex].endAddr || i == numBanks - 1) {
+          if (endAddr <= bankLimits[tile][bankIndex].endAddr ||
+              i == numBanks - 1) {
             buffer.setMemBank(bankIndex);
             setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
           }
