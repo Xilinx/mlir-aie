@@ -176,8 +176,8 @@ struct AIEAssignBufferAddressesPass
       SmallVector<BufferOp, 4> buffers;
       SmallVector<BufferOp, 4> allBuffers;
       // Collect all the buffers for this tile.
-      // If possible, the buffers with an already specified address will not be 
-      // overwritten (the available address range of the bank the buffers 
+      // If possible, the buffers with an already specified address will not be
+      // overwritten (the available address range of the bank the buffers
       // are in will start AFTER the specified adress + buffer size).
       // Buffers with a specified mem_bank will be assigned first, after 
       // the above.
