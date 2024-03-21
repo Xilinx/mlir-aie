@@ -179,7 +179,7 @@ struct AIEAssignBufferAddressesPass
       // If possible, the buffers with an already specified address will not be
       // overwritten (the available address range of the bank the buffers
       // are in will start AFTER the specified adress + buffer size).
-      // Buffers with a specified mem_bank will be assigned first, after 
+      // Buffers with a specified mem_bank will be assigned first, after
       // the above.
       for (auto buffer : device.getOps<BufferOp>()) {
         if (buffer.getTileOp() == tile) {
