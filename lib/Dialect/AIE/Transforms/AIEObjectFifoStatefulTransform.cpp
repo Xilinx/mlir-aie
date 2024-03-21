@@ -413,7 +413,9 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        int mem_bank = getMemBank(op, creation_tile);
+        int mem_bank = -1;
+        if (op->hasAttr("objFifo_name"))
+          mem_bank = getMemBank(op, creation_tile);
         BufferOp buff;
         if (mem_bank >= 0) {
           buff = builder.create<BufferOp>(
