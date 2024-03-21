@@ -109,7 +109,8 @@ struct AIEAssignBufferAddressesPass
     return false;
   }
 
-  int setBufferAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize, int startBankIndex) {
+  int setBufferAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize,
+                       int startBankIndex) {
     int bankIndex = startBankIndex;
     for (int i = 0; i < numBanks; i++) {
       bankIndex %= numBanks;
