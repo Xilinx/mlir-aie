@@ -60,7 +60,8 @@ struct AIEAssignBufferAddressesPass
     nextAddrInBanks[tile][buffer.getMemBank().value()] = end;
   }
 
-  bool checkAndAddBufferWithAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize) {
+  bool checkAndAddBufferWithAddress(TileOp tile, BufferOp buffer, int numBanks,
+                                    int bankSize) {
     if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
       int addr = addrAttr.getInt();
       for (int i = 0; i < numBanks; i++) {
