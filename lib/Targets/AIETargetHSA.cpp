@@ -82,7 +82,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   }
 
   // If no funcOp then just return
-  if(funcOp == NULL) {
+  if (funcOp == NULL) {
     return success();
   }
 
