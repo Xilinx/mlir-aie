@@ -230,10 +230,11 @@ struct AIEAssignBufferAddressesPass
                << " bytes)\n";
         };
         for (int i = 0; i < numBanks; i++) {
-          note << "\t" << "bank : " << i << "\t"
-              << "0x" << llvm::utohexstr(bankLimits[tile][i].startAddr)
-              << "-0x" << llvm::utohexstr(bankLimits[tile][i].endAddr - 1)
-              << "\n";
+          note << "\t"
+               << "bank : " << i << "\t"
+               << "0x" << llvm::utohexstr(bankLimits[tile][i].startAddr)
+               << "-0x" << llvm::utohexstr(bankLimits[tile][i].endAddr - 1)
+               << "\n";
           if (i == 0) {
             if (stacksize > 0)
               printbuffer("(stack)", 0, stacksize);
