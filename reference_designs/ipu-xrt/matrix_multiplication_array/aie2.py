@@ -391,8 +391,6 @@ def my_matmul(M=512, K=512, N=512):
                                 sizes=[N_div_n_div_n_cols, K_div_mtk, m, mtk_in_i32s],
                                 strides=[0, mtk_in_i32s, K_in_i32s],
                             )
-                            # sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
-                            # strides=[0, k_in_i32s, K_in_i32s],
                             ipu_dma_memcpy_nd(
                                 metadata=inB_fifo_names[i],
                                 bd_id=2 * tile_row + 2,
