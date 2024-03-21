@@ -215,7 +215,19 @@ def my_matmul(M=512, K=512, N=512):
                         (k // s, r * s),
                         (m // r, r * k),
                         (r * s, 1),
-                    ]],
+                    ],[
+                        (k // s, r * s),
+                        (m // r, r * k),
+                        (r * s, 1),
+                    ],[
+                        (k // s, r * s),
+                        (m // r, r * k),
+                        (r * s, 1),
+                    ],[
+                        (k // s, r * s),
+                        (m // r, r * k),
+                        (r * s, 1),
+                    ],],
                 )
                 object_fifo_link(inA_fifo_names[i], memA_fifo_names[i])
 
