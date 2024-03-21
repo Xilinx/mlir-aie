@@ -114,10 +114,10 @@ int main(int argc, char *argv[]) {
   uint64_t packet_id = wr_idx % queues[0]->size;
   hsa_agent_dispatch_packet_t write_pkt;
   mlir_aie_packet_nd_memcpy(&write_pkt, 0, col, 1, 0, 4, 2,
-                       reinterpret_cast<uint64_t>(src),
-                       DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
+                            reinterpret_cast<uint64_t>(src),
+                            DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
   mlir_aie_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
-                              &write_pkt);
+                                   &write_pkt);
 
   //
   // read the data
@@ -127,10 +127,10 @@ int main(int argc, char *argv[]) {
   packet_id = wr_idx % queues[0]->size;
   hsa_agent_dispatch_packet_t read_pkt;
   mlir_aie_packet_nd_memcpy(&read_pkt, 0, col, 0, 0, 4, 2,
-                       reinterpret_cast<uint64_t>(dst),
-                       DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
+                            reinterpret_cast<uint64_t>(dst),
+                            DMA_COUNT * sizeof(float), 1, 0, 1, 0, 1, 0);
   mlir_aie_queue_dispatch_and_wait(&agents[0], queues[0], packet_id, wr_idx,
-                              &read_pkt);
+                                   &read_pkt);
 
   int errors = 0;
 
