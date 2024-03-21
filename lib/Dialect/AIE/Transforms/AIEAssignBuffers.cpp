@@ -81,7 +81,8 @@ struct AIEAssignBufferAddressesPass
     return false;
   }
 
-  bool checkAndAddBufferWithMemBank(TileOp tile, BufferOp buffer, int numBanks, int bankSize) {
+  bool checkAndAddBufferWithMemBank(TileOp tile, BufferOp buffer, int numBanks,
+                                    int bankSize) {
     if (auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank")) {
       int mem_bank = memBankAttr.getInt();
       int64_t startAddr = nextAddrInBanks[tile][mem_bank];
