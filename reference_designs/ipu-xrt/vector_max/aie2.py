@@ -48,12 +48,12 @@ def my_vector_max():
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(N):
-                      v0 = memref.load(elem_in, [i])
-                      v1 = memref.load(max_val, [0])
-                      v2 = arith.maxui(v1, v0)
-                      memref.store(v2, max_val, [0])
-                      yield_([])
-                    
+                        v0 = memref.load(elem_in, [i])
+                        v1 = memref.load(max_val, [0])
+                        v2 = arith.maxui(v1, v0)
+                        memref.store(v2, max_val, [0])
+                        yield_([])
+
                     v3 = memref.load(max_val, [0])
                     memref.store(v3, elem_out, [0])
                     of_in.release(ObjectFifoPort.Consume, 1)

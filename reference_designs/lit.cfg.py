@@ -53,14 +53,12 @@ if config.hsa_found:
     rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
     print("Found ROCm:", rocm_root)
     config.available_features.add("hsa")
-    config.substitutions.append(('%HSA_DIR%', "{}".format(rocm_root)))
+    config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
 else:
     print("ROCm not found")
 
 if config.enable_board_tests:
-    config.substitutions.append(
-        ("%run_on_board", "sudo flock /tmp/board.lock")
-    )
+    config.substitutions.append(("%run_on_board", "sudo flock /tmp/board.lock"))
 else:
     config.substitutions.append(("%run_on_board", "echo"))
 
@@ -72,16 +70,16 @@ if config.hsa_found:
     # directory so need to go up three directories
     rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
     print("Found ROCm:", rocm_root)
-    config.substitutions.append(('%link_against_hsa%', "--link_against_hsa"))
+    config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
 
     if config.enable_board_tests:
-        config.substitutions.append(('%run_on_board', "flock /tmp/vck5000.lock sudo"))
+        config.substitutions.append(("%run_on_board", "flock /tmp/vck5000.lock sudo"))
     else:
         print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
-        config.substitutions.append(('%run_on_board', "echo"))
+        config.substitutions.append(("%run_on_board", "echo"))
 else:
     print("ROCm not found")
-    config.substitutions.append(('%link_against_hsa%', ""))
+    config.substitutions.append(("%link_against_hsa%", ""))
 
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))

@@ -14,18 +14,19 @@ from aie.extras.context import mlir_mod_ctx
 # Used to get command line arguments
 import sys
 
+
 def my_add_one_objFifo():
     with mlir_mod_ctx() as ctx:
 
-        if(len(sys.argv) != 3):
-          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-        
-        if sys.argv[1] == 'ipu':
-          dev = AIEDevice.ipu
-        elif sys.argv[1] == 'xcvc1902':
-          dev = AIEDevice.xcvc1902
+        if len(sys.argv) != 3:
+            raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+        if sys.argv[1] == "ipu":
+            dev = AIEDevice.ipu
+        elif sys.argv[1] == "xcvc1902":
+            dev = AIEDevice.xcvc1902
         else:
-          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+            raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
         @device(dev)
         def device_body():

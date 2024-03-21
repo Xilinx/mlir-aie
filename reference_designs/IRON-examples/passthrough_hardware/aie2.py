@@ -15,18 +15,19 @@ import sys
 
 N = 4096
 
+
 def my_add_one_objFifo():
     with mlir_mod_ctx() as ctx:
 
-        if(len(sys.argv) != 3):
-          raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-        
-        if sys.argv[1] == 'ipu':
-          dev = AIEDevice.ipu
-        elif sys.argv[1] == 'xcvc1902':
-          dev = AIEDevice.xcvc1902
+        if len(sys.argv) != 3:
+            raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+        if sys.argv[1] == "ipu":
+            dev = AIEDevice.ipu
+        elif sys.argv[1] == "xcvc1902":
+            dev = AIEDevice.xcvc1902
         else:
-          raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+            raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
         @device(dev)
         def device_body():
@@ -53,7 +54,7 @@ def my_add_one_objFifo():
                 v0 = arith.constant(0, T.i32())
                 memref.store(v0, tmp, [0])
 
-           # To/from AIE-array data movement
+            # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
