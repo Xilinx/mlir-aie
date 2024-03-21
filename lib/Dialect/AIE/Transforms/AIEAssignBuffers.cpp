@@ -201,9 +201,10 @@ struct AIEAssignBufferAddressesPass
         bankIndex = setBufferAddress(tile, buffer, numBanks, bankSize, bankIndex);
 
       // Sort by smallest address.
-      std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
-        return a.getAddress().value() < b.getAddress().value();
-      });
+      std::sort(allBuffers.begin(), allBuffers.end(),
+                [](BufferOp a, BufferOp b) {
+                  return a.getAddress().value() < b.getAddress().value();
+                });
 
       // Check if memory was exceeded on any bank and print debug info.
       bool foundOverflow = false;
