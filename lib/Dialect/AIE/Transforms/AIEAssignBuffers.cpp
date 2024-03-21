@@ -30,7 +30,10 @@ struct AIEAssignBufferAddressesPass
     int64_t endAddr;
   } BankLimits;
 
-  std::map<TileOp, std::vector<int64_t>> nextAddrInBanks; // each entry is the next address available for use for that bank (e.g. nextAddrInBanks[1] = next available address in bank 1)
+  std::map<TileOp, std::vector<int64_t>>
+      nextAddrInBanks; // each entry is the next address available for use for
+                       // that bank (e.g. nextAddrInBanks[1] = next available
+                       // address in bank 1)
   std::map<TileOp, std::vector<BankLimits>> bankLimits;
 
   void getDependentDialects(DialectRegistry &registry) const override {
