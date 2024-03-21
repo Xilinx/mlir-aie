@@ -243,7 +243,7 @@ struct AIEAssignBufferAddressesPass
           for (auto buffer : allBuffers) {
             auto addr = buffer.getAddress().value();
             auto mem_bank = buffer.getMemBank().value();
-            if (mem_bank == i) 
+            if (mem_bank == i)
               printbuffer(buffer.name(), addr, buffer.getAllocationSize());
           }
         }
