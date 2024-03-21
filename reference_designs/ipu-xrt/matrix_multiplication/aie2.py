@@ -114,7 +114,7 @@ def my_matmul():
                     (s, n),
                     (t, 1),
                 ],
-                obj_fifo_to_avoid_at_alloc = "memA",
+                obj_fifo_to_avoid_at_alloc="memA",
             )
             object_fifo_link(inB, memB)
 
