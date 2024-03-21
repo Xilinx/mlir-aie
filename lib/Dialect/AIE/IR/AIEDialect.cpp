@@ -547,7 +547,8 @@ ObjectFifoCreateOp ObjectFifoCreateOp::getObjectFifoToAvoidAtAlloc() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoToAvoidAtAlloc().value());
+      if (auto *st = SymbolTable::lookupSymbolIn(
+              parent, getObjFifoToAvoidAtAlloc().value());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
