@@ -10,10 +10,16 @@
 
 // RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
-// CHECK:   (stack) : 0x0-0x3FF     (1024 bytes)
-// CHECK:   b       : 0x400-0x83FF         (32768 bytes)
-// CHECK:   c       : 0x8400-0x841F         (32 bytes)
-// CHECK:   a       : 0x8420-0x842F         (16 bytes)
+// CHECK:   Error in bank(s) : 3 
+// CHECK:   MemoryMap:
+// CHECK:   	bank : 0	  0x0-0x1FFF
+// CHECK:   		(stack) 	: 0x0-0x3FF 	(1024 bytes)
+// CHECK:   		      c 	: 0x400-0x41F 	(32 bytes)
+// CHECK:   	bank : 1	  0x2000-0x3FFF
+// CHECK:   		      a 	: 0x2000-0x200F 	(16 bytes)
+// CHECK:   	bank : 2	  0x4000-0x5FFF
+// CHECK:   	bank : 3	  0x6000-0x7FFF
+// CHECK:   		      b 	: 0x6000-0xDFFF 	(32768 bytes)
 
 module @test {
  aie.device(xcvc1902) {
