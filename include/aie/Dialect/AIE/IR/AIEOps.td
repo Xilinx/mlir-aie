@@ -861,7 +861,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<AIEI32Attr>:$bd_id,
         // should never be assigned by user...
-        OptionalAttr<AIEI32Attr>:$next_bd_id
+        OptionalAttr<AIEI32Attr>:$next_bd_id,
+        OptionalAttr<BDDimLayoutAttr>:$iteration
   );
 
   let hasVerifier = 1;

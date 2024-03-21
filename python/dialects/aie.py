@@ -96,8 +96,14 @@ class call(CallOp):
             )
 
 
-def bd_dim_layout(size, stride):
-    return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
+def bd_dim_layout(size, stride, context=None):
+    return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>", context=context)
+
+
+@register_attribute_builder("BDDimLayoutAttr")
+def _i64Attr(tup, context):
+    size, stride = tup
+    return bd_dim_layout(size, stride, context)
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
@@ -105,7 +111,7 @@ def bd_dim_layout_array_attr_builder(
     tups: List[Union[Attribute, Tuple[int]]], context=None
 ):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
-        tups = list(map(lambda t: bd_dim_layout(*t), tups))
+        tups = list(map(lambda t: bd_dim_layout(*t, context=context), tups))
     return Attribute.parse(
         f'#aie<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
     )

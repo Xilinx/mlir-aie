@@ -324,6 +324,15 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,
                             lenInBytes);
+    if (bdOp.getIteration().has_value()) {
+      uint8_t iterationCurrent = 0;
+      // libxaie requires stride in multiples of 32b
+      uint32_t iterationStride = static_cast<uint32_t>(
+          bdOp.getIteration()->getStride() * elementWidthIn32bWords);
+      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetBdIteration, &dmaTileBd,
+                              iterationStride, bdOp.getIteration()->getSize(),
+                              iterationCurrent);
+    }
   }
 
   if (nextBdId) {

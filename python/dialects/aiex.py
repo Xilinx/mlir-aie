@@ -431,12 +431,13 @@ def process_bd(
     rel_val=None,
     offset=None,
     len=None,
-    dimensions=None,
+    dims=None,
+    iter=None,
 ):
     if rel_lock is None:
         rel_lock = acq_lock
     aie.use_lock(acq_lock, acq_action, value=acq_val)
-    aie.dma_bd(buffer, offset=offset, len=len, dimensions=dimensions)
+    aie.dma_bd(buffer, offset=offset, len=len, dimensions=dims, iteration=iter)
     aie.use_lock(rel_lock, rel_action, value=rel_val)
 
 
@@ -452,7 +453,8 @@ def send_bd(
     rel_val=None,
     offset=None,
     len=None,
-    dimensions=None,
+    dims=None,
+    iter=None,
     repeat_count=None,
     num_blocks=1,
 ):
@@ -473,7 +475,8 @@ def send_bd(
             rel_val=rel_val,
             offset=offset,
             len=len,
-            dimensions=dimensions,
+            dims=dims,
+            iter=iter,
         )
 
     return d
@@ -491,7 +494,8 @@ def receive_bd(
     rel_val=None,
     offset=None,
     len=None,
-    dimensions=None,
+    dims=None,
+    iter=None,
     repeat_count=None,
     num_blocks=1,
 ):
@@ -512,7 +516,8 @@ def receive_bd(
             rel_val=rel_val,
             offset=offset,
             len=len,
-            dimensions=dimensions,
+            dims=dims,
+            iter=iter,
         )
 
     return d
@@ -529,10 +534,12 @@ def forward_bd(
     repeat_count=None,
     read_offset=None,
     read_len=None,
-    read_dimensions=None,
+    read_dims=None,
+    read_iter=None,
     write_offset=None,
     write_len=None,
-    write_dimensions=None,
+    write_dims=None,
+    write_iter=None,
 ):
     if isinstance(s2mm_channel_idx, IntegerAttr):
         s2mm_channel_idx = int(s2mm_channel_idx)
@@ -558,12 +565,12 @@ def forward_bd(
 
     loop = repeat_count is None
 
-    a_args = [read_offset, read_len, read_dimensions]
-    b_args = [write_offset, write_len, write_dimensions]
+    a_args = [read_offset, read_len, read_dims]
+    b_args = [write_offset, write_len, write_dims]
     for i, b_arg in enumerate(b_args):
         if b_arg is None:
             b_args[i] = a_args[i]
-    write_offset, write_len, write_dimensions = b_args
+    write_offset, write_len, write_dims = b_args
 
     @aie.dma(DMAChannelDir.S2MM, s2mm_channel_idx, loop=loop, repeat_count=repeat_count)
     def dma_incoming():
@@ -573,7 +580,8 @@ def forward_bd(
             write_out_lock,
             offset=read_offset,
             len=read_len,
-            dimensions=read_dimensions,
+            dims=read_dims,
+            iter=read_iter,
         )
 
     @aie.dma(DMAChannelDir.MM2S, mm2s_channel_idx, loop=loop, repeat_count=repeat_count)
@@ -584,7 +592,8 @@ def forward_bd(
             read_in_lock,
             offset=write_offset,
             len=write_len,
-            dimensions=write_dimensions,
+            dims=write_dims,
+            iter=write_iter,
         )
 
 
@@ -784,7 +793,12 @@ class TileArray:
         return r
 
     def __lshift__(self, other):
-        return self.rflow(other)
+        # HACK
+        if np.broadcast_shapes(self.df.shape, other.df.shape) == other.df.shape:
+            (self_df,) = _broadcast_args_to([self.df], other.df.shape)
+        else:
+            self_df = self.df
+        return broadcast_flow(other.df, self_df)
 
     def __getitem__(self, item):
         # https://numpy.org/doc/stable/user/basics.indexing.html#integer-array-indexing

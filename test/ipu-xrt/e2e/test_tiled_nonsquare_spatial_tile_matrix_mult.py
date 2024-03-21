@@ -23,6 +23,7 @@ from aie.dialects.aie import (
     DMAChannelDir,
     LockAction,
     WireBundle,
+    bd_dim_layout,
 )
 from aie.dialects.aiex import TileArray
 from aie.extras.context import ExplicitlyManagedModule
@@ -726,8 +727,8 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
             aie.lock(t.tile, init=0)
 
         for t in tiles[:, 5]:
-            self_lock = t.locks()[0]
-            self_buffer = t.buffers()[0]
+            self_lock = t.locks()
+            self_buffer = t.buffers()
 
             @aie.core(t.tile)
             def core():
@@ -735,11 +736,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
                     linalg.add(self_buffer, self_buffer, self_buffer)
 
         for t in tiles[:, 2:5]:
-            north_lock = t.neighbors().north.locks()[0]
-            north_buffer = t.neighbors().north.buffers()[0]
+            north_lock = t.neighbors().north.locks()
+            north_buffer = t.neighbors().north.buffers()
 
-            self_lock = t.locks()[0]
-            self_buffer = t.buffers()[0]
+            self_lock = t.locks()
+            self_buffer = t.buffers()
 
             @aie.core(t.tile)
             def core():
@@ -752,9 +753,9 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
         tiles[:, 2] >> tiles[:, 1]
 
         for t in tiles[:, 2]:
-            self_lock = t.locks()[0]
-            self_buffer = t.buffers()[0]
-            flow = t.flows()[0]
+            self_lock = t.locks()
+            self_buffer = t.buffers()
+            flow = t.flows()
 
             @aie.mem(t.tile)
             def mem():
@@ -780,7 +781,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
         host_buffer = aie.external_buffer((K,), T.i32(), name=False)
         for t in tiles[:, 0]:
-            flow = t.flows()[0]
+            flow = t.flows()
 
             shim_start_lock = aie.lock(t.tile, init=0, sym_name=False)
 
@@ -1825,3 +1826,120 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_with_shim_dma_broken(
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             for i, w in enumerate(wraps):
                 print(buffer_args[i], w)
+
+
+def test_tiled_broadcast(ctx: MLIRContext, workdir: Path):
+    n_tiles, m, n = 4, 4, 4
+    K = n_tiles * m * n
+    cols = [0, 1, 2, 3]
+    rows = [0, 1, 2, 3, 4, 5]
+
+    dest_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        aie.slsl("shim to mem")
+        tiles[:, 0] >> tiles[:, 1]
+        aie.slsl("a to whole col")
+        tiles[:, 1] >> tiles[:, 2:]
+        aie.slsl("col back to mem")
+        tiles[:, 1] << tiles[:, 2:]
+
+        channel = 0
+
+        for t in tiles[:, 1]:
+
+            @aie.memtile_dma(t.tile)
+            def mem():
+                buffer = aie.buffer(t.tile, (K,), T.i32())
+                sem = aie.lock(t.tile, init=0)
+                aiex.receive_bd(
+                    channel,
+                    sem,
+                    buffer,
+                    acq_action=Acquire,
+                    acq_val=0,
+                    dims=[(4, 4), (4, 16), (4, 1)],
+                )
+                aiex.send_bd(
+                    channel,
+                    sem,
+                    buffer,
+                    acq_action=Acquire,
+                    acq_val=1,
+                    rel_val=0,
+                    repeat_count=n_tiles - 1,
+                    len=m * n,
+                    iter=bd_dim_layout(size=n_tiles, stride=m * n),
+                )
+                aie.end()
+
+        for t in tiles[:, 2:]:
+            sem = aie.lock(t.tile, init=0)
+            buffer = aie.buffer(t.tile, (m, n), T.i32())
+
+            @aie.mem(t.tile)
+            def mem():
+                aiex.receive_bd(
+                    channel,
+                    sem,
+                    buffer,
+                    acq_action=Acquire,
+                    acq_val=0,
+                    dims=[(4, 4), (4, 1)],
+                )
+                aie.end()
+
+            @aie.core(t.tile)
+            def core():
+                x = memref.alloc(m, n, T.i32())
+                with aiex.hold_lock(sem):
+                    for i in range(m):
+                        linalg.fill(i, x)
+                        for j in range_(n):
+                            linalg.add(buffer, x, buffer)
+                            yield_()
+
+    print(ctx.module)
+    print(ctx.module.operation.verify())
+    exit()
+    compile_without_vectorization(ctx.module, workdir, enable_cores=False)
+    buffer_args = [f"out_col_{c}" for c in cols]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+    ipu_insts = aiex.ipu.get_prolog()
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
+
+        bd_id = 0
+        for i, col in enumerate(cols):
+            ipu_insts.extend(
+                aiex.ipu._update_tensor_addr_shim_tile(
+                    col, bd_id, xclbin._get_buffer_host_address(i)
+                )
+            )
+            ipu_insts.extend(aiex.ipu.lock_release(col, lock_id=0, lock_val=1))
+            for r in rows:
+                if r in {0, 1}:
+                    continue
+                ipu_insts.extend(aiex.ipu.enable_cores(col, r))
+        for col in cols:
+            dest_channel = dest_channels[col]
+            ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel))
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wraps = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wraps:
+                print(w)

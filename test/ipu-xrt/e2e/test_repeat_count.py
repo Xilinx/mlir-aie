@@ -72,7 +72,7 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
         def core():
             for _ in range(iters):
                 with aiex.hold_lock(lock_read_weight, lock_send_weight):
-                    linalg.copy(buffer_weight, buffer_weight)
+                    linalg.add(buffer_weight, buffer_weight, buffer_weight)
 
         @aie.mem(tile_0_2)
         def mem_0_2():
