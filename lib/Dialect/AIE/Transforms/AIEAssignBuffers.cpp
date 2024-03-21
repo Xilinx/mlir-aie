@@ -196,7 +196,7 @@ struct AIEAssignBufferAddressesPass
       // Sort by largest allocation size.
       std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
         assert(buffer.getAddress().has_value() &&
-            "buffer must have address assigned");
+               "buffer must have address assigned");
         return a.getAllocationSize() > b.getAllocationSize();
       });
 
