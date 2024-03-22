@@ -210,7 +210,7 @@ struct AIEAssignBufferAddressesPass
                   assert(a.getAddress().has_value() &&
                          "buffer must have address assigned");
                   assert(b.getAddress().has_value() &&
-                        "buffer must have address assigned");
+                         "buffer must have address assigned");
                   return a.getAddress().value() < b.getAddress().value();
                 });
 
