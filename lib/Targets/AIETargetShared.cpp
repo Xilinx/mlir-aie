@@ -86,8 +86,12 @@ static std::string tileDMATensorStr(int col, int row, int bdNum) {
 void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
                                     ArrayRef<BDDimLayoutAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
-                                    int offsetA, int lenA, int bytesA,
+                                    int offsetA, int lenA,
+                                    int elementWidthInBytes,
                                     const char *errorRetval) {
+  // libxaie requires stride in multiples of 32b
+  double elementWidthIn32bWords =
+      static_cast<double>(elementWidthInBytes) / 4.0;
   std::string tensor = tileDMATensorStr(col, row, bdNum);
   output << "XAie_DmaTensor " << tensor << " = {};\n";
   output << tensor << ".NumDim = " << std::to_string(ndims) << ";\n";
@@ -98,23 +102,34 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
   output << "if(NULL == " << tensor << ".Dim){\n"
          << "  return " << errorRetval << ";\n"
          << "}\n";
-  for (int i = 0; i < ndims; i++) {
+  for (size_t i = 0; i < dims.size(); i++) {
+    uint16_t size;
+    uint32_t stride;
     // Pass down dimensions in reverse order; in the MLIR, this allows us
     // to specify strides/sizes in the same order as we would access a
     // multi-dim C array, with the highest dimension first.
-    int j = ndims - i - 1;
+    int j = dims.size() - i - 1;
+    if (j > 0) {
+      stride =
+          static_cast<uint32_t>(dims[i].getStride() * elementWidthIn32bWords);
+      size = dims[i].getSize();
+    } else {
+      stride = dims[i].getStride();
+      size = static_cast<uint16_t>(dims[i].getSize() * elementWidthIn32bWords);
+    }
+    stride = stride > 0 ? stride : 1;
     // Assume AIE-ML architecture; we assert this above
     output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
-           << " = { /* StepSize */ " << std::to_string(dims[i].getStride())
-           << ", /* Size */ " << std::to_string(dims[i].getSize()) << "};\n";
+           << " = { /* Stride */ " << std::to_string(stride) << ", /* Size */ "
+           << std::to_string(size) << "};\n";
   }
+  if ((baseAddrA + offsetA) % 4)
+    llvm::report_fatal_error("bd address must be 4B (32b) aligned");
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
          << tileDMAInstRefStr(col, row, bdNum) << ", "
          << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
-         << " /* len */ " << lenA << " * " << bytesA << "));\n";
-  // TODO: Probably need special handling for NOC
-  // TODO: Might need to adjust strides / sizes by -1
+         << " /* len */ " << lenA << "));\n";
 }
 
 } // namespace xilinx::AIE
