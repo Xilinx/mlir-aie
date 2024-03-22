@@ -46,7 +46,6 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
       pC1 += vec_factor;
     }
   event1();
-
 }
 
 
