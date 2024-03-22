@@ -602,9 +602,9 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       return failure();
 
     // FIXME: Verify it is not a part of FMA
-    auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
-    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
-      return failure();
+    // auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
+    // if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
+    //   return failure();
 
     unsigned resultElWidth =
         resultType.getElementType().getIntOrFloatBitWidth();
@@ -637,9 +637,9 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       return failure();
     }
     // Only support two bfloat16 inputs at the moment
-    if (lBitWidth != 16 || rBitWidth != 16) {
-      return failure();
-    }
+    // if (lBitWidth != 16 || rBitWidth != 16) {
+    //   return failure();
+    // }
 
     // Prepare lhr/rhs for the aievec.mul_elem op
     VectorType targetInputType =
@@ -2667,9 +2667,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
+      ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
-      ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorMinSIOpToAIEVecMinOp,
       LowerVectorMinimumFOpToAIEVecMinOp,
       LowerVectorMaxSIOpToAIEVecMaxOp,
@@ -3138,7 +3138,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
     // Verify it is not a part of FMA
     if (op->hasOneUse() && llvm::any_of(op->getUsers(), isAddOp))
-      return true;
+      return false;
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
