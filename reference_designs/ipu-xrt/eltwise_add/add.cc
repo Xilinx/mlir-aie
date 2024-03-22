@@ -48,7 +48,6 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
   event1();
 }
 
-
 extern "C" {
 
 void eltwise_add_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
