@@ -266,7 +266,6 @@ def color_detect():
                     mem=O,
                     sizes=[1, 1, 1, height * lineWidthInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

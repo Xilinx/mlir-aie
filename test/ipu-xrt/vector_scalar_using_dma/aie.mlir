@@ -68,7 +68,6 @@ module {
       %c4096_i64 = arith.constant 4096 : i64
       aiex.ipu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c4096_i64] [%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @out} : memref<4096xi32>
       aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c4096_i64] [%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @in} : memref<4096xi32>
-      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
 

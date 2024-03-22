@@ -67,7 +67,6 @@ def my_add_one_objFifo():
                 ipu_dma_memcpy_nd(
                     metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
