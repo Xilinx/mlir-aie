@@ -31,16 +31,22 @@ struct AIEAssignBufferAddressesPass
   } BankLimits;
 
   std::map<TileOp, std::vector<int64_t>>
-      nextAddrInBanks; // each entry is the next address available for use for
-                       // that bank (e.g. nextAddrInBanks[1] = next available
-                       // address in bank 1)
-  std::map<TileOp, std::vector<BankLimits>> bankLimits;
+      nextAddrInBanks; // each entry is the next address available for use
+                       // for that bank for the given tile
+                       // (e.g. nextAddrInBanks[tile_0][1] = next available
+                       // address in bank 1 for tile_0)
+  std::map<TileOp, std::vector<BankLimits>>
+      bankLimits; // for each tile, the entries contain pairs of start and
+                  // end addresses for each bank
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
   }
 
+  // Function that given a number of banks and their size, computes
+  // the start and end addresses for each bank and fills in the entry
+  // in the bankLimits map for the given tile.
   void fillBankLimits(TileOp tile, int numBanks, int bankSize) {
     for (int i = 0; i < numBanks; i++) {
       auto startAddr = bankSize * i;
@@ -53,15 +59,24 @@ struct AIEAssignBufferAddressesPass
     }
   }
 
-  void setAndUpdateAddressInBank(TileOp tile, BufferOp buffer, int64_t start,
-                                 int64_t end) {
+  // Function that sets the address attribute of the given buffer to
+  // the given start_addr. It also updates the entry in the
+  // nextAddrInBanks map for the given tile to the end_addr.
+  void setAndUpdateAddressInBank(TileOp tile, BufferOp buffer,
+                                 int64_t start_addr, int64_t end_addr) {
     // Fixme: alignment
-    buffer.setAddress(start);
-    nextAddrInBanks[tile][buffer.getMemBank().value()] = end;
+    buffer.setAddress(start_addr);
+    nextAddrInBanks[tile][buffer.getMemBank().value()] = end_addr;
   }
 
-  bool checkAndAddBufferWithAddress(TileOp tile, BufferOp buffer, int numBanks,
-                                    int bankSize) {
+  // Function that checks whether the given buffer already has a set address
+  // attribute. If it does, it finds in which bank the buffer is and checks
+  // whether there is enough space left for it. If there is the function
+  // returns true and if not, the function emits a warning that the address
+  // will be overwritten and returns false (which will cause the buffer to be
+  // added to the list of buffers without addresses, to be completed later on).
+  bool checkAndAddBufferWithAddress(TileOp tile, BufferOp buffer,
+                                    int numBanks) {
     if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
       int addr = addrAttr.getInt();
       for (int i = 0; i < numBanks; i++) {
@@ -81,8 +96,14 @@ struct AIEAssignBufferAddressesPass
     return false;
   }
 
-  bool checkAndAddBufferWithMemBank(TileOp tile, BufferOp buffer, int numBanks,
-                                    int bankSize) {
+  // Function that checks whether the given buffer already has a set mem_bank
+  // attribute. If it does, it checks whether there is enough space left for
+  // it. If there is, it sets the buffer's address field and if not, the
+  // function emits a warning that the mem_bank will be overwritten and returns
+  // false (which will cause the buffer to be added to the list of buffers
+  // without addresses, to be completed later on).
+  bool checkAndAddBufferWithMemBank(TileOp tile, BufferOp buffer,
+                                    int numBanks) {
     if (auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank")) {
       int mem_bank = memBankAttr.getInt();
       int64_t startAddr = nextAddrInBanks[tile][mem_bank];
@@ -91,29 +112,27 @@ struct AIEAssignBufferAddressesPass
         setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
       } else {
         buffer->emitWarning("Overriding existing mem_bank");
-        int bankIndex = mem_bank;
-        for (int i = 0; i < numBanks; i++) {
-          bankIndex++;
-          bankIndex %= numBanks;
-          startAddr = nextAddrInBanks[tile][bankIndex];
-          endAddr = startAddr + buffer.getAllocationSize();
-          if (endAddr <= bankLimits[tile][bankIndex].endAddr ||
-              i == numBanks - 1) {
-            buffer.setMemBank(bankIndex);
-            setAndUpdateAddressInBank(tile, buffer, startAddr, endAddr);
-          }
-        }
+        return false;
       }
       return true;
     }
     return false;
   }
 
-  int setBufferAddress(TileOp tile, BufferOp buffer, int numBanks, int bankSize,
+  // Function that given a buffer will iterate over all the memory banks
+  // starting from the given index to try and find a bank with enough
+  // space. If it does, it will set the buffer's address and mem_bank
+  // attributes and update the nextAddrInBanks map for the given tile.
+  // If it does not find one with enough space, it will allocate the
+  // buffer in the last checked bank (this will be picked up during
+  // overflow error checking). Finally, the function returns the index
+  // of the next bank to search (which should be given to subsequent
+  // calls of this function to ensure a round-robin allocation scheme
+  // over the available banks).
+  int setBufferAddress(TileOp tile, BufferOp buffer, int numBanks,
                        int startBankIndex) {
     int bankIndex = startBankIndex;
     for (int i = 0; i < numBanks; i++) {
-      bankIndex %= numBanks;
       int64_t startAddr = nextAddrInBanks[tile][bankIndex];
       int64_t endAddr = startAddr + buffer.getAllocationSize();
       if (endAddr <= bankLimits[tile][bankIndex].endAddr || i == numBanks - 1) {
@@ -124,6 +143,7 @@ struct AIEAssignBufferAddressesPass
       }
       bankIndex++;
     }
+    bankIndex %= numBanks;
     return bankIndex;
   }
 
@@ -176,24 +196,24 @@ struct AIEAssignBufferAddressesPass
       SmallVector<BufferOp, 4> buffers;
       SmallVector<BufferOp, 4> allBuffers;
       // Collect all the buffers for this tile.
-      // If possible, the buffers with an already specified address will not be
-      // overwritten (the available address range of the bank the buffers
+      // If possible, the buffers with an already specified address will not
+      // be overwritten (the available address range of the bank the buffers
       // are in will start AFTER the specified adress + buffer size).
       // Buffers with a specified mem_bank will be assigned first, after
       // the above.
       for (auto buffer : device.getOps<BufferOp>()) {
         if (buffer.getTileOp() == tile) {
           bool has_addr =
-              checkAndAddBufferWithAddress(tile, buffer, numBanks, bankSize);
+              checkAndAddBufferWithAddress(tile, buffer, numBanks);
           bool has_bank =
-              checkAndAddBufferWithMemBank(tile, buffer, numBanks, bankSize);
+              checkAndAddBufferWithMemBank(tile, buffer, numBanks);
           if (!has_addr && !has_bank)
             buffers.push_back(buffer);
           allBuffers.push_back(buffer);
         }
       }
 
-      // Sort by largest allocation size.
+      // Sort by largest allocation size before allocating.
       std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
         return a.getAllocationSize() > b.getAllocationSize();
       });
@@ -202,9 +222,9 @@ struct AIEAssignBufferAddressesPass
       int bankIndex = 0;
       for (auto buffer : buffers)
         bankIndex =
-            setBufferAddress(tile, buffer, numBanks, bankSize, bankIndex);
+            setBufferAddress(tile, buffer, numBanks, bankIndex);
 
-      // Sort by smallest address.
+      // Sort by smallest address before printing memory map.
       std::sort(allBuffers.begin(), allBuffers.end(),
                 [](BufferOp a, BufferOp b) {
                   assert(a.getAddress().has_value() &&
