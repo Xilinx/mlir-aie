@@ -22,21 +22,21 @@
 // CHECK: DMA [7, 3] AIE2 mm2s0 IDLE
 // CHECK: DMA [7, 3] AIE2 mm2s1 IDLE
 // CHECK: BD 0 valid (Next BD: 1)
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C00
+// CHECK:    Transferring 2 32 bit words to/from byte address 00C000
 // CHECK:    Acquires lock 0 with value -1
 // CHECK:    Releases lock 1 with value 1
 // CHECK: BD 1 valid (Last BD)
 // CHECK:  * Current BD for mm2s channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C10
+// CHECK:    Transferring 2 32 bit words to/from byte address 00C010
 // CHECK:    Acquires lock 0 with value -1
 // CHECK:    Releases lock 1 with value 1
 // CHECK: BD 2 valid (Next BD: 3)
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C20
+// CHECK:    Transferring 2 32 bit words to/from byte address 00C020
 // CHECK:    Acquires lock 2 with value -1
 // CHECK:    Releases lock 3 with value 1
 // CHECK: BD 3 valid (Last BD)
 // CHECK:  * Current BD for s2mm channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address 000C30
+// CHECK:    Transferring 2 32 bit words to/from byte address 00C030
 // CHECK:    Acquires lock 2 with value -1
 // CHECK:    Releases lock 3 with value 1
 // CHECK: Core [7, 3] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
