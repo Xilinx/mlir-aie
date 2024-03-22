@@ -14,11 +14,15 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096
-N_in_bytes = N * 4
-
 if len(sys.argv) == 2:
     N = int(sys.argv[1])
 
+n_columns = 4 
+n_fifos = 2
+
+assert(N%1024 == 0)
+assert(N%n_columns == 0)
+assert(n_columns * n_fifos <= 16)  # Or we'll run out of BDs
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
@@ -28,30 +32,41 @@ def my_passthrough():
             memRef_ty = T.memref(1024, T.i32())
 
             # Tile declarations
-            ShimTile = tile(0, 0)
-            ComputeTile2 = tile(0, 2)
+            shim_tiles = []
+            compute_tiles = []
+            for i in range(n_columns):
+                shim_tile = tile(i, 0)
+                compute_tile = tile(i, 2)
+                shim_tiles.append(shim_tile)
+                compute_tiles.append(compute_tile)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
-            object_fifo_link(of_in, of_out)
+            for i, (shim, compute) in enumerate(zip(shim_tiles, compute_tiles)):
+                for j in range(n_fifos):
+                    of_in  = object_fifo(f"in_{i}_{j}", shim, compute, 2, memRef_ty)
+                    of_out = object_fifo(f"out_{i}_{j}", compute, shim, 2, memRef_ty)
+                    object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
 
-            # Compute tile 2
-            @core(ComputeTile2)
-            def core_body():
-                tmp = memref.alloc(1, T.i32())
-                v0 = arith.constant(0, T.i32())
-                memref.store(v0, tmp, [0])
+            # Compute tiles
+            for i in range(n_columns):
+                @core(compute_tiles[i])
+                def core_body():
+                    tmp = memref.alloc(1, T.i32())
+                    v0 = arith.constant(0, T.i32())
+                    memref.store(v0, tmp, [0])
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
-                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                tile_N = N//n_columns//n_fifos
+                for i in range(n_columns):
+                    for j in range(n_fifos):
+                        ipu_dma_memcpy_nd(metadata=f"out_{i}_{j}", bd_id=2*n_fifos*i+j, mem=C,  sizes=[1, 1, 1, tile_N], offsets=[0, 0, 0, i*n_fifos*tile_N + j*tile_N])
+                        ipu_dma_memcpy_nd(metadata=f"in_{i}_{j}", bd_id=2*n_fifos*i+1+j, mem=A, sizes=[1, 1, 1, tile_N], offsets=[0, 0, 0, i*n_fifos*tile_N + j*tile_N])
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
