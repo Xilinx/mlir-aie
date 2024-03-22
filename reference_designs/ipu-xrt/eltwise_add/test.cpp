@@ -251,7 +251,7 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Avg NPU exec time: " << npu_time_total / num_iter << "us."
             << std::endl;
-  std::cout <<"Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
   
   if (VERIFY && !sticky_errors) {
