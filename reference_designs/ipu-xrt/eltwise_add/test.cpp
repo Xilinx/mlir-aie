@@ -242,7 +242,6 @@ int main(int argc, const char *argv[]) {
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
-
     if (VERIFY && !errors) {
       std::cout << iter << ": pass!\n";
     } else {
