@@ -33,6 +33,11 @@ trim_trailing_whitespace = true
 # Keep short lines to allow more editor windo in column on the screen
 max_line_length = 80
 
+# 4 space indentation in Python source files
+[*.py]
+indent_style = space
+indent_size = 4
+
 # Makefiles requires a Tab indentation
 [Makefile]
 indent_style = tab
