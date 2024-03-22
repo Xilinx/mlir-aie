@@ -29,6 +29,9 @@ using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = std::bfloat16_t;
 
+constexpr long long verify_stochastic_threshold = 512 * 512 * 512;
+constexpr int verify_stochastic_n_samples = 1000;
+
 namespace po = boost::program_options;
 
 int main(int argc, const char *argv[]) {
@@ -171,11 +174,21 @@ int main(int argc, const char *argv[]) {
 
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
     if (do_verify) {
-      if (verbosity >= 1) {
-        std::cout << "Verifying against reference matmul ..." << std::endl;
-      }
       auto vstart = std::chrono::system_clock::now();
-      errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
+      if ((long long)M * N * K <= verify_stochastic_threshold) {
+        if (verbosity >= 1) {
+          std::cout << "Verifying against reference matmul ..." << std::endl;
+        }
+        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
+      } else {
+        if (verbosity >= 1) {
+          std::cout << "Verifying " << verify_stochastic_n_samples
+                    << " random samples against reference matmul ..."
+                    << std::endl;
+        }
+        errors = matmul_common::verify_stochastic(M, N, K, AVec, BVec, CVec,
+                                                  verify_stochastic_n_samples);
+      }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
