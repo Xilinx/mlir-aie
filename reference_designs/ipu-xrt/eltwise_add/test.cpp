@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdfloat>
 #include <string>
 #include <vector>
 #include <stdfloat>
