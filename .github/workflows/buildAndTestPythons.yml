@@ -40,7 +40,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          
+
           pip install -r python/requirements.txt
 
       - name: Install packages
@@ -81,7 +81,7 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -99,10 +99,10 @@ jobs:
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'
         run: |
-          
+
           mkdir build_assert
           cd build_assert
-          
+
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -124,7 +124,7 @@ jobs:
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          
+
           ninja
           ninja check-aie
           ninja check-tutorials
@@ -134,10 +134,10 @@ jobs:
       - name: Build and test (Release)
         if: matrix.build_type == 'Release'
         run: |
-          
+
           mkdir build_release
           cd build_release
-          
+
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -158,7 +158,7 @@ jobs:
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit)
-          
+
           ninja
           ninja check-aie
           ninja check-tutorials

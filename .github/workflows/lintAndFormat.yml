@@ -23,7 +23,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -39,14 +39,14 @@ jobs:
 
       - name: Install Python packages
         run: |
-          
+
           pip install cmake==3.27.9 numpy psutil pybind11 rich pkginfo lit PyYAML requests
           pip install -r python/requirements.txt
 
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -54,10 +54,10 @@ jobs:
 
       - name: Prepare compile_commands.json
         run: |
-          
+
           mkdir build
           pushd build
-          
+
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -79,9 +79,9 @@ jobs:
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          
+
           ninja aie-headers mlir-headers
-          
+
           popd
 
       - name: Analyze
@@ -113,7 +113,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -188,7 +188,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -216,7 +216,7 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -236,10 +236,10 @@ jobs:
       - name: Build and generate coverage (Release)
         if: steps.changed-files.outputs.changed-files != ''
         run: |
-          
+
           mkdir build_release
           cd build_release
-          
+
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -265,9 +265,9 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DBUILD_INSTRUMENTED_COVERAGE=ON \
             -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
-          
+
           ninja && ninja generate-aie-coverage-report
-          
+
           cat /home/runner/work/mlir-aie/mlir-aie/build_release/report/summary.txt
 
       - name: Format coverage report
@@ -292,4 +292,3 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
-

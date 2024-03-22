@@ -7,11 +7,11 @@ on:
   schedule:
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'
-    
+
 defaults:
   run:
     shell: bash
-    
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -35,7 +35,7 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: "true"
 
@@ -45,9 +45,9 @@ jobs:
 
       - name: Build mlir-aie distro
         run: |
-          
+
           pip cache purge
-          
+
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
@@ -60,7 +60,7 @@ jobs:
           # That means wheels have file with time stamps in the future which makes ninja loop
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          
+
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           export MLIR_INSTALL_ABS_PATH=$PWD/mlir
           export MLIR_AIE_SOURCE_DIR=$PWD
@@ -69,14 +69,14 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
           export DATETIME=$(date +"%Y%m%d%H")
-          
+
           pushd utils/mlir_aie_wheels
-          
+
           pip install wheel auditwheel patchelf importlib_metadata
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          
+
           popd
-          
+
           auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
           WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
           mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
@@ -120,7 +120,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -148,15 +148,15 @@ jobs:
           # That means wheels have file with time stamps in the future which makes ninja loop
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          
+
           unzip -q mlir_aie-*.whl
           find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
-          
+
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
           source aie-venv/bin/activate
-          
+
           export MLIR_INSTALL_ABS_PATH=$PWD/mlir
           export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
           export WHEELHOUSE_DIR=$PWD/wheelhouse
@@ -165,17 +165,17 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
           export DATETIME=$(date +"%Y%m%d%H")
-          
+
           cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
           cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
-          
+
           pushd utils/mlir_aie_wheels/python_bindings
-          
+
           pip install wheel auditwheel patchelf
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-          
+
           popd
-          
+
           auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings-*whl --plat manylinux_2_35_x86_64
 
       - uses: geekyeggo/delete-artifact@v4

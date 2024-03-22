@@ -68,7 +68,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
           submodules: "true"
@@ -79,7 +79,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          
+
           pip install -r python/requirements.txt
 
       - name: Setup Cpp
@@ -103,7 +103,7 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF"]; then
             WHEEL=mlir_no_rtti
@@ -117,16 +117,16 @@ jobs:
       # Build the repo test target in release mode to build and test.
       - name: Build and test
         run: |
-          
+
           mkdir build_release
           cd build_release
-          
+
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"true" ]; then
             LLVM_EXTERNAL_LIT="$(where lit)"
           else
             LLVM_EXTERNAL_LIT="$(which lit)"
           fi
-          
+
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -145,7 +145,7 @@ jobs:
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
-          
+
           ninja
           # tests hang/fail on windows
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
