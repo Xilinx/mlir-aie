@@ -203,10 +203,8 @@ struct AIEAssignBufferAddressesPass
       // the above.
       for (auto buffer : device.getOps<BufferOp>()) {
         if (buffer.getTileOp() == tile) {
-          bool has_addr =
-              checkAndAddBufferWithAddress(tile, buffer, numBanks);
-          bool has_bank =
-              checkAndAddBufferWithMemBank(tile, buffer, numBanks);
+          bool has_addr = checkAndAddBufferWithAddress(tile, buffer, numBanks);
+          bool has_bank = checkAndAddBufferWithMemBank(tile, buffer, numBanks);
           if (!has_addr && !has_bank)
             buffers.push_back(buffer);
           allBuffers.push_back(buffer);
