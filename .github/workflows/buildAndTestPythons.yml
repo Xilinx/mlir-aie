@@ -103,27 +103,31 @@ jobs:
           mkdir build_assert
           cd build_assert
 
+          # Please keep the options sorted so it is easier to compare
           cmake .. \
             -GNinja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
             -DAIE_COMPILER=NONE \
-            -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_LINKER=NONE \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DHOST_COMPILER=NONE \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
-            -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DLLVM_USE_LINKER=lld \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir
 
           ninja
           ninja check-aie
@@ -140,24 +144,27 @@ jobs:
 
           cmake .. \
             -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
             -DAIE_COMPILER=NONE \
-            -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_LINKER=NONE \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DHOST_COMPILER=NONE \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=$(which lit)
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir
 
           ninja
           ninja check-aie

@@ -75,16 +75,17 @@ jobs:
           mkdir build_release
           pushd build_release
 
+          # Please keep the options sorted so it is easier to compare
           cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
-            -DLLVM_USE_LINKER=lld \
-            -DAIE_INCLUDE_DOCS=ON \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DLLVM_EXTERNAL_LIT=$(which lit)
+            -DAIE_INCLUDE_DOCS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DLLVM_USE_LINKER=lld \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir
           make docs
           popd
           cp -r docs/* build_release/docs

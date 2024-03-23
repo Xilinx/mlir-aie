@@ -60,21 +60,22 @@ jobs:
           pushd build
 
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          # Please keep the options sorted so it is easier to compare
           cmake .. -G Ninja \
-            -DPython3_EXECUTABLE=$(which python) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DXRT_ROOT=/opt/xilinx/xrt \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
+            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DPython3_EXECUTABLE=$(which python) \
+            -DXRT_ROOT=/opt/xilinx/xrt
 
           ninja install
 
