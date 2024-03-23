@@ -253,10 +253,15 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
 
 
 def extract_patches(
-    arr,
+    arr_shape,
     patch_shape: int | tuple[int, ...] | list[int, ...] = 8,
     extraction_step: int | tuple[int, ...] | list[int, ...] = None,
+    dtype: np.dtype = None,
+    trailing_dims=4,
 ):
+    if dtype is None:
+        dtype = np.int32()
+    arr = np.empty(arr_shape, dtype=dtype)
     if extraction_step is None:
         extraction_step = patch_shape
     arr_ndim = arr.ndim
@@ -281,7 +286,9 @@ def extract_patches(
     strides = tuple(list(indexing_strides) + list(patch_strides))
 
     patches = as_strided(arr, shape=shape, strides=strides)
-    return patches
+    return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[
+        -trailing_dims:
+    ]
 
 
 def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: Path):
@@ -290,9 +297,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
     core_rows = [2, 3, 4, 5]
     rows = [0, 1, *core_rows]
 
-    m, k, n = 32, 32, 32
+    m, k, n = 64, 64, 64
     per_col = 2048 // len(cols)
-    M, K, N = 32, per_col, 32
+    M, K, N = 64, per_col, 64
+
+    iter, *dims = extract_patches((M, K), (64, 64), trailing_dims=3)
 
     shim_channels = {}
     iters = per_col // k
@@ -360,7 +369,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                 # fmt: off
                 aiex.receive_bd(in_a_fl.dest_channel, in_A_lock, A, out_A_lock, loop=False)
                 aiex.send_bd(out_a_fl.source_channel, out_A_lock, A, rel_val=0,
-                    dims=[(32, 512), (32, 1)], len=m * k, iter=(16, 32), repeat_count=iters - 1
+                    dims=dims, len=m * k, iter=iter, repeat_count=iters - 1
                 )
 
                 aiex.receive_bd(in_b_fl.dest_channel, in_B_lock, B, out_B_lock, loop=False)
@@ -414,10 +423,10 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                         aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
                         aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
                     ):
-                        linalg.matmul(a_buffer, b_buffer, c_buffer)
+                        linalg.add(c_buffer, a_buffer, c_buffer)
                     yield_()
 
-    print(ctx.module)
+    # print(ctx.module)
 
     compile_without_vectorization(ctx.module, workdir, template_core=(0, 2))
     buffer_args = list(
@@ -479,8 +488,10 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
         xclbin.load_ipu_instructions(ipu_insts)
 
-        As = {c: np.random.randint(0, 10, (M, K)).astype(np.float32) for c in cols}
-        Bs = {c: np.random.randint(0, 10, (K, N)).astype(np.float32) for c in cols}
+        # As = {c: np.random.randint(0, 10, (M, K)).astype(np.float32) for c in cols}
+        # Bs = {c: np.random.randint(0, 10, (K, N)).astype(np.float32) for c in cols}
+        As = {c: np.ones((M, K)).astype(np.float32) * 2 for c in cols}
+        Bs = {c: np.ones((K, N)).astype(np.float32) * 3 for c in cols}
         Cs = {c: np.zeros((len(cols) * N, M), dtype=np.float32) for c in cols}
         wraps = list(map(np.asarray, views))
         for col in cols:
@@ -494,9 +505,12 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            for col in cols:
-                print()
-                print(As[col] @ Bs[col])
-                print()
-                print(wraps[3 * col + 2])
+        correct = As[col] @ Bs[col]
+        print(f"{correct.shape=}")
+        print(correct)
+        print()
+        for col in cols:
+            col_ans = wraps[3 * col + 2].T
+            print(col, f"{col_ans.shape=}")
+            print(col_ans)
+            print()
