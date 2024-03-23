@@ -15,10 +15,9 @@ from aie.extras.context import mlir_mod_ctx
 
 def my_eltwise_add():
 
-
     word_size_in = 2
     N = 65536
-    N_in_bytes = N * word_size_in 
+    N_in_bytes = N * word_size_in
 
     A_sz_in_i32s = N_in_bytes // 4
     B_sz_in_i32s = N_in_bytes // 4
@@ -44,9 +43,9 @@ def my_eltwise_add():
             memRef_C_ty = T.memref(n, T.bf16())
 
             # Type used in the memory tile which aggregates across the 4 cores
-            memRef_A_MT_ty = T.memref(n*n_cores, T.bf16())
-            memRef_B_MT_ty = T.memref(n*n_cores, T.bf16())
-            memRef_C_MT_ty = T.memref(n*n_cores, T.bf16())
+            memRef_A_MT_ty = T.memref(n * n_cores, T.bf16())
+            memRef_B_MT_ty = T.memref(n * n_cores, T.bf16())
+            memRef_C_MT_ty = T.memref(n * n_cores, T.bf16())
 
             # AIE Core Function declarations
 
@@ -56,13 +55,13 @@ def my_eltwise_add():
             eltwise_add_bf16_vector = external_func(
                 "eltwise_add_bf16_vector", inputs=[memRef_ty, memRef_ty, memRef_ty]
             )
-            #elwise_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
+            # elwise_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
 
             # Tile declarations
             ShimTile = tile(0, 0)
 
             MemTile = tile(0, 1)
-            cores = [tile(0,2+i) for i in range(n_cores)]
+            cores = [tile(0, 2 + i) for i in range(n_cores)]
 
             inA_fifo_names = [f"memA{i}" for i in range(n_cores)]
             inB_fifo_names = [f"memB{i}" for i in range(n_cores)]
@@ -77,11 +76,7 @@ def my_eltwise_add():
             inA = object_fifo("inA", ShimTile, MemTile, buffer_depth, memRef_A_MT_ty)
             for i in range(n_cores):
                 inA_fifos[inA_fifo_names[i]] = object_fifo(
-                    inA_fifo_names[i],
-                    MemTile,
-                    cores[i],
-                    buffer_depth,
-                    memRef_A_ty
+                    inA_fifo_names[i], MemTile, cores[i], buffer_depth, memRef_A_ty
                 )
             object_fifo_link(inA, inA_fifo_names)
 
@@ -89,11 +84,7 @@ def my_eltwise_add():
             inB = object_fifo("inB", ShimTile, MemTile, buffer_depth, memRef_B_MT_ty)
             for i in range(n_cores):
                 inB_fifos[inB_fifo_names[i]] = object_fifo(
-                    inB_fifo_names[i],
-                    MemTile,
-                    cores[i],
-                    buffer_depth,
-                    memRef_B_ty
+                    inB_fifo_names[i], MemTile, cores[i], buffer_depth, memRef_B_ty
                 )
             object_fifo_link(inB, inB_fifo_names[0:n_cores])
 
@@ -102,13 +93,7 @@ def my_eltwise_add():
                 outC_fifos[outC_fifo_names[i]] = object_fifo(
                     outC_fifo_names[i], cores[i], MemTile, buffer_depth, memRef_C_ty
                 )
-            outC = object_fifo(
-                "outC",
-                MemTile,
-                ShimTile,
-                buffer_depth,
-                memRef_C_MT_ty
-            )
+            outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
             object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
             # Set up compute tiles
@@ -118,14 +103,29 @@ def my_eltwise_add():
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         for _ in for_(tiles):
-                            elem_out = outC_fifos[outC_fifo_names[i]].acquire(ObjectFifoPort.Produce, 1)
-                            elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(ObjectFifoPort.Consume, 1)
-                            elem_in_b = inB_fifos[inB_fifo_names[i]].acquire(ObjectFifoPort.Consume, 1)
+                            elem_out = outC_fifos[outC_fifo_names[i]].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
+                            elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            elem_in_b = inB_fifos[inB_fifo_names[i]].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
 
-                            call(eltwise_add_bf16_vector, [elem_in_a, elem_in_b, elem_out])
-                            inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                            inB_fifos[inB_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
-                            outC_fifos[outC_fifo_names[i]].release(ObjectFifoPort.Produce, 1)
+                            call(
+                                eltwise_add_bf16_vector,
+                                [elem_in_a, elem_in_b, elem_out],
+                            )
+                            inA_fifos[inA_fifo_names[i]].release(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            inB_fifos[inB_fifo_names[i]].release(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            outC_fifos[outC_fifo_names[i]].release(
+                                ObjectFifoPort.Produce, 1
+                            )
                             yield_([])
                         yield_([])
 
@@ -135,9 +135,15 @@ def my_eltwise_add():
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
 
-                ipu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s])
-                ipu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s])
-                ipu_dma_memcpy_nd(metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, B_sz_in_i32s])
+                ipu_dma_memcpy_nd(
+                    metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
+                )
+                ipu_dma_memcpy_nd(
+                    metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
+                )
+                ipu_dma_memcpy_nd(
+                    metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, B_sz_in_i32s]
+                )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
