@@ -3,14 +3,25 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 AMD Inc.
-
-
-from contextlib import ExitStack
+import collections
+from itertools import islice
 import numbers
 from pathlib import Path
 import sys
 
+from aie.extras.context import ExplicitlyManagedModule
+
+# noinspection PyUnresolvedReferences
+from aie.extras.dialects.ext import arith, func, linalg, memref, scf, vector
+from aie.extras.runtime.passes import Pipeline, run_pipeline
+
+# noinspection PyUnresolvedReferences
+from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
+from aie.extras.util import find_ops
+from filelock import FileLock
+import numpy as np
 from numpy.lib.stride_tricks import as_strided
+import pytest
 
 from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.compiler.util import (
@@ -18,36 +29,21 @@ from aie.compiler.util import (
     compile_without_vectorization,
     make_xclbin,
 )
-from aie.dialects import aie, aievec, aiex
+from aie.dialects import aie, aiex, builtin, pdl
 from aie.dialects.aie import (
     AIEDevice,
     DMAChannelDir,
     LockAction,
     WireBundle,
-    bd_dim_layout,
 )
+from aie.dialects.aiex import TileArray
 from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
-from aie.extras.runtime.passes import Pipeline, run_pipeline
-from aie.dialects import aie, aievec, aiex, builtin, pdl, vector
-from aie.extras.util import bb, find_ops
-from aie.dialects.aiex import TileArray
-from aie.extras.context import ExplicitlyManagedModule
-
-# noinspection PyUnresolvedReferences
-from aie.extras.dialects.ext import arith, func, linalg, memref, scf, vector
-
-# noinspection PyUnresolvedReferences
-from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
-from aie.ir import UnitAttr, StringAttr
-from aie.util import tiling_calculator_n_tiles
+from aie.ir import StringAttr, UnitAttr
 from aie.xrt import XCLBin
-from filelock import FileLock
-import numpy as np
-import pytest
 
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")
@@ -64,9 +60,7 @@ AcquireGreaterEqual = LockAction.AcquireGreaterEqual
 Release = LockAction.Release
 
 
-def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
-    ctx: MLIRContext, workdir: Path
-):
+def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     M, K, N = 32, 32, 32
 
     @func.func(sym_visibility="private")
@@ -132,9 +126,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         @named_sequence("affine_unroll", [any_op_t()], [])
         def affine_unroll(target: any_op_t()):
             func = structured_match(any_op_t(), target, ops=["func.func"])
-            new_func = apply_registered_pass(
-                any_op_t(), func, "convert-linalg-to-affine-loops"
-            )
+            new_func = apply_registered_pass(any_op_t(), func, "convert-linalg-to-affine-loops")
             m = structured_match(any_op_t(), new_func, ops=["arith.addf"])
             loop = get_parent_op(pdl.op_t(), m, op_name="affine.for")
             # unroll inner loop
@@ -199,13 +191,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         lengths = [M * K, K * N, M * N]
         bd_id_direction = [MM2S, MM2S, S2MM]
         shim_channels = [0, 1, 0]
-        for i, (len, bd_id_dir, shim_ch) in enumerate(
-            zip(lengths, bd_id_direction, shim_channels)
-        ):
+        for i, (len, bd_id_dir, shim_ch) in enumerate(zip(lengths, bd_id_direction, shim_channels)):
             bd_id = buffer_idx = i
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                column=col, bd_id=bd_id, buffer_length=len
-            )
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(column=col, bd_id=bd_id, buffer_length=len)
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
@@ -221,9 +209,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                 )
             )
 
-        ipu_insts.extend(
-            aiex.ipu.sync(column=col, channel=shim_channels[2], direction=S2MM)
-        )
+        ipu_insts.extend(aiex.ipu.sync(column=col, channel=shim_channels[2], direction=S2MM))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
@@ -278,59 +264,55 @@ def extract_patches(
     # and get the strides to those elements
     indexing_strides = arr[slices].strides
 
-    patch_indices_shape = (
-        (np.array(arr.shape) - np.array(patch_shape)) // np.array(extraction_step)
-    ) + 1
+    patch_indices_shape = ((np.array(arr.shape) - np.array(patch_shape)) // np.array(extraction_step)) + 1
 
     shape = tuple(list(patch_indices_shape) + list(patch_shape))
     strides = tuple(list(indexing_strides) + list(patch_strides))
 
     patches = as_strided(arr, shape=shape, strides=strides)
-    return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[
-        -trailing_dims:
-    ]
+    return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[-trailing_dims:]
 
 
-def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: Path):
+def sliding_window(iterable, n):
+    it = iter(iterable)
+    window = collections.deque(islice(it, n - 1), maxlen=n)
+    for x in it:
+        window.append(x)
+        yield tuple(window)
+
+
+def test_4x4_broadcast_matmult(ctx: MLIRContext, workdir: Path):
 
     cols = [0, 1, 2, 3]
     core_rows = [2, 3, 4, 5]
     rows = [0, 1, *core_rows]
 
-    m, k, n = 16, 16, 16
-    M, N = 16, 16
-    K = 64 // len(cols)
+    n_cols = n_rows = 4
+    time_slices = 16
 
-    iter_A, *dims_A = extract_patches((M, K), (m, k), trailing_dims=3)
-    iter_B, *dims_B = extract_patches((K, N), (k, n), trailing_dims=3)
+    M, K, N = 128, 128, 128
+    m, k, n = M // n_cols, K // time_slices, N // n_rows
 
     shim_channels = {}
-    iters = K // k
 
     @aie.device(AIEDevice.ipu)
     def ipu():
         tiles = TileArray(cols, rows)
-        aie.slsl("shim to mem a")
         tiles[cols, 0].flow(tiles[cols, 1], source_annot="a", dest_annot="a")
-        aie.slsl("shim to mem b")
         tiles[cols, 0].flow(tiles[cols, 1], source_annot="b", dest_annot="b")
 
         for col in cols:
             # broadcast out to the row
-            aie.slsl(f"col={col} send a to col {col}")
             tiles[col, 1].flow(tiles[col, 2:], source_annot="a", dest_annot="a")
 
         for col in cols:
             # broadcast out to the col
-            aie.slsl(f"col={col} send b to row {col + 2}")
             tiles[col, 1].flow(tiles[:, col + 2], source_annot="b", dest_annot="b")
 
         for col in cols:
             # get result back
-            aie.slsl(f"return c from col {col}")
             tiles[col, 1].rflow(tiles[col, 2:], source_annot="c", dest_annot="c")
 
-        aie.slsl("mem to shim")
         tiles[cols, 1].flow(tiles[cols, 0], source_annot="c", dest_annot="c")
 
         for t in tiles[cols, 0]:
@@ -342,32 +324,35 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             in_c_fl = t.flows(filter_dest=True, dest_annot="c")
             shim_channels[int(t.tile.col), 2] = int(in_c_fl.dest_channel)
 
-        aie.slsl("configure mem tile dmas")
         for t in tiles[cols, 1]:
             in_a_fl = t.flows(filter_dest=True, dest_annot="a", single=True)
             out_a_fl = t.flows(filter_source=True, source_annot="a", single=True)
             in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
             out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
-            in_c_1_fl, in_c_2_fl, in_c_3_fl, in_c_4_fl = t.flows(
-                filter_dest=True, dest_annot="c"
-            )
+            in_c_flows = t.flows(filter_dest=True, dest_annot="c")
             out_c_fl = t.flows(filter_source=True, source_annot="c")
 
-            A = aie.buffer(t.tile, (M, K), dtype=T.f32())
-            B = aie.buffer(t.tile, (K, N), dtype=T.f32())
-            # transpose so it's easier to write to
-            C = aie.buffer(t.tile, (len(cols) * N, M), dtype=T.f32())
+            A = aie.buffer(t.tile, (m, K), dtype=T.f32())
+            B = aie.buffer(t.tile, (K, n), dtype=T.f32())
+            C = aie.buffer(t.tile, (m, N), dtype=T.f32())
 
             in_A_lock = aie.lock(t.tile, init=1)
             out_A_lock = aie.lock(t.tile, init=0)
             in_B_lock = aie.lock(t.tile, init=1)
             out_B_lock = aie.lock(t.tile, init=0)
 
-            in_1_C_lock = aie.lock(t.tile, init=1)
-            in_2_C_lock = aie.lock(t.tile, init=0)
-            in_3_C_lock = aie.lock(t.tile, init=0)
-            in_4_C_lock = aie.lock(t.tile, init=0)
+            in_C_locks = (
+                aie.lock(t.tile, init=1),
+                aie.lock(t.tile, init=0),
+                aie.lock(t.tile, init=0),
+                aie.lock(t.tile, init=0),
+            )
             out_C_lock = aie.lock(t.tile, init=0)
+
+            iter_A, *dims_A = extract_patches((m, K), patch_shape=(m, k), trailing_dims=3)
+            # use all 4 because this one is column order
+            iter_B, *dims_B = extract_patches((K, n), patch_shape=(k, n), trailing_dims=4)
+            iter_C, *dims_C = extract_patches((m, N), patch_shape=(m, n), trailing_dims=3)
 
             # rel_val=0 does some weird shit... either makes the stream run through all repeat_counts
             # or whatever i don't know ... but you get a stall?
@@ -375,31 +360,33 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             def mem():
                 # fmt: off
                 aiex.receive_bd(in_a_fl.dest_channel, in_A_lock, A, out_A_lock, loop=False)
+                # acq_ge decrements, then rel_val reincrements and around around we go
                 aiex.send_bd(out_a_fl.source_channel, out_A_lock, A,
-                    # acq_ge decrements, then rel_val reincrements and around around we go
                     acq_action=AcquireGreaterEqual, acq_val=1, rel_val=1,
-                    dims=dims_A, len=m * k, iter=iter_A, repeat_count=iters - 1,
+                    dims=dims_A, len=m * k, iter=iter_A, repeat_count=time_slices - 1,
                 )
 
                 aiex.receive_bd(in_b_fl.dest_channel, in_B_lock, B, out_B_lock, loop=False)
+                # acq_ge decrements, then rel_val reincrements and around around we go
                 aiex.send_bd(out_b_fl.source_channel, out_B_lock, B,
-                    # acq_ge decrements, then rel_val reincrements and around around we go
                     acq_action=AcquireGreaterEqual, acq_val=1, rel_val=1,
-                    dims=dims_B, len=k * n, iter=iter_B, repeat_count=iters - 1
-
+                    dims=dims_B, len=k * n, iter=iter_B, repeat_count=time_slices - 1
                 )
 
-                aiex.receive_bd(in_c_1_fl.dest_channel, in_1_C_lock, C, in_2_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=0 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_2_fl.dest_channel, in_2_C_lock, C, in_3_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=1 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_3_fl.dest_channel, in_3_C_lock, C, in_4_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=2 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_4_fl.dest_channel, in_4_C_lock, C, out_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=3 * N * M, repeat_count=iters - 1)
-
-                aiex.send_bd(out_c_fl.source_channel, out_C_lock,  C, in_1_C_lock, repeat_count=iters - 1)
+                for i, (in_c_fl, (in_lock, out_lock)) in enumerate(
+                    zip(in_c_flows, sliding_window([*in_C_locks, out_C_lock], 2))
+                ):
+                    aiex.receive_bd(
+                        in_c_fl.dest_channel, in_lock, C, out_lock,
+                        acq_action=AcquireGreaterEqual,
+                        dims=dims_C, len=m * n, offset=i * m, repeat_count=time_slices - 1,
+                    )
                 # fmt: on
+
+                aiex.send_bd(out_c_fl.source_channel, out_C_lock, C, in_C_locks[0], repeat_count=time_slices - 1)
 
                 aie.end()
 
-        aie.slsl("configure core mem dmas")
         for t in list(tiles[cols, 2:]):
             in_a_fl = t.flows(filter_dest=True, dest_annot="a")
             in_b_fl = t.flows(filter_dest=True, dest_annot="b")
@@ -419,9 +406,9 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             @aie.mem(t.tile)
             def mem():
                 # fmt: off
-                aiex.receive_bd(int(in_a_fl.dest_channel), in_a_prod_lock, a_buffer, in_a_cons_lock, repeat_count=iters - 1)
-                aiex.receive_bd(int(in_b_fl.dest_channel), in_b_prod_lock, b_buffer, in_b_cons_lock, repeat_count=iters - 1)
-                aiex.send_bd(int(out_c_fl.source_channel), out_c_cons_lock, c_buffer, out_c_prod_lock, repeat_count=iters - 1)
+                aiex.receive_bd(int(in_a_fl.dest_channel), in_a_prod_lock, a_buffer, in_a_cons_lock, repeat_count=time_slices - 1)
+                aiex.receive_bd(int(in_b_fl.dest_channel), in_b_prod_lock, b_buffer, in_b_cons_lock, repeat_count=time_slices - 1)
+                aiex.send_bd(int(out_c_fl.source_channel), out_c_cons_lock, c_buffer, out_c_prod_lock, repeat_count=time_slices - 1)
                 # fmt: on
 
                 aie.end()
@@ -429,16 +416,13 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             @aie.core(t.tile, elf_file="core_0_2.elf")
             def core():
                 linalg.fill(0, c_buffer)
-                scratch = memref.alloc(*c_buffer.shape, c_buffer.dtype)
-                for _ in range_(iters):
-                    linalg.fill(0, scratch)
+                for _ in range_(time_slices):
                     with (
                         aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
                         aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
                         aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
                     ):
-                        linalg.matmul(a_buffer, b_buffer, scratch)
-                        linalg.add(scratch, c_buffer, c_buffer)
+                        linalg.matmul(a_buffer, b_buffer, c_buffer)
                     yield_()
 
     # print(ctx.module)
@@ -460,11 +444,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
     buffer_lengths = []
     for a in buffer_args:
         if "_a" in a:
-            buffer_lengths.append((M, K))
+            buffer_lengths.append((m, K))
         elif "_b" in a:
-            buffer_lengths.append((K, N))
+            buffer_lengths.append((K, n))
         elif "_c" in a:
-            buffer_lengths.append((len(cols) * N, M))
+            buffer_lengths.append((m, N))
 
     with FileLock("/tmp/ipu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
@@ -490,36 +474,33 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                         channel_index=shim_channels[col, bd_id],
                         column=col,
                         bd_id=bd_id,
-                        repeats=iters - 1,
+                        repeats=time_slices - 1,
                     )
                 )
 
         for col in cols:
             bd_id = 2
             dest_channel = shim_channels[col, bd_id]
-            ipu_insts.extend(
-                aiex.ipu.sync(column=col, channel=dest_channel, direction=S2MM)
-            )
+            ipu_insts.extend(aiex.ipu.sync(column=col, channel=dest_channel, direction=S2MM))
 
         xclbin.load_ipu_instructions(ipu_insts)
 
-        As = np.random.randint(0, 3, (len(cols) * M, K)).astype(np.float32)
-        Bs = np.random.randint(0, 3, (K, len(cols) * N)).astype(np.float32)
-        Cs = np.zeros((len(cols) * N, M), dtype=np.float32)
-        wraps = list(map(np.asarray, views))
-        for col in cols:
-            np.copyto(wraps[3 * col + 0], As[M * col : M * (col + 1), :], casting="no")
-            np.copyto(wraps[3 * col + 1], Bs[:, N * col : N * (col + 1)], casting="no")
-            np.copyto(wraps[3 * col + 2], Cs, casting="no")
-
-        xclbin.sync_buffers_to_device()
-        xclbin.run()
-        print("Running kernel")
-        xclbin.wait(30)
-        xclbin.sync_buffers_from_device()
-
-        correct = As @ Bs
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            result = np.hstack([wraps[3 * col + 2] for col in cols])
-            print("correct - result")
-            print(correct - result)
+            As = np.random.randint(0, 10, (M, K)).astype(np.float32)
+            Bs = np.random.randint(0, 3, (K, N)).astype(np.float32)
+            Cs = np.zeros((m, N), dtype=np.float32)
+            wraps = list(map(np.asarray, views))
+            for col in cols:
+                np.copyto(wraps[3 * col + 0], As[m * col : m * (col + 1), :], casting="no")
+                np.copyto(wraps[3 * col + 1], Bs[:, n * col : n * (col + 1)], casting="no")
+                np.copyto(wraps[3 * col + 2], Cs, casting="no")
+
+            xclbin.sync_buffers_to_device()
+            xclbin.run()
+            print("Running kernel")
+            xclbin.wait(30)
+            xclbin.sync_buffers_from_device()
+
+            correct = As @ Bs
+            result = np.vstack([wraps[3 * col + 2] for col in cols])
+            assert np.allclose(result, correct)
