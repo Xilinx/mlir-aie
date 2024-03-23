@@ -366,25 +366,22 @@ class DMAStartOp(DMAStartOp):
         channel_dir,
         channel_index,
         *,
-        dest: Optional[Union[Successor, Block]] = None,
-        chain: Optional[Union[Successor, Block]] = None,
+        dest: Optional[List[Union[Successor, Block]]] = None,
         repeat_count: Optional[int] = None,
         loc=None,
         ip=None,
     ):
-        if isinstance(dest, Successor):
-            dest = dest.block
-        if isinstance(chain, Successor):
-            chain = chain.block
         if dest is None:
-            dest = InsertionPoint.current.block
-        if chain is None:
-            chain = InsertionPoint.current.block
+            dest = [None]
+        for i, d in enumerate(dest):
+            if isinstance(d, Successor):
+                dest[i] = d.block
+            elif d is None:
+                dest[i] = InsertionPoint.current.block
         super().__init__(
             channel_dir,
             channel_index,
             dest,
-            chain,
             repeat_count=repeat_count,
             loc=loc,
             ip=ip,
@@ -392,19 +389,14 @@ class DMAStartOp(DMAStartOp):
 
     @property
     def dest(self):
-        return Successor(self, [], self.successors[0], 0)
-
-    @property
-    def chain(self):
-        return Successor(self, [], self.successors[1], 1)
+        return [Successor(self, [], s, i) for i, s in enumerate(self.successors)]
 
 
 def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Union[Successor, Block]] = None,
-    chain: Optional[Union[Successor, Block]] = None,
+    dest: Optional[List[Union[Successor, Block]]] = None,
     repeat_count: Optional[int] = None,
     loc=None,
     ip=None,
@@ -413,12 +405,14 @@ def dma_start(
         channel_dir,
         channel_index,
         dest=dest,
-        chain=chain,
         repeat_count=repeat_count,
         loc=loc,
         ip=ip,
     )
-    return op.dest, op.chain
+    dest = op.dest
+    if len(dest) == 1:
+        dest = dest[0]
+    return dest
 
 
 @_cext.register_operation(_Dialect, replace=True)

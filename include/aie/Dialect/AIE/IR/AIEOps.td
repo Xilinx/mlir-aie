@@ -937,9 +937,9 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         // repeat_count==0 means "do it once" and don't repeat
         DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count
   );
-  let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
+  let successors = (successor VariadicSuccessor<AnySuccessor>:$dest);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain `)` attr-dict
+    `(` $channel_dir `,` $channel_index `,` $dest `)` attr-dict
   }];
 
   let extraClassDeclaration = [{

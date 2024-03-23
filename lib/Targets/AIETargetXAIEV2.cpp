@@ -249,7 +249,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
   for (auto &block : memOp.getBody()) {
     for (auto op : block.template getOps<DMAStartOp>()) {
-      int bdNum = blockMap[op.getDest()];
+      int bdNum = blockMap[op.getDest().front()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
       int chNum = op.getChannelIndex();
       const auto &target_model = xilinx::AIE::getTargetModel(op);
@@ -481,7 +481,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
-        auto dest = op.getDest();
+        auto dest = op.getDest().front();
         while (dest) {
           channelMap[dest] = chNum;
           if (dest->getSuccessors().size() < 1)

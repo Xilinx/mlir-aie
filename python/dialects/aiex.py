@@ -457,12 +457,13 @@ def send_bd(
     iter=None,
     repeat_count=None,
     num_blocks=1,
+    loop=None,
 ):
     if rel_lock is None:
         rel_lock = acq_lock
 
     @aie.dma(
-        DMAChannelDir.MM2S, channel, repeat_count=repeat_count, num_blocks=num_blocks
+        DMAChannelDir.MM2S, channel, repeat_count=repeat_count, num_blocks=num_blocks, loop=loop
     )
     def d():
         process_bd(
@@ -498,12 +499,13 @@ def receive_bd(
     iter=None,
     repeat_count=None,
     num_blocks=1,
+    loop=None,
 ):
     if rel_lock is None:
         rel_lock = acq_lock
 
     @aie.dma(
-        DMAChannelDir.S2MM, channel, repeat_count=repeat_count, num_blocks=num_blocks
+        DMAChannelDir.S2MM, channel, repeat_count=repeat_count, num_blocks=num_blocks, loop=loop
     )
     def d():
         process_bd(

@@ -90,7 +90,7 @@ struct AIEAssignBufferDescriptorIDsPass
           for (auto op : block.getOps<DMAStartOp>()) {
             int chNum = op.getChannelIndex();
             blockChannelMap[&block] = chNum;
-            Block *dest = op.getDest();
+            Block *dest = op.getDest().front();
             while (dest) {
               blockChannelMap[dest] = chNum;
               if (dest->hasNoSuccessors())
@@ -160,7 +160,10 @@ struct AIEAssignBufferDescriptorIDsPass
             Block *nextBlock = block.getSuccessor(0);
             if (!blockBdIdMap.contains(nextBlock))
               assert(nextBlock->getOperations().size() == 1 &&
-                     isa<EndOp>(nextBlock->getOperations().front()) &&
+                     // for some reason i can't stick both of ops in a single
+                     // isa<...>
+                     (isa<EndOp>(nextBlock->getOperations().front()) ||
+                      isa<DMAStartOp>(nextBlock->getOperations().front())) &&
                      "bb that's not in blockMap can only have aie.end");
             else
               nextBdId = blockBdIdMap[nextBlock];

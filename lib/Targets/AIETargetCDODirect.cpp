@@ -553,7 +553,7 @@ struct AIEControl {
       else
         for (Block &block : memOp.getOperation()->getRegion(0)) {
           for (auto op : block.getOps<DMAStartOp>()) {
-            DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
+            DMABDOp bd = *op.getDest().front()->getOps<DMABDOp>().begin();
             int chNum = op.getChannelIndex();
             auto channelDir = op.getChannelDir();
             if (failed(pushToBdQueueAndEnable(
