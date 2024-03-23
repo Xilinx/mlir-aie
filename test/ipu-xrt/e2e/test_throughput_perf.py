@@ -357,33 +357,17 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
             @aie.memtile_dma(t.tile)
             def mem():
-                aiex.receive_bd(
-                    in_a_fl.dest_channel, in_A_lock, A, out_A_lock, loop=False
-                )
-                aiex.send_bd(
-                    out_a_fl.source_channel,
-                    out_A_lock,
-                    A,
-                    repeat_count=iters - 1,
-                    rel_val=0,
-                    dims=[(32, 512), (32, 1)],
-                    len=m * k,
-                    iter=(16, 32),
-                )
-                aiex.receive_bd(
-                    in_b_fl.dest_channel, in_B_lock, B, out_B_lock, loop=False
-                )
-                aiex.send_bd(
-                    out_b_fl.source_channel,
-                    out_B_lock,
-                    B,
-                    repeat_count=iters - 1,
-                    rel_val=0,
-                    len=k * n,
-                    iter=(iters, k * n),
+                # fmt: off
+                aiex.receive_bd(in_a_fl.dest_channel, in_A_lock, A, out_A_lock, loop=False)
+                aiex.send_bd(out_a_fl.source_channel, out_A_lock, A, rel_val=0,
+                    dims=[(32, 512), (32, 1)], len=m * k, iter=(16, 32), repeat_count=iters - 1
                 )
 
-                # fmt: off
+                aiex.receive_bd(in_b_fl.dest_channel, in_B_lock, B, out_B_lock, loop=False)
+                aiex.send_bd(out_b_fl.source_channel, out_B_lock, B, rel_val=0,
+                    len=k * n, iter=(iters, k * n), repeat_count=iters - 1
+                )
+
                 aiex.receive_bd(in_c_1_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=0, len=N * M, offset=0 * N * M, repeat_count=iters - 1)
                 aiex.receive_bd(in_c_2_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=1, len=N * M, offset=1 * N * M, repeat_count=iters - 1)
                 aiex.receive_bd(in_c_3_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=2, len=N * M, offset=2 * N * M, repeat_count=iters - 1)
@@ -413,31 +397,15 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
             @aie.mem(t.tile)
             def mem():
-                aiex.receive_bd(
-                    int(in_a_fl.dest_channel),
-                    in_a_prod_lock,
-                    a_buffer,
-                    in_a_cons_lock,
-                    repeat_count=iters - 1,
-                )
-                aiex.receive_bd(
-                    int(in_b_fl.dest_channel),
-                    in_b_prod_lock,
-                    b_buffer,
-                    in_b_cons_lock,
-                    repeat_count=iters - 1,
-                )
-                aiex.send_bd(
-                    int(out_c_fl.source_channel),
-                    out_c_cons_lock,
-                    c_buffer,
-                    out_c_prod_lock,
-                    repeat_count=iters - 1,
-                )
+                # fmt: off
+                aiex.receive_bd(int(in_a_fl.dest_channel), in_a_prod_lock, a_buffer, in_a_cons_lock, repeat_count=iters - 1)
+                aiex.receive_bd(int(in_b_fl.dest_channel), in_b_prod_lock, b_buffer, in_b_cons_lock, repeat_count=iters - 1)
+                aiex.send_bd(int(out_c_fl.source_channel), out_c_cons_lock, c_buffer, out_c_prod_lock, repeat_count=iters - 1)
+                # fmt: on
 
                 aie.end()
 
-            @aie.core(t.tile)
+            @aie.core(t.tile, elf_file="core_0_2.elf")
             def core():
                 linalg.fill(0, c_buffer)
                 for _ in range_(iters):
@@ -451,7 +419,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
     print(ctx.module)
 
-    compile_without_vectorization(ctx.module, workdir)
+    compile_without_vectorization(ctx.module, workdir, template_core=(0, 2))
     buffer_args = list(
         zip(
             [f"col_{c}_a" for c in cols],

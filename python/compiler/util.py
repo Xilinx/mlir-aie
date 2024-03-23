@@ -307,6 +307,7 @@ def compile_with_vectorization(
     partition_start_col=1,
     enable_cores=True,
     jobs=1,
+    template_core=None,
 ):
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
@@ -331,6 +332,11 @@ def compile_with_vectorization(
         )
 
     for col, row, _ in generate_cores_list(str(mod_aie)):
+        if template_core is not None and template_core != (col, row):
+            assert "elf_file" in str(
+                input_with_addresses
+            ), "if you're using template_core then you need to annotate some core with elf_file"
+            continue
         print(f"compiling core {col} {row}")
         with Context():
             core_mod = Module.parse(str(input_with_addresses))
@@ -408,6 +414,7 @@ def compile_without_vectorization(
     partition_start_col=1,
     enable_cores=True,
     jobs=1,
+    template_core=None,
 ):
     debug = debug or xaie_debug or cdo_debug
     module = run_pipeline(module, Pipeline().canonicalize())
@@ -421,6 +428,11 @@ def compile_without_vectorization(
     )
 
     for col, row, _ in generate_cores_list(str(module)):
+        if template_core is not None and template_core != (col, row):
+            assert "elf_file" in str(
+                input_with_addresses
+            ), "if you're using template_core then you need to annotate some core with elf_file"
+            continue
         print(f"compiling core {col} {row}")
         with Context():
             core_mod = Module.parse(str(input_with_addresses))

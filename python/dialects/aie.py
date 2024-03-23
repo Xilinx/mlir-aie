@@ -164,8 +164,10 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None):
-        super().__init__(result=T.index(), tile=tile, link_with=link_with)
+    def __init__(self, tile, link_with=None, elf_file=None):
+        super().__init__(
+            result=T.index(), tile=tile, link_with=link_with, elf_file=elf_file
+        )
 
 
 # Create an aie buffer of (shape x datatype) on given tile.
