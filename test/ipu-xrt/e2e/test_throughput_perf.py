@@ -298,13 +298,14 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
     rows = [0, 1, *core_rows]
 
     m, k, n = 16, 16, 16
-    per_col = 256 // len(cols)
-    M, K, N = 16, per_col, 16
+    M, N = 16, 16
+    K = 64 // len(cols)
 
-    iter, *dims = extract_patches((M, K), (16, 16), trailing_dims=3)
+    iter_A, *dims_A = extract_patches((M, K), (m, k), trailing_dims=3)
+    iter_B, *dims_B = extract_patches((K, N), (k, n), trailing_dims=3)
 
     shim_channels = {}
-    iters = per_col // k
+    iters = K // k
 
     @aie.device(AIEDevice.ipu)
     def ipu():
@@ -362,27 +363,38 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
             in_B_lock = aie.lock(t.tile, init=1)
             out_B_lock = aie.lock(t.tile, init=0)
 
-            in_C_lock = aie.lock(t.tile, init=0)
+            in_1_C_lock = aie.lock(t.tile, init=1)
+            in_2_C_lock = aie.lock(t.tile, init=0)
+            in_3_C_lock = aie.lock(t.tile, init=0)
+            in_4_C_lock = aie.lock(t.tile, init=0)
+            out_C_lock = aie.lock(t.tile, init=0)
 
+            # rel_val=0 does some weird shit... either makes the stream run through all repeat_counts
+            # or whatever i don't know ... but you get a stall?
             @aie.memtile_dma(t.tile)
             def mem():
                 # fmt: off
                 aiex.receive_bd(in_a_fl.dest_channel, in_A_lock, A, out_A_lock, loop=False)
-                aiex.send_bd(out_a_fl.source_channel, out_A_lock, A, rel_val=0,
-                    dims=dims, len=m * k, iter=iter, repeat_count=iters - 1
+                aiex.send_bd(out_a_fl.source_channel, out_A_lock, A,
+                    # acq_ge decrements, then rel_val reincrements and around around we go
+                    acq_action=AcquireGreaterEqual, acq_val=1, rel_val=1,
+                    dims=dims_A, len=m * k, iter=iter_A, repeat_count=iters - 1,
                 )
 
                 aiex.receive_bd(in_b_fl.dest_channel, in_B_lock, B, out_B_lock, loop=False)
-                aiex.send_bd(out_b_fl.source_channel, out_B_lock, B, rel_val=0,
-                    len=k * n, iter=(iters, k * n), repeat_count=iters - 1
+                aiex.send_bd(out_b_fl.source_channel, out_B_lock, B,
+                    # acq_ge decrements, then rel_val reincrements and around around we go
+                    acq_action=AcquireGreaterEqual, acq_val=1, rel_val=1,
+                    dims=dims_B, len=k * n, iter=iter_B, repeat_count=iters - 1
+
                 )
 
-                aiex.receive_bd(in_c_1_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=0, len=N * M, offset=0 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_2_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=1, len=N * M, offset=1 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_3_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=2, len=N * M, offset=2 * N * M, repeat_count=iters - 1)
-                aiex.receive_bd(in_c_4_fl.dest_channel, in_C_lock, C, acq_action=Acquire, acq_val=3, len=N * M, offset=3 * N * M, repeat_count=iters - 1)
+                aiex.receive_bd(in_c_1_fl.dest_channel, in_1_C_lock, C, in_2_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=0 * N * M, repeat_count=iters - 1)
+                aiex.receive_bd(in_c_2_fl.dest_channel, in_2_C_lock, C, in_3_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=1 * N * M, repeat_count=iters - 1)
+                aiex.receive_bd(in_c_3_fl.dest_channel, in_3_C_lock, C, in_4_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=2 * N * M, repeat_count=iters - 1)
+                aiex.receive_bd(in_c_4_fl.dest_channel, in_4_C_lock, C, out_C_lock, acq_action=AcquireGreaterEqual, len=N * M, offset=3 * N * M, repeat_count=iters - 1)
 
-                aiex.send_bd(out_c_fl.source_channel, in_C_lock,  C, acq_val=4, repeat_count=iters - 1)
+                aiex.send_bd(out_c_fl.source_channel, out_C_lock,  C, in_1_C_lock, repeat_count=iters - 1)
                 # fmt: on
 
                 aie.end()
@@ -416,17 +428,17 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
             @aie.core(t.tile, elf_file="core_0_2.elf")
             def core():
-                linalg.fill(1, c_buffer)
-                # for _ in range_(iters):
-                #     with (
-                #         aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
-                #         aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
-                #     ):
-                #         linalg.add(c_buffer, a_buffer, c_buffer)
-                #     yield_()
+                linalg.fill(0, c_buffer)
+                scratch = memref.alloc(*c_buffer.shape, c_buffer.dtype)
                 for _ in range_(iters):
-                    with aiex.hold_lock(out_c_prod_lock, out_c_cons_lock):
-                        linalg.add(c_buffer, c_buffer, c_buffer)
+                    linalg.fill(0, scratch)
+                    with (
+                        aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
+                        aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
+                        aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
+                    ):
+                        linalg.matmul(a_buffer, b_buffer, scratch)
+                        linalg.add(scratch, c_buffer, c_buffer)
                     yield_()
 
     # print(ctx.module)
@@ -491,16 +503,14 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
         xclbin.load_ipu_instructions(ipu_insts)
 
-        # As = {c: np.random.randint(0, 10, (M, K)).astype(np.float32) for c in cols}
-        # Bs = {c: np.random.randint(0, 10, (K, N)).astype(np.float32) for c in cols}
-        As = {c: np.ones((M, K)).astype(np.float32) * 2 for c in cols}
-        Bs = {c: np.ones((K, N)).astype(np.float32) * 3 for c in cols}
-        Cs = {c: np.zeros((len(cols) * N, M), dtype=np.float32) for c in cols}
+        As = np.random.randint(0, 3, (len(cols) * M, K)).astype(np.float32)
+        Bs = np.random.randint(0, 3, (K, len(cols) * N)).astype(np.float32)
+        Cs = np.zeros((len(cols) * N, M), dtype=np.float32)
         wraps = list(map(np.asarray, views))
         for col in cols:
-            np.copyto(wraps[3 * col + 0], As[col], casting="no")
-            np.copyto(wraps[3 * col + 1], Bs[col], casting="no")
-            np.copyto(wraps[3 * col + 2], Cs[col], casting="no")
+            np.copyto(wraps[3 * col + 0], As[M * col : M * (col + 1), :], casting="no")
+            np.copyto(wraps[3 * col + 1], Bs[:, N * col : N * (col + 1)], casting="no")
+            np.copyto(wraps[3 * col + 2], Cs, casting="no")
 
         xclbin.sync_buffers_to_device()
         xclbin.run()
@@ -508,13 +518,8 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
+        correct = As @ Bs
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            correct = As[col] @ Bs[col]
-            print(f"{correct.shape=}")
-            print(correct)
-            print()
-            for col in cols:
-                col_ans = wraps[3 * col + 2].T
-                print(col, f"{col_ans.shape=}")
-                print(col_ans)
-                print()
+            result = np.hstack([wraps[3 * col + 2] for col in cols])
+            print("correct - result")
+            print(correct - result)
