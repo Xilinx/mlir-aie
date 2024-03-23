@@ -297,11 +297,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
     core_rows = [2, 3, 4, 5]
     rows = [0, 1, *core_rows]
 
-    m, k, n = 64, 64, 64
-    per_col = 2048 // len(cols)
-    M, K, N = 64, per_col, 64
+    m, k, n = 16, 16, 16
+    per_col = 256 // len(cols)
+    M, K, N = 16, per_col, 16
 
-    iter, *dims = extract_patches((M, K), (64, 64), trailing_dims=3)
+    iter, *dims = extract_patches((M, K), (16, 16), trailing_dims=3)
 
     shim_channels = {}
     iters = per_col // k
@@ -416,14 +416,17 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
 
             @aie.core(t.tile, elf_file="core_0_2.elf")
             def core():
-                linalg.fill(0, c_buffer)
+                linalg.fill(1, c_buffer)
+                # for _ in range_(iters):
+                #     with (
+                #         aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
+                #         aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
+                #     ):
+                #         linalg.add(c_buffer, a_buffer, c_buffer)
+                #     yield_()
                 for _ in range_(iters):
-                    with (
-                        aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
-                        aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
-                        aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
-                    ):
-                        linalg.add(c_buffer, a_buffer, c_buffer)
+                    with aiex.hold_lock(out_c_prod_lock, out_c_cons_lock):
+                        linalg.add(c_buffer, c_buffer, c_buffer)
                     yield_()
 
     # print(ctx.module)
@@ -475,7 +478,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                         channel_index=shim_channels[col, bd_id],
                         column=col,
                         bd_id=bd_id,
-                        # repeats=iters - 1,
+                        repeats=iters - 1,
                     )
                 )
 
@@ -505,12 +508,13 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
         xclbin.wait(30)
         xclbin.sync_buffers_from_device()
 
-        correct = As[col] @ Bs[col]
-        print(f"{correct.shape=}")
-        print(correct)
-        print()
-        for col in cols:
-            col_ans = wraps[3 * col + 2].T
-            print(col, f"{col_ans.shape=}")
-            print(col_ans)
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            correct = As[col] @ Bs[col]
+            print(f"{correct.shape=}")
+            print(correct)
             print()
+            for col in cols:
+                col_ans = wraps[3 * col + 2].T
+                print(col, f"{col_ans.shape=}")
+                print(col_ans)
+                print()
