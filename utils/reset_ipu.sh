@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -eux
 
 NUMBER=$(lspci -D | grep "\[AMD\] Device 1502" | cut -d ' ' -f1)
 

@@ -1,5 +1,9 @@
 import collections
 from itertools import islice, zip_longest
+import numbers
+
+import numpy as np
+from numpy.lib.stride_tricks import as_strided
 
 from aie.dialects import aie
 from aie.extras.util import find_ops
@@ -51,3 +55,42 @@ def display_flows(module):
 
 def annot(op, annot):
     op.operation.attributes[annot] = UnitAttr.get()
+
+
+def extract_patches(
+    arr_shape,
+    patch_shape: int | tuple[int, ...] | list[int, ...] = 8,
+    extraction_step: int | tuple[int, ...] | list[int, ...] = None,
+    dtype: np.dtype = None,
+    trailing_dims=4,
+):
+    if dtype is None:
+        dtype = np.int32()
+    arr = np.empty(arr_shape, dtype=dtype)
+    if extraction_step is None:
+        extraction_step = patch_shape
+    arr_ndim = arr.ndim
+
+    if isinstance(patch_shape, numbers.Number):
+        patch_shape = tuple([patch_shape] * arr_ndim)
+    if isinstance(extraction_step, numbers.Number):
+        extraction_step = tuple([extraction_step] * arr_ndim)
+
+    patch_strides = arr.strides
+
+    slices = tuple(slice(None, None, st) for st in extraction_step)
+    # grab the elements at the starts of the "extraction steps"
+    # and get the strides to those elements
+    indexing_strides = arr[slices].strides
+
+    patch_indices_shape = (
+        (np.array(arr.shape) - np.array(patch_shape)) // np.array(extraction_step)
+    ) + 1
+
+    shape = tuple(list(patch_indices_shape) + list(patch_shape))
+    strides = tuple(list(indexing_strides) + list(patch_strides))
+
+    patches = as_strided(arr, shape=shape, strides=strides)
+    return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[
+        -trailing_dims:
+    ]
