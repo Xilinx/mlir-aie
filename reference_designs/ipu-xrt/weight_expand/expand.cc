@@ -36,31 +36,34 @@ void expand(T_in *in, T_out *out) {
   T_in *__restrict pSFb = in + N/2;             // The scale factors are after the integer values
   T_sf *__restrict pSF = (T_sf *)pSFb;          // But we only advance by the number of bytes not elements
   T_out *__restrict pO = out;
-  const int F = N / vec_factor;
+  const int F = N / (vec_factor*sf_vec_factor);
 
 
   for (int i = 0; i < F; i++)
        chess_prepare_for_pipelining chess_loop_range(16, ) {
-    aie::vector<T_in, vec_factor> I0 = aie::load_v<vec_factor>(pI);  // For example <int4, 32>
-    pI += vec_factor/2;  // Try this
 
-    // Should really do this outside the loop
+    // Let's unroll this
     aie::vector<T_sf, sf_vec_factor> sfV = aie::load_v<sf_vec_factor>(pSF);  // For example <bfloat16, 16>
-    if ((i % sf_vec_factor) == (sf_vec_factor - 1))
-      pSF += sf_vec_factor;
+    pSF += sf_vec_factor;
 
-    bfloat16 sf = sfV[i % sf_vec_factor];
-    
-    aie::vector<bfloat16, vec_factor> sf_broadcast = aie::broadcast(sf);
+    for (int k=0;k<sf_vec_factor;k++) 
+      chess_unroll_loop(sf_vec_factor) {
+      aie::vector<T_in, vec_factor> I0 = aie::load_v<vec_factor>(pI);  // For example <int4, 32>
+      pI += vec_factor/2;
 
-    // Upsize these to 8 bits -> 16 -> bfloat16
-    aie::vector<int8, vec_factor>  asInt8 = aie::unpack(I0);
-    aie::vector<int16, vec_factor>  asInt16 = aie::unpack(asInt8);
-    aie::vector<bfloat16, vec_factor>  as_bf16 = aie::to_float<bfloat16>(asInt16, 0);
-    aie::vector<bfloat16, vec_factor>  scaled_bf16 = aie::mul(as_bf16, sf_broadcast);
+      bfloat16 sf = sfV[k % sf_vec_factor];
+      
+      aie::vector<bfloat16, vec_factor> sf_broadcast = aie::broadcast(sf);
 
-    aie::store_v(pO,scaled_bf16);
-    pO += vec_factor;
+      // Upsize these to 8 bits -> 16 -> bfloat16
+      aie::vector<int8, vec_factor>  asInt8 = aie::unpack(I0);
+      aie::vector<int16, vec_factor>  asInt16 = aie::unpack(asInt8);
+      aie::vector<bfloat16, vec_factor>  as_bf16 = aie::to_float<bfloat16>(asInt16, 0);
+      aie::vector<bfloat16, vec_factor>  scaled_bf16 = aie::mul(as_bf16, sf_broadcast);
+
+      aie::store_v(pO,scaled_bf16);
+      pO += vec_factor;
+      }
   }
   event1();
 
