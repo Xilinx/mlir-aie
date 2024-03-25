@@ -8,7 +8,7 @@
 
 include ../makefile-common
 
-targetname = vectorScalar
+targetname = eltwiseAdd
 
 all: build/final.xclbin build/insts.txt
 
@@ -20,7 +20,7 @@ build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/final.xclbin: build/aie.mlir build/scale.o
+build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
@@ -28,7 +28,7 @@ build/final.xclbin: build/aie.mlir build/scale.o
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdfloat>
 #include <string>
 #include <vector>
 
@@ -25,12 +26,9 @@
 #include "xrt/xrt_kernel.h"
 
 constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 8192;
 
-constexpr int IN_SIZE = 4096;
-constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + TRACE_SIZE / 4 : IN_SIZE;
-// constexpr int OUT_SIZE = 4096;
+constexpr int IN_SIZE = 65536;
+constexpr int OUT_SIZE = IN_SIZE;
 
 namespace po = boost::program_options;
 
@@ -45,6 +43,20 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
                                " does not exist.\n");
     }
   }
+}
+
+static inline std::bfloat16_t random_bfloat16_t() {
+  // Random numbers should NOT be uniformly between 0 and 1, because that
+  // would make the matrix product AB always close to 1.
+  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
+}
+
+bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
+  std::bfloat16_t diff = fabs(a - b);
+  if ((diff / a) < 0.01)
+    return true;
+  else
+    return false;
 }
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
@@ -62,25 +74,10 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-void write_out_trace(uint32_t *bufOut, std::string path) {
-  std::ofstream fout(path);
-  uint32_t *traceOut =
-      (uint32_t *)((char *)bufOut + sizeof(uint32_t) * IN_SIZE);
-  for (int i = 0; i < TRACE_SIZE / sizeof(traceOut[0]); i++) {
-    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
-    fout << std::endl;
-  }
-}
-
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  if (ENABLE_TRACING) {
-    desc.add_options()("trace,t",
-                       po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
-  }
 
   desc.add_options()("help,h", "produce help message")(
       "xclbin,x", po::value<std::string>()->required(),
@@ -92,11 +89,6 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
-  if (ENABLE_TRACING) {
-    desc.add_options()("trace,t",
-                       po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
-  }
 
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -164,68 +156,107 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
+  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
+  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  int32_t *bufInA = bo_inA.map<int32_t *>();
-  std::vector<uint32_t> srcVecA;
+  std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
+  std::vector<std::bfloat16_t> AVec(IN_SIZE);
   for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(i + 1);
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
+    AVec[i] = random_bfloat16_t();
+  memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
+
+  std::bfloat16_t *bufB = bo_inB.map<std::bfloat16_t *>();
+  std::vector<std::bfloat16_t> BVec(IN_SIZE);
+  for (int i = 0; i < IN_SIZE; i++)
+    BVec[i] = random_bfloat16_t();
+  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(std::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
-  run.wait();
+  int sticky_errors = 0;
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  unsigned num_iter = 256;
+  float npu_time_total = 0;
+  float npu_time_min = 9999999;
+  float npu_time_max = 0;
+  for (unsigned iter = 0; iter < num_iter; iter++) {
 
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
-
-  int errors = 0;
-
-  if (VERIFY) {
-    if (verbosity >= 1) {
-      std::cout << "Verifying results ..." << std::endl;
-    }
-    for (uint32_t i = 0; i < IN_SIZE; i++) {
-      uint32_t ref = (i + 1) * 3;
-      if (*(bufOut + i) != ref) {
-        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                  << std::endl;
-        errors++;
-      } else {
-        std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                  << std::endl;
-      }
-    }
-  } else {
     if (verbosity >= 1)
-      std::cout << "WARNING: vector-scalar results not verified." << std::endl;
+      std::cout << "Running Kernel.\n";
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+    run.wait();
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+    std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
+
+    int errors = 0;
+
+    if (VERIFY) {
+      if (verbosity >= 1) {
+        std::cout << "Verifying results ..." << std::endl;
+      }
+      for (uint32_t i = 0; i < IN_SIZE; i++) {
+        std::bfloat16_t ref = AVec[i] + BVec[i];
+        if (!nearly_equal(*(bufOut + i), ref)) {
+          std::cout << "Error in " << i << " output " << *(bufOut + i)
+                    << " != " << ref << " actual " << AVec[i] << " + "
+                    << BVec[i] << std::endl;
+          errors++;
+          sticky_errors++;
+        } else {
+          if (verbosity >= 2)
+            std::cout << "Correct " << i << " output " << *(bufOut + i)
+                      << " == " << ref << std::endl;
+        }
+      }
+    } else {
+      if (verbosity >= 1)
+        std::cout << "WARNING: vector-scalar results not verified."
+                  << std::endl;
+    }
+
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    npu_time_total += npu_time;
+    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
+    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
+
+    if (VERIFY && !errors) {
+      std::cout << iter << ": pass!\n";
+    } else {
+      std::cout << iter << ": fail! " << errors << " errors\n";
+    }
   }
 
-  if (ENABLE_TRACING) {
-    write_out_trace(bufOut, vm["trace"].as<std::string>());
-  }
+  std::cout << "Avg NPU exec time: " << npu_time_total / num_iter << "us."
+            << std::endl;
+  std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
 
-  if (VERIFY && !errors) {
+  if (VERIFY && !sticky_errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    std::cout << "\nfailed.\n\n";
+    std::cout << "\nFAIL.\n\n";
     return 1;
   }
 }
