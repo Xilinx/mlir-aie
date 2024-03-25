@@ -75,7 +75,7 @@ if config.hsa_dir and (not ("NOTFOUND" in config.hsa_dir)):
     config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
 
     if config.enable_board_tests:
-        config.substitutions.append(("%run_on_board", "flock /tmp/vck5000.lock sudo"))
+        config.substitutions.append(("%run_on_board", "flock /tmp/vck5000.lock"))
     else:
         print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
         config.substitutions.append(("%run_on_board", "echo"))
