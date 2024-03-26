@@ -125,7 +125,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           coreBufTypes.push_back({t, i});
           BufferOp buf = builder.create<BufferOp>(
               builder.getUnknownLoc(), t, tile, /*sym_name*/ nullptr,
-              /*address*/ nullptr, /*initial_value*/ nullptr);
+              /*address*/ nullptr, /*initial_value*/ nullptr,
+              /*mem_bank*/ nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
