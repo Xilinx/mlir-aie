@@ -309,6 +309,8 @@ def compile_with_vectorization(
     jobs=1,
     template_core=None,
 ):
+    with open(workdir / "mod_aie.mlir", "w") as f:
+        f.write(str(mod_aie))
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
         mod_aie,

@@ -113,7 +113,7 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=K,
+                    length=K,
                     buffer_offset=i * K,
                     ddr_id=ddr_id,
                 )
@@ -217,7 +217,7 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=K,
+                length=K,
                 ddr_id=ddr_id,
             )
         )

@@ -5,6 +5,7 @@
 # (c) Copyright 2023 AMD Inc.
 from pathlib import Path
 import sys
+from scipy.optimize import minimize
 
 from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.compiler.util import (
@@ -20,14 +21,21 @@ from aie.dialects.aie import (
     WireBundle,
 )
 from aie.dialects.aiex import TileArray
-from aie.dialects.transform import any_op_t, apply_registered_pass, get_parent_op, interpreter as interp
+from aie.dialects.transform import (
+    any_op_t,
+    apply_registered_pass,
+    get_parent_op,
+    interpreter as interp,
+)
 from aie.dialects.transform.extras import named_sequence
 from aie.dialects.transform.loop import loop_unroll
 from aie.dialects.transform.structured import structured_match
 from aie.extras.context import ExplicitlyManagedModule
+
 # noinspection PyUnresolvedReferences
 from aie.extras.dialects.ext import arith, func, linalg, memref, scf, vector
 from aie.extras.runtime.passes import Pipeline, run_pipeline
+
 # noinspection PyUnresolvedReferences
 from aie.extras.testing import MLIRContext, filecheck, mlir_ctx as ctx
 import aie.extras.types as T
@@ -195,7 +203,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         ):
             bd_id = buffer_idx = i
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                column=col, bd_id=bd_id, buffer_length=len
+                column=col, bd_id=bd_id, length=len
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -434,7 +442,7 @@ def test_4x4_broadcast_outer_product_matmult(ctx: MLIRContext, workdir: Path):
                 writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
                     column=col,
                     bd_id=bd_id,
-                    buffer_length=np.prod(buffer_lengths[buffer_idx]),
+                    length=np.prod(buffer_lengths[buffer_idx]),
                 )
                 ipu_insts.extend(
                     aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -495,10 +503,13 @@ def test_4x4_broadcast_outer_product_matmult_vectorized(
     rows = [0, 1, *core_rows]
 
     n_cols = n_rows = 4
+    M, K, N = 32, 32, 32
     time_slices = 16
 
-    M, K, N = 32, 32, 32
     m, k, n = M // n_cols, K // time_slices, N // n_rows
+    while ((m * k) + (k * n) + (m * n)) * 4 >= (64 << 10):
+        time_slices *= 2
+        m, k, n = M // n_cols, K // time_slices, N // n_rows
 
     shim_channels = {}
 
@@ -551,9 +562,9 @@ def test_4x4_broadcast_outer_product_matmult_vectorized(
             in_c_flows = t.flows(filter_dest=True, dest_annot="c")
             out_c_fl = t.flows(filter_source=True, source_annot="c")
 
-            A = aie.buffer(t.tile, (m, K), dtype=T.f32())
-            B = aie.buffer(t.tile, (K, n), dtype=T.f32())
-            C = aie.buffer(t.tile, (m, N), dtype=T.f32())
+            A = aie.buffer(t.tile, (m, K), dtype=T.f32(), name=f"A_{int(t.tile.col)}")
+            B = aie.buffer(t.tile, (K, n), dtype=T.f32(), name=f"B_{int(t.tile.col)}")
+            C = aie.buffer(t.tile, (m, N), dtype=T.f32(), name=f"C_{int(t.tile.col)}")
 
             in_A_lock = aie.lock(t.tile, init=1)
             out_A_lock = aie.lock(t.tile, init=0)
@@ -630,9 +641,24 @@ def test_4x4_broadcast_outer_product_matmult_vectorized(
             out_c_prod_lock = aie.lock(t.tile, init=1)
             out_c_cons_lock = aie.lock(t.tile, init=0)
 
-            a_buffer = t.buffer([(m, k)], T.f32(), annot="a")
-            b_buffer = t.buffer([(k, n)], T.f32(), annot="b")
-            c_buffer = t.buffer([(m, n)], T.f32(), annot="c")
+            a_buffer = t.buffer(
+                [(m, k)],
+                T.f32(),
+                annot="a",
+                name=f"a_{int(t.tile.col)}_{int(t.tile.row)}",
+            )
+            b_buffer = t.buffer(
+                [(k, n)],
+                T.f32(),
+                annot="b",
+                name=f"b_{int(t.tile.col)}_{int(t.tile.row)}",
+            )
+            c_buffer = t.buffer(
+                [(m, n)],
+                T.f32(),
+                annot="c",
+                name=f"c_{int(t.tile.col)}_{int(t.tile.row)}",
+            )
 
             @aie.mem(t.tile)
             def mem():
@@ -737,7 +763,7 @@ def test_4x4_broadcast_outer_product_matmult_vectorized(
                 writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
                     column=col,
                     bd_id=bd_id,
-                    buffer_length=np.prod(buffer_lengths[buffer_idx]),
+                    length=np.prod(buffer_lengths[buffer_idx]),
                 )
                 ipu_insts.extend(
                     aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -788,4 +814,366 @@ def test_4x4_broadcast_outer_product_matmult_vectorized(
             result = np.vstack([wraps[3 * col + 2] for col in cols])
             if not np.allclose(result, correct):
                 print(correct - result)
-                assert False
+
+
+def num_fat_As_fat_Bs_per_memtile(M, K, N, m=16, k=16, n=16, dtype_size=4):
+    fat_A_row_size = m * K * dtype_size
+    fat_B_col_size = K * n * dtype_size
+    inner_product_size = m * n * dtype_size
+
+    def f(x):
+        _a = x[0]
+        _b = x[1]
+        k = x[2]
+        return k
+
+    def total_size(x):
+        a = x[0]
+        b = x[1]
+        return (
+            fat_A_row_size * (4 * a)
+            + fat_B_col_size * b
+            + (4 * a * b) * inner_product_size
+        )
+
+    def fits_memtile(x):
+        # inequality means that it is to be non-negative
+        return (512 << 10) - total_size(x)
+
+    total_n_fat_A_rows = M // m
+    total_n_fat_B_cols = N // n
+
+    def all_inner_products(x):
+        a = x[0]
+        b = x[1]
+        k = x[2]
+        return (4 * a * b * 4) * k - (total_n_fat_A_rows * total_n_fat_B_cols)
+
+    fits_memtile_con = {"type": "ineq", "fun": fits_memtile}
+    all_inner_products_con = {"type": "ineq", "fun": all_inner_products}
+    x0 = [1, 1, 1]
+    bnds = ((1, None), (1, None), (1, None))
+    sol = minimize(
+        lambda x: f(x),
+        x0,
+        method="cobyla",
+        bounds=bnds,
+        constraints=[fits_memtile_con, all_inner_products_con],
+    )
+
+    a, b, k = map(int, np.round(sol.x))
+    return 4 * a, b, k
+
+
+def test_4x4_inner_product_matmult(ctx: MLIRContext, workdir: Path):
+
+    cols = [0, 1, 2, 3]
+    core_rows = [2, 3, 4, 5]
+    rows = [0, 1, *core_rows]
+
+    m, k, n = 16, 16, 16
+    M, K, N = 256, 256, 256
+
+    dtype_size = 4
+    fat_A_rows_per_memtile, fat_B_cols_per_memtile, rounds = (
+        num_fat_As_fat_Bs_per_memtile(M, K, N, m, k, n, dtype_size)
+    )
+    K_slices = K // k
+
+    fat_A_rows_per_core_in_col = fat_A_rows_per_memtile // 4
+    core_tile_group_offset = lambda i: fat_A_rows_per_core_in_col * i * (m * K)
+
+    # note iteration stride is not pushed through dims, it's linear addressing...
+    A_thin_slice_iter = fat_A_rows_per_core_in_col * K_slices, k
+    # gotta walk through fat_B_cols_per_memtile worth of columns, each with k rows and n columns
+    B_thin_slice_iter = (
+        fat_B_cols_per_memtile * K_slices,
+        fat_B_cols_per_memtile * k * n,
+    )
+
+    n_repeats_receive_A = n_repeats_send_A = (
+        rounds * fat_A_rows_per_core_in_col * K_slices - 1
+    )
+    n_repeats_receive_B = n_repeats_send_B = (
+        rounds * fat_B_cols_per_memtile * K_slices - 1
+    )
+    n_repeats_send_C = n_repeats_receive_C = (
+        rounds * fat_A_rows_per_core_in_col * fat_B_cols_per_memtile - 1
+    )
+
+    shim_channels = {}
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tiles = TileArray(cols, rows)
+        tiles[cols, 0].flow(tiles[cols, 1], source_annot="a", dest_annot="a")
+        tiles[cols, 0].flow(tiles[cols, 1], source_annot="b", dest_annot="b")
+
+        for col in cols:
+            # unique a per row on each col
+            for row in core_rows:
+                tiles[col, 1].flow(tiles[col, row], source_annot="a", dest_annot="a")
+            # broadcast out b to the row
+            tiles[col, 1].flow(tiles[col, 2:], source_annot="b", dest_annot="b")
+
+        for col in cols:
+            # get result back
+            tiles[col, 1].rflow(tiles[col, 2:], source_annot="c", dest_annot="c")
+
+        tiles[cols, 1].flow(tiles[cols, 0], source_annot="c", dest_annot="c")
+
+        for t in tiles[cols, 0]:
+            out_a_fl = t.flows(filter_source=True, source_annot="a", single=True)
+            out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
+            shim_channels[int(t.tile.col), 0] = int(out_a_fl.source_channel)
+            shim_channels[int(t.tile.col), 1] = int(out_b_fl.source_channel)
+
+            in_c_fl = t.flows(filter_dest=True, dest_annot="c")
+            shim_channels[int(t.tile.col), 2] = int(in_c_fl.dest_channel)
+
+        # memtiles
+        for t in tiles[cols, 1]:
+            in_a_fl = t.flows(filter_dest=True, dest_annot="a", single=True)
+            in_b_fl = t.flows(filter_dest=True, dest_annot="b", single=True)
+            out_a_flows = t.flows(filter_source=True, source_annot="a")
+            out_b_fl = t.flows(filter_source=True, source_annot="b", single=True)
+            in_c_flows = t.flows(filter_dest=True, dest_annot="c")
+            out_c_fl = t.flows(filter_source=True, source_annot="c")
+
+            A = aie.buffer(t.tile, (fat_A_rows_per_memtile * m, K), dtype=T.f32())
+            B = aie.buffer(t.tile, (K, fat_B_cols_per_memtile * n), dtype=T.f32())
+            C = aie.buffer(
+                t.tile,
+                (fat_A_rows_per_memtile * m, fat_B_cols_per_memtile * n),
+                dtype=T.f32(),
+            )
+
+            in_A_lock = aie.lock(t.tile, init=1)
+            out_A_lock = aie.lock(t.tile, init=0)
+            in_B_lock = aie.lock(t.tile, init=1)
+            out_B_lock = aie.lock(t.tile, init=0)
+
+            in_C_locks = (
+                aie.lock(t.tile, init=1),
+                aie.lock(t.tile, init=0),
+                aie.lock(t.tile, init=0),
+                aie.lock(t.tile, init=0),
+            )
+            out_C_lock = aie.lock(t.tile, init=0)
+
+            dims_A = extract_patches(A, patch_shape=(m, k))
+            dims_B = extract_patches(B, patch_shape=(k, n), transpose=True)
+            dims_C = extract_patches(C, patch_shape=(m, n))
+
+            # rel_val=0 does some weird shit... either makes the stream run through all repeat_counts
+            # or whatever i don't know ... but you get a stall?
+            @aie.memtile_dma(t.tile)
+            def mem():
+                aiex.receive_bd(
+                    in_a_fl.dest_channel,
+                    in_A_lock,
+                    A,
+                    out_A_lock,
+                    repeat_count=rounds - 1,
+                    acq_action=AcquireGreaterEqual,
+                    acq_val=1,
+                    rel_val=4,
+                )
+                # acq_ge decrements, then rel_val reincrements and around around we go
+                # locks here aren't going to work ...
+                for i, out_a_fl in enumerate(out_a_flows):
+                    aiex.send_bd(
+                        out_a_fl.source_channel,
+                        out_A_lock,
+                        A,
+                        acq_action=AcquireGreaterEqual,
+                        acq_val=1,
+                        rel_val=1,
+                        dims=dims_A,
+                        len=m * k,
+                        offset=core_tile_group_offset(i),
+                        iter=A_thin_slice_iter,
+                        repeat_count=n_repeats_send_A,
+                    )
+
+                aiex.receive_bd(
+                    in_b_fl.dest_channel,
+                    in_B_lock,
+                    B,
+                    out_B_lock,
+                    repeat_count=rounds - 1,
+                )
+                # acq_ge decrements, then rel_val reincrements and around around we go
+                aiex.send_bd(
+                    out_b_fl.source_channel,
+                    out_B_lock,
+                    B,
+                    acq_action=AcquireGreaterEqual,
+                    acq_val=1,
+                    rel_val=1,
+                    dims=dims_B,
+                    len=k * n,
+                    iter=B_thin_slice_iter,
+                    repeat_count=n_repeats_send_B,
+                )
+
+                for i, (in_c_fl, (in_lock, out_lock)) in enumerate(
+                    zip(in_c_flows, sliding_window([*in_C_locks, out_C_lock], 2))
+                ):
+                    aiex.receive_bd(
+                        in_c_fl.dest_channel,
+                        in_lock,
+                        C,
+                        out_lock,
+                        acq_action=AcquireGreaterEqual,
+                        dims=dims_C,
+                        len=m * n,
+                        offset=i * m,
+                        repeat_count=n_repeats_receive_C,
+                    )
+
+                aiex.send_bd(
+                    out_c_fl.source_channel,
+                    out_C_lock,
+                    C,
+                    in_C_locks[0],
+                    repeat_count=rounds - 1,
+                )
+
+                aie.end()
+
+        for t in list(tiles[cols, 2:]):
+            in_a_fl = t.flows(filter_dest=True, dest_annot="a")
+            in_b_fl = t.flows(filter_dest=True, dest_annot="b")
+            out_c_fl = t.flows(filter_source=True, source_annot="c")
+
+            in_a_prod_lock = aie.lock(t.tile, init=1)
+            in_a_cons_lock = aie.lock(t.tile, init=0)
+            in_b_prod_lock = aie.lock(t.tile, init=1)
+            in_b_cons_lock = aie.lock(t.tile, init=0)
+            out_c_prod_lock = aie.lock(t.tile, init=1)
+            out_c_cons_lock = aie.lock(t.tile, init=0)
+
+            a_buffer = t.buffer([(m, k)], T.f32(), annot="a")
+            b_buffer = t.buffer([(k, n)], T.f32(), annot="b")
+            c_buffer = t.buffer([(m, n)], T.f32(), annot="c")
+
+            @aie.mem(t.tile)
+            def mem():
+                # fmt: off
+                aiex.receive_bd(int(in_a_fl.dest_channel), in_a_prod_lock, a_buffer, in_a_cons_lock, repeat_count=n_repeats_receive_A)
+                aiex.receive_bd(int(in_b_fl.dest_channel), in_b_prod_lock, b_buffer, in_b_cons_lock, repeat_count=n_repeats_receive_B)
+                aiex.send_bd(int(out_c_fl.source_channel), out_c_cons_lock, c_buffer, out_c_prod_lock, repeat_count=n_repeats_send_C)
+                # fmt: on
+
+                aie.end()
+
+            @aie.core(t.tile, elf_file="core_0_2.elf")
+            def core():
+                for _ in range_(
+                    rounds * fat_A_rows_per_core_in_col * fat_B_cols_per_memtile
+                ):
+                    linalg.fill(0, c_buffer)
+                    for _ in range_(K_slices):
+                        with (
+                            aiex.hold_lock(in_a_cons_lock, in_a_prod_lock),
+                            aiex.hold_lock(in_b_cons_lock, in_b_prod_lock),
+                            aiex.hold_lock(out_c_prod_lock, out_c_cons_lock),
+                        ):
+                            linalg.matmul(a_buffer, b_buffer, c_buffer)
+                        yield_()
+                    yield_()
+
+    compile_without_vectorization(ctx.module, workdir, template_core=(0, 2))
+    buffer_args = list(
+        zip(
+            [f"col_{c}_a" for c in cols],
+            [f"col_{c}_b" for c in cols],
+            [f"col_{c}_c" for c in cols],
+        )
+    )
+    buffer_args = [a for col in buffer_args for a in col]
+    kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+
+    ipu_insts = aiex.ipu.get_prolog()
+    bd_id_direction = {0: MM2S, 1: MM2S, 2: S2MM}
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+
+        A = np.random.randint(0, 10, (M, K)).astype(np.float32)
+        B = np.random.randint(0, 3, (K, N)).astype(np.float32)
+        C = np.zeros((M, N), dtype=np.float32)
+        patches_A = extract_patches(
+            A, patch_shape=(fat_A_rows_per_memtile * m, K)
+        ).squeeze()
+        patches_B = extract_patches(
+            B, patch_shape=(K, fat_B_cols_per_memtile * n), transpose=True
+        ).squeeze()
+        patches_C = extract_patches(
+            C, patch_shape=(fat_A_rows_per_memtile * m, fat_B_cols_per_memtile * n)
+        ).squeeze()
+
+        # send 4 fat
+        buffer_lengths = []
+        for a in buffer_args:
+            if "_a" in a:
+                buffer_lengths.append((fat_A_rows_per_memtile * m, K))
+            elif "_b" in a:
+                buffer_lengths.append((K, fat_B_cols_per_memtile * n))
+            elif "_c" in a:
+                buffer_lengths.append(
+                    (fat_A_rows_per_memtile * m, fat_B_cols_per_memtile * n)
+                )
+
+        views = xclbin.mmap_buffers(buffer_lengths, np.float32)
+        buffer_idx = -1
+        for col in cols:
+            for bd_id in [0, 1, 2]:
+                buffer_idx += 1
+                writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+                    column=col,
+                    bd_id=bd_id,
+                    length=np.prod(buffer_lengths[buffer_idx]),
+                )
+                ipu_insts.extend(
+                    aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                        writebd_shimtile_insts,
+                        tensor_addr=xclbin._get_buffer_host_address(buffer_idx),
+                    )
+                )
+                ipu_insts.extend(
+                    aiex.ipu.shimtile_push_queue(
+                        channel_dir=bd_id_direction[bd_id],
+                        channel_index=shim_channels[col, bd_id],
+                        column=col,
+                        bd_id=bd_id,
+                        repeats=rounds - 1,
+                    )
+                )
+
+        for col in cols:
+            bd_id = 2
+            dest_channel = shim_channels[col, bd_id]
+            ipu_insts.extend(
+                aiex.ipu.sync(column=col, channel=dest_channel, direction=S2MM)
+            )
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            wraps = list(map(np.asarray, views))
+            for i, col in enumerate(cols):
+                np.copyto(wraps[3 * i + 0], patches_A[i], casting="no")
+                np.copyto(wraps[3 * i + 1], patches_B[i], casting="no")
+                np.copyto(wraps[3 * col + 2], patches_C[i], casting="no")
+
+            xclbin.sync_buffers_to_device()
+            xclbin.run()
+            print("Running kernel")
+            xclbin.wait(30)
+            xclbin.sync_buffers_from_device()
+
+            correct = A @ B
+            result = np.hstack([wraps[3 * col + 2] for i, col in enumerate(cols)])
+            assert np.allclose(result, correct)

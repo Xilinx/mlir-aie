@@ -174,7 +174,7 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 column=shim_tile_column,
                 bd_id=bd_id,
-                buffer_length=K,
+                length=K,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )

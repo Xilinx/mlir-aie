@@ -76,7 +76,7 @@ def shim_tensor_slice(
         column=column,
         bd_id=bd_id,
         ddr_id=ddr_id,
-        buffer_length=(M // n_tile_rows) * (N // n_tile_cols),
+        length=(M // n_tile_rows) * (N // n_tile_cols),
         buffer_offset=buffer_offset,
         d1_size=d1_size,
         d1_stride=d1_stride,
@@ -93,7 +93,7 @@ def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
     ipu_insts = []
     ipu_insts.extend(
         aiex.ipu.writebd_shimtile(
-            column=column, bd_id=bd_id, ddr_id=ddr_id, buffer_length=buffer_length
+            column=column, bd_id=bd_id, ddr_id=ddr_id, length=buffer_length
         )
     )
     ipu_insts.extend(
@@ -1190,11 +1190,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast(ctx: MLIRContext, workdir: P
                 buffer_idx += 1
                 if bd_id in {0, 1}:
                     writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                        column=col, bd_id=bd_id, buffer_length=K
+                        column=col, bd_id=bd_id, length=K
                     )
                 else:
                     writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                        column=col, bd_id=bd_id, buffer_length=2 * K
+                        column=col, bd_id=bd_id, length=2 * K
                     )
                 ipu_insts.extend(
                     aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -1495,11 +1495,11 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
                 buffer_idx += 1
                 if bd_id in {0, 1}:
                     writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                        column=col, bd_id=bd_id, buffer_length=K
+                        column=col, bd_id=bd_id, length=K
                     )
                 else:
                     writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                        column=col, bd_id=bd_id, buffer_length=2 * K
+                        column=col, bd_id=bd_id, length=2 * K
                     )
                 ipu_insts.extend(
                     aiex.ipu._exec_write_bd_extend_shim_tile_opt(

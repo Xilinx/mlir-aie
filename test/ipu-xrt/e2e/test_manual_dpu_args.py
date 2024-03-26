@@ -123,9 +123,7 @@ def test_manual_args(ctx: MLIRContext, workdir: Path):
         channel_index = 0
         ipu_insts = aiex.ipu.get_prolog()
         for bd_id in range(iters):
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                col, bd_id, buffer_length=K
-            )
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(col, bd_id, length=K)
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
@@ -232,7 +230,7 @@ def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
         for i in range(iters):
             bd_id = i
             writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                col, bd_id, buffer_length=K, buffer_offset=K * i
+                col, bd_id, length=K, buffer_offset=K * i
             )
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
@@ -314,9 +312,7 @@ def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
         channel_index = 0
         ipu_insts = aiex.ipu.get_prolog()
         for col in cols:
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
-                col, bd_id, buffer_length=K
-            )
+            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(col, bd_id, length=K)
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,

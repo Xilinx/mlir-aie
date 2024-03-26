@@ -52,6 +52,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-lower-multicast")
         .add_pass("aie-assign-buffer-addresses"),
     )
+    .convert_linalg_to_loops()
     .convert_scf_to_cf()
 )
 
@@ -393,7 +394,7 @@ class FlowRunner:
         await self.do_call(
             task,
             [
-                "llvm-link",
+                "/usr/bin/llvm-link-17",
                 llvmir_chesshack,
                 chess_intrinsic_wrapper_ll_path,
                 "-S",

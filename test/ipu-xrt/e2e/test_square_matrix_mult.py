@@ -95,7 +95,7 @@ def test_square_matrix_mult(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -110,7 +110,7 @@ def test_square_matrix_mult(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -125,7 +125,7 @@ def test_square_matrix_mult(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -303,7 +303,7 @@ def test_square_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -318,7 +318,7 @@ def test_square_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )
@@ -333,7 +333,7 @@ def test_square_matrix_mult_sugar(ctx: MLIRContext, workdir: Path):
             aiex.ipu.writebd_shimtile(
                 col,
                 bd_id,
-                buffer_length=M * N,
+                length=M * N,
                 buffer_offset=0,
                 ddr_id=ddr_id,
             )

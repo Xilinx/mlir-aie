@@ -2,6 +2,7 @@ import collections
 from itertools import islice, zip_longest
 import numbers
 
+from aie.extras.dialects.ext.memref import MemRef
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
@@ -58,15 +59,24 @@ def annot(op, annot):
 
 
 def extract_patches(
-    arr_shape,
+    arr=None,
+    arr_shape=None,
     patch_shape: int | tuple[int, ...] | list[int, ...] = 8,
     extraction_step: int | tuple[int, ...] | list[int, ...] = None,
     dtype: np.dtype = None,
     trailing_dims=4,
+    transpose=False,
 ):
     if dtype is None:
         dtype = np.int32()
-    arr = np.empty(arr_shape, dtype=dtype)
+    if isinstance(arr, MemRef):
+        arr_shape = arr.shape
+        arr = None
+    if arr is None:
+        arr = np.empty(arr_shape, dtype=dtype)
+    if transpose:
+        arr = arr.T
+
     if extraction_step is None:
         extraction_step = patch_shape
     arr_ndim = arr.ndim
@@ -88,9 +98,14 @@ def extract_patches(
     ) + 1
 
     shape = tuple(list(patch_indices_shape) + list(patch_shape))
-    strides = tuple(list(indexing_strides) + list(patch_strides))
+    strides = list(indexing_strides) + list(patch_strides)
+    if transpose:
+        strides[-2], strides[-1] = strides[-1], strides[-2]
 
     patches = as_strided(arr, shape=shape, strides=strides)
-    return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[
-        -trailing_dims:
-    ]
+    if arr_shape is not None:
+        return list(zip(patches.shape, np.array(patches.strides) // dtype.itemsize))[
+            -trailing_dims:
+        ]
+    else:
+        return patches

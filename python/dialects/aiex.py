@@ -245,7 +245,7 @@ def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
 def _ipu_writebd_shimtile(
     column,
     bd_id,
-    buffer_length,
+    length,
     buffer_offset=0,
     ddr_id=0,
     d2_stride=1,
@@ -253,8 +253,8 @@ def _ipu_writebd_shimtile(
     d1_stride=1,
     d0_size=None,
     d0_stride=1,
-    iteration_size=0,
-    iteration_stride=0,
+    iteration_size=None,
+    iteration_stride=1,
     iteration_current=0,
     lock_acq_enable=0,
     lock_acq_id=0,
@@ -265,16 +265,20 @@ def _ipu_writebd_shimtile(
     use_next_bd=0,
     data_width=32,
 ):
+    iteration_stride -= 1
     d2_stride -= 1
     d1_stride -= 1
     d0_stride -= 1
-    assert d2_stride >= 0 and d1_stride >= 0 and d0_stride >= 0
+    assert (
+        iteration_stride >= 0 and d2_stride >= 0 and d1_stride >= 0 and d0_stride >= 0
+    )
     # byte offset
     buffer_offset *= data_width // 8
     # None means do not wrap which is 0 on the arch
+    if iteration_size is None:
+        iteration_size = 0
     if d1_size is None:
         d1_size = 0
-    # None means do not wrap which is 0 on the arch
     if d0_size is None:
         d0_size = 0
 
@@ -294,7 +298,7 @@ def _ipu_writebd_shimtile(
 
     # TODO: Address Incr
     words[1] = 0
-    words[2] = buffer_length
+    words[2] = length
     # addr_low in the spec/docs
     words[3] = buffer_offset
     # words[4] = addr_high & 0x0000FFFF
@@ -463,7 +467,11 @@ def send_bd(
         rel_lock = acq_lock
 
     @aie.dma(
-        DMAChannelDir.MM2S, channel, repeat_count=repeat_count, num_blocks=num_blocks, loop=loop
+        DMAChannelDir.MM2S,
+        channel,
+        repeat_count=repeat_count,
+        num_blocks=num_blocks,
+        loop=loop,
     )
     def d():
         process_bd(
@@ -505,7 +513,11 @@ def receive_bd(
         rel_lock = acq_lock
 
     @aie.dma(
-        DMAChannelDir.S2MM, channel, repeat_count=repeat_count, num_blocks=num_blocks, loop=loop
+        DMAChannelDir.S2MM,
+        channel,
+        repeat_count=repeat_count,
+        num_blocks=num_blocks,
+        loop=loop,
     )
     def d():
         process_bd(

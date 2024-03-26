@@ -103,7 +103,7 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=k,
+                    length=k,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -121,7 +121,7 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=k,
+                    length=k,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -139,7 +139,7 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=1,
+                    length=1,
                     buffer_offset=i,
                     ddr_id=ddr_id,
                 )
@@ -331,7 +331,7 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=k,
+                    length=k,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -349,7 +349,7 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=k,
+                    length=k,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -367,7 +367,7 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=1,
+                    length=1,
                     buffer_offset=i,
                     ddr_id=ddr_id,
                 )

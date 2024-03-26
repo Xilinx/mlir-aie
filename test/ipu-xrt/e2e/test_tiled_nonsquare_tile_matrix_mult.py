@@ -134,7 +134,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_A * tile_n_A,
+                    length=tile_m_A * tile_n_A,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -151,7 +151,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_B * tile_n_B,
+                    length=tile_m_B * tile_n_B,
                     buffer_offset=0,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
@@ -169,7 +169,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_B * tile_n_B,
+                    length=tile_m_B * tile_n_B,
                     buffer_offset=d0_size_B * d0_stride_B,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
@@ -197,7 +197,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_C * tile_n_C,
+                    length=tile_m_C * tile_n_C,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                     d1_size=d1_size_C,
@@ -428,7 +428,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_A * tile_n_A,
+                    length=tile_m_A * tile_n_A,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                 )
@@ -445,7 +445,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_B * tile_n_B,
+                    length=tile_m_B * tile_n_B,
                     buffer_offset=0,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
@@ -463,7 +463,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_B * tile_n_B,
+                    length=tile_m_B * tile_n_B,
                     buffer_offset=d0_size_B * d0_stride_B,
                     ddr_id=ddr_id,
                     d1_size=d1_size_B,
@@ -491,7 +491,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
                 aiex.ipu.writebd_shimtile(
                     col,
                     bd_id,
-                    buffer_length=tile_m_C * tile_n_C,
+                    length=tile_m_C * tile_n_C,
                     buffer_offset=offsets[i],
                     ddr_id=ddr_id,
                     d1_size=d1_size_C,
