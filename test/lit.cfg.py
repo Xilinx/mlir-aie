@@ -54,15 +54,37 @@ config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
-if config.enable_board_tests:
-    config.substitutions.append(
-        ("%run_on_board", "echo %T >> /home/xilinx/testlog | sync | sudo")
-    )
-else:
-    config.substitutions.append(("%run_on_board", "echo"))
-
 run_on_ipu = "echo"
 xrt_flags = ""
+
+if config.hsa_dir and (not ("NOTFOUND" in config.hsa_dir)):
+    if not "hsa" in config.aieHostTarget:
+        print(
+            "ROCm found, but disabled because host target {}".format(
+                config.aieHostTarget
+            )
+        )
+
+    # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
+    # directory so need to go up three directories
+    rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
+    print("Found ROCm:", rocm_root)
+    print("Found hsa_dir:", config.hsa_dir)
+    config.available_features.add("hsa")
+    config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
+    config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
+
+    if config.enable_board_tests:
+        config.substitutions.append(("%run_on_board", "flock /tmp/vck5000.lock"))
+    else:
+        print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
+        config.substitutions.append(("%run_on_board", "echo"))
+else:
+    print("ROCm not found")
+    config.substitutions.append(("%run_on_board", "echo"))
+    config.substitutions.append(("%link_against_hsa%", ""))
+    config.substitutions.append(("%HSA_DIR%", ""))
+
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
@@ -99,7 +121,7 @@ config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 
 VitisSysrootFlag = ""
-if config.aieHostTarget == "x86_64":
+if "x86_64" in config.aieHostTarget:
     config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))
 elif config.aieHostTarget == "aarch64":
     config.substitutions.append(("%aieHostTargetTriplet%", "aarch64-linux-gnu"))

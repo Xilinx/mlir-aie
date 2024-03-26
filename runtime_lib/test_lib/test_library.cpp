@@ -25,13 +25,43 @@
 #define SYSFS_PATH_MAX 63
 
 #ifdef HSA_RUNTIME
-hsa_status_t air_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
-                                        uint64_t va) {
+hsa_status_t mlir_aie_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
+                                             uint64_t va) {
 
   pkt->arg[0] = 0;
   pkt->arg[0] = va;
 
   pkt->type = AIR_PKT_TYPE_TRANSLATE;
+  pkt->header = (HSA_PACKET_TYPE_AGENT_DISPATCH << HSA_PACKET_HEADER_TYPE);
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t mlir_aie_packet_nd_memcpy(
+    hsa_agent_dispatch_packet_t *pkt, uint16_t herd_id, uint8_t col,
+    uint8_t direction, uint8_t channel, uint8_t burst_len, uint8_t memory_space,
+    uint64_t phys_addr, uint32_t transfer_length1d, uint32_t transfer_length2d,
+    uint32_t transfer_stride2d, uint32_t transfer_length3d,
+    uint32_t transfer_stride3d, uint32_t transfer_length4d,
+    uint32_t transfer_stride4d) {
+
+  pkt->arg[0] = 0;
+  pkt->arg[0] |= ((uint64_t)memory_space) << 16;
+  pkt->arg[0] |= ((uint64_t)channel) << 24;
+  pkt->arg[0] |= ((uint64_t)col) << 32;
+  pkt->arg[0] |= ((uint64_t)burst_len) << 52;
+  pkt->arg[0] |= ((uint64_t)direction) << 60;
+
+  pkt->arg[1] = phys_addr;
+  pkt->arg[2] = transfer_length1d;
+  pkt->arg[2] |= ((uint64_t)transfer_length2d) << 32;
+  pkt->arg[2] |= ((uint64_t)transfer_stride2d) << 48;
+  pkt->arg[3] = transfer_length3d;
+  pkt->arg[3] |= ((uint64_t)transfer_stride3d) << 16;
+  pkt->arg[3] |= ((uint64_t)transfer_length4d) << 32;
+  pkt->arg[3] |= ((uint64_t)transfer_stride4d) << 48;
+
+  pkt->type = AIR_PKT_TYPE_ND_MEMCPY;
   pkt->header = (HSA_PACKET_TYPE_AGENT_DISPATCH << HSA_PACKET_HEADER_TYPE);
 
   return HSA_STATUS_SUCCESS;
@@ -75,15 +105,9 @@ hsa_status_t get_global_mem_pool(hsa_amd_memory_pool_t pool, void *data) {
   return status;
 }
 
-template <typename T>
-inline void air_write_pkt(hsa_queue_t *q, uint32_t packet_id, T *pkt) {
-  reinterpret_cast<T *>(q->base_address)[packet_id] = *pkt;
-}
-
-hsa_status_t air_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q,
-                                         uint64_t packet_id, uint64_t doorbell,
-                                         hsa_agent_dispatch_packet_t *pkt,
-                                         bool destroy_signal) {
+hsa_status_t mlir_aie_queue_dispatch_and_wait(
+    hsa_agent_t *agent, hsa_queue_t *q, uint64_t packet_id, uint64_t doorbell,
+    hsa_agent_dispatch_packet_t *pkt, bool destroy_signal) {
 
   // dispatch and wait has blocking semantics so we can internally create the
   // signal
@@ -91,7 +115,7 @@ hsa_status_t air_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q,
                                  &(pkt->completion_signal));
 
   // Write the packet to the queue
-  air_write_pkt<hsa_agent_dispatch_packet_t>(q, packet_id, pkt);
+  mlir_aie_write_pkt<hsa_agent_dispatch_packet_t>(q, packet_id, pkt);
 
   // Ringing the doorbell
   hsa_signal_store_screlease(q->doorbell_signal, doorbell);
@@ -110,8 +134,8 @@ hsa_status_t air_queue_dispatch_and_wait(hsa_agent_t *agent, hsa_queue_t *q,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t air_packet_device_init(hsa_agent_dispatch_packet_t *pkt,
-                                    uint32_t num_cols) {
+hsa_status_t mlir_aie_packet_device_init(hsa_agent_dispatch_packet_t *pkt,
+                                         uint32_t num_cols) {
 
   pkt->arg[0] = 0;
   pkt->arg[0] |= (AIR_ADDRESS_ABSOLUTE_RANGE << 48);
@@ -198,9 +222,9 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx, uint32_t device_id) {
   uint64_t wr_idx = hsa_queue_add_write_index_relaxed(q, 1);
   uint64_t packet_id = wr_idx % q->size;
   hsa_agent_dispatch_packet_t shim_pkt;
-  air_packet_device_init(&shim_pkt, 50);
-  air_queue_dispatch_and_wait(&(ctx->agents[0]), q, packet_id, wr_idx,
-                              &shim_pkt, true);
+  mlir_aie_packet_device_init(&shim_pkt, 50);
+  mlir_aie_queue_dispatch_and_wait(&(ctx->agents[0]), q, packet_id, wr_idx,
+                                   &shim_pkt, true);
 
   // Attaching the queue to the context so we can send more packets if needed
   ctx->cmd_queue = q;

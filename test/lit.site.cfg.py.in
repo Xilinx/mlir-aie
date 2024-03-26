@@ -48,6 +48,10 @@ config.aie_obj_root = "@AIE_BINARY_DIR@"
 # test_exec_root: The root path where tests should be run.
 config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
 
+# Pointing to the ROCr directories
+config.hsa_dir = "@hsa-runtime64_DIR@"
+config.hsa_found = "@hsa-runtime64_FOUND@"
+
 # available features
 config.enable_chess_tests = lit.util.pythonize_bool("@ENABLE_CHESS_TESTS@")
 config.enable_board_tests = lit.util.pythonize_bool("@ENABLE_BOARD_TESTS@")
