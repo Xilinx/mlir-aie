@@ -19,8 +19,17 @@
 #include <pybind11/stl.h>
 
 #include <algorithm>
+#include <stdfloat>
 #include <string>
 #include <vector>
+
+#if __STDCPP_BFLOAT16_T__ != 1
+#error "16-bit bfloat type required"
+#endif
+
+#if __STDCPP_FLOAT16_T__ != 1
+#error "16-bit float type required"
+#endif
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -156,16 +165,22 @@ PYBIND11_MODULE(_xrt, m) {
           [](PyXCLBin &self, const std::vector<std::vector<int>> &shapes,
              const py::object &npFormat) {
             auto npy = py::module_::import("numpy");
+            if (npFormat.is(npy.attr("int8")))
+              return self.mmapBuffers<int8_t>(shapes);
             if (npFormat.is(npy.attr("int16")))
               return self.mmapBuffers<int16_t>(shapes);
             if (npFormat.is(npy.attr("int32")))
               return self.mmapBuffers<int32_t>(shapes);
+            if (npFormat.is(npy.attr("float16")))
+              return self.mmapBuffers<std::float16_t>(shapes);
             if (npFormat.is(npy.attr("float32")))
               return self.mmapBuffers<float>(shapes);
             if (npFormat.is(npy.attr("int64")))
               return self.mmapBuffers<int64_t>(shapes);
             if (npFormat.is(npy.attr("float64")))
               return self.mmapBuffers<double>(shapes);
+            if (npFormat.attr("__name__").cast<std::string>() == "bfloat16")
+              return self.mmapBuffers<std::bfloat16_t>(shapes);
             throw std::runtime_error("unsupported np format: " +
                                      py::repr(npFormat).cast<std::string>());
           },

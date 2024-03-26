@@ -418,6 +418,8 @@ def compile_without_vectorization(
     jobs=1,
     template_core=None,
 ):
+    with open(workdir / "aie_module.mlir", "w") as f:
+        f.write(str(module))
     debug = debug or xaie_debug or cdo_debug
     module = run_pipeline(module, Pipeline().canonicalize())
     lowered_linalg = run_pipeline(
@@ -442,6 +444,8 @@ def compile_without_vectorization(
             core_lowered_to_llvm_dialect = run_pipeline(
                 core_mod, AIE_LOWER_TO_LLVM(col, row), enable_ir_printing=debug
             )
+            with open(workdir / "core_lowered_to_llvm_dialect.mlir", "w") as f:
+                f.write(str(core_lowered_to_llvm_dialect))
             core_input_ll = translate_mlir_to_llvmir(
                 core_lowered_to_llvm_dialect.operation
             )

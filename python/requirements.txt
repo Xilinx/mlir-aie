@@ -10,6 +10,7 @@ psutil
 pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
+bfloat16
 wheel
 
 -r aie-python-extras-req.txt

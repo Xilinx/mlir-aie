@@ -323,6 +323,7 @@ else ()
       AIECAPI
   )
 
+  set_property(TARGET AIEPythonModules.extension._xrt.dso PROPERTY CXX_STANDARD 23)
 endif ()
 
 target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
