@@ -1569,7 +1569,7 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
   if (auto dims = getDimensions(); dims.has_value()) {
     size_t maxNDims = 3;
-    if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
+    if (getOperation()->getParentOfType<MemTileDMAOp>())
       maxNDims = 4;
     if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
