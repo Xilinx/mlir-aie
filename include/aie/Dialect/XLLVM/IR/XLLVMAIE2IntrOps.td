@@ -63,4 +63,18 @@ def VectorSetI512I256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
                    I32:$pos)>;
 
+def MulConfAcc32IntrOp :
+    AIEVec2_IntrOp<"I512.I512.acc32.mul.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$conf)>;
+
+def I512V32Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I512.v32.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$lhs,
+                   I32:$shft,
+                   I32:$sign)>;
+
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
