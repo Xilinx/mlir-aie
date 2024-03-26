@@ -337,6 +337,8 @@ def dma(
         channel_index = channel_index.value
     if repeat_count is not None:
         loop = False
+    if repeat_count is not None and repeat_count > 256:
+        raise ValueError(f"repeat count must be less than 256: {repeat_count=}")
     return DMAOp(
         valid=T.bool(),
         channel_dir=channel_dir,

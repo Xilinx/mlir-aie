@@ -1,11 +1,14 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-import inspect
+from collections import defaultdict
 import multiprocessing
 import numbers
 import os
-from collections import defaultdict
-from typing import List, Tuple, Dict, Set
+from typing import Dict, List, Set, Tuple
+
+from aie.extras.dialects.ext.memref import MemRef
+import numpy as np
+from numpy.lib.stride_tricks import as_strided
 
 
 def build_graph(max_cols, max_rows, target_model):
@@ -468,40 +471,80 @@ class Router:
         return True
 
 
-def tiling_calculator_tile_sizes(*matrix_dims, tile_n_cols=4, tile_n_rows=4):
-    rows, cols = matrix_dims
-    n_tiles_row = rows // tile_n_rows
-    n_tiles_col = cols // tile_n_cols
-
-    sizes_strides = [
-        [n_tiles_row, cols * tile_n_rows],
-        [n_tiles_col, tile_n_cols],
-        [tile_n_rows, cols],
-        [tile_n_cols, 1],
-    ]
-
-    return sizes_strides
-
-
-def tiling_calculator_n_tiles(*matrix_dims, n_tile_rows=4, n_tile_cols=4):
-    rows, cols = matrix_dims
-    tile_n_rows = rows // n_tile_rows
-    tile_n_cols = cols // n_tile_cols
-
-    sizes_strides = [
-        [n_tile_rows, cols * tile_n_rows],
-        [n_tile_cols, tile_n_cols],
-        [tile_n_rows, cols],
-        [tile_n_cols, 1],
-    ]
-
-    return sizes_strides
-
-
 def _to_js(sizes_strides):
     # plug into https://andreroesti.com/data-layout-viz/data_layout.html
-    return f"""
-    set_transforms([
-        {sizes_strides}
-    ])
-    """
+    return f"set_transforms([{sizes_strides}]);"
+
+
+def get_sizes_strides_from_arr(patches):
+    return list(zip(patches.shape, np.array(patches.strides) // patches.dtype.itemsize))
+
+
+def _to_js_arr(patches, shape=None):
+    sizes_strides = get_sizes_strides_from_arr(patches)
+    trans = _to_js(list(map(list, sizes_strides)))
+    if shape is None:
+        rows, cols = patches.shape[:2]
+    else:
+        rows, cols = shape
+    return f"document.getElementById('width').value = {cols};document.getElementById('height').value = {rows};{trans};change();"
+
+
+def _column_major(arr):
+    # in terms of elements
+    # javascript:
+    #                     set_transforms([[[Math.trunc(matrix_dims[0]/word_size), 1],
+    #                                     [matrix_dims[1],
+    #                                      Math.trunc(matrix_dims[0]/word_size)]]])
+    return (arr.shape[1], 1 * arr.dtype.itemsize), (
+        arr.shape[0],
+        arr.shape[1] * arr.dtype.itemsize,
+    )
+
+
+def extract_patches(
+    arr=None,
+    arr_shape=None,
+    patch_shape: int | tuple[int, ...] | list[int, ...] = 8,
+    extraction_step: int | tuple[int, ...] | list[int, ...] = None,
+    dtype: np.dtype = None,
+    debug=False,
+):
+    if dtype is None:
+        dtype = np.int32()
+    if isinstance(arr, MemRef):
+        arr_shape = arr.shape
+        arr = None
+    if arr is None:
+        arr = np.empty(arr_shape, dtype=dtype)
+
+    if extraction_step is None:
+        extraction_step = patch_shape
+    arr_ndim = arr.ndim
+
+    if isinstance(patch_shape, numbers.Number):
+        patch_shape = tuple([patch_shape] * arr_ndim)
+    if isinstance(extraction_step, numbers.Number):
+        extraction_step = tuple([extraction_step] * arr_ndim)
+
+    patch_strides = arr.strides
+
+    slices = tuple(slice(None, None, st) for st in extraction_step)
+    # grab the elements at the starts of the "extraction steps"
+    # and get the strides to those elements
+    indexing_strides = arr[slices].strides
+
+    patch_indices_shape = (
+        (np.array(arr.shape) - np.array(patch_shape)) // np.array(extraction_step)
+    ) + 1
+
+    shape = list(patch_indices_shape) + list(patch_shape)
+    strides = list(indexing_strides) + list(patch_strides)
+    patches = as_strided(arr, shape=shape, strides=strides)
+
+    if debug:
+        print(_to_js_arr(patches, shape=arr.shape))
+    if arr_shape is not None:
+        return get_sizes_strides_from_arr(patches)
+    else:
+        return patches
