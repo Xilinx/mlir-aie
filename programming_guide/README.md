@@ -23,7 +23,7 @@ MLIR-AIE is an MLIR-based representation for AI Engine design. It provides a fou
 * Introduce example of first simple program (Bias Add)
 * Illustrate how built-in simulation of single core design
 </details>
-<details><summary><a href="./section-3">Section 3 - Data Movement (objectfifos)</a></summary>
+<details><summary><a href="./section-3">Section 3 - Data Movement (Object FIFOs)</a></summary>
 
 * Introduce topic of objectfifos and how they abstract connections between objects in the AIE array
 * Point to more detailed objectfifo material in Tutorial
