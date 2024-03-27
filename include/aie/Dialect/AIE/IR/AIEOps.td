@@ -137,6 +137,12 @@ def AIE_TileOp: AIE_Op<"tile", [
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
        std::string nameWithoutDialect =
              getOperationName().str().substr(getOperationName().find('.') + 1);
+       if (isShimTile())
+         nameWithoutDialect = "shim_" + nameWithoutDialect;
+       else if (isMemTile())
+         nameWithoutDialect = "mem_" + nameWithoutDialect;
+       else
+         nameWithoutDialect = "core_" + nameWithoutDialect;
        setNameFn(getResult(), nameWithoutDialect + "_" +
                                   std::to_string(getCol()) + "_" +
                                   std::to_string(getRow()));

@@ -352,12 +352,10 @@ void AIEDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
-
       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
-
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
