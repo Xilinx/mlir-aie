@@ -1734,6 +1734,10 @@ def view(source, shape, dtype=None, shift=0):
 def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
 
     cols = [0, 1, 2, 3, 4]
+    memtile_cols = [1, 2, 3, 4]
+    partition_start_col = cols[0]
+    start_columns = [partition_start_col]
+
     core_rows = [2, 3, 4, 5]
     rows = [0, 1, *core_rows]
 
@@ -1754,7 +1758,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
     assert fat_A_rows_per_memtile_per_round == fat_B_cols_per_memtile_per_round
 
     # since this is a 5x4
-    n_memtiles = len(cols) - 1
+    n_memtiles = len(memtile_cols)
     n_cores_per_memtile = len(cols)
     fat_A_rows_per_core_in_col_per_round = (
         fat_A_rows_per_memtile_per_round // n_cores_per_memtile
@@ -1774,6 +1778,9 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
 
     # these are the same because 1xfat A + 1xfat B == 1xfat_AB
     fat_AB_rows_per_memtile_per_round = fat_A_rows_per_memtile_per_round
+    assert (
+        fat_AB_rows_per_memtile_per_round % len(cols) == 0
+    ), f"not enough work for all cores per memtile: {fat_AB_rows_per_memtile_per_round=}"
     fat_AB_rows_per_core_in_col_per_round = fat_A_rows_per_core_in_col_per_round
     total_fat_AB_rows_per_memtile = (
         fat_AB_rows_per_memtile_per_round * n_rounds_send_from_shim_to_memtile
@@ -1814,21 +1821,25 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         matmul.emit(decl=True)
         tiles = TileArray(cols, rows)
         # shim to mem flows (except col 0 which doesn't have dma)
-        tiles[cols[1:], 0].flow(tiles[cols[1:], 1], source_annot="ab", dest_annot="ab")
-        tiles[cols[1:], 1].flow(tiles[cols[1:], 0], source_annot="c", dest_annot="c")
+        tiles[memtile_cols, 0].flow(
+            tiles[memtile_cols, 1], source_annot="ab", dest_annot="ab"
+        )
+        tiles[memtile_cols, 1].flow(
+            tiles[memtile_cols, 0], source_annot="c", dest_annot="c"
+        )
 
         # col1 -> 5 connections, 1 to each col in row 2
         # col2 -> 5 connections, 1 to each col in row 3
         # ...
-        for i, col in enumerate(cols[1:]):
-            for t in tiles[:, 2 + i]:
+        for i, col in enumerate(memtile_cols):
+            for t in tiles[cols, 2 + i]:
                 tiles[col, 1].flow(t, source_annot="ab", dest_annot="ab")
                 tiles[col, 1].rflow(t, source_annot="c", dest_annot="c")
 
         # just so the names don't leak
         @lambda f: f()
         def _():
-            for t in tiles[cols[1:], 0]:
+            for t in tiles[memtile_cols, 0]:
                 out_ab_fl = t.flows(filter_source=True, source_annot="ab", single=True)
                 shim_channels[int(t.tile.col), "ab"] = int(out_ab_fl.source_channel)
                 in_c_fl = t.flows(filter_dest=True, dest_annot="c")
@@ -1837,7 +1848,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         # just so the names don't leak
         @lambda f: f()
         def _():
-            for t in tiles[cols[1:], 1]:
+            for t in tiles[memtile_cols, 1]:
                 in_ab_fl = t.flows(filter_dest=True, dest_annot="ab", single=True)
                 out_ab_flows = t.flows(filter_source=True, source_annot="ab")
                 if len(core_rows) == 1:
@@ -1883,6 +1894,9 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
 
                 @aie.memtile_dma(t.tile)
                 def mem():
+                    assert (
+                        fat_AB_rows_per_memtile_per_round % len(out_ab_flows) == 0
+                    ), f"not enough work for all cores per memtile: {fat_AB_rows_per_memtile_per_round=}"
                     aiex.receive_bd(
                         in_ab_fl.dest_channel,
                         in_AB_lock,
@@ -1893,13 +1907,13 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                         rel_val=fat_AB_rows_per_memtile_per_round,
                     )
                     for i, out_ab_fl in enumerate(out_ab_flows):
-                        aiex.send_bd(
+                        bd = aiex.send_bd(
                             out_ab_fl.source_channel,
                             out_AB_lock,
                             AB,
                             acq_action=AcquireGreaterEqual,
                             acq_val=1,
-                            rel_val=-1,
+                            rel_val=1,
                             len=(m * k + k * n),
                             offset=core_tile_fat_AB_group_offset(i),
                             iter=AB_thin_slice_iter,
@@ -2033,7 +2047,6 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
     interp.apply_named_sequence(payload, affine_unroll, mod_aievec.module)
     interp.apply_named_sequence(payload, super_vectorize, mod_aievec.module)
 
-    partition_start_col = 0
     compile_with_vectorization(
         mod_aie,
         payload,
@@ -2042,44 +2055,70 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         partition_start_col=partition_start_col,
     )
 
-    np_dtype = mlir_type_to_np_dtype(dtype)
+    np_dtype = np.float16
     A = np.random.randint(0, 10, (M, K)).astype(np_dtype)
     B = np.random.randint(0, 3, (K, N)).astype(np_dtype)
-    AB = np.empty((A.size + B.size,), dtype=A.dtype)
-    # interleave/intercalate
-    AB[0::2] = A.flatten()
-    AB[1::2] = B.flatten()
-    AB = AB.reshape(-1, m * K + K * n)
-    assert AB.shape[0] == total_n_fat_A_rows == total_n_fat_B_cols
-
-    pad_width = (
-        fat_AB_rows_per_memtile_per_round
-        * n_memtiles
-        * n_rounds_send_from_shim_to_memtile
-        - AB.shape[0]
-    )
-    padded_AB = np.pad(AB, pad_width=[(0, pad_width), (0, 0)])
-
     C = np.zeros((M, N), dtype=np_dtype)
+
+    patches_A = extract_patches(A, patch_shape=(m, K))
+    patches_B = extract_patches(B, patch_shape=(K, n))
     patches_C = extract_patches(C, patch_shape=(m, n))
-    patches_C = np.pad(
-        patches_C,
+    assert patches_A.shape[0] == M // m == total_n_fat_A_rows
+    assert patches_B.shape[1] == N // n == total_n_fat_B_cols
+
+    patches_A = np.broadcast_to(
+        patches_A, (total_n_fat_A_rows, total_n_fat_B_cols, m, K)
+    )
+    patches_B = np.broadcast_to(
+        patches_B, (total_n_fat_A_rows, total_n_fat_B_cols, K, n)
+    )
+    patches_A = patches_A.reshape(-1, m, K)
+    patches_B = patches_B.reshape(-1, K, n)
+    patches_C = patches_C.reshape(-1, m, n)
+
+    assert fat_A_rows_per_memtile_per_round == fat_B_cols_per_memtile_per_round
+    pad_patches_width = (
+        math.ceil(patches_A.shape[0] / (fat_A_rows_per_memtile_per_round * n_memtiles))
+        * fat_A_rows_per_memtile_per_round
+        * n_memtiles
+    )
+    assert (
+        pad_patches_width / (fat_A_rows_per_memtile_per_round * n_memtiles)
+    ) == n_rounds_send_from_shim_to_memtile
+
+    pad_patches_width -= patches_A.shape[0]
+    patches_A = np.pad(
+        patches_A,
         pad_width=[
-            (0, pad_width),
-            (0, 0),
+            (0, pad_patches_width),
             (0, 0),
             (0, 0),
         ],
     )
-    assert (
-        patches_C.shape[0]
-        == padded_AB.shape[0]
-        == total_fat_AB_rows_per_memtile * n_memtiles
+    patches_B = np.pad(
+        patches_B,
+        pad_width=[
+            (0, pad_patches_width),
+            (0, 0),
+            (0, 0),
+        ],
     )
-    patches_C = patches_C.reshape(patches_C.shape[0], -1)
+    patches_C = np.pad(
+        patches_C,
+        pad_width=[
+            (0, pad_patches_width),
+            (0, 0),
+            (0, 0),
+        ],
+    )
 
-    # col 0 doesn't have a shim dma
-    cols.remove(0)
+    # stack then column ordering (i guess stacking extends???)
+    patches_AB = np.vstack((patches_A, patches_B.swapaxes(-2, -1))).reshape(
+        (-1,), order="F"
+    )
+    patches_AB = patches_AB.reshape(-1, m * K + K * n)
+    assert patches_AB.shape[0] == total_fat_AB_rows_per_memtile * n_memtiles
+
     buffer_args = list(
         zip(
             [
@@ -2090,24 +2129,21 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                         m * K + K * n,
                     ),
                 )
-                for c in cols
+                for c in memtile_cols
             ],
             [
                 (
                     f"{c}_c",
-                    (
-                        total_fat_AB_rows_per_memtile,
-                        n_receive_thin_C_per_round * m * n,
-                    ),
+                    (patches_C.shape[0] // n_memtiles, m, n),
                 )
-                for c in cols
+                for c in memtile_cols
             ],
         )
     )
     buffer_args = dict([a for col in buffer_args for a in col])
     kernel_json = emit_design_kernel_json(buffer_args=list(buffer_args.keys()))
     xclbin_path = make_xclbin(
-        mod_aie, workdir, kernel_json=kernel_json, start_columns=[partition_start_col]
+        mod_aie, workdir, kernel_json=kernel_json, start_columns=start_columns
     )
 
     ipu_insts = aiex.ipu.get_prolog()
@@ -2115,7 +2151,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers(list(buffer_args.values()), np_dtype)
         buffer_idx = -1
-        for col in cols:
+        for col in memtile_cols:
             for arg_name, bd_id in arg_name_bd_id.items():
                 writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
                     column=col,
@@ -2139,7 +2175,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                     )
                 )
 
-        for col in cols:
+        for col in memtile_cols:
             dest_channel = shim_channels[col, arg_name]
             ipu_insts.extend(
                 aiex.ipu.sync(column=col, channel=dest_channel, direction=S2MM)
@@ -2150,7 +2186,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
 
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             wraps = list(map(np.asarray, views))
-            for i, col in enumerate(cols):
+            for i, _ in enumerate(memtile_cols):
                 np.copyto(
                     wraps[n_arg_types * i + 0],
                     padded_AB[
@@ -2181,5 +2217,8 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
             print(f"{total_time=}us")
 
             # correct = A @ B
-            # result = np.hstack([wraps[3 * i + 2] for i in range(len(cols))])
+            # result = np.hstack([wraps[n_arg_types * i + 2] for i in range(len(cols))])
             # print(result)
+
+            # for i, _ in enumerate(memtile_cols):
+            #     print(wraps[n_arg_types * i + 1])

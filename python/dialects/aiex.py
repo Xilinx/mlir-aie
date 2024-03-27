@@ -429,6 +429,7 @@ def process_bd(
     buffer,
     rel_lock=None,
     *,
+    acq_en=True,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
     acq_val=None,
@@ -440,7 +441,7 @@ def process_bd(
 ):
     if rel_lock is None:
         rel_lock = acq_lock
-    aie.use_lock(acq_lock, acq_action, value=acq_val)
+    aie.use_lock(acq_lock, acq_action, value=acq_val, acq_en=acq_en)
     aie.dma_bd(buffer, offset=offset, len=len, dimensions=dims, iteration=iter)
     aie.use_lock(rel_lock, rel_action, value=rel_val)
 
@@ -451,6 +452,7 @@ def send_bd(
     buffer,
     rel_lock=None,
     *,
+    acq_en=True,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
     acq_val=None,
@@ -478,6 +480,7 @@ def send_bd(
             acq_lock,
             buffer,
             rel_lock,
+            acq_en=acq_en,
             acq_action=acq_action,
             rel_action=rel_action,
             acq_val=acq_val,
@@ -497,6 +500,7 @@ def receive_bd(
     buffer,
     rel_lock=None,
     *,
+    acq_en=True,
     acq_action=LockAction.AcquireGreaterEqual,
     rel_action=LockAction.Release,
     acq_val=None,
@@ -524,6 +528,7 @@ def receive_bd(
             acq_lock,
             buffer,
             rel_lock,
+            acq_en=acq_en,
             acq_action=acq_action,
             rel_action=rel_action,
             acq_val=acq_val,
@@ -769,7 +774,19 @@ class TileArray:
             if isinstance(rows, int):
                 rows = list(range(rows))
             assert isinstance(cols, (list, tuple)) and isinstance(rows, (list, tuple))
-            df = np.array([[aie.tile(c, r) for r in rows] for c in cols])
+            df = np.array(
+                [
+                    [
+                        (
+                            None
+                            if 4 in cols and (c, r) == (0, 0) or (c, r) == (0, 1)
+                            else aie.tile(c, r)
+                        )
+                        for r in rows
+                    ]
+                    for c in cols
+                ]
+            )
         self.df = df
         self.channels = np.empty_like(df, dtype=object)
 
