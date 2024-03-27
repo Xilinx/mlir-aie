@@ -233,7 +233,7 @@ typedef struct DMAChannel {
   }
 } DMAChannel;
 
-const AIETargetModel &getTargetModel(mlir::Operation *op);
+std::shared_ptr<AIETargetModel> getTargetModel(mlir::Operation *op);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,

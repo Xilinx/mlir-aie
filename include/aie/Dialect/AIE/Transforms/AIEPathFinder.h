@@ -193,7 +193,7 @@ public:
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
   virtual void initialize(int maxCol, int maxRow,
-                          const AIETargetModel &targetModel) = 0;
+                          std::shared_ptr<AIETargetModel> targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort) = 0;
   virtual bool addFixedConnection(ConnectOp connectOp) = 0;
@@ -206,7 +206,7 @@ class Pathfinder : public Router {
 public:
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow,
-                  const AIETargetModel &targetModel) override;
+                  std::shared_ptr<AIETargetModel> targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                Port dstPort) override;
   bool addFixedConnection(ConnectOp connectOp) override;

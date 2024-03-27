@@ -106,8 +106,8 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
 }
 
 LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
-  const auto &targetModel = AIE::getTargetModel(*this);
-  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  std::shared_ptr<AIE::AIETargetModel> targetModel = AIE::getTargetModel(*this);
+  auto numBds = targetModel->getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getRepeatCount() > 255)
@@ -116,8 +116,8 @@ LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
 }
 
 LogicalResult AIEX::IpuWriteBdExShimTileOp::verify() {
-  const auto &targetModel = AIE::getTargetModel(*this);
-  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  std::shared_ptr<AIE::AIETargetModel> targetModel = AIE::getTargetModel(*this);
+  auto numBds = targetModel->getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getD0Size() > 0x3FF)

@@ -77,7 +77,7 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     // IR mutation: assign locks to all unassigned lock ops.
     for (auto [tileOp, locks] : tileToLocks) {
       const auto locksPerTile =
-          getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
+          getTargetModel(tileOp)->getNumLocks(tileOp.getCol(), tileOp.getRow());
       uint32_t nextID = 0;
       for (auto lockOp : locks.unassigned) {
         while (nextID < locksPerTile &&

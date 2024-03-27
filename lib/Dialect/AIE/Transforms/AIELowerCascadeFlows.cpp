@@ -29,7 +29,7 @@ struct AIELowerCascadeFlowsPass
   }
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    const auto &targetModel = device.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     std::set<TileOp> tilesWithCascadeFlow;
@@ -44,12 +44,12 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.insert(src);
       tilesWithCascadeFlow.insert(dst);
 
-      if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
-                              dst.getRow())) {
+      if (targetModel->isSouth(src.getCol(), src.getRow(), dst.getCol(),
+                               dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
-                                    dst.getRow())) {
+      } else if (targetModel->isEast(src.getCol(), src.getRow(), dst.getCol(),
+                                     dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
       } else {

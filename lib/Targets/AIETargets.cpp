@@ -97,7 +97,7 @@ LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
   AIEArch arch = AIEArch::AIE1;
   if (!module.getOps<DeviceOp>().empty()) {
     DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
-    arch = targetOp.getTargetModel().getTargetArch();
+    arch = targetOp.getTargetModel()->getTargetArch();
   }
   if (arch == AIEArch::AIE1)
     output << "AIE\n";
@@ -181,16 +181,17 @@ void registerAIETranslations() {
                 writeBufferMap(output, buf, offset);
           };
 
-          const auto &targetModel = xilinx::AIE::getTargetModel(srcTileOp);
+          std::shared_ptr<AIETargetModel> targetModel =
+              xilinx::AIE::getTargetModel(srcTileOp);
 
-          if (auto tile = targetModel.getMemSouth(srcCoord))
-            doBuffer(tile, targetModel.getMemSouthBaseAddress());
-          if (auto tile = targetModel.getMemWest(srcCoord))
-            doBuffer(tile, targetModel.getMemWestBaseAddress());
-          if (auto tile = targetModel.getMemNorth(srcCoord))
-            doBuffer(tile, targetModel.getMemNorthBaseAddress());
-          if (auto tile = targetModel.getMemEast(srcCoord))
-            doBuffer(tile, targetModel.getMemEastBaseAddress());
+          if (auto tile = targetModel->getMemSouth(srcCoord))
+            doBuffer(tile, targetModel->getMemSouthBaseAddress());
+          if (auto tile = targetModel->getMemWest(srcCoord))
+            doBuffer(tile, targetModel->getMemWestBaseAddress());
+          if (auto tile = targetModel->getMemNorth(srcCoord))
+            doBuffer(tile, targetModel->getMemNorthBaseAddress());
+          if (auto tile = targetModel->getMemEast(srcCoord))
+            doBuffer(tile, targetModel->getMemEastBaseAddress());
         }
         return success();
       },

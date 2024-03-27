@@ -55,9 +55,9 @@ public:
 
   /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
-    const auto &targetModel = getTargetModel(tileOp);
+    std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tileOp);
     for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
+         i < targetModel->getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
       if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
         locksPerTile[{tileOp, i}] = 1;
         return i;
@@ -136,24 +136,25 @@ struct AIEObjectFifoStatefulTransformPass
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    const auto &targetModel = getTargetModel(a.getOperation());
+    std::shared_ptr<AIETargetModel> targetModel =
+        getTargetModel(a.getOperation());
 
     if ((a.isShimTile() && !b.isShimTile()) ||
         (!a.isShimTile() && b.isShimTile())) {
       *share_direction = 0;
       return false;
     }
-    if ((targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         !targetModel.isMemTile(b.getCol(), b.getRow())) ||
-        (!targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         targetModel.isMemTile(b.getCol(), b.getRow()))) {
+    if ((targetModel->isMemTile(a.getCol(), a.getRow()) &&
+         !targetModel->isMemTile(b.getCol(), b.getRow())) ||
+        (!targetModel->isMemTile(a.getCol(), a.getRow()) &&
+         targetModel->isMemTile(b.getCol(), b.getRow()))) {
       *share_direction = 0;
       return false;
     }
-    bool rightShared = targetModel.isLegalMemAffinity(
+    bool rightShared = targetModel->isLegalMemAffinity(
         a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = targetModel.isLegalMemAffinity(
+    bool leftShared = targetModel->isLegalMemAffinity(
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
@@ -239,10 +240,10 @@ struct AIEObjectFifoStatefulTransformPass
                                             TileOp creation_tile) {
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<DeviceOp>();
-    auto &target = dev.getTargetModel();
+    std::shared_ptr<AIETargetModel> target = dev.getTargetModel();
     if (creation_tile.isShimTile())
       numElem = externalBuffersPerFifo[op].size();
-    if (target.getTargetArch() == AIEArch::AIE1) {
+    if (target->getTargetArch() == AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
@@ -418,8 +419,8 @@ struct AIEObjectFifoStatefulTransformPass
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
     auto dev = op->getParentOfType<DeviceOp>();
-    if (auto &target = dev.getTargetModel();
-        target.getTargetArch() == AIEArch::AIE1) {
+    if (std::shared_ptr<AIETargetModel> target = dev.getTargetModel();
+        target->getTargetArch() == AIEArch::AIE1) {
       acqMode = lockMode == 0 ? 1 : 0;
       relMode = lockMode == 0 ? 0 : 1;
       acqLock = locksPerFifo[op][blockIndex];
@@ -1000,8 +1001,8 @@ struct AIEObjectFifoStatefulTransformPass
         target = objFifoLinks[*linkOp];
 
     auto dev = op->getParentOfType<DeviceOp>();
-    if (auto &targetArch = dev.getTargetModel();
-        targetArch.getTargetArch() == AIEArch::AIE1) {
+    if (std::shared_ptr<AIETargetModel> targetArch = dev.getTargetModel();
+        targetArch->getTargetArch() == AIEArch::AIE1) {
       int lockMode = 0;
       if ((port == ObjectFifoPort::Produce &&
            lockAction == LockAction::Release) ||
@@ -1502,8 +1503,8 @@ struct AIEObjectFifoStatefulTransformPass
           numCreate = 0;
 
         auto dev = op->getParentOfType<DeviceOp>();
-        if (auto &targetArch = dev.getTargetModel();
-            targetArch.getTargetArch() == AIEArch::AIE1)
+        if (std::shared_ptr<AIETargetModel> targetArch = dev.getTargetModel();
+            targetArch->getTargetArch() == AIEArch::AIE1)
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
                          LockAction::Acquire);
         else

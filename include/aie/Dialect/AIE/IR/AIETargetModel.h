@@ -53,8 +53,12 @@ using TileID = struct TileID {
 };
 
 class AIETargetModel {
+  bool virtualized;
+
 public:
-  AIETargetModel() = default;
+  AIETargetModel(bool virtualized = true) : virtualized(virtualized) {}
+
+  bool isVirtualized() const { return virtualized; }
 
   virtual ~AIETargetModel();
 
@@ -204,7 +208,7 @@ public:
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel() = default;
+  using AIETargetModel::AIETargetModel;
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -268,7 +272,7 @@ public:
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel() = default;
+  using AIETargetModel::AIETargetModel;
 
   AIEArch getTargetArch() const override;
 
@@ -325,7 +329,7 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel() = default;
+  using AIE1TargetModel::AIE1TargetModel;
 
   int columns() const override { return 50; }
 
@@ -348,7 +352,7 @@ class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel() = default;
+  using AIE2TargetModel::AIE2TargetModel;
 
   int columns() const override { return 17; }
 
@@ -400,7 +404,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel() = default;
+  using AIE2TargetModel::AIE2TargetModel;
 
   int columns() const override { return 38; }
 
@@ -451,10 +455,8 @@ public:
 };
 
 class IPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
-
 public:
-  IPUTargetModel() = default;
+  using AIE2TargetModel::AIE2TargetModel;
 
   int columns() const override { return 5; }
 
@@ -466,11 +468,17 @@ public:
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
+    if (row == 0 && !isVirtualized())
+      return col >= 1;
+    if (row == 0)
+      return col >= 0;
+    return false;
   }
 
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
+    if (row == 0 && !isVirtualized())
+      return col == 0;
+    return false;
   }
 
   bool isShimNOCorPLTile(int col, int row) const override {

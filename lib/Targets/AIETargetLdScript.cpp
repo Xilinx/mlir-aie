@@ -77,7 +77,7 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
   for (auto tile : targetOp.getOps<TileOp>())
     if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
-      const auto &targetModel = getTargetModel(tile);
+      std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tile);
 
       // Figure out how much memory we have left for random allocations
       auto core = tile.getCoreOp();
@@ -87,8 +87,8 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
         int numBytes = buf.getAllocationSize();
         max = std::max(max, bufferBaseAddr + numBytes);
       }
-      int origin = targetModel.getMemInternalBaseAddress(srcCoord) + max;
-      int length = targetModel.getLocalMemorySize() - max;
+      int origin = targetModel->getMemInternalBaseAddress(srcCoord) + max;
+      int length = targetModel->getLocalMemorySize() - max;
       output << R"THESCRIPT(
 MEMORY
 {
@@ -129,14 +129,15 @@ SECTIONS
         } else {
           output << "/* No tile with memory exists to the " << dir << ". */\n";
           output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize = targetModel->getLocalMemorySize();
           output << ". += 0x" << llvm::utohexstr(localMemSize) << ";\n";
         }
       };
 
       // Stack
       output << ". = 0x"
-             << llvm::utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
+             << llvm::utohexstr(
+                    targetModel->getMemInternalBaseAddress(srcCoord))
              << ";\n";
       output << "_sp_start_value_DM_stack = .;\n";
 
@@ -146,14 +147,14 @@ SECTIONS
       else
         output << "/* no stack allocated */\n";
 
-      doBuffer(targetModel.getMemSouth(srcCoord),
-               targetModel.getMemSouthBaseAddress(), std::string("south"));
-      doBuffer(targetModel.getMemWest(srcCoord),
-               targetModel.getMemWestBaseAddress(), std::string("west"));
-      doBuffer(targetModel.getMemNorth(srcCoord),
-               targetModel.getMemNorthBaseAddress(), std::string("north"));
-      doBuffer(targetModel.getMemEast(srcCoord),
-               targetModel.getMemEastBaseAddress(), std::string("east"));
+      doBuffer(targetModel->getMemSouth(srcCoord),
+               targetModel->getMemSouthBaseAddress(), std::string("south"));
+      doBuffer(targetModel->getMemWest(srcCoord),
+               targetModel->getMemWestBaseAddress(), std::string("west"));
+      doBuffer(targetModel->getMemNorth(srcCoord),
+               targetModel->getMemNorthBaseAddress(), std::string("north"));
+      doBuffer(targetModel->getMemEast(srcCoord),
+               targetModel->getMemEastBaseAddress(), std::string("east"));
 
       output << "  .bss : { *(.bss) } > data\n";
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";

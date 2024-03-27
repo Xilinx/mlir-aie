@@ -284,14 +284,14 @@ void AIEPathfinderPass::runOnOperation() {
 
   // If the routing violates architecture-specific routing constraints, then
   // attempt to partially reroute.
-  const auto &targetModel = d.getTargetModel();
+  std::shared_ptr<AIETargetModel> targetModel = d.getTargetModel();
   std::vector<ConnectOp> problemConnects;
   d.walk([&](ConnectOp connect) {
     if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
       // Constraint: memtile stream switch constraints
       if (auto tile = sw.getTileOp();
           tile.isMemTile() &&
-          !targetModel.isLegalMemtileConnection(
+          !targetModel->isLegalMemtileConnection(
               connect.getSourceBundle(), connect.getSourceChannel(),
               connect.getDestBundle(), connect.getDestChannel())) {
         problemConnects.push_back(connect);
