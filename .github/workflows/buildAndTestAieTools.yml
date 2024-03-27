@@ -48,13 +48,13 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: true
-          swap-storage: false 
+          swap-storage: false
 
       - name: Docker prune
         shell: bash
         run: |
           docker system prune -a -f
-          
+
       - uses: uraimo/run-on-arch-action@v2.5.0
         name: Run commands
         id: runcmd
@@ -66,41 +66,41 @@ jobs:
             --mac-address ${{ secrets.XILINX_MAC }}
           run: |
             ls -l /opt/Xilinx/Vitis/2023.2/
-            
+
             # this is the inverse of `base64 -w 1000000 Xilinx.lic`
             # the -w ("wrap after 1000000 cols") is so that there are no spaces in the XILINX_LIC env var
             echo -n "${{ secrets.XILINX_LIC }}" | base64 --decode > ~/.Xilinx/Xilinx.lic
-            
+
             cd /
             git clone https://github.com/Xilinx/mlir-aie.git
             cd /mlir-aie
-            
+
             git checkout ${{ github.head_ref }}
             if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi
-            
+
             git submodule update --init --recursive
-            
+
             apt install python3.10-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install -r python/requirements.txt
-            
+
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \
               -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
             unzip -q mlir-*.whl
             find mlir -exec touch -a -m -t 201108231405.14 {} \;
-            
+
             # don't delete the space in the sed
             pushd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake && popd
-            
+
             mkdir build && cd build
             export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
             cmake .. -G Ninja \
               -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-              -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2/ \
+              -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2 \
               -DVitis_VERSION_MAJOR=2023 \
               -DVitis_VERSION_MINOR=2 \
               -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
@@ -112,14 +112,14 @@ jobs:
               -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-              -DCMAKE_INSTALL_PREFIX=install 
-            
+              -DCMAKE_INSTALL_PREFIX=install
+
             ninja
-            
+
             if [ x"${{ inputs.LIT_FILTER }}" == x"" ]; then
               export LIT_FILTER="${{ inputs.LIT_FILTER }}"
             fi
-            
+
             # filter out CODirect until I put bootgen into the image
             export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie

@@ -685,7 +685,14 @@ class FlowRunner:
                 # force using '/usr/lib,include/gcc'
                 if opts.host_target == "aarch64-linux-gnu":
                     cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
-
+                    # It looks like the G++ distribution is non standard, so add
+                    # an explicit handling of C++ library.
+                    # Perhaps related to https://discourse.llvm.org/t/add-gcc-install-dir-deprecate-gcc-toolchain-and-remove-gcc-install-prefix/65091/23
+                    cxx_include = glob.glob(f"{opts.sysroot}/usr/include/c++/*.*.*")[0]
+                    triple = os.path.basename(opts.sysroot)
+                    cmd += [f"-I{cxx_include}", f"-I{cxx_include}/{triple}"]
+                    gcc_lib = glob.glob(f"{opts.sysroot}/usr/lib/{triple}/*.*.*")[0]
+                    cmd += [f"-B{gcc_lib}", f"-L{gcc_lib}"]
             install_path = aie.compiler.aiecc.configure.install_path()
 
             # Setting everything up if linking against HSA

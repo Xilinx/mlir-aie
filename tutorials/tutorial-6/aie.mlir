@@ -8,14 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%host_runtime_lib%/  %extraAieCcFlags% %host_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-6.exe
+// aiecc.py -j4 -%VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o tutorial-6.exe
 
 // REQUIRES: valid_xchess_license
 // RUN: make -C %S
 // RUN: %run_on_board ./tutorial-6.exe
 // RUN: make -C %S clean
 
-// Declare this MLIR module. A wrapper that can contain all 
+// Declare this MLIR module. A wrapper that can contain all
 // AIE tiles, buffers, and data movement
 module @tutorial_6 {
 
@@ -50,9 +50,9 @@ module @tutorial_6 {
             // Locks init value is Release 0, so this will always succeed first
             aie.use_lock(%lock14_6, "Acquire", 0)
 
-            %val = arith.constant 14 : i32 
-            %idx = arith.constant 3 : index 
-            memref.store %val, %buf14[%idx] : memref<256xi32> 
+            %val = arith.constant 14 : i32
+            %idx = arith.constant 3 : index
+            memref.store %val, %buf14[%idx] : memref<256xi32>
 
             // Release lock to 1 so tile(2,4) can acquire and begin processing
             aie.use_lock(%lock14_6, "Release", 1)
@@ -72,9 +72,9 @@ module @tutorial_6 {
                 aie.next_bd ^end
             ^end:
                 aie.end
-        }    
+        }
 
-     
+
         // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
         // buf[5] = buf[3] + 100
         %core34 = aie.core(%tile34) {
@@ -84,10 +84,10 @@ module @tutorial_6 {
 
             %idx1 = arith.constant 3 : index
             %d1   = memref.load %buf34[%idx1] : memref<256xi32>
-            %c1   = arith.constant 100 : i32 
+            %c1   = arith.constant 100 : i32
             %d2   = arith.addi %d1, %c1 : i32
             %idx2 = arith.constant 5 : index
-            memref.store %d2, %buf34[%idx2] : memref<256xi32> 
+            memref.store %d2, %buf34[%idx2] : memref<256xi32>
 
             aie.use_lock(%lock34_7, "Release", 0)
             aie.use_lock(%lock34_8, "Release", 1)
@@ -105,6 +105,6 @@ module @tutorial_6 {
                 aie.next_bd ^end
             ^end:
                 aie.end
-        }    
+        }
     }
 }
