@@ -38,7 +38,7 @@ public:
   explicit PythonRouter(py::object router) : router(std::move(router)) {}
 
   void initialize(const int maxCol, const int maxRow,
-                  const AIETargetModel &targetModel) override {
+                  std::shared_ptr<AIETargetModel> targetModel) override {
     // Here we're copying a pointer to targetModel, which is a static somewhere.
     router.attr("initialize")(maxCol, maxRow, &targetModel);
   }

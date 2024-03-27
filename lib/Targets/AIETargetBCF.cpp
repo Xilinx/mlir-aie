@@ -51,7 +51,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
   // _include _file rom.o
   for (auto tile : targetOp.getOps<TileOp>())
     if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-      const auto &targetModel = getTargetModel(tile);
+      std::shared_ptr<AIETargetModel> targetModel = getTargetModel(tile);
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
 
       std::string corefunc = std::string("core_") +
@@ -60,7 +60,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       output << "_entry_point _main_init\n";
       output << "_symbol " << corefunc << " _after _main_init\n";
       output << "_symbol _main_init 0\n";
-      std::string initReserved = (targetModel.getTargetArch() == AIEArch::AIE2)
+      std::string initReserved = (targetModel->getTargetArch() == AIEArch::AIE2)
                                      ? "0x40000"
                                      : "0x20000";
       output << "_reserved DMb 0x00000 " << initReserved
@@ -70,7 +70,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       if (auto core = tile.getCoreOp())
         stacksize = core.getStackSize();
       output << "_stack DM_stack "
-             << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
+             << utohexstr(targetModel->getMemInternalBaseAddress(srcCoord))
              << " " << utohexstr(stacksize) << " // stack for core\n";
 
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
@@ -78,7 +78,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
         if (tile) {
           output << "// " + dir +
                         " -------------------------------------------------\n";
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize = targetModel->getLocalMemorySize();
           if (tile != srcCoord)
             output << "_reserved DMb " << utohexstr(offset) << " "
                    << utohexstr(localMemSize) << " "
@@ -107,7 +107,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
             }
           }
         } else {
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize = targetModel->getLocalMemorySize();
           output << "_reserved DMb " << utohexstr(offset) << " "
                  << utohexstr(localMemSize) << " "
                  << " // No tile with memory exists to the " << dir << ".\n";
@@ -115,17 +115,17 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       };
 
       output << "\n// mapping neighbors tile memory\n";
-      doBuffer(targetModel.getMemSouth(srcCoord),
-               targetModel.getMemSouthBaseAddress(), std::string("south"));
-      doBuffer(targetModel.getMemWest(srcCoord),
-               targetModel.getMemWestBaseAddress(), std::string("west"));
-      doBuffer(targetModel.getMemNorth(srcCoord),
-               targetModel.getMemNorthBaseAddress(), std::string("north"));
-      doBuffer(targetModel.getMemEast(srcCoord),
-               targetModel.getMemEastBaseAddress(), std::string("east"));
+      doBuffer(targetModel->getMemSouth(srcCoord),
+               targetModel->getMemSouthBaseAddress(), std::string("south"));
+      doBuffer(targetModel->getMemWest(srcCoord),
+               targetModel->getMemWestBaseAddress(), std::string("west"));
+      doBuffer(targetModel->getMemNorth(srcCoord),
+               targetModel->getMemNorthBaseAddress(), std::string("north"));
+      doBuffer(targetModel->getMemEast(srcCoord),
+               targetModel->getMemEastBaseAddress(), std::string("east"));
       output << "// end mapping neighbors tile memory\n\n";
 
-      if (targetModel.getTargetArch() == AIEArch::AIE2) {
+      if (targetModel->getTargetArch() == AIEArch::AIE2) {
         output << "_reserved DMb 0x80000 0x80000 // And everything else "
                   "the core can't see\n";
       } else {

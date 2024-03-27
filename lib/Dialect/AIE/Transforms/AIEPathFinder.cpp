@@ -151,7 +151,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 }
 
 void Pathfinder::initialize(int maxCol, int maxRow,
-                            const AIETargetModel &targetModel) {
+                            std::shared_ptr<AIETargetModel> targetModel) {
   // make grid of switchboxes
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
@@ -163,7 +163,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
         // get the number of outgoing connections on the south side - outgoing
         // because these correspond to rhs of a connect op
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel->getNumDestSwitchboxConnections(
                 col, row, WireBundle::South)) {
           edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
                              maxCapacity);
@@ -173,8 +173,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         // because they correspond to connections on the southside that are then
         // routed using internal connect ops through the switchbox (i.e., lhs of
         // connect ops)
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::South)) {
+        if (uint32_t maxCapacity =
+                targetModel->getNumSourceSwitchboxConnections(
+                    col, row, WireBundle::South)) {
           edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
                              maxCapacity);
           (void)graph.connect(southernNeighbor, thisNode, edges.back());
@@ -183,14 +184,15 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 
       if (col > 0) { // if not in col 0 add channel to East/West
         SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel->getNumDestSwitchboxConnections(
                 col, row, WireBundle::West)) {
           edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
                              maxCapacity);
           (void)graph.connect(thisNode, westernNeighbor, edges.back());
         }
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::West)) {
+        if (uint32_t maxCapacity =
+                targetModel->getNumSourceSwitchboxConnections(
+                    col, row, WireBundle::West)) {
           edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
                              maxCapacity);
           (void)graph.connect(westernNeighbor, thisNode, edges.back());

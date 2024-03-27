@@ -28,13 +28,13 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op)->isCoreTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op)->isMemTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op)->isShimNOCTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
                                                                         "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op)->isShimPLTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
                                                                         "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
@@ -117,20 +117,6 @@ def TileElement : OpInterface<"TileElement", [
                                     std::to_string(getTileID().row));
     }
   }];
-}
-
-def AIETarget : OpInterface<"AIETarget"> {
-  let description = [{
-    Interface for operations that model an array of AIEngine cores.
-  }];
-  let cppNamespace = "::xilinx::AIE";
-  let methods = [
-    InterfaceMethod<[{
-        Return the target model describing the characteristics of how this operation will be implemented.
-      }],
-      "const ::xilinx::AIE::AIETargetModel&", "getTargetModel", (ins )
-    >
-  ];
 }
 
 // Don't delete - see AIEDialect::myVerifyOffsetSizeAndStrideOp

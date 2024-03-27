@@ -27,7 +27,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
+    HasParent<"mlir::ModuleOp">,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove,
     OpAsmOpInterface
   ]> {
@@ -56,13 +56,16 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins AIEDevice:$device,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$virtualized
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device (`,` `virtualized` `=` $virtualized^)? `)` regions attr-dict
   }];
   let extraClassDeclaration = [{
-    const xilinx::AIE::AIETargetModel &getTargetModel();
+    std::shared_ptr<xilinx::AIE::AIETargetModel> getTargetModel();
     static ::llvm::StringRef getDefaultDialect() {
       return "aie";
     }

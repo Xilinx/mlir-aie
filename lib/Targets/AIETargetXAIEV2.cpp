@@ -73,9 +73,10 @@ static std::string tileLockStr(StringRef id, StringRef val) {
 // a proper DMA-like interface
 // blockMap: A map that gives a unique bd ID assignment for every block.
 template <typename OpType>
-mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
-                                      const AIETargetModel &targetModel,
-                                      DenseMap<Block *, int> blockMap) {
+mlir::LogicalResult
+generateDMAConfig(OpType memOp, raw_ostream &output,
+                  std::shared_ptr<AIETargetModel> targetModel,
+                  DenseMap<Block *, int> blockMap) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
   StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
@@ -97,7 +98,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block.template getOps<DMABDOp>()) {
       foundBd = true;
-      if (!targetModel.isShimNOCTile(col, row)) {
+      if (!targetModel->isShimNOCTile(col, row)) {
         assert(op.getBufferOp().getAddress() &&
                "buffer must have address assigned");
         BaseAddrA = op.getBufferOp().getAddress().value();
@@ -105,13 +106,13 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
 
         // Memtile DMAs can access neighboring tiles.
-        if (targetModel.isMemTile(col, row)) {
-          if (targetModel.isWest(col, row, bufferCol, bufferRow))
+        if (targetModel->isMemTile(col, row)) {
+          if (targetModel->isWest(col, row, bufferCol, bufferRow))
             BaseAddrA += 0x0;
-          else if (targetModel.isInternal(col, row, bufferCol, bufferRow))
-            BaseAddrA += targetModel.getMemTileSize() * 1;
-          else if (targetModel.isEast(col, row, bufferCol, bufferRow))
-            BaseAddrA += targetModel.getMemTileSize() * 2;
+          else if (targetModel->isInternal(col, row, bufferCol, bufferRow))
+            BaseAddrA += targetModel->getMemTileSize() * 1;
+          else if (targetModel->isEast(col, row, bufferCol, bufferRow))
+            BaseAddrA += targetModel->getMemTileSize() * 2;
         }
       }
 
@@ -124,7 +125,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       }
     }
 
-    if (0 != ndims && AIEArch::AIE2 != targetModel.getTargetArch())
+    if (0 != ndims && AIEArch::AIE2 != targetModel->getTargetArch())
       return memOp.emitOpError("DMA contains at least one multi-dimensional "
                                "buffer descriptor. This is currently only "
                                "supported for AIE-ML devices.");
@@ -138,13 +139,13 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       int lockRow = lock.rowIndex();
       int lockID = lock.getLockIDValue();
       // Memtile DMAs can access neighboring tiles.
-      if (targetModel.isMemTile(col, row)) {
-        if (targetModel.isWest(col, row, lockCol, lockRow))
+      if (targetModel->isMemTile(col, row)) {
+        if (targetModel->isWest(col, row, lockCol, lockRow))
           lockID += 0;
-        else if (targetModel.isInternal(col, row, lockCol, lockRow))
-          lockID += targetModel.getNumLocks(lockCol, lockRow) * 1;
-        else if (targetModel.isEast(col, row, lockCol, lockRow))
-          lockID += targetModel.getNumLocks(lockCol, lockRow) * 2;
+        else if (targetModel->isInternal(col, row, lockCol, lockRow))
+          lockID += targetModel->getNumLocks(lockCol, lockRow) * 1;
+        else if (targetModel->isEast(col, row, lockCol, lockRow))
+          lockID += targetModel->getNumLocks(lockCol, lockRow) * 2;
       }
 
       if (op.acquire() || op.acquireGE()) {
@@ -192,7 +193,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       }
 
       if (0 == ndims) {
-        if (targetModel.isShimNOCTile(col, row)) {
+        if (targetModel->isShimNOCTile(col, row)) {
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
                  << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
                  << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
@@ -252,8 +253,9 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       int bdNum = blockMap[op.getDest().front()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
       int chNum = op.getChannelIndex();
-      const auto &target_model = xilinx::AIE::getTargetModel(op);
-      if (target_model.getTargetArch() == AIEArch::AIE1) {
+      std::shared_ptr<AIETargetModel> target_model =
+          xilinx::AIE::getTargetModel(op);
+      if (target_model->getTargetArch() == AIEArch::AIE1) {
         output << "__mlir_aie_try(XAie_DmaChannelPushBdToQueue("
                << deviceInstRef << ", " << tileLocStr(col, row) << ", "
                << "/* ChNum */" << chNum
@@ -300,7 +302,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   if (module.getOps<DeviceOp>().empty())
     return module.emitOpError("expected AIE.device operation at toplevel");
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
-  const auto &targetModel = targetOp.getTargetModel();
+  std::shared_ptr<AIETargetModel> targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -313,7 +315,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   output << "  aie_libxaie_ctx_t *ctx = new aie_libxaie_ctx_t;\n";
   output << "  if (!ctx)\n";
   output << "    return 0;\n";
-  auto arch = targetModel.getTargetArch();
+  auto arch = targetModel->getTargetArch();
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
   std::string device;
@@ -337,20 +339,21 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
   output << "  ctx->AieConfigPtr.ColShift = " << col_shift << ";\n";
   output << "  ctx->AieConfigPtr.RowShift = " << row_shift << ";\n";
-  output << "  ctx->AieConfigPtr.NumRows = " << targetModel.rows() << ";\n";
-  output << "  ctx->AieConfigPtr.NumCols = " << targetModel.columns() << ";\n";
+  output << "  ctx->AieConfigPtr.NumRows = " << targetModel->rows() << ";\n";
+  output << "  ctx->AieConfigPtr.NumCols = " << targetModel->columns() << ";\n";
   output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";
   output << "  ctx->AieConfigPtr.MemTileRowStart = 1;\n";
   output << "  ctx->AieConfigPtr.MemTileNumRows = "
-         << targetModel.getNumMemTileRows() << ";\n";
+         << targetModel->getNumMemTileRows() << ";\n";
   output << "  //  ctx->AieConfigPtr.ReservedRowStart = "
             "XAIE_RES_TILE_ROW_START;\n";
   output
       << "  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
   output << "  ctx->AieConfigPtr.AieTileRowStart = "
-         << (1 + targetModel.getNumMemTileRows()) << ";\n";
+         << (1 + targetModel->getNumMemTileRows()) << ";\n";
   output << "  ctx->AieConfigPtr.AieTileNumRows = "
-         << (targetModel.rows() - 1 - targetModel.getNumMemTileRows()) << ";\n";
+         << (targetModel->rows() - 1 - targetModel->getNumMemTileRows())
+         << ";\n";
   output << "  ctx->AieConfigPtr.PartProp = {0};\n";
   output << "  ctx->DevInst = {0};\n";
   output << "  return ctx;\n";
@@ -374,7 +377,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       output << "__mlir_aie_try(XAie_CoreDisable(" << deviceInstRef << ", "
              << tileLocStr(col, row) << "));\n";
       // Release locks
-      int numLocks = targetModel.getNumLocks(col, row);
+      int numLocks = targetModel->getNumLocks(col, row);
       output << "for (int l = 0; l < " << numLocks << "; ++l)\n"
              << "  __mlir_aie_try(XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
@@ -484,7 +487,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         auto dest = op.getDest().front();
         while (dest) {
           channelMap[dest] = chNum;
-          if (dest->getSuccessors().size() < 1)
+          if (dest->getSuccessors().empty())
             break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))

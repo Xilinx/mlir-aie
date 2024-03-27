@@ -22,8 +22,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 struct BdIdGenerator {
-  BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
-      : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
+  BdIdGenerator(int col, int row, std::shared_ptr<AIETargetModel> targetModel)
+      : col(col), row(row), isMemTile(targetModel->isMemTile(col, row)) {}
 
   int32_t nextBdId(int channelIndex) {
     int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
@@ -52,7 +52,7 @@ struct AIEAssignBufferDescriptorIDsPass
     : AIEAssignBufferDescriptorIDsBase<AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
+    std::shared_ptr<AIETargetModel> targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());

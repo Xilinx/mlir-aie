@@ -29,7 +29,7 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
   }
   AIEArch arch = AIEArch::AIE1;
   if (targetOp) {
-    arch = targetOp.getTargetModel().getTargetArch();
+    arch = targetOp.getTargetModel()->getTargetArch();
   }
 
   if (arch == AIEArch::AIE2) {
@@ -237,7 +237,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   }
   AIEArch arch = AIEArch::AIE1;
   if (targetOp) {
-    arch = targetOp.getTargetModel().getTargetArch();
+    arch = targetOp.getTargetModel()->getTargetArch();
   }
 
   // Generate boilerplate header
@@ -297,7 +297,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
           // AIE2 - xcve2802
           std::to_string(col) << ","
              << std::to_string(
-                    row - targetOp.getTargetModel().getNumMemTileRows() - 1)
+                    row - targetOp.getTargetModel()->getNumMemTileRows() - 1)
              << ")\" "
              // CR coordinates ignores shim and 1 mem row, hence row-2
              // AIE2 - xcve2302
@@ -311,7 +311,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: does stream_util matter for sim?
           std::to_string(col) << ","
              << std::to_string(row -
-                               targetOp.getTargetModel().getNumMemTileRows())
+                               targetOp.getTargetModel()->getNumMemTileRows())
              << "\">\n";
 
     } else {
@@ -344,7 +344,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   // For each ShimOp in the module, generate a <SHIM> section
   for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
     if (arch == AIEArch::AIE2) {
-      auto noc_label = (targetOp.getTargetModel().isShimNOCTile(
+      auto noc_label = (targetOp.getTargetModel()->isShimNOCTile(
                            shimOp.colIndex(), shimOp.rowIndex()))
                            ? "AIE_PL_NOC_SIM"
                            : "AIE_PL_SHIM";
@@ -379,8 +379,8 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       int row = tileOp.rowIndex();
 
       // NOTE: row == 0 assumes shim always row 0
-      if (row == 0 ||
-          row > static_cast<int>(targetOp.getTargetModel().getNumMemTileRows()))
+      if (row == 0 || row > static_cast<int>(
+                                targetOp.getTargetModel()->getNumMemTileRows()))
         continue; // Skip regular tiles (handled above)
 
       output << "      <MEM name=\"MEM(" << std::to_string(col) << ", "

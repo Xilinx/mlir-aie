@@ -172,12 +172,13 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
   int col2 = coord2.col;
   int row2 = coord2.row;
 
-  const auto &targetModel = xilinx::AIE::getTargetModel(Op1);
+  std::shared_ptr<AIETargetModel> targetModel =
+      xilinx::AIE::getTargetModel(Op1);
 
   bool IsOp1ShareableMem =
-      IsOp1Mem && targetModel.isLegalMemAffinity(col2, row2, col1, row1);
+      IsOp1Mem && targetModel->isLegalMemAffinity(col2, row2, col1, row1);
   bool IsOp2ShareableMem =
-      IsOp2Mem && targetModel.isLegalMemAffinity(col1, row1, col2, row2);
+      IsOp2Mem && targetModel->isLegalMemAffinity(col1, row1, col2, row2);
 
   if (IsOp1ShareableMem)
     return tiles[coord1];
@@ -186,11 +187,11 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
 
   // both Op1 and Op2 are core ops
   if (!IsOp1Mem && !IsOp2Mem) {
-    bool IsS = targetModel.isSouth(col1, row1, col2, row2);
-    bool IsW = targetModel.isWest(col1, row1, col2, row2);
-    bool IsN = targetModel.isNorth(col1, row1, col2, row2);
-    bool IsE = targetModel.isEast(col1, row1, col2, row2);
-    bool IsInternal = targetModel.isInternal(col1, row1, col2, row2);
+    bool IsS = targetModel->isSouth(col1, row1, col2, row2);
+    bool IsW = targetModel->isWest(col1, row1, col2, row2);
+    bool IsN = targetModel->isNorth(col1, row1, col2, row2);
+    bool IsE = targetModel->isEast(col1, row1, col2, row2);
+    bool IsInternal = targetModel->isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
     // FIXME: This logic appears AIE1 specific.
