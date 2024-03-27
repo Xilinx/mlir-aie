@@ -54,15 +54,23 @@ As you will see in the Key Object FIFO Connection Patterns [subsection](#key-obj
 
 ## Object FIFO Access Patterns
 
-* acquire (what happens when you acquire 1 vs many), release
+An Object FIFO can be accessed by the processes running on the producer and consumer tiles registered to it. Before a process can have access to the objects it has to acquire them from the Object FIFO. This is because the Object FIFO is a synchronized communication primitive and two processes may not access the same object at the same time. To acquire objects users should use the acquire function of the `object_fifo` class:
 ```
 def acquire(self, port, num_elem)
 ```
+Based on the `num_elem` input representing the number of acquired elements, the acquire function will either directly return an object, or an array of objects that can be accessed in an array-like fashion.
+
+Once a process has finished working with an object and has no further use for it, it should release it so that another process will be able to acquire and access it. To release one or multiple objects users should use the release function of the `object_fifo` class:
 ```
 def release(self, port, num_elem)
 ```
+A process may release one, some or all of the objects it has acquired. The release function will release objects from oldest to youngest in acquired order. If a process does not release all of the objects it has acquired, then the next time it acquires objects the oldest objects will be those that were not released. This functionality is intended to achieve the behaviour of a sliding window through the Object FIFO primitive. (TODO: add link to ref design or subsection)
+
+The patterns in which a producer or a consumer process acquires and releases objects from an Object FIFO are called `access patterns`. We can specifically refer to the acquire and release patterns as well.
 
 ## Key Object FIFO Connection Patterns
+
+#### Reuse
 
 #### Broadcast
 
