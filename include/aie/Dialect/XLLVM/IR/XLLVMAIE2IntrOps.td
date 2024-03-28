@@ -77,4 +77,30 @@ def I512V32Acc32SrsIntrOp :
                    I32:$shft,
                    I32:$sign)>;
 
+def VectorBroadcast8I512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast8.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
+    Arguments<(ins I32:$value)>;
+
+def VectorBroadcast32I512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast32.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins I32:$value)>;
+
+def ExtI256I512IntrOp :
+    AIEVec2_IntrOp<"ext.I256.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$a,
+                   I32:$idx)>;
+
+def ConcatI512I256IntrOp :
+    AIEVec2_IntrOp<"concat.I512.I256",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$a0,
+                   VectorOfLengthAndType<[8], [I32]>:$a1)>;
+
+def UndefV16I32IntrOp :
+    AIEVec2_IntrOp<"v16int32",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>;
+
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
