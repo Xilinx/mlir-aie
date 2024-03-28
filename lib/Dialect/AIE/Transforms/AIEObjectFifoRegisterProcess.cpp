@@ -90,8 +90,8 @@ struct AIEObjectFifoRegisterProcessPass
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(
           builder.getUnknownLoc(),
-          SymbolRefAttr::get(ctx, regOp.getObjFifoName()),
-          relNumber, regOp.getPortAttr());
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber,
+          regOp.getPortAttr());
       builder.setInsertionPointAfter(relOp);
     }
 
