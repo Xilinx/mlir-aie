@@ -36,13 +36,13 @@ def printf():
             # Compute tile 2
             @core(ComputeTile2, "kernel.o")
             def core_body():
-                elemOut = outOF.acquire(ObjectFifoPort.Produce, 1)
-                elemIn = inOF.acquire(ObjectFifoPort.Consume, 1)
-                elemLogout = logoutOF.acquire(ObjectFifoPort.Produce, 1)
+                elemOut = outOF.acquire(1)
+                elemIn = inOF.acquire(1)
+                elemLogout = logoutOF.acquire(1)
                 call(kernel, [elemIn, elemOut, elemLogout])
-                inOF.release(ObjectFifoPort.Consume, 1)
-                outOF.release(ObjectFifoPort.Produce, 1)
-                logoutOF.release(ObjectFifoPort.Produce, 1)
+                inOF.release(1)
+                outOF.release(1)
+                logoutOF.release(1)
 
             # To/from AIE-array data movement
             @FuncOp.from_py_func(memRef_ty, memRef_ty, memRef_ty)

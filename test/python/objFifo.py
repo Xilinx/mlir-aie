@@ -6,7 +6,6 @@
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
-    ObjectFifoPort,
     object_fifo,
     tile,
     Device,
@@ -25,12 +24,12 @@ from util import construct_and_print_module
 # CHECK:      %tile_1_2 = aie.tile(1, 2)
 # CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
-# CHECK:        %0 = aie.objectfifo.acquire @of0(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
+# CHECK:        %0 = aie.objectfifo.acquire @of0(1) : !aie.objectfifosubview<memref<256xi32>>
 # CHECK:        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 # CHECK:        %c10_i32 = arith.constant 10 : i32
 # CHECK:        %c0 = arith.constant 0 : index
 # CHECK:        memref.store %c10_i32, %1[%c0] : memref<256xi32>
-# CHECK:        aie.objectfifo.release @of0(Consume, 1)
+# CHECK:        aie.objectfifo.release @of0(1)
 # CHECK:        aie.end
 # CHECK:      }
 # CHECK:    }
@@ -48,7 +47,7 @@ def objFifo_example():
         C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            elem0 = of0.acquire(ObjectFifoPort.Consume, 1)
+            elem0 = of0.acquire(1)
             memref.store(arith.constant(10), elem0.result, [0])
-            of0.release(ObjectFifoPort.Consume, 1)
+            of0.release(1)
             end()

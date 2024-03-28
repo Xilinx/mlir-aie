@@ -1779,15 +1779,15 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   }];
 
   let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+    ins FlatSymbolRefAttr:$objFifo_name,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size,
+        OptionalAttr<ObjectFifoPort>:$port
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $size (`,` $port^)? `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
@@ -1795,6 +1795,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
     int acqNumber() { return getSize(); }
+    ObjectFifoPort getPortValue();
   }];
 }
 
@@ -1815,13 +1816,13 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   }];
 
   let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+    ins FlatSymbolRefAttr:$objFifo_name,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size,
+        OptionalAttr<ObjectFifoPort>:$port
   );
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)`
+    attr-dict $objFifo_name `(` $size (`,` $port^)? `)`
   }];
 
   let hasVerifier = 1;
@@ -1829,6 +1830,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
     int relNumber() { return getSize(); }
+    ObjectFifoPort getPortValue();
   }];
 }
 

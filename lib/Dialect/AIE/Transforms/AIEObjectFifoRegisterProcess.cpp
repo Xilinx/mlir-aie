@@ -64,8 +64,9 @@ struct AIEObjectFifoRegisterProcessPass
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
-          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
+          builder.getUnknownLoc(), acqType,
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), 
+          acqNumber, regOp.getPortAttr());
 
       // subview accesses
       for (int i = 0; i < acqNumber.getInt(); i++)
@@ -88,8 +89,9 @@ struct AIEObjectFifoRegisterProcessPass
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(
-          builder.getUnknownLoc(), regOp.getPortAttr(),
-          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);
+          builder.getUnknownLoc(),
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()),
+          relNumber, regOp.getPortAttr());
       builder.setInsertionPointAfter(relOp);
     }
 

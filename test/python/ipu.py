@@ -14,7 +14,6 @@ from aie.dialects.aie import (
     call,
     DMAChannelDir,
     LockAction,
-    ObjectFifoPort,
     WireBundle,
     core,
     device,
@@ -67,11 +66,11 @@ def my_vector_scalar(module):
             for _ in range_(0xFFFFFFFF):
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
-                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    elem_out = of_out.acquire(1)
+                    elem_in = of_in.acquire(1)
                     call(scale_int32, [elem_in, elem_out])
-                    of_in.release(ObjectFifoPort.Consume, 1)
-                    of_out.release(ObjectFifoPort.Produce, 1)
+                    of_in.release(1)
+                    of_out.release(1)
                     yield_([])
                 yield_([])
 
@@ -156,24 +155,24 @@ def my_matmul(module):
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles):
-                    elem_out = of_outC.acquire(ObjectFifoPort.Produce, 1)
+                    elem_out = of_outC.acquire(1)
                     if vectorized:
                         call(zero, [elem_out])
                     else:
                         call(zero_scalar, [elem_out])
 
                     for _ in range_(K_div_k):
-                        elem_in_a = of_inA.acquire(ObjectFifoPort.Consume, 1)
-                        elem_in_b = of_inB.acquire(ObjectFifoPort.Consume, 1)
+                        elem_in_a = of_inA.acquire(1)
+                        elem_in_b = of_inB.acquire(1)
                         if vectorized:
                             call(matmul, [elem_in_a, elem_in_b, elem_out])
                         else:
                             call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
-                        of_inA.release(ObjectFifoPort.Consume, 1)
-                        of_inB.release(ObjectFifoPort.Consume, 1)
+                        of_inA.release(1)
+                        of_inB.release(1)
                         yield_([])
 
-                    of_outC.release(ObjectFifoPort.Produce, 1)
+                    of_outC.release(1)
                     yield_([])
                 yield_([])
 
@@ -304,13 +303,13 @@ def edge_detect(module):
         @core(T2, "rgba2gray.cc.o")
         def core_body():
             for _ in range_(36):
-                elem_in = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = OF_2to3.acquire(ObjectFifoPort.Produce, 1)
+                elem_in = inOF_L2L1.acquire(1)
+                elem_out = OF_2to3.acquire(1)
 
                 call(rgba2gray_line, [elem_in, elem_out, arith.constant(64)])
 
-                inOF_L2L1.release(ObjectFifoPort.Consume, 1)
-                OF_2to3.release(ObjectFifoPort.Produce, 1)
+                inOF_L2L1.release(1)
+                OF_2to3.release(1)
                 yield_([])
 
         @core(T3, "filter2d.cc.o")
@@ -330,8 +329,8 @@ def edge_detect(module):
             memref.store(v0, kernel, [2, 2])
 
             # Preamble : Top Border
-            elems_in_pre = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
-            elem_pre_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
+            elems_in_pre = OF_2to3.acquire(2)
+            elem_pre_out = OF_3to4.acquire(1)
             call(
                 filter2d_line,
                 [
@@ -343,12 +342,12 @@ def edge_detect(module):
                     kernel,
                 ],
             )
-            OF_3to4.release(ObjectFifoPort.Produce, 1)
+            OF_3to4.release(1)
 
             # Steady State : Middle
             for _ in range_(1, 35):
-                elems_in = OF_2to3.acquire(ObjectFifoPort.Consume, 3)
-                elem_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
+                elems_in = OF_2to3.acquire(3)
+                elem_out = OF_3to4.acquire(1)
                 call(
                     filter2d_line,
                     [
@@ -360,13 +359,13 @@ def edge_detect(module):
                         kernel,
                     ],
                 )
-                OF_2to3.release(ObjectFifoPort.Consume, 1)
-                OF_3to4.release(ObjectFifoPort.Produce, 1)
+                OF_2to3.release(1)
+                OF_3to4.release(1)
                 yield_([])
 
             # Postamble : Bottom Border
-            elems_in_post = OF_2to3.acquire(ObjectFifoPort.Consume, 2)
-            elem_post_out = OF_3to4.acquire(ObjectFifoPort.Produce, 1)
+            elems_in_post = OF_2to3.acquire(2)
+            elem_post_out = OF_3to4.acquire(1)
             call(
                 filter2d_line,
                 [
@@ -378,8 +377,8 @@ def edge_detect(module):
                     kernel,
                 ],
             )
-            OF_2to3.release(ObjectFifoPort.Consume, 2)
-            OF_3to4.release(ObjectFifoPort.Produce, 1)
+            OF_2to3.release(2)
+            OF_3to4.release(1)
 
         @core(T4, "threshold.cc.o")
         def core_body():
@@ -388,32 +387,32 @@ def edge_detect(module):
             v_typ = arith.constant(0, T.i8())
 
             for _ in range_(36):
-                elem_in = OF_3to4.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = OF_4to5.acquire(ObjectFifoPort.Produce, 1)
+                elem_in = OF_3to4.acquire(1)
+                elem_out = OF_4to5.acquire(1)
 
                 call(
                     threshold_line,
                     [elem_in, elem_out, arith.constant(64), v_thr, v_max, v_typ],
                 )
 
-                OF_3to4.release(ObjectFifoPort.Consume, 1)
-                OF_4to5.release(ObjectFifoPort.Produce, 1)
+                OF_3to4.release(1)
+                OF_4to5.release(1)
                 yield_([])
 
         @core(T5, "combined_gray2rgba_addWeighted.a")
         def core_body():
             for _ in range_(36):
-                elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = OF_5to5.acquire(ObjectFifoPort.Produce, 1)
+                elem_in = OF_4to5.acquire(1)
+                elem_out = OF_5to5.acquire(1)
 
                 call(gray2rgba_line, [elem_in, elem_out, arith.constant(64)])
 
-                OF_4to5.release(ObjectFifoPort.Consume, 1)
-                OF_5to5.release(ObjectFifoPort.Produce, 1)
+                OF_4to5.release(1)
+                OF_5to5.release(1)
 
-                elem_in1 = OF_5to5.acquire(ObjectFifoPort.Consume, 1)
-                elem_in2 = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out2 = outOF_L1L2.acquire(ObjectFifoPort.Produce, 1)
+                elem_in1 = OF_5to5.acquire(1)
+                elem_in2 = inOF_L2L1.acquire(1)
+                elem_out2 = outOF_L1L2.acquire(1)
 
                 alpha = arith.constant(16384, T.i16())
                 beta = arith.constant(16384, T.i16())
@@ -432,9 +431,9 @@ def edge_detect(module):
                     ],
                 )
 
-                OF_5to5.release(ObjectFifoPort.Consume, 1)
-                inOF_L2L1.release(ObjectFifoPort.Consume, 1)
-                outOF_L1L2.release(ObjectFifoPort.Produce, 1)
+                OF_5to5.release(1)
+                inOF_L2L1.release(1)
+                outOF_L1L2.release(1)
                 yield_([])
 
         @FuncOp.from_py_func(
@@ -481,15 +480,15 @@ def my_add_one_objFifo(module):
         def core_body():
             # Effective while(1)
             for _ in range_(8):
-                elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
+                elem_in = of_in1.acquire(1)
+                elem_out = of_out1.acquire(1)
                 for i in range_(8):
                     v0 = memref.load(elem_in, [i])
                     v1 = arith.addi(v0, arith.constant(1, T.i32()))
                     memref.store(v1, elem_out, [i])
                     yield_([])
-                of_in1.release(ObjectFifoPort.Consume, 1)
-                of_out1.release(ObjectFifoPort.Produce, 1)
+                of_in1.release(1)
+                of_out1.release(1)
                 yield_([])
 
         @FuncOp.from_py_func(

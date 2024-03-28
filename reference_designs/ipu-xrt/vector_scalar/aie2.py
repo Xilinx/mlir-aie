@@ -46,11 +46,11 @@ def my_vector_scalar():
                 for _ in for_(sys.maxsize):
                     # Number of sub-vector "tile" iterations
                     for _ in for_(N_div_n):
-                        elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
-                        elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                        elem_out = of_out.acquire(1)
+                        elem_in = of_in.acquire(1)
                         call(scale_int32, [elem_in, elem_out])
-                        of_in.release(ObjectFifoPort.Consume, 1)
-                        of_out.release(ObjectFifoPort.Produce, 1)
+                        of_in.release(1)
+                        of_out.release(1)
                         yield_([])
                     yield_([])
 

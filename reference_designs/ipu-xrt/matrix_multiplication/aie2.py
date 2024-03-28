@@ -144,24 +144,24 @@ def my_matmul():
             def core_body():
                 for _ in for_(0xFFFFFFFF):
                     for _ in for_(tiles):
-                        elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
+                        elem_out = memC.acquire(1)
                         if vectorized:
                             call(zero, [elem_out])
                         else:
                             call(zero_scalar, [elem_out])
 
                         for _ in for_(K_div_k):
-                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
-                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
+                            elem_in_a = memA.acquire(1)
+                            elem_in_b = memB.acquire(1)
                             if vectorized:
                                 call(matmul, [elem_in_a, elem_in_b, elem_out])
                             else:
                                 call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
-                            memA.release(ObjectFifoPort.Consume, 1)
-                            memB.release(ObjectFifoPort.Consume, 1)
+                            memA.release(1)
+                            memB.release(1)
                             yield_([])
 
-                        memC.release(ObjectFifoPort.Produce, 1)
+                        memC.release(1)
                         yield_([])
                     yield_([])
 

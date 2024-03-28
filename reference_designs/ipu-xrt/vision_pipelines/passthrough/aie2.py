@@ -57,11 +57,11 @@ def passThroughAIE2():
             def core_body():
                 for _ in for_(sys.maxsize):
                     for _ in for_(height):
-                        elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
-                        elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
+                        elemOut = of_out.acquire(1)
+                        elemIn = of_in.acquire(1)
                         call(passThroughLine, [elemIn, elemOut, width])
-                        of_in.release(ObjectFifoPort.Consume, 1)
-                        of_out.release(ObjectFifoPort.Produce, 1)
+                        of_in.release(1)
+                        of_out.release(1)
                         yield_([])
                     yield_([])
 

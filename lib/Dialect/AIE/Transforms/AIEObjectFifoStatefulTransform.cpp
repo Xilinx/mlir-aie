@@ -1350,7 +1350,7 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op = releaseOp.getObjectFifo();
-        auto port = releaseOp.getPort();
+        auto port = releaseOp.getPortValue();
         auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
         auto core = releaseOp->getParentOfType<CoreOp>();
 
@@ -1385,7 +1385,7 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         ObjectFifoCreateOp op = acquireOp.getObjectFifo();
         builder.setInsertionPointAfter(acquireOp);
-        auto port = acquireOp.getPort();
+        auto port = acquireOp.getPortValue();
         auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
         auto core = acquireOp->getParentOfType<CoreOp>();
 

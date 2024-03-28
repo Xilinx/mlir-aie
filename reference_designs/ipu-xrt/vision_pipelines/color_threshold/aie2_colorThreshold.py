@@ -106,8 +106,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = inOOB_L2L1_0.acquire(ObjectFifoPort.Consume, 1)
-                    elemOut = outOOB_L1L2_0.acquire(ObjectFifoPort.Produce, 1)
+                    elemIn = inOOB_L2L1_0.acquire(1)
+                    elemOut = outOOB_L1L2_0.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -133,8 +133,8 @@ def color_threshold():
                         ],
                     )
 
-                    inOOB_L2L1_0.release(ObjectFifoPort.Consume, 1)
-                    outOOB_L1L2_0.release(ObjectFifoPort.Produce, 1)
+                    inOOB_L2L1_0.release(1)
+                    outOOB_L1L2_0.release(1)
                     yield_([])
 
             # Compute tile 3
@@ -142,8 +142,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
-                    elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
+                    elemIn = inOOB_L2L1_1.acquire(1)
+                    elemOut = outOOB_L1L2_1.acquire(1)
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
                     thresholdValue = arith.trunci(
@@ -168,8 +168,8 @@ def color_threshold():
                         ],
                     )
 
-                    inOOB_L2L1_1.release(ObjectFifoPort.Consume, 1)
-                    outOOB_L1L2_1.release(ObjectFifoPort.Produce, 1)
+                    inOOB_L2L1_1.release(1)
+                    outOOB_L1L2_1.release(1)
                     yield_([])
 
             # Compute tile 4
@@ -177,8 +177,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = inOOB_L2L1_2.acquire(ObjectFifoPort.Consume, 1)
-                    elemOut = outOOB_L1L2_2.acquire(ObjectFifoPort.Produce, 1)
+                    elemIn = inOOB_L2L1_2.acquire(1)
+                    elemOut = outOOB_L1L2_2.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -204,8 +204,8 @@ def color_threshold():
                         ],
                     )
 
-                    inOOB_L2L1_2.release(ObjectFifoPort.Consume, 1)
-                    outOOB_L1L2_2.release(ObjectFifoPort.Produce, 1)
+                    inOOB_L2L1_2.release(1)
+                    outOOB_L1L2_2.release(1)
                     yield_([])
 
             # Compute tile 5
@@ -213,8 +213,8 @@ def color_threshold():
             def core_body():
                 # for _ in for_(4096):
                 for _ in for_(sys.maxsize):
-                    elemIn = inOOB_L2L1_3.acquire(ObjectFifoPort.Consume, 1)
-                    elemOut = outOOB_L1L2_3.acquire(ObjectFifoPort.Produce, 1)
+                    elemIn = inOOB_L2L1_3.acquire(1)
+                    elemOut = outOOB_L1L2_3.acquire(1)
 
                     # RTPs written from the instruction stream must be read right before the kernel
                     # after the ObjectFIFO acquires
@@ -240,8 +240,8 @@ def color_threshold():
                         ],
                     )
 
-                    inOOB_L2L1_3.release(ObjectFifoPort.Consume, 1)
-                    outOOB_L1L2_3.release(ObjectFifoPort.Produce, 1)
+                    inOOB_L2L1_3.release(1)
+                    outOOB_L1L2_3.release(1)
                     yield_([])
 
             # To/from AIE-array data movement

@@ -724,12 +724,12 @@ LogicalResult ObjectFifoAcquireOp::verify() {
 
   auto coreTile = parent.getTile();
   auto objFifo = getObjectFifo();
-  if (getPort() == ObjectFifoPort::Produce) {
+  if (getPortValue() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
           "producer port of objectFifo accessed by core running "
           "on non-producer tile");
-  } else if (getPort() == ObjectFifoPort::Consume) {
+  } else if (getPortValue() == ObjectFifoPort::Consume) {
     bool found = false;
     for (auto consumerTile : objFifo.getConsumerTiles()) {
       if (coreTile == consumerTile) {
@@ -766,6 +766,29 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   return {};
 }
 
+ObjectFifoPort ObjectFifoAcquireOp::getPortValue() {
+  if (getPort().has_value())
+    return getPort().value();
+  ObjectFifoPort port = ObjectFifoPort::Produce;
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto core = dyn_cast<CoreOp>(parent)) {
+      TileOp tile = core.getTileOp();
+      auto of = getObjectFifo();
+      if (tile.getResult() == of.getProducerTile())
+        port = ObjectFifoPort::Produce;
+      else {
+        for (auto consumer : of.getConsumerTiles()) {
+          if (tile.getResult() == consumer)
+            port = ObjectFifoPort::Consume;
+        }
+      }
+    }
+  }
+  setPort(port);
+  return port;
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifoReleaseOp
 //===----------------------------------------------------------------------===//
@@ -780,12 +803,12 @@ LogicalResult ObjectFifoReleaseOp::verify() {
 
   auto coreTile = parent.getTile();
   auto objFifo = getObjectFifo();
-  if (getPort() == ObjectFifoPort::Produce) {
+  if (getPortValue() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
           "producer port of objectFifo accessed by core running "
           "on non-producer tile");
-  } else if (getPort() == ObjectFifoPort::Consume) {
+  } else if (getPortValue() == ObjectFifoPort::Consume) {
     bool found = false;
     for (auto consumerTile : objFifo.getConsumerTiles()) {
       if (coreTile == consumerTile) {
@@ -812,6 +835,29 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
     }
   }
   return {};
+}
+
+ObjectFifoPort ObjectFifoReleaseOp::getPortValue() {
+  if (getPort().has_value())
+    return getPort().value();
+  ObjectFifoPort port = ObjectFifoPort::Produce;
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto core = dyn_cast<CoreOp>(parent)) {
+      TileOp tile = core.getTileOp();
+      auto of = getObjectFifo();
+      if (tile.getResult() == of.getProducerTile())
+        port = ObjectFifoPort::Produce;
+      else {
+        for (auto consumer : of.getConsumerTiles()) {
+          if (tile.getResult() == consumer)
+            port = ObjectFifoPort::Consume;
+        }
+      }
+    }
+  }
+  setPort(port);
+  return port;
 }
 
 //===----------------------------------------------------------------------===//

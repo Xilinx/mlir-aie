@@ -10,7 +10,6 @@ from aie.dialects.aie import (
     Core,
     Device,
     MemOp,
-    ObjectFifoPort,
     ObjectFifoSubviewType,
     buffer,
     external_buffer,
@@ -149,7 +148,7 @@ def objFifoLink():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](1) : !aie.objectfifosubview<memref<12xf16>>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -161,7 +160,7 @@ def objFifoAcquire():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = of0.acquire(port=ObjectFifoPort.Consume, num_elem=1)
+            acq = of0.acquire(num_elem=1)
             end()
 
 
@@ -169,7 +168,7 @@ def objFifoAcquire():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](1) : !aie.objectfifosubview<memref<12xf16>>
 # CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
@@ -184,7 +183,6 @@ def objFifoSubviewAccess():
         with InsertionPoint(bb):
             acq = objectfifo_acquire(
                 ObjectFifoSubviewType.get(T.memref(12, T.f16())),
-                ObjectFifoPort.Consume,
                 "of0",
                 1,
             )
@@ -198,7 +196,7 @@ def objFifoSubviewAccess():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo.release @[[VAL_2]](Produce, 1)
+# CHECK: aie.objectfifo.release @[[VAL_2]](1)
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)
@@ -210,7 +208,7 @@ def objFifoRelease():
         C = Core(tile0)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = of0.release(ObjectFifoPort.Produce, 1)
+            acq = of0.release(1)
             end()
 
 
