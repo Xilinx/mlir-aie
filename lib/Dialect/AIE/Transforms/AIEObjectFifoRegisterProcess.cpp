@@ -65,8 +65,8 @@ struct AIEObjectFifoRegisterProcessPass
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
           builder.getUnknownLoc(), acqType,
-          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), 
-          acqNumber, regOp.getPortAttr());
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber,
+          regOp.getPortAttr());
 
       // subview accesses
       for (int i = 0; i < acqNumber.getInt(); i++)
