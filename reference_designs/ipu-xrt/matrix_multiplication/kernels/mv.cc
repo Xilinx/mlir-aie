@@ -25,7 +25,7 @@
 #include "zero.cc"
 
 template <typename T_in, typename T_out, int M, int K>
-void matvecScalar(T_in *a, T_in *b, T_out *c) {
+void matvec_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
   for (int row = 0; row < M; row++) {
     T_out runningSum = 0;
@@ -39,7 +39,7 @@ void matvecScalar(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, typename T_acc, unsigned m, unsigned k,
           unsigned r, unsigned s>
-void matvecVectorized(T_in *__restrict a, T_in *__restrict b,
+void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
                       T_out *__restrict c) {
   static_assert(m % r == 0 && k % 2 == 0);
   static_assert(s == 8); // s is fixed to 8 because that is the number of
@@ -141,27 +141,27 @@ extern "C" {
                              ctype_acc)                                        \
   void matvec_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvecScalar<ctype_in, ctype_out, 32, 32>(a_in, b_in, c_out);              \
+    matvec_scalar<ctype_in, ctype_out, 32, 32>(a_in, b_in, c_out);              \
   }
 
 #define matvec_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, ctype_acc)                     \
   void matvec_vectorized_##mlir_type_in##_##mlir_type_out(                     \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvecVectorized<ctype_in, ctype_out, ctype_acc, 32, 32, 16, 8>(           \
+    matvec_vectorized<ctype_in, ctype_out, ctype_acc, 32, 32, 16, 8>(           \
         a_in, b_in, c_out);                                                    \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, ctype_acc)                       \
   void zero_vectorized_##mlir_type_out(ctype_out *c_out) {                     \
-    zeroVectorized<ctype_out, 32, 1, 32>(c_out);                               \
+    zero_vectorized<ctype_out, 32, 1, 32>(c_out);                               \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            ctype_acc)                                          \
   void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zeroScalar<ctype_out, 32, 1>(c_out);                                       \
+    zero_scalar<ctype_out, 32, 1>(c_out);                                       \
   }
 
 combos(matvec_scalar_c_func) combos(matvec_vectorized_c_func)

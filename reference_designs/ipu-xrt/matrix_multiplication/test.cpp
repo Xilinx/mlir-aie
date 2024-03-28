@@ -24,41 +24,16 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "../matrix_multiplication.h"
+#include "common.h"
 
-constexpr int M = 256;
-constexpr int K = 256;
-constexpr int N = 256;
-
-constexpr int A_VOLUME = M * K;
-constexpr int B_VOLUME = N * K;
-constexpr int C_VOLUME = M * N;
-
+#ifndef DATATYPES_USING_DEFINED
+#define DATATYPES_USING_DEFINED
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = std::bfloat16_t;
-
-constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
-constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
-constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
-
-constexpr bool VERIFY = true;
-constexpr bool ENABLE_TRACING = false;
-constexpr int TRACE_SIZE = 16384;
-
-constexpr int OUT_SIZE = C_SIZE + (ENABLE_TRACING ? TRACE_SIZE : 0);
+#endif
 
 namespace po = boost::program_options;
-
-void write_out_trace(char *bufOut, std::string path) {
-  std::ofstream fout(path);
-  uint32_t *traceOut =
-      (uint32_t *)((char *)bufOut + sizeof(C_DATATYPE) * C_VOLUME);
-  for (int i = 0; i < TRACE_SIZE / sizeof(traceOut[0]); i++) {
-    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
-    fout << std::endl;
-  }
-}
 
 int main(int argc, const char *argv[]) {
 
@@ -66,19 +41,37 @@ int main(int argc, const char *argv[]) {
   po::options_description desc("Allowed options");
   po::variables_map vm;
   matmul_common::add_default_options(desc);
-  if (ENABLE_TRACING) {
-    desc.add_options()("trace,t",
-                       po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
-  }
 
   matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+  int do_verify = vm["verify"].as<bool>();
+  int n_iterations = vm["iters"].as<int>();
+  int n_warmup_iterations = vm["warmup"].as<int>();
+  int trace_size = vm["trace_sz"].as<int>();
 
   srand(time(NULL));
 
+  int M = vm["M"].as<int>();
+  int K = vm["K"].as<int>();
+  int N = vm["N"].as<int>();
+
+  if (verbosity >= 1) {
+    std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
+  }
+
+  int A_VOLUME = M * K;
+  int B_VOLUME = N * K;
+  int C_VOLUME = M * N;
+
+  size_t A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
+  size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
+  size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
+
+  size_t OUT_SIZE = C_SIZE + trace_size;
+
   std::vector<uint32_t> instr_v =
       matmul_common::load_instr_sequence(vm["instr"].as<std::string>());
+
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -133,8 +126,10 @@ int main(int argc, const char *argv[]) {
   auto bo_out =
       xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
-  if (verbosity >= 1)
+  if (verbosity >= 1) {
     std::cout << "Writing data into buffer objects.\n";
+  }
+
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
@@ -147,11 +142,15 @@ int main(int argc, const char *argv[]) {
     BVec[i] = matmul_common::random_bfloat16_t();
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
-
+  
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
+  //memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
+  memset(bufOut, 0, OUT_SIZE);
+  //if(trace_size > 0) {
+  //  memset(bufOut + C_SIZE, 0, trace_size);
+  //}
 
   // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
@@ -162,7 +161,7 @@ int main(int argc, const char *argv[]) {
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  unsigned num_iter = 10;
+  unsigned num_iter = n_iterations + n_warmup_iterations;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
@@ -175,25 +174,23 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1) {
       std::cout << "Running Kernel.\n";
     }
-
     auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
-
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    // Reinterpret first C_VOLUME items of bufOut as our output C_DATATYPE C
-    // matrix
-    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+    if (iter < n_warmup_iterations) {
+      /* Warmup iterations do not count towards average runtime. */
+      continue;
+    }
 
-    std::vector<C_DATATYPE> CVecRef(C_VOLUME);
-    if (VERIFY) {
+    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+    if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      matmul_common::matmul(M, N, K, AVec, BVec, CVecRef);
       errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
@@ -207,8 +204,8 @@ int main(int argc, const char *argv[]) {
         std::cout << "WARNING: matmul results not verified." << std::endl;
     }
 
-    if (ENABLE_TRACING) {
-      write_out_trace(bufOut, vm["trace"].as<std::string>());
+    if (trace_size > 0) {
+      matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size, vm["trace_file"].as<std::string>());
     }
 
     float npu_time =
@@ -221,10 +218,10 @@ int main(int argc, const char *argv[]) {
   }
 
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total / num_iter << "us."
+            << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us."
             << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / num_iter)
-            << std::endl;
+  std::cout << "Avg NPU gflops: "
+            << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
   std::cout << std::endl
             << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
@@ -234,12 +231,12 @@ int main(int argc, const char *argv[]) {
             << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
   std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
-  if (VERIFY && !errors) {
+  if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    std::cout << "\nerror count: " << errors << "\n\n";
-    std::cout << "\nfailed.\n\n";
+    std::cout << "\nError count: " << errors << "\n\n";
+    std::cout << "\nFailed.\n\n";
     return 1;
   }
 }
