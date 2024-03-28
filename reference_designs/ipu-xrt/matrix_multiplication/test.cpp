@@ -142,15 +142,15 @@ int main(int argc, const char *argv[]) {
     BVec[i] = matmul_common::random_bfloat16_t();
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
-  
+
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  //memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
+  // memcpy(bufOut, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
   memset(bufOut, 0, OUT_SIZE);
-  //if(trace_size > 0) {
-  //  memset(bufOut + C_SIZE, 0, trace_size);
-  //}
+  // if(trace_size > 0) {
+  //   memset(bufOut + C_SIZE, 0, trace_size);
+  // }
 
   // Instruction buffer for DMA configuration
   void *bufInstr = bo_instr.map<void *>();
@@ -205,7 +205,8 @@ int main(int argc, const char *argv[]) {
     }
 
     if (trace_size > 0) {
-      matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size, vm["trace_file"].as<std::string>());
+      matmul_common::write_out_trace(((char *)bufOut) + C_SIZE, trace_size,
+                                     vm["trace_file"].as<std::string>());
     }
 
     float npu_time =

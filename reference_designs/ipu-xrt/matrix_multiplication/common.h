@@ -54,10 +54,10 @@ void add_default_options(po::options_description &desc) {
       "K,K", po::value<int>()->default_value(512), "Matrix size K")(
       "N,N", po::value<int>()->default_value(512),
       "Matrix size N")("iters", po::value<int>()->default_value(10))(
-      "warmup", po::value<int>()->default_value(1))
-      ("trace_sz,t", po::value<int>()->default_value(0))
-      ("trace_file", po::value<std::string>()->default_value("trace.txt"),
-                       "where to store trace output");
+      "warmup", po::value<int>()->default_value(1))(
+      "trace_sz,t", po::value<int>()->default_value(0))(
+      "trace_file", po::value<std::string>()->default_value("trace.txt"),
+      "where to store trace output");
 }
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
@@ -306,7 +306,6 @@ void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
     fout << std::endl;
   }
 }
-
 
 } // namespace matmul_common
 
