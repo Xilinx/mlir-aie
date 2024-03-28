@@ -8,12 +8,13 @@ from pathlib import Path
 import random
 import sys
 
+from aie.compiler.aiecc.main import emit_design_kernel_json
 from aie.compiler.util import (
     compile_without_vectorization,
     make_xclbin,
 )
-from aie.dialects import aie, aiex
-from aie.dialects.aie import AIEDevice, DMAChannelDir
+from aie.dialects import aie, aiex, scf
+from aie.dialects.aie import AIEDevice, DMAChannelDir, LockAction, WireBundle
 
 # this is to get the MemRefValue caster inside of aie-python-extras
 # noinspection PyUnresolvedReferences
@@ -27,13 +28,20 @@ from filelock import FileLock
 import numpy as np
 import pytest
 
+range_ = scf.for_
+yield_ = scf.yield_
+
 # needed since the fix isn't defined here nor conftest.py
 pytest.mark.usefixtures("ctx")
 
 pytest.mark.usefixtures("run_around_tests")
 
+DMA = WireBundle.DMA
 S2MM = DMAChannelDir.S2MM
 MM2S = DMAChannelDir.MM2S
+Acquire = LockAction.Acquire
+AcquireGreaterEqual = LockAction.AcquireGreaterEqual
+Release = LockAction.Release
 
 
 def test_one_global(ctx: MLIRContext, workdir: Path):
@@ -456,3 +464,298 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
                 print(f"{iv3=}")
                 print(f"c={wrap_C}")
                 assert False
+
+
+def test_single_prod_mult_cons_with_sync_bd(ctx: MLIRContext, workdir: Path):
+    K = 32
+    iters = 20
+    ipu_insts = aiex.ipu.get_prolog()
+
+    col_shim_channel_index = {}
+
+    N_CONSUMERS = 3
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
+
+        tile_1_0 = aie.tile(1, 0)
+        tile_2_0 = aie.tile(2, 0)
+
+        buffer_weight = aie.buffer(tile_0_2, (K,), T.i32())
+        lock_read_weight = aie.lock(tile_0_2, init=1)
+        lock_send_weight = aie.lock(tile_0_2, init=0)
+
+        core_to_mem_fl = aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
+
+        @aie.core(tile_0_2)
+        def core():
+            for i in range_(iters):
+                with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                    linalg.fill(i + 1, buffer_weight)
+                yield_([])
+
+        @aie.mem(tile_0_2)
+        def mem_0_2():
+            @aie.dma(MM2S, core_to_mem_fl.source_channel, repeat_count=iters - 1)
+            def dma3():
+                aie.use_lock(lock_send_weight, AcquireGreaterEqual)
+                aie.dma_bd(buffer_weight)
+                aie.use_lock(lock_read_weight, Release)
+
+            aie.end()
+
+        # try to use different channels as much as possible to prevent false positives
+        mem_to_shim_tile_0_0_fl = aie.flow(tile_0_1, DMA, 1, tile_0_0, DMA, 0)
+        col_shim_channel_index[0] = int(mem_to_shim_tile_0_0_fl.dest_channel)
+
+        mem_to_shim_tile_1_0_fl = aie.flow(tile_0_1, DMA, 2, tile_1_0, DMA, 1)
+        col_shim_channel_index[1] = int(mem_to_shim_tile_1_0_fl.dest_channel)
+
+        mem_to_shim_tile_2_0_fl = aie.flow(tile_0_1, DMA, 3, tile_2_0, DMA, 0)
+        col_shim_channel_index[2] = int(mem_to_shim_tile_2_0_fl.dest_channel)
+
+        consumer_flows = [
+            mem_to_shim_tile_0_0_fl,
+            mem_to_shim_tile_1_0_fl,
+            mem_to_shim_tile_2_0_fl,
+        ]
+
+        @aie.memtile_dma(tile_0_1)
+        def memtile_dma_0_1():
+            buffer_0_1_c = aie.buffer(tile_0_1, (K,), T.i32())
+
+            lock_0_1_read_in_c = aie.lock(tile_0_1, init=N_CONSUMERS)
+            lock_0_1_write_out_c = aie.lock(tile_0_1, init=0)
+
+            @aie.dma(S2MM, core_to_mem_fl.dest_channel, repeat_count=iters - 1)
+            def dma5():
+                aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual, value=N_CONSUMERS)
+                aie.dma_bd(buffer_0_1_c)
+                aie.use_lock(lock_0_1_write_out_c, Release, value=2 * N_CONSUMERS)
+
+            for fl in consumer_flows:
+
+                @aie.dma(MM2S, fl.source_channel, repeat_count=iters - 1, num_bds=2)
+                def dma6():
+                    aie.use_lock(lock_0_1_write_out_c, AcquireGreaterEqual, value=2)
+                    aie.dma_bd(buffer_0_1_c)
+                    # don't release any lock (no-op)
+                    aie.use_lock(lock_0_1_read_in_c, Release, value=0)
+
+                @aie.another_bd(dma6)
+                def sync_bd():
+                    # acquire after all consumers have started (ie when the sema is down to 0 after all have decremented)
+                    aie.use_lock(lock_0_1_write_out_c, Acquire, value=0)
+                    aie.dma_bd(buffer_0_1_c, len=0)
+                    aie.use_lock(lock_0_1_read_in_c, Release, value=1)
+
+            aie.end()
+
+    assert ctx.module.operation.verify()
+
+    compile_without_vectorization(ctx.module, workdir)
+
+    buffer_args = {f"receive_a_col_{i}": (iters * K,) for i in range(N_CONSUMERS)}
+    kernel_json = emit_design_kernel_json(buffer_args=list(buffer_args.keys()))
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers(list(buffer_args.values()), np.int32)
+        for col, shim_channel_idx in col_shim_channel_index.items():
+            bd_id = 0
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    aiex.ipu.writebd_shimtile(
+                        col,
+                        bd_id=bd_id,
+                        length=K,
+                        iteration_size=iters - 1,
+                        iteration_stride=K,
+                    ),
+                    tensor_addr=xclbin._get_buffer_host_address(buffer_idx=col),
+                )
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
+                    channel_dir=S2MM,
+                    channel_index=shim_channel_idx,
+                    column=col,
+                    bd_id=bd_id,
+                    repeats=iters - 1,
+                )
+            )
+
+        for col, shim_channel_idx in col_shim_channel_index.items():
+            ipu_insts.extend(aiex.ipu.sync(channel=shim_channel_idx, column=col))
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wrapped = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        correct = np.arange(1, iters + 1).repeat(K).reshape(iters, K).flatten()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wrapped:
+                if not np.array_equal(w, correct):
+                    print(w)
+                    assert False
+
+
+@pytest.mark.xfail(reason="should hang")
+def test_single_prod_mult_cons_with_wrong_sync_bd_deadlocks(
+    ctx: MLIRContext, workdir: Path
+):
+    K = 48
+    iters = 20
+    ipu_insts = aiex.ipu.get_prolog()
+
+    col_shim_channel_index = {}
+
+    N_CONSUMERS = 3
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
+
+        tile_1_0 = aie.tile(1, 0)
+        tile_2_0 = aie.tile(2, 0)
+
+        buffer_weight = aie.buffer(tile_0_2, (K,), T.i32())
+        lock_read_weight = aie.lock(tile_0_2, init=1)
+        lock_send_weight = aie.lock(tile_0_2, init=0)
+
+        core_to_mem_fl = aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
+
+        @aie.core(tile_0_2)
+        def core():
+            for i in range_(iters):
+                with aiex.hold_lock(lock_read_weight, lock_send_weight):
+                    linalg.fill(i + 1, buffer_weight)
+                yield_([])
+
+        @aie.mem(tile_0_2)
+        def mem_0_2():
+            @aie.dma(MM2S, core_to_mem_fl.source_channel, repeat_count=iters - 1)
+            def dma3():
+                aie.use_lock(lock_send_weight, AcquireGreaterEqual)
+                aie.dma_bd(buffer_weight)
+                aie.use_lock(lock_read_weight, Release)
+
+            aie.end()
+
+        # try to use different channels as much as possible to prevent false positives
+        mem_to_shim_tile_0_0_fl = aie.flow(tile_0_1, DMA, 1, tile_0_0, DMA, 0)
+        col_shim_channel_index[0] = int(mem_to_shim_tile_0_0_fl.dest_channel)
+
+        mem_to_shim_tile_1_0_fl = aie.flow(tile_0_1, DMA, 2, tile_1_0, DMA, 1)
+        col_shim_channel_index[1] = int(mem_to_shim_tile_1_0_fl.dest_channel)
+
+        mem_to_shim_tile_2_0_fl = aie.flow(tile_0_1, DMA, 3, tile_2_0, DMA, 0)
+        col_shim_channel_index[2] = int(mem_to_shim_tile_2_0_fl.dest_channel)
+
+        consumer_flows = [
+            mem_to_shim_tile_0_0_fl,
+            mem_to_shim_tile_1_0_fl,
+            mem_to_shim_tile_2_0_fl,
+        ]
+
+        @aie.memtile_dma(tile_0_1)
+        def memtile_dma_0_1():
+            buffer_0_1_c = aie.buffer(tile_0_1, (K,), T.i32())
+
+            lock_0_1_read_in_c = aie.lock(tile_0_1, init=N_CONSUMERS)
+            lock_0_1_write_out_c = aie.lock(tile_0_1, init=0)
+
+            @aie.dma(S2MM, core_to_mem_fl.dest_channel, repeat_count=iters - 1)
+            def dma5():
+                aie.use_lock(lock_0_1_read_in_c, AcquireGreaterEqual, value=N_CONSUMERS)
+                aie.dma_bd(buffer_0_1_c)
+                aie.use_lock(lock_0_1_write_out_c, Release, value=2 * N_CONSUMERS)
+
+            for fl in consumer_flows:
+
+                @aie.dma(MM2S, fl.source_channel, repeat_count=iters - 1, num_bds=2)
+                def dma6():
+                    aie.use_lock(lock_0_1_write_out_c, AcquireGreaterEqual, value=2)
+                    aie.dma_bd(buffer_0_1_c)
+                    # don't release lock_0_1_write_out_c
+                    aie.use_lock(lock_0_1_read_in_c, Release, value=0)
+
+                @aie.another_bd(dma6)
+                def sync_bd():
+                    # don't need to acquire lock_0_1_write_out_c since it wasn't released
+                    aie.use_lock(lock_0_1_write_out_c, acq_en=False)
+                    aie.dma_bd(buffer_0_1_c, len=0)
+                    aie.use_lock(lock_0_1_read_in_c, Release, value=1)
+
+            aie.end()
+
+    assert ctx.module.operation.verify()
+
+    compile_without_vectorization(ctx.module, workdir)
+
+    buffer_args = {f"receive_a_col_{i}": (iters * K,) for i in range(N_CONSUMERS)}
+    kernel_json = emit_design_kernel_json(buffer_args=list(buffer_args.keys()))
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers(list(buffer_args.values()), np.int32)
+        for col, shim_channel_idx in col_shim_channel_index.items():
+            bd_id = 0
+            if col == 2:
+                for _ in range(10):
+                    ipu_insts.extend(
+                        aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                            aiex.ipu.writebd_shimtile(
+                                col,
+                                bd_id=bd_id,
+                                length=K,
+                                iteration_size=iters - 1,
+                                iteration_stride=K,
+                            ),
+                            tensor_addr=xclbin._get_buffer_host_address(buffer_idx=col),
+                        )
+                    )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
+                    channel_dir=S2MM,
+                    channel_index=shim_channel_idx,
+                    column=col,
+                    bd_id=bd_id,
+                    repeats=iters - 1,
+                )
+            )
+
+        for col, shim_channel_idx in col_shim_channel_index.items():
+            ipu_insts.extend(aiex.ipu.sync(channel=shim_channel_idx, column=col))
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wrapped = list(map(np.asarray, views))
+
+        xclbin.sync_buffers_to_device()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        xclbin.sync_buffers_from_device()
+
+        correct = np.arange(1, iters + 1).repeat(K).reshape(iters, K).flatten()
+
+        with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
+            for w in wrapped:
+                if not np.array_equal(w, correct):
+                    print(w)
+                    assert False

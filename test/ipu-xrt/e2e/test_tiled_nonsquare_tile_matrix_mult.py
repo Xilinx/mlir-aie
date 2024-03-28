@@ -229,7 +229,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
                 aie.dma_bd(buffer_0_1_a)
                 aie.use_lock(lock_0_1_write_out_a, Release)
 
-            @aie.dma(MM2S, 0, num_blocks=2)
+            @aie.dma(MM2S, 0, num_bds=2)
             def dma2():
                 aie.use_lock(lock_0_1_write_out_a, AcquireGreaterEqual)
                 aie.dma_bd(buffer_0_1_a)
@@ -521,7 +521,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
             def dma1():
                 aiex.process_bd(lock_0_1_read_in_a, buffer_0_1_a, lock_0_1_write_out_a)
 
-            @aie.dma(MM2S, 0, num_blocks=2)
+            @aie.dma(MM2S, 0, num_bds=2)
             def dma2():
                 aiex.process_bd(
                     lock_0_1_write_out_a, buffer_0_1_a, lock_0_1_write_out_a

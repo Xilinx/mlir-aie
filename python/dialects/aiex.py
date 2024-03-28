@@ -462,7 +462,7 @@ def send_bd(
     dims=None,
     iter=None,
     repeat_count=None,
-    num_blocks=1,
+    num_bds=1,
     loop=None,
 ):
     if rel_lock is None:
@@ -472,7 +472,7 @@ def send_bd(
         DMAChannelDir.MM2S,
         channel,
         repeat_count=repeat_count,
-        num_blocks=num_blocks,
+        num_bds=num_bds,
         loop=loop,
     )
     def d():
@@ -510,7 +510,7 @@ def receive_bd(
     dims=None,
     iter=None,
     repeat_count=None,
-    num_blocks=1,
+    num_bds=1,
     loop=None,
 ):
     if rel_lock is None:
@@ -520,7 +520,7 @@ def receive_bd(
         DMAChannelDir.S2MM,
         channel,
         repeat_count=repeat_count,
-        num_blocks=num_blocks,
+        num_bds=num_bds,
         loop=loop,
     )
     def d():

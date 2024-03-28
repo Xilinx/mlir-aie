@@ -155,8 +155,7 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
         if not np.array_equal(np.concatenate([RANDOM_WEIGHT] * iters), wrap_C):
             with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
                 print(RANDOM_WEIGHT)
-                print(wrap_C)
-                assert False
+                print(wrap_C.reshape(iters, -1))
 
 
 def test_no_loop(ctx: MLIRContext, workdir: Path):

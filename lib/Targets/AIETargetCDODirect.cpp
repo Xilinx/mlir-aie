@@ -764,7 +764,8 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
                                  DeviceOp &targetOp, bool aieSim,
                                  bool enableCores) {
   return generateCDOBinary(
-      (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
+      (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_unified.bin")
+          .str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (failed(ctl.addErrorHandlingToCDO()))
           return failure();

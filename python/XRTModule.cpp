@@ -185,8 +185,11 @@ PYBIND11_MODULE(_xrt, m) {
                                      py::repr(npFormat).cast<std::string>());
           },
           "shapes"_a, "np_format"_a)
-      .def("_get_buffer_host_address", [](PyXCLBin &self, size_t idx) {
-        return self.getBufferHostAddress(idx);
-      });
+      .def(
+          "_get_buffer_host_address",
+          [](PyXCLBin &self, size_t buffer_idx) {
+            return self.getBufferHostAddress(buffer_idx);
+          },
+          "buffer_idx"_a);
   ;
 }

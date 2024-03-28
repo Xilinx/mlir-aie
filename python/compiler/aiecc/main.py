@@ -243,9 +243,29 @@ def generate_cores_list(mlir_module_str):
         ]
 
 
-def emit_design_bif(root_path, has_cores=True, enable_cores=True):
-    elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
-    enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+def emit_design_bif(root_path, has_cores=True, enable_cores=True, emit_unified=False):
+    if emit_unified:
+        cdos = dedent(
+            f"""\
+            {{ type=cdo
+               file={root_path}/aie_cdo_unified.bin
+            }}
+        """
+        )
+    else:
+        elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
+        enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+        cdos = dedent(
+            f"""\
+            {{ type=cdo
+               file={root_path}/aie_cdo_error_handling.bin
+               {elf_file}
+               file={root_path}/aie_cdo_init.bin
+               {enable_file}
+            }}
+        """
+        )
+
     return dedent(
         f"""\
         all:
@@ -255,12 +275,7 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           image
           {{
             name=aie_image, id=0x1c000000
-            {{ type=cdo
-               file={root_path}/aie_cdo_error_handling.bin
-               {elf_file}
-               file={root_path}/aie_cdo_init.bin
-               {enable_file}
-            }}
+            {cdos}
           }}
         }}
         """

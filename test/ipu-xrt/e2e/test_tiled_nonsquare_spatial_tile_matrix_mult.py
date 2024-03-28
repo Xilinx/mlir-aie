@@ -1392,7 +1392,7 @@ def test_tiled_nonsquare_tile_spatial_4x4_broadcast_use_all_6_memtile_dmas(
                         offset=0,
                         len=K,
                         repeat_count=iters - 1,
-                        num_blocks=2,
+                        num_bds=2,
                     )
 
                     @aie.another_bd(dma)

@@ -326,7 +326,7 @@ def dma(
     channel_dir,
     channel_index,
     *,
-    num_blocks=1,
+    num_bds=1,
     loop=None,
     repeat_count=None,
     sym_name=None,
@@ -343,7 +343,7 @@ def dma(
         valid=T.bool(),
         channel_dir=channel_dir,
         channel_index=channel_index,
-        num_bds=num_blocks,
+        num_bds=num_bds,
         loop=loop,
         repeat_count=repeat_count,
         sym_name=sym_name,
@@ -491,6 +491,25 @@ def lock(
     if annot is not None:
         l.owner.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
     return l
+
+
+_use_lock = use_lock
+
+
+def use_lock(
+    lock, action=None, *, value=None, blocking=None, acq_en=None, loc=None, ip=None
+):
+    if action is None:
+        action = LockAction.AcquireGreaterEqual
+    return _use_lock(
+        lock=lock,
+        action=action,
+        value=value,
+        blocking=blocking,
+        acq_en=acq_en,
+        loc=loc,
+        ip=ip,
+    )
 
 
 @_cext.register_operation(_Dialect, replace=True)

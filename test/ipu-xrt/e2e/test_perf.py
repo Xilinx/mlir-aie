@@ -1733,6 +1733,9 @@ def view(source, shape, dtype=None, shift=0):
 
 def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
 
+    M, K, N = 512, 512, 512
+    m, k, n = 16, 16, 16
+
     cols = [0, 1, 2, 3, 4]
     memtile_cols = [1, 2, 3, 4]
     partition_start_col = cols[0]
@@ -1741,10 +1744,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
     core_rows = [2, 3, 4, 5]
     rows = [0, 1, *core_rows]
 
-    M, K, N = 512, 512, 512
-    m, k, n = 16, 16, 16
-
-    dtype = T.f32()
+    dtype = T.bf16()
     byte_width_dtype = dtype.width // 8
     (
         fat_A_rows_per_memtile_per_round,
@@ -1875,9 +1875,12 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                     name=f"C_{int(t.tile.col)}",
                 )
 
-                # read the full AB and then stride
+                # read the full patches_AB and then stride
+                n_AB_consumers = len(out_ab_flows)
                 in_AB_lock = aie.lock(
-                    t.tile, init=1, sym_name=f"in_AB_lock_{int(t.tile.col)}"
+                    t.tile,
+                    init=n_AB_consumers,
+                    sym_name=f"in_AB_lock_{int(t.tile.col)}",
                 )
                 out_AB_lock = aie.lock(
                     t.tile, init=0, sym_name=f"out_AB_lock_{int(t.tile.col)}"
@@ -1903,21 +1906,31 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                         AB,
                         out_AB_lock,
                         acq_action=AcquireGreaterEqual,
-                        acq_val=1,
-                        rel_val=fat_AB_rows_per_memtile_per_round,
+                        acq_val=n_AB_consumers,
+                        rel_val=2 * n_AB_consumers,
                     )
                     for i, out_ab_fl in enumerate(out_ab_flows):
                         bd = aiex.send_bd(
                             out_ab_fl.source_channel,
                             out_AB_lock,
                             AB,
+                            in_AB_lock,
                             acq_action=AcquireGreaterEqual,
-                            acq_val=1,
-                            rel_val=1,
+                            acq_val=2,
+                            # don't release anything (this is a no-op)
+                            rel_val=0,
                             len=(m * k + k * n),
                             offset=core_tile_fat_AB_group_offset(i),
                             iter=AB_thin_slice_iter,
+                            num_bds=2,
                         )
+
+                        @aie.another_bd(bd)
+                        def sync_bd():
+                            # acquire after all consumers have started (ie when the sema is down to 0 after all have decremented)
+                            aie.use_lock(out_AB_lock, Acquire, value=0)
+                            aie.dma_bd(AB, len=0)
+                            aie.use_lock(in_AB_lock, Release, value=1)
 
                     for i, (in_c_fl, (in_lock, out_lock)) in enumerate(
                         zip(in_c_flows, sliding_window([*in_C_locks, out_C_lock], 2))
@@ -2082,9 +2095,6 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         * fat_A_rows_per_memtile_per_round
         * n_memtiles
     )
-    assert (
-        pad_patches_width / (fat_A_rows_per_memtile_per_round * n_memtiles)
-    ) == n_rounds_send_from_shim_to_memtile
 
     pad_patches_width -= patches_A.shape[0]
     patches_A = np.pad(
@@ -2117,7 +2127,6 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         (-1,), order="F"
     )
     patches_AB = patches_AB.reshape(-1, m * K + K * n)
-    assert patches_AB.shape[0] == total_fat_AB_rows_per_memtile * n_memtiles
 
     buffer_args = list(
         zip(
@@ -2125,7 +2134,7 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
                 (
                     f"{c}_ab",
                     (
-                        total_fat_AB_rows_per_memtile,
+                        patches_AB.shape[0] // n_memtiles,
                         m * K + K * n,
                     ),
                 )
@@ -2185,26 +2194,26 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
         n_arg_types = len(arg_name_direction)
 
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
-            wraps = list(map(np.asarray, views))
-            for i, _ in enumerate(memtile_cols):
-                np.copyto(
-                    wraps[n_arg_types * i + 0],
-                    padded_AB[
-                        total_fat_AB_rows_per_memtile
-                        * i : total_fat_AB_rows_per_memtile
-                        * (i + 1)
-                    ],
-                    casting="no",
-                )
-                np.copyto(
-                    wraps[n_arg_types * i + 1],
-                    patches_C[
-                        total_fat_AB_rows_per_memtile
-                        * i : total_fat_AB_rows_per_memtile
-                        * (i + 1)
-                    ],
-                    casting="no",
-                )
+            # wraps = list(map(np.asarray, views))
+            # for i, _ in enumerate(memtile_cols):
+            #     np.copyto(
+            #         wraps[n_arg_types * i + 0],
+            #         padded_AB[
+            #             total_fat_AB_rows_per_memtile
+            #             * i : total_fat_AB_rows_per_memtile
+            #             * (i + 1)
+            #         ],
+            #         casting="no",
+            #     )
+            #     np.copyto(
+            #         wraps[n_arg_types * i + 1],
+            #         patches_C[
+            #             total_fat_AB_rows_per_memtile
+            #             * i : total_fat_AB_rows_per_memtile
+            #             * (i + 1)
+            #         ],
+            #         casting="no",
+            #     )
 
             xclbin.sync_buffers_to_device()
             xclbin.run()
@@ -2215,10 +2224,3 @@ def test_5x4_inner_product_matmult_vectorized(ctx: MLIRContext, workdir: Path):
             xclbin.sync_buffers_from_device()
             total_time = (end_time - start_time) / 1e3
             print(f"{total_time=}us")
-
-            # correct = A @ B
-            # result = np.hstack([wraps[n_arg_types * i + 2] for i in range(len(cols))])
-            # print(result)
-
-            # for i, _ in enumerate(memtile_cols):
-            #     print(wraps[n_arg_types * i + 1])

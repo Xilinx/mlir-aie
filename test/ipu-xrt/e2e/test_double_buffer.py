@@ -239,7 +239,7 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
             @aie.dma(
                 S2MM,
                 player_a_channel,
-                num_blocks=3,
+                num_bds=3,
                 sym_name="player_a",
                 repeat_count=iters - 1,
             )
@@ -277,7 +277,7 @@ def test_double_pump_single_core_buffer(ctx: MLIRContext, workdir: Path):
             @aie.dma(
                 S2MM,
                 player_b_channel,
-                num_blocks=3,
+                num_bds=3,
                 sym_name="player_b",
                 repeat_count=iters - 1,
             )

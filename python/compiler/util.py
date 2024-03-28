@@ -240,9 +240,18 @@ def make_core_elf(core_bcf, workdir, *, object_filename="input", debug=False, jo
     _run_command(cmd, workdir, debug=debug)
 
 
-def make_design_pdi(workdir, *, enable_cores=True, debug=False):
+def make_design_pdi(
+    workdir, *, has_cores=True, enable_cores=True, emit_unified=False, debug=False
+):
     with open(workdir / "design.bif", "w") as f:
-        f.write(emit_design_bif(workdir, enable_cores=enable_cores))
+        f.write(
+            emit_design_bif(
+                workdir,
+                has_cores=has_cores,
+                enable_cores=enable_cores,
+                emit_unified=emit_unified,
+            )
+        )
 
     cmd = [
         "bootgen",
@@ -308,6 +317,7 @@ def compile_with_vectorization(
     enable_cores=True,
     jobs=1,
     template_core=None,
+    emit_unified=False,
 ):
     with open(workdir / "mod_aie.mlir", "w") as f:
         f.write(str(mod_aie))
@@ -401,9 +411,10 @@ def compile_with_vectorization(
             cdo_debug=cdo_debug,
             xaie_debug=xaie_debug,
             enable_cores=enable_cores,
+            emit_unified=emit_unified,
         )
 
-    make_design_pdi(workdir, enable_cores=enable_cores)
+    make_design_pdi(workdir, enable_cores=enable_cores, emit_unified=emit_unified)
 
 
 def compile_without_vectorization(
@@ -417,6 +428,7 @@ def compile_without_vectorization(
     enable_cores=True,
     jobs=1,
     template_core=None,
+    emit_unified=False,
 ):
     with open(workdir / "aie_module.mlir", "w") as f:
         f.write(str(module))
@@ -469,6 +481,8 @@ def compile_without_vectorization(
         CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
         enable_ir_printing=debug,
     )
+    with open(workdir / "input_physical.mlir", "w") as f:
+        f.write(str(input_physical))
     with _global_debug(debug):
         generate_cdo(
             input_physical.operation,
@@ -477,9 +491,10 @@ def compile_without_vectorization(
             cdo_debug=cdo_debug,
             xaie_debug=xaie_debug,
             enable_cores=enable_cores,
+            emit_unified=emit_unified,
         )
 
-    make_design_pdi(workdir, enable_cores=enable_cores)
+    make_design_pdi(workdir, enable_cores=enable_cores, emit_unified=emit_unified)
 
 
 _CHESS_INTRINSIC_WRAPPER_LL = """
