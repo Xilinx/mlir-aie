@@ -1,12 +1,9 @@
 #include "../common/testbench.h"
+#include "defines.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-
-constexpr unsigned const IN0_SIZE = 1024;
-constexpr unsigned const IN1_SIZE = 1024;
-constexpr unsigned const OUT0_SIZE = 1024;
 
 #ifdef TO_CPP
 void dut(int8_t *restrict in0, int8_t *restrict in1, int8_t *restrict out0);
