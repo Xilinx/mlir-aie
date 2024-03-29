@@ -1,10 +1,25 @@
 #include "../common/testbench.h"
-#include "defines.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
+constexpr unsigned const IN0_SIZE = 1024;
+constexpr unsigned const IN1_SIZE = 1024;
+constexpr unsigned const OUT0_SIZE = 1024;
+
+#ifdef TO_CPP
 void dut(int8_t *restrict in0, int8_t *restrict in1, int32_t *restrict out0);
+#elif TO_LLVM
+extern "C" {
+void dut(int8_t *in0_allocated, int8_t *in0_aligned, int64_t in0_offset,
+         int64_t in0_sizes_0, int64_t in0_strides_0, int8_t *in1_allocated,
+         int8_t *in1_aligned, int64_t in1_offset, int64_t in1_sizes_0,
+         int64_t in1_strides_0, int32_t *out0_allocated, int32_t *out0_aligned,
+         int64_t out0_offset, int64_t out0_sizes_0, int64_t out0_strides_0);
+}
+#endif
+
 void dut_ref(int8_t *in0, int8_t *in1, int32_t *out0);
 
 alignas(32) int8_t g_in0[IN0_SIZE];
@@ -26,7 +41,12 @@ int main(int argc, char *argv[]) {
 
   chess_memory_fence();
   auto cyclesBegin = chess_cycle_count();
+#ifdef TO_CPP
   dut(g_in0, g_in1, g_out0);
+#elif TO_LLVM
+  dut(nullptr, g_in0, 0, 0, 0, nullptr, g_in1, 0, 0, 0, nullptr, g_out0, 0, 0,
+      0);
+#endif
   auto cyclesEnd = chess_cycle_count();
   chess_memory_fence();
 
