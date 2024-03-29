@@ -6,8 +6,8 @@
 // To-CPP flow
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o dut.cc
 // RUN: xchesscc_wrapper %xchesscc_aie2_args +w work_cpp +o work_cpp -I%S -I. -c dut.cc -o dut.o
-// RUN: xchesscc_wrapper %xchesscc_aie2_args -DTO_CPP +w work_cpp +o work_cpp -I%S -I. %S/testbench.cc work_cpp/dut.o
-// RUN: mkdir -p data
+// RUN: xchesscc_wrapper %xchesscc_aie2_args -DTO_CPP -DDATA_DIR=data_cpp +w work_cpp +o work_cpp -I%S -I. %S/testbench.cc work_cpp/dut.o
+// RUN: mkdir -p data_cpp
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work_cpp/a.out" >& xca_udm_dbg.cpp.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.cpp.stdout %s
 
@@ -15,7 +15,8 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" %vector-to-llvmir% -o llvmir.vector.mlir
 // RUN: aie-translate llvmir.vector.mlir %llvmir-to-ll% -o dut.vector.ll
 // RUN: %clang %clang_aie2_args -c dut.vector.ll -o dut.vector.o
-// RUN: xchesscc_wrapper %xchesscc_aie2_args -DTO_LLVM +w work_llvm +o work_llvm -I%S -I. %S/testbench.cc dut.vector.o
+// RUN: xchesscc_wrapper %xchesscc_aie2_args -DTO_LLVM -DDATA_DIR=data_llvm +w work_llvm +o work_llvm -I%S -I. %S/testbench.cc dut.vector.o
+// RUN: mkdir -p data_llvm
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work_llvm/a.out" >& xca_udm_dbg.llvm.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.llvm.stdout %s
 
