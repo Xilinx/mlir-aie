@@ -12,7 +12,6 @@
 // RUN: FileCheck --input-file=./xca_udm_dbg.cpp.stdout %s
 
 // To-Vector-LLVM flow
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" %vector-to-aievec% -o aievec.vector.mlir
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" %vector-to-llvmir% -o llvmir.vector.mlir
 // RUN: aie-translate llvmir.vector.mlir %llvmir-to-ll% -o dut.vector.ll
 // RUN: %clang %clang_aie2_args -c dut.vector.ll -o dut.vector.o
