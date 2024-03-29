@@ -70,6 +70,13 @@ def MulConfAcc32IntrOp :
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$conf)>;
 
+def MulConfBF16IntrOp :
+    AIEVec2_IntrOp<"bf.mul16.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$conf)>;
+
 def I512V32Acc32SrsIntrOp :
     AIEVec2_IntrOp<"I512.v32.acc32.srs",
         [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
@@ -84,6 +91,11 @@ def I256V32Acc32SrsIntrOp :
                    I32:$shft,
                    I32:$sign)>;
 
+def Vector16AccFloatToV16BF16IntrOp :
+    AIEVec2_IntrOp<"v16accfloat.to.v16bf16",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$lhs)>;
+
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
@@ -93,6 +105,11 @@ def VectorBroadcast32I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast32.I512",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins I32:$value)>;
+
+def VectorBroadcast16BF512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast16.bf512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins BF16:$value)>;
 
 def ExtI256I512IntrOp :
     AIEVec2_IntrOp<"ext.I256.I512",
