@@ -77,6 +77,13 @@ def I512V32Acc32SrsIntrOp :
                    I32:$shft,
                    I32:$sign)>;
 
+def I256V32Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v32.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I8]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$lhs,
+                   I32:$shft,
+                   I32:$sign)>;
+
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,

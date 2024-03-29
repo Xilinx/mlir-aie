@@ -422,7 +422,8 @@ public:
         decodedMulElemOp.kind == DecodedMulElemOp::Kind::I8_I8_I32_32x1x2x1) {
       // create constant for config
       auto confCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(decodedMulElemOp.conf));
+          loc, rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(decodedMulElemOp.conf));
 
       // create xllvm intrinsic
       SmallVector<Value> operands(
@@ -472,8 +473,12 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    // TODO: datatype and vector lane checks
-    // TODO: support of various datatypes and vector lanes
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
 
     // create constant for sign
     auto signCst = rewriter.create<LLVM::ConstantOp>(
@@ -482,12 +487,25 @@ public:
     // create xllvm intrinsic
     SmallVector<Value> operands(
         {adaptor.getSource(), adaptor.getShift(), signCst});
-    rewriter.replaceOpWithNewOp<xllvm::I512V32Acc32SrsIntrOp>(
-        op, VectorType::get({32}, rewriter.getI16Type()),
-        forceCastOperandsToSignature(
-            rewriter, loc, operands,
-            {VectorType::get({16}, rewriter.getI64Type()),
-             rewriter.getI32Type(), rewriter.getI32Type()}));
+    if (resultVectorSize == 512) {
+      rewriter.replaceOpWithNewOp<xllvm::I512V32Acc32SrsIntrOp>(
+          op, VectorType::get({32}, rewriter.getI16Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({16}, rewriter.getI64Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    } else if (resultVectorSize == 256) {
+      rewriter.replaceOpWithNewOp<xllvm::I256V32Acc32SrsIntrOp>(
+          op, VectorType::get({32}, rewriter.getI8Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({16}, rewriter.getI64Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    } else {
+      op.emitWarning() << "aievec.srs with result vector size = "
+                       << resultVectorSize << " is not supported.\n";
+      return failure();
+    }
 
     return success();
   }
