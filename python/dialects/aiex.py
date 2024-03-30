@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from functools import partial
 import itertools
+import math
 from operator import itemgetter
 from typing import Union
 
@@ -263,7 +264,7 @@ def _ipu_writebd_shimtile(
     lock_rel_val=0,
     next_bd=0,
     use_next_bd=0,
-    data_width=32,
+    data_byte_width=4,
 ):
     iteration_stride -= 1
     d2_stride -= 1
@@ -272,11 +273,18 @@ def _ipu_writebd_shimtile(
     assert (
         iteration_stride >= 0 and d2_stride >= 0 and d1_stride >= 0 and d0_stride >= 0
     )
-    # byte offset
-    buffer_offset *= data_width // 8
+
+    length, buffer_offset, d2_stride, d1_stride, iteration_stride = map(
+        lambda x: math.ceil(x * data_byte_width / 4),
+        [length, buffer_offset, d2_stride, d1_stride, iteration_stride],
+    )
+
     # None means do not wrap which is 0 on the arch
     if iteration_size is None:
         iteration_size = 0
+
+    assert iteration_size < 2**6, f"{iteration_size=} must be less than 2 ** 6 (6b)"
+
     if d1_size is None:
         d1_size = 0
     if d0_size is None:
@@ -779,7 +787,7 @@ class TileArray:
                     [
                         (
                             None
-                            if 4 in cols and (c, r) == (0, 0) or (c, r) == (0, 1)
+                            if (4 in cols and ((c, r) == (0, 0) or (c, r) == (0, 1)))
                             else aie.tile(c, r)
                         )
                         for r in rows
