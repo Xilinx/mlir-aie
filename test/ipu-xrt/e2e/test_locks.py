@@ -1231,10 +1231,12 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
                 aie.dma_bd(b_buffer)
                 aie.use_lock(cons_b, Release, value=slices)
 
-            @aie.dma(MM2S, mem_core_fl_b.source_channel, repeat_count=slices - 1)
+            # both of these work?
+            @aie.dma(MM2S, mem_core_fl_b.source_channel, loop=False)
+            # @aie.dma(MM2S, mem_core_fl_b.source_channel, repeat_count=slices - 1)
             def dma5():
                 aie.use_lock(cons_b, AcquireGreaterEqual)
-                aie.dma_bd(b_buffer, len=k, iteration=(slices, k))
+                aie.dma_bd(b_buffer, len=K, iteration=(slices, k))
                 aie.use_lock(prod_b, Release)
 
             prod_c = aie.lock(tile_0_1, init=slices)
@@ -1242,26 +1244,28 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
 
             @aie.dma(S2MM, core_mem_fl_c.dest_channel, repeat_count=slices - 1)
             def dma5():
-                aie.use_lock(prod_c, AcquireGreaterEqual)
-                aie.dma_bd(c_buffer, len=1, iteration=(slices, 1))
-                aie.use_lock(cons_c, Release)
+                aie.use_lock(prod_c, AcquireGreaterEqual, value=1)
+                aie.dma_bd(c_buffer, len=slices, iteration=(slices, 1))
+                aie.use_lock(cons_c, Release, value=2)
 
             @aie.dma(MM2S, mem_shim_fl_c.source_channel, loop=False)
             def dma5():
-                aie.use_lock(cons_c, AcquireGreaterEqual, value=slices)
+                aie.use_lock(cons_c, AcquireGreaterEqual, value=1)
                 aie.dma_bd(c_buffer)
-                aie.use_lock(prod_c, Release, value=slices)
+                aie.use_lock(prod_c, Release, value=1)
 
             aie.end()
 
-        a_buffer = aie.buffer(tile_0_2, (1, k), dtype)
-        b_buffer = aie.buffer(tile_0_2, (k, 1), dtype)
-        c_buffer = aie.buffer(tile_0_2, (1, 1), dtype)
+        a_buffer = aie.buffer(tile_0_2, (k,), dtype)
+        b_buffer = aie.buffer(tile_0_2, (k,), dtype)
+        c_buffer = aie.buffer(tile_0_2, (), dtype)
 
         prod_a = aie.lock(tile_0_2, init=slices, sym_name=False)
         cons_a = aie.lock(tile_0_2, init=0, sym_name=False)
+
         prod_b = aie.lock(tile_0_2, init=1, sym_name=False)
         cons_b = aie.lock(tile_0_2, init=0, sym_name=False)
+
         prod_c = aie.lock(tile_0_2, init=1, sym_name=False)
         cons_c = aie.lock(tile_0_2, init=0, sym_name=False)
 
@@ -1289,20 +1293,18 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
 
         @aie.core(tile_0_2)
         def core():
-            linalg.fill(0, c_buffer)
             for i in range_(slices):
                 with (
-                    aiex.hold_lock(cons_a, prod_a, acq_val=1, rel_val=1),
-                    aiex.hold_lock(cons_b, prod_b, acq_val=1, rel_val=1),
-                    aiex.hold_lock(prod_c, cons_c, acq_val=1, rel_val=1),
+                    aiex.hold_lock(cons_a, prod_a),
+                    aiex.hold_lock(cons_b, prod_b),
+                    aiex.hold_lock(prod_c, cons_c),
                 ):
-                    # linalg.matmul(a_buffer, b_buffer, c_buffer)
-                    v = b_buffer[i, 0]
-                    linalg.fill(v, c_buffer)
+                    linalg.fill(0, c_buffer)
+                    linalg.dot(a_buffer, b_buffer, c_buffer)
                 yield_([])
 
     assert ctx.module.operation.verify()
-    print(ctx.module)
+    # print(ctx.module)
 
     compile_without_vectorization(ctx.module, workdir)
 
@@ -1320,7 +1322,9 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
             ipu_insts.extend(
                 aiex.ipu._exec_write_bd_extend_shim_tile_opt(
                     aiex.ipu.writebd_shimtile(
-                        col, bd_id=arg_name_bd_id[arg_name], length=np.prod(arg_shape)
+                        col,
+                        bd_id=arg_name_bd_id[arg_name],
+                        length=np.prod(arg_shape),
                     ),
                     tensor_addr=xclbin._get_buffer_host_address(buffer_idx=i),
                 )
@@ -1341,8 +1345,9 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
         xclbin.load_ipu_instructions(ipu_insts)
 
         wrapped_a, wrapped_b, wrapped_c = list(map(np.asarray, views))
-        np.copyto(wrapped_a, np.arange(k, dtype=np_dtype))
-        np.copyto(wrapped_b, np.arange(K, dtype=np_dtype) + k)
+        np.copyto(wrapped_a, np.random.randint(0, 10, (k,), dtype=np_dtype))
+        np.copyto(wrapped_b, np.random.randint(0, 10, (K,), dtype=np_dtype))
+
         print(f"{wrapped_a=}")
         print(f"{wrapped_b=}")
         print(f"{wrapped_c=}")
@@ -1356,4 +1361,6 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_bac
         print(f"time={(end - start) / 1e3}us")
         xclbin.sync_buffers_from_device()
 
+        for i in range(slices):
+            print(wrapped_a @ wrapped_b[k * i : k * (i + 1)], end=", " if i < slices - 1 else "\n")
         print(f"{wrapped_c=}")
