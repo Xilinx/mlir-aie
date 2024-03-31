@@ -1129,7 +1129,7 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods(
                         iteration_size=(iters * write_outs) - 1,
                         iteration_stride=k,
                     ),
-                    tensor_addr=xclbin._get_buffer_host_address(buffer_idx=col),
+                    tensor_addr=xclbin._get_buffer_host_address(buffer_idx=i),
                 )
             )
             ipu_insts.extend(
@@ -1165,3 +1165,195 @@ def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods(
         with np.printoptions(threshold=sys.maxsize, linewidth=sys.maxsize):
             for w in wrapped:
                 print(w.reshape(iters, N_WRITE_OUTS, K))
+
+
+def test_single_prod_mult_cons_with_multiple_sync_bds_different_periods_with_backpressure_wrong_answer(
+    ctx: MLIRContext, workdir: Path
+):
+
+    K = 32
+    slices = 4
+    k = K // slices
+    ipu_insts = aiex.ipu.get_prolog()
+
+    col_shim_channel_index = {}
+
+    dtype = T.i32()
+    np_dtype = np.int32
+    byte_width_dtype = dtype.width // 8
+
+    @aie.device(AIEDevice.ipu)
+    def ipu():
+        tile_0_0 = aie.tile(0, 0)
+        tile_0_1 = aie.tile(0, 1)
+        tile_0_2 = aie.tile(0, 2)
+
+        shim_mem_fl_a = aie.flow(tile_0_0, DMA, 0, tile_0_1, DMA, 0)
+        shim_mem_fl_b = aie.flow(tile_0_0, DMA, 1, tile_0_1, DMA, 1)
+        mem_shim_fl_c = aie.flow(tile_0_1, DMA, 0, tile_0_0, DMA, 0)
+        col_shim_channel_index[0, "a"] = int(shim_mem_fl_a.source_channel)
+        col_shim_channel_index[0, "b"] = int(shim_mem_fl_b.source_channel)
+        col_shim_channel_index[0, "c"] = int(mem_shim_fl_c.dest_channel)
+
+        mem_core_fl_a = aie.flow(tile_0_1, DMA, 1, tile_0_2, DMA, 0)
+        mem_core_fl_b = aie.flow(tile_0_1, DMA, 2, tile_0_2, DMA, 1)
+        core_mem_fl_c = aie.flow(tile_0_2, DMA, 0, tile_0_1, DMA, 2)
+
+        @aie.memtile_dma(tile_0_1)
+        def memtile_dma_0_1():
+            a_buffer = aie.buffer(tile_0_1, (k,), dtype)
+            # b is sent in slices
+            b_buffer = aie.buffer(tile_0_1, (K,), dtype)
+            # c is received one element at a time
+            c_buffer = aie.buffer(tile_0_1, (slices,), dtype)
+
+            prod_a = aie.lock(tile_0_1, init=1)
+            cons_a = aie.lock(tile_0_1, init=0)
+
+            @aie.dma(S2MM, shim_mem_fl_a.dest_channel, loop=False)
+            def dma5():
+                aie.use_lock(prod_a, AcquireGreaterEqual)
+                aie.dma_bd(a_buffer)
+                aie.use_lock(cons_a, Release)
+
+            @aie.dma(MM2S, mem_core_fl_a.source_channel, loop=False)
+            def dma5():
+                aie.use_lock(cons_a, AcquireGreaterEqual)
+                aie.dma_bd(a_buffer)
+                aie.use_lock(prod_a, Release)
+
+            prod_b = aie.lock(tile_0_1, init=slices)
+            cons_b = aie.lock(tile_0_1, init=0)
+
+            @aie.dma(S2MM, shim_mem_fl_b.dest_channel, loop=False)
+            def dma5():
+                aie.use_lock(prod_b, AcquireGreaterEqual, value=slices)
+                aie.dma_bd(b_buffer)
+                aie.use_lock(cons_b, Release, value=slices)
+
+            @aie.dma(MM2S, mem_core_fl_b.source_channel, repeat_count=slices - 1)
+            def dma5():
+                aie.use_lock(cons_b, AcquireGreaterEqual)
+                aie.dma_bd(b_buffer, len=k, iteration=(slices, k))
+                aie.use_lock(prod_b, Release)
+
+            prod_c = aie.lock(tile_0_1, init=slices)
+            cons_c = aie.lock(tile_0_1, init=0)
+
+            @aie.dma(S2MM, core_mem_fl_c.dest_channel, repeat_count=slices - 1)
+            def dma5():
+                aie.use_lock(prod_c, AcquireGreaterEqual)
+                aie.dma_bd(c_buffer, len=1, iteration=(slices, 1))
+                aie.use_lock(cons_c, Release)
+
+            @aie.dma(MM2S, mem_shim_fl_c.source_channel, loop=False)
+            def dma5():
+                aie.use_lock(cons_c, AcquireGreaterEqual, value=slices)
+                aie.dma_bd(c_buffer)
+                aie.use_lock(prod_c, Release, value=slices)
+
+            aie.end()
+
+        a_buffer = aie.buffer(tile_0_2, (1, k), dtype)
+        b_buffer = aie.buffer(tile_0_2, (k, 1), dtype)
+        c_buffer = aie.buffer(tile_0_2, (1, 1), dtype)
+
+        prod_a = aie.lock(tile_0_2, init=slices, sym_name=False)
+        cons_a = aie.lock(tile_0_2, init=0, sym_name=False)
+        prod_b = aie.lock(tile_0_2, init=1, sym_name=False)
+        cons_b = aie.lock(tile_0_2, init=0, sym_name=False)
+        prod_c = aie.lock(tile_0_2, init=1, sym_name=False)
+        cons_c = aie.lock(tile_0_2, init=0, sym_name=False)
+
+        @aie.mem(tile_0_2)
+        def mem_0_2():
+            @aie.dma(S2MM, mem_core_fl_a.dest_channel, loop=False)
+            def dma5():
+                aie.use_lock(prod_a, AcquireGreaterEqual, value=slices)
+                aie.dma_bd(a_buffer)
+                aie.use_lock(cons_a, Release, value=slices)
+
+            @aie.dma(S2MM, mem_core_fl_b.dest_channel, repeat_count=slices - 1)
+            def dma5():
+                aie.use_lock(prod_b, AcquireGreaterEqual)
+                aie.dma_bd(b_buffer)
+                aie.use_lock(cons_b, Release)
+
+            @aie.dma(MM2S, core_mem_fl_c.source_channel, repeat_count=slices - 1)
+            def dma5():
+                aie.use_lock(cons_c, AcquireGreaterEqual)
+                aie.dma_bd(c_buffer)
+                aie.use_lock(prod_c, Release)
+
+            aie.end()
+
+        @aie.core(tile_0_2)
+        def core():
+            linalg.fill(0, c_buffer)
+            for i in range_(slices):
+                with (
+                    aiex.hold_lock(cons_a, prod_a, acq_val=1, rel_val=1),
+                    aiex.hold_lock(cons_b, prod_b, acq_val=1, rel_val=1),
+                    aiex.hold_lock(prod_c, cons_c, acq_val=1, rel_val=1),
+                ):
+                    # linalg.matmul(a_buffer, b_buffer, c_buffer)
+                    v = b_buffer[i, 0]
+                    linalg.fill(v, c_buffer)
+                yield_([])
+
+    assert ctx.module.operation.verify()
+    print(ctx.module)
+
+    compile_without_vectorization(ctx.module, workdir)
+
+    buffer_args = {"a": (k,), "b": (K,), "c": (slices,)}
+    arg_name_bd_id = {"a": 0, "b": 1, "c": 2}
+    arg_name_direction = {"a": MM2S, "b": MM2S, "c": S2MM}
+    kernel_json = emit_design_kernel_json(buffer_args=list(buffer_args.keys()))
+    xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
+
+    with FileLock("/tmp/ipu.lock"):
+        xclbin = XCLBin(xclbin_path, "MLIR_AIE")
+        views = xclbin.mmap_buffers(list(buffer_args.values()), np_dtype)
+        col = 0
+        for i, (arg_name, arg_shape) in enumerate(buffer_args.items()):
+            ipu_insts.extend(
+                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+                    aiex.ipu.writebd_shimtile(
+                        col, bd_id=arg_name_bd_id[arg_name], length=np.prod(arg_shape)
+                    ),
+                    tensor_addr=xclbin._get_buffer_host_address(buffer_idx=i),
+                )
+            )
+            ipu_insts.extend(
+                aiex.ipu.shimtile_push_queue(
+                    channel_dir=arg_name_direction[arg_name],
+                    channel_index=col_shim_channel_index[col, arg_name],
+                    column=col,
+                    bd_id=arg_name_bd_id[arg_name],
+                )
+            )
+
+        ipu_insts.extend(
+            aiex.ipu.sync(channel=col_shim_channel_index[0, "c"], column=col)
+        )
+
+        xclbin.load_ipu_instructions(ipu_insts)
+
+        wrapped_a, wrapped_b, wrapped_c = list(map(np.asarray, views))
+        np.copyto(wrapped_a, np.arange(k, dtype=np_dtype))
+        np.copyto(wrapped_b, np.arange(K, dtype=np_dtype) + k)
+        print(f"{wrapped_a=}")
+        print(f"{wrapped_b=}")
+        print(f"{wrapped_c=}")
+
+        xclbin.sync_buffers_to_device()
+        start = time.monotonic_ns()
+        xclbin.run()
+        print("Running kernel")
+        xclbin.wait(30)
+        end = time.monotonic_ns()
+        print(f"time={(end - start) / 1e3}us")
+        xclbin.sync_buffers_from_device()
+
+        print(f"{wrapped_c=}")
