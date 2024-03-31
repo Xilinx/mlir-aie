@@ -44,13 +44,13 @@ from ..extras.util import (
 )
 
 from ..ir import (
-    ArrayAttr,
     Attribute,
     Block,
     DenseElementsAttr,
     DictAttr,
     FlatSymbolRefAttr,
     FunctionType,
+    MemRefType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
@@ -183,8 +183,12 @@ class Buffer(BufferOp):
                 type=datatype,
                 context=None,
             )
+        if len(shape) == 0:
+            typ = MemRefType.get([], datatype)
+        else:
+            typ = T.memref(*shape, datatype)
         super().__init__(
-            buffer=T.memref(*shape, datatype),
+            buffer=typ,
             tile=tile,
             sym_name=name,
             initial_value=initial_value,

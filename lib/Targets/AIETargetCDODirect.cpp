@@ -288,6 +288,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
   int lenInBytes = bdOp.getLenInBytes();
   int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
+  double elementWidthIn32bWords =
+      static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
@@ -299,8 +301,6 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     if (!dmaTileBdTensor.Dim)
       return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
     // libxaie requires stride in multiples of 32b
-    double elementWidthIn32bWords =
-        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
     for (size_t i = 0; i < dims->size(); i++) {
       // Pass down dimensions in reverse order; in the MLIR, this allows
       // us to specify step sizes/wraps in the same order as we would
@@ -325,15 +325,16 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,
                             lenInBytes);
-    if (bdOp.getIteration().has_value()) {
-      uint8_t iterationCurrent = 0;
-      // libxaie requires stride in multiples of 32b
-      uint32_t iterationStride = static_cast<uint32_t>(
-          bdOp.getIteration()->getStride() * elementWidthIn32bWords);
-      TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetBdIteration, &dmaTileBd,
-                              iterationStride, bdOp.getIteration()->getSize(),
-                              iterationCurrent);
-    }
+  }
+  if (bdOp.getIteration().has_value()) {
+    uint8_t iterationCurrent = 0;
+    // libxaie requires stride in multiples of 32b
+    uint32_t iterationStride = static_cast<uint32_t>(
+        bdOp.getIteration()->getStride() * elementWidthIn32bWords);
+    iterationStride = iterationStride > 0 ? iterationStride : 1;
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetBdIteration, &dmaTileBd,
+                            iterationStride, bdOp.getIteration()->getSize(),
+                            iterationCurrent);
   }
 
   if (nextBdId) {
