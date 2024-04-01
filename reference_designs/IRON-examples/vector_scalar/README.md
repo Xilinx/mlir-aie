@@ -10,14 +10,17 @@
 
 # <ins>Vector Scalar</ins>
 
-Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector*scalar compute.
+Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector scalar compute. This reference design can be run on either a RyzenAI IPU or a VCK5000.
 
-To compile desing in Windows:
+To compile and run the design for IPU:
 ```
 make
-```
-
-To run the design:
-```
 make run
 ```
+
+To compile and run the design for VCK5000:
+```
+make vck5000
+./test.elf
+```
+

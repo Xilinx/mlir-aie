@@ -28,7 +28,7 @@ vck5000: build/aie.mlir scale.o
             -I${ROCM_ROOT}/include \
 						-L/opt/xaiengine/lib \
             -L/lib/x86_64-linux-gnu/ \
-						test.cpp \
+						test_vck5000.cpp \
 						$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
             ${ROCM_ROOT}/lib/libhsa-runtime64.so.1.9.0 \
 						-Wl,-R/opt/xaiengine/lib \

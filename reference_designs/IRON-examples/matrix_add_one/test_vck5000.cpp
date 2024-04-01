@@ -28,18 +28,12 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
-#define XAIE_NUM_COLS 10
-
-#define IMAGE_WIDTH 128
-#define IMAGE_HEIGHT 16
-#define IMAGE_SIZE (IMAGE_WIDTH * IMAGE_HEIGHT)
-
-#define TILE_WIDTH 16
-#define TILE_HEIGHT 8
-#define TILE_SIZE (TILE_WIDTH * TILE_HEIGHT)
-
-#define NUM_3D (IMAGE_WIDTH / TILE_WIDTH)
-#define NUM_4D (IMGAE_HEIGHT / TILE_HEIGHT)
+constexpr int IMAGE_WIDTH = 128;
+constexpr int IMAGE_HEIGHT = 16;
+constexpr int IMAGE_SIZE = (IMAGE_WIDTH * IMAGE_HEIGHT);
+constexpr int TILE_WIDTH = 16;
+constexpr int TILE_HEIGHT = 8;
+constexpr int TILE_SIZE = (TILE_WIDTH * TILE_HEIGHT);
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {

@@ -28,7 +28,7 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
-#define XAIE_NUM_COLS 10
+constexpr int DMA_COUNT = 64;
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(buf1);
   mlir_aie_sync_mem_dev(buf2);
 
-  if (in_a == NULL || in_b == NULL || out == NULL) {
+  if (in_a == nullptr || in_b == nullptr || out == nullptr) {
     std::cout << "Could not allocate in device memory" << std::endl;
     return -1;
   }
