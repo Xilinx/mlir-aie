@@ -42,11 +42,10 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
       aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
       pB1 += vec_factor;
       aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
-      aie::store_v(pC1,cout);
+      aie::store_v(pC1, cout);
       pC1 += vec_factor;
     }
   event1();
-
 }
 
 extern "C" {
