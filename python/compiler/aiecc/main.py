@@ -659,7 +659,7 @@ class FlowRunner:
                     ],
                 )
 
-            cmd = ["clang++", "-std=c++11"]
+            cmd = ["clang++", "-std=c++17"]
             if opts.host_target:
                 cmd += ["--target=" + opts.host_target]
                 if (
