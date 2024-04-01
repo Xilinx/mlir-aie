@@ -17,10 +17,9 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdfloat>
 #include <string>
 #include <vector>
-#include <stdfloat>
-
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -52,9 +51,9 @@ static inline std::bfloat16_t random_bfloat16_t() {
   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
 }
 
-bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
-  std::bfloat16_t diff = fabs(a-b);
-  if ((diff/a) < 0.01)
+bool nearly_equal(std::bfloat16_t a
+  std::bfloat16_t diff = fabs(a - b);
+  if ((diff / a) < 0.01)
     return true;
   else
     return false;
@@ -179,14 +178,12 @@ int main(int argc, const char *argv[]) {
     BVec[i] = random_bfloat16_t();
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(std::bfloat16_t)));
 
-
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
 
   int sticky_errors = 0;
 
@@ -217,20 +214,22 @@ int main(int argc, const char *argv[]) {
       }
       for (uint32_t i = 0; i < IN_SIZE; i++) {
         std::bfloat16_t ref = AVec[i] + BVec[i];
-        if (!nearly_equal(*(bufOut + i),ref)) {
-          std::cout << "Error in " << i << " output " << *(bufOut + i) << " != " << ref << " actual " << AVec[i] << " + " << BVec[i] 
-                    << std::endl;
+        if (!nearly_equal(*(bufOut + i), ref)) {
+          std::cout << "Error in " << i << " output " << *(bufOut + i)
+                    << " != " << ref << " actual " << AVec[i] << " + "
+                    << BVec[i] << std::endl;
           errors++;
           sticky_errors++;
         } else {
           if (verbosity >= 2)
-            std::cout << "Correct " << i << " output " << *(bufOut + i) << " == " << ref
-                      << std::endl;
+            std::cout << "Correct " << i << " output " << *(bufOut + i)
+                      << " == " << ref << std::endl;
         }
       }
     } else {
       if (verbosity >= 1)
-        std::cout << "WARNING: vector-scalar results not verified." << std::endl;
+        std::cout << "WARNING: vector-scalar results not verified."
+                  << std::endl;
     }
 
     float npu_time =
@@ -241,7 +240,6 @@ int main(int argc, const char *argv[]) {
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
-
     if (VERIFY && !errors) {
       std::cout << iter << ": pass!\n";
     } else {
@@ -251,9 +249,9 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Avg NPU exec time: " << npu_time_total / num_iter << "us."
             << std::endl;
-  std::cout <<"Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
-  
+
   if (VERIFY && !sticky_errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
@@ -261,6 +259,4 @@ int main(int argc, const char *argv[]) {
     std::cout << "\nFAIL.\n\n";
     return 1;
   }
-
-
 }

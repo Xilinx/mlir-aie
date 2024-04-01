@@ -22,7 +22,7 @@
 template <typename T_in, typename T_out, const int N>
 void eltwise_add(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
-    c[i] = a[i]+b[i];
+    c[i] = a[i] + b[i];
   }
 }
 
@@ -48,7 +48,6 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
   event1();
 
 }
-
 
 extern "C" {
 
