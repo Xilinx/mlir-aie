@@ -51,7 +51,7 @@ static inline std::bfloat16_t random_bfloat16_t() {
   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
 }
 
-bool nearly_equal(std::bfloat16_t a
+bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
   std::bfloat16_t diff = fabs(a - b);
   if ((diff / a) < 0.01)
     return true;
