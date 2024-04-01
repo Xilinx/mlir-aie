@@ -40,11 +40,12 @@ insts_target?=build/insts_${M}x${K}x${N}.txt
 
 runargs?=-v 1 --warmup 10 --iters 10
 
+kernels_dir=../../../../aie_kernels/iron
 
 .PHONY: all
 all: ${xclbin_target} ${insts_target} ${targetname}.exe
 
-build/%.o: ../kernels/%.cc
+build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 
