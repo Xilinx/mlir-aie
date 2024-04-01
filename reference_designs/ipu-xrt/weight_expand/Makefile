@@ -8,9 +8,9 @@
 
 include ../makefile-common
 
-targetname = eltwiseAdd
+targetname = expand
 
-all: build/final.xclbin build/insts.txt
+all: build/final.xclbin build/insts.txt ${targetname}.exe
 
 build/%.o: %.cc
 	mkdir -p ${@D}
