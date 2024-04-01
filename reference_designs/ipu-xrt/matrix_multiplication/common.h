@@ -364,8 +364,9 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
     int i = std::get<0>(cell);
     int row = std::get<0>(std::get<1>(cell));
-    int col = std::get<1>(std::get<1>(cell)); 
-    if(verbosity >= 1 && (int)(progress*100) < (int)((double)i / n_samples * 100)) {
+    int col = std::get<1>(std::get<1>(cell));
+    if (verbosity >= 1 &&
+        (int)(progress * 100) < (int)((double)i / n_samples * 100)) {
       // Only print progress bar if percentage changed
       progress = (double)i / n_samples;
       print_progress_bar(std::cerr, progress);
