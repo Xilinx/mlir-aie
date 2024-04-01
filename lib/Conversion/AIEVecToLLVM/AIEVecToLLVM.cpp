@@ -1124,6 +1124,24 @@ class MatMulOpConversion
   }
 };
 
+/*
+  This pattern folds aievec.cast op. For AIE-ML, the accumulators are in 32/64
+  bits, and the vectors are in 4/8/16/32 bits. Hence, we don't have to
+  explicitly express the casting between accumulators and vectors at the LLVM
+  dialect level. The backend LLVM compiler will decide the correct accumulator
+  or vector registers given the ops and intrinsics.
+*/
+class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
+  using ConvertOpToLLVMPattern<aievec::CastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(castOp, adaptor.getSource());
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -1143,7 +1161,8 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
                MulElemOpConversion,
-               MatMulOpConversion>(converter);
+               MatMulOpConversion,
+               FoldAIECastOps>(converter);
   // clang-format on
 }
 

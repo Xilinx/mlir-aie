@@ -224,20 +224,6 @@ struct FoldAIECastOps : public OpConversionPattern<aievec::CastOp> {
   }
 };
 
-/*
-  This pattern eliminates aievec.cast op when backend == TargetBackend::LLVMIR
-*/
-struct CanonicalizeAIECastOps : public OpConversionPattern<aievec::CastOp> {
-  using OpConversionPattern<aievec::CastOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOp(castOp, adaptor.getSource());
-    return success();
-  }
-};
-
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -249,9 +235,6 @@ static void populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns,
 static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns,
                                                    TargetBackend backend) {
   patterns.add<FoldAIEShiftAndBroadcast, FoldAIECastOps>(patterns.getContext());
-  if (backend == TargetBackend::LLVMIR) {
-    patterns.add<CanonicalizeAIECastOps>(patterns.getContext());
-  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -280,25 +263,19 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target,
       });
 
   target.addDynamicallyLegalOp<xilinx::aievec::CastOp>(
-      [=](xilinx::aievec::CastOp op) {
-        if (backend == TargetBackend::LLVMIR) {
-          return false;
-        } else {
-          // backend == TargetBackend::CPP
-          // See FoldAIECastOps pattern for details
-          if (!op.getIsResAcc()) {
-            return true;
-          }
+      [](xilinx::aievec::CastOp op) {
+        if (!op.getIsResAcc()) {
+          return true;
+        }
 
-          if (!op.getSource().getDefiningOp()) {
-            return true;
-          }
+        if (!op.getSource().getDefiningOp()) {
+          return true;
+        }
 
-          auto defOp = dyn_cast<aievec::CastOp>(op.getSource().getDefiningOp());
+        auto defOp = dyn_cast<aievec::CastOp>(op.getSource().getDefiningOp());
 
-          if (!defOp || defOp.getIsResAcc()) {
-            return true;
-          }
+        if (!defOp || defOp.getIsResAcc()) {
+          return true;
         }
         return false;
       });
