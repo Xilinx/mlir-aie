@@ -80,12 +80,12 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
         aie::accum<T_acc, r> c_acc_in;
         c_acc_in.from_vector(aie::load_v<r>(c_ptr));
 
-        const aie::vector<T_in, 2 *r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
-        const aie::vector<T_in, 2 *r> a_vec_1 =
+        const aie::vector<T_in, 2 * r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
+        const aie::vector<T_in, 2 * r> a_vec_1 =
             aie::load_v<2 * r>(a_ptr + 2 * m);
-        const aie::vector<T_in, 2 *r> a_vec_2 =
+        const aie::vector<T_in, 2 * r> a_vec_2 =
             aie::load_v<2 * r>(a_ptr + 4 * m);
-        const aie::vector<T_in, 2 *r> a_vec_3 =
+        const aie::vector<T_in, 2 * r> a_vec_3 =
             aie::load_v<2 * r>(a_ptr + 6 * m);
 
         // The even/odd calls below extract the interleaved columns of A.
