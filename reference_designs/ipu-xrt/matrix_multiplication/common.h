@@ -313,7 +313,7 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
 
 template <typename Tin, typename Tout>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
-           std::vector<Tout> C) {
+           std::vector<Tout> C, int verbosity = 0) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
 
@@ -346,7 +346,8 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 
 template <typename Tin, typename Tout>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
-                      std::vector<Tin> B, std::vector<Tout> C, int n_samples) {
+                      std::vector<Tin> B, std::vector<Tout> C, int n_samples,
+                      int verbosity = 0) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -358,12 +359,17 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
 
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
+  double progress = 0;
   for (std::tuple<size_t, std::tuple<int &, int &>> cell :
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
     int i = std::get<0>(cell);
     int row = std::get<0>(std::get<1>(cell));
-    int col = std::get<1>(std::get<1>(cell));
-    print_progress_bar(std::cout, (double)i / n_samples);
+    int col = std::get<1>(std::get<1>(cell)); 
+    if(verbosity >= 1 && (int)(progress*100) < (int)((double)i / n_samples * 100)) {
+      // Only print progress bar if percentage changed
+      progress = (double)i / n_samples;
+      print_progress_bar(std::cerr, progress);
+    }
     Tout ref = mul_acc<Tin, Tout>(M, N, K, row, col, A, B);
     std::optional<struct error<Tout>> error =
         verify_single(std::cout, row, col, ref, C[row * N + col]);

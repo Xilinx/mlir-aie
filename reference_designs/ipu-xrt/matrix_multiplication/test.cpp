@@ -57,6 +57,8 @@ int main(int argc, const char *argv[]) {
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
 
+  bool do_verify_stochastic = (long long)M * N * K <= verify_stochastic_threshold;
+
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
   }
@@ -185,20 +187,21 @@ int main(int argc, const char *argv[]) {
 
     memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
     if (do_verify) {
-      auto vstart = std::chrono::system_clock::now();
-      if ((long long)M * N * K <= verify_stochastic_threshold) {
-        if (verbosity >= 1) {
-          std::cout << "Verifying against reference matmul ..." << std::endl;
-        }
-        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
-      } else {
-        if (verbosity >= 1) {
+      if (verbosity >= 1) {
+        if (do_verify_stochastic) {
           std::cout << "Verifying " << verify_stochastic_n_samples
                     << " random samples against reference matmul ..."
                     << std::endl;
+        } else {
+          std::cout << "Verifying against reference matmul ..." << std::endl;
         }
+      }
+      auto vstart = std::chrono::system_clock::now();
+      if (do_verify_stochastic) {
+        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec, verbosity);
+      } else {
         errors = matmul_common::verify_stochastic(M, N, K, AVec, BVec, CVec,
-                                                  verify_stochastic_n_samples);
+                                                  verify_stochastic_n_samples, verbosity);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
