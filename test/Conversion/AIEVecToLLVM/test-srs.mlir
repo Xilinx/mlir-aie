@@ -1,4 +1,5 @@
 // RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
+
 func.func @v32i32_srs_v32i16(%arg0 : vector<32xi32>) {
   %c0 = arith.constant 0 : i32
   %c5 = arith.constant 5 : i32
