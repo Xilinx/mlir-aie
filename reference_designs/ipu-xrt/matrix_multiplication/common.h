@@ -268,7 +268,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 #undef print_row
 }
 
-constexpr int max_printable_errors = 10;
+constexpr int max_printable_errors = 32;
 
 template <typename Tout>
 struct error {
@@ -282,7 +282,7 @@ template <typename Tout>
 std::optional<struct error<Tout>>
 verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual) {
   const float absTol = 0.5;
-  const float relTol = 0.5;
+  const float relTol = 0.1;
   if (!nearly_equal(expected, actual, relTol, absTol)) {
     return (struct error<Tout>){row, col, expected, actual};
   }
@@ -298,7 +298,7 @@ void print_error_summary(std::ostream &os, int n_errors,
        << (float)err.actual << " =!= " << std::setw(4) << std::setprecision(2)
        << std::fixed << (float)err.expected << std::endl;
   }
-  if (n_errors >= max_printable_errors) {
+  if (n_errors > max_printable_errors) {
     os << "...and " << std::setw(0) << n_errors - max_printable_errors
        << " further errors." << std::endl;
   }
@@ -325,10 +325,10 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
       std::optional<struct error<Tout>> error = verify_single(
           std::cout, row, col, CRef[row * N + col], C[row * N + col]);
       if (error.has_value()) {
-        n_errors++;
         if (n_errors < max_printable_errors) {
           errors.push_back(*error);
         }
+        n_errors++;
       }
     }
   }
@@ -375,10 +375,10 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
     std::optional<struct error<Tout>> error =
         verify_single(std::cout, row, col, ref, C[row * N + col]);
     if (error.has_value()) {
-      n_errors++;
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);
       }
+      n_errors++;
     }
   }
   std::cout << std::endl;
