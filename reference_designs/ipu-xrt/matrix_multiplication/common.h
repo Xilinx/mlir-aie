@@ -240,7 +240,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   ostream << std::fixed << std::setprecision(2);
 
 #define print_row(what)                                                        \
-  for (int col = 0; col < n_printable_cols / 2; col++) {                       \
+  for (int col = 0; col < (n_printable_cols + 1) / 2; col++) {                 \
     ostream << std::right << std::setw(w) << (what);                           \
     ostream << std::setw(0) << col_sep;                                        \
   }                                                                            \
@@ -252,8 +252,8 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
     ostream << std::setw(0) << col_sep;                                        \
   }
 
-  for (int row = 0; row < n_printable_rows / 2; row++) {
-    print_row(matrix[row * n_rows + col]);
+  for (int row = 0; row < (n_printable_rows + 1) / 2; row++) {
+    print_row(matrix[row * n_cols + col]);
     ostream << std::endl;
   }
   if (elide_rows) {
@@ -261,7 +261,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
     ostream << std::endl;
   }
   for (int row = n_printable_rows / 2 + 1; row < n_printable_rows; row++) {
-    print_row(matrix[row * n_rows + col]);
+    print_row(matrix[row * n_cols + col]);
     ostream << std::endl;
   }
 
