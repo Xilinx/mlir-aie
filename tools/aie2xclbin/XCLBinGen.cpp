@@ -450,12 +450,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           "inference_fingerprint": "23423",
           "pre_post_fingerprint": "12345",
           "partition": {
-            "column_width": 1,
+            "column_width": 4,
             "start_columns": [
-              1,
-              2,
-              3,
-              4
+              1
             ]
           },
           "PDIs": [
