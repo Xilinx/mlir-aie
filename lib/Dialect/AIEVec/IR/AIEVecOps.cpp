@@ -205,6 +205,23 @@ ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.addTypeToList(vectorType, result.types);
 }
 
+// Cast fold method. It will fold with a preceding Cast operation.
+OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto srcDefOp = getSource().getDefiningOp();
+  if (!srcDefOp)
+    return nullptr;
+
+  auto castOp = dyn_cast<aievec::CastOp>(srcDefOp);
+
+  if (!castOp)
+    return nullptr;
+
+  if (castOp.getIsResAcc() == getIsResAcc())
+    return nullptr;
+
+  return castOp.getSource();
+}
+
 //===----------------------------------------------------------------------===//
 // SRSOp
 //===----------------------------------------------------------------------===//
