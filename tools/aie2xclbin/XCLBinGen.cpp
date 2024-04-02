@@ -443,7 +443,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       return moduleOp.emitOpError(errorMessage);
 
     std::string aie_partition_json_data = R"(
-      {
+      { 
         "aie_partition": {
           "name": "QoS",
           "operations_per_cycle": "2048",
