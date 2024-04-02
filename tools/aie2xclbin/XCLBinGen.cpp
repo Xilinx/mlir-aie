@@ -441,7 +441,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
         openOutputFile(aiePartitionJsonFile, &errorMessage);
     if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
-
+    uint64_t time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -457,7 +457,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           },
           "PDIs": [
             {
-              "uuid": "00000000-0000-0000-0000-000000008025",
+              "uuid": "00000000-0000-0000-)";
+    std::string data2 = R"(",
               "file_name": "./design.pdi",
               "cdo_groups": [
                 {
@@ -478,6 +479,10 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       }
     )";
     aiePartitionJsonOut->os() << aie_partition_json_data;
+    aiePartitionJsonOut->os() << llvm::format_hex_no_prefix(time >> 48, 4);
+    aiePartitionJsonOut->os() << "-";
+    aiePartitionJsonOut->os() << llvm::format_hex_no_prefix(time & (0x0000FFFFFFFFFFFFULL), 12);
+    aiePartitionJsonOut->os() << data2;
     aiePartitionJsonOut->keep();
   }
 
