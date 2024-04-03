@@ -56,8 +56,6 @@ int main(int argc, char *argv[]) {
     printf("ERROR: Failed to acquire output lock!\n");
   }
 
-  mlir_aie_dump_tile_memory(_xaie, 1, 3);
-  mlir_aie_dump_tile_memory(_xaie, 2, 3);
   mlir_aie_print_tile_status(_xaie, 1, 3);
   mlir_aie_print_tile_status(_xaie, 2, 3);
   mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_c(_xaie, 3), 7,
