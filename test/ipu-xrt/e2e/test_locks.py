@@ -703,25 +703,47 @@ def test_single_prod_mult_cons_with_multiple_sync_bds(
                 for i in range(N_CONSUMERS)
             ]
 
-            # read in
+            # sync produce side (consumers signal producer can go)
             @aie.dma(
                 S2MM,
                 core_to_mem_fl.dest_channel,
                 repeat_count=iters - 1,
-                num_bds=N_CONSUMERS,
+                num_bds=2 * N_CONSUMERS - 1,
             )
-            def dma5():
+            def read_in():
                 aie.use_lock(read_in_locks[0], AcquireGreaterEqual, value=N_WRITE_OUTS)
-                aie.dma_bd(buffer_0_1_c)
-                aie.use_lock(write_out_locks[0], Release, value=N_WRITE_OUTS)
+                # len=0 indicates sync bd
+                aie.dma_bd(buffer_0_1_c, len=0)
+                # no-op
+                aie.use_lock(write_out_locks[0], Release, value=0)
 
-            for i in range(1, N_CONSUMERS):
+            for i in range(1, N_CONSUMERS - 1):
 
-                @aie.another_bd(dma5)
+                @aie.another_bd(read_in)
                 def _():
                     aie.use_lock(
                         read_in_locks[i], AcquireGreaterEqual, value=N_WRITE_OUTS
                     )
+                    # len=0 indicates sync bd
+                    aie.dma_bd(buffer_0_1_c, len=0)
+                    # no-op
+                    aie.use_lock(write_out_locks[i], Release, value=0)
+
+            # do the actual read/produce (this bd both acquires and releases because correct things have already been done before and after)
+            @aie.another_bd(read_in)
+            def _():
+                aie.use_lock(read_in_locks[-1], AcquireGreaterEqual, value=N_WRITE_OUTS)
+                aie.dma_bd(buffer_0_1_c)
+                aie.use_lock(write_out_locks[-1], Release, value=N_WRITE_OUTS)
+
+            # sync consume side (producer signals consumers can go)
+            for i in range(N_CONSUMERS - 1):
+
+                @aie.another_bd(read_in)
+                def _():
+                    # don't acquire because `read_in_lock` have already been synced above
+                    aie.use_lock(read_in_locks[i], acq_en=False)
+                    # len=0 indicates sync bd
                     aie.dma_bd(buffer_0_1_c, len=0)
                     aie.use_lock(write_out_locks[i], Release, value=N_WRITE_OUTS)
 
@@ -744,7 +766,8 @@ def test_single_prod_mult_cons_with_multiple_sync_bds(
             aie.end()
 
     assert ctx.module.operation.verify()
-    # print(ctx.module)
+    print(ctx.module)
+    # exit()
 
     compile_without_vectorization(ctx.module, workdir)
 
