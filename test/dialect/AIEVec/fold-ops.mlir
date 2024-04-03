@@ -24,22 +24,20 @@ func.func @test_ups_srs_fold(%in : vector<16xi16>) -> vector<16xi16> {
 
 // -----
 
-// CHECK-LABEL: func.func @test_cast_cast_fold(
+// CHECK-LABEL: func.func @test_cast_fold(
 // CHECK-SAME: %[[IN:.*]]: vector<16xi16>
-func.func @test_cast_cast_fold(%in : vector<16xi16>) -> vector<16xi16> {
+func.func @test_cast_fold(%in : vector<16xi16>) -> (vector<16xi16>, vector<16xi16>, vector<16xi16>, vector<16xi16>) {
     %0 = aievec.cast %in {isResAcc = false} : vector<16xi16>, vector<16xi16>
     %1 = aievec.cast %0 {isResAcc = true} : vector<16xi16>, vector<16xi16>
-    // CHECK: return %[[IN]] : vector<16xi16>
-    return %1 : vector<16xi16>
+    %2 = aievec.cast %in {isResAcc = true} : vector<16xi16>, vector<16xi16>
+    %3 = aievec.cast %2 {isResAcc = false} : vector<16xi16>, vector<16xi16>
+    %4 = aievec.cast %in {isResAcc = true} : vector<16xi16>, vector<16xi16>
+    %5 = aievec.cast %4 {isResAcc = true} : vector<16xi16>, vector<16xi16>
+    %6 = aievec.cast %in {isResAcc = false} : vector<16xi16>, vector<16xi16>
+    %7 = aievec.cast %6 {isResAcc = false} : vector<16xi16>, vector<16xi16>
+    // CHECK: %[[CAST1:.*]] = aievec.cast %[[IN]] {isResAcc = true} : vector<16xi16>, vector<16xi16>
+    // CHECK-NEXT: %[[CAST2:.*]] = aievec.cast %[[IN]] {isResAcc = false} : vector<16xi16>, vector<16xi16>
+    // CHECK-NEXT: return %[[IN]], %[[IN]], %[[CAST1]], %[[CAST2]] : vector<16xi16>, vector<16xi16>, vector<16xi16>, vector<16xi16>
+    return %1, %3, %5, %7 : vector<16xi16>, vector<16xi16>, vector<16xi16>, vector<16xi16>
 }
 
-// -----
-
-// CHECK-LABEL: func.func @test_cast_cast_fold_2(
-// CHECK-SAME: %[[IN:.*]]: vector<16xi16>
-func.func @test_cast_cast_fold_2(%in : vector<16xi16>) -> vector<16xi16> {
-    %0 = aievec.cast %in {isResAcc = true} : vector<16xi16>, vector<16xi16>
-    %1 = aievec.cast %0 {isResAcc = false} : vector<16xi16>, vector<16xi16>
-    // CHECK: return %[[IN]] : vector<16xi16>
-    return %1 : vector<16xi16>
-}
