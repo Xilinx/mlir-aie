@@ -848,6 +848,35 @@ struct AIEObjectFifoStatefulTransformPass
                       std::vector<std::vector<int>> &dependencies, Value base,
                       int64_t step, bool inLoop) {
     std::vector<Operation *> duplicatedOperations; // operations in current
+    // Recursive function to replace operands, uses recursion to handle nested
+    // loop structures.
+    std::function<void(Operation *, unsigned &, unsigned)> replaceOpsNested =
+        [&](Operation *op, unsigned &opIndex,
+            unsigned numDuplications) -> void {
+      if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
+        Block *body = loopOp.getBody();
+        auto withoutTerminator = --body->end();
+        // NOTE(jornt): This only handles the cases where the nested scf::for is
+        // located at the start of the body. This should be the most common
+        // case, but is not fully generic.
+        if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
+          opIndex++;
+          auto clone = nestedLoop->clone();
+          replaceOperands(builder, clone, opIndex, base, step, inLoop,
+                          numDuplications, dependencies, duplicatedOperations);
+          replaceOpsNested(nestedLoop, opIndex, numDuplications);
+        } else {
+          for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
+               ++loopBodyOp) {
+            opIndex++;
+            replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop,
+                            numDuplications, dependencies,
+                            duplicatedOperations);
+          }
+        }
+      }
+    };
+
     // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       duplicatedOperations.clear();
@@ -858,17 +887,7 @@ struct AIEObjectFifoStatefulTransformPass
         replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
                         dependencies, duplicatedOperations);
         builder.insert(clone);
-
-        if (auto nestedLoop = dyn_cast<scf::ForOp>(clone)) {
-          Block *body = nestedLoop.getBody();
-          auto withoutTerminator = --body->end();
-          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
-               ++loopOp) {
-            opIndex++;
-            replaceOperands(builder, &*loopOp, opIndex, base, step, inLoop, i,
-                            dependencies, duplicatedOperations);
-          }
-        }
+        replaceOpsNested(clone, opIndex, i);
       }
     }
   }
