@@ -40,8 +40,7 @@ int main(int argc, char *argv[]) {
 #ifdef TO_CPP
   dut(g_in0, g_in1, g_out0);
 #elif TO_LLVM
-  dut(nullptr, g_in0, 0, 0, 0, nullptr, g_in1, 0, 0, 0, nullptr, g_out0, 0, 0,
-      0);
+  dut(g_in0, g_in0, 0, 0, 0, g_in1, g_in1, 0, 0, 0, g_out0, g_out0, 0, 0, 0);
 #endif
   auto cyclesEnd = chess_cycle_count();
   chess_memory_fence();
