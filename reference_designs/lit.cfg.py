@@ -63,50 +63,56 @@ if config.hsa_dir and (not ("NOTFOUND" in config.hsa_dir)):
         config.substitutions.append(("%HSA_DIR%", ""))
 
     else:
-      # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
-      # directory so need to go up three directories
-      rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
-      print("Found ROCm:", rocm_root)
-      config.available_features.add("hsa")
-      config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
-      config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
-      found_vck5000 = False
+        # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
+        # directory so need to go up three directories
+        rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
+        print("Found ROCm:", rocm_root)
+        config.available_features.add("hsa")
+        config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
+        config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
+        found_vck5000 = False
 
-      if config.enable_board_tests:
-          # If board tests are enabled, make sure there is an AIE ROCm device that we can find
-          try:
-            # Making sure that we use the experimental ROCm install that can see the AIE device
-            my_env = os.environ.copy()
-            my_env.update(LD_LIBRARY_PATH = "{}/lib/".format(rocm_root))
-            result = subprocess.run(
-              ["rocminfo"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=my_env
-            ) 
-            result = result.stdout.decode("utf-8").split("\n")
+        if config.enable_board_tests:
+            # If board tests are enabled, make sure there is an AIE ROCm device that we can find
+            try:
+                # Making sure that we use the experimental ROCm install that can see the AIE device
+                my_env = os.environ.copy()
+                my_env.update(LD_LIBRARY_PATH="{}/lib/".format(rocm_root))
+                result = subprocess.run(
+                    ["rocminfo"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=my_env,
+                )
+                result = result.stdout.decode("utf-8").split("\n")
 
-            # Go through result and look for the VCK5000
-            for l in result:
-              if "Versal VCK5000" in l:
-                print("Found VCK500 in rocminfo. Enabling on board tests")
-                found_vck5000 = True
-                config.substitutions.append(("%run_on_vck5000", "flock /tmp/vck5000.lock"))
-                break 
-            
-            if not found_vck5000:
-              config.substitutions.append(("%run_on_vck5000", "echo"))
-              print("Enable board set and HSA found but couldn't find device using rocminfo")
+                # Go through result and look for the VCK5000
+                for l in result:
+                    if "Versal VCK5000" in l:
+                        print("Found VCK500 in rocminfo. Enabling on board tests")
+                        found_vck5000 = True
+                        config.substitutions.append(
+                            ("%run_on_vck5000", "flock /tmp/vck5000.lock")
+                        )
+                        break
 
-          except:
-            print("Enable board set and HSA found but unable to run rocminfo")
-            pass
-      else:
-          print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
-          config.substitutions.append(("%run_on_vck5000", "echo"))
+                if not found_vck5000:
+                    config.substitutions.append(("%run_on_vck5000", "echo"))
+                    print(
+                        "Enable board set and HSA found but couldn't find device using rocminfo"
+                    )
+
+            except:
+                print("Enable board set and HSA found but unable to run rocminfo")
+                pass
+        else:
+            print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
+            config.substitutions.append(("%run_on_vck5000", "echo"))
 else:
     print("ROCm not found")
     config.substitutions.append(("%run_on_vck5000", "echo"))
     config.substitutions.append(("%link_against_hsa%", ""))
     config.substitutions.append(("%HSA_DIR%", ""))
-
 
 
 if config.xrt_lib_dir:
