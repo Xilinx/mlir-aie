@@ -28,7 +28,7 @@
 
 constexpr bool VERIFY = true;
 
-constexpr int IN_SIZE = 262144; //*1024;
+constexpr int IN_SIZE = 65536; //*1024;
 constexpr int TILE_SIZE = 1024;
 constexpr int OUT_SIZE = IN_SIZE;
 
