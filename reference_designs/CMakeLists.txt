@@ -56,8 +56,6 @@ option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ${DEFAULT_ENABLE
 
 if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
   set(DEFAULT_ENABLE_BOARD_TESTS ON)
-else()
-  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
 endif()
 option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
 
@@ -74,6 +72,7 @@ find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 find_package(XRT)
 find_package(OpenCV)
+find_package(hsa-runtime64)
 
 # Look for LibXAIE
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)

@@ -284,6 +284,12 @@ void registerAIETranslations() {
         return AIETranslateToXAIEV2(module, output);
       },
       registerDialects);
+  TranslateFromMLIRRegistration registrationHSA(
+      "aie-generate-hsa", "Generate hsa data movement configuration",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToHSA(module, output);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationXJSON(
       "aie-flows-to-json", "Translate AIE flows to JSON", AIEFlowsToJSON,
       registerDialects);
