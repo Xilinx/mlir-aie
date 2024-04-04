@@ -43,7 +43,7 @@ vck5000: devicename=xcvc1902
 vck5000: col=6
 
 vck5000: build/aie.mlir
-	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+	aiecc.py --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
 						-I/opt/xaiengine/include \
 						-I$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/include \
             -I${ROCM_ROOT}/include \
