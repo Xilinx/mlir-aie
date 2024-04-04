@@ -16,11 +16,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-#include <math.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -169,7 +169,7 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> AVec(IN_SIZE);
   for (int i = 0; i < IN_SIZE; i++)
-    AVec[i] = random_bfloat16_t()/8.0;
+    AVec[i] = random_bfloat16_t() / 8.0;
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -189,7 +189,6 @@ int main(int argc, const char *argv[]) {
   float cpu_time_total = 0;
   float cpu_time_min = 9999999;
   float cpu_time_max = 0;
-
 
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
@@ -216,34 +215,32 @@ int main(int argc, const char *argv[]) {
       std::vector<std::bfloat16_t> RefVec(IN_SIZE);
       auto cpu_start = std::chrono::high_resolution_clock::now();
 
-      for (uint32_t t = 0; t < IN_SIZE; t+=TILE_SIZE) {
+      for (uint32_t t = 0; t < IN_SIZE; t += TILE_SIZE) {
         float running = 0.0;
         for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          float ez = (float)(exp(AVec[t+i]));
+          float ez = (float)(exp(AVec[t + i]));
           running += ez;
-          RefVec[t+i] = exp(AVec[t+i]);
+          RefVec[t + i] = exp(AVec[t + i]);
         }
-        
         for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          RefVec[t+i] /= running;
+          RefVec[t + i] /= running;
         }
-      }      
+      }
       auto cpu_stop = std::chrono::high_resolution_clock::now();
-      float cpu_time =
-          std::chrono::duration_cast<std::chrono::microseconds>(cpu_stop - cpu_start)
-              .count();
+      float cpu_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                           cpu_stop - cpu_start)
+                           .count();
 
       cpu_time_total += cpu_time;
       cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;
       cpu_time_max = (cpu_time > cpu_time_max) ? cpu_time : cpu_time_max;
 
-      
-
       for (uint32_t i = 0; i < IN_SIZE; i++) {
         std::bfloat16_t ref = RefVec[i];
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual e^" << AVec[i] << " : " << exp(AVec[i]) << std::endl;
+                    << " != " << ref << " actual e^" << AVec[i] << " : "
+                    << exp(AVec[i]) << std::endl;
           errors++;
           sticky_errors++;
         } else {
@@ -252,8 +249,6 @@ int main(int argc, const char *argv[]) {
                       << " == " << ref << std::endl;
         }
       }
-      
-
 
     } else {
       if (verbosity >= 1)
@@ -273,7 +268,8 @@ int main(int argc, const char *argv[]) {
       if (!errors) {
         std::cout << iter << ": pass! in " << npu_time << "us" << std::endl;
       } else {
-        std::cout << iter << ": fail! " << errors << " errors in " << npu_time << "us" << std::endl;
+        std::cout << iter << ": fail! " << errors << " errors in " << npu_time
+                  << "us" << std::endl;
       }
     }
   }
@@ -284,22 +280,20 @@ int main(int argc, const char *argv[]) {
   std::cout << "Max NPU exec time: " << npu_time_max << "us." << std::endl;
 
   // Let's figure out how many cycles it takes a core to do a single e^x
-  // There are 4 cores, so the total number of e^x's it does is one quarter of the test size
+  // There are 4 cores, so the total number of e^x's it does is one quarter of
+  // the test size
 
-  int per_core_calcs = IN_SIZE/4;
+  int per_core_calcs = IN_SIZE / 4;
   float avg_npu_time = npu_time_total / num_iter;
-  float avg_npu_clocks = avg_npu_time/1.0E-3;  // Time is in uS, but the AIE is clocked in nS
-  float clocks_per_calc = avg_npu_clocks/per_core_calcs;
+  float avg_npu_clocks =
+      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
+  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
   std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
 
-
-
-  
   std::cout << "Avg CPU exec time: " << cpu_time_total / num_iter << "us."
             << std::endl;
   std::cout << "Min CPU exec time: " << cpu_time_min << "us." << std::endl;
   std::cout << "Max CPU exec time: " << cpu_time_max << "us." << std::endl;
-
 
   if (VERIFY) {
     if (!sticky_errors) {
@@ -309,9 +303,9 @@ int main(int argc, const char *argv[]) {
       std::cout << std::endl << "FAIL." << std::endl << std::endl;
       return 1;
     }
-  }
-  else {
-    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you" << std::endl;
+  } else {
+    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you"
+              << std::endl;
   }
   return 0;
 }
