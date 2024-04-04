@@ -1,8 +1,11 @@
 #!/usr/bin/bash
 
+# run this script from one of the subdirectories to perform a sweep,
+# e.g. from within whole_array, run ../sweep.sh.
+
 csv_out=sweep_2.csv
 log_out=sweep_2.log
-runargs="--verify 0 --iters 20 --warmup 10"
+runargs="--iters 20 --warmup 10"
 iterations=1
 
 M_lo=256

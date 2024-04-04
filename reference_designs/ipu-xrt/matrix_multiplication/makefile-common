@@ -1,0 +1,92 @@
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# 
+##===----------------------------------------------------------------------===##
+
+# This file is to be included from one of the subdirectories, e.g. 
+# /matrix_vector/, after defining at least the targetname and kernels variable.
+#
+# The build steps for these matrix and matrix-vector multiplication designs all
+# look the same. We need to build:
+#  - A common host test code, 
+#  - a kernel implemented in C using AIE intrinsics,
+#  - the actual design implemented in MLIR.
+# There are also targets for signing the resulting xclbin, extracting traces 
+# and cleaning everything.
+#
+# Since the targets are all the same for all designs, they are defined here.
+# Subdirectories need only include this makefile-common after defining the 
+# following variables:
+# - subdir      -- subdirectory you are including this from
+# - targetname  -- resulting test host code will be named targetname.exe
+# - kernels     -- which kernels in kernels folder to compile and link in
+#                  (without file extension)
+# - M, K, N     -- (optional) dimensions of matrices, may be used by design;
+#                  N=1 for matrix-vector
+
+include ../../makefile-common
+
+# defaults; overwrite if needed
+M?=512   
+K?=512
+N?=512
+
+mlir_target?=build/aie_${M}x${K}x${N}.mlir
+xclbin_target?=build/final_${M}x${K}x${N}.xclbin
+insts_target?=build/insts_${M}x${K}x${N}.txt
+
+runargs?=-v 1 --warmup 10 --iters 10
+
+kernels_dir=../../../../aie_kernels/iron
+
+.PHONY: all
+all: ${xclbin_target} ${insts_target} ${targetname}.exe
+
+build/%.o: ${kernels_dir}/%.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+
+${mlir_target}: aie2.py
+	mkdir -p ${@D}
+	python3 $< -M $M -K $K -N $N > $@
+
+${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-ipu --ipu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+
+${targetname}.exe: test.cpp ../test.cpp ../common.h
+	rm -rf _build
+	mkdir -p _build
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake ../.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+	cd _build && ${powershell} cmake --build . --config Release
+ifeq "${powershell}" "powershell.exe"
+	cp _build/${targetname}.exe $@
+else
+	cp _build/${targetname} $@ 
+endif
+
+xclbin_sign=/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh 
+.PHONY: sign
+sign: ${xclbin_target}
+	${xclbin_sign} -dev Phoenix -xclbin $<
+
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${insts_target} #sign
+	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
+
+.PHONY: clean
+clean:
+	rm -rf build _build ${targetname}.exe
+
+.PHONY: parse_trace
+parse_trace:
+	../../../utils/parse_eventIR.py --filename trace.txt --mlir ./build/aie.mlir --colshift 1 > trace_eventIR.json
+
+.PHONY: clean_trace
+clean_trace:
+	rm -rf tmpTrace trace_eventIR.json
