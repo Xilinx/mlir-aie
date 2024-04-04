@@ -12,11 +12,11 @@
 
 The Object FIFO primitive supports several data movement patterns through its inputs and its member functions. We will now describe each of the currently supported patterns and provide links to more in-depth practical code examples that showcase each of them. 
 
-#### Reuse
+### Reuse
 
 * TODO: explain the concept of a sliding window
 
-#### Broadcast
+### Broadcast
 
 As was explained in the Introduction [section](../section-3a/README.md#initializing-an-object-fifo) section, the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the data is copied at a low-level before being sent to each of the consumers.
 
@@ -39,7 +39,7 @@ A = tile(1, 2)
 B = tile(1, 3)
 C = tile(2, 3)
 of0 = object_fifo("objfifo0", A, [B, C], 1, T.memref(256, T.i32()))
-of1 = object_fifo("objfifo0", B, C, 1, T.memref(256, T.i32()))
+of1 = object_fifo("objfifo1", B, C, 1, T.memref(256, T.i32()))
 
 @core(C)
 def core_body():
@@ -63,8 +63,11 @@ of0 = object_fifo("objfifo0", A, [B, C], [1, 1, 2], T.memref(256, T.i32()))
 ```
 where tiles A and B retain the original depth of 1 while C now has a depth of 2 objects.
 
-#### Link
+### Object FIFO Link
 
+By design an Object FIFO handles both the configuration of the data movement between the producer and consumer tiles as well as the allocation of objects over the memory modules of the tiles. In order to put data consumed from one Object FIFO into another Object FIFO the user could explicitly do this in the core code of a shared tile between the two FIFOs. However, if the goal is to simply copy data from one Object FIFO to the other without modifying it, doing it in the manner described above results in allocating more objects than necessary, i.e., the data being copied to the second Object FIFO is already available in the first one. Additionally, Shim tiles and Mem tiles do not have a core on which the copy can be done explicitly.
+
+Instead of an explicit copy, the Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
 ```
 class object_fifo_link(ObjectFifoLinkOp):
     def __init__(
@@ -73,9 +76,26 @@ class object_fifo_link(ObjectFifoLinkOp):
         fifoOuts,
     )
 ```
+A link allows the user to specify a set of input Object FIFOs via the `fifoIns` input and a set of output ones via the `fifoOuts` input. Each Object FIFO may be specified either using its `name` or its variable. Both inputs can be either a single Object FIFO or an array of them. It is required that there exists at least one shared tile between the consumer tiles of `fifoIns` and the producer tiles of `fifoOuts` for a link to be valid. This is because the implicit copy of data will be done using the DMAs of that tile.
 
-#### Link & Distribute
+Below is an example of a link created between two FIFOs `of0` and `of1`.
+```
+A = tile(1, 0)
+B = tile(1, 1)
+C = tile(1, 2)
+of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
+of1 = object_fifo("objfifo1", B, C, 2, T.memref(256, T.i32()))
+object_fifo_link(of0, of1)
+```
+Similarly the link could've been created using the names of the FIFOs:
+```
+object_fifo_link("objfifo0", "objfifo1")
+```
 
-#### Link & Join
+Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the to other way around.
+
+### Link & Distribute
+
+### Link & Join
 
 

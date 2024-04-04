@@ -10,7 +10,7 @@
 
 # <ins>Section 3a - Introduction</ins>
 
-## Initializing an Object FIFO
+### Initializing an Object FIFO
 
 An Object FIFO represents the data movement connection between a point A and a point B. In the AIE array, these points are AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and compute tile) is different, but there is no difference between them when using an Object FIFO. 
 
@@ -42,7 +42,7 @@ The created Object FIFO is stored in the `0f0` variable and is named `objfifo0`.
 
 As you will see in the Key Object FIFO Patterns [section](../section-3b/README.md#key-object-fifo-patterns), an Object FIFO can have multiple consumer tiles, which describes a broadcast connection from the source tile to all of the consumer tiles. As such, the `consumerTiles` input can be either a single tile or an array of tiles. This is not the case for the `producerTile` input as currently the Object FIFO does not support multiple producers.
 
-## Accessing the objects of an Object FIFO
+### Accessing the objects of an Object FIFO
 
 An Object FIFO can be accessed by the processes running on the producer and consumer tiles registered to it. Before a process can have access to the objects it has to acquire them from the Object FIFO. This is because the Object FIFO is a synchronized communication primitive and two processes may not access the same object at the same time. Once a process has finished working with an object and has no further use for it, it should release it so that another process will be able to acquire and access it. The patterns in which a producer or a consumer process acquires and releases objects from an Object FIFO are called `access patterns`. We can specifically refer to the acquire and release patterns as well.
 
