@@ -177,7 +177,7 @@ llvm.func @concat_i512_i256(%a : vector<8xi32>, %b : vector<8xi32>) -> vector<16
 // ----- SHUFFLE ----- 
 
 // CHECK-LABEL: define <16 x i32> @shuffle_i512
-llvm.func @shuffle_i512(%a : vector<16xi32>, %b : vector<16xi32>, , %mode : i32) -> vector<16xi32> {
+llvm.func @shuffle_i512(%a : vector<16xi32>, %b : vector<16xi32>, %mode : i32) -> vector<16xi32> {
     // CHECK: call <16 x i32> @llvm.aie2.vshuffle(
     // CHECK-SAME: <16 x i32> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
     %0 = "xllvm.intr.aie2.vshuffle"(%a, %b, %mode) : 
