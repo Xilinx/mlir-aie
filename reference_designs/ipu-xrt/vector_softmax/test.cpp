@@ -16,18 +16,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
-<<<<<<< HEAD
-=======
-#include <math.h>
->>>>>>> asplos
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-<<<<<<< HEAD
 #include <math.h>
-=======
->>>>>>> asplos
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -35,11 +28,7 @@
 
 constexpr bool VERIFY = true;
 
-<<<<<<< HEAD
 constexpr int IN_SIZE = 262144; //*1024;
-=======
-constexpr int IN_SIZE = 65536; //*1024;
->>>>>>> asplos
 constexpr int TILE_SIZE = 1024;
 constexpr int OUT_SIZE = IN_SIZE;
 
@@ -99,10 +88,7 @@ int main(int argc, const char *argv[]) {
       "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
-<<<<<<< HEAD
       "profile,p", po::value<std::string>()->default_value(""),"CSV profile")(
-=======
->>>>>>> asplos
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
