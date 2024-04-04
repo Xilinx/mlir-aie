@@ -45,6 +45,19 @@ llvm.func @mul_conf_acc32(%A : vector<64xi8>,
     llvm.return %0 : vector<16xi64>
 }
 
+// CHECK-LABEL: define <16 x i64> @mul_conf_acc64
+llvm.func @mul_conf_acc64(%A : vector<64xi8>,
+                          %B : vector<16xi32>,
+                          %cfg : i32)
+                          -> vector<16xi64> {
+    // CHECK: call <16 x i64> @llvm.aie2.I512.I512.acc64.mul.conf(
+    // CHECK-SAME: <64 x i8> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}},
+    // CHECK-SAME: i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.I512.I512.acc64.mul.conf"(%A, %B, %cfg) :
+        (vector<64xi8>, vector<16xi32>, i32) -> vector<16xi64>
+    llvm.return %0 : vector<16xi64>
+}
+
 // CHECK-LABEL: define <8 x i64> @mul_conf_bf16
 llvm.func @mul_conf_bf16(%A : vector<32xbf16>,
                          %B : vector<32xbf16>,
@@ -94,6 +107,15 @@ llvm.func @srs_256b_v32_acc32(%v : vector<16xi64>, %shft : i32, %sign : i32) -> 
     %0 = "xllvm.intr.aie2.I256.v32.acc32.srs"(%v, %shft, %sign) :
                                         (vector<16xi64>, i32, i32) -> vector<32xi8>
     llvm.return %0 : vector<32xi8>
+}
+
+// CHECK-LABEL: define <16 x i32> @srs_512b_v16_acc64
+llvm.func @srs_512b_v16_acc64(%v : vector<16xi64>, %shft : i32, %sign : i32) -> vector<16xi32> {
+    // CHECK: call <16 x i32> @llvm.aie2.I512.v16.acc64.srs(
+    // CHECK-SAME: <16 x i64> %{{[0-9]+}}, i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.I512.v16.acc64.srs"(%v, %shft, %sign) : 
+                                        (vector<16xi64>, i32, i32) -> vector<16xi32>
+    llvm.return %0 : vector<16xi32>
 }
 
 // CHECK-LABEL: define <16 x bfloat> @srs_256b_v16_accfloat
@@ -149,6 +171,17 @@ llvm.func @concat_i512_i256(%a : vector<8xi32>, %b : vector<8xi32>) -> vector<16
     // CHECK-SAME: <8 x i32> %{{[0-9]+}}, <8 x i32> %{{[0-9]+}})
     %0 = "xllvm.intr.aie2.concat.I512.I256"(%a, %b) : 
                                         (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
+    llvm.return %0 : vector<16xi32>
+}
+
+// ----- SHUFFLE ----- 
+
+// CHECK-LABEL: define <16 x i32> @shuffle_i512
+llvm.func @shuffle_i512(%a : vector<16xi32>, %b : vector<16xi32>, , %mode : i32) -> vector<16xi32> {
+    // CHECK: call <16 x i32> @llvm.aie2.vshuffle(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vshuffle"(%a, %b, %mode) : 
+                                        (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
     llvm.return %0 : vector<16xi32>
 }
 
