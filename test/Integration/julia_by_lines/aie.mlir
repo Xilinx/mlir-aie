@@ -10,7 +10,7 @@
 
 // REQUIRES: peano
 // RUN: %PEANO_INSTALL_DIR/bin/clang++ -O2 --target=aie -c -I/usr/include/aie %S/kernel.cpp
-// RUN: %PYTHON aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%host_runtime_lib%/ %host_runtime_lib%/test_library.cpp %S/test.cpp %S/kernel.cpp -lstdc++ -o test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_libg %S/test.cpp %S/kernel.cpp -lstdc++ -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @test {

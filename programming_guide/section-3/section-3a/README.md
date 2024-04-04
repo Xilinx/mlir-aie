@@ -10,11 +10,11 @@
 
 # <ins>Section 3a - Introduction</ins>
 
-## Initializing an Object FIFO
+### Initializing an Object FIFO
 
-An Object FIFO represents the data movement connection between a point A and a point B. In the AIE array, these points are AIE tiles (see [Section 1 - Basic AI Engine building blocks](../section-1/)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and compute tile) is different, but there is no difference between them when using an Object FIFO. 
+An Object FIFO represents the data movement connection between a point A and a point B. In the AIE array, these points are AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and compute tile) is different, but there is no difference between them when using an Object FIFO. 
 
-To initialize an Object FIFO, users can use the `object_fifo` class constructor (defined in [aie.py](../../python/dialects/aie.py)):
+To initialize an Object FIFO, users can use the `object_fifo` class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
 ```
 class object_fifo:
     def __init__(
@@ -28,9 +28,9 @@ class object_fifo:
         dimensionsFromStreamPerConsumer=None,
     )
 ```
-We will now go over each of the inputs, what they represents and why they are required by the abstraction. We will first focus on the mandatory inputs and in a later section of the guide on the default valued ones (see Data Layout Transformations [subsection](#data-layout-transformations)).
+We will now go over each of the inputs, what they represents and why they are required by the abstraction. We will first focus on the mandatory inputs and in a later section of the guide on the default valued ones (see Data Layout Transformations in [section-3c](../section-3c/README.md#data-layout-transformations)).
 
-First of all, an Object FIFO has a unique `name`. It functions as an ordered buffer that has `depth`-many objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The datatype is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). TODO: depth may be an array - point to broadcast subsection
+First of all, an Object FIFO has a unique `name`. It functions as an ordered buffer that has `depth`-many objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The datatype is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). The `depth` can be either an integer or an array of integers. The latter is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the Key Object FIFO Patterns [section](../section-3b/README.md#broadcast).
 
 An Object FIFO is created between a producer or source tile and a consumer or destination tile. Below, you can see an example of an Object FIFO created between producer tile A and consumer tile B:
 ```
@@ -40,11 +40,9 @@ of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
 ```
 The created Object FIFO is stored in the `0f0` variable and is named `objfifo0`. It has a depth of `3` objects of datatype `<256xi32>`.
 
-As you will see in the Key Object FIFO Patterns [subsection](#key-object-fifo-patterns), an Object FIFO can have multiple consumer tiles, which describes a broadcast connection from the source tile to all of the consumer tiles. As such, the `consumerTiles` input can be either a single tile or an array of tiles. This is not the case for the `producerTile` input as currently the Object FIFO does not support multiple producers.
+As you will see in the Key Object FIFO Patterns [section](../section-3b/README.md#key-object-fifo-patterns), an Object FIFO can have multiple consumer tiles, which describes a broadcast connection from the source tile to all of the consumer tiles. As such, the `consumerTiles` input can be either a single tile or an array of tiles. This is not the case for the `producerTile` input as currently the Object FIFO does not support multiple producers.
 
-*Note: When specified as a number, the `depth` of an Object FIFO may be adjusted at compile-time based on the access patterns of its producer and consumers (see Accessing the objects of an Object FIFO [subsection](#accessing-the-objects-of-an-object-fifo)).*
-
-## Accessing the objects of an Object FIFO
+### Accessing the objects of an Object FIFO
 
 An Object FIFO can be accessed by the processes running on the producer and consumer tiles registered to it. Before a process can have access to the objects it has to acquire them from the Object FIFO. This is because the Object FIFO is a synchronized communication primitive and two processes may not access the same object at the same time. Once a process has finished working with an object and has no further use for it, it should release it so that another process will be able to acquire and access it. The patterns in which a producer or a consumer process acquires and releases objects from an Object FIFO are called `access patterns`. We can specifically refer to the acquire and release patterns as well.
 
@@ -80,3 +78,5 @@ def core_body():
     call(test_func2, [elems[0], elems[1]])
     of0.release(ObjectFifoPort.Consume, 2)
 ```
+
+TODO: add description of initializing an OF with the same producer and consumer tile

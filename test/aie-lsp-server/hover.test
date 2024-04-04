@@ -1,0 +1,43 @@
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2024 AMD Inc.
+//
+// RUN: aie-lsp-server -lit-test < %s | FileCheck -strict-whitespace %s
+{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"processId":123,"rootPath":"mlir","capabilities":{},"trace":"off"}}
+// -----
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{
+  "uri":"test:///foo.mlir",
+  "languageId":"mlir",
+  "version":1,
+  "text":"module @example0 {\n%t42 = aie.tile(4, 2)\n%buf42 = aie.buffer(%t42) : memref<256xi32>\n}"
+}}}
+// -----
+// Hover on an operation.
+{"jsonrpc":"2.0","id":1,"method":"textDocument/hover","params":{
+  "textDocument":{"uri":"test:///foo.mlir"},
+  "position":{"line":1,"character":7}
+}}
+//      CHECK:  "id": 1,
+// CHECK-NEXT:  "jsonrpc": "2.0",
+// CHECK-NEXT:  "result": {
+// CHECK-NEXT:    "contents": {
+// CHECK-NEXT:      "kind": "markdown",
+// CHECK-NEXT:      "value": "\"aie.tile\"\n\nGeneric Form:\n\n```mlir\n%0 = \"aie.tile\"() <{col = 4 : i32, row = 2 : i32}> : () -> index\n```\n"
+// CHECK-NEXT:    },
+// CHECK-NEXT:    "range": {
+// CHECK-NEXT:      "end": {
+// CHECK-NEXT:        "character": 15,
+// CHECK-NEXT:        "line": 1
+// CHECK-NEXT:      },
+// CHECK-NEXT:      "start": {
+// CHECK-NEXT:        "character": 7,
+// CHECK-NEXT:        "line": 1
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+{"jsonrpc":"2.0","id":7,"method":"shutdown"}
+// -----
+{"jsonrpc":"2.0","method":"exit"}

@@ -34,7 +34,8 @@ std::string packetStr(int id, int type);
 void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
                                     llvm::ArrayRef<BDDimLayoutAttr> dims,
                                     int col, int row, int bdNum, int baseAddrA,
-                                    int offsetA, int lenA, int bytesA,
+                                    int offsetA, int lenA,
+                                    int elementWidthInBytes,
                                     const char *errorRet);
 
 } // namespace AIE
