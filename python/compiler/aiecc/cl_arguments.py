@@ -28,6 +28,7 @@ def parse_args(args=None):
         help="directory used for temporary file storage",
     )
     parser.add_argument(
+        "--verbose",
         "-v",
         dest="verbose",
         default=False,
