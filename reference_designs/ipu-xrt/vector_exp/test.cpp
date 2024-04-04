@@ -250,7 +250,7 @@ int main(int argc, const char *argv[]) {
   // There are 4 cores, so the total number of e^x's it does is one quarter of
   // the test size
 
-  int per_core_calcs = IN_SIZE/4;
+  int per_core_calcs = IN_SIZE / 4;
   float avg_npu_time = npu_time_total / num_iter;
   float avg_npu_clocks =
       avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
