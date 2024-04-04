@@ -6,6 +6,6 @@
 // RUN: xchesscc -p me -P %aietools/data/versal_prod/lib/ -L %aietools/data/versal_prod/lib/ -c %S/scale.cc
 // RUN: %python %S/aie2.py xcvc1902 6 > ./aie.mlir
 // RUN: %python aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% ./aie.mlir -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test_vck5000.cpp -o test.elf -L%host_runtime_lib%/test_lib/lib -ltest_lib
-// RUN: %run_on_board ./test.elf | FileCheck %s
+// RUN: %run_on_vck5000 ./test.elf | FileCheck %s
 // CHECK: PASS!
 

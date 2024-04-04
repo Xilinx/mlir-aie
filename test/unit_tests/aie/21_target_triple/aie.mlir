@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// RUN: %run_on_vck5000 ./test.elf
 
 // When this IR is lowered to LLVM, the affine.load operation resulting "%val0"
 // is converted to the following LLVM IR due to the "x86_64-unknown-linux-gnu"

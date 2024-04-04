@@ -7,7 +7,7 @@
 
 // REQUIRES: hsa
 // RUN: aiecc.py --link_against_hsa %S/aie.mlir -I%HSA_DIR%/include -L%HSA_DIR%/lib -lhsa-runtime64 -I%host_runtime_lib%/test_lib/include -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o %T/test.elf
-// RUN: %run_on_board %T/test.elf
+// RUN: %run_on_vck5000 %T/test.elf
 
 module {
   %t70 = aie.tile(6, 0)
