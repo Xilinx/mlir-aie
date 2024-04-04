@@ -28,5 +28,8 @@ This guide is split into three sections, where each section builds on top of the
 <details><summary><a href="./section-3b">Section 3b - Key Object FIFO Patterns</a></summary>
 
 </details>
-<details><summary><a href="./section-3c">Section 3c - Programming for multiple cores</a></summary>
+<details><summary><a href="./section-3c">Section 3c - Data Layout Transformations</a></summary>
+
+</details>
+<details><summary><a href="./section-3d">Section 3d - Programming for multiple cores</a></summary>
 </details>
