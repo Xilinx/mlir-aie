@@ -1,25 +1,36 @@
-// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
-// Test a direct load to vector register that does not actually need an update
-module {
-  func.func @test() {
-    %0 = llvm.mlir.undef : vector<16xi16>
-    %1 = llvm.mlir.undef : vector<16xi16>
-    %2 = aievec.concat %0, %1 : vector<16xi16>, vector<32xi16>
-    %3 = llvm.mlir.undef : vector<32xi8>
-    %4 = llvm.mlir.undef : vector<32xi8>
-    %5 = aievec.concat %3, %4 : vector<32xi8>, vector<64xi8>
-    %6 = llvm.mlir.undef : vector<8xi32>
-    %7 = llvm.mlir.undef : vector<8xi32>
-    %8 = aievec.concat %6, %7 : vector<8xi32>, vector<16xi32>
-    return
-  }
+// RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
+
+func.func @i8_concat(%arg0 : vector<32xi8>, %arg1 : vector<32xi8>) -> vector<64xi8> {
+  %0 = aievec.concat %arg0, %arg1 : vector<32xi8>, vector<64xi8>
+  return %0 : vector<64xi8>
 }
-// CHECK: [[UNDEF_V0:%.+]] = llvm.mlir.undef : vector<16xi16>
-// CHECK: [[UNDEF_V1:%.+]] = llvm.mlir.undef : vector<16xi16>
-// CHECK: {{.*}} = llvm.call @llvm.aie.concat.v16i16([[UNDEF_V0]], [[UNDEF_V1]]) : (vector<16xi16>, vector<16xi16>) -> vector<32xi16>
-// CHECK: [[UNDEF_V0:%.+]] = llvm.mlir.undef : vector<32xi8>
-// CHECK: [[UNDEF_V1:%.+]] = llvm.mlir.undef : vector<32xi8>
-// CHECK: {{.*}} = llvm.call @llvm.aie.concat.v32i8([[UNDEF_V0]], [[UNDEF_V1]]) : (vector<32xi8>, vector<32xi8>) -> vector<64xi8>
-// CHECK: [[UNDEF_V0:%.+]] = llvm.mlir.undef : vector<8xi32>
-// CHECK: [[UNDEF_V1:%.+]] = llvm.mlir.undef : vector<8xi32>
-// CHECK: {{.*}} = llvm.call @llvm.aie.concat.v8i32([[UNDEF_V0]], [[UNDEF_V1]]) : (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
+
+// CHECK-LABEL: @i8_concat
+// CHECK-SAME: %[[ARG0:.*]]: vector<32xi8>,
+// CHECK-SAME: %[[ARG1:.*]]: vector<32xi8>
+// CHECK: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xi8> to vector<8xi32>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[ARG1]] : vector<32xi8> to vector<8xi32>
+// CHECK-NEXT: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I512.I256"(
+// CHECK-SAME: %[[BITCAST0]], %[[BITCAST1]]) : 
+// CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
+// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<64xi8>
+// CHECK-NEXT: return %[[RES]] : vector<64xi8>
+
+// -----
+
+func.func @bf16_concat(%arg0 : vector<16xbf16>, %arg1 : vector<16xbf16>) -> vector<32xbf16> {
+  %0 = aievec.concat %arg0, %arg1 : vector<16xbf16>, vector<32xbf16>
+  return %0 : vector<32xbf16>
+}
+
+// CHECK-LABEL: @bf16_concat
+// CHECK-SAME: %[[ARG0:.*]]: vector<16xbf16>,
+// CHECK-SAME: %[[ARG1:.*]]: vector<16xbf16>
+// CHECK: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<16xbf16> to vector<8xi32>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[ARG1]] : vector<16xbf16> to vector<8xi32>
+// CHECK-NEXT: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I512.I256"(
+// CHECK-SAME: %[[BITCAST0]], %[[BITCAST1]]) : 
+// CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
+// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<32xbf16>
+// CHECK-NEXT: return %[[RES]] : vector<32xbf16>
+

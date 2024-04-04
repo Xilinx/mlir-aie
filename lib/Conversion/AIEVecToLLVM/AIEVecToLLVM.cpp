@@ -354,6 +354,110 @@ public:
   }
 };
 
+class MulElemOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MulElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MulElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedMulElemOp {
+    enum class Kind {
+      // DtIn0_DtIn1_DtRes_CxMxKxN
+      I8_I8_I32_32x1x2x1,
+      I16_I16_I32_32x1x1x1,
+      BF16_BF16_FP32_16x1x2x1,
+      UNSUPPORTED
+      // TODO: I16_I16_I64_16x1x2x1
+      // TODO: I32 and FP32 mul_elem are emulated
+    };
+
+    Kind kind;
+    int conf;
+  };
+
+  static int aiev2_mul_mac_compute_control(int sgn_x, int sgn_y, int amode,
+                                           int bmode, int variant, int zero_acc,
+                                           int shift16, int sub0, int sub1,
+                                           int sub2, int sub_mask) {
+    return ((unsigned)sub_mask << 16) | ((unsigned)shift16 << 10) |
+           ((unsigned)sub0 << 11) | ((unsigned)sub1 << 12) |
+           ((unsigned)sub2 << 13) | ((unsigned)amode << 1) |
+           ((unsigned)bmode << 3) | ((unsigned)variant << 5) |
+           (((unsigned)sgn_x << 9) | ((unsigned)sgn_y << 8)) |
+           ((unsigned)zero_acc << 0);
+  }
+
+  static DecodedMulElemOp decodeMulElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (lhsScaTy.isa<IntegerType>()) {
+      if (lhsBitWidth == 8) {
+        return {DecodedMulElemOp::Kind::I8_I8_I32_32x1x2x1,
+                aiev2_mul_mac_compute_control(1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0)};
+      } else if (lhsBitWidth == 16) {
+        return {DecodedMulElemOp::Kind::I16_I16_I32_32x1x1x1,
+                aiev2_mul_mac_compute_control(1, 1, 0, 3, 1, 0, 0, 0, 0, 0, 0)};
+      }
+    } else {
+      // Float types
+      if (lhsBitWidth == 16) {
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x2x1,
+                aiev2_mul_mac_compute_control(0, 0, 2, 3, 1, 0, 0, 0, 0, 0, 0)};
+      }
+    }
+
+    return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::MulElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedMulElemOp = decodeMulElemOp(adaptor);
+
+    if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.mul_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    // create constant for config
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(),
+        rewriter.getI32IntegerAttr(decodedMulElemOp.conf));
+    Value mulElemOp = nullptr;
+    SmallVector<Value> operands({adaptor.getLhs(), adaptor.getRhs(), confCst});
+
+    // create xllvm intrinsic
+    if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::I16_I16_I32_32x1x1x1 ||
+        decodedMulElemOp.kind == DecodedMulElemOp::Kind::I8_I8_I32_32x1x2x1) {
+      mulElemOp = rewriter.create<xllvm::MulConfAcc32IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({64}, rewriter.getI8Type()),
+               VectorType::get({16}, rewriter.getI32Type()),
+               rewriter.getI32Type()}));
+    } else if (decodedMulElemOp.kind ==
+               DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x2x1) {
+      mulElemOp = rewriter.create<xllvm::MulConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getBF16Type()),
+               VectorType::get({32}, rewriter.getBF16Type()),
+               rewriter.getI32Type()}));
+    }
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 mulElemOp);
+    return success();
+  }
+};
+
 class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::UPSOp>::ConvertOpToLLVMPattern;
@@ -370,54 +474,61 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::SRSOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::SRSOp op) {
-    std::stringstream ss;
-    ss << "llvm.aie.";
-
-    // Determine the prefix
-    auto sourceType = cast<VectorType>(op.getSource().getType());
-    auto resultType = cast<VectorType>(op.getResult().getType());
-    auto sourceElType = cast<IntegerType>(sourceType.getElementType());
-    auto resultElType = cast<IntegerType>(resultType.getElementType());
-
-    auto sourceElWidth = sourceElType.getWidth();
-    auto resultElWidth = resultElType.getWidth();
-
-    if (sourceElWidth == 48 && resultElWidth == 8) {
-      ss << (resultElType.getSignedness() == IntegerType::Unsigned ? 'u' : 'b');
-    } else if ((sourceElWidth == 48 && resultElWidth == 32) ||
-               (sourceElWidth == 80 && resultElWidth == 64)) {
-      ss << 'l';
-    }
-    ss << "srs." << getVectorTypeString(resultType, true) << "."
-       << getVectorTypeString(sourceType, false, true);
-
-    return ss.str();
-  }
-
   LogicalResult
   matchAndRewrite(aievec::SRSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-    auto shiftType = IntegerType::get(context, 32);
+    Location loc = op.getLoc();
 
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType(), shiftType}));
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    // Integer types
+    if (resultScaTy.isa<IntegerType>()) {
+      // create constant for sign
+      auto signCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+      // create xllvm intrinsic
+      SmallVector<Value> operands(
+          {adaptor.getSource(), adaptor.getShift(), signCst});
+      if (resultVectorSize == 512) {
+        rewriter.replaceOpWithNewOp<xllvm::I512V32Acc32SrsIntrOp>(
+            op, VectorType::get({32}, rewriter.getI16Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({16}, rewriter.getI64Type()),
+                 rewriter.getI32Type(), rewriter.getI32Type()}));
+      } else if (resultVectorSize == 256) {
+        rewriter.replaceOpWithNewOp<xllvm::I256V32Acc32SrsIntrOp>(
+            op, VectorType::get({32}, rewriter.getI8Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({16}, rewriter.getI64Type()),
+                 rewriter.getI32Type(), rewriter.getI32Type()}));
+      } else {
+        op.emitWarning() << "aievec.srs with result vector size = "
+                         << resultVectorSize << " is not supported.\n";
+        return failure();
+      }
+    } else {
+      // Float types
+      if (resultVectorSize == 256) {
+        rewriter.replaceOpWithNewOp<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+            op, VectorType::get({16}, rewriter.getBF16Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getSource()},
+                {VectorType::get({8}, rewriter.getI64Type())}));
+      } else {
+        op.emitWarning() << "aievec.srs with result vector size = "
+                         << resultVectorSize << " is not supported.\n";
+        return failure();
+      }
     }
 
-    // Create a constant for the shift value
-    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, func, ValueRange{op.getSource(), op.getShift()});
     return success();
   }
 };
@@ -517,9 +628,9 @@ public:
         // If this UPD is not working off of an existing destination vector,
         // create an undefined vector as the destination
 
-        // TODO: determine if the undef intrinsic is needed or if an LLVM undef
-        // suffices
-        // destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
+        // TODO: determine if the undef intrinsic is needed or if an LLVM
+        // undef suffices destValue =
+        // rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
         std::stringstream ss;
         ss << "llvm.aie." << getVectorTypeString(resultType) << ".undef";
@@ -554,38 +665,23 @@ class ConcatOpConversion
 public:
   using ConvertOpToLLVMPattern<aievec::ConcatOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::ConcatOp op) {
-    auto sourceType = cast<VectorType>(op.getSources()[0].getType());
-    std::stringstream ss;
-    ss << "llvm.aie.concat.";
-    ss << getVectorTypeString(sourceType, true);
-    return ss.str();
-  }
-
   LogicalResult
   matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
+    Location loc = op.getLoc();
 
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
+    // create xllvm intrinsic
+    auto concatOp = rewriter.create<xllvm::ConcatI512I256IntrOp>(
+        loc, VectorType::get({16}, rewriter.getI32Type()),
+        forceCastOperandsToSignature(
+            rewriter, loc, adaptor.getSources(),
+            {VectorType::get({8}, rewriter.getI32Type()),
+             VectorType::get({8}, rewriter.getI32Type())}));
 
-    // TODO: support for more than 2 vector concat
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(
-              op.getResult().getType(),
-              {op.getSources()[0].getType(), op.getSources()[1].getType()}));
-    }
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 concatOp);
 
-    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, func, ValueRange{op.getSources()[0], op.getSources()[1]});
     return success();
   }
 };
@@ -594,41 +690,32 @@ class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::ExtOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::ExtOp>::ConvertOpToLLVMPattern;
 
-  static std::string getIntrinsicName(aievec::ExtOp op) {
-    auto sourceType = cast<VectorType>(op.getSource().getType());
-    auto resultType = cast<VectorType>(op.getResult().getType());
-    int resultSize = getVectorSizeInBits(resultType);
-    std::stringstream ss;
-    ss << "llvm.aie.ext.";
-    ss << (resultSize == 128 ? 'v' : resultSize == 256 ? 'w' : 'x') << ".";
-    ss << getVectorTypeString(sourceType, true) << ".";
-    // The index actually affects which intrinsic to call
-    ss << (op.getIndex() == 0 ? "lo" : "hi");
-    return ss.str();
-  }
-
   LogicalResult
   matchAndRewrite(aievec::ExtOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
+    Location loc = op.getLoc();
 
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType()}));
+    // create constant for index
+    auto indexCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+    if (op.getIndex() == 1) {
+      indexCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
     }
 
-    rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func,
-                                              ValueRange{op.getSource()});
+    // create xllvm intrinsic
+    SmallVector<Value> operands({adaptor.getSource(), indexCst});
+    auto extOp = rewriter.create<xllvm::ExtI256I512IntrOp>(
+        loc, VectorType::get({8}, rewriter.getI32Type()),
+        forceCastOperandsToSignature(
+            rewriter, loc, operands,
+            {VectorType::get({16}, rewriter.getI32Type()),
+             rewriter.getI32Type()}));
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 extOp);
+
     return success();
   }
 };
@@ -780,6 +867,66 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     op.emitWarning() << "aie.broadcast conversion is not implemented\n";
     return failure();
+  }
+};
+
+class BroadcastScalarOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastScalarOp> {
+public:
+  using ConvertOpToLLVMPattern<
+      aievec::BroadcastScalarOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::BroadcastScalarOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (resultScaTy.isa<IntegerType>()) {
+      Value src = adaptor.getSource();
+      Type srcType = src.getType();
+      unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
+
+      if (srcBitWidth < 32) {
+        src = rewriter.create<LLVM::SExtOp>(loc, rewriter.getI32Type(),
+                                            adaptor.getSource());
+      } else if (srcBitWidth > 32) {
+        src = rewriter.create<LLVM::TruncOp>(loc, rewriter.getI32Type(),
+                                             adaptor.getSource());
+      }
+
+      if (resultBitWidth == 8) {
+        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast8I512IntrOp>(
+            op, VectorType::get({64}, rewriter.getI8Type()), src);
+      } else if (resultBitWidth == 32) {
+        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast32I512IntrOp>(
+            op, VectorType::get({16}, rewriter.getI32Type()), src);
+      } else {
+        op.emitWarning()
+            << "aievec.broadcast_scalar conversion with result bitwidth "
+            << resultBitWidth << " is not implemented.\n";
+        return failure();
+      }
+    } else {
+      // Float types
+      if (resultBitWidth == 16) {
+        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast16BF512IntrOp>(
+            op, VectorType::get({32}, rewriter.getBF16Type()),
+            adaptor.getSource());
+      } else {
+        op.emitWarning()
+            << "aievec.broadcast_scalar conversion with result bitwidth "
+            << resultBitWidth << " is not implemented.\n";
+        return failure();
+      }
+    }
+
+    return success();
   }
 };
 
@@ -977,6 +1124,24 @@ class MatMulOpConversion
   }
 };
 
+/*
+  This pattern folds aievec.cast op. For AIE-ML, the accumulators are in 32/64
+  bits, and the vectors are in 4/8/16/32 bits. Hence, we don't have to
+  explicitly express the casting between accumulators and vectors at the LLVM
+  dialect level. The backend LLVM compiler will decide the correct accumulator
+  or vector registers given the ops and intrinsics.
+*/
+class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
+  using ConvertOpToLLVMPattern<aievec::CastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(castOp, adaptor.getSource());
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -993,8 +1158,11 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                PackOpConversion,
                UnpackOpConversion,
                BroadcastOpConversion,
+               BroadcastScalarOpConversion,
                FMAElemOpConversion,
-               MatMulOpConversion>(converter);
+               MulElemOpConversion,
+               MatMulOpConversion,
+               FoldAIECastOps>(converter);
   // clang-format on
 }
 
