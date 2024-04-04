@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
 #ifdef TO_CPP
 void dut(int32_t *restrict in0, int32_t *restrict in1, int32_t *restrict out0);
 #elif TO_LLVM
@@ -14,6 +15,8 @@ void dut(int32_t *in0_allocated, int32_t *in0_aligned, int64_t in0_offset,
          int64_t in1_strides_0, int32_t *out0_allocated, int32_t *out0_aligned,
          int64_t out0_offset, int64_t out0_sizes_0, int64_t out0_strides_0);
 }
+#endif
+
 void dut_ref(int32_t *in0, int32_t *in1, int32_t *out0);
 
 alignas(32) int32_t g_in0[IN0_SIZE];
