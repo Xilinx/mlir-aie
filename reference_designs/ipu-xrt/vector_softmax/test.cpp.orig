@@ -16,18 +16,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
-<<<<<<< HEAD
-=======
-#include <math.h>
->>>>>>> asplos
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-<<<<<<< HEAD
 #include <math.h>
-=======
->>>>>>> asplos
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -35,11 +28,7 @@
 
 constexpr bool VERIFY = true;
 
-<<<<<<< HEAD
-constexpr int IN_SIZE = 262144; //*1024;
-=======
 constexpr int IN_SIZE = 65536; //*1024;
->>>>>>> asplos
 constexpr int TILE_SIZE = 1024;
 constexpr int OUT_SIZE = IN_SIZE;
 
@@ -99,10 +88,7 @@ int main(int argc, const char *argv[]) {
       "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
-<<<<<<< HEAD
       "profile,p", po::value<std::string>()->default_value(""),"CSV profile")(
-=======
->>>>>>> asplos
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
@@ -184,7 +170,7 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> AVec(IN_SIZE);
   for (int i = 0; i < IN_SIZE; i++)
-    AVec[i] = random_bfloat16_t() / 8.0;
+    AVec[i] = random_bfloat16_t()/8.0;
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -204,6 +190,7 @@ int main(int argc, const char *argv[]) {
   float cpu_time_total = 0;
   float cpu_time_min = 9999999;
   float cpu_time_max = 0;
+
 
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
@@ -251,12 +238,13 @@ int main(int argc, const char *argv[]) {
       cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;
       cpu_time_max = (cpu_time > cpu_time_max) ? cpu_time : cpu_time_max;
 
+      
+
       for (uint32_t i = 0; i < IN_SIZE; i++) {
         std::bfloat16_t ref = RefVec[i];
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual e^" << AVec[i] << " : "
-                    << exp(AVec[i]) << std::endl;
+                    << " != " << ref << " actual e^" << AVec[i] << " : " << exp(AVec[i]) << std::endl;
           errors++;
           sticky_errors++;
         } else {
@@ -265,6 +253,8 @@ int main(int argc, const char *argv[]) {
                       << " == " << ref << std::endl;
         }
       }
+      
+
 
     } else {
       if (verbosity >= 1)
@@ -291,8 +281,7 @@ int main(int argc, const char *argv[]) {
       if (!errors) {
         std::cout << iter << ": pass! in " << npu_time << "us" << std::endl;
       } else {
-        std::cout << iter << ": fail! " << errors << " errors in " << npu_time
-                  << "us" << std::endl;
+        std::cout << iter << ": fail! " << errors << " errors in " << npu_time << "us" << std::endl;
       }
     }
   }
@@ -303,20 +292,22 @@ int main(int argc, const char *argv[]) {
   std::cout << "Max NPU exec time: " << npu_time_max << "us." << std::endl;
 
   // Let's figure out how many cycles it takes a core to do a single e^x
-  // There are 4 cores, so the total number of e^x's it does is one quarter of
-  // the test size
+  // There are 4 cores, so the total number of e^x's it does is one quarter of the test size
 
-  int per_core_calcs = IN_SIZE / 4;
+  int per_core_calcs = IN_SIZE/4;
   float avg_npu_time = npu_time_total / num_iter;
-  float avg_npu_clocks =
-      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
-  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
+  float avg_npu_clocks = avg_npu_time/1.0E-3;  // Time is in uS, but the AIE is clocked in nS
+  float clocks_per_calc = avg_npu_clocks/per_core_calcs;
   std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
 
+
+
+  
   std::cout << "Avg CPU exec time: " << cpu_time_total / num_iter << "us."
             << std::endl;
   std::cout << "Min CPU exec time: " << cpu_time_min << "us." << std::endl;
   std::cout << "Max CPU exec time: " << cpu_time_max << "us." << std::endl;
+
 
   if (VERIFY) {
     if (!sticky_errors) {
@@ -326,9 +317,9 @@ int main(int argc, const char *argv[]) {
       std::cout << std::endl << "FAIL." << std::endl << std::endl;
       return 1;
     }
-  } else {
-    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you"
-              << std::endl;
+  }
+  else {
+    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you" << std::endl;
   }
   return 0;
 }
