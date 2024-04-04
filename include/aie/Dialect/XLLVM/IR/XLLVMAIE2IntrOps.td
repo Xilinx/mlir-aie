@@ -64,6 +64,13 @@ def MulConfAcc32IntrOp :
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$conf)>;
 
+def MulConfAcc64IntrOp :
+    AIEVec2_IntrOp<"I512.I512.acc64.mul.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$conf)>;
+
 def MulConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.mul16.conf",
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
@@ -96,6 +103,13 @@ def I512V32Acc32SrsIntrOp :
 def I256V32Acc32SrsIntrOp :
     AIEVec2_IntrOp<"I256.v32.acc32.srs",
         [TypeIs<"res", VectorOfLengthAndType<[32], [I8]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$lhs,
+                   I32:$shft,
+                   I32:$sign)>;
+
+def I512V16Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I512.v16.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$lhs,
                    I32:$shft,
                    I32:$sign)>;
@@ -137,6 +151,15 @@ def ConcatI512I256IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$a0,
                    VectorOfLengthAndType<[8], [I32]>:$a1)>;
+
+// ----- SHUFFLE ----- 
+
+def VectorShuffleIntrOp :
+    AIEVec2_IntrOp<"vshuffle",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$a,
+                   VectorOfLengthAndType<[16], [I32]>:$b,
+                   I32:$mode)>;
 
 // ----- UNDEF ----- 
 
