@@ -787,20 +787,26 @@ class FlowRunner:
 
         install_path = aie.compiler.aiecc.configure.install_path()
 
+        # Setting everything up if linking against HSA
+        if opts.link_against_hsa:
+            arch_name = opts.host_target.split("-")[0] + "-hsa"
+        else:
+            arch_name = opts.host_target.split("-")[0]
+
         runtime_simlib_path = os.path.join(
             install_path, "aie_runtime_lib", aie_target.upper(), "aiesim"
         )
         runtime_testlib_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "lib",
         )
         runtime_testlib_include_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "include",
         )
@@ -846,6 +852,7 @@ class FlowRunner:
             "-lxtlm",
             "-flto",
         ]
+
         processes = []
         processes.append(
             self.do_call(
