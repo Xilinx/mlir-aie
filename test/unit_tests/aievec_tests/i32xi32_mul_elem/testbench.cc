@@ -4,7 +4,16 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#ifdef TO_CPP
 void dut(int32_t *restrict in0, int32_t *restrict in1, int32_t *restrict out0);
+#elif TO_LLVM
+extern "C" {
+void dut(int32_t *in0_allocated, int32_t *in0_aligned, int64_t in0_offset,
+         int64_t in0_sizes_0, int64_t in0_strides_0, int32_t *in1_allocated,
+         int32_t *in1_aligned, int64_t in1_offset, int64_t in1_sizes_0,
+         int64_t in1_strides_0, int32_t *out0_allocated, int32_t *out0_aligned,
+         int64_t out0_offset, int64_t out0_sizes_0, int64_t out0_strides_0);
+}
 void dut_ref(int32_t *in0, int32_t *in1, int32_t *out0);
 
 alignas(32) int32_t g_in0[IN0_SIZE];
@@ -26,7 +35,11 @@ int main(int argc, char *argv[]) {
 
   chess_memory_fence();
   auto cyclesBegin = chess_cycle_count();
+#ifdef TO_CPP
   dut(g_in0, g_in1, g_out0);
+#elif TO_LLVM
+  dut(g_in0, g_in0, 0, 0, 0, g_in1, g_in1, 0, 0, 0, g_out0, g_out0, 0, 0, 0);
+#endif
   auto cyclesEnd = chess_cycle_count();
   chess_memory_fence();
 
