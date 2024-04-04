@@ -208,7 +208,7 @@ class CMakeBuild(build_ext):
         )
 
 
-cmake_txt = open("llvm-project/llvm/CMakeLists.txt").read()
+cmake_txt = open("llvm-project/cmake/Modules/LLVMVersion.cmake").read()
 llvm_version = []
 for v in ["LLVM_VERSION_MAJOR", "LLVM_VERSION_MINOR", "LLVM_VERSION_PATCH"]:
     vn = re.findall(rf"set\({v} (\d+)\)", cmake_txt)
