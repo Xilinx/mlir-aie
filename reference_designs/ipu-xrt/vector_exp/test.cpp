@@ -16,11 +16,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-#include <math.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -208,7 +208,8 @@ int main(int argc, const char *argv[]) {
         std::bfloat16_t ref = exp(AVec[i]);
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual e^" << AVec[i] << " : " << exp(AVec[i]) << std::endl;
+                    << " != " << ref << " actual e^" << AVec[i] << " : "
+                    << exp(AVec[i]) << std::endl;
           errors++;
           sticky_errors++;
         } else {
@@ -246,12 +247,14 @@ int main(int argc, const char *argv[]) {
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
 
   // Let's figure out how many cycles it takes a core to do a single e^x
-  // There are 4 cores, so the total number of e^x's it does is one quarter of the test size
+  // There are 4 cores, so the total number of e^x's it does is one quarter of
+  // the test size
 
   int per_core_calcs = IN_SIZE/4;
   float avg_npu_time = npu_time_total / num_iter;
-  float avg_npu_clocks = avg_npu_time/1.0E-3;  // Time is in uS, but the AIE is clocked in nS
-  float clocks_per_calc = avg_npu_clocks/per_core_calcs;
+  float avg_npu_clocks =
+      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
+  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
   std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
 
   // Lets benchmark the CPU
@@ -277,14 +280,11 @@ int main(int argc, const char *argv[]) {
     cpu_time_total += cpu_time;
     cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;
     cpu_time_max = (cpu_time > cpu_time_max) ? cpu_time : cpu_time_max;
-
-
   }
   std::cout << "Avg CPU exec time: " << cpu_time_total / num_iter << "us."
             << std::endl;
   std::cout << "Min CPU matmul time: " << cpu_time_min << "us." << std::endl;
   std::cout << "Max CPU matmul time: " << cpu_time_max << "us." << std::endl;
-
 
   if (VERIFY) {
     if (!sticky_errors) {
@@ -294,9 +294,9 @@ int main(int argc, const char *argv[]) {
       std::cout << std::endl << "FAIL." << std::endl << std::endl;
       return 1;
     }
-  }
-  else {
-    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you" << std::endl;
+  } else {
+    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you"
+              << std::endl;
   }
   return 0;
 }

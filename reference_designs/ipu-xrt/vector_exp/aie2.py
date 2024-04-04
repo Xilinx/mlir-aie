@@ -46,7 +46,9 @@ def my_eltwise_add():
 
             # AIE Core Function declarations
 
-            exp_bf16_vector = external_func("exp_bf16_vector", inputs=[memRef_ty, memRef_ty])
+            exp_bf16_vector = external_func(
+                "exp_bf16_vector", inputs=[memRef_ty, memRef_ty]
+            )
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -91,7 +93,7 @@ def my_eltwise_add():
                                 ObjectFifoPort.Consume, 1
                             )
 
-                            call(exp_bf16_vector,[elem_in_a, elem_out])
+                            call(exp_bf16_vector, [elem_in_a, elem_out])
 
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume, 1

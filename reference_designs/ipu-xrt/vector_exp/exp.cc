@@ -23,8 +23,6 @@ extern void dut(bfloat16 *a_in, bfloat16 *cout);
 
 extern "C" {
 
-void exp_bf16_vector(bfloat16 *a_in, bfloat16 *c_out) {
-  dut(a_in, c_out);
-}
+void exp_bf16_vector(bfloat16 *a_in, bfloat16 *c_out) { dut(a_in, c_out); }
 
 } // extern "C"
