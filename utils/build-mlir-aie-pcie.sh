@@ -65,6 +65,7 @@ CMAKE_CONFIGS="\
     -DAIE_RUNTIME_TARGETS=x86_64-hsa \
     -DAIE_RUNTIME_TEST_TARGET=x86_64-hsa \
     -DAIE_ENABLE_PYTHON_PASSES=OFF \
+    -DENABLE_BOARD_TESTS=ON \
     .. |& tee cmake.log"
 
 if [ -x "$(command -v lld)" ]; then
