@@ -143,7 +143,8 @@ int main(int argc, char *argv[]) {
   TK.PrintIRBeforeAll = PrintIRBeforeAll;
   TK.PrintIRModuleScope = PrintIRModuleScope;
 
-  findVitis(TK);
+  if (TK.UseChess)
+    findVitis(TK);
 
   if (Verbose)
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
