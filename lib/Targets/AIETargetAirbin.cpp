@@ -595,14 +595,12 @@ static BDInfo getBDInfo(Block &block) {
   BDInfo bdInfo;
   for (auto op : block.getOps<DMABDOp>()) {
     bdInfo.foundBD = true;
-    auto bufferType = op.getBuffer().getType().cast<::mlir::MemRefType>();
-
     assert(op.getBufferOp().getAddress().has_value() &&
            "buffer op should have address");
     bdInfo.baseAddrA = op.getBufferOp().getAddress().value();
-    bdInfo.lenA = op.getLenValue();
-    bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
-    bdInfo.offsetA = op.getOffsetValue();
+    bdInfo.lenA = op.getLenInBytes();
+    bdInfo.bytesA = op.getBufferElementTypeWidthInBytes();
+    bdInfo.offsetA = op.getOffsetInBytes();
     bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
     bdInfo.hasA = true;
   }

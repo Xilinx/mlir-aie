@@ -401,6 +401,7 @@ def AIEVec_CastOp:
     OpBuilder<(ins "mlir::Value":$source, "bool":$isResAcc),
     [{build($_builder, $_state, source.getType(), source, isResAcc);}]>
   ];
+  let hasFolder = 1;
 }
 
 def AIEVec_SRSOp:
