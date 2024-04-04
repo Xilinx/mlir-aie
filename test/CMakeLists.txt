@@ -69,13 +69,6 @@ find_package(hsa-runtime64)
 cmake_dependent_option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ON "Vitis_FOUND" OFF)
 cmake_dependent_option(ENABLE_PYTHON_TESTS "Enable python tests" ON "AIE_ENABLE_BINDINGS_PYTHON" OFF)
 
-# If we find hsa-runtiem64 run the tests on the board
-if(hsa-runtime64_FOUND)
-  set(ENABLE_BOARD_TESTS ON)
-else()
-  set(ENABLE_BOARD_TESTS OFF)
-endif()
-
 # Look for LibXAIE
 set(LibXAIE_FOUND FALSE)
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
