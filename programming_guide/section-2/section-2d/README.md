@@ -8,9 +8,9 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 3c - Data Layout Transformations</ins>
+# <ins>Section 2d - Programming for multiple cores</ins>
 
-* dimensionsToStream, dimensionsFromStreamPerConsumer
+* explain how to go from code written for a single core to code written like in the visual pipelines, with for loops over multiple cores accessing several objfifos
 
 
 
