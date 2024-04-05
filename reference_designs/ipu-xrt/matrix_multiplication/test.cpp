@@ -58,7 +58,7 @@ int main(int argc, const char *argv[]) {
   int N = vm["N"].as<int>();
 
   bool do_verify_stochastic =
-      (long long)M * N * K <= verify_stochastic_threshold;
+      (long long)M * N * K > verify_stochastic_threshold;
 
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
@@ -199,10 +199,10 @@ int main(int argc, const char *argv[]) {
       }
       auto vstart = std::chrono::system_clock::now();
       if (do_verify_stochastic) {
-        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec, verbosity);
-      } else {
         errors = matmul_common::verify_stochastic(
             M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity);
+      } else {
+        errors = matmul_common::verify(M, N, K, AVec, BVec, CVec, verbosity);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
