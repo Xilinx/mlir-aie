@@ -49,7 +49,7 @@ class object_fifo:
 ``` 
 such that other actors may acquire it in the future. The acquire and release operations both take an additional port attribute which can be either "Produce" or "Consume". The use of this attribute is ... (TODO).
 
-## <ins>Tutorial 3 Lab </ins>
+## <ins>Tutorial 2 Lab </ins>
 
 1. Read through the [/objectfifo_ver/aie.mlir](aie.mlir) design. In which tile and its local memory will the objectfifo lowering generate the buffer and its lock? <img src="../../images/answer1.jpg" title="On even rows tiles have local memories to their left, so the shared memory is that of tile (2,4). That is where the lowering will generate the shared buffer and lock." height=25>
 

@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 3b - Key Object FIFO Patterns</ins>
+# <ins>Section 2b - Key Object FIFO Patterns</ins>
 
 The Object FIFO primitive supports several data movement patterns through its inputs and its member functions. We will now describe each of the currently supported patterns and provide links to more in-depth practical code examples that showcase each of them. 
 
@@ -18,7 +18,7 @@ The Object FIFO primitive supports several data movement patterns through its in
 
 ### Broadcast
 
-As was explained in the Introduction [section](../section-3a/README.md#initializing-an-object-fifo) section, the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the data is copied at a low-level before being sent to each of the consumers.
+As was explained in the Introduction [section](../section-2a/README.md#initializing-an-object-fifo) section, the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the data is copied at a low-level before being sent to each of the consumers.
 
 For more low-level details regarding how the objects in the Object FIFO are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the MLIR-AIE tutorials [tutorials](/mlir-aie/tutorials/tutorial-7/).
 
