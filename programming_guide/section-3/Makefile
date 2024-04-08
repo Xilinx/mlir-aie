@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../reference_designs/ipu-xrt/makefile-common
+include ../../programming_examples/basic/makefile-common
 
 all: build/final.xclbin
 
