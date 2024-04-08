@@ -3,11 +3,14 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 
-import argparse
+# import argparse
 import numpy as np
 import pyxrt as xrt
 import sys
 import time
+
+sys.path.append("../../programming_examples/utils")
+import test_utils
 
 # ------------------------------------------------------
 # Configure this to match your design's buffer size
@@ -23,68 +26,6 @@ INOUT2_DATATYPE = np.uint32
 INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
 INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
 INOUT2_SIZE = INOUT2_VOLUME * INOUT2_DATATYPE().itemsize
-
-
-# options
-def parse_args(args):
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "-x", "--xclbin", required=True, dest="xclbin", help="the input xclbin path"
-    )
-    p.add_argument(
-        "-k",
-        "--kernel",
-        required=True,
-        dest="kernel",
-        default="MLIR_AIE",
-        help="the kernel name in the XCLBIN (for instance MLIR_AIE)",
-    )
-    p.add_argument(
-        "-v", "--verbosity", default=0, type=int, help="the verbosity of the output"
-    )
-    p.add_argument(
-        "-i",
-        "--instr",
-        dest="instr",
-        default="instr.txt",
-        help="path of file containing userspace instructions sent to the NPU",
-    )
-    p.add_argument(
-        "--verify",
-        dest="verify",
-        default=True,
-        help="whether to verify the AIE computed output",
-    )
-    p.add_argument(
-        "--iters",
-        dest="iters",
-        default=1,
-        type=int,
-        help="number of benchmark iterations",
-    )
-    p.add_argument(
-        "--warmup",
-        dest="warmup_iters",
-        default=0,
-        type=int,
-        help="number of warmup iterations",
-    )
-    p.add_argument(
-        "-t",
-        "--trace_sz",
-        dest="trace_size",
-        default=0,
-        type=int,
-        help="trace size in bytes",
-    )
-    p.add_argument(
-        "--trace_file",
-        dest="trace_file",
-        default="trace.txt",
-        help="where to store trace output",
-    )
-    return p.parse_args(args)
-
 
 def main(opts):
 
@@ -140,18 +81,26 @@ def main(opts):
     bo_inout1.write(inout1, 0)
     bo_inout2.write(inout2, 0)
 
+    # Sync buffers to update input buffer values
     bo_instr.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
     bo_inout0.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
     bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
     bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
+    # ------------------------------------------------------
+    # Initialize run configs
+    # ------------------------------------------------------
     num_iter = opts.iters + opts.warmup_iters
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
     errors = 0
 
+    # ------------------------------------------------------
+    # Main run loop
+    # ------------------------------------------------------
     for i in range(num_iter):
+        # Run kernel
         if opts.verbosity >= 1:
             print("Running Kernel.")
         start = time.time_ns()
@@ -160,9 +109,11 @@ def main(opts):
         stop = time.time_ns()
         bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
+        # Warmup iterations do not count towards average runtime.
         if i < opts.warmup_iters:
             continue
 
+        # Copy output results and verify they are correct
         out_size = INOUT2_SIZE + opts.trace_size
         output_buffer = bo_inout2.read(out_size, 0).view(INOUT2_DATATYPE)
         if opts.verify:
@@ -172,6 +123,7 @@ def main(opts):
             e = np.equal(output_buffer, ref)
             errors = errors + np.size(e) - np.count_nonzero(e)
 
+        # Write trace values if trace_size > 0
         if opts.trace_size > 0:
             print("Do something with trace!")
 
@@ -200,5 +152,5 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    opts = parse_args(sys.argv[1:])
+    opts = test_utils.parse_args(sys.argv[1:])
     main(opts)
