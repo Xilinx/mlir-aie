@@ -24,9 +24,9 @@ Prerequisite: please bring your laptop, so that you can ssh into our RyzenAI ena
 |------|-------|-----------|----------------|
 | 08:30am | Intro to spatical compute and explicit data movement | Kristof | tbd |
 | 08:45am | Hello world from Ryzen AI | Jack | tbd |
-| 09:00am | Excersize 1: Build and run your first program | All | tbd |
-| 09:30am | Data movement on Ryzen AI with objectFIFOs | Joe | tbd |
-| 09:50am | Excersize 2: Vector-scalar | All |tbd |
+| 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | tbd |
+| 09:30am | Excersize 1: Build and run your first program | All | tbd |
+| 09:45am | Excersize 2: Vector-scalar | All |tbd |
 | 10:00am | Break | | |
 | 11:00am | Tracing and performance analysis | Jack | tbd |
 | 11:10am | Excersize 3: Tracing vector-scalar | All | tbd |
