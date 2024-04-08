@@ -10,9 +10,11 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program for AI Engines, our MLIR-AIE framework serves as the entry point to declare and configure the structural building blocks that make up an array of AI Engines. Details for these building blocks, along with the general architecture of AI Engines are described in the [MLIR tutorials](../../mlir_tutorials). Read through the synopsis on first page of the tutorial before continuing here.
+The AI Engine array is a spatial compute architecture: a modular and scalable system with spatically distributed compute and multi-level memories. Its compute dense vector processing runs independently and concurrently to explicit scheduled datamovement. When we program for this AI Engine array, our MLIR-AIE framework serves as the entry point to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. 
 
-In this programming guide, we will be utilizing the python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
+> **NOTE:**  The MLIR-AIE MLIR dialect has support for these 3 structural buildings blocks and also for all other architetural features of the AI Engine array. MLIR focused details are described in the [MLIR tutorials](../../mlir_tutorials)
+
+In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
 
 At the top of this python source, we include modules that define the mlir-aie dialect and the mlir ctx wrapper which encapsulates the definition of our AI Engine enabled device (e.g. xcvc1902) and its associated structural building blocks.
 
