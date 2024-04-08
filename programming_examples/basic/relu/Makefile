@@ -8,7 +8,7 @@
 
 include ../makefile-common
 
-targetname = testExp
+targetname = testRelu
 
 all: build/final.xclbin build/insts.txt
 
@@ -46,5 +46,5 @@ clean_trace:
 	rm -rf tmpTrace trace.txt
 
 clean: clean_trace
-	rm -rf build _build ${targetname}.exe vecexp.cc
+	rm -rf build _build ${targetname}.exe
 

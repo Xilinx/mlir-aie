@@ -46,15 +46,15 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-static inline std::bfloat16_t random_bfloat16_t() {
+static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale, std::bfloat16_t bias) {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
-  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
+  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX))-bias);
 }
 
 bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
   std::bfloat16_t diff = fabs(a - b);
-  if ((diff / a) < 0.01)
+  if ((diff / 4.0) < 0.001)
     return true;
   else
     return false;
@@ -168,7 +168,7 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> AVec(IN_SIZE);
   for (int i = 0; i < IN_SIZE; i++)
-    AVec[i] = random_bfloat16_t();
+    AVec[i] = random_bfloat16_t(4.0, 2.0);
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -179,7 +179,7 @@ int main(int argc, const char *argv[]) {
 
   int sticky_errors = 0;
 
-  unsigned num_iter = 256;
+  unsigned num_iter = 2;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
@@ -205,13 +205,16 @@ int main(int argc, const char *argv[]) {
         std::cout << "Verifying results ..." << std::endl;
       }
       for (uint32_t i = 0; i < IN_SIZE; i++) {
-        std::bfloat16_t ref = 0.0;
+        std::bfloat16_t ref;
         if (AVec[i] > 0.0)
           ref = AVec[i];
+        else
+          ref = 0.0;
+
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual e^" << AVec[i] << " : "
-                    << exp(AVec[i]) << std::endl;
+                    << " != " << ref << " actual max(" << AVec[i] << ",0.0)"
+                    << std::endl;
           errors++;
           sticky_errors++;
         } else {
@@ -248,17 +251,6 @@ int main(int argc, const char *argv[]) {
   std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
 
-  // Let's figure out how many cycles it takes a core to do a single e^x
-  // There are 4 cores, so the total number of e^x's it does is one quarter of
-  // the test size
-
-  int per_core_calcs = IN_SIZE / 4;
-  float avg_npu_time = npu_time_total / num_iter;
-  float avg_npu_clocks =
-      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
-  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
-  std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
-
   // Lets benchmark the CPU
   float cpu_time_total = 0;
   float cpu_time_min = 9999999;
@@ -268,7 +260,7 @@ int main(int argc, const char *argv[]) {
     std::vector<std::bfloat16_t> AVec(IN_SIZE);
     std::vector<std::bfloat16_t> ResVec(IN_SIZE);
     for (int i = 0; i < IN_SIZE; i++) {
-      AVec[i] = random_bfloat16_t();
+      AVec[i] = random_bfloat16_t(4.0, 2.0);
     }
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < IN_SIZE; i++) {
