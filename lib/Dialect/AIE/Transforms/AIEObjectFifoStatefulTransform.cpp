@@ -861,8 +861,7 @@ struct AIEObjectFifoStatefulTransformPass
         // case, but is not fully generic.
         if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
           opIndex++;
-          auto clone = nestedLoop->clone();
-          replaceOperands(builder, clone, opIndex, base, step, inLoop,
+          replaceOperands(builder, nestedLoop, opIndex, base, step, inLoop,
                           numDuplications, dependencies, duplicatedOperations);
           replaceOpsNested(nestedLoop, opIndex, numDuplications);
         } else {
