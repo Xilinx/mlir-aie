@@ -10,5 +10,6 @@
 
 # <ins>Section 3 - My First Program</ins>
 
-* Introduce example of first simple program (Bias Add)
-* Illustrate how built-in simulation of single core design
+In this section, we'll put together what you learend in [section-1](../section-1) for defining a basic strucutral design in python and combine it with the data movement part from [section-2](../section-2) to build our first program. We will then run a simulation on this program as well as run this design on hardware (Ryzen AI).
+
+
