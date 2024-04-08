@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_ddr_test_buffer_in_lock(_xaie, 1, 0);
   mlir_aie_release_ddr_test_buffer_out_lock(_xaie, 1, 0);
 
-  if(mlir_aie_acquire_ddr_test_buffer_out_lock(_xaie, 0, 1000) == XAIE_OK)
+  if (mlir_aie_acquire_ddr_test_buffer_out_lock(_xaie, 0, 1000) == XAIE_OK)
     printf("Acquired ddr output lock(0). Output shim dma done.\n");
   else
     printf("Timed out (1000) while trying to acquire ddr output lock (0).\n");
