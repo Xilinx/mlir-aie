@@ -53,5 +53,7 @@ MLIR-AIE is an MLIR-based representation for AI Engine design. It provides a fou
     * Resnet
 </details>
 
+### [Quick Reference](./quick_reference.md)
+
 
 

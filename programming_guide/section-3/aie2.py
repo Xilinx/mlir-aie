@@ -31,24 +31,29 @@ def my_first_aie_program():
             ComputeTile = tile(0, 2)
             ShimTile = tile(0, 0)
 
-            # AIE-array data movement with object fifos
-            # Input
+            # Data movement with object FIFOs
+            # Input (from shim tile to compute tile)
             of_in0 = object_fifo("in0", ShimTile, ComputeTile, 2, memRef_8_ty)
 
-            # Output
+            # Output (from compute tile to shim tile)
             of_out0 = object_fifo("out0", ComputeTile, ShimTile, 2, memRef_8_ty)
 
-            # Compute tile
+            # Compute tile body
             @core(ComputeTile)
             def core_body():
                 for _ in for_(8):
+                    # Acquire input and output object FIFO objects
                     elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
+
+                    # Core functionality - load, add 1, store
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
                         yield_([])
+                    
+                    # Release input and output object FIFO objects
                     of_in0.release(ObjectFifoPort.Consume, 1)
                     of_out0.release(ObjectFifoPort.Produce, 1)
                     yield_([])
@@ -64,6 +69,8 @@ def my_first_aie_program():
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
+    # Print the mlir conversion
     print(ctx.module)
 
+# Call design function to generate mlir code to stdout
 my_first_aie_program()

@@ -24,6 +24,9 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
+// ------------------------------------------------------
+// Configure this to match your buffer data type
+// ------------------------------------------------------
 using INOUT0_DATATYPE = std::uint32_t;
 using INOUT1_DATATYPE = std::uint32_t;
 using INOUT2_DATATYPE = std::uint32_t;
@@ -31,7 +34,9 @@ using INOUT2_DATATYPE = std::uint32_t;
 
 namespace po = boost::program_options;
 
-// Verify results
+// ----------------------------------------------------------------------------
+// Verify results (specific to our design example)
+// ----------------------------------------------------------------------------
 template<typename Tout>
 int verify(int CSize, std::vector<Tout> C, int verbosity) {
   int errors = 0;
@@ -50,9 +55,14 @@ int verify(int CSize, std::vector<Tout> C, int verbosity) {
   return errors;
 }
 
+// ----------------------------------------------------------------------------
+// Main
+// ----------------------------------------------------------------------------
 int main(int argc, const char *argv[]) {
 
-  // Program arguments parsing
+  // ------------------------------------------------------
+  // Parse program arguments
+  // ------------------------------------------------------
   po::options_description desc("Allowed options");
   po::variables_map vm;
   test_utils::add_default_options(desc);
@@ -64,25 +74,31 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  srand(time(NULL));
-
-  int INOUT0_VOLUME = 64; // Input only, 64
-  int INOUT1_VOLUME = 64; // Not used
-  int INOUT2_VOLUME = 64; // Output only, 64
+  // ------------------------------------------------------
+  // Configure this to match your design's buffer size
+  // ------------------------------------------------------
+  int INOUT0_VOLUME = 64; // Input only, 64x uint32_t in this example
+  int INOUT1_VOLUME = 64; // Not used in this example
+  int INOUT2_VOLUME = 64; // Output only, 64x uint32_t in this example
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE); 
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE); 
   size_t INOUT2_SIZE = INOUT2_VOLUME * sizeof(INOUT2_DATATYPE); 
 
+  // TODO Remove trace for now?
   size_t OUT_SIZE = INOUT2_SIZE + trace_size;
 
+  srand(time(NULL));
+
+  // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_sequence(vm["instr"].as<std::string>());
-
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
-  // Start the XRT test code
+  // ------------------------------------------------------
+  // Get device, load the xclbin & kernel and register them
+  // ------------------------------------------------------
   // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
@@ -115,18 +131,19 @@ int main(int argc, const char *argv[]) {
               << "\n";
   device.register_xclbin(xclbin);
 
-  // get a hardware context
+  // Get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
 
-  // get a kernel handle
+  // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
   auto kernel = xrt::kernel(context, kernelName);
 
-  // Initialize input/ output buffer sizes
-  // TODO - Add your custom buffer size here
+  // ------------------------------------------------------
+  // Initialize input/ output buffer sizes and sync them
+  // ------------------------------------------------------
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inout0 = xrt::bo(device, INOUT0_SIZE,
@@ -137,7 +154,6 @@ int main(int argc, const char *argv[]) {
   auto bo_inout2 = xrt::bo(device, OUT_SIZE,
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
-  // Initiaalize input buffers
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
@@ -172,7 +188,9 @@ int main(int argc, const char *argv[]) {
   bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inout2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
+  // ------------------------------------------------------
   // Initialize run configs
+  // ------------------------------------------------------
   unsigned num_iter = n_iterations + n_warmup_iterations;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
@@ -180,7 +198,9 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  // Run loop
+  // ------------------------------------------------------
+  // Main run loop
+  // ------------------------------------------------------
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
     if (verbosity >= 1) {
@@ -227,7 +247,7 @@ int main(int argc, const char *argv[]) {
                                      vm["trace_file"].as<std::string>());
     }
 
-    // Accumulat run times
+    // Accumulate run times
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
@@ -237,10 +257,13 @@ int main(int argc, const char *argv[]) {
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
   }
 
+  // ------------------------------------------------------
+  // Print verification and timing results
+  // ------------------------------------------------------
+
   // TODO - Mac count to guide gflops 
   float macs = 0;
 
-  // Print verification results
   std::cout << std::endl
             << "Avg NPU time: " << npu_time_total / n_iterations << "us."
             << std::endl;

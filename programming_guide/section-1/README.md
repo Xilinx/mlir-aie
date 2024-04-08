@@ -10,7 +10,7 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program for AI Engines, our MLIR-AIE framework serves as the entry point to declare and configure the structural building blocks that make up an array of AI Engines. Details for these building blocks, along with the general architecture of AI Engines are described in the [MLIR mlir_tutorials](../mlir_tutorials). Read through the synopsis first before continuing here.
+When we program for AI Engines, our MLIR-AIE framework serves as the entry point to declare and configure the structural building blocks that make up an array of AI Engines. Details for these building blocks, along with the general architecture of AI Engines are described in the [MLIR tutorials](../../mlir_tutorials). Read through the synopsis on first page of the tutorial before continuing here.
 
 In this programming guide, we will be utilizing the python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
 
@@ -41,7 +41,7 @@ Within our ctx wrapper, we finally get down to declaring our AI Engine device vi
             ComputeTile = tile(2, 3)
             ComputeTile = tile(2, 4)
 ```
-Once we are done declaring our blocks (and connections), we print the ctx wrapped design python defined design is converted to mlir and printed to stdout. Then we finish our python code by calling the strucgtural design function.
+Once we are done declaring our blocks (and connections), we print the ctx wrapped design python defined design is converted to mlir and printed to stdout. Then we finish our python code by calling the structural design function.
 ```
     # print the mlir conversion
     print(ctx.module)
@@ -51,11 +51,11 @@ mlir_aie_design()
 ```
 
 ## <u>Exercises</u>
-1. To run our python program, we simply call `python aie2.py` which converts our python structural design into mlir source code. This works from the command line if our design environment already contains the mlir-aie python binded dialect module. We included this in the [Makefile](./Makefile) so go ahead and run `make`. Then take a look at the generated mlir source under `build/aie.mlir`.
+1. To run our python program from the command line, we type `python3 aie2.py` which converts our python structural design into mlir source code. This works from the command line if our design environment already contains the mlir-aie python binded dialect module. We included this in the [Makefile](./Makefile) so go ahead and run `make` now. Then take a look at the generated mlir source under `build/aie.mlir`.
 
-2. Run `make clean` to remove the generated files. Then add a type-o to the python source such as misspelling `tile` to `tilex` and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is python error because tilex is not recognized." height=25>
+2. Run `make clean` to remove the generated files. Then introduce an error to the python source such as misspelling `tile` to `tilex` and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is python error because tilex is not recognized." height=25>
 
 3. Run `make clean` again. Now change the error by renaming `tilex` back to `tile` but change the coordinates to (-1,3) which is an inavlid location. Run `make` again. What messages do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="No error is generated." height=25>
 
-4. No error is generated but our code is invalid. Take a look at the generated mlir code under `build/aie.mlir`. You'll notice that the generaed mlir syntax is incorrect and running our mlir-aie tools on this mlir source will generate an error. We do, however, have some additional python structural syntax checks that can be enabled if change the `print(ctx.module)` to `print(ctx.module.operation.verify())`. Make this change and run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says column value fails to satisfy the constraint because the minimum value is 0" height=25> 
+4. No error is generated but our code is invalid. Take a look at the generated mlir code under `build/aie.mlir`. This generaed mlir syntax is invalid and running our mlir-aie tools on this mlir source will generate an error. We do, however, have some additional python structural syntax checks that can be enabled if change the `print(ctx.module)` to `print(ctx.module.operation.verify())`. Make this change and run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says column value fails to satisfy the constraint because the minimum value is 0" height=25> 
 
