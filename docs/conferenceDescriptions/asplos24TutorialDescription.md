@@ -1,4 +1,4 @@
-# ASPLOS'24 Tutorial: Levering MLIR to Design for AI Engines on RyzenAI
+# ASPLOS'24 Tutorial: Levering MLIR to Design for AI Engines on Ryzen AI
 
 ## Introduction
 
@@ -22,8 +22,8 @@ Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI en
 
 | Time | Topic | Presenter | Slides or Code |
 |------|-------|-----------|----------------|
-| 08:30am | Intro to spatical compute and explicit data movement | Kristof | tbd |
-| 08:45am | Hello world from Ryzen AI | Jack | tbd |
+| 08:30am | Intro to spatial compute and explicit data movement | Kristof | tbd |
+| 08:45am | "Hello World" from Ryzen AI | Jack | tbd |
 | 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | tbd |
 | 09:30am | Exersise 1: Build and run your first program | All | tbd |
 | 09:45am | Exersise 2: Vector-scalar | All |tbd |
