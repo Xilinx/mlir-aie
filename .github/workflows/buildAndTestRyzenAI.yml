@@ -36,7 +36,8 @@ concurrency:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  PATH: /opt/tools/xilinx/Vitis/2023.2/bin:/opt/tools/xilinx/Vitis/2023.2/aietools/bin/
+  XILINXD_LICENSE_FILE: /opt/tools
 
 jobs:
   build-repo:
