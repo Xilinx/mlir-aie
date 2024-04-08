@@ -36,7 +36,9 @@ concurrency:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-
+  XILINXD_LICENSE_FILE: /opt/tools
+  VITIS: /opt/tools/xilinx/Vitis/2023.2
+  
 jobs:
   build-repo:
     name: Build and Test with AIE tools on Ryzen AI
@@ -119,11 +121,7 @@ jobs:
                 && inputs.launch_tmate_terminal_for_debug
 
       - name: Run commands
-        env:
-          PATH: $PATH:/opt/tools/xilinx/Vitis/2023.2/bin:/opt/tools/xilinx/Vitis/2023.2/aietools/bin/
-          XILINXD_LICENSE_FILE: /opt/tools
         run: |
-
           pip cache purge
 
           python -m venv aie-venv
@@ -145,7 +143,7 @@ jobs:
           mkdir build
           pushd build
 
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
