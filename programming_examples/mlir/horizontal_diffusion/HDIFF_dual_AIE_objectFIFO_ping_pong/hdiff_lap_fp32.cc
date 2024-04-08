@@ -171,6 +171,5 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
       row3_ptr = ((v8float *)(row3)) + i + 1;
       data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
       data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
-
     }
 }

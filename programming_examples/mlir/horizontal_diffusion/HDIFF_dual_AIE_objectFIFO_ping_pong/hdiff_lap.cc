@@ -184,6 +184,5 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
       row3_ptr = ((v8int32 *)(row3)) + i + 1;
       data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
       data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
-
     }
 }

@@ -16,11 +16,11 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-#include <math.h>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -88,7 +88,7 @@ int main(int argc, const char *argv[]) {
       "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
-      "profile,p", po::value<std::string>()->default_value(""),"CSV profile")(
+      "profile,p", po::value<std::string>()->default_value(""), "CSV profile")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
@@ -216,22 +216,22 @@ int main(int argc, const char *argv[]) {
       std::vector<std::bfloat16_t> RefVec(IN_SIZE);
       auto cpu_start = std::chrono::high_resolution_clock::now();
 
-      for (uint32_t t = 0; t < IN_SIZE; t+=TILE_SIZE) {
+      for (uint32_t t = 0; t < IN_SIZE; t += TILE_SIZE) {
         float running = 0.0;
         for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          float ez = (float)(exp(AVec[t+i]));
+          float ez = (float)(exp(AVec[t + i]));
           running += ez;
-          RefVec[t+i] = exp(AVec[t+i]);
+          RefVec[t + i] = exp(AVec[t + i]);
         }
-        
+
         for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          RefVec[t+i] /= running;
+          RefVec[t + i] /= running;
         }
-      }      
+      }
       auto cpu_stop = std::chrono::high_resolution_clock::now();
-      float cpu_time =
-          std::chrono::duration_cast<std::chrono::microseconds>(cpu_stop - cpu_start)
-              .count();
+      float cpu_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                           cpu_stop - cpu_start)
+                           .count();
 
       cpu_time_total += cpu_time;
       cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;

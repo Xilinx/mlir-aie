@@ -17,9 +17,9 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 #include <xaiengine.h>
-#include <time.h>  
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
@@ -28,7 +28,7 @@
 
 int main(int argc, char *argv[]) {
   printf("test start.\n");
-  clock_t t; 
+  clock_t t;
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
@@ -67,14 +67,15 @@ int main(int argc, char *argv[]) {
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT; i++) {
-    *(ddr_ptr_in + i) = i;  // input
+    *(ddr_ptr_in + i) = i; // input
     *(ddr_ptr_out + i) = 0;
   }
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-  mlir_aie_external_set_addr_ddr_test_buffer_in0((u64)ddr_ptr_in); // external set address
+  mlir_aie_external_set_addr_ddr_test_buffer_in0(
+      (u64)ddr_ptr_in); // external set address
   mlir_aie_external_set_addr_ddr_test_buffer_out((u64)ddr_ptr_out);
 
   mlir_aie_configure_shimdma_70(_xaie);
@@ -88,25 +89,26 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_obj_out_cons_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
-  t = clock(); 
+  t = clock();
   ///// --- start counter-----
   mlir_aie_start_cores(_xaie);
   mlir_aie_release_lock(_xaie, 7, 1, 14, 0, 0); // for timing
-  t = clock() - t; 
+  t = clock() - t;
 
-  printf ("It took %ld clicks (%f seconds).\n",t,((float)t)/CLOCKS_PER_SEC);
+  printf("It took %ld clicks (%f seconds).\n", t, ((float)t) / CLOCKS_PER_SEC);
 
   usleep(sleep_u);
   printf("after core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 1);
 
   usleep(sleep_u);
- 
-  mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2 //sync up with output
+
+  mlir_aie_sync_mem_cpu(_xaie,
+                        1); // only used in libaiev2 //sync up with output
   ///// --- end counter-----
-  for (int i =0; i < 256; i ++ ){
-        printf("Location %d:  %d\n", i, ddr_ptr_out[i]);
-    }
+  for (int i = 0; i < 256; i++) {
+    printf("Location %d:  %d\n", i, ddr_ptr_out[i]);
+  }
 
   int res = 0;
   if (!errors) {

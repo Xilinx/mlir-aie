@@ -46,7 +46,6 @@ void hdiff_flux1_fp32(float *restrict row1, float *restrict row2,
   data_buf2 = upd_w(data_buf2, 0, *row2_ptr++);
   data_buf2 = upd_w(data_buf2, 1, *row2_ptr);
 
-
   for (unsigned i = 0; i < COL / 8; i++)
     chess_prepare_for_pipelining chess_loop_range(1, ) {
       v8float flux_sub;
