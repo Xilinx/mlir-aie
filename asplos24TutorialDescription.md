@@ -39,8 +39,8 @@ Prerequisite: please bring your laptop, so that you can ssh into our RyzenAI ena
 
 ## Organizers
 
-Jack Lo: 
+Jack Lo is 
 
-Joseph Melber:
+Joseph Melber is
 
-Kristof Denolf: 
+*Kristof Denolf* is a Fellow at AMD's Research and Advanced Development group where he is working on energy efficient computer vision and video processing applications to shape future AMD devices. He earned a M.Eng. in electronics from the Katholieke Hogeschool Brugge-Oostende (1998), now part of KULeuven, a M.Sc. in electronic system design from Leeds Beckett University (2000) and a Ph.D. from the Technical University Eindhoven (2007). He has over 25 years of combined research and industry experience at IMEC, Philips, Barco, Apple, Xilinx and AMD. His main research interest are all aspects of the cost-efficient and dataflow oriented design of video, vision and graphics systems.
