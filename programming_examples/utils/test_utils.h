@@ -8,8 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This file contains common helper functions for the matrix multiplication
-// host code, such as verifying and printing matrices.
+// This file contains common helper functions for the generic host code
 
 #ifndef TEST_UTILS_H
 #define TEST_UTILS_H
@@ -50,7 +49,7 @@ void add_default_options(po::options_description &desc) {
       "path of file containing userspace instructions sent to the NPU")(
       "verify", po::value<bool>()->default_value(true),
       "whether to verify the AIE computed output")(
-	  "iters", po::value<int>()->default_value(1))(
+      "iters", po::value<int>()->default_value(1))(
       "warmup", po::value<int>()->default_value(0))(
       "trace_sz,t", po::value<int>()->default_value(0))(
       "trace_file", po::value<std::string>()->default_value("trace.txt"),
