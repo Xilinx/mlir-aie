@@ -284,9 +284,9 @@ endif()
 
 
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
-add_subdirectory(reference_designs)
+add_subdirectory(programming_examples)
 add_subdirectory(test)
-add_subdirectory(tutorials)
+add_subdirectory(mlir_tutorials)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)
