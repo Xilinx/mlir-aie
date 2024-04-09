@@ -8,9 +8,15 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>MLIR-AIE Programming Guide</ins>
+# <ins>IRON AIE Programming Guide</ins>
+
+| The AI Engine array is a spatial compute architecture: a modular and scalable system with spatically distributed compute and multi-level memories. Its compute dense vector processing runs independently and concurrently to explicit scheduled datamovement. When we program for this AI Engine array, our MLIR-AIE framework serves as the entry point to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. | ![AI Engine array architecture](./assets/AIEarray.png) |
+
 
 MLIR-AIE is an MLIR-based representation for AI Engine design. It provides a foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware impelemenation infrastructure. To better understand how AI Engine designs are defined at the MLIR level, it is recommended that you spend some time going through the [MLIR tutorial](../tutorials/) material. However, this programming guide is intended to lead you through a higher level abstraction (python) of the underlying MLIR-AIE framework and provide design examples and programming tips to allow users to build designs directly. Keep in mind also that MLIR-AIE is a foundational layer in a AI Engine software development framework and while this guide provides a programmer's view for using AI Engines, it also serves as a lower layer for higher abstraction MLIR layers such as [MLIR-AIR](https://github.com/Xilinx/mlir-air).
+
+<img stile="float:right;" src="./assets/AIEarray.png"> 
+
 
 ## Outline
 <details><summary><a href="./section-1">Section 1 - Basic AI Engine building blocks</a></summary>
