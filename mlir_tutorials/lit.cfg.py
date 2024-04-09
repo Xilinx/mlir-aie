@@ -7,9 +7,11 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
 import os
+import platform
 import re
 import shutil
 import subprocess
+import tempfile
 
 import lit.formats
 import lit.util
@@ -19,9 +21,12 @@ from lit.llvm import llvm_config
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = "AIE_REFERENCE_DESIGNS"
+config.name = "AIE_TUTORIALS"
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.environment["PYTHONPATH"] = "{}".format(
+    os.path.join(config.aie_obj_root, "python")
+)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir"]
@@ -42,66 +47,12 @@ config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
-# for python
-llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
-
 if config.enable_board_tests:
     config.substitutions.append(
         ("%run_on_board", "echo %T >> /home/xilinx/testlog | sync | sudo")
     )
 else:
     config.substitutions.append(("%run_on_board", "echo"))
-
-run_on_ipu = "echo"
-xrt_flags = ""
-if config.xrt_lib_dir:
-    print("xrt found at", os.path.dirname(config.xrt_lib_dir))
-    xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
-        config.xrt_include_dir, config.xrt_lib_dir
-    )
-    try:
-        xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
-        result = subprocess.run(
-            [xbutil, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        result = result.stdout.decode("utf-8").split("\n")
-        # Starting with Linux 6.8 the format is like "[0000:66:00.1]  :  RyzenAI-npu1"
-        p = re.compile("\[.+:.+:.+\].+(Phoenix|RyzenAI-(npu\d))")
-        for l in result:
-            m = p.match(l)
-            if m:
-                print("Found Ryzen AI device:", m.group().split()[0])
-                if len(m.groups()) == 2:
-                    # Prepare the future
-                    aie_model = m.group(2)
-                    print("\tmodel:", aie_model)
-                config.available_features.add("ryzen_ai")
-                run_on_ipu = (
-                    f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
-                )
-    except:
-        print("Failed to run xbutil")
-        pass
-else:
-    print("xrt not found")
-
-config.substitutions.append(("%run_on_ipu", run_on_ipu))
-config.substitutions.append(("%xrt_flags", xrt_flags))
-config.substitutions.append(("%XRT_DIR", config.xrt_dir))
-
-opencv_flags = ""
-if config.opencv_include_dir and config.opencv_libs:
-    print("opencv found")
-    config.available_features.add("opencv")
-    opencv_flags = opencv_flags + " -I" + config.opencv_include_dir
-    if config.opencv_lib_dir:
-        opencv_flags = opencv_flags + " -L" + config.opencv_lib_dir
-    libs = config.opencv_libs.split(";")
-    opencv_flags = opencv_flags + " " + " ".join(["-l" + l for l in libs])
-else:
-    print("opencv not found")
-    opencv_flags = ""
-config.substitutions.append(("%opencv_flags", opencv_flags))
 
 VitisSysrootFlag = ""
 if config.aieHostTarget == "x86_64":
@@ -127,7 +78,6 @@ config.excludes = [
     "README.txt",
     "LICENSE.txt",
     "aie.mlir.prj",
-    "lit.cfg.py",
 ]
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
@@ -206,11 +156,7 @@ if config.enable_chess_tests:
             print(
                 "WARNING: no valid xchess license that is required by some of the lit tests"
             )
-    elif os.getenv("XILINXD_LICENSE_FILE") is not None:
-        print("Chess license found")
-        llvm_config.with_environment(
-            "XILINXD_LICENSE_FILE", os.getenv("XILINXD_LICENSE_FILE")
-        )
+
     else:
         print("Chess not found")
 
