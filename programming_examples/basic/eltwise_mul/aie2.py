@@ -13,7 +13,7 @@ from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
 
-def my_eltwise_add():
+def my_eltwise_mul():
 
     word_size_in = 2
     N = 65536
@@ -49,11 +49,11 @@ def my_eltwise_add():
 
             # AIE Core Function declarations
 
-            eltwise_add_bf16_scalar = external_func(
-                "eltwise_add_bf16_scalar", inputs=[memRef_ty, memRef_ty, memRef_ty]
+            eltwise_mul_bf16_scalar = external_func(
+                "eltwise_mul_bf16_scalar", inputs=[memRef_ty, memRef_ty, memRef_ty]
             )
-            eltwise_add_bf16_vector = external_func(
-                "eltwise_add_bf16_vector", inputs=[memRef_ty, memRef_ty, memRef_ty]
+            eltwise_mul_bf16_vector = external_func(
+                "eltwise_mul_bf16_vector", inputs=[memRef_ty, memRef_ty, memRef_ty]
             )
             # elwise_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
 
@@ -99,7 +99,7 @@ def my_eltwise_add():
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
-                @core(cores[i], "add.o")
+                @core(cores[i], "mul.o")
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         for _ in for_(tiles):
@@ -114,7 +114,7 @@ def my_eltwise_add():
                             )
 
                             call(
-                                eltwise_add_bf16_vector,
+                                eltwise_mul_bf16_vector,
                                 [elem_in_a, elem_in_b, elem_out],
                             )
                             inA_fifos[inA_fifo_names[i]].release(
@@ -148,4 +148,4 @@ def my_eltwise_add():
     print(ctx.module)
 
 
-my_eltwise_add()
+my_eltwise_mul()
