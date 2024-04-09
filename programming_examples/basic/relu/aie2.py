@@ -22,7 +22,7 @@ def my_relu():
     A_sz_in_i32s = N_in_bytes // 4
     C_sz_in_i32s = N_in_bytes // 4
 
-    enable_tracing = False
+    enable_tracing = True
     trace_size = 65536
 
 
@@ -147,7 +147,7 @@ def my_relu():
                         column=0,
                         row=2,
                         address=0x340E0,
-                        value=0x00002100,
+                        value=0x00222100,
                     )
                     # 0x340E4: Trace Event Group 2  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots

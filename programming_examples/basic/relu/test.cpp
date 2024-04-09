@@ -254,7 +254,7 @@ int main(int argc, const char *argv[]) {
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
     if (trace_size > 0) {
-      write_out_trace(((char *)bufOut) + OUT_SIZE, trace_size,
+      write_out_trace(((char *)bufOut) + (OUT_SIZE*2), trace_size,
                                      vm["trace_file"].as<std::string>());
     }
 
