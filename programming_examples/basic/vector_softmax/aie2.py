@@ -16,7 +16,7 @@ from aie.extras.context import mlir_mod_ctx
 def my_eltwise_add():
 
     word_size_in = 2
-    N = 262144 #*1024
+    N = 262144  # *1024
     N_in_bytes = N * word_size_in
 
     A_sz_in_i32s = N_in_bytes // 4
