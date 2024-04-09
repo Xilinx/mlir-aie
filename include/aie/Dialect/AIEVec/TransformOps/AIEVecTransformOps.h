@@ -15,7 +15,7 @@ class GenericOp;
 } // namespace linalg
 } // namespace mlir
 
-#include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
+#include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/TransformOps/AIEVecTransformOps.h.inc"
