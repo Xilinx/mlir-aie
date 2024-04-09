@@ -46,7 +46,17 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale, std::bfloat16_t bias) {
+void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+  std::ofstream fout(path);
+  uint32_t *traceOut = (uint32_t *)traceOutPtr;
+  for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
+    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
+    fout << std::endl;
+  }
+}
+
+
+static inline std::bfloat16_t random_bfloat16_t(float scale, float bias) {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
   return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX))-bias);
@@ -85,6 +95,10 @@ int main(int argc, const char *argv[]) {
       "the input xclbin path")(
       "kernel,k", po::value<std::string>()->required(),
       "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "trace_sz,t", po::value<int>()->default_value(0),
+      "the depth of the trace buffer")(
+      "trace_file,f", po::value<std::string>()->default_value("trace.txt"),
+      "the output trace path")(
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
@@ -114,6 +128,8 @@ int main(int argc, const char *argv[]) {
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
+
+  int trace_size = vm["trace_sz"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -159,8 +175,11 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+
+  auto real_out_size = OUT_SIZE * sizeof(std::bfloat16_t) + trace_size;
+  auto bo_out = xrt::bo(device, real_out_size, XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(3));
+
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -205,15 +224,12 @@ int main(int argc, const char *argv[]) {
         std::cout << "Verifying results ..." << std::endl;
       }
       for (uint32_t i = 0; i < IN_SIZE; i++) {
-        std::bfloat16_t ref;
+        std::bfloat16_t ref = 0.0;
         if (AVec[i] > 0.0)
           ref = AVec[i];
-        else
-          ref = 0.0;
-
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual max(" << AVec[i] << ",0.0)"
+                    << " != " << ref << " actual max(" << AVec[i] << ", 0.0"
                     << std::endl;
           errors++;
           sticky_errors++;
@@ -237,6 +253,11 @@ int main(int argc, const char *argv[]) {
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
+    if (trace_size > 0) {
+      write_out_trace(((char *)bufOut) + OUT_SIZE, trace_size,
+                                     vm["trace_file"].as<std::string>());
+    }
+
     if (VERIFY) {
       if (!errors) {
         std::cout << iter << ": pass!\n";
@@ -250,6 +271,17 @@ int main(int argc, const char *argv[]) {
             << std::endl;
   std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
+
+  // Let's figure out how many cycles it takes a core to do a single e^x
+  // There are 4 cores, so the total number of e^x's it does is one quarter of
+  // the test size
+
+  int per_core_calcs = IN_SIZE / 4;
+  float avg_npu_time = npu_time_total / num_iter;
+  float avg_npu_clocks =
+      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
+  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
+  std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
 
   // Lets benchmark the CPU
   float cpu_time_total = 0;

@@ -39,6 +39,10 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
+run_g: ${targetname}.exe build/final.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --trace_sz 65536
+
+
 trace:
 	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
 
