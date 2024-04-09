@@ -1,4 +1,3 @@
-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,12 +5,13 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper 
+from aie.dialects.aie import *  # primary mlir-aie dialect definitions
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
-from aie.dialects.aiex import *                    # extended mlir-aie dialect definitions
-from aie.dialects.scf import *                     # scf (strcutred control flow) dialect
+from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
+from aie.dialects.scf import *  # scf (strcutred control flow) dialect
 from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
+
 
 # AI Engine structural design function
 def my_eltwise_exp():
@@ -123,6 +123,7 @@ def my_eltwise_exp():
 
     # Print the mlir conversion
     print(ctx.module)
+
 
 # Call design function to generate mlir code to stdout
 my_eltwise_exp()

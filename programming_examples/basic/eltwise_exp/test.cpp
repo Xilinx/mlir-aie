@@ -24,8 +24,6 @@
 
 #include "test_utils.h"
 
-
-
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
 using INOUT0_DATATYPE = std::bfloat16_t;
@@ -38,7 +36,7 @@ namespace po = boost::program_options;
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
 template <typename T>
-int verify(int CSize, std::vector<T> A, std::vector<T>C, int verbosity) {
+int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < CSize; i++) {
     std::bfloat16_t ref = exp(A[i]);
@@ -72,7 +70,7 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  int INOUT0_VOLUME  = 65536; // Input only, 65536x bfloat16_t 
+  int INOUT0_VOLUME = 65536; // Input only, 65536x bfloat16_t
   int INOUT1_VOLUME = 65536; // Input only, 65536x bfloat16_t
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
@@ -155,7 +153,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] =  test_utils::random_bfloat16_t((std::bfloat16_t)4.0,(std::bfloat16_t)0.0);
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)4.0,
+                                            (std::bfloat16_t)0.0);
 
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
@@ -186,8 +185,7 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run =
-        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
