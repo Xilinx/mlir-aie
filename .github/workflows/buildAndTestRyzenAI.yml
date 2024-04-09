@@ -36,9 +36,10 @@ concurrency:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  XILINXD_LICENSE_FILE: /opt/tools
-  VITIS: /opt/tools/xilinx/Vitis/2023.2
-  
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  VITIS: /opt/xilinx/Vitis/2023.2
+  XRT_HACK_UNSECURE_LOADING_XCLBIN: 1
+
 jobs:
   build-repo:
     name: Build and Test with AIE tools on Ryzen AI
@@ -122,6 +123,7 @@ jobs:
 
       - name: Run commands
         run: |
+
           pip cache purge
 
           python -m venv aie-venv
