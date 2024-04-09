@@ -10,9 +10,9 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program the AI Engine array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
+When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
 
-At the top of this python source, we include modules that define the mlir-aie dialect and the mlir ctx wrapper which encapsulates the definition of our AI Engine enabled device (e.g. xcvc1902) and its associated structural building blocks.
+At the top of this python source, we include modules that define the mlir-aie dialect and the mlir ctx wrapper which encapsulates the definition of our AI Engine enabled device (e.g. ipu or xcvc1902) and its associated structural building blocks.
 
 ```
 from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
@@ -25,12 +25,12 @@ def mlir_aie_design():
     # ctx wrapper - to convert python to mlir
     with mlir_mod_ctx() as ctx:
 ```
-Within our ctx wrapper, we finally get down to declaring our AI Engine device via `@device(AIEDevice.xcvc1902)` and the blocks within the device. Inside the `def device_body():` , we instantiate our AI Engine blocks, which in this first example is simply the AI Engine tiles. The arguments for the tile delcaration are the tile coordinates (column, row) and we assign it a variable tile name in our python program.
+Within our ctx wrapper, we finally get down to declaring our AIE device via `@device(AIEDevice.ipu)` or `@device(AIEDevice.xcvc1902)` and the blocks within the device. Inside the `def device_body():` , we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. The arguments for the tile declaration are the tile coordinates (column, row) and we assign it a variable tile name in our python program.
 
-> **NOTE:**  The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative corodinates as the runtime scheduler may assign it to a different available column.
+> **NOTE:**  The actual tile coordinates run on the device may deviate from the ones declared here. For example, on the NPU on Ryzen AI (`@device(AIEDevice.ipu)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
 
 ```
-        # Dvice declaration - here using aie2 device xcvc1902
+        # Device declaration - here using aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
 
@@ -46,6 +46,21 @@ Once we are done declaring our blocks (and connections), we print the ctx wrappe
 
 # Call my program
 mlir_aie_design()
+```
+Next to the compute tiles, an AIE-array also contains data movers for accessing L3 memory (also called shim DMAs) and larger L2 scratchpads (called mem tiles and available since the AIE-ML generation) see [the introduction of this programming guide](../README.md). Declaring these other types of structural blocks follows the same syntax but requires physical layout details for the specific target device. Shim DMAs typically occupy row zero, while mem tiles (when available) often reside on the next row(s). The following code segment sets up all tiles in a single NPU column.
+
+```
+        # Device declaration - here using aie2 device ipu
+        @device(AIEDevice.ipu)
+        def device_body():
+
+            # Tile declarations
+            ShimTile     = tile(0, 0)
+            MemTile      = tile(0, 1)
+            ComputeTile1 = tile(0, 2)
+            ComputeTile2 = tile(0, 3)
+            ComputeTile3 = tile(0, 4)
+            ComputeTile4 = tile(0, 5)
 ```
 
 ## <u>Exercises</u>
