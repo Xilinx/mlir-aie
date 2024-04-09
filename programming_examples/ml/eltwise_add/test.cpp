@@ -7,6 +7,9 @@
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
+int i = 0                                                                                                                                                ;
+
+
 
 #include <boost/program_options.hpp>
 #include <cstdint>
