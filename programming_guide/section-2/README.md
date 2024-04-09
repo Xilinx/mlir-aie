@@ -20,16 +20,27 @@ To understand the need for a data movement abstraction we must first understand 
 
 *Note: For more in-depth, low-level material on Object FIFO programming in MLIR please see the MLIR-AIE [tutorials](../mlir_tutorials).*
 
-This guide is split into three sections, where each section builds on top of the previous ones:
+This guide is split into four sections, where each section builds on top of the previous ones:
 
 <details><summary><a href="./section-2a">Section 2a - Introduction</a></summary>
 
+* Initializing an Object FIFO
+* Accessing the objects of an Object FIFO
+* Object FIFOs with same producer / consumer
 </details>
 <details><summary><a href="./section-2b">Section 2b - Key Object FIFO Patterns</a></summary>
 
+* Introduce data movement patterns supported by the Object FIFO
+    * Reuse
+    * Broadcast
+    * Distribute
+    * Join
 </details>
 <details><summary><a href="./section-2c">Section 2c - Data Layout Transformations</a></summary>
 
+* Introduce data layout transformation capabilities
 </details>
 <details><summary><a href="./section-2d">Section 2d - Programming for multiple cores</a></summary>
+
+* Walkthrough of the process of efficiently upgrading to designs with multiple cores
 </details>
