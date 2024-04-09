@@ -19,24 +19,20 @@
 
 #include <aie_api/aie.hpp>
 
-
-void relu(bfloat16 * restrict a, bfloat16 * restrict c, const int TILE_SIZE) {
+void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
   const int v_factor = 32;
   v32bfloat16 zeroes = broadcast_zero_bfloat16();
 
   event0();
   for (size_t i = 0; i < TILE_SIZE; i += v_factor)
-  chess_prepare_for_pipelining
-  chess_loop_range(32, 32)
-  {
-    v32bfloat16 input = *(v32bfloat16 *)(a + i);
-    v32bfloat16 output = max(input, zeroes);
-    *(v32bfloat16 *)(c + i) = output;
-  }
+    chess_prepare_for_pipelining chess_loop_range(32, 32) {
+      v32bfloat16 input = *(v32bfloat16 *)(a + i);
+      v32bfloat16 output = max(input, zeroes);
+      *(v32bfloat16 *)(c + i) = output;
+    }
   event1();
   return;
 }
-
 
 extern "C" {
 

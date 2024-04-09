@@ -25,7 +25,6 @@ def my_relu():
     enable_tracing = True
     trace_size = 65536
 
-
     # Tile sizes
     n = 1024
     N_div_n = N // n
@@ -50,9 +49,7 @@ def my_relu():
 
             # AIE Core Function declarations
 
-            bf16_relu = external_func(
-                "bf16_relu", inputs=[memRef_ty, memRef_ty]
-            )
+            bf16_relu = external_func("bf16_relu", inputs=[memRef_ty, memRef_ty])
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -83,11 +80,9 @@ def my_relu():
             outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
             object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
-
             # Set up a circuit-switched flow from core to shim for tracing information
             if enable_tracing:
                 flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
-
 
             # Set up compute tiles
             for i in range(n_cores):
@@ -199,7 +194,6 @@ def my_relu():
                     )
                     # Set start BD to our shim bd_Id (13)
                     ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
-
 
                 ipu_dma_memcpy_nd(
                     metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]

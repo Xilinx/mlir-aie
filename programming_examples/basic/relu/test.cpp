@@ -55,11 +55,10 @@ void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
   }
 }
 
-
 static inline std::bfloat16_t random_bfloat16_t(float scale, float bias) {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
-  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX))-bias);
+  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) - bias);
 }
 
 bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
@@ -98,9 +97,9 @@ int main(int argc, const char *argv[]) {
       "trace_sz,t", po::value<int>()->default_value(0),
       "the depth of the trace buffer")(
       "trace_file,f", po::value<std::string>()->default_value("trace.txt"),
-      "the output trace path")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
+      "the output trace path")("verbosity,v",
+                               po::value<int>()->default_value(0),
+                               "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
@@ -180,7 +179,6 @@ int main(int argc, const char *argv[]) {
   auto bo_out = xrt::bo(device, real_out_size, XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
 
-
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
@@ -254,8 +252,8 @@ int main(int argc, const char *argv[]) {
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
     if (trace_size > 0) {
-      write_out_trace(((char *)bufOut) + (OUT_SIZE*2), trace_size,
-                                     vm["trace_file"].as<std::string>());
+      write_out_trace(((char *)bufOut) + (OUT_SIZE * 2), trace_size,
+                      vm["trace_file"].as<std::string>());
     }
 
     if (VERIFY) {
