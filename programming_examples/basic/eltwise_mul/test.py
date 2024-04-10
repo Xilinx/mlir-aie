@@ -27,6 +27,7 @@ INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
 INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
 INOUT2_SIZE = INOUT2_VOLUME * INOUT2_DATATYPE().itemsize
 
+
 def main(opts):
 
     # Load instruction sequence
