@@ -58,6 +58,13 @@ You will...
         export XILINX_VITIS=${XILINX_LOC}
         export VITIS_ROOT=${XILINX_LOC}
        ```
+   1. Vitis requires some python3.8 libraries:
+  
+      ```
+      sudo add-apt-repository ppa:deadsnakes/ppa
+      sudo apt-get update
+      sudo apt install libpython3.8-dev
+      ```
 
 ### Update Linux
 
