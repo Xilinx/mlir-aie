@@ -7,14 +7,16 @@ You will...
 
 1. Install a driver for the Ryzen AI. As part of this, you will need to...
 
+   1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232)
+
    1. [...compile and install a more recent Linux kernel.](#update-linux)
 
    1. [...compile and install the XDNA driver from source.](#install-the-xdna-driver)
 
 1. Install the compiler toolchain, allowing you to compile your own NPU designs from source. As part of this, you will need to...
 
-   1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites)
-
+   1. [...install prerequisites.](#install-mlir-aie-prerequisites)
+   
    1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
 
 1. Build and execute one of the example designs. This consists of...
