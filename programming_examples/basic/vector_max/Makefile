@@ -18,12 +18,9 @@ KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/generic/
 
 all: build/final.xclbin build/insts.txt
 
-vector_max.cc: 
-	cp ${KERNEL_LIB}/vector_max.cc ./
-
-build/vector_max.o: vector_max.cc
+build/vector_max.o: ${KERNEL_LIB}/vector_max.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
