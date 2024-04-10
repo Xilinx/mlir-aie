@@ -233,7 +233,7 @@ You will...
 1. Install the following packages needed for building MLIR-AIE:
     ``` 
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
+    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6 virtualenv
       ```
 
 1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
