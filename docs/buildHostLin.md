@@ -133,7 +133,7 @@ You will...
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard 317e0c67747cbf88e5b5a3a81ba4bdf7bf5b3fc3
+    git reset --hard 37961e13d1e78a59f7231e8c37b6c8735f2c0281
     git submodule update --init --recursive
     ```
 
