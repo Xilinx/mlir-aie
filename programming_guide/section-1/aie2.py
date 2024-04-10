@@ -14,7 +14,7 @@ def mlir_aie_design():
     # ctx wrapper - to convert python to mlir
     with mlir_mod_ctx() as ctx:
 
-        # Dvice declaration - aie2 device xcvc1902
+        # Device declaration - aie2 device xcvc1902
         @device(AIEDevice.xcvc1902)
         def device_body():
 
