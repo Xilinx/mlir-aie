@@ -478,7 +478,7 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
     symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
     when lowered further. The `issue_token` attribute specifies whether the execution of this
     operation should issue a token which can be received and read for synchronization purposes.
-    This `issue_token` attribute is set to `false` by default for backward compatibility.
+    This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility and **is always set to true for** `S2MM` channels.
   }];
 
   let arguments = (
