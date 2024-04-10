@@ -1,4 +1,3 @@
-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +5,9 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper 
+from aie.dialects.aie import *  # primary mlir-aie dialect definitions
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
+
 
 # AI Engine structural design function
 def mlir_aie_design():
@@ -26,6 +26,6 @@ def mlir_aie_design():
     # Print the mlir conversion
     print(ctx.module)
 
+
 # Call design function to generate mlir code to stdout
 mlir_aie_design()
-
