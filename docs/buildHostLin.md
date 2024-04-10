@@ -196,9 +196,9 @@ You will...
 
        > **An error is expected in this step.** Ignore it.
 
-Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
-1. Build XDNA.
+
+1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
     ```
     cd $XDNA_SRC_DIR/build
