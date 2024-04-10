@@ -379,23 +379,24 @@ public:
   // signed, else it treated as unsigned.
   // sgn_y: Sign mask of matrix Y. If it is one matrix Y is interpreted as
   // signed, else it treated as unsigned.
-  // zero_acc1: Zeroing of acc1. If it is one then acc1 is zeroed.
-  // zero_acc2: Zeroing of acc2. If it is one then acc2 is zeroed.
+  // amode/bmode/variant: config acc width, mul precision, and mul mode
+  // zero_acc: Zeroing of acc1. If it is one then acc1 is zeroed.
+  // shift16: Shift mask of acc1. If a bit is set the <<16 operation will be
+  // executed on acc1.
   // sub_mul: Negation mask of the matrix multiplication result. If it is
   // one the result of the operation will be negated.
   // sub_acc1: Negation mask of acc1. If it is one acc1 will be negated.
   // sub_acc2: Negation mask of acc2. If it is one acc2 will be negated.
-  // shift16: Shift mask of acc1. If a bit is set the <<16 operation will be
-  // executed on acc1.
   // sub_mask: Negation mask of complex multiplications. Negates a term of a
   // complex multiplication.
   static int aiev2_mul_mac_compute_control(int sgn_x, int sgn_y, int amode,
                                            int bmode, int variant, int zero_acc,
-                                           int shift16, int sub0, int sub1,
-                                           int sub2, int sub_mask) {
+                                           int shift16, int sub_mul,
+                                           int sub_acc1, int sub_acc2,
+                                           int sub_mask) {
     return ((unsigned)sub_mask << 16) | ((unsigned)shift16 << 10) |
-           ((unsigned)sub0 << 11) | ((unsigned)sub1 << 12) |
-           ((unsigned)sub2 << 13) | ((unsigned)amode << 1) |
+           ((unsigned)sub_mul << 11) | ((unsigned)sub_acc1 << 12) |
+           ((unsigned)sub_acc2 << 13) | ((unsigned)amode << 1) |
            ((unsigned)bmode << 3) | ((unsigned)variant << 5) |
            (((unsigned)sgn_x << 9) | ((unsigned)sgn_y << 8)) |
            ((unsigned)zero_acc << 0);
@@ -411,10 +412,18 @@ public:
     if (lhsScaTy.isa<IntegerType>()) {
       if (lhsBitWidth == 8) {
         return {DecodedMulElemOp::Kind::I8_I8_I32_32x1x2x1,
-                aiev2_mul_mac_compute_control(1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0)};
+                aiev2_mul_mac_compute_control(
+                    /*sgn_x=*/1, /*sgn_y=*/1, /*amode=*/0, /*bmode=*/1,
+                    /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       } else if (lhsBitWidth == 16) {
         return {DecodedMulElemOp::Kind::I16_I16_I32_32x1x1x1,
-                aiev2_mul_mac_compute_control(1, 1, 0, 3, 1, 0, 0, 0, 0, 0, 0)};
+                aiev2_mul_mac_compute_control(
+                    /*sgn_x=*/1, /*sgn_y=*/1, /*amode=*/0, /*bmode=*/3,
+                    /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       } else if (lhsBitWidth == 32) {
         return {DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1, -1};
       }
@@ -422,7 +431,11 @@ public:
       // Float types
       if (lhsBitWidth == 16) {
         return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x2x1,
-                aiev2_mul_mac_compute_control(0, 0, 2, 3, 1, 0, 0, 0, 0, 0, 0)};
+                aiev2_mul_mac_compute_control(
+                    /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/2, /*bmode=*/3,
+                    /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       }
     }
 
@@ -481,8 +494,10 @@ public:
     // MUL + 3 * MAC
     auto mulConfCst = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI32Type(),
-        rewriter.getI32IntegerAttr(
-            aiev2_mul_mac_compute_control(1, 1, 1, 3, 2, 0, 0, 0, 0, 0, 0)));
+        rewriter.getI32IntegerAttr(aiev2_mul_mac_compute_control(
+            /*sgn_x=*/1, /*sgn_y=*/1, /*amode=*/1, /*bmode=*/3,
+            /*variant=*/2, /*zero_acc=*/0, /*shift16=*/0,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0)));
     auto mulConfOp = rewriter.create<xllvm::MulConfAcc64IntrOp>(
         loc, VectorType::get({16}, rewriter.getI64Type()),
         forceCastOperandsToSignature(
@@ -513,13 +528,22 @@ public:
     auto acc64Val = mulConfOp.getResult();
     acc64Val = createMacConfOp(
         SmallVector<Value>{a_hi, b_lo, acc64Val},
-        aiev2_mul_mac_compute_control(1, 0, 1, 3, 2, 0, 1, 0, 0, 0, 0));
+        aiev2_mul_mac_compute_control(
+            /*sgn_x=*/1, /*sgn_y=*/0, /*amode=*/1, /*bmode=*/3,
+            /*variant=*/2, /*zero_acc=*/0, /*shift16=*/1,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0));
     acc64Val = createMacConfOp(
         SmallVector<Value>{a_lo, b_hi, acc64Val},
-        aiev2_mul_mac_compute_control(0, 1, 1, 3, 2, 0, 0, 0, 0, 0, 0));
+        aiev2_mul_mac_compute_control(
+            /*sgn_x=*/0, /*sgn_y=*/1, /*amode=*/1, /*bmode=*/3,
+            /*variant=*/2, /*zero_acc=*/0, /*shift16=*/0,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0));
     acc64Val = createMacConfOp(
         SmallVector<Value>{a_lo, b_lo, acc64Val},
-        aiev2_mul_mac_compute_control(0, 0, 1, 3, 2, 0, 1, 0, 0, 0, 0));
+        aiev2_mul_mac_compute_control(
+            /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/1, /*bmode=*/3,
+            /*variant=*/2, /*zero_acc=*/0, /*shift16=*/1,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0));
 
     // create bitcast for result
     rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
