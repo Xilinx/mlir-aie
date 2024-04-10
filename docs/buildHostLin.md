@@ -178,7 +178,7 @@ You will...
        sudo ./tools/amdxdna_deps.sh
        ```
 
-    2. Build XRT.
+    2. Build XRT. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
 
        ```
        cd $XDNA_SRC_DIR/xrt/build
@@ -243,6 +243,8 @@ You will...
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
       ```
 
+1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
+
 1. Choose *one* of the two options (A or B) below for installing MLIR-AIE.
 
 ### Option A - Quick Setup for Ryzen AI Application Development
@@ -278,7 +280,6 @@ We suggest you add all of the following to a `setup.sh` script in your home dire
 
 ```
 export LM_LICENSE_FILE=/opt/Xilinx.lic
-source /tools/Xilinx/Vitis/2023.2/settings64.sh
 source /opt/xilinx/xrt/setup.sh
 export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
 
@@ -296,7 +297,6 @@ source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install
 ```
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/sandbox/bin/activate
-source /tools/Xilinx/Vitis/2023.2/settings64.sh
 source /opt/xilinx/xrt/setup.sh
 source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install ${MLIR_AIE_BUILD_DIR}/llvm/install
 ```
