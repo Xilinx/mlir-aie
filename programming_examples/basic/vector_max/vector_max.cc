@@ -5,7 +5,7 @@
 
 #include <aie_api/aie.hpp>
 
-void vector(int32_t * restrict v1, int32_t * restrict v2) {
+void vector(int32_t *restrict v1, int32_t *restrict v2) {
   int32_t v3 = 4;
   int32_t v4 = 8;
   int32_t v5 = 16;
@@ -18,13 +18,11 @@ void vector(int32_t * restrict v1, int32_t * restrict v2) {
   v16int32 v12;
   v16int32 v13 = v8;
   for (size_t v14 = v9; v14 < v10; v14 += v11)
-  chess_prepare_for_pipelining
-  chess_loop_range(64, 64)
-  {
-    v16int32 v15 = *(v16int32 *)(v1 + v14);
-    v16int32 v16 = max(v13, v15);
-    v13 = v16;
-  }
+    chess_prepare_for_pipelining chess_loop_range(64, 64) {
+      v16int32 v15 = *(v16int32 *)(v1 + v14);
+      v16int32 v16 = max(v13, v15);
+      v13 = v16;
+    }
   v12 = v13;
   v16int32 v17 = shift_bytes(v12, v12, v6);
   v16int32 v18 = max(v12, v17);
@@ -39,20 +37,15 @@ void vector(int32_t * restrict v1, int32_t * restrict v2) {
   return;
 }
 
-
-void scalar(int32_t * restrict v1, int32_t * restrict v2) {
+void scalar(int32_t *restrict v1, int32_t *restrict v2) {
   *(int32_t *)v2 = 27; // what could be bigger
   return;
 }
 
 extern "C" {
 
-void vector_max(int32_t *a_in, int32_t *c_out) {
-  vector(a_in, c_out);
-}
+void vector_max(int32_t *a_in, int32_t *c_out) { vector(a_in, c_out); }
 
-void scalar_max(int32_t *a_in, int32_t *c_out) {
-  scalar(a_in, c_out);
-}
+void scalar_max(int32_t *a_in, int32_t *c_out) { scalar(a_in, c_out); }
 
 } // extern "C"

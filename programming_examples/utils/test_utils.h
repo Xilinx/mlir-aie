@@ -103,6 +103,11 @@ static inline std::int16_t random_int16_t() {
   return (std::int16_t)rand() % 0x10000;
 }
 
+static inline std::int32_t random_int32_t(std::int32_t range=0x10000) {
+  return (std::int32_t)rand() % range;
+}
+
+
 // static inline std::bfloat16_t random_bfloat16_t() {
 //   // Random numbers should NOT be uniformly between 0 and 1, because that
 //   // would make the matrix product AB always close to 1.

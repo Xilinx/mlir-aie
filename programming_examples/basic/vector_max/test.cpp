@@ -1,4 +1,5 @@
-///===- test.cpp -------------------------------------------000---*- C++ -*-===//
+///===- test.cpp -------------------------------------------000---*- C++
+///-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -138,12 +139,14 @@ int main(int argc, const char *argv[]) {
   std::int32_t max = (std::int32_t)-2147483648;
   for (int i = 0; i < INOUT0_VOLUME; i++) {
     std::int32_t next = test_utils::random_int32_t(100000);
-    if (next > max) max=next;
+    if (next > max)
+      max = next;
     bufInOut0[i] = next;
   }
   // Initialize Inout buffer 1
-  //INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT1_DATATYPE *>();
-  //memset(bufInOut1, 0xdeadbeef, OUT_SIZE); // Zeroes out INOUT2_VOLUME + trace_size
+  // INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT1_DATATYPE *>();
+  // memset(bufInOut1, 0xdeadbeef, OUT_SIZE); // Zeroes out INOUT2_VOLUME +
+  // trace_size
 
   // Sync buffers to update input buffer values
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -172,8 +175,7 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run =
-        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
