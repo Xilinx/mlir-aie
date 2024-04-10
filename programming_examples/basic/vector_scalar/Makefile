@@ -14,7 +14,7 @@ targetname = vectorScalar
 devicename = ipu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=${ACDC_AIE}/../aie_kernels/aie2/
+KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/aie2/
 
 all: build/final.xclbin build/insts.txt
 
