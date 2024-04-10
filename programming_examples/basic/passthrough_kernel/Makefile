@@ -12,7 +12,7 @@ VPATH := ../../../aie_kernels/aie_generic
 
 PASSTHROUGH_SIZE = 4096
 
-targetname = passthrough_kernel
+targetname = passThroughKernel
 
 .PHONY: all template clean
 

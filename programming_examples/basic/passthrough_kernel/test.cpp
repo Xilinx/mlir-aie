@@ -109,22 +109,21 @@ int main(int argc, const char *argv[]) {
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   // Compare out to in
-  int numberOfDifferences = 0;
+  int errors = 0;
   for(int i = 0; i < PASSTHROUGH_SIZE; i++) {
     if(bufOut[i] != bufInA[i])
-      numberOfDifferences++;
+      errors++;
   }
   
   // Print Pass/Fail result of our test
-  int res = 0;
-  if (numberOfDifferences == 0) {
-    printf("PASS!\n");
-    res = 0;
+  if (!errors) {
+    std::cout << std::endl << "PASS!" << std::endl << std::endl;
+    return 0;
   } else {
-    printf("Fail!\n");
-    res = -1;
+    std::cout << std::endl
+              << errors << " mismatches." << std::endl
+              << std::endl;
+    std::cout << std::endl << "fail." << std::endl << std::endl;
+    return 1;
   }
-
-  printf("Testing passThrough done!\n");
-  return res;
 }

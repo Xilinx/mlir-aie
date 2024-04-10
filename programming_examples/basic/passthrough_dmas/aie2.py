@@ -14,7 +14,6 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096
-N_in_bytes = N * 4
 
 if len(sys.argv) == 2:
     N = int(sys.argv[1])
@@ -41,9 +40,8 @@ def my_passthrough():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                tmp = memref.alloc(1, T.i32())
-                v0 = arith.constant(0, T.i32())
-                memref.store(v0, tmp, [0])
+                for _ in for_(sys.maxsize):
+                    yield_([]) 
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())

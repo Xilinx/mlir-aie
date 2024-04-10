@@ -10,7 +10,7 @@ include ../makefile-common
 
 SHELL := /bin/bash
 
-targetname = passThroughHardware
+targetname = passThroughDMAs
 LENGTH ?= 4096
 
 all: build/final.xclbin build/insts.txt
@@ -47,4 +47,4 @@ run: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 clean:
-	rm -rf build _build inst
+	rm -rf build _build inst ${targetname}.exe

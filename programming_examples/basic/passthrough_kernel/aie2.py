@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 AMD Inc.
 
 import sys
 
@@ -12,12 +12,12 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
-width = 1024  
+N = 1024  
 
 if len(sys.argv) == 2:
-    width = int(sys.argv[1])
+    N = int(sys.argv[1])
 
-lineWidthInBytes = width
+lineWidthInBytes = N
 lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
@@ -25,17 +25,17 @@ traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
 
-def passThroughAIE2():
+def passthroughKernel():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
         def device_body():
             # define types
-            line_ty = T.memref(lineWidthInBytes, T.ui8())
+            memRef_ty = T.memref(lineWidthInBytes, T.ui8())
 
             # AIE Core Function declarations
             passThroughLine = external_func(
-                "passThroughLine", inputs=[line_ty, line_ty, T.i32()]
+                "passThroughLine", inputs=[memRef_ty, memRef_ty, T.i32()]
             )
 
             # Tile declarations
@@ -46,8 +46,8 @@ def passThroughAIE2():
                 flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+            of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
             # Set up compute tiles
 
@@ -57,16 +57,16 @@ def passThroughAIE2():
                 for _ in for_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(passThroughLine, [elemIn, elemOut, width])
+                    call(passThroughLine, [elemIn, elemOut, lineWidthInBytes])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
             #    print(ctx.module.operation.verify())
 
-            tensorSize = width 
+            tensorSize = N 
             tensorSizeInInt32s = tensorSize // 4
-            tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
+            tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
@@ -150,20 +150,10 @@ def passThroughAIE2():
                     )
                     IpuWrite32(0, 0, 0x1D20C, 0x3)
 
-                ipu_dma_memcpy_nd(
-                    metadata="in",
-                    bd_id=0,
-                    mem=inTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
-                )
-                ipu_dma_memcpy_nd(
-                    metadata="out",
-                    bd_id=1,
-                    mem=outTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
-                )
+                ipu_dma_memcpy_nd(metadata="in", bd_id=0, mem=inTensor, sizes=[1, 1, 1, tensorSizeInInt32s])
+                ipu_dma_memcpy_nd(metadata="out", bd_id=1, mem=outTensor, sizes=[1, 1, 1, tensorSizeInInt32s])
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
-passThroughAIE2()
+passthroughKernel()
