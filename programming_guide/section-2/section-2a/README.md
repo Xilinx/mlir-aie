@@ -34,8 +34,8 @@ First of all, an Object FIFO has a unique `name`. It functions as an ordered buf
 
 An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. Below, you can see an example of an Object FIFO created between producer tile A and consumer tile B:
 ```
-A = tile(1, 2)
-B = tile(1, 3)
+A = tile(1, 3)
+B = tile(2, 4)
 of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
 ```
 The created Object FIFO is stored in the `0f0` variable and is named `objfifo0`. It has a depth of `3` objects of datatype `<256xi32>`.
@@ -66,8 +66,8 @@ The `port` input of both the acquire and the release functions represents whethe
 
 Below you can see an example of two processes that are <u>iterating over the objects of the Object FIFO</u> `of0` that we initialized in the previous section, one running on the producer tile and the other on the consumer tile. To do this, the producer process runs a loop of three iterations, equal to the depth of `of0`, and during each iteration it acquires one object from `of0`, calls a `test_func` function on the acquired object, and releases the object. The consumer process only runs once and acquires all three objects from `of0` at once and stores them in the `elems` array, from which it can <u>access each object individually in any order</u>. It then calls a `test_func2` function three times and in each call it gives as input one of the objects it acquired, before releasing all three objects at the end.
 ```
-A = tile(1, 2)
-B = tile(1, 3)
+A = tile(1, 3)
+B = tile(2, 4)
 of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
 
 @core(A)
@@ -91,7 +91,7 @@ def core_body():
 
 An Object FIFO can be created with the same tile as both its producer and consumer tile. This is mostly done in order to ensure proper synchronization within the process itself, as opposed to synchronization across multiple processes running on different tiles as we've seen in examples up until this point. All of the functionalities described up until this point apply in the same way. Below is an example of how such an Object FIFO can be initialized and accessed:
 ```
-A = tile(1, 2)
+A = tile(1, 3)
 of0 = object_fifo("objfifo0", A, A, 3, T.memref(256, T.i32()))
 
 @core(A)

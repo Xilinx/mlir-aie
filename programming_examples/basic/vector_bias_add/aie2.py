@@ -12,7 +12,7 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
-def my_add_one_objFifo():
+def my_vector_bias_add():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
@@ -72,4 +72,4 @@ def my_add_one_objFifo():
     print(ctx.module)
 
 
-my_add_one_objFifo()
+my_vector_bias_add()
