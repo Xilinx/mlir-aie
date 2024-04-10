@@ -288,7 +288,15 @@ operation ::= `aiex.ipu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
               attr-dict `:` type($memref)
 ```
 
-nd half dma operator
+An nd half dma operator.
+
+Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
+pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
+and `static_strides`. The operator references the target channel through the `metadata`
+symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
+when lowered further. The `issue_token` attribute specifies whether the execution of this
+operation should issue a token which can be received and read for synchronization purposes.
+This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility and **is always set to true for** `S2MM` channels.
 
 Traits: `AttrSizedOperandSegments`
 
@@ -305,6 +313,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
 <tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
