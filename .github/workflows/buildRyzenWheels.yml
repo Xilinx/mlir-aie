@@ -105,6 +105,8 @@ jobs:
 
     runs-on: amd8700g
 
+    needs: build-repo
+
     permissions:
       id-token: write
       contents: write
