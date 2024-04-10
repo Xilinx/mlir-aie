@@ -6,9 +6,9 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+include ../../basic/makefile-common
 
-VPATH := ../vision_kernels
+VPATH := ../../../aie_kernels/aie_generic
 
 PASSTHROUGH_WIDTH = 1920
 PASSTHROUGH_HEIGHT = 1080
