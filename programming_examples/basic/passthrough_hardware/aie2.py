@@ -18,7 +18,7 @@ N_in_bytes = N * 4
 
  
 # Deciphering the command line arguments 
-if len(sys.argv) < 4:
+if len(sys.argv) < 3:
     raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
 if len(sys.argv) == 4:
