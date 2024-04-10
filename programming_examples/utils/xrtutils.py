@@ -1,5 +1,6 @@
-# from npu.runtime import pyxrt as xrt
-import npu.runtime as xrt
+# from npu.runtime 
+import pyxrt as xrt
+# import npu.runtime as xrt
 import numpy as np
 
 

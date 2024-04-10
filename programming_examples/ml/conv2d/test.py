@@ -1,4 +1,4 @@
-import torchvision
+# import torchvision
 import torch
 import torch.nn as nn
 import sys
@@ -17,20 +17,18 @@ from brevitas.quant.fixed_point import (
 
 torch.manual_seed(0)
 
-design = "conv1x1_cifar_scalar"
-# design="conv1x1_cifar_vector"
-# aie_teardown()
+design = "conv2d_with_relu"
 
 import xrtutils
 
-xclbin_path = os.path.abspath("/build/final.xclbin")
-insts_path = os.path.abspath("/build/insts.txt")
+xclbin_path = os.path.abspath("build/final.xclbin")
+insts_path = os.path.abspath("build/insts.txt")
 
 log_folder = "log/log_" + design
 
 enable_aie = True
 aie_is_setup = False
-enable_trace = True
+enable_trace = False
 trace_file = "traces/" + design + ".txt"
 
 app = None
@@ -41,13 +39,6 @@ out_buf = None
 dtype_in = np.dtype("int8")
 dtype_wts = np.dtype("int8")
 dtype_out = np.dtype("uint8")
-
-# shape_in_act = (256, 32,32)
-# shape_in_wts1 = (256,64,1,1) #output, input, kx,ky
-# shape_in_wts2 = (64,64,3,3) #output, input, kx,ky
-# shape_in_wts3 = (64,256,1,1) #output, input, kx,ky
-# shape_total_wts=(69632,1)
-# shape_out  = (256, 32,32)
 
 shape_in_act = (32, 8, 32, 8)  #'YCXC8' , 'CYX'
 shape_in_wts1 = (8, 8, 1, 1, 8, 8)  # out,in,ky,kx,in8,out8
@@ -125,22 +116,10 @@ if not os.path.exists(log_folder):
     os.makedirs(log_folder)
 
 
-# input=torch.ones(64,32,32)
 input = torch.randn(1, 64, 32, 32)
-# image_name = f'./cifar_images/image_0.png'
-# img = Image.open(image_name)
-# input_tensor = cifar_test_transform(img)
-# input = input_tensor.unsqueeze(0)
-# Use a separate QuantIdentity so that the quantized output can be fed to both layers
 
-num_classes = 10
 
 ds = DataShaper()
-
-
-def init_pad_input(x, input_channels, desired_channels=4):
-    padding = torch.zeros(1, input_channels * (desired_channels - 1), 32, 32)
-    return torch.cat((x, padding), 1)
 
 
 # try:
@@ -206,28 +185,17 @@ for i in range(0, 1):
     print("Golden::Brevitas::", gold_out)
     gold_out.tofile(log_folder + "/gold_out.txt", sep=",", format="%d")
 
-    from brevitas.export import export_onnx_qcdq
-
-    # ref_input = torch.ones(1, 3, 32, 32, device="cpu", dtype=dtype)
-    export_onnx_qcdq(quant_bottleneck_model, input, log_folder + "/" + design + ".onnx")
-    # # Brevitas convolution
     q_inp = quant_id_1(input)
     int_inp = q_inp.int(float_datatype=True)
 
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    # print(before_input)
+  
     before_input.tofile(
         log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
     )
-    # ifm_mem_fmt = ds.reorder_mat(int_inp.squeeze().data.numpy().astype(dtype_in),'YCX' , 'CYX' )
-    # ifm_mem_fmt = ds.reorder_mat(before_input,'YCX' , 'CYX' )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    # print("Input after:::",ifm_mem_fmt.reshape((32,64, 32)))
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-    # print("ifm_mem_fmt shape",ifm_mem_fmt.shape)
-    # wts1 = ds.reorder_mat(int_weight1.data.numpy().astype(dtype_in),'OIYX' , 'OIYX' )
-    # wts2 = ds.reorder_mat(int_weight2.data.numpy().astype(dtype_in),'OIYX' , 'OIYX' )
-    # wts3 = ds.reorder_mat(int_weight3.data.numpy().astype(dtype_in),'OIYX' , 'OIYX' )
+   
     wts1 = ds.reorder_mat(
         block_0_int_weight_1.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
@@ -235,17 +203,14 @@ for i in range(0, 1):
     total_wts = np.concatenate((wts1), axis=None)
     total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
     print("total_wts", total_wts.shape)
-    for i in range(0, 2):
+    for i in range(0, 1):
         app.buffers[2].write(ifm_mem_fmt)  # input's standard format CYX | scalar YCX
         app.buffers[3].write(total_wts)  # wts's standard format OIYX | scalar OIYX
-        # app.buffers[3].write(int_weight2.data.numpy().astype(dtype_in),offset=2048) # wts's standard format OIYX | scalar OIYX
         app.run()
         output3 = app.buffers[4].read()
         if enable_trace:
             output3, trace = extract_trace(output3, shape_out, dtype_out)
             write_out_trace(trace, trace_file)
-    # temp_out=output3.reshape(32,256, 32)
-    # ofm_mem_fmt = temp_out.swapaxes(0,1)
     temp_out = output3.reshape(32, 8, 32, 8)
     # print("AIE temp_out:::",temp_out)
 
