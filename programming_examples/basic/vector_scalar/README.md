@@ -22,3 +22,10 @@ To run the design:
 ```
 make run
 ```
+
+To compile and run the design for VCK5000:
+```
+make vck5000
+./test.elf
+```
+
