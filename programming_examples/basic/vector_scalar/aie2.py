@@ -12,7 +12,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
-# Deciphering the command line arguments 
+# Deciphering the command line arguments
 if len(sys.argv) < 3:
     raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
@@ -24,6 +24,7 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 col = int(sys.argv[2])
+
 
 def my_vector_scalar():
     N = 4096
@@ -38,7 +39,9 @@ def my_vector_scalar():
     trace_size = 8192
 
     if enable_tracing and sys.argv[1] == "xcvc1902":
-        raise ValueError("[ERROR] Trace is currently not supported with device xcvc1902")
+        raise ValueError(
+            "[ERROR] Trace is currently not supported with device xcvc1902"
+        )
 
     with mlir_mod_ctx() as ctx:
 
