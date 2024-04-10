@@ -225,7 +225,7 @@ You will...
    >  Devices present
    >  BDF             :  Name             
    > ------------------------------------
-   >  [0000:66:00.1]  :  RyzenAI-Phoenix 
+   >  [0000:66:00.1]  :  RyzenAI-npu1
    >  ```
 
 ### Install MLIR-AIE Prerequisites
