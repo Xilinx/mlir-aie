@@ -190,20 +190,13 @@ You will...
     3. Install XRT.
 
        ```
-       cd $XDNA_SRC_DIR/xrt/build
+       cd $XDNA_SRC_DIR/xrt/build/Release
        sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xrt.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
 
-1. Install the XDNA prerequisites. (Below steps are adapted from [here](https://github.com/amd/xdna-driver).)
-
-    ```
-    cd $XDNA_SRC_DIR
-    sudo su
-    ./tools/amdxdna_deps.sh
-    exit
-    ```
+Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
 1. Build XDNA.
 
