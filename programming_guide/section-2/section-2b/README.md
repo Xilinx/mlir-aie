@@ -20,8 +20,8 @@ It is important to note that each new acquire function will return a new object 
 
 In the example below `of0` is created between producer A and consumer B with a depth of 3 objects: object0, object1, and object2. Consumer B first acquires 2 elements from `of0` in the variable `elems`. As this is the first time that B acquires, it will have access to object0 and object1. B releases the oldest acquired object, object0, and keeps object1. The next time B acquires 2 elements in the variable `elems_2` it will have access to object1 from before and to the newly acquired object2. B again only releases a single object and keeps object2. Finally, the third time B acquires in `elems_3` it will have access to object2 and object0.
 ```
-A = tile(1, 2)
-B = tile(1, 3)
+A = tile(1, 3)
+B = tile(2, 4)
 of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: object0, object1, object2
 
 @core(B)
@@ -45,7 +45,7 @@ For more low-level details regarding how the objects in the Object FIFO are tran
 
 Below is an example of an Object FIFO of depth 3 with one producer tile A and three consumer tiles B, C and D:
 ```
-A = tile(1, 2)
+A = tile(1, 1)
 B = tile(1, 3)
 C = tile(2, 3)
 D = tile(3, 3)
@@ -56,9 +56,9 @@ The `depth` input of an Object FIFO can also be specified as an array of integer
 
 The main advantage of being able to specify the individual depths comes during a situation like the one showcased in the example below, which we refer to as a broadcast with a <u>skip-connection</u>. In the example below two Object FIFOs are created: `of0` is a broadcast from producer tile A to consumer tiles B and C, while `of1` is a 1-to-1 data movement from producer tile B to consumer tile C. We refer to `of1` as a skip-connection because it is a dependency between the two consumer tiles of the same broadcast connection. Furthermore, we can see in the code that is executing on its core that C requires one object from both `of0` and `of1` before it can proceed with its execution. However, B also requires an object from `of0` before it can produce the data for `of1`.
 ```
-A = tile(1, 2)
-B = tile(1, 3)
-C = tile(2, 3)
+A = tile(1, 3)
+B = tile(2, 3)
+C = tile(2, 4)
 of0 = object_fifo("objfifo0", A, [B, C], 1, T.memref(256, T.i32()))
 of1 = object_fifo("objfifo1", B, C, 1, T.memref(256, T.i32()))
 
@@ -103,7 +103,7 @@ Below is an example of a link created between two FIFOs `of0` and `of1`, where t
 ```
 A = tile(1, 0)
 B = tile(1, 1)
-C = tile(1, 2)
+C = tile(1, 3)
 of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
 of1 = object_fifo("objfifo1", B, C, 2, T.memref(256, T.i32()))
 object_fifo_link(of0, of1)
@@ -125,8 +125,8 @@ The example below shows three Object FIFOs: `of0` has a producer tile A and a co
 ```
 A = tile(1, 0)
 B = tile(1, 1)
-C = tile(1, 2)
-D = tile(2, 2)
+C = tile(1, 3)
+D = tile(2, 3)
 of0 = object_fifo("objfifo0", A, B, 2, T.memref(256, T.i32()))
 of1 = object_fifo("objfifo1", B, C, 2, T.memref(128, T.i32()))
 of2 = object_fifo("objfifo2", B, D, 2, T.memref(128, T.i32()))
@@ -143,8 +143,8 @@ The example below shows three Object FIFOs: `of2` has a producer tile B and a co
 ```
 A = tile(1, 0)
 B = tile(1, 1)
-C = tile(1, 2)
-D = tile(2, 2)
+C = tile(1, 3)
+D = tile(2, 3)
 of0 = object_fifo("objfifo0", C, B, 2, T.memref(128, T.i32()))
 of1 = object_fifo("objfifo1", D, B, 2, T.memref(128, T.i32()))
 of2 = object_fifo("objfifo2", B, A, 2, T.memref(256, T.i32()))
