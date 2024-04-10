@@ -144,8 +144,8 @@ You will...
     1. Install XRT prerequisites.
     
        ```
-       cd $XDNA_SRC_DIR/xrt
-       sudo ./runtime_src/tools/scripts/xrtdeps.sh
+       cd $XDNA_SRC_DIR
+       sudo ./tools/amdxdna_deps.sh
        ```
 
     2. Build XRT.
