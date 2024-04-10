@@ -8,17 +8,26 @@
 
 include ../makefile-common
 
+ACDC_AIE = $(dir $(shell which aie-opt))/..
+
 targetname = vectorScalar
+devicename = ipu
+col = 0
+CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
+KERNEL_LIB=${ACDC_AIE}/../aie_kernels/aie2/
 
 all: build/final.xclbin build/insts.txt
 
-build/%.o: %.cc
+scale.cc: 
+	cp ${KERNEL_LIB}/scale.cc ./
+
+build/scale.o: scale.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} ${col} > $@
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
@@ -45,6 +54,26 @@ trace:
 clean_trace:
 	rm -rf tmpTrace trace.txt
 
-clean: clean_trace
-	rm -rf build _build ${targetname}.exe
+# Changing variables when we target VCK5000
+vck5000: devicename=xcvc1902
+vck5000: col=6
+vck5000: CHESS_FLAGS=${CHESSCCWRAP1_FLAGS}
+vck5000: KERNEL_LIB=${ACDC_AIE}/../aie_kernels/aie1/
 
+vck5000: build/aie.mlir build/scale.o
+	cp build/scale.o* ./
+	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+		-I/opt/xaiengine/include \
+		-I$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/include \
+            	-I${ROCM_ROOT}/include \
+		-L/opt/xaiengine/lib \
+            	-L/lib/x86_64-linux-gnu/ \
+		test_vck5000.cpp \
+		$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
+            	${ROCM_ROOT}/lib/libhsa-runtime64.so.1.9.0 \
+		-Wl,-R/opt/xaiengine/lib \
+            	-Wl,-rpath,${ROCM_ROOT}/lib \
+		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
+
+clean: clean_trace
+	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe scale.o* scale.cc

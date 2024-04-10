@@ -12,6 +12,18 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
+# Deciphering the command line arguments 
+if len(sys.argv) < 3:
+    raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+if sys.argv[1] == "ipu":
+    dev = AIEDevice.ipu
+elif sys.argv[1] == "xcvc1902":
+    dev = AIEDevice.xcvc1902
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
+col = int(sys.argv[2])
 
 def my_vector_scalar():
     N = 4096
@@ -25,9 +37,12 @@ def my_vector_scalar():
     enable_tracing = False
     trace_size = 8192
 
+    if enable_tracing and sys.argv[1] == "xcvc1902":
+        raise ValueError("[ERROR] Trace is currently not supported with device xcvc1902")
+
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(dev)
         def device_body():
             memRef_ty = T.memref(n, T.i32())
 
@@ -39,8 +54,8 @@ def my_vector_scalar():
             scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
 
             # Tile declarations
-            ShimTile = tile(0, 0)
-            compute_tile2_col, compute_tile2_row = 0, 2
+            ShimTile = tile(col, 0)
+            compute_tile2_col, compute_tile2_row = col, 2
             ComputeTile2 = tile(compute_tile2_col, compute_tile2_row)
 
             # AIE-array data movement with object fifos
