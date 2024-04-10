@@ -12,7 +12,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
-N = 1024  
+N = 1024
 
 if len(sys.argv) == 2:
     N = int(sys.argv[1])
@@ -64,7 +64,7 @@ def passthroughKernel():
 
             #    print(ctx.module.operation.verify())
 
-            tensorSize = N 
+            tensorSize = N
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
@@ -150,10 +150,21 @@ def passthroughKernel():
                     )
                     IpuWrite32(0, 0, 0x1D20C, 0x3)
 
-                ipu_dma_memcpy_nd(metadata="in", bd_id=0, mem=inTensor, sizes=[1, 1, 1, tensorSizeInInt32s])
-                ipu_dma_memcpy_nd(metadata="out", bd_id=1, mem=outTensor, sizes=[1, 1, 1, tensorSizeInInt32s])
+                ipu_dma_memcpy_nd(
+                    metadata="in",
+                    bd_id=0,
+                    mem=inTensor,
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                )
+                ipu_dma_memcpy_nd(
+                    metadata="out",
+                    bd_id=1,
+                    mem=outTensor,
+                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
+
 
 passthroughKernel()
