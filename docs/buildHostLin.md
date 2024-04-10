@@ -47,7 +47,7 @@ You will...
 1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
 
     ```
-    git clone --branch iommu_sva_v4_v6.7-rc8 https://github.com/AMDESE/linux.git
+    git clone --branch iommu_sva_part4_v6_v6.8_rc2 https://github.com/AMDESE/linux.git
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
@@ -65,6 +65,8 @@ You will...
     cd $LINUX_SRC_DIR
     make olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
+    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
+    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --enable DRM_ACCEL
     ```
 
@@ -82,9 +84,9 @@ You will...
 
     ```
     cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.7.0-rc8+_6.7.0-rc8-gf7c539200359-20_amd64.deb
-    sudo dpkg -i linux-image-6.7.0-rc8+_6.7.0-rc8-gf7c539200359-20_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.7.0-rc8-gf7c539200359-20_amd64.deb
+    sudo dpkg -i linux-headers-6.8.0-rc2+_6.8.0-rc2-g82a462b7144c-4_amd64.deb
+    sudo dpkg -i linux-image-6.8.0-rc2+_6.8.0-rc2-g82a462b7144c-4_amd64.deb 
+    sudo dpkg -i linux-libc-dev_6.8.0-rc2-g82a462b7144c-4_amd64.deb
     sudo shutdown --reboot 0
     ```
 
