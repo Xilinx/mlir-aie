@@ -29,6 +29,36 @@ You will...
 
 ## Prerequisites
 
+### Install Xilinx Vitis 2023.2 
+
+1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+
+   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
+
+1. Set up a AI Engine license.
+
+    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+
+    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
+       
+    1. Setup your environment using the following script for Vitis and aietools:
+
+       ```
+       #!/bin/bash
+        #################################################################################
+        # Setup Vitis (which includes Vitis and aietools)
+        #################################################################################
+        export MYXILINX_VER=2023.2
+        export MYXILINX_BASE=/tools/Xilinx
+        export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
+        export AIETOOLS_ROOT=$XILINX_LOC/aietools
+        export PATH=$PATH:${AIETOOLS_ROOT}/bin:$XILINX_LOC/bin
+        export LM_LICENSE_FILE=/opt/Xilinx.lic
+        export VITIS=${XILINX_LOC}
+        export XILINX_VITIS=${XILINX_LOC}
+        export VITIS_ROOT=${XILINX_LOC}
+       ```
+
 ### Update Linux
 
 > The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support.
@@ -205,27 +235,7 @@ You will...
    >  [0000:66:00.1]  :  RyzenAI-Phoenix 
    >  ```
 
-### Install Xilinx Vitis 2023.2 and Other MLIR-AIE Prerequisites
-
-1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
-
-   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
-
-1. Set up a AI Engine license.
-    
-    1. Setup your environment in the following order for aietools and Vitis:
-
-       ```
-       source /tools/Xilinx/Vitis/2023.2/settings64.sh
-       ```
-
-    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
-
-    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`, and set the `LM_LICENSE_FILE` environment variable:
-
-       ```
-       export LM_LICENSE_FILE=/opt/Xilinx.lic
-       ```
+### Install MLIR-AIE Prerequisites
 
 1. Install the following packages needed for building MLIR-AIE:
     ``` 
