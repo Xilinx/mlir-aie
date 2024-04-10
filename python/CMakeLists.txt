@@ -3,26 +3,29 @@
 
 include(AddMLIRPython)
 
-execute_process(
-  COMMAND_ERROR_IS_FATAL ANY
-  COMMAND ${Python3_EXECUTABLE} -m
-    pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
-  RESULT_VARIABLE CMD_ERROR
-  OUTPUT_VARIABLE CMD_OUTPUT
-)
-if(NOT CMD_ERROR EQUAL "0")
-  message(FATAL_ERROR "pip install requirements.txt failed:" ${CMD_OUTPUT})
-endif()
+option(AIE_REINSTALL_PYTHON_ENV_PACKAGES "pip install python requirements" ON)
+if (AIE_REINSTALL_PYTHON_ENV_PACKAGES)
+  execute_process(
+    COMMAND_ERROR_IS_FATAL ANY
+    COMMAND ${Python3_EXECUTABLE} -m
+      pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt
+    RESULT_VARIABLE CMD_ERROR
+    OUTPUT_VARIABLE CMD_OUTPUT
+  )
+  if(NOT CMD_ERROR EQUAL "0")
+    message(FATAL_ERROR "pip install requirements.txt failed:" ${CMD_OUTPUT})
+  endif()
 
-execute_process(
-  COMMAND_ERROR_IS_FATAL ANY
-  COMMAND ${Python3_EXECUTABLE} -m
-    pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/aie-python-extras-req.txt --force-reinstall
-  RESULT_VARIABLE CMD_ERROR
-  OUTPUT_VARIABLE CMD_OUTPUT
-)
-if(NOT CMD_ERROR EQUAL "0")
-  message(FATAL_ERROR "pip install aie-python-extras-req.txt failed:" ${CMD_OUTPUT})
+  execute_process(
+    COMMAND_ERROR_IS_FATAL ANY
+    COMMAND ${Python3_EXECUTABLE} -m
+      pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/aie-python-extras-req.txt --force-reinstall
+    RESULT_VARIABLE CMD_ERROR
+    OUTPUT_VARIABLE CMD_OUTPUT
+  )
+  if(NOT CMD_ERROR EQUAL "0")
+    message(FATAL_ERROR "pip install aie-python-extras-req.txt failed:" ${CMD_OUTPUT})
+  endif()
 endif()
 
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
