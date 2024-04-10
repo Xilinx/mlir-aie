@@ -209,7 +209,7 @@ Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 1. Install XDNA.
 
     ```
-    cd $XDNA_SRC_DIR/build
+    cd $XDNA_SRC_DIR/build/Release
     sudo dpkg -i xrt_plugin.2.17.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
