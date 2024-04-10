@@ -41,7 +41,7 @@ def my_passthrough():
             @core(ComputeTile2)
             def core_body():
                 for _ in for_(sys.maxsize):
-                    yield_([]) 
+                    yield_([])
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())

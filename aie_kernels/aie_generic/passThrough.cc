@@ -18,7 +18,7 @@
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>
-__attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out, 
+__attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
                                                const int32_t height,
                                                const int32_t width) {
   v64uint8 *restrict outPtr = (v64uint8 *)out;
