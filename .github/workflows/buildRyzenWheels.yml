@@ -27,7 +27,7 @@ jobs:
   build-repo:
     name: Build and upload mlir_aie wheels
 
-    runs-on: amd7940hs
+    runs-on: amd8700g
 
     permissions:
       id-token: write
@@ -103,7 +103,7 @@ jobs:
   build-wheel:
     name: Build wheel
 
-    runs-on: amd7940hs
+    runs-on: amd8700g
 
     permissions:
       id-token: write
