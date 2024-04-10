@@ -30,12 +30,15 @@ int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", po::value<std::string>()->required(), "the input xclbin path")
-    ("kernel,k", po::value<std::string>()->required(), "the kernel name in the XCLBIN (for instance PP_PRE_FD)")
-    ("verbosity,v", po::value<int>()->default_value(0), "the verbosity of the output")
-    ("instr,i", po::value<std::string>()->required(), "path of file containing userspace instructions to be sent to the LX6");
+  desc.add_options()("help,h", "produce help message")(
+      "xclbin,x", po::value<std::string>()->required(),
+      "the input xclbin path")(
+      "kernel,k", po::value<std::string>()->required(),
+      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "verbosity,v", po::value<int>()->default_value(0),
+      "the verbosity of the output")(
+      "instr,i", po::value<std::string>()->required(),
+      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
 
   try {
@@ -71,12 +74,16 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(), vm["kernel"].as<std::string>());
+  initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
+                    vm["kernel"].as<std::string>());
 
   // set up the buffer objects
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+  auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_out = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -110,11 +117,11 @@ int main(int argc, const char *argv[]) {
 
   // Compare out to in
   int errors = 0;
-  for(int i = 0; i < PASSTHROUGH_SIZE; i++) {
-    if(bufOut[i] != bufInA[i])
+  for (int i = 0; i < PASSTHROUGH_SIZE; i++) {
+    if (bufOut[i] != bufInA[i])
       errors++;
   }
-  
+
   // Print Pass/Fail result of our test
   if (!errors) {
     std::cout << std::endl << "PASS!" << std::endl << std::endl;

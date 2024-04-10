@@ -25,9 +25,7 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
   for (int j = 0; j < (height * width); j += N) // Nx samples per loop
-    chess_prepare_for_pipelining chess_loop_range(6, ) {
-      *outPtr++ = *inPtr++;
-    }
+    chess_prepare_for_pipelining chess_loop_range(6, ) { *outPtr++ = *inPtr++; }
 }
 
 extern "C" {
