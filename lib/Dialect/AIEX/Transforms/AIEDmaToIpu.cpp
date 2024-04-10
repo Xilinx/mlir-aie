@@ -313,7 +313,10 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     // repeat_count
     repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
 
-    // issue_token
+    // Set the issue_token
+    issue_token = BoolAttr::get(ctx, op.getIssueToken());
+    // Earlier, all S2MM channels were implicitly assumed to issue a token.
+    // This logic is kept for now for backward compatibility.
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 

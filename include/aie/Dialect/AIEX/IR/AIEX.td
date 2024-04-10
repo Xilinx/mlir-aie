@@ -470,7 +470,15 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   let summary = "half dma operator";
 
   let description = [{
-    nd half dma operator
+    An nd half dma operator.
+
+    Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
+    pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
+    and `static_strides`. The operator references the target channel through the `metadata`
+    symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
+    when lowered further. The `issue_token` attribute specifies whether the execution of this
+    operation should issue a token which can be received and read for synchronization purposes.
+    This `issue_token` attribute is set to `false` by default for backward compatibility.
   }];
 
   let arguments = (
@@ -485,7 +493,8 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
-        I64Attr:$id
+        I64Attr:$id,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
   );
 
   let assemblyFormat = [{
