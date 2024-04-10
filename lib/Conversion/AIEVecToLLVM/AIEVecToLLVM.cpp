@@ -375,6 +375,20 @@ public:
     int conf;
   };
 
+  // sgn_x: Sign mask of matrix X. If it is one matrix X is interpreted as
+  // signed, else it treated as unsigned.
+  // sgn_y: Sign mask of matrix Y. If it is one matrix Y is interpreted as
+  // signed, else it treated as unsigned.
+  // zero_acc1: Zeroing of acc1. If it is one then acc1 is zeroed.
+  // zero_acc2: Zeroing of acc2. If it is one then acc2 is zeroed.
+  // sub_mul: Negation mask of the matrix multiplication result. If it is
+  // one the result of the operation will be negated.
+  // sub_acc1: Negation mask of acc1. If it is one acc1 will be negated.
+  // sub_acc2: Negation mask of acc2. If it is one acc2 will be negated.
+  // shift16: Shift mask of acc1. If a bit is set the <<16 operation will be
+  // executed on acc1.
+  // sub_mask: Negation mask of complex multiplications. Negates a term of a
+  // complex multiplication.
   static int aiev2_mul_mac_compute_control(int sgn_x, int sgn_y, int amode,
                                            int bmode, int variant, int zero_acc,
                                            int shift16, int sub0, int sub1,
@@ -428,7 +442,7 @@ public:
   //   acc = mac_elem_16_2_conf(a_lo, false, b_lo, false, acc, 0, 1, 0, 0);
   //   return acc;
   // }
-  // Caller's syntax to the above CPP intrinsic is below:
+  // Caller to the above CPP intrinsic:
   // v16int32 v1 = LHS();
   // v16int32 v2 = RHS();
   // v16acc64 v3 = mul_elem_16_2(v1, broadcast_zero_s32(), v2,
