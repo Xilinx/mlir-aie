@@ -138,7 +138,7 @@ if config.xrt_lib_dir:
                     print("\tmodel:", aie_model)
                 config.available_features.add("ryzen_ai")
                 run_on_ipu = (
-                    f"XRT_HACK_UNSECURE_LOADING_XCLBIN=1 flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
+                    f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
                 )
     except:
         print("Failed to run xbutil")

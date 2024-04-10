@@ -20,6 +20,8 @@ if [[ -d /lib/firmware/amdnpu/1502_00 ]]; then
   FIRMWARE_DIR=/lib/firmware/amdnpu/1502_00
   NPU_DEVICE=NPU1
 fi
+# Don't require root.
+XRT_HACK_UNSECURE_LOADING_XCLBIN=1 
 
 XRT_DIR=/opt/xilinx/xrt
 source $XRT_DIR/setup.sh
