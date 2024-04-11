@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../../programming_examples/basic/makefile-common
+include ../../../programming_examples/makefile-common
 
 all: build/final.xclbin
 
@@ -18,7 +18,7 @@ build/lut_based_ops.o:
 
 build/exp.o: 
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I${REPO_ROOT}/my_install/mlir_aie/aie_runtime_lib/AIE2 -c ${REPO_ROOT}/aie_kernels/aie2/bf16_exp.cc -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I${REPO_ROOT}/my_install/mlir_aie/aie_runtime_lib/AIE2 -c ../../..//aie_kernels/aie2/bf16_exp.cc -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+

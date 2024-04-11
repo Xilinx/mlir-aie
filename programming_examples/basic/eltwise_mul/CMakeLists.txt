@@ -40,6 +40,7 @@ project(${ProjectName})
 find_package(Boost REQUIRED)
 
 add_executable(${currentTarget}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
@@ -48,7 +49,7 @@ target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 target_include_directories (${currentTarget} PUBLIC 
     ${XRT_INC_DIR}
     ${Boost_INCLUDE_DIRS}
-    ../../../programming_examples/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime_lib/test_lib
 )
 
 target_link_directories(${currentTarget} PUBLIC
