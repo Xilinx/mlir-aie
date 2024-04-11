@@ -1,11 +1,8 @@
 include ../../basic/makefile-common
 
-#mlirFileName = aie_1core
 mlirFileName = aieWithTrace_1core
-# VPATH := ../../kernels
 
 all: build/conv2dk1.o build/final.xclbin
-
 
 build/${mlirFileName}.mlir: aie2.py
 	mkdir -p ${@D}
@@ -27,6 +24,5 @@ clean:
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
-test.exe: test.cpp
-	$(CXX) $(LD_FLAGS) $< -o $@ $(CFLAGS) $(INC) $(LD_PATHS) 
-
+run_py: 
+	${powershell} python3 test.py

@@ -24,13 +24,17 @@ if len(sys.argv) == 3:
 
 
 actIn = width * in_channels  # 32*64 = 2048
-bufIn = actIn * 2
+bufIn = actIn * 2 # double buffer
 actInInt32s = actIn // 4
 
 weights = in_channels * out_channels
 weightsInInt32s = weights // 4
 
-enableTrace = True
+actOut = width * out_channels  # 32*64 = 2048
+bufOut = actOut * 2 # double buffer
+actOutInt32s = actOut // 4
+
+enableTrace = False
 traceSizeInBytes = 8192
 traceSizeInInt32s = traceSizeInBytes // 4
 
@@ -43,15 +47,20 @@ def conv2dk1():
 
             actIn_ty = T.memref(actIn, T.i8())
             bufIn_ty = T.memref(bufIn, T.i8())
+            
             weights_ty = T.memref(weights, T.i8())
-            bufOut_ty = T.memref(bufIn, T.ui8())
-            out_ty = T.memref(actIn, T.ui8())
+            
+            out_ty = T.memref(actOut, T.ui8())
+            bufOut_ty = T.memref(bufOut, T.ui8())
+            
 
             # memRef_3x3_ty = T.memref(3, 3, T.i16())
 
             ofifo_actIn_ty = TypeAttr.get(ObjectFifoType.get(actIn_ty))
-            ofifo_weights_ty = TypeAttr.get(ObjectFifoType.get(weights_ty))
             ofifo_bufIn_ty = TypeAttr.get(ObjectFifoType.get(bufIn_ty))
+
+            ofifo_weights_ty = TypeAttr.get(ObjectFifoType.get(weights_ty))
+
             ofifo_out_ty = TypeAttr.get(ObjectFifoType.get(out_ty))
             ofifo_bufOut_ty = TypeAttr.get(ObjectFifoType.get(bufOut_ty))
 
@@ -73,13 +82,10 @@ def conv2dk1():
             ShimTile = tile(0, 0)
             MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
-            # ComputeTile3 = tile(0, 3)
-            # ComputeTile4 = tile(0, 4)
-            # ComputeTile5 = tile(0, 5)
+
 
             if enableTrace:
                 flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
-                # flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
 
             # AIE-array data movement with object fifos
             # Input
@@ -137,7 +143,7 @@ def conv2dk1():
                 ci = 64
                 co = 64
 
-                for _ in for_(4294967295):
+                for _ in for_(0xFFFFFFFF):
                     elemWts = of_inOF_wts_0_L3L2.acquire(
                         ObjectFifoPort.Consume, 1)
 
