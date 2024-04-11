@@ -44,6 +44,8 @@ add_executable(${currentTarget}
     test.cpp
 )
 
+set_property(TARGET ${currentTarget} PROPERTY CXX_STANDARD 23)
+
 target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 
 target_include_directories (${currentTarget} PUBLIC 

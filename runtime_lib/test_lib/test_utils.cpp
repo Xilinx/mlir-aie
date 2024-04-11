@@ -147,23 +147,6 @@ void test_utils::init_xrt_load_kernel(xrt::device &device,
 // Matrix / Float / Math
 // --------------------------------------------------------------------------
 
-static inline std::int16_t test_utils::random_int16_t() {
-  return (std::int16_t)rand() % 0x10000;
-}
-
-static inline std::bfloat16_t test_utils::random_bfloat16_t(std::bfloat16_t scale,
-                                                std::bfloat16_t bias) {
-  // Random numbers should NOT be uniformly between 0 and 1, because that
-  // would make the matrix product AB always close to 1.
-  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) + bias);
-}
-
-// static inline std::bfloat16_t random_bfloat16_t() {
-//   // Random numbers should NOT be uniformly between 0 and 1, because that
-//   // would make the matrix product AB always close to 1.
-//   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
-// }
-
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
 // Original author: P-Gn
 // Source: https://stackoverflow.com/a/32334103

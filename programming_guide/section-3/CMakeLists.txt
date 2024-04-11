@@ -30,6 +30,7 @@ set(TARGET_NAME test CACHE STRING "Target to be built")
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
+
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
 endif ()
@@ -43,6 +44,8 @@ add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
+
+set_property(TARGET ${currentTarget} PROPERTY CXX_STANDARD 23)
 
 target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 
