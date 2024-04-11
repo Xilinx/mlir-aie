@@ -523,8 +523,7 @@ def AIE_IpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let description = [{
     The IpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
-    and issues a task-complete-token. NOTE(jornt): do we want to support synchronization
-    through polling as well?
+    and issues a task-complete-token.
 
     Example:
     ```mlir

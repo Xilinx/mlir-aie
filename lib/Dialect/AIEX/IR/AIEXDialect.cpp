@@ -106,11 +106,10 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
 }
 
 LogicalResult AIEX::IpuDmaWaitOp::verify() {
-  auto dev = (*this)->getParentOfType<AIE::DeviceOp>();
+  AIE::DeviceOp dev = (*this)->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return emitOpError("couldn't find parent of type DeviceOp");
-  auto sym = dev.lookupSymbol(getSymbol());
-  if (!sym)
+  if (!dev.lookupSymbol(getSymbol()))
     return emitOpError("couldn't find symbol in parent device");
   return success();
 }
