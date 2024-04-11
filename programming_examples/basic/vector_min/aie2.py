@@ -40,13 +40,9 @@ def my_vector_max():
 
             # AIE Core Function declarations
 
-            vector_min = external_func(
-                "vector_min", inputs=[memRef_I_ty, memRef_O_ty]
-            )
+            vector_min = external_func("vector_min", inputs=[memRef_I_ty, memRef_O_ty])
 
-            scalar_min = external_func(
-                "scalar_min", inputs=[memRef_I_ty, memRef_O_ty]
-            )
+            scalar_min = external_func("scalar_min", inputs=[memRef_I_ty, memRef_O_ty])
 
             # Tile declarations
             ShimTile = tile(int(sys.argv[2]), 0)
@@ -54,7 +50,9 @@ def my_vector_max():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_I_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_O_ty)
+            of_out = object_fifo(
+                "out", ComputeTile2, ShimTile, buffer_depth, memRef_O_ty
+            )
 
             # Set up compute tiles
 
@@ -62,30 +60,19 @@ def my_vector_max():
             @core(ComputeTile2, "vector_min.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
-                    elem_out =of_out.acquire(
-                        ObjectFifoPort.Produce, 1
-                    )
-                    elem_in = of_in.acquire(
-                        ObjectFifoPort.Consume, 1
-                    )
+                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
 
                     call(
                         vector_min,
                         [elem_in, elem_out],
                     )
-                    of_in.release(
-                        ObjectFifoPort.Consume, 1
-                    )
-                    of_out.release(
-                        ObjectFifoPort.Produce, 1
-                    )
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-
-
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
-
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty)
             def sequence(A, C):

@@ -86,7 +86,6 @@ def my_vector_max():
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
-
             @FuncOp.from_py_func(tensor_ty, tensor_ty)
             def sequence(A, C):
                 ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 1])
