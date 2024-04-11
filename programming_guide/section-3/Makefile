@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../programming_examples/basic/makefile-common
+include ../../programming_examples/makefile-common
 
 all: build/final.xclbin
 
@@ -24,8 +24,7 @@ build/final.xclbin: build/aie.mlir
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-#	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
