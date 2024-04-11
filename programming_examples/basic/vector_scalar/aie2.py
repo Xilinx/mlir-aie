@@ -12,12 +12,14 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
+
 def pack4bytes(b3, b2, b1, b0):
     w = (b3 & 0xFF) << 24
     w |= (b2 & 0xFF) << 16
     w |= (b1 & 0xFF) << 8
     w |= (b0 & 0xFF) << 0
     return w
+
 
 # Configure tracing, see https://github.com/Xilinx/mlir-aie/blob/resnet/docs/Tracing.md
 # This is a very simple model of tracing, which has some big assumptions:
@@ -38,11 +40,14 @@ def pack4bytes(b3, b2, b1, b0):
 # stop: The event number to stop tracing on
 # events: A list of events to trace.  Up to 8 events are allowed in aie2, more are ignored
 
+
 # Event numbers should be less than 128.
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
 # everything will probably break.
-def configure_simple_tracing_aie2(tile, shim, bd_id, channel, size, offset, start, stop, events):
-    assert(shim.isShimTile())
+def configure_simple_tracing_aie2(
+    tile, shim, bd_id, channel, size, offset, start, stop, events
+):
+    assert shim.isShimTile()
 
     # Pad the input so we have exactly 8 events.
     events = (events + [0] * 8)[:8]
@@ -88,13 +93,15 @@ def configure_simple_tracing_aie2(tile, shim, bd_id, channel, size, offset, star
     # 0x3FF00: Stream switch event port selection 0
     def master(port):
         return port | (1 << 5)
+
     def slave(port):
         return port
+
     ipu_write32(
         column=tile.col(),
         row=tile.row(),
         address=0x3FF00,
-        value=pack4bytes(0, 0, slave(1), master(1)), # port 1 is FIFO0?
+        value=pack4bytes(0, 0, slave(1), master(1)),  # port 1 is FIFO0?
     )
     ipu_write32(
         column=tile.col(),
@@ -121,7 +128,7 @@ def configure_simple_tracing_aie2(tile, shim, bd_id, channel, size, offset, star
         d1_stride=0,
         d2_stride=0,
         # Assume using output buffer.  This probably needs to be configurable.
-        ddr_id=2, 
+        ddr_id=2,
         iteration_current=0,
         iteration_size=0,
         iteration_stride=0,
@@ -135,7 +142,13 @@ def configure_simple_tracing_aie2(tile, shim, bd_id, channel, size, offset, star
         valid_bd=1,
     )
     # configure S2MM channel
-    ipu_write32(column=shim.col(), row=shim.row(), address=0x1D204 if channel == 0 else 0x1D20C, value=bd_id)
+    ipu_write32(
+        column=shim.col(),
+        row=shim.row(),
+        address=0x1D204 if channel == 0 else 0x1D20C,
+        value=bd_id,
+    )
+
 
 def my_vector_scalar():
     N = 4096
@@ -202,15 +215,17 @@ def my_vector_scalar():
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    configure_simple_tracing(ComputeTile2,
-                                             ShimTile,
-                                             bd_id=13,
-                                             channel=1,
-                                             size=trace_size,
-                                             offset=N_in_bytes,
-                                             start=0x1,
-                                             stop=0x0,
-                                             events={0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F})
+                    configure_simple_tracing(
+                        ComputeTile2,
+                        ShimTile,
+                        bd_id=13,
+                        channel=1,
+                        size=trace_size,
+                        offset=N_in_bytes,
+                        start=0x1,
+                        stop=0x0,
+                        events={0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F},
+                    )
 
                 ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
