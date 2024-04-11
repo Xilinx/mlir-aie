@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
+include ../../makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
