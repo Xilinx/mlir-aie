@@ -59,8 +59,8 @@ def my_first_aie_program():
                     yield_([])
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(memRef_64_ty, memRef_64_ty)
-            def sequence(inTensor, outTensor):
+            @FuncOp.from_py_func(memRef_64_ty, memRef_64_ty, memRef_64_ty)
+            def sequence(inTensor, unused, outTensor):
                 ipu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
                 )

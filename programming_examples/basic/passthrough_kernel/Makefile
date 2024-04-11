@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
+include ../../makefile-common
 
 VPATH := ../../../aie_kernels/aie_generic
 

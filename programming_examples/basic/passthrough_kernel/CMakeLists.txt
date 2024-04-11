@@ -41,7 +41,7 @@ project(${ProjectName})
 find_package(Boost REQUIRED)
 
 add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/xrtUtils.cpp
+${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
@@ -52,6 +52,7 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
     ${XRT_INC_DIR}
     ${Boost_INCLUDE_DIRS}
 )

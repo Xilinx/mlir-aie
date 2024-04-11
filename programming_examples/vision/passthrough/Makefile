@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../basic/makefile-common
+include ../../makefile-common
 
 VPATH := ../../../aie_kernels/aie_generic
 
@@ -38,7 +38,7 @@ build/final_${PASSTHROUGH_WIDTH}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_W
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DPASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH} -DPASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT} 
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -DTARGET_NAME=${targetname} -DPASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH} -DPASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
