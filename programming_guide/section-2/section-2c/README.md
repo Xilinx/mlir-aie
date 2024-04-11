@@ -114,6 +114,7 @@ for(int i = 0; i < 2; i++)      # size_1
         )
 ```
 and further represented as in the image below,
+
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_single_column](../../../programming_examples/basic/matrix_multiplication/single_column/).
