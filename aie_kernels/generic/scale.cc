@@ -8,10 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define __AIENGINE__ 1
-#define NOCPP
-#define __AIEARCH__ 10
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +18,7 @@
 
 #include <aie_api/aie.hpp>
 
-template <typename T_in, typename T_out, int N>
+template <typename T_in, typename T_out, const int N>
 void scale(T_in *a, T_out *c, T_in factor) {
   for (int i = 0; i < N; i++) {
     c[i] = factor * a[i];
@@ -33,6 +29,7 @@ void scale(T_in *a, T_out *c, T_in factor) {
 template <typename T_in, typename T_out, const int N>
 void scale_vectorized(T_in *a, T_out *c, T_in factor) {
   constexpr int vec_factor = 16;
+  event0();
   T_in *__restrict pA1 = a;
   T_out *__restrict pC1 = c;
   const int F = N / vec_factor;
@@ -44,6 +41,7 @@ void scale_vectorized(T_in *a, T_out *c, T_in factor) {
       aie::store_v(pC1, cout.to_vector<T_out>(0));
       pC1 += vec_factor;
     }
+  event1();
 }
 
 extern "C" {

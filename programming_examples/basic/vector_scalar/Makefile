@@ -14,7 +14,7 @@ targetname = vectorScalar
 devicename = ipu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/aie2/
+KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/generic/
 
 all: build/final.xclbin build/insts.txt
 
@@ -58,7 +58,7 @@ clean_trace:
 vck5000: devicename=xcvc1902
 vck5000: col=6
 vck5000: CHESS_FLAGS=${CHESSCCWRAP1_FLAGS}
-vck5000: KERNEL_LIB=${ACDC_AIE}/../aie_kernels/aie1/
+vck5000: KERNEL_LIB=${ACDC_AIE}/../aie_kernels/generic/
 
 vck5000: build/aie.mlir build/scale.o
 	cp build/scale.o* ./
