@@ -17,7 +17,7 @@ N = 1024
 if len(sys.argv) == 2:
     N = int(sys.argv[1])
 
-lineWidthInBytes = N
+lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
