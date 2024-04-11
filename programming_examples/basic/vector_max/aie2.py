@@ -42,9 +42,7 @@ def my_vector_max():
 
             vector_max = external_func("vector_max", inputs=[memRef_I_ty, memRef_O_ty])
 
-            scalar_max = external_func(
-                "scalar_max", inputs=[memRef_I_ty, memRef_O_ty]
-            )
+            scalar_max = external_func("scalar_max", inputs=[memRef_I_ty, memRef_O_ty])
 
             # Tile declarations
             ShimTile = tile(int(sys.argv[2]), 0)
