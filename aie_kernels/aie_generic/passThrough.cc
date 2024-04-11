@@ -15,30 +15,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
                                                const int32_t height,
                                                const int32_t width) {
-  //::aie::vector<T, N> data_out;
-  //::aie::mask<N> temp_val;
+  event0();
+
   v64uint8 *restrict outPtr = (v64uint8 *)out;
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
   for (int j = 0; j < (height * width); j += N) // Nx samples per loop
-    chess_prepare_for_pipelining chess_loop_range(6, ) {
-      //::aie::vector<T, N> tmpVector = ::aie::load_v(in);
-      //::aie::store_v(out, tmpVector);
-
-      *outPtr++ = *inPtr++;
-
-      // in += N;
-      // out += N;
-    }
+    chess_prepare_for_pipelining chess_loop_range(6, ) { *outPtr++ = *inPtr++; }
+  
+  event1();
 }
 
 extern "C" {
