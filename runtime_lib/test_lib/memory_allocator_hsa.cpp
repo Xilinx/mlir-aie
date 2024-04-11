@@ -75,7 +75,7 @@ u64 mlir_aie_get_device_address(struct aie_libxaie_ctx_t *_xaie, void *VA) {
   uint64_t wr_idx = hsa_queue_add_write_index_relaxed(queue, 1);
   uint64_t packet_id = wr_idx % queue->size;
   hsa_agent_dispatch_packet_t pkt;
-  air_packet_req_translation(&pkt, (uint64_t)VA);
+  mlir_aie_packet_req_translation(&pkt, (uint64_t)VA);
   hsa_amd_signal_create_on_agent(1, 0, nullptr, &agent, 0,
                                  &(pkt.completion_signal));
   reinterpret_cast<hsa_agent_dispatch_packet_t *>(

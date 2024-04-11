@@ -98,13 +98,14 @@ find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(XRT)
+find_package(hsa-runtime64)
 
 # Set up default Vitis Sysroot as sysroot when testing on aarch64
 list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)
 if(NOT DEFINED SysrootAarch64
    AND DEFINED VITIS_ROOT
    AND ${indexAarch64} GREATER -1)
-  set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+  set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux)
   if(AIE_RUNTIME_TEST_TARGET STREQUAL "aarch64")
     set(LIBCXX_VERSION "11.2.0")
     set(extraAieCcFlags
@@ -284,9 +285,9 @@ endif()
 
 
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
-add_subdirectory(reference_designs)
+add_subdirectory(programming_examples)
 add_subdirectory(test)
-add_subdirectory(tutorials)
+add_subdirectory(mlir_tutorials)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)
