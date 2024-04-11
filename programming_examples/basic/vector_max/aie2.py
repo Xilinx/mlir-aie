@@ -60,12 +60,8 @@ def my_vector_max():
             @core(ComputeTile2, "vector_max.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
-                    elem_out =of_out.acquire(
-                        ObjectFifoPort.Produce, 1
-                    )
-                    elem_in = of_in.acquire(
-                        ObjectFifoPort.Consume, 1
-                    )
+                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
 
                     call(
                         vector_max,
