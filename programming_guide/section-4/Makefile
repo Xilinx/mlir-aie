@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../programming_examples/basic/makefile-common
+include ../../programming_examples/makefile-common
 
 all: build/final.xclbin
 

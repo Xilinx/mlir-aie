@@ -8,7 +8,7 @@ import pyxrt as xrt
 import sys
 import time
 
-sys.path.append("../../programming_examples/utils")
+sys.path.append("../../python")
 import test_utils
 
 # ------------------------------------------------------
