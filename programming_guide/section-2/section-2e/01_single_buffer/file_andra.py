@@ -33,12 +33,12 @@ def single_buffer():
             def core_body():
                 # Effective while(1)
                 for _ in for_(8):
-                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_out = of_in.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(16):
                         v1 = arith.constant(1, T.i32())
                         memref.store(v1, elem_out, [i])
                         yield_([])
-                    of_out.release(ObjectFifoPort.Produce, 1)
+                    of_in.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
             # Compute tile 3
