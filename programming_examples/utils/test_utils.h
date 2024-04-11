@@ -13,6 +13,8 @@
 #ifndef TEST_UTILS_H
 #define TEST_UTILS_H
 
+#include <bits/stdc++.h>
+
 #include <boost/program_options.hpp>
 #include <cmath>
 
@@ -107,12 +109,12 @@ static inline std::int32_t random_int32_t(std::int32_t range=0x10000) {
   return (std::int32_t)rand() % range;
 }
 
-
-// static inline std::bfloat16_t random_bfloat16_t() {
-//   // Random numbers should NOT be uniformly between 0 and 1, because that
-//   // would make the matrix product AB always close to 1.
-//   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
-// }
+static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale=4.0,
+                                                std::bfloat16_t bias=0.0) {
+  // Random numbers should NOT be uniformly between 0 and 1, because that
+  // would make the matrix product AB always close to 1.
+  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) + bias);
+}
 
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
 // Original author: P-Gn

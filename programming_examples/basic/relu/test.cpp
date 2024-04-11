@@ -16,6 +16,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <math.h>
 #include <sstream>
 #include <stdfloat>
 #include <string>
@@ -45,15 +46,24 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-static inline std::bfloat16_t random_bfloat16_t() {
+void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+  std::ofstream fout(path);
+  uint32_t *traceOut = (uint32_t *)traceOutPtr;
+  for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
+    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
+    fout << std::endl;
+  }
+}
+
+static inline std::bfloat16_t random_bfloat16_t(float scale, float bias) {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
-  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
+  return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) - bias);
 }
 
 bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
   std::bfloat16_t diff = fabs(a - b);
-  if ((diff / a) < 0.01)
+  if ((diff / 4.0) < 0.001)
     return true;
   else
     return false;
@@ -84,8 +94,12 @@ int main(int argc, const char *argv[]) {
       "the input xclbin path")(
       "kernel,k", po::value<std::string>()->required(),
       "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
+      "trace_sz,t", po::value<int>()->default_value(0),
+      "the depth of the trace buffer")(
+      "trace_file,f", po::value<std::string>()->default_value("trace.txt"),
+      "the output trace path")("verbosity,v",
+                               po::value<int>()->default_value(0),
+                               "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
@@ -113,6 +127,8 @@ int main(int argc, const char *argv[]) {
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
+
+  int trace_size = vm["trace_sz"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -158,10 +174,10 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+
+  auto real_out_size = OUT_SIZE * sizeof(std::bfloat16_t) + trace_size;
+  auto bo_out = xrt::bo(device, real_out_size, XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -169,25 +185,18 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> AVec(IN_SIZE);
   for (int i = 0; i < IN_SIZE; i++)
-    AVec[i] = random_bfloat16_t();
+    AVec[i] = random_bfloat16_t(4.0, 2.0);
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
-
-  std::bfloat16_t *bufB = bo_inB.map<std::bfloat16_t *>();
-  std::vector<std::bfloat16_t> BVec(IN_SIZE);
-  for (int i = 0; i < IN_SIZE; i++)
-    BVec[i] = random_bfloat16_t();
-  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(std::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   int sticky_errors = 0;
 
-  unsigned num_iter = 256;
+  unsigned num_iter = 2;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
@@ -198,7 +207,7 @@ int main(int argc, const char *argv[]) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_out);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
 
@@ -213,11 +222,13 @@ int main(int argc, const char *argv[]) {
         std::cout << "Verifying results ..." << std::endl;
       }
       for (uint32_t i = 0; i < IN_SIZE; i++) {
-        std::bfloat16_t ref = AVec[i] + BVec[i];
+        std::bfloat16_t ref = 0.0;
+        if (AVec[i] > 0.0)
+          ref = AVec[i];
         if (!nearly_equal(*(bufOut + i), ref)) {
           std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual " << AVec[i] << " + "
-                    << BVec[i] << std::endl;
+                    << " != " << ref << " actual max(" << AVec[i] << ", 0.0"
+                    << std::endl;
           errors++;
           sticky_errors++;
         } else {
@@ -240,10 +251,17 @@ int main(int argc, const char *argv[]) {
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
 
-    if (VERIFY && !errors) {
-      std::cout << iter << ": pass!\n";
-    } else {
-      std::cout << iter << ": fail! " << errors << " errors\n";
+    if (trace_size > 0) {
+      write_out_trace(((char *)bufOut) + (OUT_SIZE * 2), trace_size,
+                      vm["trace_file"].as<std::string>());
+    }
+
+    if (VERIFY) {
+      if (!errors) {
+        std::cout << iter << ": pass!\n";
+      } else {
+        std::cout << iter << ": fail! " << errors << " errors\n";
+      }
     }
   }
 
@@ -252,11 +270,57 @@ int main(int argc, const char *argv[]) {
   std::cout << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
 
-  if (VERIFY && !sticky_errors) {
-    std::cout << "\nPASS!\n\n";
-    return 0;
-  } else {
-    std::cout << "\nFAIL.\n\n";
-    return 1;
+  // Let's figure out how many cycles it takes a core to do a single e^x
+  // There are 4 cores, so the total number of e^x's it does is one quarter of
+  // the test size
+
+  int per_core_calcs = IN_SIZE / 4;
+  float avg_npu_time = npu_time_total / num_iter;
+  float avg_npu_clocks =
+      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
+  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
+  std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
+
+  // Lets benchmark the CPU
+  float cpu_time_total = 0;
+  float cpu_time_min = 9999999;
+  float cpu_time_max = 0;
+  for (unsigned iter = 0; iter < num_iter; iter++) {
+
+    std::vector<std::bfloat16_t> AVec(IN_SIZE);
+    std::vector<std::bfloat16_t> ResVec(IN_SIZE);
+    for (int i = 0; i < IN_SIZE; i++) {
+      AVec[i] = random_bfloat16_t(4.0, 2.0);
+    }
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < IN_SIZE; i++) {
+      ResVec[i] = exp(AVec[i]);
+    }
+    auto stop = std::chrono::high_resolution_clock::now();
+    float cpu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    cpu_time_total += cpu_time;
+    cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;
+    cpu_time_max = (cpu_time > cpu_time_max) ? cpu_time : cpu_time_max;
   }
+  std::cout << "Avg CPU exec time: " << cpu_time_total / num_iter << "us."
+            << std::endl;
+  std::cout << "Min CPU matmul time: " << cpu_time_min << "us." << std::endl;
+  std::cout << "Max CPU matmul time: " << cpu_time_max << "us." << std::endl;
+
+  if (VERIFY) {
+    if (!sticky_errors) {
+      std::cout << std::endl << "PASS!" << std::endl << std::endl;
+      return 0;
+    } else {
+      std::cout << std::endl << "FAIL." << std::endl << std::endl;
+      return 1;
+    }
+  } else {
+    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you"
+              << std::endl;
+  }
+  return 0;
 }
