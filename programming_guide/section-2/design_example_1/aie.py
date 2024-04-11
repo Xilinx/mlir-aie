@@ -11,6 +11,7 @@ from aie.extras.context import mlir_mod_ctx
 
 # RUN: %python %s | FileCheck %s
 
+
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
 # CHECK:      func.func private @test_func(memref<256xi32>) -> i32
@@ -31,7 +32,9 @@ def objfifo():
 
         @device(AIEDevice.xcve2802)
         def device_body():
-            external_func("test_func", inputs=[T.memref(256, T.i32())], outputs=[T.i32()])
+            external_func(
+                "test_func", inputs=[T.memref(256, T.i32())], outputs=[T.i32()]
+            )
 
             S = tile(1, 0)
             N = tile(1, 3)

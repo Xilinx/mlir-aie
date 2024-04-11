@@ -29,6 +29,7 @@
 // ------------------------------------------------------
 using INOUT0_DATATYPE = std::uint32_t;
 using INOUT1_DATATYPE = std::uint32_t;
+using INOUT2_DATATYPE = std::uint32_t;
 #endif
 
 namespace po = boost::program_options;
@@ -72,12 +73,14 @@ int main(int argc, const char *argv[]) {
   // Configure this to match your design's buffer size
   // ------------------------------------------------------
   int INOUT0_VOLUME = 64; // Input only, 64x uint32_t in this example
-  int INOUT1_VOLUME = 64; // Output only, 64x uint32_t in this example
+  int INOUT1_VOLUME = 64; // Not used in this example
+  int INOUT2_VOLUME = 64; // Output only, 64x uint32_t in this example
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
+  size_t INOUT2_SIZE = INOUT2_VOLUME * sizeof(INOUT2_DATATYPE);
 
-  size_t OUT_SIZE = INOUT1_SIZE;
+  size_t OUT_SIZE = INOUT2_SIZE;
 
   srand(time(NULL));
 
@@ -105,7 +108,10 @@ int main(int argc, const char *argv[]) {
   auto bo_inout0 =
       xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inout1 =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+      xrt::bo(device, INOUT1_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  // Assumes trace will only be added to inout2
+  auto bo_inout2 =
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -122,14 +128,22 @@ int main(int argc, const char *argv[]) {
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
   // Initialize Inout buffer 1
-  char *bufInOut1 = bo_inout1.map<char *>();
-  std::vector<INOUT1_DATATYPE> CVec(INOUT1_VOLUME);
-  memset(bufInOut1, 0, OUT_SIZE); // Zeroes out INOUT1_VOLUME
+  // INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
+  // std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
+  // for (int i = 0; i < INOUT1_VOLUME; i++)
+  //   BVec[i] = i + 1
+  // memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
+
+  // Initialize Inout buffer 2
+  char *bufInOut2 = bo_inout2.map<char *>();
+  std::vector<INOUT2_DATATYPE> CVec(INOUT2_VOLUME);
+  memset(bufInOut2, 0, OUT_SIZE); // Zeroes out INOUT2_VOLUME + trace_size
 
   // Sync buffers to update input buffer values
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inout0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  // bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // ------------------------------------------------------
   // Initialize run configs
@@ -144,17 +158,17 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   auto run =
-      kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+      kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
   run.wait();
-  bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_inout2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   // Copy output results and verify they are correct
-  memcpy(CVec.data(), bufInOut1, (CVec.size() * sizeof(INOUT1_DATATYPE)));
+  memcpy(CVec.data(), bufInOut2, (CVec.size() * sizeof(INOUT2_DATATYPE)));
   if (do_verify) {
     if (verbosity >= 1) {
       std::cout << "Verifying results ..." << std::endl;
     }
-    errors = verify(INOUT1_VOLUME, CVec, verbosity);
+    errors = verify(INOUT2_VOLUME, CVec, verbosity);
   } else {
     if (verbosity >= 1)
       std::cout << "WARNING: results not verified." << std::endl;

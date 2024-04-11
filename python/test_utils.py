@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: MIT
 
 import argparse
+import pyxrt as xrt
+
 
 # options
 def parse_args(args):
@@ -64,3 +66,39 @@ def parse_args(args):
         help="where to store trace output",
     )
     return p.parse_args(args)
+
+
+def write_out_trace(trace_buffer, trace_size, trace_file):
+    try:
+        with open(trace_file, "wt") as f:
+            f.write(trace_buffer)
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
+
+def init_xrt_load_kernel(opts):
+    # Get a device handle
+    device = xrt.device(0)
+
+    # Load the xclbin
+    xclbin = xrt.xclbin(opts.xclbin)
+
+    # Load the kernel
+    kernels = xclbin.get_kernels()
+    try:
+        xkernel = [k for k in kernels if opts.kernel in k.get_name()][0]
+    except:
+        print(f"Kernel '{opts.kernel}' not found in '{opts.xclbin}'")
+        exit(-1)
+
+    # Register xclbin
+    device.register_xclbin(xclbin)
+
+    # Get a hardware context
+    context = xrt.hw_context(device, xclbin.get_uuid())
+
+    # get a kernel handle
+    kernel = xrt.kernel(context, xkernel.get_name())
+
+    return (device, kernel)
