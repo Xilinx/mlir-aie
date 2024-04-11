@@ -71,8 +71,6 @@ def my_vector_max():
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
-
-
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
