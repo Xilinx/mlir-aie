@@ -67,12 +67,8 @@ def my_vector_max():
                         vector_max,
                         [elem_in, elem_out],
                     )
-                    of_in.release(
-                        ObjectFifoPort.Consume, 1
-                    )
-                    of_out.release(
-                        ObjectFifoPort.Produce, 1
-                    )
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
 
