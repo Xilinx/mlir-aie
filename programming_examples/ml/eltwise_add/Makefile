@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../../programming_examples/basic/makefile-common
+include ../../makefile-common
 
 all: build/final.xclbin
 
@@ -14,7 +14,7 @@ targetname = myEltwiseAdd
 
 build/add.o:
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ${REPO_ROOT}/aie_kernels/aie2/add.cc -o ${@F}
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/add.cc -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
@@ -28,8 +28,7 @@ build/final.xclbin: build/aie.mlir build/add.o
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-#	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

@@ -69,7 +69,6 @@ int main(int argc, const char *argv[]) {
 
   test_utils::parse_options(argc, argv, desc, vm);
 
-
   /*
    ****************************************************************************
    * Load instruction sequence
@@ -90,7 +89,7 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity, 
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
 

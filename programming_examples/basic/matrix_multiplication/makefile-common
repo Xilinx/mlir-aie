@@ -20,17 +20,21 @@
 # Since the targets are all the same for all designs, they are defined here.
 # Subdirectories need only include this makefile-common after defining the 
 # following variables:
-# - subdir      -- subdirectory you are including this from
+# - subdir	  -- subdirectory you are including this from
 # - targetname  -- resulting test host code will be named targetname.exe
-# - kernels     -- which kernels in kernels folder to compile and link in
-#                  (without file extension)
-# - M, K, N     -- (optional) dimensions of matrices, may be used by design;
-#                  N=1 for matrix-vector
+# - kernels	 -- which kernels in kernels folder to compile and link in
+#					  (without file extension)
+# - M, K, N	 -- (optional) dimensions of matrices, may be used by design;
+#					  N=1 for matrix-vector
 
-include ../../makefile-common
+#include ${CURDIR}/../../makefile-common
+current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+#include ${current_dir}../../makefile-common
+SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+include ${SELF_DIR}../../makefile-common
 
 # defaults; overwrite if needed
-M?=512   
+M?=512	
 K?=512
 N?=512
 
