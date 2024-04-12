@@ -133,12 +133,12 @@ def objFifo():
 # CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @construct_and_print_module
 def objFifoLink():
-    dev = Device(AIEDevice.xcvc1902)
+    dev = Device(AIEDevice.xcve2302)
     bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
-        tile0 = tile(col=6, row=6)
-        tile1 = tile(col=2, row=2)
-        tile2 = tile(col=7, row=7)
+        tile0 = tile(col=6, row=3)
+        tile1 = tile(col=6, row=1)
+        tile2 = tile(col=7, row=3)
         of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
         object_fifo_link(of0, of1)
