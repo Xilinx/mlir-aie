@@ -45,7 +45,7 @@ def pack4bytes(b3, b2, b1, b0):
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
 # everything will probably break.
 def configure_simple_tracing_aie2(
-    tile, shim, bd_id, channel, size, offset, start, stop, events
+    tile, shim, channel, bd_id, ddr_id, size, offset, start, stop, events
 ):
     assert shim.isShimTile()
 
@@ -127,8 +127,7 @@ def configure_simple_tracing_aie2(
         d1_size=0,
         d1_stride=0,
         d2_stride=0,
-        # Assume using output buffer.  This probably needs to be configurable.
-        ddr_id=2,
+        ddr_id=ddr_id,
         iteration_current=0,
         iteration_size=0,
         iteration_stride=0,
@@ -215,11 +214,12 @@ def my_vector_scalar():
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    configure_simple_tracing(
+                    configure_simple_tracing_aie2(
                         ComputeTile2,
                         ShimTile,
-                        bd_id=13,
                         channel=1,
+                        bd_id=13,
+                        ddr_id=2,
                         size=trace_size,
                         offset=N_in_bytes,
                         start=0x1,
