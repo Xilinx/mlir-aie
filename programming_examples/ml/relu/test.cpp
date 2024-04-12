@@ -38,18 +38,17 @@ namespace po = boost::program_options;
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
 template <typename T>
-int verify(int size, std::vector<T> A, std::vector<T> B,
-           int verbosity) {
+int verify(int size, std::vector<T> A, std::vector<T> B, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < size; i++) {
     // If the input is nan, lets just say its good
     if (isnan(A[i]))
       continue;
-    
+
     T ref = (T)0;
     if (A[i] > (T)0)
       ref = A[i];
-    if (!test_utils::nearly_equal(ref,B[i])) {
+    if (!test_utils::nearly_equal(ref, B[i])) {
       std::cout << "Error in output " << B[i] << " != " << ref << " from "
                 << A[i] << std::endl;
       errors++;
@@ -74,7 +73,7 @@ int main(int argc, const char *argv[]) {
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
-  int trace_size = vm["trace_sz"].as<int>();  
+  int trace_size = vm["trace_sz"].as<int>();
 
   int INOUT0_VOLUME = 65536;         // Input
   int INOUT1_VOLUME = INOUT0_VOLUME; // Output
@@ -85,7 +84,6 @@ int main(int argc, const char *argv[]) {
   size_t OUT_SIZE = INOUT1_SIZE + trace_size;
 
   srand(time(NULL));
-
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
@@ -198,8 +196,7 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run =
-        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
