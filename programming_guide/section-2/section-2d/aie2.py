@@ -32,7 +32,7 @@ def mlir_aie_design():
             ComputeTile = tile(0, 2)
 
             # Data movement with object FIFOs
-            
+
             # Input data movement
 
             of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
