@@ -554,9 +554,15 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
+  if (auto sharedTile = getOptionalSharedTile(); !sharedTile) {
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+  } else {
+    TileOp sharedTileOp = cast<TileOp>(sharedTile.value().getDefiningOp());
+    if (!sharedTileOp.isMemTile())
+      return emitError("ObjectFifoLinkOp must have a Mem tile as the "
+                       "link point");
+  }
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
@@ -632,8 +638,8 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
       if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
         return {};
     return {fifoOut.getProducerTile()};
-  }
-
+  } 
+  
   if (isDistribute()) {
     auto fifoIn = getInputObjectFifos()[0];
     for (auto fifoOut : getOutputObjectFifos())
