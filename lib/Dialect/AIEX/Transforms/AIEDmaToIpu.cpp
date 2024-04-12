@@ -348,7 +348,8 @@ struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
   matchAndRewrite(IpuDmaWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
-    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp = getAllocOpForSymbol(dev, op.getSymbol());
+    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
+        getAllocOpForSymbol(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
