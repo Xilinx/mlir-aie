@@ -7,7 +7,11 @@
 # (c) Copyright 2023 AMD Inc.
 
 from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper 
+from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper
+
+from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
+from aie.dialects.scf import *  # scf (strcutred control flow) dialect
+from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 buffer_depth = 2
 data_size = 48
