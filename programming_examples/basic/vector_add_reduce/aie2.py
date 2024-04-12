@@ -16,7 +16,7 @@ from aie.extras.dialects.ext import memref, arith
 import sys
 
 
-def my_vector_max():
+def my_add_reduce():
     N = 1024
 
     buffer_depth = 2
@@ -82,5 +82,4 @@ def my_vector_max():
 
     print(ctx.module)
 
-
-my_vector_max()
+my_add_reduce()
