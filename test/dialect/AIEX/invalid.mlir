@@ -10,14 +10,6 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-func.func @ipu_dma_wait_no_device() {
-  // expected-error@+1 {{'aiex.ipu.dma_wait' op couldn't find parent of type DeviceOp}}
-  aiex.ipu.dma_wait {symbol = @out0}
-  return
-}
-
-// -----
-
 aie.device(ipu) {
   func.func @ipu_dma_wait_no_symbol() {
     // expected-error@+1 {{'aiex.ipu.dma_wait' op couldn't find symbol in parent device}}

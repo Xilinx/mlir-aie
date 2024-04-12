@@ -348,6 +348,9 @@ struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
   matchAndRewrite(IpuDmaWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
+    if (!dev)
+      return op.emitOpError("couldn't find parent of type DeviceOp");
+
     std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
         getAllocOpForSymbol(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
