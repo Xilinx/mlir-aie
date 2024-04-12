@@ -2,7 +2,7 @@
 aie_kernels/        @denolf @jgmelber @fifield
 aie_runtime_lib/    @stephenneuendorffer
 cmake/              @denolf @stephenneuendorffer
-docs/               @makslevental
+docs/               @stephenneuendorffer
 **/ADF/             @stephenneuendorffer
 **/AIEVec/          @jsetoain
 **/AIE/             @abisca @stephenneuendorffer @fifield @makslevental
