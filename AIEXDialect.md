@@ -296,7 +296,8 @@ and `static_strides`. The operator references the target channel through the `me
 symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
 when lowered further. The `issue_token` attribute specifies whether the execution of this
 operation should issue a token which can be received and read for synchronization purposes.
-This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility and **is always set to true for** `S2MM` channels.
+This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
+and **is always set to true for** `S2MM` channels.
 
 Traits: `AttrSizedOperandSegments`
 
@@ -324,6 +325,42 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 | `offsets` | variadic of 64-bit signless integer
 | `sizes` | variadic of 64-bit signless integer
 | `strides` | variadic of 64-bit signless integer
+
+
+### `aiex.ipu.dma_wait` (::xilinx::AIEX::IpuDmaWaitOp)
+
+_Blocking operation to wait for a DMA to complete execution._
+
+
+Syntax:
+
+```
+operation ::= `aiex.ipu.dma_wait` attr-dict
+```
+
+The IpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
+and issues a task-complete-token.
+
+Example:
+```mlir
+  ...
+  aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
+  ...
+  aiex.ipu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+  ...
+  aiex.ipu.dma_wait { symbol = @out0 }
+```
+Here, we have an objectfifo with symbol name `out0`, which is then referenced in the
+`ipu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
+an `ipu.dma_wait` operation references the same symbol to block until the respective DMA
+has executed all of its tasks.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
 
 
 ### `aiex.ipu.rtp_write` (::xilinx::AIEX::IpuWriteRTPOp)
