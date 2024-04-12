@@ -366,9 +366,9 @@ public:
       I16_I16_I32_32x1x1x1,
       I32_I32_I64_32x1x2x1,
       BF16_BF16_FP32_16x1x2x1,
+      FP32_FP32_FP32_16x1x1x1,
       UNSUPPORTED
       // TODO: I16_I16_I64_16x1x2x1
-      // TODO: FP32 mul_elem is emulated
     };
 
     Kind kind;
@@ -425,6 +425,7 @@ public:
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
       } else if (lhsBitWidth == 32) {
+        // emulated I32 mul_elem
         return {DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1, -1};
       }
     } else {
@@ -436,13 +437,16 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
+      } else if (lhsBitWidth == 32) {
+        // emulated FP32 mul_elem
+        return {DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1, -1};
       }
     }
 
     return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
   }
 
-  // This conversion pattern implements the below CPP I32 mul_elem emulation.
+  // This conversion pattern implements the below CPP emulated I32 mul_elem.
   // INTRINSIC(v16acc64)
   // mul_elem_16_2(v16int32 a0, v16int32 a1, v16int32 b0, v16int32 b1) {
   //   v32uint16 a_lo = (v32uint16)shuffle(a0, a1, 2);
@@ -461,8 +465,8 @@ public:
   // v16acc64 v3 = mul_elem_16_2(v1, broadcast_zero_s32(), v2,
   // undef_v16int32());
   LogicalResult
-  convertToI32MulElemEmulation(aievec::MulElemOp op, OpAdaptor adaptor,
-                               ConversionPatternRewriter &rewriter) const {
+  convertToEmulatedI32MulElem(aievec::MulElemOp op, OpAdaptor adaptor,
+                              ConversionPatternRewriter &rewriter) const {
 
     Location loc = op.getLoc();
     auto zeroCst = rewriter.create<LLVM::ConstantOp>(
@@ -551,6 +555,140 @@ public:
     return success();
   }
 
+  // This conversion pattern implements the below CPP emulated FP32 mul_elem.
+  // inline v16accfloat mul_elem_16_accuracy_safe(v16float v1, v16float v2) {
+  //     v32bfloat16 a = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 b = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 c = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 d = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 e = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 f = broadcast_zero_to_v32bfloat16();
+  //     v32bfloat16 dummy0 = broadcast_one_to_v32bfloat16();
+  //     a = insert(a,0,to_v16bfloat16((v16accfloat)v1));
+  //     v16accfloat acc0 = msc_elem_16_2(a, dummy0, (v16accfloat)v1);
+  //     b = insert(b,0,to_v16bfloat16(acc0));
+  //     c = insert(c,0,to_v16bfloat16(msc_elem_16_2(b, dummy0, acc0)));
+  //     d = insert(d,0,to_v16bfloat16((v16accfloat)v2));
+  //     v16accfloat acc1 = msc_elem_16_2(d, dummy0, (v16accfloat)v2);
+  //     e = insert(e,0,to_v16bfloat16(acc1));
+  //     f = insert(f,0,to_v16bfloat16(msc_elem_16_2(e, dummy0, acc1)));
+  //     return
+  //     mac_elem_16_2(a,d,mac_elem_16_2(a,e,mac_elem_16_2(b,d,mac_elem_16_2(
+  //        d,c,mac_elem_16_2(b,e,mac_elem_16_2(a,f,mac_elem_16_2(
+  //           b,f,mac_elem_16_2(c,e,mul_elem_16_2(c,f)))))))));
+  // }
+  // Caller example when handling the elementwise mul of two v16float vectors
+  // v16float v1 = LHS(); v16float v2 = RHS();
+  // v16accfloat v3 = mul_elem_16(v1, v2);
+  LogicalResult
+  convertToEmulatedFP32MulElem(aievec::MulElemOp op, OpAdaptor adaptor,
+                               ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    auto zeroCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getBF16Type(),
+        rewriter.getZeroAttr(rewriter.getBF16Type()));
+    auto aZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto bZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto cZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto dZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto eZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto fZeros = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), zeroCst);
+    auto oneCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getBF16Type(),
+        rewriter.getOneAttr(rewriter.getBF16Type()));
+    auto dummy0 = rewriter.create<xllvm::VectorBroadcast16BF512IntrOp>(
+        loc, VectorType::get({32}, rewriter.getBF16Type()), oneCst);
+    auto zeroCstI32 = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+    auto mscMacMulConfCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(),
+        rewriter.getI32IntegerAttr(aiev2_mul_mac_compute_control(
+            /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/2, /*bmode=*/3,
+            /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0)));
+
+    auto extractV16FP32ToThreeV16BF16 =
+        [&](Value inputV16FP32, Value aZeros, Value bZeros,
+            Value cZeros) -> std::tuple<Value, Value, Value> {
+      // a = insert(a,0,to_v16bfloat16((v16accfloat)v1));
+      auto inputBitCasted =
+          forceCastValueToType(rewriter, loc, inputV16FP32,
+                               VectorType::get({8}, rewriter.getI64Type()));
+      auto v1ToBF16 = rewriter.create<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+          loc, VectorType::get({16}, rewriter.getBF16Type()), inputBitCasted);
+      auto a = rewriter.create<xllvm::UpdBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), aZeros, v1ToBF16,
+          zeroCstI32);
+
+      // v16accfloat acc0 = msc_elem_16_2(a, dummy0, (v16accfloat)v1);
+      auto acc0 = rewriter.create<xllvm::MscConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()), a, dummy0,
+          inputBitCasted, mscMacMulConfCst);
+
+      // b = insert(b,0,to_v16bfloat16(acc0));
+      auto acc0ToBF16 = rewriter.create<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+          loc, VectorType::get({16}, rewriter.getBF16Type()), acc0);
+      auto b = rewriter.create<xllvm::UpdBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), bZeros,
+          acc0ToBF16, zeroCstI32);
+
+      // c = insert(c,0,to_v16bfloat16(msc_elem_16_2(b, dummy0, acc0)));
+      auto acc0Mscb = rewriter.create<xllvm::MscConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()), b, dummy0, acc0,
+          mscMacMulConfCst);
+      auto acc0MscbToBF16 =
+          rewriter.create<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+              loc, VectorType::get({16}, rewriter.getBF16Type()), acc0Mscb);
+      auto c = rewriter.create<xllvm::UpdBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), cZeros,
+          acc0MscbToBF16, zeroCstI32);
+      return std::make_tuple(a.getResult(), b.getResult(), c.getResult());
+    };
+
+    // Get v16vfloat16 a, b, c for representing v16float v1
+    auto [a, b, c] =
+        extractV16FP32ToThreeV16BF16(adaptor.getLhs(), aZeros, bZeros, cZeros);
+    // Get v16vfloat16 d, e, f for representing v16float v2
+    auto [d, e, f] =
+        extractV16FP32ToThreeV16BF16(adaptor.getRhs(), dZeros, eZeros, fZeros);
+
+    // 1 MUL + 8 * MACs
+    auto cfMul = rewriter.create<xllvm::MulConfBF16IntrOp>(
+        loc, VectorType::get({8}, rewriter.getI64Type()), c, f,
+        mscMacMulConfCst);
+    auto createMacOps = [&](Value lhs, Value rhs, Value acc) -> Value {
+      return rewriter
+          .create<xllvm::MacConfBF16IntrOp>(
+              loc, VectorType::get({8}, rewriter.getI64Type()), lhs, rhs, acc,
+              mscMacMulConfCst)
+          .getResult();
+    };
+    auto adMac = createMacOps(
+        a, d,
+        createMacOps(
+            a, e,
+            createMacOps(
+                b, d,
+                createMacOps(
+                    d, c,
+                    createMacOps(
+                        b, e,
+                        createMacOps(
+                            a, f,
+                            createMacOps(b, f, createMacOps(c, e, cfMul))))))));
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 adMac);
+    return success();
+  }
+
   LogicalResult
   matchAndRewrite(aievec::MulElemOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -562,10 +700,12 @@ public:
       return failure();
     }
 
-    // Handle the I32 mul_elem emulation
-    // TODO: handle the FP32 mul_elem emulation
+    // Handle the emulated I32/FP32 mul_elem
     if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1) {
-      return convertToI32MulElemEmulation(op, adaptor, rewriter);
+      return convertToEmulatedI32MulElem(op, adaptor, rewriter);
+    } else if (decodedMulElemOp.kind ==
+               DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      return convertToEmulatedFP32MulElem(op, adaptor, rewriter);
     }
 
     // create constant for config
