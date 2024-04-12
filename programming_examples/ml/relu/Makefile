@@ -8,22 +8,22 @@
 
 include ../../makefile-common
 
-all: build/final.xclbin build/insts.txt
+all: build/final.xclbin
 
-targetname = testRelu
+targetname = myReLU
 
-build/bf16_relu.o: ../../../aie_kernels/aie2/relu.cc
+build/relu.o:
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c ../$< -o ${@F}
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/relu.cc -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/final.xclbin: build/aie.mlir build/bf16_relu.o
+build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
@@ -39,15 +39,8 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-run_g: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --trace_sz 65536
+run_py: build/final.xclbin build/insts.txt
+	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-trace:
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
-
-clean_trace:
-	rm -rf tmpTrace trace.txt
-
-clean: clean_trace
+clean:
 	rm -rf build _build ${targetname}.exe
-
