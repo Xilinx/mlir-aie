@@ -638,8 +638,8 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
       if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
         return {};
     return {fifoOut.getProducerTile()};
-  } 
-  
+  }
+
   if (isDistribute()) {
     auto fifoIn = getInputObjectFifos()[0];
     for (auto fifoOut : getOutputObjectFifos())
