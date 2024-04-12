@@ -14,5 +14,9 @@ set(AIE_LSP_LIBS
 add_llvm_tool(aie-lsp-server
   aie-lsp-server.cpp
 )
+install(TARGETS aie-lsp-server
+EXPORT AIETargets
+RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+COMPONENT aie-lsp-server)
 
 target_link_libraries(aie-lsp-server PRIVATE ${AIE_LSP_LIBS})
