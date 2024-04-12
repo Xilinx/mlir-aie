@@ -10,14 +10,14 @@
 
 // This file contains common helper functions for the generic host code
 
-
 #include "test_utils.h"
 
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void test_utils::check_arg_file_exists(po::variables_map &vm_in, std::string name) {
+void test_utils::check_arg_file_exists(po::variables_map &vm_in,
+                                       std::string name) {
   if (!vm_in.count(name)) {
     throw std::runtime_error("Error: no " + name + " file was provided\n");
   } else {
@@ -49,8 +49,9 @@ void test_utils::add_default_options(po::options_description &desc) {
       "where to store trace output");
 }
 
-void test_utils::parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm) {
+void test_utils::parse_options(int argc, const char *argv[],
+                               po::options_description &desc,
+                               po::variables_map &vm) {
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
@@ -92,13 +93,11 @@ std::vector<uint32_t> test_utils::load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-
 // --------------------------------------------------------------------------
-// XRT 
+// XRT
 // --------------------------------------------------------------------------
-void test_utils::init_xrt_load_kernel(xrt::device &device, 
-                                      xrt::kernel &kernel, int verbosity,
-                                      std::string xclbinFileName,
+void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
+                                      int verbosity, std::string xclbinFileName,
                                       std::string kernelNameInXclbin) {
   // Get a device handle
   unsigned int device_index = 0;
@@ -114,14 +113,15 @@ void test_utils::init_xrt_load_kernel(xrt::device &device,
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [kernelNameInXclbin, verbosity](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 if (verbosity >= 1) {
-                                   std::cout << "Name: " << name << std::endl;
-                                 }
-                                 return name.rfind(kernelNameInXclbin, 0) == 0;
-                               });
+  auto xkernel =
+      *std::find_if(xkernels.begin(), xkernels.end(),
+                    [kernelNameInXclbin, verbosity](xrt::xclbin::kernel &k) {
+                      auto name = k.get_name();
+                      if (verbosity >= 1) {
+                        std::cout << "Name: " << name << std::endl;
+                      }
+                      return name.rfind(kernelNameInXclbin, 0) == 0;
+                    });
   auto kernelName = xkernel.get_name();
 
   // Register xclbin
@@ -147,15 +147,32 @@ void test_utils::init_xrt_load_kernel(xrt::device &device,
 // Matrix / Float / Math
 // --------------------------------------------------------------------------
 
-static inline std::int16_t test_utils::random_int16_t() {
-  return (std::int16_t)rand() % 0x10000;
-}
+// nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
+// Original author: P-Gn
+// Source: https://stackoverflow.com/a/32334103
+bool test_utils::nearly_equal(float a, float b, float epsilon, float abs_th)
+// those defaults are arbitrary and could be removed
+{
+  assert(std::numeric_limits<float>::epsilon() <= epsilon);
+  assert(epsilon < 1.f);
 
+  if (a == b)
+    return true;
+
+  auto diff = std::abs(a - b);
+  auto norm =
+      std::min((std::abs(a) + std::abs(b)), std::numeric_limits<float>::max());
+  // or even faster: std::min(std::abs(a + b),
+  // std::numeric_limits<float>::max()); keeping this commented out until I
+  // update figures below
+  return diff < std::max(abs_th, epsilon * norm);
+}
 
 // --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
-void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,
+                                 std::string path) {
   std::ofstream fout(path);
   uint32_t *traceOut = (uint32_t *)traceOutPtr;
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
@@ -163,4 +180,3 @@ void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size, std::stri
     fout << std::endl;
   }
 }
-

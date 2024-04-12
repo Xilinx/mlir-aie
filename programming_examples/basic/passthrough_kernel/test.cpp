@@ -13,8 +13,8 @@
 #include <iostream>
 #include <sstream>
 
-#include "xrt/xrt_bo.h"
 #include "test_utils.h"
+#include "xrt/xrt_bo.h"
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
@@ -55,8 +55,9 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
-                    vm["kernel"].as<std::string>());
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),

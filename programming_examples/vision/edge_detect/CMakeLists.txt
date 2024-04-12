@@ -14,9 +14,14 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
+set(CMAKE_CXX_STANDARD 23) 
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
+    set(CMAKE_C_COMPILER gcc-13)
+    set(CMAKE_CXX_COMPILER g++-13)
     set(BOOST_ROOT /usr/include/boost CACHE STRING "Path to Boost install")
     set(OpenCV_DIR /usr/include/opencv4 CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
