@@ -1,4 +1,3 @@
-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +5,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper
+from aie.dialects.aie import *  # primary mlir-aie dialect definitions
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.dialects.scf import *  # scf (strcutred control flow) dialect
@@ -15,6 +14,7 @@ from aie.extras.dialects.ext import memref, arith  # memref and arithmatic diale
 
 buffer_depth = 2
 data_size = 48
+
 
 # AI Engine structural design function
 def mlir_aie_design():
@@ -31,7 +31,6 @@ def mlir_aie_design():
             MemTile = tile(0, 1)
             ComputeTile = tile(0, 2)
 
-
             # Data movement with object FIFOs
             
             # Input data movement
@@ -40,13 +39,11 @@ def mlir_aie_design():
             of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, memRef_48_ty)
             object_fifo_link(of_in, of_in1)
 
-
             # Output data movement
 
             of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
             of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, memRef_48_ty)
             object_fifo_link(of_out1, of_out)
-
 
             # Set up compute tiles
             @core(ComputeTile)
@@ -67,6 +64,6 @@ def mlir_aie_design():
     # Print the mlir conversion
     print(ctx.module)
 
+
 # Call design function to generate mlir code to stdout
 mlir_aie_design()
-
