@@ -44,7 +44,13 @@ void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                           int verbosity, std::string xclbinFileName,
                           std::string kernelNameInXclbin);
 
-static inline std::int16_t random_int16_t();
+static inline std::int16_t random_int16_t(int32_t range = 0x10000) {
+  return (std::int16_t)rand() % range;
+}
+
+static inline std::int32_t random_int32_t(int32_t range = 0x10000) {
+  return (std::int32_t)rand() % range;
+}
 
 static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale,
                                                 std::bfloat16_t bias) {

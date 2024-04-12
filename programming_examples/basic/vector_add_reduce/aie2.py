@@ -40,12 +40,12 @@ def my_vector_max():
 
             # AIE Core Function declarations
 
-            i32_add_reduce_vector = external_func(
-                "i32_add_reduce_vector", inputs=[memRef_I_ty, memRef_O_ty]
+            add_reduce_vector = external_func(
+                "add_reduce_vector", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
             )
 
-            i32_add_reduce_scalar = external_func(
-                "i32_add_reduce_scalar", inputs=[memRef_I_ty, memRef_O_ty]
+            add_reduce_scalar = external_func(
+                "add_reduce_scalar", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
             )
 
             # Tile declarations
@@ -61,16 +61,12 @@ def my_vector_max():
             # Set up compute tiles
 
             # Compute tile 2
-            @core(ComputeTile2, "i32_add_reduce.o")
+            @core(ComputeTile2, "add_reduce.cc.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-
-                    call(
-                        i32_add_reduce_vector,
-                        [elem_in, elem_out],
-                    )
+                    call(add_reduce_vector, [elem_in, elem_out, N])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
