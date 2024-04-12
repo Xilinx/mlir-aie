@@ -8,9 +8,17 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>MLIR-AIE Programming Guide</ins>
+# <ins>IRON AIE Programming Guide</ins>
 
-MLIR-AIE is an MLIR-based representation for AI Engine design. It provides a foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware impelemenation infrastructure. To better understand how AI Engine designs are defined at the MLIR level, it is recommended that you spend some time going through the [MLIR tutorial](../tutorials/) material. However, this programming guide is intended to lead you through a higher level abstraction (python) of the underlying MLIR-AIE framework and provide design examples and programming tips to allow users to build designs directly. Keep in mind also that MLIR-AIE is a foundational layer in a AI Engine software development framework and while this guide provides a programmer's view for using AI Engines, it also serves as a lower layer for higher abstraction MLIR layers such as [MLIR-AIR](https://github.com/Xilinx/mlir-air).
+<img align="right" widht="300" height="300" src="./assets/AIEarray.svg"> 
+
+The AI Engine (AIE) array is a spatial compute architecture: a modular and scalable system with spatially distributed compute and memories. Its compute dense vector processing runs independently and concurrently to explicitly scheduled data movement. Since the vector compute core (green) of each AIE can only operate on data in its L1 scratchpad memory (light blue), data movement accelerators (purple) bi-directionally transport this data over a switched (dark blue) interconnect network, from any level in the memory hierarchy.
+
+Programming the AIE-array configures all its spatial building blocks: the compute cores' program memory, the data movers' buffer descriptors, interconnect with switches, etc. This guide introduces our Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around MLIR-AIE, our MLIR-based representation of the AIE-array. MLIR-AIE provides the foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware implementation infrastructure. 
+
+> **NOTE:**  For those interested in better understanding how AI Engine designs are defined at the MLIR level, take a look through the [MLIR tutorial](../tutorials/) material. MLIR-AIE also serves as a lower layer for other higher-level abstraction MLIR layers such as [MLIR-AIR](https://github.com/Xilinx/mlir-air).
+
+This IRON AIE programming guide first introduces the language bindings for AIE-array's structural elements (section 1). After explaining how to set up explicit data movement (section 2) to transport the necessary data, you can run your first program on the AIE compute core (section 3). Section 4 adds tracing for performance analysis and explains how to exploit the compute dense vector operations. More vector design examples, basic and larger (ML or computer vision) are given in sections 5 and 6. Finally, the quick reference summarizes the most important API elements.
 
 ## Outline
 <details><summary><a href="./section-1">Section 1 - Basic AI Engine building blocks</a></summary>
