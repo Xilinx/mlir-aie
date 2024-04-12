@@ -52,7 +52,6 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  
   int INOUT0_VOLUME = 1024;
   int INOUT1_VOLUME = 1;
 
@@ -156,7 +155,8 @@ int main(int argc, const char *argv[]) {
       auto vstart = std::chrono::system_clock::now();
       if (bufInOut1[0] != reducedSum) {
         errors++;
-        std::cout << "reduction sum is " << reducedSum << " calc " << bufInOut1[0] << std::endl;
+        std::cout << "reduction sum is " << reducedSum << " calc "
+                  << bufInOut1[0] << std::endl;
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
