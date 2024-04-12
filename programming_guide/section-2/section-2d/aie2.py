@@ -36,13 +36,17 @@ def mlir_aie_design():
             # Input data movement
 
             of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_48_ty)
-            of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, memRef_48_ty)
+            of_in1 = object_fifo(
+                "in1", MemTile, ComputeTile, buffer_depth, memRef_48_ty
+            )
             object_fifo_link(of_in, of_in1)
 
             # Output data movement
 
             of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_48_ty)
-            of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, memRef_48_ty)
+            of_out1 = object_fifo(
+                "out1", ComputeTile, MemTile, buffer_depth, memRef_48_ty
+            )
             object_fifo_link(of_out1, of_out)
 
             # Set up compute tiles
