@@ -23,7 +23,6 @@ build/exp.o:
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
 
-
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
@@ -36,7 +35,7 @@ build/final.xclbin: build/aie.mlir build/kernels.a
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} 
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} 
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

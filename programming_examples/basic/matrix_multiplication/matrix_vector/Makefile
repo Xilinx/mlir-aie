@@ -16,4 +16,6 @@ M=288
 K=288
 N=1
 
-include ../makefile-common
+SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+include ${SELF_DIR}../makefile-common
+

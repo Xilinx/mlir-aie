@@ -10,10 +10,10 @@ include ../../makefile-common
 
 SHELL := /bin/bash
 
+all: build/final.xclbin build/insts.txt
+
 targetname = passThroughHardware
 LENGTH ?= 4096
-
-all: build/final.xclbin build/insts.txt
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}

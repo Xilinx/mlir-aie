@@ -17,15 +17,15 @@ build/vecexp.cc: bf16_exp_lut.mlir
 	cd ${@D} &&	aie-opt ../$< -affine-super-vectorize="virtual-vector-size=16" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o vecexp.cc
 
 build/vecexp.o: build/vecexp.cc
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I${REPO_ROOT}/my_install/mlir_aie/aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
 
 build/lut_based_ops.o:
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ${REPO_ROOT}/my_install/mlir_aie/aie_runtime_lib/AIE2/lut_based_ops.cpp -o ${@F}
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_runtime_lib/AIE2/lut_based_ops.cpp -o ${@F}
 
 build/exp.o: exp.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I${REPO_ROOT}/my_install/mlir_aie/aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o build/vecexp.o
 	ar rvs $@ $+
@@ -42,7 +42,7 @@ build/final.xclbin: build/aie.mlir build/kernels.a
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

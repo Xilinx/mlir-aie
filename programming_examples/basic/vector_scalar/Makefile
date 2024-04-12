@@ -8,9 +8,9 @@
 
 include ../../makefile-common
 
-targetname = vectorScalar
-
 all: build/final.xclbin build/insts.txt
+
+targetname = vectorScalar
 
 build/%.o: %.cc
 	mkdir -p ${@D}
