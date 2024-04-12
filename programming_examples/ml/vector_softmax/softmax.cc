@@ -19,10 +19,11 @@
 
 #include <aie_api/aie.hpp>
 
+// Softmax DUT generated from vector dialect
 extern void dut(bfloat16 *a_in, bfloat16 *cout);
 
 extern "C" {
 
-void exp_bf16_vector(bfloat16 *a_in, bfloat16 *c_out) { dut(a_in, c_out); }
+void softmax_bf16_vector(bfloat16 *a_in, bfloat16 *c_out) { dut(a_in, c_out); }
 
 } // extern "C"

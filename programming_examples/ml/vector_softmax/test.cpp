@@ -31,12 +31,12 @@ using INOUT1_DATATYPE = std::bfloat16_t;
 
 namespace po = boost::program_options;
 
-
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
 template <typename T>
-int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B, int verbosity) {
+int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
+           int verbosity) {
 
   int errors = 0;
   std::vector<T> RefVec(size);
@@ -57,19 +57,20 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B, int verb
   for (uint32_t i = 0; i < size; i++) {
 
     if (!test_utils::nearly_equal(RefVec[i], B[i], 0.03125)) {
-      std::cout << "Error in output " << B[i] << " != "
-                << RefVec[i] << std::endl;
+      std::cout << "Error in output " << B[i] << " != " << RefVec[i]
+                << std::endl;
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << B[i] << " == " << RefVec[i] << std::endl;
+        std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+                  << std::endl;
     }
   }
   return errors;
 }
 
 int main(int argc, const char *argv[]) {
-  
+
   // Program arguments parsing
   po::options_description desc("Allowed options");
   po::variables_map vm;
@@ -84,7 +85,7 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
 
   int TILE_SIZE = 1024;
-  int INOUT0_VOLUME = 262144;         // Input
+  int INOUT0_VOLUME = 262144;        // Input
   int INOUT1_VOLUME = INOUT0_VOLUME; // Output
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
@@ -168,7 +169,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,(std::bfloat16_t)-4.0);
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
+                                            (std::bfloat16_t)-4.0);
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
