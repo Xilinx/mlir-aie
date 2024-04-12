@@ -459,11 +459,23 @@ public:
   //   acc = mac_elem_16_2_conf(a_lo, false, b_lo, false, acc, 0, 1, 0, 0);
   //   return acc;
   // }
-  // Caller to the above CPP intrinsic:
-  // v16int32 v1 = LHS();
-  // v16int32 v2 = RHS();
-  // v16acc64 v3 = mul_elem_16_2(v1, broadcast_zero_s32(), v2,
-  // undef_v16int32());
+  // Caller example when handling the elementwise mul of two v16int32 vectors.
+  //   v16int32 v1 = LHS();
+  //   v16int32 v2 = RHS();
+  //   v16acc64 v3 = mul_elem_16_2(v1, broadcast_zero_s32(), v2,
+  //   undef_v16int32());
+  // Explantion:
+  // a_lo = low_part(a0[0]--a0[15], a1[0]--a1[15])
+  // a_hi = high_part(a0[0]--a0[15], a1[0]--a1[15])
+  // b_lo = low_part(b0[0]--b0[15], b1[0]--b1[15])
+  // b_hi = high_part(b0[0]--b0[15], b1[0]--b1[15])
+  // The firt `acc` is from mul_elem_16_2(a_hi, b_hi), which performs 16 channel
+  // of 1x2x1 matmul, acc[0] = a_hi[0]*b_hi[0]+a_hi[16]*b_hi[16], ... , acc[15]
+  // = a_hi[15]*b_hi[15]+a_hi[31]*b_hi[31]. Then, the first MAC performs `acc`
+  // left shift 16bit, and then 16 channel of 1x2x1 matmul (a_hi, b_lo)
+  // accumulating to `acc`. The second MAC performs 16 channel of 1x2x1 matmul
+  // (a_lo, b_hi) accumulating to `acc`. Finally, the third MAC performs 16
+  // channel of 1x2x1 matmul (a_lo, b_hi) accumulating to `acc`.
   LogicalResult
   convertToEmulatedI32MulElem(aievec::MulElemOp op, OpAdaptor adaptor,
                               ConversionPatternRewriter &rewriter) const {
@@ -577,9 +589,20 @@ public:
   //        d,c,mac_elem_16_2(b,e,mac_elem_16_2(a,f,mac_elem_16_2(
   //           b,f,mac_elem_16_2(c,e,mul_elem_16_2(c,f)))))))));
   // }
-  // Caller example when handling the elementwise mul of two v16float vectors
-  // v16float v1 = LHS(); v16float v2 = RHS();
-  // v16accfloat v3 = mul_elem_16(v1, v2);
+  // Caller example when handling the elementwise mul of two v16float vectors.
+  //   v16float v1 = LHS(); v16float v2 = RHS();
+  //   v16accfloat v3 = mul_elem_16(v1, v2);
+  // Explantion: For v32bfloat16 `a`, the first half v16bf16 contains `most
+  // significant 7 bits of mantissa` from v1, and the second half v16bf16 are
+  // zeros. For v16accfloat `acc0`, the MSC equals to "(original `v1` with 23
+  // bits of mantissa) - (`a` with MSB 7 bits of mantissa from v1)". For
+  // v32bfloat16 `b`, the first half v16bf16 contains `[7:13] bits of mantissa
+  // from v1` from v1, and the second half v16bf16 are zeros. For v32bfloat16
+  // `c`, the first half v16bf16 contains `[14:20] bits of mantissa from v1`
+  // from v1, and the second half v16bf16 are zeros. Hence, we can represent
+  // v16float in three v32bfloat16 and then perform 9 MUL/MAC in v32bfloat16 to
+  // get the final elementwise multiplication result.
+
   LogicalResult
   convertToEmulatedFP32MulElem(aievec::MulElemOp op, OpAdaptor adaptor,
                                ConversionPatternRewriter &rewriter) const {
