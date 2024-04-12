@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 import sys
+
 sys.path.append("../../utils")
 import time
 import os
 import numpy as np
 from mlutils import DataShaper
-from xrtutils import setup_aie,extract_trace,write_out_trace,execute
+from xrtutils import setup_aie, extract_trace, write_out_trace, execute
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
@@ -18,15 +20,13 @@ log_folder = "log/"
 if not os.path.exists(log_folder):
     os.makedirs(log_folder)
 
-enable_aie = True
-enable_trace = True
-trace_file = "log/trace_" + design + ".txt"
-
-num_iter=1
+num_iter = 1
 npu_time_total = 0
 npu_time_min = 9999999
 npu_time_max = 0
 trace_size = 16384
+enable_trace = False
+trace_file = "log/trace_" + design + ".txt"
 # ------------------------------------------------------
 # Configure this to match your design's buffer size
 # ------------------------------------------------------
@@ -42,12 +42,12 @@ shape_out = (32, 8, 32, 8)
 # ------------------------------------------------------
 # Initialize activation, weights, scaling factor for int8 model
 # ------------------------------------------------------
-int_inp=torch.randint(1,100,(1, 64, 32, 32)).type(torch.FloatTensor)
-int_weight=torch.randint(50,100,(64, 64, 1, 1)).type(torch.FloatTensor)
-conv_scale=0.0039 #scale to convert int8 output to floating point
-relu_scale=0.0078 #scale to convert int8 output to floating point
-min=0
-max=255
+int_inp = torch.randint(1, 100, (1, 64, 32, 32)).type(torch.FloatTensor)
+int_weight = torch.randint(50, 100, (64, 64, 1, 1)).type(torch.FloatTensor)
+conv_scale = 0.0039  # scale to convert int8 output to floating point
+relu_scale = 0.0078  # scale to convert int8 output to floating point
+min = 0
+max = 255
 
 # ------------------------------------------------------
 # Get device, load the xclbin & kernel and register them
@@ -62,8 +62,7 @@ app = setup_aie(
     shape_out,
     dtype_out,
     enable_trace=enable_trace,
-    trace_size=trace_size
-
+    trace_size=trace_size,
 )
 
 
@@ -73,38 +72,37 @@ app = setup_aie(
 class conv2d_relu_int_model(nn.Module):
     def __init__(self, in_planes=64, planes=64):
         super(conv2d_relu_int_model, self).__init__()
-        self.conv =  nn.Conv2d(64, 64, kernel_size=1, bias=False)
+        self.conv = nn.Conv2d(64, 64, kernel_size=1, bias=False)
         self.relu = nn.ReLU()
 
     def forward(self, x):
         out_int = self.conv(x)
-        out_float=out_int*conv_scale
-        out_int=self.relu(out_float)
-        out_float=relu_scale * torch.clamp(torch.round(out_int/relu_scale), min, max) # converting to int to do proper clipping
+        out_float = out_int * conv_scale
+        out_int = self.relu(out_float)
+        out_float = relu_scale * torch.clamp(
+            torch.round(out_int / relu_scale), min, max
+        )  # converting to int to do proper clipping
         return out_float
-    
+
+
 # ------------------------------------------------------
 # Pytorch baseline
 # ------------------------------------------------------
-model=conv2d_relu_int_model()
+model = conv2d_relu_int_model()
 model.eval()
 model.conv.weight.data.copy_(int_weight)
-golden_output=model(int_inp)
+golden_output = model(int_inp)
 
 # ------------------------------------------------------
 # Reorder input data-layout
 # ------------------------------------------------------
 ds = DataShaper()
 before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-before_input.tofile(
-    log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-)
+before_input.tofile(log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
 ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
-wts1 = ds.reorder_mat(
-    int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
-)
+wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
 total_wts = np.concatenate((wts1), axis=None)
 total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
 
@@ -113,11 +111,11 @@ total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d"
 # ------------------------------------------------------
 for i in range(num_iter):
     start = time.time_ns()
-    aie_output=execute(app,ifm_mem_fmt,total_wts)*relu_scale
+    aie_output = execute(app, ifm_mem_fmt, total_wts) * relu_scale
     stop = time.time_ns()
-    
+
     if enable_trace:
-        aie_output, trace = extract_trace(aie_output, shape_out, dtype_out,trace_size)
+        aie_output, trace = extract_trace(aie_output, shape_out, dtype_out, trace_size)
         write_out_trace(trace, trace_file)
 
     npu_time = stop - start
@@ -137,6 +135,11 @@ ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 # ------------------------------------------------------
 print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
-assert np.allclose(ofm_mem_fmt_out.detach().numpy(), golden_output.detach().numpy(), rtol=0, atol=relu_scale)
+assert np.allclose(
+    ofm_mem_fmt_out.detach().numpy(),
+    golden_output.detach().numpy(),
+    rtol=0,
+    atol=relu_scale,
+)
 
 print("\nPASS!\n")

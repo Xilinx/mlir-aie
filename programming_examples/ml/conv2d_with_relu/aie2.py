@@ -24,17 +24,17 @@ if len(sys.argv) == 3:
 
 
 actIn = width * in_channels  # 32*64 = 2048
-bufIn = actIn * 2 # double buffer
+bufIn = actIn * 2  # double buffer
 actInInt32s = actIn // 4
 
 weights = in_channels * out_channels
 weightsInInt32s = weights // 4
 
 actOut = width * out_channels  # 32*64 = 2048
-bufOut = actOut * 2 # double buffer
+bufOut = actOut * 2  # double buffer
 actOutInt32s = actOut // 4
 
-enableTrace = True
+enableTrace = False
 trace_size = 16384
 traceSizeInInt32s = trace_size // 4
 
@@ -47,12 +47,11 @@ def conv2dk1():
 
             actIn_ty = T.memref(actIn, T.i8())
             bufIn_ty = T.memref(bufIn, T.i8())
-            
+
             weights_ty = T.memref(weights, T.i8())
-            
+
             out_ty = T.memref(actOut, T.ui8())
             bufOut_ty = T.memref(bufOut, T.ui8())
-            
 
             # memRef_3x3_ty = T.memref(3, 3, T.i16())
 
@@ -89,46 +88,20 @@ def conv2dk1():
 
             # AIE-array data movement with object fifos
             # Input
-            of_inOF_act_L3L2=object_fifo(
-                "inOF_act_L3L2",
-                ShimTile,
-                MemTile,
-                2,
-                bufIn_ty
+            of_inOF_act_L3L2 = object_fifo(
+                "inOF_act_L3L2", ShimTile, MemTile, 2, bufIn_ty
             )
-            of_act_L2_02=object_fifo(
-                "act_L2_02",
-                MemTile,
-                ComputeTile2,
-                2,
-                actIn_ty
-            )
+            of_act_L2_02 = object_fifo("act_L2_02", MemTile, ComputeTile2, 2, actIn_ty)
             object_fifo_link(of_inOF_act_L3L2, of_act_L2_02)
 
             # wts
-            of_inOF_wts_0_L3L2=object_fifo(
-                "inOF_wts_0_L3L2",
-                ShimTile,
-                [ComputeTile2],
-                1,
-                weights_ty
+            of_inOF_wts_0_L3L2 = object_fifo(
+                "inOF_wts_0_L3L2", ShimTile, [ComputeTile2], 1, weights_ty
             )
 
             # Output
-            of_out_02_L2=object_fifo(
-                "out_02_L2",
-                ComputeTile2,
-                [MemTile],
-                2,
-                out_ty
-            )
-            of_outOFL2L3=object_fifo(
-                "outOFL2L3",
-                MemTile,
-                [ShimTile],
-                2,
-                bufOut_ty
-            )
+            of_out_02_L2 = object_fifo("out_02_L2", ComputeTile2, [MemTile], 2, out_ty)
+            of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, bufOut_ty)
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
             # Set up compute tiles
@@ -144,17 +117,14 @@ def conv2dk1():
                 co = 64
 
                 for _ in for_(0xFFFFFFFF):
-                    elemWts = of_inOF_wts_0_L3L2.acquire(
-                        ObjectFifoPort.Consume, 1)
+                    elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
                     scale = memref.load(rtp2, [0])
                     # scale = memref.load(rtpComputeTile2, [0])
 
                     for _ in for_(y_dim):
-                        elemIn = of_act_L2_02.acquire(
-                            ObjectFifoPort.Consume, 1)
-                        elemOut0 = of_out_02_L2.acquire(
-                            ObjectFifoPort.Produce, 1)
+                        elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
+                        elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
 
                         call(
                             conv2dk1_i8,
