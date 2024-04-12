@@ -125,9 +125,9 @@ def objFifo():
 
 
 # CHECK-LABEL: objFifoLink
-# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
-# CHECK: %[[VAL_2:.*]] = aie.tile(7, 7)
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 3)
+# CHECK: %[[VAL_1:.*]] = aie.tile(6, 1)
+# CHECK: %[[VAL_2:.*]] = aie.tile(7, 3)
 # CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
