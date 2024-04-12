@@ -20,9 +20,11 @@
 
 template <typename T_in, typename T_out, const int N>
 void scale(T_in *a, T_out *c, T_in factor) {
+  event0();
   for (int i = 0; i < N; i++) {
     c[i] = factor * a[i];
   }
+  event1();
 }
 
 // Assume factor is at least 16
