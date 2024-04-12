@@ -34,9 +34,9 @@ actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2 # double buffer
 actOutInt32s = actOut // 4
 
-enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
+enableTrace = True
+trace_size = 16384
+traceSizeInInt32s = trace_size // 4
 
 
 def conv2dk1():
@@ -82,7 +82,7 @@ def conv2dk1():
             ShimTile = tile(0, 0)
             MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
-
+            compute_tile2_col, compute_tile2_row = 0, 2
 
             if enableTrace:
                 flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
@@ -186,77 +186,72 @@ def conv2dk1():
             @FuncOp.from_py_func(tensor_ty, memRef_wts_ty, tensor_ty)
             def sequence(I, W, O):
                 if enableTrace:
-                    # Trace output
+                    # 0x340D0: Trace Control 0
+                    #          0xAABB---C
+                    #            AA        <- Event to stop trace capture
+                    #              BB      <- Event to start trace capture
+                    #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
+                    # Configure so that "Event 1" (always true) causes tracing to start
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340D0,
+                        value=0x00010000,
+                    )
+                    # 0x340D4: Trace Control 1
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340D4,
+                        value=0x00000000,
+                    )
+                    # 0x340E0: Trace Event Group 1  (Which events to trace)
+                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340E0,
+                        value=0x4B222125,
+                    )
+                    # 0x340E4: Trace Event Group 2  (Which events to trace)
+                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x340E4,
+                        value=0x2D2C1A4F,
+                    )
 
-                    # Trace_Event0, Trace_Event1: Select which events to trace.
-                    # Note that the event buffers only appear to be transferred to DDR in
-                    # bursts of 256 bytes. If less than 256 bytes are written, you may not
-                    # see trace output, or only see it on the next iteration of your
-                    # kernel invocation, as the buffer gets filled up. Note that, even
-                    # though events are encoded as 4 byte words, it may take more than 64
-                    # events to fill the buffer to 256 bytes and cause a flush, since
-                    # multiple repeating events can be 'compressed' by the trace mechanism.
-                    # In order to always generate sufficient events, we add the "assert
-                    # TRUE" event to one slot, which fires every cycle, and thus fills our
-                    # buffer quickly.
+                    ipu_write32(
+                        column=compute_tile2_col,
+                        row=compute_tile2_row,
+                        address=0x3FF00,
+                        value=0x00000121,
+                    )
 
-                    # Some events:
-                    # TRUE                       (0x01)
-                    # STREAM_STALL               (0x18)
-                    # LOCK_STALL                 (0x1A)
-                    # EVENTS_CORE_INSTR_EVENT_1  (0x22)
-                    # EVENTS_CORE_INSTR_EVENT_0  (0x21)
-                    # INSTR_VECTOR               (0x25)  Core executes a vecotr MAC, ADD or compare instruction
-                    # INSTR_LOCK_ACQUIRE_REQ     (0x2C)  Core executes a lock acquire instruction
-                    # INSTR_LOCK_RELEASE_REQ     (0x2D)  Core executes a lock release instruction
-                    # EVENTS_CORE_PORT_RUNNING_1 (0x4F)
-                    # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
-
-                    # Trace_Event0  (4 slots)
-                    ipu_write32(0, 2, 0x340E0, 0x4B222125)
-                    # Trace_Event1  (4 slots)
-                    ipu_write32(0, 2, 0x340E4, 0x2D2C1A4F)
-
-                    # Event slots as configured above:
-                    # 0: Kernel executes vector instruction
-                    # 1: Event 0 -- Kernel starts
-                    # 2: Event 1 -- Kernel done
-                    # 3: Port_Running_0
-                    # 4: Port_Running_1
-                    # 5: Lock Stall
-                    # 6: Lock Acquire Instr
-                    # 7: Lock Release Instr
-
-                    # Stream_Switch_Event_Port_Selection_0
-                    # This is necessary to capture the Port_Running_0 and Port_Running_1 events
-                    ipu_write32(0, 2, 0x3FF00, 0x121)
-
-                    # Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-                    ipu_write32(0, 2, 0x340D0, 0x10000)
-
-                    # Start trace copy out.
+                    # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
+                    # out to host DDR memory
+                    trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
+                    output_size = bufOut
                     ipu_writebd_shimtile(
-                        bd_id=3,
-                        buffer_length=traceSizeInBytes,
-                        buffer_offset=tensorSize,
+                        bd_id=trace_bd_id,
+                        buffer_length=trace_size,
+                        buffer_offset=output_size,
                         enable_packet=0,
                         out_of_order_id=0,
                         packet_id=0,
                         packet_type=0,
                         column=0,
                         column_num=1,
-                        d0_stride=0,
-                        # d0_wrap=0,
                         d0_size=0,
-                        d1_stride=0,
-                        # d1_wrap=0,
+                        d0_stride=0,
                         d1_size=0,
+                        d1_stride=0,
                         d2_stride=0,
                         ddr_id=2,
                         iteration_current=0,
-                        iteration_stride=0,
-                        # iteration_wrap=0,
                         iteration_size=0,
+                        iteration_stride=0,
                         lock_acq_enable=0,
                         lock_acq_id=0,
                         lock_acq_val=0,
@@ -266,9 +261,10 @@ def conv2dk1():
                         use_next_bd=0,
                         valid_bd=1,
                     )
-                    ipu_write32(0, 0, 0x1D20C, 0x3)
+                    # Set start BD to our shim bd_Id (3)
+                    ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
-                IpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=9)
+                IpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=1)
 
                 ipu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

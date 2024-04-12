@@ -14,20 +14,19 @@ design = "conv2d_with_relu"
 xclbin_path = os.path.abspath("build/final.xclbin")
 insts_path = os.path.abspath("build/insts.txt")
 
-log_folder = "log/log_" + design
+log_folder = "log/"
 if not os.path.exists(log_folder):
     os.makedirs(log_folder)
 
 enable_aie = True
-aie_is_setup = False
-enable_trace = False
-trace_file = "log/" + design + ".txt"
+enable_trace = True
+trace_file = "log/trace_" + design + ".txt"
 
 num_iter=1
 npu_time_total = 0
 npu_time_min = 9999999
 npu_time_max = 0
-
+trace_size = 16384
 # ------------------------------------------------------
 # Configure this to match your design's buffer size
 # ------------------------------------------------------
@@ -45,8 +44,8 @@ shape_out = (32, 8, 32, 8)
 # ------------------------------------------------------
 int_inp=torch.randint(1,100,(1, 64, 32, 32)).type(torch.FloatTensor)
 int_weight=torch.randint(50,100,(64, 64, 1, 1)).type(torch.FloatTensor)
-conv_scale=7.6294e-06
-relu_scale=0.0039    
+conv_scale=0.0039 #scale to convert int8 output to floating point
+relu_scale=0.0078 #scale to convert int8 output to floating point
 min=0
 max=255
 
@@ -62,9 +61,11 @@ app = setup_aie(
     dtype_wts,
     shape_out,
     dtype_out,
-    enable_trace,
+    enable_trace=enable_trace,
+    trace_size=trace_size
+
 )
-trace_size = 16384
+
 
 # ------------------------------------------------------
 # Define your golden reference
