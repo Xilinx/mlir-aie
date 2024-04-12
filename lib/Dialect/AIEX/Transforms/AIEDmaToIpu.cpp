@@ -347,13 +347,13 @@ struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
   LogicalResult
   matchAndRewrite(IpuDmaWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto dev = op->getParentOfType<AIE::DeviceOp>();
-    auto shimDmaAllocOp = getAllocOpForSymbol(dev, op.getSymbol());
+    AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
+    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp = getAllocOpForSymbol(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
     }
-    auto channelDir = shimDmaAllocOp->getChannelDir();
+    AIE::DMAChannelDir channelDir = shimDmaAllocOp->getChannelDir();
     int channel = shimDmaAllocOp->getChannelIndex();
     int direction = (int)(channelDir == AIE::DMAChannelDir::MM2S);
     int column = shimDmaAllocOp->getCol();
