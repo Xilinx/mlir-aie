@@ -12,7 +12,7 @@ all: build/final.xclbin build/insts.txt
 
 targetname = testRelu
 
-build/bf16_relu.o: ../../../aie_kernels/relu.cc
+build/bf16_relu.o: ../../../aie_kernels/aie2/relu.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c ../$< -o ${@F}
 
