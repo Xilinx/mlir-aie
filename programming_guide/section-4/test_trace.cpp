@@ -100,10 +100,9 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity, 
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
-
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
@@ -204,7 +203,8 @@ int main(int argc, const char *argv[]) {
 
     // Write trace values if trace_size > 0
     if (trace_size > 0) {
-      //test_utils::write_out_trace(((char *)bufInOut2) + INOUT2_SIZE, trace_size,
+      // test_utils::write_out_trace(((char *)bufInOut2) + INOUT2_SIZE,
+      // trace_size,
       test_utils::write_out_trace(((char *)bufInOut2), trace_size,
                                   vm["trace_file"].as<std::string>());
     }

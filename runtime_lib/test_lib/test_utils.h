@@ -17,9 +17,9 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdfloat>
 #include <string>
 #include <vector>
-#include <stdfloat>
 
 #include <boost/program_options.hpp>
 #include <cmath>
@@ -40,8 +40,8 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
 
-void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel, int verbosity,
-                          std::string xclbinFileName,
+void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
+                          int verbosity, std::string xclbinFileName,
                           std::string kernelNameInXclbin);
 
 static inline std::int16_t random_int16_t();

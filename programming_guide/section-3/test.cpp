@@ -93,7 +93,7 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity, 
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
 
@@ -143,8 +143,7 @@ int main(int argc, const char *argv[]) {
   // Run kernel
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run =
-      kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+  auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
   run.wait();
   bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
