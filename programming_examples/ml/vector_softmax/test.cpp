@@ -10,114 +10,99 @@
 
 #include <bits/stdc++.h>
 #include <boost/program_options.hpp>
-#include <chrono>
 #include <cstdint>
-#include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <iostream>
-#include <math.h>
 #include <sstream>
 #include <stdfloat>
-#include <string>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr bool VERIFY = true;
+#include "test_utils.h"
 
-constexpr int IN_SIZE = 262144; //*1024;
-constexpr int TILE_SIZE = 1024;
-constexpr int OUT_SIZE = IN_SIZE;
+#ifndef DATATYPES_USING_DEFINED
+#define DATATYPES_USING_DEFINED
+using INOUT0_DATATYPE = std::bfloat16_t;
+using INOUT1_DATATYPE = std::bfloat16_t;
+#endif
 
 namespace po = boost::program_options;
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
+
+// ----------------------------------------------------------------------------
+// Verify results (specific to our design example)
+// ----------------------------------------------------------------------------
+template <typename T>
+int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B, int verbosity) {
+
+  int errors = 0;
+  std::vector<T> RefVec(size);
+
+  for (uint32_t t = 0; t < size; t += tile_size) {
+    float running = 0.0;
+    for (uint32_t i = 0; i < tile_size; i++) {
+      float ez = (float)(exp(A[t + i]));
+      running += ez;
+      RefVec[t + i] = exp(A[t + i]);
+    }
+
+    for (uint32_t i = 0; i < tile_size; i++) {
+      RefVec[t + i] /= running;
     }
   }
-}
 
-static inline std::bfloat16_t random_bfloat16_t() {
-  // Random numbers should NOT be uniformly between 0 and 1, because that
-  // would make the matrix product AB always close to 1.
-  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
-}
+  for (uint32_t i = 0; i < size; i++) {
 
-bool nearly_equal(std::bfloat16_t a, std::bfloat16_t b) {
-  std::bfloat16_t diff = fabs(a - b);
-  if ((diff / a) < 0.1)
-    return true;
-  else
-    return false;
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
+    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.03125)) {
+      std::cout << "Error in output " << B[i] << " != "
+                << RefVec[i] << std::endl;
+      errors++;
+    } else {
+      if (verbosity > 1)
+        std::cout << "Correct output " << B[i] << " == " << RefVec[i] << std::endl;
     }
-    instr_v.push_back(a);
   }
-  return instr_v;
+  return errors;
 }
 
 int main(int argc, const char *argv[]) {
-
+  
   // Program arguments parsing
   po::options_description desc("Allowed options");
-
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "profile,p", po::value<std::string>()->default_value(""), "CSV profile")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
+  test_utils::add_default_options(desc);
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-
-  std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+  test_utils::parse_options(argc, argv, desc, vm);
 
   int verbosity = vm["verbosity"].as<int>();
+  int do_verify = vm["verify"].as<bool>();
+  int n_iterations = vm["iters"].as<int>();
+  int n_warmup_iterations = vm["warmup"].as<int>();
+  int trace_size = vm["trace_sz"].as<int>();
+
+  int TILE_SIZE = 1024;
+  int INOUT0_VOLUME = 262144;         // Input
+  int INOUT1_VOLUME = INOUT0_VOLUME; // Output
+
+  size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
+  size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
+
+  size_t OUT_SIZE = INOUT1_SIZE + trace_size;
+
+  srand(time(NULL));
+
+  // Load instruction sequence
+  std::vector<uint32_t> instr_v =
+      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
-  // Start the XRT test code
+  // ------------------------------------------------------
+  // Get device, load the xclbin & kernel and register them
+  // ------------------------------------------------------
   // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
@@ -127,6 +112,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
 
+  // Load the kernel
   if (verbosity >= 1)
     std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
   std::string Node = vm["kernel"].as<std::string>();
@@ -134,130 +120,129 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
+                                 if (verbosity >= 1) {
+                                   std::cout << "Name: " << name << std::endl;
+                                 }
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
 
+  // Register xclbin
   if (verbosity >= 1)
     std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
               << "\n";
-
   device.register_xclbin(xclbin);
 
-  // get a hardware context
+  // Get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
 
-  // get a kernel handle
+  // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
   auto kernel = xrt::kernel(context, kernelName);
 
+  // ------------------------------------------------------
+  // Initialize input/ output buffer sizes and sync them
+  // ------------------------------------------------------
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_inout0 =
+      xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_inout1 =
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  // Assumes trace will only be added to inout1
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  std::bfloat16_t *bufA = bo_inA.map<std::bfloat16_t *>();
-  std::vector<std::bfloat16_t> AVec(IN_SIZE);
-  for (int i = 0; i < IN_SIZE; i++)
-    AVec[i] = random_bfloat16_t() / 8.0;
-  memcpy(bufA, AVec.data(), (AVec.size() * sizeof(std::bfloat16_t)));
-
+  // Initialize instruction buffer
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
+  // Initialize Inout buffer 0 with ascending bfloat16 raw patterns
+  // All of them ...
+  INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
+  std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
+  for (int i = 0; i < INOUT0_VOLUME; i++) {
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,(std::bfloat16_t)-4.0);
+  }
+  memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
+
+  // Initialize Inout buffer 1 with zeros
+  char *bufInOut1 = bo_inout1.map<char *>();
+  memset(bufInOut1, 0, OUT_SIZE); // Zeroes out INOUT1_VOLUME + trace_size
+
+  // Sync buffers to update input buffer values
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  int sticky_errors = 0;
-
-  unsigned num_iter = 64;
+  // ------------------------------------------------------
+  // Initialize run configs
+  // ------------------------------------------------------
+  unsigned num_iter = n_iterations + n_warmup_iterations;
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
 
-  // Lets also benchmark the CPU
-  float cpu_time_total = 0;
-  float cpu_time_min = 9999999;
-  float cpu_time_max = 0;
+  int errors = 0;
 
+  // ------------------------------------------------------
+  // Main run loop
+  // ------------------------------------------------------
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
+    if (verbosity >= 1) {
+      std::cout << "Running Kernel.\n";
+    }
+
+    // Run kernel
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
-
     auto start = std::chrono::high_resolution_clock::now();
-
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_out);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
+    bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    if (iter < n_warmup_iterations) {
+      /* Warmup iterations do not count towards average runtime. */
+      continue;
+    }
 
-    std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
+    // Copy output results and verify they are correct
+    std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
 
-    int errors = 0;
-
-    if (VERIFY) {
+    memcpy(BVec.data(), bufInOut1, (BVec.size() * sizeof(INOUT1_DATATYPE)));
+    if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying results ..." << std::endl;
       }
-
-      std::vector<std::bfloat16_t> RefVec(IN_SIZE);
-      auto cpu_start = std::chrono::high_resolution_clock::now();
-
-      for (uint32_t t = 0; t < IN_SIZE; t += TILE_SIZE) {
-        float running = 0.0;
-        for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          float ez = (float)(exp(AVec[t + i]));
-          running += ez;
-          RefVec[t + i] = exp(AVec[t + i]);
-        }
-
-        for (uint32_t i = 0; i < TILE_SIZE; i++) {
-          RefVec[t + i] /= running;
-        }
+      auto vstart = std::chrono::system_clock::now();
+      errors = verify(INOUT0_VOLUME, TILE_SIZE, AVec, BVec, verbosity);
+      auto vstop = std::chrono::system_clock::now();
+      float vtime =
+          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+              .count();
+      if (verbosity >= 1) {
+        std::cout << "Verify time: " << vtime << "secs." << std::endl;
       }
-      auto cpu_stop = std::chrono::high_resolution_clock::now();
-      float cpu_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                           cpu_stop - cpu_start)
-                           .count();
-
-      cpu_time_total += cpu_time;
-      cpu_time_min = (cpu_time < cpu_time_min) ? cpu_time : cpu_time_min;
-      cpu_time_max = (cpu_time > cpu_time_max) ? cpu_time : cpu_time_max;
-
-      for (uint32_t i = 0; i < IN_SIZE; i++) {
-        std::bfloat16_t ref = RefVec[i];
-        if (!nearly_equal(*(bufOut + i), ref)) {
-          std::cout << "Error in " << i << " output " << *(bufOut + i)
-                    << " != " << ref << " actual e^" << AVec[i] << " : "
-                    << exp(AVec[i]) << std::endl;
-          errors++;
-          sticky_errors++;
-        } else {
-          if (verbosity >= 2)
-            std::cout << "Correct " << i << " output " << *(bufOut + i)
-                      << " == " << ref << std::endl;
-        }
-      }
-
     } else {
       if (verbosity >= 1)
-        std::cout << "WARNING: vector-scalar results not verified."
-                  << std::endl;
+        std::cout << "WARNING: results not verified." << std::endl;
     }
 
+    // Write trace values if trace_size > 0
+    if (trace_size > 0) {
+      test_utils::write_out_trace(((char *)bufInOut1) + INOUT1_SIZE, trace_size,
+                                  vm["trace_file"].as<std::string>());
+    }
+
+    // Accumulate run times
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
@@ -265,56 +250,40 @@ int main(int argc, const char *argv[]) {
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
-
-    std::string profile = vm["profile"].as<std::string>();
-    if (profile.length()) {
-      std::ofstream of;
-      of.open(profile, std::ios::app); // Append
-      of << IN_SIZE << "," << TILE_SIZE << "," << npu_time << std::endl;
-    }
-
-    if (VERIFY) {
-      if (!errors) {
-        std::cout << iter << ": pass! in " << npu_time << "us" << std::endl;
-      } else {
-        std::cout << iter << ": fail! " << errors << " errors in " << npu_time
-                  << "us" << std::endl;
-      }
-    }
   }
 
-  std::cout << "Avg NPU exec time: " << npu_time_total / num_iter << "us."
+  // ------------------------------------------------------
+  // Print verification and timing results
+  // ------------------------------------------------------
+
+  // TODO - Mac count to guide gflops
+  float macs = 0;
+
+  std::cout << std::endl
+            << "Avg NPU time: " << npu_time_total / n_iterations << "us."
             << std::endl;
-  std::cout << "Min NPU exec time: " << npu_time_min << "us." << std::endl;
-  std::cout << "Max NPU exec time: " << npu_time_max << "us." << std::endl;
+  if (macs > 0)
+    std::cout << "Avg NPU gflops: "
+              << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
-  // Let's figure out how many cycles it takes a core to do a single e^x
-  // There are 4 cores, so the total number of e^x's it does is one quarter of
-  // the test size
-
-  int per_core_calcs = IN_SIZE / 4;
-  float avg_npu_time = npu_time_total / num_iter;
-  float avg_npu_clocks =
-      avg_npu_time / 1.0E-3; // Time is in uS, but the AIE is clocked in nS
-  float clocks_per_calc = avg_npu_clocks / per_core_calcs;
-  std::cout << "Clocks per calc " << clocks_per_calc << std::endl;
-
-  std::cout << "Avg CPU exec time: " << cpu_time_total / num_iter << "us."
-            << std::endl;
-  std::cout << "Min CPU exec time: " << cpu_time_min << "us." << std::endl;
-  std::cout << "Max CPU exec time: " << cpu_time_max << "us." << std::endl;
-
-  if (VERIFY) {
-    if (!sticky_errors) {
-      std::cout << std::endl << "PASS!" << std::endl << std::endl;
-      return 0;
-    } else {
-      std::cout << std::endl << "FAIL." << std::endl << std::endl;
-      return 1;
-    }
-  } else {
-    std::cout << "Verification skipped, but I'm sure it worked.  I trust in you"
+  std::cout << std::endl
+            << "Min NPU time: " << npu_time_min << "us." << std::endl;
+  if (macs > 0)
+    std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min)
               << std::endl;
+
+  std::cout << std::endl
+            << "Max NPU time: " << npu_time_max << "us." << std::endl;
+  if (macs > 0)
+    std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max)
+              << std::endl;
+
+  if (!errors) {
+    std::cout << "\nPASS!\n\n";
+    return 0;
+  } else {
+    std::cout << "\nError count: " << errors << "\n\n";
+    std::cout << "\nFailed.\n\n";
+    return 1;
   }
-  return 0;
 }
