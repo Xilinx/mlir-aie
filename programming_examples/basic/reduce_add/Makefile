@@ -20,7 +20,7 @@ KERNEL_LIB=../../../aie_kernels/aie2/
 
 all: build/final.xclbin build/insts.txt
 
-build/add_reduce.cc.o: ${KERNEL_LIB}/vector_add.cc
+build/reduce_add.cc.o: ${KERNEL_LIB}/reduce_add.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
@@ -28,7 +28,7 @@ build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
-build/final.xclbin: build/aie.mlir build/add_reduce.cc.o
+build/final.xclbin: build/aie.mlir build/reduce_add.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)

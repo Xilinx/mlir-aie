@@ -52,11 +52,9 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  // ------------------------------------------------------
-  // Configure this to match your design's buffer size
-  // ------------------------------------------------------
-  int INOUT0_VOLUME = 1024; // Input only, 64x uint32_t in this example
-  int INOUT1_VOLUME = 1;    // Not used in this example
+  
+  int INOUT0_VOLUME = 1024;
+  int INOUT1_VOLUME = 1;
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
