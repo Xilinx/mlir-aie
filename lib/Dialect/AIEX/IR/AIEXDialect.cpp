@@ -105,6 +105,15 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::IpuDmaWaitOp::verify() {
+  AIE::DeviceOp dev = (*this)->getParentOfType<AIE::DeviceOp>();
+  if (!dev)
+    return emitOpError("couldn't find parent of type DeviceOp");
+  if (!dev.lookupSymbol(getSymbol()))
+    return emitOpError("couldn't find symbol in parent device");
+  return success();
+}
+
 LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(0, 0); // assume shim
