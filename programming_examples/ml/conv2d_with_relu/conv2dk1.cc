@@ -96,7 +96,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
       }
-      input -= (iw_32)*256; // 8*32, reset beginning of input ptr
+      input -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
@@ -218,7 +218,7 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
       }
-      input -= (iw_32)*256; // 8*32, reset beginning of input ptr
+      input -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
