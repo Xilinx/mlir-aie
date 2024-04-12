@@ -12,7 +12,7 @@ SHELL := /bin/bash
 
 all: build/final.xclbin build/insts.txt
 
-targetname = passThroughHardware
+targetname = passThroughDMAs
 LENGTH ?= 4096
 
 build/aie.mlir: aie2.py
@@ -47,4 +47,4 @@ run: ${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 clean:
-	rm -rf build _build inst
+	rm -rf build _build inst ${targetname}.exe
