@@ -3,10 +3,9 @@
 //
 // REQUIRES: ryzen_ai
 //
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/../../../aie_kernels/aie_generic/vector_max.cc -o vector_max.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/../../../aie_kernels/aie2/vector_add.cc -o add_reduce.cc.o
 // RUN: %python %S/aie2.py ipu 0 | aie-opt -cse -canonicalize -o ./aie.mlir
 // RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
-// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall -DPASSTHROUGH_SIZE=4096 -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall -DPASSTHROUGH_SIZE=4096 -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: XRT_HACK_UNSECURE_LOADING_XCLBIN=1 ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!
-
