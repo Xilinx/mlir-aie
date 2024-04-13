@@ -21,8 +21,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "OpenCVUtils.h"
-#include "xrtUtils.h"
+//#include "OpenCVUtils.h"
+#include "test_utils.h"
 
 // #define IMAGE_WIDTH_IN 256
 // #define IMAGE_HEIGHT_IN 256
@@ -71,13 +71,26 @@ int main(int argc, const char *argv[]) {
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
 
+    if (vm.count("help")) {
+      std::cout << desc << "\n";
+      return 1;
+    }
+  } catch (const std::exception &ex) {
+    std::cerr << ex.what() << "\n\n";
+    std::cerr << "Usage:\n" << desc << "\n";
+    return 1;
+  }
+
+  test_utils::check_arg_file_exists(vm, "xclbin");
+  test_utils::check_arg_file_exists(vm, "instr");
+
   /*
    ****************************************************************************
    * Load instruction sequence
    ****************************************************************************
    */
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)

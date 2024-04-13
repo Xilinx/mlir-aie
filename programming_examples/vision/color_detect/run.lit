@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, opencv, chess
-// ALLOW_RETRIES: 3
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/rgba2hue.cc -o ./rgba2hue.cc.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/threshold.cc -o ./threshold.cc.o
@@ -12,6 +11,6 @@
 // RUN: ar rvs combined_bitwiseOR_gray2rgba_bitwiseAND.a bitwiseOR.cc.o gray2rgba.cc.o bitwiseAND.cc.o
 // RUN: %python %S/aie2_colorDetect.py 64 36 > ./aie.mlir
 // RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
-// RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -DCOLORDETECT_WIDTH=64 -DCOLORDETECT_HEIGHT=36 -I %S/../../utils %S/../../utils/xrtUtils.cpp %S/../../utils/OpenCVUtils.cpp %opencv_flags -lboost_program_options -lboost_filesystem 
+// RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -DCOLORDETECT_WIDTH=64 -DCOLORDETECT_HEIGHT=36 -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp -I %S/../../utils %S/../../utils/OpenCVUtils.cpp %opencv_flags -lboost_program_options -lboost_filesystem
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!
