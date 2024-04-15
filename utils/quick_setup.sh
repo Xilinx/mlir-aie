@@ -74,7 +74,7 @@ if test -f "$VPP"; then
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   popd
   python3 -m pip install --upgrade --force-reinstall -r python/requirements.txt
-  pushd reference_designs/ipu-xrt
+  pushd programming_examples
 else
   echo "Vitis not found! Exiting..."
 fi
