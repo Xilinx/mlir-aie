@@ -5,11 +5,10 @@
 
 #include <aie_api/aie.hpp>
 
-void vector(int32_t *restrict in, int32_t *restrict out) {
+void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out, const int32_t input_size) {
 
   v16int32 tiny = broadcast_to_v16int32((int32_t)-2147483648);
-  int32_t input_size = 1024;
-  int32_t vector_size = 16;
+  const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_max = tiny;
   for (int32_t i = 0; i < input_size; i += vector_size)
@@ -32,8 +31,7 @@ void vector(int32_t *restrict in, int32_t *restrict out) {
   return;
 }
 
-void scalar(int32_t *restrict in, int32_t *restrict out) {
-  size_t input_size = 1024;
+void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out, const int32_t input_size) {
   int32_t running_max = (int32_t)-2147483648;
   for (int32_t i = 0; i < input_size; i++) {
     if (in[i] > running_max)
@@ -46,8 +44,8 @@ void scalar(int32_t *restrict in, int32_t *restrict out) {
 
 extern "C" {
 
-void vector_max(int32_t *a_in, int32_t *c_out) { vector(a_in, c_out); }
+void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) { _reduce_max_vector(a_in, c_out, input_size); }
 
-void scalar_max(int32_t *a_in, int32_t *c_out) { scalar(a_in, c_out); }
+void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) { _reduce_max_scalar(a_in, c_out, input_size); }
 
 } // extern "C"

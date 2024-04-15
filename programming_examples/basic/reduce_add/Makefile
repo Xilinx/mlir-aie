@@ -8,8 +8,6 @@
 
 include ../../makefile-common
 
-VPATH := /aie_generic
-
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
 targetname = reduce_add
