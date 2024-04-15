@@ -15,8 +15,8 @@ from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 
- 
-# Deciphering the command line arguments 
+
+# Deciphering the command line arguments
 if len(sys.argv) < 3:
     raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
@@ -31,6 +31,7 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 col = int(sys.argv[2])
+
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
