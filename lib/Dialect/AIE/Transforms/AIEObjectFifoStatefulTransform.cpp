@@ -133,7 +133,6 @@ struct AIEObjectFifoStatefulTransformPass
       splitBecauseLink; // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
 
-
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
   ///   * -1 if the shared memory module is that of the first input tile,
@@ -187,10 +186,14 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
                 dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(), createOp))
-            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), createOp.getProducerTileOp(), &share_direction);
+          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                         createOp))
+            hasSharedMemory =
+                isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
           else
-            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), consumerTileOp, &share_direction);
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
+                                             consumerTileOp, &share_direction);
         }
       }
     }
@@ -217,7 +220,8 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
+           isUsedInLinkOp;
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
