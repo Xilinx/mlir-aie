@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdfloat>
@@ -46,10 +47,12 @@ void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
 
 static inline std::int16_t random_int16_t();
 
+#if defined(__STDCPP_BFLOAT16_T__)
 static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale,
                                                 std::bfloat16_t bias) {
   return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) + bias);
 }
+#endif
 
 bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
                   float abs_th = FLT_MIN);
