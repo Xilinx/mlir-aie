@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
+include ../../makefile-common
 
 all: hello_world_elfstrings.csv
 

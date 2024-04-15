@@ -8,4 +8,3 @@
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!
-`

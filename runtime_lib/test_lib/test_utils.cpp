@@ -1,4 +1,4 @@
-//===- test_utils.h ----------------------------000---*- C++ -*-===//
+//===- test_utils.cpp ----------------------------000---*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,21 +10,14 @@
 
 // This file contains common helper functions for the generic host code
 
-#ifndef TEST_UTILS_H
-#define TEST_UTILS_H
-
-#include <boost/program_options.hpp>
-#include <cmath>
-
-namespace test_utils {
-
-namespace po = boost::program_options;
+#include "test_utils.h"
 
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
+void test_utils::check_arg_file_exists(po::variables_map &vm_in,
+                                       std::string name) {
   if (!vm_in.count(name)) {
     throw std::runtime_error("Error: no " + name + " file was provided\n");
   } else {
@@ -37,7 +30,7 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-void add_default_options(po::options_description &desc) {
+void test_utils::add_default_options(po::options_description &desc) {
   desc.add_options()("help,h", "produce help message")(
       "xclbin,x", po::value<std::string>()->required(),
       "the input xclbin path")(
@@ -56,8 +49,9 @@ void add_default_options(po::options_description &desc) {
       "where to store trace output");
 }
 
-void parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm) {
+void test_utils::parse_options(int argc, const char *argv[],
+                               po::options_description &desc,
+                               po::variables_map &vm) {
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
@@ -72,15 +66,19 @@ void parse_options(int argc, const char *argv[], po::options_description &desc,
     std::exit(1);
   }
 
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  try {
+    check_arg_file_exists(vm, "xclbin");
+    check_arg_file_exists(vm, "instr");
+  } catch (const std::exception &ex) {
+    std::cerr << ex.what() << "\n\n";
+  }
 }
 
 // --------------------------------------------------------------------------
 // AIE Specifics
 // --------------------------------------------------------------------------
 
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
+std::vector<uint32_t> test_utils::load_instr_sequence(std::string instr_path) {
   std::ifstream instr_file(instr_path);
   std::string line;
   std::vector<uint32_t> instr_v;
@@ -96,24 +94,63 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 }
 
 // --------------------------------------------------------------------------
-// Matrix / Float / Math
+// XRT
 // --------------------------------------------------------------------------
+void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
+                                      int verbosity, std::string xclbinFileName,
+                                      std::string kernelNameInXclbin) {
+  // Get a device handle
+  unsigned int device_index = 0;
+  device = xrt::device(device_index);
 
-static inline std::int16_t random_int16_t() {
-  return (std::int16_t)rand() % 0x10000;
+  // Load the xclbin
+  if (verbosity >= 1)
+    std::cout << "Loading xclbin: " << xclbinFileName << "\n";
+  auto xclbin = xrt::xclbin(xclbinFileName);
+
+  if (verbosity >= 1)
+    std::cout << "Kernel opcode: " << kernelNameInXclbin << "\n";
+
+  // Get the kernel from the xclbin
+  auto xkernels = xclbin.get_kernels();
+  auto xkernel =
+      *std::find_if(xkernels.begin(), xkernels.end(),
+                    [kernelNameInXclbin, verbosity](xrt::xclbin::kernel &k) {
+                      auto name = k.get_name();
+                      if (verbosity >= 1) {
+                        std::cout << "Name: " << name << std::endl;
+                      }
+                      return name.rfind(kernelNameInXclbin, 0) == 0;
+                    });
+  auto kernelName = xkernel.get_name();
+
+  // Register xclbin
+  if (verbosity >= 1)
+    std::cout << "Registering xclbin: " << xclbinFileName << "\n";
+
+  device.register_xclbin(xclbin);
+
+  // Get a hardware context
+  if (verbosity >= 1)
+    std::cout << "Getting hardware context.\n";
+  xrt::hw_context context(device, xclbin.get_uuid());
+
+  // Get a kernel handle
+  if (verbosity >= 1)
+    std::cout << "Getting handle to kernel:" << kernelName << "\n";
+  kernel = xrt::kernel(context, kernelName);
+
+  return;
 }
 
-// static inline std::bfloat16_t random_bfloat16_t() {
-//   // Random numbers should NOT be uniformly between 0 and 1, because that
-//   // would make the matrix product AB always close to 1.
-//   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
-// }
+// --------------------------------------------------------------------------
+// Matrix / Float / Math
+// --------------------------------------------------------------------------
 
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
 // Original author: P-Gn
 // Source: https://stackoverflow.com/a/32334103
-bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
-                  float abs_th = FLT_MIN)
+bool test_utils::nearly_equal(float a, float b, float epsilon, float abs_th)
 // those defaults are arbitrary and could be removed
 {
   assert(std::numeric_limits<float>::epsilon() <= epsilon);
@@ -131,68 +168,11 @@ bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
   return diff < std::max(abs_th, epsilon * norm);
 }
 
-template <typename T>
-void print_matrix(const std::vector<T> matrix, int n_cols,
-                  int n_printable_rows = 10, int n_printable_cols = 10,
-                  std::ostream &ostream = std::cout,
-                  const char col_sep[] = "  ", const char elide_sym[] = " ... ",
-                  int w = -1) {
-  assert(matrix.size() % n_cols == 0);
-
-  auto maxima = std::minmax_element(matrix.begin(), matrix.end());
-  T max_val = std::max(*maxima.first, std::abs(*maxima.second));
-  size_t n_digits = log10(max_val);
-  if (w == -1) {
-    w = n_digits;
-  }
-  int n_rows = matrix.size() / n_cols;
-
-  n_printable_rows = std::min(n_rows, n_printable_rows);
-  n_printable_cols = std::min(n_cols, n_printable_cols);
-
-  const bool elide_rows = n_printable_rows < n_rows;
-  const bool elide_cols = n_printable_cols < n_cols;
-
-  if (elide_rows || elide_cols) {
-    w = std::max((int)w, (int)strlen(elide_sym));
-  }
-
-  w += 3; // for decimal point and two decimal digits
-  ostream << std::fixed << std::setprecision(2);
-
-#define print_row(what)                                                        \
-  for (int col = 0; col < n_printable_cols / 2; col++) {                       \
-    ostream << std::right << std::setw(w) << (what);                           \
-    ostream << std::setw(0) << col_sep;                                        \
-  }                                                                            \
-  if (elide_cols) {                                                            \
-    ostream << std::setw(0) << elide_sym;                                      \
-  }                                                                            \
-  for (int col = n_printable_cols / 2 + 1; col < n_printable_cols; col++) {    \
-    ostream << std::right << std::setw(w) << (what);                           \
-    ostream << std::setw(0) << col_sep;                                        \
-  }
-
-  for (int row = 0; row < n_printable_rows / 2; row++) {
-    print_row(matrix[row * n_rows + col]);
-    ostream << std::endl;
-  }
-  if (elide_rows) {
-    print_row(elide_sym);
-    ostream << std::endl;
-  }
-  for (int row = n_printable_rows / 2 + 1; row < n_printable_rows; row++) {
-    print_row(matrix[row * n_rows + col]);
-    ostream << std::endl;
-  }
-
-#undef print_row
-}
-
 // --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
-void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+void test_utils::write_out_trace(char *traceOutPtr, size_t trace_size,
+                                 std::string path) {
   std::ofstream fout(path);
   uint32_t *traceOut = (uint32_t *)traceOutPtr;
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
@@ -200,7 +180,3 @@ void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
     fout << std::endl;
   }
 }
-
-} // namespace test_utils
-
-#endif

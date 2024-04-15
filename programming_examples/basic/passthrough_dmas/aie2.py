@@ -14,10 +14,9 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096
-N_in_bytes = N * 4
 
- 
-# Deciphering the command line arguments 
+
+# Deciphering the command line arguments
 if len(sys.argv) < 3:
     raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
@@ -32,6 +31,7 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 col = int(sys.argv[2])
+
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
@@ -54,9 +54,8 @@ def my_passthrough():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                tmp = memref.alloc(1, T.i32())
-                v0 = arith.constant(0, T.i32())
-                memref.store(v0, tmp, [0])
+                for _ in for_(sys.maxsize):
+                    yield_([])
 
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
