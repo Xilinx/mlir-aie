@@ -5,7 +5,7 @@
 #include <type_traits>
 
 static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
-                        const int32_t input_size) {
+                               const int32_t input_size) {
   int32_t running_total = 0;
   for (int32_t i = 0; i < input_size; i++) {
     running_total = running_total + in[i];
@@ -15,7 +15,7 @@ static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
 }
 
 static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
-                        const int32_t input_size) {
+                               const int32_t input_size) {
   v16int32 zero = broadcast_to_v16int32((int32_t)0);
   int32_t vector_size = 16;
   v16int32 after_vector;

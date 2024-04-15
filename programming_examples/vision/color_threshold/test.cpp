@@ -21,7 +21,6 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-//#include "OpenCVUtils.h"
 #include "test_utils.h"
 
 // #define IMAGE_WIDTH_IN 256
