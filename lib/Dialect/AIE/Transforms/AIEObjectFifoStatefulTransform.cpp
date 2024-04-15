@@ -133,7 +133,6 @@ struct AIEObjectFifoStatefulTransformPass
       splitBecauseLink; // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
 
-
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
   ///   * -1 if the shared memory module is that of the first input tile,
