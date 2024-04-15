@@ -12,7 +12,7 @@ VPATH := /aie_generic
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
-targetname = add_reduce
+targetname = reduce_add
 devicename = ipu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
@@ -22,7 +22,7 @@ all: build/final.xclbin build/insts.txt
 
 build/reduce_add.cc.o: ${KERNEL_LIB}/reduce_add.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
