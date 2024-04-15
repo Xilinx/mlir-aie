@@ -220,7 +220,8 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
+           isUsedInLinkOp;
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
