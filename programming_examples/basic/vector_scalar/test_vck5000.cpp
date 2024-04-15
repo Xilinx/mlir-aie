@@ -1,8 +1,10 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
+//===- test_vck5000.cpp -----------------------------------000---*- C++ -*-===//
 //
-// Copyright (C) 2020-2022, Xilinx Inc.
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,7 +30,7 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
-constexpr int DMA_COUNT = 64;
+constexpr int DMA_COUNT = 4096;
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {

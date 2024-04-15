@@ -12,11 +12,19 @@
 
 // CHECK-LABEL: func.func @ipu_dma_wait
 // CHECK: aiex.ipu.dma_wait {symbol = @out0}
-
 aie.device(ipu) {
   memref.global "public" @out0 : memref<16xi32>
   func.func @ipu_dma_wait() {
     aiex.ipu.dma_wait {symbol = @out0}
     return
   }
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ipu_dma_wait_no_device
+// CHECK: aiex.ipu.dma_wait {symbol = @out0}
+func.func @ipu_dma_wait_no_device() {
+  aiex.ipu.dma_wait {symbol = @out0}
+  return
 }

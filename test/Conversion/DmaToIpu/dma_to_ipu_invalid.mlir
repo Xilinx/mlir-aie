@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-ipu --verify-diagnostics %s
+// RUN: aie-opt --split-input-file --aie-dma-to-ipu --verify-diagnostics %s
 
 module  {
   aie.device(ipu) {
