@@ -174,6 +174,7 @@ struct AIEObjectFifoStatefulTransformPass
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
+    bool isUsedInLinkOp = false;
 
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
@@ -201,7 +202,14 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform;
+    // Only test for this objfifo belonging to a LinkOp if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
+    if (hasSharedMemory) {
+      if (auto linkOp = getOptionalLinkOp(createOp))
+        isUsedInLinkOp = true;
+    }
+
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
