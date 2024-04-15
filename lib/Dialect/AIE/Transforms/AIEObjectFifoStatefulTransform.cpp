@@ -192,7 +192,8 @@ struct AIEObjectFifoStatefulTransformPass
                 isSharedMemory(createOp.getProducerTileOp(),
                                createOp.getProducerTileOp(), &share_direction);
           else
-            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), consumerTileOp, &share_direction);
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
+                                             consumerTileOp, &share_direction);
         }
       }
     }
