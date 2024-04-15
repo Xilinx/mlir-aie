@@ -14,7 +14,7 @@ While the Object FIFO primitive aims to reduce the complexity tied to data movem
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
-DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `/mlir-aie/install/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
+DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
 ```
 def dma_bd
     (
@@ -37,7 +37,7 @@ A data layout transformation is presented as a list of pairs, where each pair re
 ```
 Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first element of this array gives the outer-most dimension's stride and size, while the last element of the array gives the inner-most dimension's stride and size. All strides are expressed in <u>multiples of the element width</u>.
 
-> **NOTE:**  The inner-most dimension's stride must be 1 by design.
+> **NOTE:**  Only for 4B data types the inner-most dimension's stride must be 1 by design.
 
 Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation above can be expressed as:
 ```
@@ -117,4 +117,4 @@ and further represented as in the image below,
 
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
-Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_single_column](../../../programming_examples/basic/matrix_multiplication/single_column/).
+Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
