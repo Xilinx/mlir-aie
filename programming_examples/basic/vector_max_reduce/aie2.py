@@ -15,6 +15,7 @@ from aie.extras.dialects.ext import memref, arith
 
 import sys
 
+
 def my_max_reduce():
     N = 1024
 
@@ -38,8 +39,12 @@ def my_max_reduce():
             memRef_O_ty = T.memref(1, T.i32())
 
             # AIE Core Function declarations
-            max_reduce_vector = external_func("vector_max", inputs=[memRef_I_ty, memRef_O_ty, T.i32()])
-            max_reduce_scalar = external_func("scalar_max", inputs=[memRef_I_ty, memRef_O_ty, T.i32()])
+            max_reduce_vector = external_func(
+                "vector_max", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
+            )
+            max_reduce_scalar = external_func(
+                "scalar_max", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
+            )
 
             # Tile declarations
             ShimTile = tile(int(sys.argv[2]), 0)
@@ -47,7 +52,9 @@ def my_max_reduce():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_I_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_O_ty)
+            of_out = object_fifo(
+                "out", ComputeTile2, ShimTile, buffer_depth, memRef_O_ty
+            )
 
             # Set up compute tiles
 
