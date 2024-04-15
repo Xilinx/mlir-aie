@@ -13,6 +13,8 @@
 #ifndef _TEST_UTILS_H_
 #define _TEST_UTILS_H_
 
+#include <boost/program_options.hpp>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -21,8 +23,6 @@
 #include <stdfloat>
 #include <string>
 #include <vector>
-#include <boost/program_options.hpp>
-#include <cmath>
 
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
