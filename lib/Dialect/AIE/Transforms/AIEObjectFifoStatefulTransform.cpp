@@ -186,8 +186,11 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
                 dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(), createOp))
-            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), createOp.getProducerTileOp(), &share_direction);
+          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                         createOp))
+            hasSharedMemory =
+                isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
           else
             hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), consumerTileOp, &share_direction);
         }
