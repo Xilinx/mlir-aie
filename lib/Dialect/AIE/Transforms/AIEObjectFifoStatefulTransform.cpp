@@ -129,6 +129,10 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
   // have been created and should be used
+  std::vector<ObjectFifoCreateOp>
+      splitBecauseLink; // objfifos which have been split because they are
+  // part of a Link, not because they didn't have a shared memory module
+
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -182,10 +186,12 @@ struct AIEObjectFifoStatefulTransformPass
       // Test for shared memory
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
-                dyn_cast<TileOp>(consumerTile.getDefiningOp());
-            isSharedMemory(createOp.getProducerTileOp(), consumerTileOp,
-                           &share_direction))
-          hasSharedMemory = true;
+                dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(), createOp))
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), createOp.getProducerTileOp(), &share_direction);
+          else
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(), consumerTileOp, &share_direction);
+        }
       }
     }
 
@@ -205,8 +211,10 @@ struct AIEObjectFifoStatefulTransformPass
     // Only test for this objfifo belonging to a LinkOp if we are in the shared
     // memory case; otherwise, we will return `true` in any case.
     if (hasSharedMemory) {
-      if (auto linkOp = getOptionalLinkOp(createOp))
+      if (auto linkOp = getOptionalLinkOp(createOp)) {
+        splitBecauseLink.push_back(createOp);
         isUsedInLinkOp = true;
+      }
     }
 
     return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
@@ -1282,10 +1290,10 @@ struct AIEObjectFifoStatefulTransformPass
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
-      if (shared)
+      if (shared) {
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-      else {
+      } else {
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));

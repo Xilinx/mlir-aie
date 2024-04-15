@@ -18,8 +18,8 @@
 // CHECK:           memref.global "public" @of1_cons : memref<16xi32>
 // CHECK:           memref.global "public" @of1 : memref<16xi32>
 // CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 4)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 2)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_2]], 0) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
@@ -90,11 +90,11 @@
 module @link_AIE1 {
     aie.device(xcvc1902) {
         %tile20 = aie.tile(2, 0)
+        %tile12 = aie.tile(1, 2)
         %tile22 = aie.tile(2, 2)
-        %tile24 = aie.tile(2, 4)
 
-        aie.objectfifo @of1 (%tile20, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile22, {%tile24}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@of1] -> [@of2] ()
 

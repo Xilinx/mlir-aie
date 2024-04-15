@@ -10,7 +10,7 @@
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
 
-// CHECK:   error: ObjectFifoLinkOp must have a Mem tile as the link point
+// CHECK:   error: 'aie.objectfifo.acquire' op currently cannot access objectFifo used in ObjectFifoLinkOp
 
 module {
   aie.device(ipu) {
@@ -23,6 +23,11 @@ module {
     aie.objectfifo @b(%tile_1_2 toStream [<size = 32, stride = 1>], {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>>
 
     aie.objectfifo.link [@a] -> [@b]()
+
+    %core12 = aie.core(%tile_1_2) {
+      %subview0 = aie.objectfifo.acquire @a (Consume, 1) : !aie.objectfifosubview<memref<1024xbf16>>
+      aie.end
+    }
 
   }
 }
