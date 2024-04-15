@@ -42,12 +42,12 @@ int main(int argc, const char *argv[]) {
   po::variables_map vm;
 
   test_utils::parse_options(argc, argv, desc, vm);
+  int verbosity = vm["verbosity"].as<int>();
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_sequence(vm["instr"].as<std::string>());
 
-  int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
