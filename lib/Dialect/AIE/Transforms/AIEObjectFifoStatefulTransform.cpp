@@ -1290,10 +1290,10 @@ struct AIEObjectFifoStatefulTransformPass
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
-      if (shared) {
+      if (shared)
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-      } else {
+      else {
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
