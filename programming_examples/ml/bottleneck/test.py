@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import sys
 import math
+
 sys.path.append("../../utils")
 import time
 import os
@@ -87,28 +88,34 @@ app = setup_aie(
 # ------------------------------------------------------
 # Define your golden reference
 # ------------------------------------------------------
-class bottleneck_int8 (nn.Module):
+class bottleneck_int8(nn.Module):
     def __init__(self, in_planes=256, planes=64):
         super(bottleneck_int8, self).__init__()
         self.conv1 = nn.Conv2d(256, 64, kernel_size=1, bias=False)
         self.conv2 = nn.Conv2d(
-                64, 64, kernel_size=3, padding=1, padding_mode="zeros", bias=False
-            )
+            64, 64, kernel_size=3, padding=1, padding_mode="zeros", bias=False
+        )
         self.conv3 = nn.Conv2d(64, 256, kernel_size=1, bias=False)
 
-        self.relu1= nn.ReLU()
-        self.relu2= nn.ReLU()
-        self.relu3= nn.ReLU()
+        self.relu1 = nn.ReLU()
+        self.relu2 = nn.ReLU()
+        self.relu3 = nn.ReLU()
 
     def forward(self, x):
-        conv1_out=self.conv1(x) * inp_scale1 * weight_scale1
-        relu1_out=torch.clamp(torch.round(self.relu1(conv1_out)/inp_scale2), min, max) # convert to int and apply relu
-        conv2_out=self.conv2(relu1_out) * inp_scale2 * weight_scale2
-        relu2_out=torch.clamp(torch.round(self.relu2(conv2_out)/inp_scale3), min, max)
-        conv3_out=self.conv3(relu2_out) * inp_scale3 * weight_scale3
-        same_scale_init=torch.clamp(torch.round(conv3_out/inp_scale1), -128,127)
-        skip_add=inp_scale1*(same_scale_init+int_inp)
-        final_out=inp_scale4 * (torch.clamp(torch.round(skip_add/inp_scale4), min, max))
+        conv1_out = self.conv1(x) * inp_scale1 * weight_scale1
+        relu1_out = torch.clamp(
+            torch.round(self.relu1(conv1_out) / inp_scale2), min, max
+        )  # convert to int and apply relu
+        conv2_out = self.conv2(relu1_out) * inp_scale2 * weight_scale2
+        relu2_out = torch.clamp(
+            torch.round(self.relu2(conv2_out) / inp_scale3), min, max
+        )
+        conv3_out = self.conv3(relu2_out) * inp_scale3 * weight_scale3
+        same_scale_init = torch.clamp(torch.round(conv3_out / inp_scale1), -128, 127)
+        skip_add = inp_scale1 * (same_scale_init + int_inp)
+        final_out = inp_scale4 * (
+            torch.clamp(torch.round(skip_add / inp_scale4), min, max)
+        )
         return final_out
 
 
@@ -174,6 +181,5 @@ assert np.allclose(
     rtol=0,
     atol=inp_scale4,
 )
-
 
 print("\nPASS!\n")
