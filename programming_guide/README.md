@@ -10,7 +10,7 @@
 
 # <ins>IRON AIE Programming Guide</ins>
 
-<img align="right" widht="300" height="300" src="./assets/AIEarray.svg"> 
+<img align="right" width="300" height="300" src="./assets/AIEarray.svg"> 
 
 The AI Engine (AIE) array is a spatial compute architecture: a modular and scalable system with spatially distributed compute and memories. Its compute dense vector processing runs independently and concurrently to explicitly scheduled data movement. Since the vector compute core (green) of each AIE can only operate on data in its L1 scratchpad memory (light blue), data movement accelerators (purple) bi-directionally transport this data over a switched (dark blue) interconnect network, from any level in the memory hierarchy.
 
