@@ -69,7 +69,7 @@ def passthroughKernel():
         tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
         @func.func(emit=True)
-        def sequence(inTensor:tensor_ty, outTensor:tensor_ty, notUsed:tensor_ty):
+        def sequence(inTensor: tensor_ty, outTensor: tensor_ty, notUsed: tensor_ty):
             if enableTrace:
                 # Trace output
 

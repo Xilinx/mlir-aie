@@ -103,6 +103,8 @@ def main(opts):
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    p.add_argument("-s","--size", required=True, dest="size", help="Passthrough kernel size")
+    p.add_argument(
+        "-s", "--size", required=True, dest="size", help="Passthrough kernel size"
+    )
     opts = p.parse_args(sys.argv[1:])
     main(opts)
