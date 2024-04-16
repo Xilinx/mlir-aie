@@ -40,7 +40,7 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < CSize; i++) {
     std::bfloat16_t ref = exp(A[i]);
-    if (test_utils::nearly_equal(A[i], C[i])) {
+    if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
       errors++;
     } else {
@@ -153,8 +153,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)4.0,
-                                            (std::bfloat16_t)0.0);
+    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)2.0,
+                                            (std::bfloat16_t)-1.0);
 
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
