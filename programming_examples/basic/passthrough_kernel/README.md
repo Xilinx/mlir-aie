@@ -16,7 +16,7 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates the pro
 
 1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen AI). 
 
-1. `passThrough.cc`: A C++ implementation of scalar and vectorized scaling operations for AIE cores.
+1. `passThrough.cc`: A C++ implementation of vectorized memcpy operations for AIE cores.
 
 1. `test.cpp`: This C++ code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
@@ -26,7 +26,7 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates the pro
 
 ### AIE Array Structural Design
 
-This design performs scaling operations on a vector of input data. The AIE design is described in a python module as follows:
+This design performs a memcpy operation on a vector of input data. The AIE design is described in a python module as follows:
 
 1. **Constants & Configuration:** The script defines input/output dimensions (`N`, `n`), buffer sizes in `lineWidthInBytes` and `lineWidthInInt32s`, and tracing support.
 
@@ -50,11 +50,9 @@ This design performs scaling operations on a vector of input data. The AIE desig
 
 ### AIE Core Kernel Code
 
-`passThrough.cc` contains a C++ implementation of scalar and vectorized vector scaling operations designed for AIE cores. It consists of three main sections:
+`passThrough.cc` contains a C++ implementation of vectorized memcpy operation designed for AIE cores. It consists of two main sections:
 
-1. **Scalar Scaling:** The `scale()` function performs a scalar scaling operation on input data element by element.
-
-1. **Vectorized Scaling:** The `scale_vectorized()` function processes multiple data elements simultaneously, taking advantage of AIE vector datapath capabilities.
+1. **Vectorized Copying:** The `passThrough_aie()` function processes multiple data elements simultaneously, taking advantage of AIE vector datapath capabilities to load, copy and store data elements.
 
 1. **C-style Wrapper Functions:** `passThroughLine()` and `passThroughTile()` are two C-style wrapper functions to call the templated `passThrough_aie()` vectorized memcpy implementation from the AIE design implemented in `aie2.py`. The `passThroughLine()` and `passThroughTile()` functions are compiled for `uint8_t`, `int16_t`, or `int32_t` determined by the value the `BIT_WIDTH` variable defines. 
 
@@ -71,4 +69,16 @@ To run the design:
 
 ```
 make run
+```
+
+To compile the design and run the Python testbench:
+
+```
+make
+```
+
+To run the design:
+
+```
+python3 test.py -x build/final_4096.xclbin -i build/insts.txt -k MLIR_AIE
 ```
