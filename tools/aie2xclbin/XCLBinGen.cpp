@@ -450,12 +450,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           "inference_fingerprint": "23423",
           "pre_post_fingerprint": "12345",
           "partition": {
-            "column_width": 1,
+            "column_width": 4,
             "start_columns": [
-              1,
-              2,
-              3,
-              4
+              1
             ]
           },
           "PDIs": [
@@ -596,7 +593,7 @@ static std::string chesshack(const std::string &input) {
 }
 
 // A pass which removes the alignment attribute from llvm load operations, if
-// the alignment is 2.
+// the alignment is less than 4 (2 or 1).
 //
 // Example replaces:
 //
@@ -622,8 +619,12 @@ struct RemoveAlignment2FromLLVMLoadPass
     getOperation().walk([](Operation *op) {
       if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
         auto alignmentAttr = loadOp.getAlignmentAttr();
-        if (alignmentAttr && alignmentAttr.getValue() == 2)
-          loadOp.setAlignment(std::optional<uint64_t>());
+        if (alignmentAttr) {
+          int alignmentVal = alignmentAttr.getValue().getSExtValue();
+          if (alignmentVal == 2 || alignmentVal == 1) {
+            loadOp.setAlignment(std::optional<uint64_t>());
+          }
+        }
       }
     });
   }

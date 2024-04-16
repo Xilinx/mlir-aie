@@ -6,7 +6,22 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
+
+  # Allows you to run this workflow manually from the Actions tab by
+  # selecting CI and then "Run workflow" menu on the right branch
+  # and clicking on "launch_tmate_terminal_for_debug".
+  # Unfortunately this works only for the default branch.
+  # So you can either
+  # - change the default branch of the PR on the GitHub repository owning the PR
+  #   and launching in Actions tab;
+  # - or edit directly the step below which runs tmate and push to the
+  #   PR, ignoring the manual workflow launch.
   workflow_dispatch:
+      launch_tmate_terminal_for_debug:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
 
 defaults:
   run:
@@ -31,15 +46,84 @@ jobs:
 
     steps:
 
+      - name: Display environment variables
+        run: env
+
+      - name: User and group ids
+        run: id -a
+
+      - name: Execution context information
+        # Display a lot of information to help further development
+        # https://docs.github.com/en/actions/learn-github-actions/variables
+        # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
+        # The problem is that echo-ing directly "${{ toJSON(github) }}"
+        # in the shell is not escaped and for example '&' breaks
+        # things or can lead to server-side script injection. :-(
+        # So, use environment setting and display the environment
+        # variable in the shell between "" to avoid unsafe
+        # interpretation.
+        env:
+          execution_context_var_github: ${{ toJSON(github) }}
+          execution_context_var_env: ${{ toJSON(env) }}
+          execution_context_var_vars: ${{ toJSON(vars) }}
+          execution_context_var_job: ${{ toJSON(job) }}
+          execution_context_var_steps: ${{ toJSON(steps) }}
+          execution_context_var_runner: ${{ toJSON(runner) }}
+          execution_context_var_strategy: ${{ toJSON(strategy) }}
+          execution_context_var_matrix: ${{ toJSON(matrix) }}
+          execution_context_var_needs: ${{ toJSON(needs) }}
+          execution_context_var_inputs: ${{ toJSON(inputs) }}
+        run: |
+          echo "::group::github context"
+          echo "$execution_context_var_github"
+          echo "::endgroup::"
+          echo "::group::env context"
+          echo "$execution_context_var_env"
+          echo "::endgroup::"
+          echo "::group::vars context"
+          echo "$execution_context_var_vars"
+          echo "::endgroup::"
+          echo "::group::job context"
+          echo "$execution_context_var_job"
+          echo "::endgroup::"
+          echo "::group::steps context"
+          echo "$execution_context_var_steps"
+          echo "::endgroup::"
+          echo "::group::runner context"
+          echo "$execution_context_var_runner"
+          echo "::endgroup::"
+          echo "::group::strategy context"
+          echo "$execution_context_var_strategy"
+          echo "::endgroup::"
+          echo "::group::matrix context"
+          echo "$execution_context_var_matrix"
+          echo "::endgroup::"
+          echo "::group::needs context"
+          echo "$execution_context_var_needs"
+          echo "::endgroup::"
+          echo "::group::inputs context"
+          echo "$execution_context_var_inputs"
+          echo "::endgroup::"
+
       - uses: actions/checkout@v3
         with:
           submodules: "true"
 
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
       - name: Run commands
         run: |
-          
+
           pip cache purge
-        
+          source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
@@ -55,7 +139,7 @@ jobs:
           # That means wheels have file with time stamps in the future which makes ninja loop
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          
+
           mkdir build
           pushd build
 

@@ -27,7 +27,7 @@ jobs:
   build-repo:
     name: Build and upload mlir_aie wheels
 
-    runs-on: amd7940hs
+    runs-on: amd8700g
 
     permissions:
       id-token: write
@@ -103,7 +103,9 @@ jobs:
   build-wheel:
     name: Build wheel
 
-    runs-on: amd7940hs
+    runs-on: amd8700g
+
+    needs: build-repo
 
     permissions:
       id-token: write
@@ -167,7 +169,6 @@ jobs:
           export DATETIME=$(date +"%Y%m%d%H")
           
           cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
           
           pushd utils/mlir_aie_wheels/python_bindings
           

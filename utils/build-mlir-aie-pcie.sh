@@ -63,7 +63,9 @@ CMAKE_CONFIGS="\
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
     -DAIE_RUNTIME_TARGETS=x86_64-hsa \
+    -DAIE_RUNTIME_TEST_TARGET=x86_64-hsa \
     -DAIE_ENABLE_PYTHON_PASSES=OFF \
+    -DENABLE_BOARD_TESTS=ON \
     .. |& tee cmake.log"
 
 if [ -x "$(command -v lld)" ]; then

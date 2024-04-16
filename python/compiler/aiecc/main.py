@@ -659,7 +659,20 @@ class FlowRunner:
                     ],
                 )
 
-            cmd = ["clang++", "-std=c++11"]
+            if opts.link_against_hsa:
+                file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-hsa",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+
+            cmd = ["clang++", "-std=c++17"]
             if opts.host_target:
                 cmd += ["--target=" + opts.host_target]
                 if (
@@ -685,7 +698,14 @@ class FlowRunner:
                 # force using '/usr/lib,include/gcc'
                 if opts.host_target == "aarch64-linux-gnu":
                     cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
-
+                    # It looks like the G++ distribution is non standard, so add
+                    # an explicit handling of C++ library.
+                    # Perhaps related to https://discourse.llvm.org/t/add-gcc-install-dir-deprecate-gcc-toolchain-and-remove-gcc-install-prefix/65091/23
+                    cxx_include = glob.glob(f"{opts.sysroot}/usr/include/c++/*.*.*")[0]
+                    triple = os.path.basename(opts.sysroot)
+                    cmd += [f"-I{cxx_include}", f"-I{cxx_include}/{triple}"]
+                    gcc_lib = glob.glob(f"{opts.sysroot}/usr/lib/{triple}/*.*.*")[0]
+                    cmd += [f"-B{gcc_lib}", f"-L{gcc_lib}"]
             install_path = aie.compiler.aiecc.configure.install_path()
 
             # Setting everything up if linking against HSA
@@ -774,20 +794,26 @@ class FlowRunner:
 
         install_path = aie.compiler.aiecc.configure.install_path()
 
+        # Setting everything up if linking against HSA
+        if opts.link_against_hsa:
+            arch_name = opts.host_target.split("-")[0] + "-hsa"
+        else:
+            arch_name = opts.host_target.split("-")[0]
+
         runtime_simlib_path = os.path.join(
             install_path, "aie_runtime_lib", aie_target.upper(), "aiesim"
         )
         runtime_testlib_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "lib",
         )
         runtime_testlib_include_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "include",
         )
@@ -833,6 +859,7 @@ class FlowRunner:
             "-lxtlm",
             "-flto",
         ]
+
         processes = []
         processes.append(
             self.do_call(

@@ -611,7 +611,7 @@ struct ConvertMulFToAIEVecMulElemOpPattern
 
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // bfloat16 type
+    // bfloat16 and float type
     if (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32))
       return failure();
 
@@ -634,10 +634,6 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     }
     // Only support the same lhs/rhs type at the moment
     if (lSrcType != rSrcType) {
-      return failure();
-    }
-    // Only support two bfloat16 inputs at the moment
-    if (lBitWidth != 16 || rBitWidth != 16) {
       return failure();
     }
 

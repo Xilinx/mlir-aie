@@ -531,7 +531,7 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     printer << tile;
-    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
+    if (dimsPerTileAttr && tileIdx < dimsPerTileAttr.size() &&
         dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
       printer << " fromStream ";
       printer.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);

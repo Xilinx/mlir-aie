@@ -129,26 +129,28 @@ struct AIEObjectFifoRegisterProcessPass
         consumersPerFifo[objFifo].pop();
       }
 
+      Operation *op = llvm::find_singleton<Operation>(
+          device.getOps<CoreOp>(),
+          [&tile](CoreOp coreOp, bool) {
+            return coreOp.getTile() == tile ? coreOp.getOperation() : nullptr;
+          },
+          /*AllowRepeats=*/false);
       // retrieve core associated to above tile or create new one
-      CoreOp *core = nullptr;
-      for (auto coreOp : device.getOps<CoreOp>())
-        if (coreOp.getTile() == tile) {
-          core = &coreOp;
-          break;
-        }
-      if (core == nullptr) {
-        auto coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
-                                             builder.getIndexType(), tile);
+      if (!op) {
+        CoreOp coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
+                                               builder.getIndexType(), tile);
         Region &r = coreOp.getBody();
         r.push_back(new Block);
         Block &block = r.back();
         builder.setInsertionPointToStart(&block);
         builder.create<EndOp>(builder.getUnknownLoc());
-        core = &coreOp;
+        builder.setInsertionPointToStart(&block);
+      } else {
+        CoreOp coreOp = llvm::dyn_cast<CoreOp>(op);
+        Region &r = coreOp.getBody();
+        Block &endBlock = r.back();
+        builder.setInsertionPointToStart(&endBlock);
       }
-      Region &r = core->getBody();
-      Block &endBlock = r.back();
-      builder.setInsertionPointToStart(&endBlock);
 
       // analyze pattern
       auto acqSize = registerOp.getAcquirePattern().size();

@@ -470,7 +470,16 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   let summary = "half dma operator";
 
   let description = [{
-    nd half dma operator
+    An nd half dma operator.
+
+    Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
+    pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
+    and `static_strides`. The operator references the target channel through the `metadata`
+    symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
+    when lowered further. The `issue_token` attribute specifies whether the execution of this
+    operation should issue a token which can be received and read for synchronization purposes.
+    This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
+    and **is always set to true for** `S2MM` channels.
   }];
 
   let arguments = (
@@ -485,7 +494,8 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
-        I64Attr:$id
+        I64Attr:$id,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
   );
 
   let assemblyFormat = [{
@@ -506,6 +516,35 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
   }];
 
+  let hasVerifier = 1;
+}
+
+def AIE_IpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
+  let summary = "Blocking operation to wait for a DMA to complete execution.";
+  let description = [{
+    The IpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
+    and issues a task-complete-token.
+
+    Example:
+    ```mlir
+      ...
+      aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
+      ...
+      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+      ...
+      aiex.ipu.dma_wait { symbol = @out0 }
+    ```
+    Here, we have an objectfifo with symbol name `out0`, which is then referenced in the
+    `ipu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
+    an `ipu.dma_wait` operation references the same symbol to block until the respective DMA
+    has executed all of its tasks.
+  }];
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol
+  );
+  let assemblyFormat = [{
+    attr-dict
+  }];
   let hasVerifier = 1;
 }
 
