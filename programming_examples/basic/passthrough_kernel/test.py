@@ -24,6 +24,7 @@ INOUT1_DATATYPE = np.uint8
 INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
 INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
 
+
 def main(opts):
 
     # Load instruction sequence
