@@ -8,7 +8,7 @@
 
 include ../../makefile-common
 
-VPATH := ../vision_kernels
+VPATH := ../../../aie_kernels/aie2
 
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080

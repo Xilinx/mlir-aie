@@ -8,7 +8,7 @@
 
 include ../../makefile-common
 
-VPATH := ../vision_kernels
+VPATH := ../../../aie_kernels/aie2
 
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
