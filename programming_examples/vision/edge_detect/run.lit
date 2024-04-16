@@ -3,11 +3,11 @@
 //
 // REQUIRES: ryzen_ai, opencv, chess
 //
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/rgba2gray.cc -o ./rgba2gray.cc.o
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/gray2rgba.cc -o ./gray2rgba.cc.o
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/threshold.cc -o ./threshold.cc.o
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/addWeighted.cc -o ./addWeighted.cc.o
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../vision_kernels/filter2d.cc -o ./filter2d.cc.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/rgba2gray.cc -o ./rgba2gray.cc.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/gray2rgba.cc -o ./gray2rgba.cc.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/threshold.cc -o ./threshold.cc.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/addWeighted.cc -o ./addWeighted.cc.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/filter2d.cc -o ./filter2d.cc.o
 // RUN: ar rvs combined_gray2rgba_addWeighted.a gray2rgba.cc.o addWeighted.cc.o
 // RUN: %python %S/aie2_edgeDetect.py 1920 1080 > ./aie.mlir
 // RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
