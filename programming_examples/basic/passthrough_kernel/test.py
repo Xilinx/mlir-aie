@@ -16,6 +16,7 @@ from aie.extras.dialects.ext import memref, arith
 
 import aie.utils.test as test_utils
 
+
 def main(opts):
 
     # Load instruction sequence
