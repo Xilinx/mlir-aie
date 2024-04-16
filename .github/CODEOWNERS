@@ -6,15 +6,15 @@ docs/               @stephenneuendorffer
 **/ADF/             @stephenneuendorffer
 **/AIEVec/          @jsetoain
 **/AIE/             @abisca @stephenneuendorffer @fifield @makslevental
-**/AIEX/            @makslevental
+**/AIEX/            @makslevental @jgmelber @abisca
 **/XLLVM/           @jsetoain
-**/AIETargetModel.* @stephenneuendorffer
+**/AIETargetModel.* @stephenneuendorffer @makslevental
 lib/CAPI            @makslevental
 lib/Conversion/AIEVecToLLVM/  @jsetoain
 lib/Target/LLVMIR/  @jsetoain
 lib/Targets/        @makslevental
-mlir_tutorials/     @denolf @jgmelber @fifield
-platforms/          @jackl-xilinx
+mlir_tutorials/     @denolf @jackl-xilinx @abisca @fifield
+platforms/          @jackl-xilinx @eddierichter-amd
 programming_examples/ @denolf @jgmelber @fifield
 python/             @makslevental
 reference_designs/  @denolf @jgmelber @fifield
@@ -26,4 +26,4 @@ test/objectFifo*/   @abisca
 tools/              @stephenneuendorffer @makslevental
 tools/aie2xclbin/   @erieaton-amd @newling
 tutorials/          @denolf
-utils/              @makslevental
+utils/              @makslevental @jackl-xilinx @jgmelber
