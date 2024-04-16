@@ -43,7 +43,7 @@ jobs:
   build-repo:
     name: Build and Test with AIE tools on Ryzen AI
 
-    runs-on: amd8700g
+    runs-on: [amd7940hs, amd8700g]
 
     steps:
 
