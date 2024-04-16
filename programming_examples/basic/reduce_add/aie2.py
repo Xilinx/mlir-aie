@@ -39,7 +39,6 @@ def my_reduce_add():
             memRef_O_ty = T.memref(1, T.i32())
 
             # AIE Core Function declarations
-
             reduce_add_vector = external_func(
                 "reduce_add_vector", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
             )
