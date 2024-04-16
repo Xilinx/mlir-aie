@@ -52,11 +52,8 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  // ------------------------------------------------------
-  // Configure this to match your design's buffer size
-  // ------------------------------------------------------
-  int INOUT0_VOLUME = 1024; // Input only, 64x uint32_t in this example
-  int INOUT1_VOLUME = 1;    // Not used in this example
+  int INOUT0_VOLUME = 1024;
+  int INOUT1_VOLUME = 1;
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
@@ -76,46 +73,12 @@ int main(int argc, const char *argv[]) {
   // Get device, load the xclbin & kernel and register them
   // ------------------------------------------------------
   // Get a device handle
-  unsigned int device_index = 0;
-  auto device = xrt::device(device_index);
+  xrt::device device;
+  xrt::kernel kernel;
 
-  // Load the xclbin
-  if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
-  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-
-  // Load the kernel
-  if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
-  std::string Node = vm["kernel"].as<std::string>();
-
-  // Get the kernel from the xclbin
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node, verbosity](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 if (verbosity >= 1) {
-                                   std::cout << "Name: " << name << std::endl;
-                                 }
-                                 return name.rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
-
-  // Register xclbin
-  if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
-              << "\n";
-  device.register_xclbin(xclbin);
-
-  // Get a hardware context
-  if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
-  xrt::hw_context context(device, xclbin.get_uuid());
-
-  // Get a kernel handle
-  if (verbosity >= 1)
-    std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::kernel(context, kernelName);
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
@@ -136,7 +99,7 @@ int main(int argc, const char *argv[]) {
 
   // Initialize Inout buffer 0
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
-  std::int32_t min = (std::int32_t)2147483647;
+  std::int32_t min = (std::int32_t)INT32_MAX;
   for (int i = 0; i < INOUT0_VOLUME; i++) {
     std::int32_t next = test_utils::random_int32_t(100000);
     if (next < min)
