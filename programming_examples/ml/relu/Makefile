@@ -8,30 +8,22 @@
 
 include ../../makefile-common
 
-targetname = testExp
+all: build/final.xclbin
 
-KERNELLIB = ${REPO_ROOT}/aie_kernels/aie2
+targetname = myReLU
 
-all: build/final.xclbin build/insts.txt
-
-build/exp.o: ${KERNELLIB}/bf16_exp.cc
+build/relu.o:
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I${INSTALL_ROOT}/aie_runtime_lib/AIE2 -c $< -o ${@F}
-
-build/lut_based_ops.o: ${INSTALL_ROOT}/aie_runtime_lib/AIE2/lut_based_ops.cpp
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I${INSTALL_ROOT}/aie_runtime_lib/AIE2 -c $< -o ${@F}
-
-build/kernels.a: build/exp.o build/lut_based_ops.o
-	ar rvs $@ $+
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/relu.cc -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/final.xclbin: build/aie.mlir build/kernels.a
+build/final.xclbin: build/aie.mlir build/relu.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
@@ -47,6 +39,8 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-clean: 
-	rm -rf build _build ${targetname}.exe 
+run_py: build/final.xclbin build/insts.txt
+	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
+clean:
+	rm -rf build _build ${targetname}.exe

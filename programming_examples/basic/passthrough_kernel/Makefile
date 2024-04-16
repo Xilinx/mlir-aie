@@ -8,7 +8,7 @@
 
 include ../../makefile-common
 
-VPATH := ../../../aie_kernels/aie_generic
+VPATH := ../../../aie_kernels/generic
 
 PASSTHROUGH_SIZE = 4096
 
