@@ -73,7 +73,6 @@ int main(int argc, const char *argv[]) {
   // Get device, load the xclbin & kernel and register them
   // ------------------------------------------------------
   // Get a device handle
-  
   xrt::device device;
   xrt::kernel kernel;
 
