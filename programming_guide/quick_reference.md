@@ -23,7 +23,7 @@
 | \<name\> = object_fifo(name, producerTile, consumerTiles, depth, datatype) | Initialize Object FIFO | of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) | The `producerTile` and `consumerTiles` inputs are AI Engine tiles. The `consumerTiles` may also be specified as an array of tiles for multiple consumers. |
 | \<name\> = \<objfifo_name\>.acquire(port, num_elem) | Acquire from Object FIFO | elem0 = of0.acquire(ObjectFifoPort.Produce, 1) | The `port` input is either `ObjectFifoPort.Produce` or `ObjectFifoPort.Consume`. The output may be either a single object or an array of objects which can then be indexed in an array-like fashion. |
 | \<objfifo_name\>.release(port, num_elem) | Release from Object FIFO | of0.release(ObjectFifoPort.Consume, 2) | The `port` input is either `ObjectFifoPort.Produce` or `ObjectFifoPort.Consume`. |
-| object_fifo_link(fifoIns, fifoOuts) | Create a link between Object FIFOs | object_fifo_link(of0, of1) | The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO. |
+| object_fifo_link(fifoIns, fifoOuts) | Create a link between Object FIFOs | object_fifo_link(of0, of1) | The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO. |
 
 ## Python helper functions
 | Function | Description |
