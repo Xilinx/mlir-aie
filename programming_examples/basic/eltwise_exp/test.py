@@ -9,8 +9,7 @@ import pyxrt as xrt
 import sys
 import time
 
-sys.path.append("../../programming_examples/utils")
-import test_utils
+from aie import test_utils
 
 # ------------------------------------------------------
 # Configure this to match your design's buffer size
