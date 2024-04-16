@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
