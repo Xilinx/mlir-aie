@@ -1,0 +1,29 @@
+.github             @makslevental @stephenneuendorffer
+aie_kernels/        @denolf @jgmelber @fifield
+aie_runtime_lib/    @stephenneuendorffer
+cmake/              @denolf @stephenneuendorffer
+docs/               @stephenneuendorffer
+**/ADF/             @stephenneuendorffer
+**/AIEVec/          @jsetoain
+**/AIE/             @abisca @stephenneuendorffer @fifield @makslevental
+**/AIEX/            @makslevental @jgmelber @abisca
+**/XLLVM/           @jsetoain
+**/AIETargetModel.* @stephenneuendorffer @makslevental
+lib/CAPI            @makslevental
+lib/Conversion/AIEVecToLLVM/  @jsetoain
+lib/Target/LLVMIR/  @jsetoain
+lib/Targets/        @makslevental
+mlir_tutorials/     @denolf @jackl-xilinx @abisca @fifield
+platforms/          @jackl-xilinx @eddierichter-amd
+programming_examples/ @denolf @jgmelber @fifield
+python/             @makslevental
+reference_designs/  @denolf @jgmelber @fifield
+runtime_lib/        @stephenneuendorffer
+test/aie2xclbin/    @erieaton-amd @newling
+test/aievec/        @jsetoain
+test/python/        @makslevental 
+test/objectFifo*/   @abisca
+tools/              @stephenneuendorffer @makslevental
+tools/aie2xclbin/   @erieaton-amd @newling
+tutorials/          @denolf
+utils/              @makslevental @jackl-xilinx @jgmelber
