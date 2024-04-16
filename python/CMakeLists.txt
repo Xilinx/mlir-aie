@@ -98,6 +98,13 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
     compiler/util.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Test
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    test_utils.py
+    trace_utils.py
+)
+
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   declare_mlir_python_sources(AIEPythonSources.XRT
     ADD_TO_PARENT AIEPythonSources
