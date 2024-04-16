@@ -16,7 +16,7 @@ from aie.extras.dialects.ext import memref, arith
 import sys
 
 
-def my_reduce_add():
+def my_reduce_max():
     N = 1024
 
     buffer_depth = 2
@@ -39,8 +39,8 @@ def my_reduce_add():
             memRef_O_ty = T.memref(1, T.i32())
 
             # AIE Core Function declarations
-            reduce_add_vector = external_func(
-                "reduce_add_vector", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
+            reduce_max_vector = external_func(
+                "reduce_max_vector", inputs=[memRef_I_ty, memRef_O_ty, T.i32()]
             )
 
             # Tile declarations
@@ -56,12 +56,12 @@ def my_reduce_add():
             # Set up compute tiles
 
             # Compute tile 2
-            @core(ComputeTile2, "reduce_add.cc.o")
+            @core(ComputeTile2, "reduce_max.cc.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(reduce_add_vector, [elem_in, elem_out, N])
+                    call(reduce_max_vector, [elem_in, elem_out, N])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
@@ -78,4 +78,4 @@ def my_reduce_add():
     print(ctx.module)
 
 
-my_reduce_add()
+my_reduce_max()
