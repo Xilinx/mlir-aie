@@ -6,27 +6,27 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
+include ../../makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
-targetname = vector_max
+targetname = reduce_max
 devicename = ipu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/generic/
+KERNEL_LIB=../../../aie_kernels/aie2
 
 all: build/final.xclbin build/insts.txt
 
-build/vector_max.o: ${KERNEL_LIB}/vector_max.cc
+build/reduce_max.cc.o: ${KERNEL_LIB}/reduce_max.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
-build/final.xclbin: build/aie.mlir build/vector_max.o
+build/final.xclbin: build/aie.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
@@ -73,4 +73,4 @@ vck5000: build/aie.mlir build/scale.o
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 clean: clean_trace
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe vector_max.o* vector_max.cc
+	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
