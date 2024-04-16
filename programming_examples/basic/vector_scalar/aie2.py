@@ -47,7 +47,9 @@ def pack4bytes(b3, b2, b1, b0):
 def configure_simple_tracing_aie2(
     tile, shim, channel, bd_id, ddr_id, size, offset, start, stop, events
 ):
-    assert shim.isShimTile()
+    # Shim has to be a... shim.  Also needs to be a NOC tile, but we don't have
+    # an easy way of checking that through python.
+    assert int(shim.row) == 0
 
     # Pad the input so we have exactly 8 events.
     events = (events + [0] * 8)[:8]
@@ -59,8 +61,8 @@ def configure_simple_tracing_aie2(
     #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
     # Configure so that "Event 1" (always true) causes tracing to start
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x340D0,
         value=pack4bytes(stop, start, 0, 0),
     )
@@ -68,26 +70,26 @@ def configure_simple_tracing_aie2(
     # This is used to control packet routing.  For the moment
     # only deal with the simple case of circuit routing.
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x340D4,
         value=0,
     )
     # 0x340E0: Trace Event Group 1  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x340E0,
-        value=pack4bytes(*events[0:3]),
+        value=pack4bytes(*events[0:4]),
     )
     # 0x340E4: Trace Event Group 2  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x340E4,
-        value=pack4bytes(*events[4:7]),
+        value=pack4bytes(*events[4:8]),
     )
 
     # 0x3FF00: Stream switch event port selection 0
@@ -98,14 +100,14 @@ def configure_simple_tracing_aie2(
         return port
 
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x3FF00,
         value=pack4bytes(0, 0, slave(1), master(1)),  # port 1 is FIFO0?
     )
     ipu_write32(
-        column=tile.col(),
-        row=tile.row(),
+        column=int(tile.col),
+        row=int(tile.row),
         address=0x3FF04,
         value=pack4bytes(0, 0, 0, 0),
     )
@@ -120,7 +122,7 @@ def configure_simple_tracing_aie2(
         out_of_order_id=0,
         packet_id=0,
         packet_type=0,
-        column=shim.col(),
+        column=int(shim.col),
         column_num=1,
         d0_size=0,
         d0_stride=0,
@@ -142,8 +144,8 @@ def configure_simple_tracing_aie2(
     )
     # configure S2MM channel
     ipu_write32(
-        column=shim.col(),
-        row=shim.row(),
+        column=int(shim.col),
+        row=int(shim.row),
         address=0x1D204 if channel == 0 else 0x1D20C,
         value=bd_id,
     )
@@ -158,7 +160,7 @@ def my_vector_scalar():
     buffer_depth = 2
 
     vectorized = True
-    enable_tracing = False
+    enable_tracing = True
     trace_size = 8192
 
     with mlir_mod_ctx() as ctx:
@@ -224,7 +226,7 @@ def my_vector_scalar():
                         offset=N_in_bytes,
                         start=0x1,
                         stop=0x0,
-                        events={0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F},
+                        events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                     )
 
                 ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
