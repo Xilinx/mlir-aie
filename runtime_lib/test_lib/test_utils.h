@@ -13,16 +13,16 @@
 #ifndef _TEST_UTILS_H_
 #define _TEST_UTILS_H_
 
+#include <boost/program_options.hpp>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdfloat>
 #include <string>
 #include <vector>
-
-#include <boost/program_options.hpp>
-#include <cmath>
 
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
@@ -44,12 +44,20 @@ void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                           int verbosity, std::string xclbinFileName,
                           std::string kernelNameInXclbin);
 
-static inline std::int16_t random_int16_t();
+static inline std::int16_t random_int16_t(int32_t range = 0x10000) {
+  return (std::int16_t)rand() % range;
+}
 
+static inline std::int32_t random_int32_t(int32_t range = 0x10000) {
+  return (std::int32_t)rand() % range;
+}
+
+#if defined(__STDCPP_BFLOAT16_T__)
 static inline std::bfloat16_t random_bfloat16_t(std::bfloat16_t scale,
                                                 std::bfloat16_t bias) {
   return std::bfloat16_t((scale * (float)rand() / (float)(RAND_MAX)) + bias);
 }
+#endif
 
 bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
                   float abs_th = FLT_MIN);
