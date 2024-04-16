@@ -11,3 +11,5 @@
 
 // CHECK: PASS!
 
+// RUN: XRT_HACK_UNSECURE_LOADING_XCLBIN=1 %PYTHON %S/test.py -x aie.xclbin -i insts.txt -k MLIR_AIE
+// CHECK: PASS!
