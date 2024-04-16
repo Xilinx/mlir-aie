@@ -27,7 +27,6 @@ def external_mem_to_core_L2():
 
             # AIE-array data movement with object fifos
             # Input
-            # Input
             of_in0 = object_fifo("in0", ShimTile, MemTile, 2, memRef_16_ty)
             of_in1 = object_fifo("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
             object_fifo_link(of_in0, of_in1)
@@ -53,9 +52,6 @@ def external_mem_to_core_L2():
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     of_out1.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-
-            # TODO: add the trace
-            # TODO: add drawing
 
     print(ctx.module)
 

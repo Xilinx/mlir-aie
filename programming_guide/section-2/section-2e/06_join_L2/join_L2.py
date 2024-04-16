@@ -95,9 +95,6 @@ def join_L2():
                     of_in4.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
-            # TODO: add the trace
-            # TODO: add drawing
-
     print(ctx.module)
 
 

@@ -45,9 +45,6 @@ def external_mem_to_core():
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
-            # TODO: add the trace
-            # TODO: add drawing
-
     print(ctx.module)
 
 

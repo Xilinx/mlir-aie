@@ -48,7 +48,7 @@ def distribute_L2():
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        memref.store(v1, elem_in, [i])
                         yield_([])
                     of_in1.release(ObjectFifoPort.Consume, 1)
                     yield_([])
@@ -62,7 +62,7 @@ def distribute_L2():
                     for i in for_(8):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        memref.store(v1, elem_in, [i])
                         yield_([])
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     yield_([])
@@ -94,9 +94,6 @@ def distribute_L2():
                         yield_([])
                     of_in4.release(ObjectFifoPort.Consume, 1)
                     yield_([])
-
-            # TODO: add the trace
-            # TODO: add drawing
 
     print(ctx.module)
 
