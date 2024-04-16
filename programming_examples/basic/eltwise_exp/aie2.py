@@ -3,17 +3,18 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-import sys
+from aie.dialects.aie import *  # primary mlir-aie dialect definitions
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects.scf import *
-from aie.extras.context import mlir_mod_ctx
+from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
+from aie.dialects.scf import *  # scf (strcutred control flow) dialect
+from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
 
-def my_eltwise_add():
+# AI Engine structural design function
+def my_eltwise_exp():
 
     word_size_in = 2
     N = 65536
@@ -30,10 +31,13 @@ def my_eltwise_add():
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
+    # ctx wrapper - to convert python to mlir
     with mlir_mod_ctx() as ctx:
 
+        # Dvice declaration - aie2 device IPU (aka Ryzen AI)
         @device(AIEDevice.ipu)
         def device_body():
+
             memRef_ty = T.memref(n, T.bf16())
 
             # Type used in the tile memory
@@ -46,8 +50,8 @@ def my_eltwise_add():
 
             # AIE Core Function declarations
 
-            exp_bf16_vector = external_func(
-                "exp_bf16_vector", inputs=[memRef_ty, memRef_ty]
+            exp_bf16_1024 = external_func(
+                "exp_bf16_1024", inputs=[memRef_ty, memRef_ty]
             )
 
             # Tile declarations
@@ -79,7 +83,7 @@ def my_eltwise_add():
             outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
             object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
-            # Set up compute tiles
+            # Compute tile bodies
             for i in range(n_cores):
                 # Compute tile i
                 @core(cores[i], "kernels.a")
@@ -93,7 +97,7 @@ def my_eltwise_add():
                                 ObjectFifoPort.Consume, 1
                             )
 
-                            call(exp_bf16_vector, [elem_in_a, elem_out])
+                            call(exp_bf16_1024, [elem_in_a, elem_out])
 
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume, 1
@@ -117,7 +121,9 @@ def my_eltwise_add():
                 )
                 ipu_sync(column=0, row=0, direction=0, channel=0)
 
+    # Print the mlir conversion
     print(ctx.module)
 
 
-my_eltwise_add()
+# Call design function to generate mlir code to stdout
+my_eltwise_exp()
