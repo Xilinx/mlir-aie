@@ -8,13 +8,14 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Basic Programming Examples</ins>
+# <ins>Explaining the weight expand examples</ins>
 
-These programming examples provide a good starting point to illustrate how to build commonly used compute kernels (both single core and multicore data processing pipelines). They serve to highlight how designs can be described in python and lowered through the mlir-aie tool flow to an executable that runs on the IPU. 
+The followning designs are different variations of upconverting 4-bit values to `bf16` values. In AIE2, 1024 `bf16` vales, takes 512 Clock Cycles (CC) to move to L1 and 64 CC to load from L1 to the core. A total of 576 CC. 
 
-* [Vector Bias Add](./vector_bias_add) - Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
-* [Hello World (Log version)](./log_hello_world) - Single tile performs a self-query and `printf` function where printed data is moved from local buffers to external memory to be read by the host processor.
-* [Matrix Multiplication](./matrix_multiplication) - Single tile performs a `matrix * matrix` multiply on int16 data type where `MxKxN` is `128x128x128`. The kernel itself computes `64x32x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
-* [Vector Scalar](./vector_scalar) - Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector*scalar compute.
-* [Vision Pipelines](./vision_pipelines) - More extensive vision processing pipeline designs such as Edge Detect and Color Thresholding are found here.
+* [weight_expand_trace_bf16_int4](./weight_expand_trace_bf16_int4) - Every 32 `int4` values shares one `bf16` scaler. Values are unpacked to `int8` and then `int16` to be converted to `bf16` and output is the product of the scaler and the values in `bf16`.
+The trace shows 293 CC for upconverting 1024 values. Total size of 1024x0.5B + 32x2B = 576 Bytes. It takes 144 CC to move to L1 and 18 CC to load from L1 to the core. In total: 293+144+18 = 455 CC
+
+* [weight_expand_trace_int16_int4](./weight_expand_trace_int16_int4) - Every 32 `int4` values shares one `int16` scaler. Values are unpacked to `int8` and then `int16`. Output is the product of the scaler and the values in `int16`. The trace shows 117 CC for upconverting 1024 values. Total size of 1024x0.5B + 32x2B = 576 Bytes. It takes 144 CC to move to L1 and 18 CC to load from L1 to the core. In total: 117+144+18 = 279 CC
+
+* [weight_expand_trace_bf16_u4_bf16](./weight_expand_trace_bf16_u4_bf16) - Every 32 `uint4` values shares one `bf16` scaler and one `bf16` minimum. Values are unpacked to `uint8` and then `uint16` to be casted to `int16` and then vonverted to `bf16` and output is the product of the scaler and the values in `bf16` plus the minimum. The trace shows 383 CC for upconverting 1024 values. Total size of 1024x0.5B + 32x4B = 640 Bytes. It takes 160 CC to move to L1 and 20 CC to load from L1 to the core. In total: 383+160+20 = 563 CC
 
