@@ -24,6 +24,24 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.bf.msc16.conf` (::xilinx::xllvm::MscConfBF16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32
+| `rhs` | vector of bfloat16 type values of length 32
+| `acc` | vector of 64-bit signless integer values of length 8
+| `conf` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.bf.mul16.conf` (::xilinx::xllvm::MulConfBF16IntrOp)
 
 #### Operands:
@@ -79,7 +97,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of 64-bit signless integer values of length 16
+| `a` | vector of 64-bit signless integer values of length 16
 | `shft` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
@@ -166,7 +184,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of 64-bit signless integer values of length 16
+| `a` | vector of 64-bit signless integer values of length 16
 | `shft` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
@@ -183,7 +201,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of 64-bit signless integer values of length 16
+| `a` | vector of 64-bit signless integer values of length 16
 | `shft` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
@@ -225,13 +243,30 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.upd.bf512.bf256` (::xilinx::xllvm::UpdBF512BF256IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `a` | vector of bfloat16 type values of length 32
+| `b` | vector of bfloat16 type values of length 16
+| `idx` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16IntrOp)
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of 64-bit signless integer values of length 8
+| `a` | vector of 64-bit signless integer values of length 8
 
 #### Results:
 
