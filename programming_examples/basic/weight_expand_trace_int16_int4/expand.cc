@@ -34,7 +34,7 @@ void expand(T_in *in, T_out *out) {
   event0();
   event0();
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(F, ) { // Ali modified 16 -> F
+    chess_prepare_for_pipelining chess_loop_range(F, ) { // 16 -> F
       aie::vector<T_sf, number_of_blocks> sfV = aie::load_v<number_of_blocks>(pSF); // Load number_of_blocks scale factors
       pSF += number_of_blocks; // Advance by the number of bytes
       event0();
@@ -42,7 +42,7 @@ void expand(T_in *in, T_out *out) {
           aie::vector<T_in, block_size> I0 = aie::load_v<block_size>(pI); // Load one block of input
           pI += block_size/2; // Advance by the number of bytes
 
-          int16 sf = sfV[k]; // Ali modified from sfV[k % number_of_blocks]
+          int16 sf = sfV[k]; // sfV[k % number_of_blocks]
 
           aie::vector<int16, block_size> sf_broadcast = aie::broadcast(sf);
 
