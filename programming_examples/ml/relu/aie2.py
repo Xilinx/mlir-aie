@@ -49,7 +49,7 @@ def my_relu():
 
             # AIE Core Function declarations
 
-            bf16_relu = external_func("bf16_relu", inputs=[memRef_ty, memRef_ty])
+            relu = external_func("bf16_relu", inputs=[memRef_ty, memRef_ty])
 
             # Tile declarations
             ShimTile = tile(0, 0)
@@ -87,7 +87,7 @@ def my_relu():
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
-                @core(cores[i], "bf16_relu.o")
+                @core(cores[i], "relu.o")
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         for _ in for_(tiles):
@@ -98,7 +98,7 @@ def my_relu():
                                 ObjectFifoPort.Consume, 1
                             )
 
-                            call(bf16_relu, [elem_in_a, elem_out])
+                            call(relu, [elem_in_a, elem_out])
 
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume, 1
