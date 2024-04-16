@@ -82,14 +82,6 @@ int main(int argc, const char *argv[]) {
 
   test_utils::parse_options(argc, argv, desc, vm);
 
-  try {
-    check_arg_file_exists(vm, "xclbin");
-    check_arg_file_exists(vm, "instr");
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    return 1;
-  }
-
   std::cout << "Running colorDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
