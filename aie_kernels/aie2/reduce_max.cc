@@ -32,7 +32,8 @@ void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
-void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out, const int32_t input_size) {
+void _reduce_max_scalar(int32_t *restrict in, int32_t *restrict out,
+                        const int32_t input_size) {
   int32_t running_max = (int32_t)-2147483648;
   for (int32_t i = 0; i < input_size; i++) {
     if (in[i] > running_max)
