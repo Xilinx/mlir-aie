@@ -31,7 +31,6 @@ def vector_softmax():
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-
     @device(AIEDevice.ipu)
     def device_body():
         memRef_ty = T.memref(n, T.bf16())
@@ -95,9 +94,7 @@ def vector_softmax():
 
                         call(softmax_bf16_vector, [elem_in_a, elem_out])
 
-                        inA_fifos[inA_fifo_names[i]].release(
-                            ObjectFifoPort.Consume, 1
-                        )
+                        inA_fifos[inA_fifo_names[i]].release(ObjectFifoPort.Consume, 1)
                         outC_fifos[outC_fifo_names[i]].release(
                             ObjectFifoPort.Produce, 1
                         )
@@ -109,7 +106,7 @@ def vector_softmax():
 
         # @FuncOp.from_py_func(A:tensor_ty, tensor_ty)
         @func.func
-        def sequence(A:tensor_ty, C:tensor_ty):
+        def sequence(A: tensor_ty, C: tensor_ty):
             ipu_dma_memcpy_nd(
                 metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
             )

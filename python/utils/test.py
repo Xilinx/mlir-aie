@@ -67,6 +67,7 @@ def parse_args(args):
     )
     return p.parse_args(args)
 
+
 # Add default args to standard parser object
 def create_default_argparser():
     p = argparse.ArgumentParser()
@@ -126,6 +127,7 @@ def create_default_argparser():
         help="where to store trace output",
     )
     return p
+
 
 def write_out_trace(trace_buffer, trace_size, trace_file):
     try:
