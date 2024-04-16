@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+from aie.trace_utils import *
 
 N = 1024
 
@@ -43,7 +44,7 @@ def passthroughKernel():
             ComputeTile2 = tile(0, 2)
 
             if enableTrace:
-                flow(ComputeTile2, "Trace", 0, ShimTile, "DMA", 1)
+                flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
@@ -71,84 +72,18 @@ def passthroughKernel():
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
                 if enableTrace:
-                    # Trace output
-
-                    # Trace_Event0, Trace_Event1: Select which events to trace.
-                    # Note that the event buffers only appear to be transferred to DDR in
-                    # bursts of 256 bytes. If less than 256 bytes are written, you may not
-                    # see trace output, or only see it on the next iteration of your
-                    # kernel invocation, as the buffer gets filled up. Note that, even
-                    # though events are encoded as 4 byte words, it may take more than 64
-                    # events to fill the buffer to 256 bytes and cause a flush, since
-                    # multiple repeating events can be 'compressed' by the trace mechanism.
-                    # In order to always generate sufficient events, we add the "assert
-                    # TRUE" event to one slot, which fires every cycle, and thus fills our
-                    # buffer quickly.
-
-                    # Some events:
-                    # TRUE                       (0x01)
-                    # STREAM_STALL               (0x18)
-                    # LOCK_STALL                 (0x1A)
-                    # EVENTS_CORE_INSTR_EVENT_1  (0x22)
-                    # EVENTS_CORE_INSTR_EVENT_0  (0x21)
-                    # INSTR_VECTOR               (0x25)  Core executes a vecotr MAC, ADD or compare instruction
-                    # INSTR_LOCK_ACQUIRE_REQ     (0x2C)  Core executes a lock acquire instruction
-                    # INSTR_LOCK_RELEASE_REQ     (0x2D)  Core executes a lock release instruction
-                    # EVENTS_CORE_PORT_RUNNING_1 (0x4F)
-                    # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
-
-                    # Trace_Event0  (4 slots)
-                    IpuWrite32(0, 2, 0x340E0, 0x4B222125)
-                    # Trace_Event1  (4 slots)
-                    IpuWrite32(0, 2, 0x340E4, 0x2D2C1A4F)
-
-                    # Event slots as configured above:
-                    # 0: Kernel executes vector instruction
-                    # 1: Event 0 -- Kernel starts
-                    # 2: Event 1 -- Kernel done
-                    # 3: Port_Running_0
-                    # 4: Port_Running_1
-                    # 5: Lock Stall
-                    # 6: Lock Acquire Instr
-                    # 7: Lock Release Instr
-
-                    # Stream_Switch_Event_Port_Selection_0
-                    # This is necessary to capture the Port_Running_0 and Port_Running_1 events
-                    IpuWrite32(0, 2, 0x3FF00, 0x121)
-
-                    # Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-                    IpuWrite32(0, 2, 0x340D0, 0x10000)
-
-                    # Start trace copy out.
-                    IpuWriteBdShimTile(
+                    configure_simple_tracing_aie2(
+                        ComputeTile2,
+                        ShimTile,
+                        channel=1,
                         bd_id=3,
-                        buffer_length=traceSizeInBytes,
-                        buffer_offset=tensorSize,
-                        enable_packet=0,
-                        out_of_order_id=0,
-                        packet_id=0,
-                        packet_type=0,
-                        column=0,
-                        column_num=1,
-                        d0_stride=0,
-                        d0_wrap=0,
-                        d1_stride=0,
-                        d1_wrap=0,
-                        d2_stride=0,
                         ddr_id=2,
-                        iteration_current=0,
-                        iteration_stride=0,
-                        iteration_wrap=0,
-                        lock_acq_enable=0,
-                        lock_acq_id=0,
-                        lock_acq_val=0,
-                        lock_rel_id=0,
-                        lock_rel_val=0,
-                        next_bd=0,
-                        use_next_bd=0,
-                        valid_bd=1,
+                        size=traceSizeInBytes,
+                        offset=tensorSize,
+                        start=0x1,
+                        stop=0x0,
+                        events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                     )
-                    IpuWrite32(0, 0, 0x1D20C, 0x3)
 
                 ipu_dma_memcpy_nd(
                     metadata="in",
