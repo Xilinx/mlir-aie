@@ -58,6 +58,8 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 ## Usage
 
+### C++ Testbench
+
 To compile the design and C++ testbench:
 
 ```
@@ -70,6 +72,8 @@ To run the design:
 ```
 make run
 ```
+
+### Python Testbench
 
 To compile the design and run the Python testbench:
 
