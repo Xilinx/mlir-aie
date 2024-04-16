@@ -43,7 +43,11 @@ else
 endif
 
 run: ${targetname}.exe build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
-	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE 
+
+run_py: build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
+	${powershell} python3 test.py -s ${PASSTHROUGH_SIZE} -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE
+
 
 clean:
 	rm -rf build _build ${targetname}.exe
