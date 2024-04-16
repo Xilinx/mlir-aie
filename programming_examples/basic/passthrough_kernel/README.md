@@ -26,7 +26,7 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates the pro
 
 <img align="right" width="300" height="300" src="../../../programming_guide/assets/passthrough_simple.svg"> 
 
-This simple example effectively passes data through a sincle compute tile the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
+This simple example effectively passes data through a single compute tile in the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
 1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
 1. The runtime data movement is expressed to read `4096` uint8_t data from host memory to the compute tile and write the `4096` data back to host memory. 
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". Note that a vectorized kernel running on the Compute Tile's AIE core copies the data from the input "object" to the output "object".

@@ -10,11 +10,11 @@
 
 # <ins>Section 2c - Data Layout Transformations</ins>
 
-While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some of the advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Data Movement Accelerators (DMAs). <u>This is available on AIE-ML devices.</u>
+While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Data Movement Accelerators (DMAs). <u>This is available on AIE-ML devices.</u>
 
-Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout is pushed differently than how it is stored in the tile's local memory. In the same way, a user can also specify how a DMA should store the data retrieved from the AXI stream.
+Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
-DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `/mlir-aie/install/python/aie/dialects/_aie_ops_gen.py` when the repository is built):
+DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
 ```
 def dma_bd
     (
@@ -37,35 +37,35 @@ A data layout transformation is presented as a list of pairs, where each pair re
 ```
 Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first element of this array gives the outer-most dimension's stride and size, while the last element of the array gives the inner-most dimension's stride and size. All strides are expressed in <u>multiples of the element width</u>.
 
-Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and it is possible to model the access pattern using a series of nested loops. For example, the transformation above can be expressed as:
+> **NOTE:**  Only for 4B data types the inner-most dimension's stride must be 1 by design.
+
+Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation above can be expressed as:
 ```
-int *buffer;  # i32
+int *buffer;
 for(int i = 0; i < size_2; i++)
     for(int j = 0; j < size_1; j++)
-    for(int k = 0; k < size_0; k++)
-        # access/store element at/to buffer[  i * stride_2
-        #                                   + j * stride_1
-        #                                   + k * stride_0]
+        for(int k = 0; k < size_0; k++)
+            # access/store element at/to buffer[  i * stride_2
+            #                                   + j * stride_1
+            #                                   + k * stride_0]
 ```
 
-As another example, here is an access pattern that corresponds to alternating between even and odd elements of the buffer/stream every 8 elements:
+As a practical example, here is an access pattern that corresponds to alternating between even and odd elements of the buffer/stream every 8 elements:
 ```
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
 ```
 which translates to:
 ```
-for(int i = 0; i < 8; i++)     # size_2
-    for(int j = 0; j < 2; j++) # size_1
-    for(int k = 0; k < 8; k++) # size_0
-        # access/store element at/to index:
-        (
-            i * 16  # stride_2 
-            + j * 1 # stride_1 
-            + k * 2 # stride_0
-        )
+for(int i = 0; i < 8; i++)          # size_2
+    for(int j = 0; j < 2; j++)      # size_1
+        for(int k = 0; k < 8; k++)  # size_0
+            # access/store element at/to index:
+            (
+                i * 16  # stride_2 
+                + j * 1 # stride_1 
+                + k * 2 # stride_0
+            )
 ```
-
-*Important Note: the inner-most dimension's stride must be 1 by design.*
 
 ### Data Layout Transformations with the Object FIFO
 
@@ -86,6 +86,7 @@ class object_fifo:
 
 The Object FIFO directly lowers to `AIE_DMABDOp` operations described above that can leverage data layout transformations expressed as pairs of strides and sizes. It uses the `dimensionsToStream` input in relation to the `producerTile` to describe in what layout that tile's DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMA's of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
+As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that, for every row out of two, selects one element out of two up to three elements.
 ```
 A = tile(1, 1)
 B = tile(1, 3)
@@ -95,18 +96,25 @@ of0 = object_fifo
         A,
         B,
         3,
-        T.memref(256, T.i32()),
+        T.memref((4, 8), T.i8()),
         [
-            (m, k),
-            (mtk // k, m * k),
-            (k, 1),
-        ],
-        [
-            [
-                (m, k),
-                (mtk // k, m * k),
-                (k, 1),
-            ]
+            (2, 16),
+            (3, 2),
         ],
     )
 ```
+The access pattern of the transformation can be written as:
+```
+for(int i = 0; i < 2; i++)      # size_1
+    for(int j = 0; j < 3; j++)  # size_0
+        # access/store element at/to index:
+        (
+            i * 16  # stride_1 
+            + j * 2 # stride_0
+        )
+```
+and further represented as in the image below,
+
+<img height="300" src="./../../assets/DataLayoutTransformation.svg">
+
+Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
