@@ -169,7 +169,6 @@ jobs:
           export DATETIME=$(date +"%Y%m%d%H")
           
           cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
           
           pushd utils/mlir_aie_wheels/python_bindings
           

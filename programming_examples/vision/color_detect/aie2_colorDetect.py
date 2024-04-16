@@ -10,7 +10,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import arith
-from aie.extras.dialects.ext.scf import range_, yield_
+from aie.dialects.scf import yield_, for_ as range_
 from aie.extras.context import mlir_mod_ctx
 from aie.ir import MemRefType, TypeAttr
 

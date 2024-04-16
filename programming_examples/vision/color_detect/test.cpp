@@ -20,7 +20,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "OpenCVUtils.h"
-#include "xrtUtils.h"
+#include "test_utils.h"
 
 double epsilon = 2.0;
 
@@ -95,8 +95,8 @@ int main(int argc, const char *argv[]) {
   }
 
   try {
-    check_arg_file_exists(vm, "xclbin");
-    check_arg_file_exists(vm, "instr");
+    test_utils::check_arg_file_exists(vm, "xclbin");
+    test_utils::check_arg_file_exists(vm, "instr");
   } catch (const std::exception &ex) {
     std::cerr << ex.what() << "\n\n";
     return 1;
@@ -148,7 +148,7 @@ int main(int argc, const char *argv[]) {
    ****************************************************************************
    */
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
@@ -162,8 +162,9 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
-                    vm["kernel"].as<std::string>());
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   /*
    ****************************************************************************
