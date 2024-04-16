@@ -16,5 +16,6 @@ M=256
 K=256
 N=256
 
-include ../makefile-common
+SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+include ${SELF_DIR}../makefile-common
 
