@@ -14,6 +14,7 @@
 #define _TEST_UTILS_H_
 
 #include <boost/program_options.hpp>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
