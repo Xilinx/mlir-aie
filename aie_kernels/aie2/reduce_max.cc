@@ -5,7 +5,8 @@
 
 #include <aie_api/aie.hpp>
 
-void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out, const int32_t input_size) {
+void _reduce_max_vector(int32_t *restrict in, int32_t *restrict out,
+                        const int32_t input_size) {
 
   v16int32 tiny = broadcast_to_v16int32((int32_t)-2147483648);
   const int32_t vector_size = 16;
