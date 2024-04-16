@@ -10,4 +10,10 @@
 
 # <ins>Single Buffer</ins>
 
-Point to programming_examples that use this.
+The design in [double_buffer.py](./double_buffer.py) uses an Object FIFO to transfer data from producer tile `ComputeTile2` to consumer tile `ComputeTile3`. The Object FIFO has a depth of `2` which describes a double buffer, or ping-pong buffer, between the two tiles as shown in the figure below.
+
+TODO: add drawing
+
+Both the producer and the consumer processes in this design have trivial tasks. The producer process running on `ComputeTile2` acquires the single buffer and writes `1` into all its entries before releasing it for consumption. The producer process running on `ComputeTile3` acquires the single buffer and immediately releases it back for the producer.
+
+TODO: Point to programming_examples that use this.

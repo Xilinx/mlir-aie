@@ -8,6 +8,8 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Single Buffer</ins>
+# <ins>Distribute from L2</ins>
 
-Point to programming_examples that use this.
+TODO: add drawing
+
+TODO: Point to programming_examples that use this.

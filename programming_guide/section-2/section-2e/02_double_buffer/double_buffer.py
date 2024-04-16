@@ -12,7 +12,7 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 
-def single_buffer():
+def double_buffer():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
@@ -33,13 +33,13 @@ def single_buffer():
             def core_body():
                 # Effective while(1)
                 for _ in for_(8):
-                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_out = of_in.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(16):
                         v0 = memref.load(elem_in, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
                         yield_([])
-                    of_out.release(ObjectFifoPort.Produce, 1)
+                    of_in.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
             # Compute tile 3
@@ -48,15 +48,10 @@ def single_buffer():
                 # Effective while(1)
                 for _ in for_(8):
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(16):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
-                        yield_([])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
     print(ctx.module)
 
 
-single_buffer()
+double_buffer()
