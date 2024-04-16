@@ -28,7 +28,7 @@ ComputeTiles = [tile(0, 2 + i) for i in range(n_cores)]
 ```
 Each compute tile can now be accessed by indexing into the `ComputeTiles` array.
 
-Once the tiles have been declared the next step is to setup the data movement using Object FIFOs. The simple design has a total of four double-buffered Object FIFOs and two object_fifo_links. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from the Shim tile to the Mem tile and is linked to `of_in1` which brings data from the Mem tile to the compute tile. For the output side, `of_out1` brings data from the compute tile to the Mem tile where it is linked to `of_out` to bring the data out through the Shim tile. The corresponding code is shown below:
+Once the tiles have been declared the next step is to setup the data movement using Object FIFOs. The simple design has a total of four double-buffered Object FIFOs and two object_fifo_links. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from the Shim tile to the Mem tile and is linked to `of_in0` which brings data from the Mem tile to the compute tile. For the output side, `of_out0` brings data from the compute tile to the Mem tile where it is linked to `of_out` to bring the data out through the Shim tile. The corresponding code is shown below:
 ```
 data_size = 48
 buffer_depth = 2
@@ -38,18 +38,18 @@ memRef_48_ty = T.memref(48, T.i32())
 # Input data movement
 
 of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_data_ty)
-of_in1 = object_fifo("in1", MemTile, ComputeTile, buffer_depth, memRef_data_ty)
-object_fifo_link(of_in, of_in1)
+of_in1 = object_fifo("in0", MemTile, ComputeTile, buffer_depth, memRef_data_ty)
+object_fifo_link(of_in, of_in0)
 
 
 # Output data movement
 
 of_out = object_fifo("out", MemTile, ShimTile, buffer_depth, memRef_data_ty)
-of_out1 = object_fifo("out1", ComputeTile, MemTile, buffer_depth, memRef_data_ty)
-object_fifo_link(of_out1, of_out)
+of_out0 = object_fifo("out0", ComputeTile, MemTile, buffer_depth, memRef_data_ty)
+object_fifo_link(of_out0, of_out)
 ```
 
-<img src="../../assets/SimpleDesign.png" height="300">
+<img src="../../assets/SingleDesign.svg" height="300" width="700">
 
 We can apply the same method as in the tile declaration to generate the data movement from the Mem tile to the three compute tiles and back. The `object_fifo_link` operations change from the 1-to-1 case to distributing the original `<48xi32>` data tensors to the three compute tiles as smaller `<16xi32>` tensors on the input side, and to joining the output from each compute tile to the Mem tile on the output side. A list of names and a map from names to Object FIFO is used in order to keep track of the input and output Object FIFOs. With these changes the code becomes:
 ```
@@ -88,7 +88,7 @@ for i in range(n_cores):
 object_fifo_link([outX_fifo_names], of_out)
 ```
 
-<img src="../../assets/MultiDesign.png" width="1000">
+<img src="../../assets/MultiDesign.svg" width="1000">
 
 The core of this simple design acquires one object of each Object FIFO, adds `1` to each entry of the incoming data, copies it to the object of the outgoing Object FIFO, then releases both objects:
 ```
@@ -96,15 +96,15 @@ The core of this simple design acquires one object of each Object FIFO, adds `1`
 def core_body():
     # Effective while(1)
     for _ in for_(0xFFFFFFFF):
-        elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
-        elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
+        elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
+        elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
         for i in for_(data_size):
             v0 = memref.load(elem_in, [i])
             v1 = arith.addi(v0, arith.constant(1, T.i32()))
             memref.store(v1, elem_out, [i])
             yield_([])
-        of_in1.release(ObjectFifoPort.Consume, 1)
-        of_out1.release(ObjectFifoPort.Produce, 1)
+        of_in0.release(ObjectFifoPort.Consume, 1)
+        of_out0.release(ObjectFifoPort.Produce, 1)
         yield_([])
 ```
 Once again we apply the same logic and use a for loop over our three cores to write the code which will be executed on the three compute tiles. Each tile will index the `inX_fifos` and `outX_fifos` maps to retrieve the Object FIFOs it will acquire and release from. This process results in the following code:
