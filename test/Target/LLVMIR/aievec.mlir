@@ -30,6 +30,22 @@ llvm.func @mac_conf_bf16(%A : vector<32xbf16>,
     llvm.return %0 : vector<8xi64>
 }
 
+// ----- MSC ----- 
+
+// CHECK-LABEL: define <8 x i64> @msc_conf_bf16
+llvm.func @msc_conf_bf16(%A : vector<32xbf16>,
+                         %B : vector<32xbf16>,
+                         %Acc : vector<8xi64>,
+                         %cfg : i32)
+                         -> vector<8xi64> {
+    // CHECK: call <8 x i64> @llvm.aie2.bf.msc16.conf(
+    // CHECK-SAME: <32 x bfloat> %{{[0-9]+}}, <32 x bfloat> %{{[0-9]+}},
+    // CHECK-SAME: <8 x i64> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.bf.msc16.conf"(%A, %B, %Acc, %cfg) : 
+        (vector<32xbf16>, vector<32xbf16>, vector<8xi64>, i32) -> vector<8xi64>
+    llvm.return %0 : vector<8xi64>
+}
+
 // ----- MUL ----- 
 
 // CHECK-LABEL: define <16 x i64> @mul_conf_acc32
@@ -192,4 +208,14 @@ llvm.func @undef_v16i32() -> vector<16xi32> {
     // CHECK: call <16 x i32> @llvm.aie2.v16int32(
     %0 ="xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
     llvm.return %0 : vector<16xi32>
+}
+
+// ----- UPD ----- 
+
+// CHECK-LABEL: define <32 x bfloat> @upd_bf512_bf256
+llvm.func @upd_bf512_bf256(%a : vector<32xbf16>, %b : vector<16xbf16>, %idx : i32) -> vector<32xbf16> {
+    // CHECK: call <32 x bfloat> @llvm.aie2.upd.bf512.bf256(
+    // CHECK-SAME: <32 x bfloat> %{{[0-9]+}}, <16 x bfloat> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.upd.bf512.bf256"(%a, %b, %idx) : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
+    llvm.return %0 : vector<32xbf16>
 }
