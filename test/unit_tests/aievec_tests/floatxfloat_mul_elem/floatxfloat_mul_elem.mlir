@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 // REQUIRES: valid_xchess_license
 // RUN: mkdir -p %t/data; cd %t
