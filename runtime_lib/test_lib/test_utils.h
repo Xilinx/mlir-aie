@@ -21,7 +21,9 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#if defined(__STDCPP_BFLOAT16_T__)
 #include <stdfloat>
+#endif
 #include <string>
 #include <vector>
 
