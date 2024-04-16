@@ -313,7 +313,10 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     // repeat_count
     repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
 
-    // issue_token
+    // Set the issue_token
+    issue_token = BoolAttr::get(ctx, op.getIssueToken());
+    // Earlier, all S2MM channels were implicitly assumed to issue a token.
+    // This logic is kept for now for backward compatibility.
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
@@ -332,6 +335,41 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
   }
 };
 
+/// Convert IpuDmaWaitOp into IpuSyncOp by retrieving the necessary
+/// information from the ShimDMAAllocationOp referenced through the
+/// symbol argument of this op.
+struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  DmaWaitToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
+
+  LogicalResult
+  matchAndRewrite(IpuDmaWaitOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
+    if (!dev)
+      return op.emitOpError("couldn't find parent of type DeviceOp");
+
+    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
+        getAllocOpForSymbol(dev, op.getSymbol());
+    if (!shimDmaAllocOp) {
+      op.emitOpError("couldn't find shim_dma_allocation op");
+      return failure();
+    }
+    AIE::DMAChannelDir channelDir = shimDmaAllocOp->getChannelDir();
+    int channel = shimDmaAllocOp->getChannelIndex();
+    int direction = (int)(channelDir == AIE::DMAChannelDir::MM2S);
+    int column = shimDmaAllocOp->getCol();
+
+    // Create with `column_num == 1` and `row_num == 1` to check for a single
+    // column and row. Row is always 0 for shim tiles.
+    (void)rewriter.replaceOpWithNewOp<IpuSyncOp>(op, column, 0, direction,
+                                                 channel, 1, 1);
+    return success();
+  }
+};
+
 struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
   void runOnOperation() override {
 
@@ -343,10 +381,12 @@ struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addIllegalOp<IpuWriteRTPOp>();
     target.addIllegalOp<IpuDmaMemcpyNdOp>();
+    target.addIllegalOp<IpuDmaWaitOp>();
     target.addIllegalOp<IpuShimTilePushQueueOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<DmaToIpuPattern>(&getContext());
+    patterns.insert<DmaWaitToIpuPattern>(&getContext());
     patterns.insert<PushToIpuPattern>(&getContext());
     patterns.insert<RtpToIpuPattern>(&getContext());
 

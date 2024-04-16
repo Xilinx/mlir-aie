@@ -48,6 +48,7 @@ struct AIEXToStandardPass : AIEXToStandardBase<AIEXToStandardPass> {
     ConversionTarget target(getContext());
     RewritePatternSet removepatterns(&getContext());
     removepatterns.add<AIEXOpRemoval<IpuDmaMemcpyNdOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuDmaWaitOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<IpuShimTilePushQueueOp>>(m.getContext(),
                                                               m);
     removepatterns.add<AIEXOpRemoval<IpuWriteRTPOp>>(m.getContext(), m);
