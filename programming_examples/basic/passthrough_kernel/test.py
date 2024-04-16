@@ -3,26 +3,18 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 
-# import argparse
 import numpy as np
 import pyxrt as xrt
 import sys
 import time
 
+from aie.dialects.aie import *
+from aie.dialects.aiex import *
+from aie.dialects.scf import *
+from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext import memref, arith
+
 import aie.utils.test as test_utils
-
-# ------------------------------------------------------
-# Configure this to match your design's buffer size
-# ------------------------------------------------------
-INOUT0_VOLUME = 4096  # Input only, 4096x uint8_t in this example
-INOUT1_VOLUME = 4096  # Output only, 4096x uint8_t in this example
-
-INOUT0_DATATYPE = np.uint8
-INOUT1_DATATYPE = np.uint8
-
-INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
-INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
-
 
 def main(opts):
 
@@ -32,32 +24,22 @@ def main(opts):
         instr_text = [l for l in instr_text if l != ""]
         instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
 
+    # ------------------------------------------------------------
+    # Configure this to match your design's buffer size and type
+    # ------------------------------------------------------------
+    INOUT0_VOLUME = int(opts.size)  # Input only, 64x uint32_t in this example
+    INOUT1_VOLUME = int(opts.size)  # Output only, 64x uint32_t in this example
+
+    INOUT0_DATATYPE = np.uint8
+    INOUT1_DATATYPE = np.uint8
+
+    INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
+    INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
+
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-
-    # Get a device handle
-    device = xrt.device(0)
-
-    # Load the xclbin
-    xclbin = xrt.xclbin(opts.xclbin)
-
-    # Load the kernel
-    kernels = xclbin.get_kernels()
-    try:
-        xkernel = [k for k in kernels if opts.kernel in k.get_name()][0]
-    except:
-        print(f"Kernel '{opts.kernel}' not found in '{opts.xclbin}'")
-        exit(-1)
-
-    # Register xclbin
-    device.register_xclbin(xclbin)
-
-    # Get a hardware context
-    context = xrt.hw_context(device, xclbin.get_uuid())
-
-    # get a kernel handle
-    kernel = xrt.kernel(context, xkernel.get_name())
+    (device, kernel) = test_utils.init_xrt_load_kernel(opts)
 
     # ------------------------------------------------------
     # Initialize input/ output buffer sizes and sync them
@@ -83,57 +65,32 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize run configs
     # ------------------------------------------------------
-    num_iter = opts.iters + opts.warmup_iters
-    npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
     errors = 0
 
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
-    for i in range(num_iter):
-        # Run kernel
+
+    # Run kernel
+    if opts.verbosity >= 1:
+        print("Running Kernel.")
+    h = kernel(bo_instr, len(instr_v), bo_inout0, bo_inout1)
+    h.wait()
+    bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+
+    # Copy output results and verify they are correct
+    out_size = INOUT1_SIZE
+    output_buffer = bo_inout1.read(out_size, 0).view(INOUT1_DATATYPE)
+    if opts.verify:
         if opts.verbosity >= 1:
-            print("Running Kernel.")
-        start = time.time_ns()
-        h = kernel(bo_instr, len(instr_v), bo_inout0, bo_inout1)
-        h.wait()
-        stop = time.time_ns()
-        bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-
-        # Warmup iterations do not count towards average runtime.
-        if i < opts.warmup_iters:
-            continue
-
-        # Copy output results and verify they are correct
-        out_size = INOUT1_SIZE + opts.trace_size
-        output_buffer = bo_inout1.read(out_size, 0).view(INOUT1_DATATYPE)
-        if opts.verify:
-            if opts.verbosity >= 1:
-                print("Verifying results ...")
-            ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE)
-            e = np.equal(output_buffer, ref)
-            errors = errors + np.size(e) - np.count_nonzero(e)
-
-        # Write trace values if trace_size > 0
-        if opts.trace_size > 0:
-            print("Do something with trace!")
-
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
-        npu_time_min = min(npu_time_min, npu_time)
-        npu_time_max = max(npu_time_max, npu_time)
+            print("Verifying results ...")
+        ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE)
+        e = np.equal(output_buffer, ref)
+        errors = errors + np.size(e) - np.count_nonzero(e)
 
     # ------------------------------------------------------
     # Print verification and timing results
     # ------------------------------------------------------
-
-    # TODO - Mac count to guide gflops
-
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / opts.iters) / 1000)))
-    print("\nMin NPU time: {}us.".format(int((npu_time_min / opts.iters) / 1000)))
-    print("\nMax NPU time: {}us.".format(int((npu_time_max / opts.iters) / 1000)))
 
     if not errors:
         print("\nPASS!\n")
@@ -145,5 +102,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    opts = test_utils.parse_args(sys.argv[1:])
+    p = test_utils.create_default_argparser()
+    p.add_argument("-s","--size", required=True, dest="size", help="Passthrough kernel size")
+    opts = p.parse_args(sys.argv[1:])
     main(opts)
