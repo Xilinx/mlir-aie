@@ -26,6 +26,15 @@ declare_mlir_python_sources(AIEPythonSources.Util
     util.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Utils
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    utils/test.py
+    utils/xrt.py
+    utils/ml.py
+    utils/trace.py
+)
+
 declare_mlir_python_sources(AIEPythonSources.Extras
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
