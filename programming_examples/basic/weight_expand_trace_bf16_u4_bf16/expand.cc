@@ -35,7 +35,7 @@ void expand(T_in *in, T_out *out) {
   event0();
   event0();
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(F, ) { // Ali modified 16 -> F
+    chess_prepare_for_pipelining chess_loop_range(F, ) { // 16 -> F
       aie::vector<T_sf, number_of_blocks> sfV = aie::load_v<number_of_blocks>(pSF); // Load number_of_blocks scale factors
       pSF += number_of_blocks; // Advance by the number of bytes
       aie::vector<T_sf, number_of_blocks> minV = aie::load_v<number_of_blocks>(pMIN); // Load number_of_blocks mins
