@@ -16,7 +16,7 @@ from aie.extras.context import mlir_mod_ctx
 def my_eltwise_add():
 
     word_size_in = 2
-    N = 262144 #*1024
+    N = 262144  # *1024
     N_in_bytes = N * word_size_in
 
     A_sz_in_i32s = N_in_bytes // 4
@@ -46,8 +46,8 @@ def my_eltwise_add():
 
             # AIE Core Function declarations
 
-            exp_bf16_vector = external_func(
-                "exp_bf16_vector", inputs=[memRef_ty, memRef_ty]
+            softmax_bf16_vector = external_func(
+                "softmax_bf16_vector", inputs=[memRef_ty, memRef_ty]
             )
 
             # Tile declarations
@@ -93,7 +93,7 @@ def my_eltwise_add():
                                 ObjectFifoPort.Consume, 1
                             )
 
-                            call(exp_bf16_vector, [elem_in_a, elem_out])
+                            call(softmax_bf16_vector, [elem_in_a, elem_out])
 
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume, 1
