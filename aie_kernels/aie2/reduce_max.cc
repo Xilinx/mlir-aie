@@ -46,6 +46,8 @@ extern "C" {
 
 void reduce_max_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) { _reduce_max_vector(a_in, c_out, input_size); }
 
-void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) { _reduce_max_scalar(a_in, c_out, input_size); }
+void reduce_max_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
+  _reduce_max_scalar(a_in, c_out, input_size);
+}
 
 } // extern "C"
