@@ -9,19 +9,11 @@
 //===----------------------------------------------------------------------===//-->
 
 # <ins>The Bottleneck Block</ins>
+## Introduction
+The bottleneck block is a key component in deep neural network architectures like ResNet. It is designed to help address the challenge of training very deep networks by reducing the computational cost while maintaining or improving performance. This README provides an overview of the process and considerations for accelerating a single bottleneck block.
 
-The bottleneck block is a key component in deep neural network architectures like ResNet. It is designed to help address the challenge of training very deep networks by reducing the computational cost while maintaining or improving performance.
 
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="bottleneck_block.png">
-  <img alt="block" src="bottleneck_block.png" width="250" height="400">
-</picture>
-  <h3 align="center">Bottleneck block has a 1x1 convolution layer for dimension reduction, a 3x3 convolution layer, and a 1x1 convolution layer for dimension restoration.
-  </h3>
-</p>
-
+## Residual Block Overview
 The components and functionality of a standard bottleneck block:
 
 * Identity Mapping: The core idea behind bottleneck blocks is the concept of identity mapping. Traditional neural network layers aim to learn a mapping from input to output. In contrast, a bottleneck block learns a residual mapping, which is the difference between the input and the output. The original input is then added back to this residual mapping to obtain the final output. Mathematically, this can be represented as `output = input+ residual.`
@@ -35,8 +27,27 @@ The components and functionality of a standard bottleneck block:
 * Skip Connection (Identity Shortcut): This is the hallmark of bottleneck blocks. The skip connection directly passes the input from one layer to a later layer without any modification. It provides an alternative, shorter path for gradient flow during training. If the input and output dimensions of the bottleneck block are the same, the skip connection directly adds the input to the output. If the dimensions differ, the skip connection might include a 1x1 convolutional layer to adjust the dimensions accordingly.
 
 * Final Output: The final output of the bottleneck block is obtained by adding the input to the output of the convolutional layers (including any adjustments made to match dimensions via the skip connection).
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="bottleneck_block.png">
+  <img alt="block" src="bottleneck_block.png"  height="400">
+</picture>
+  <h3 align="center">Bottleneck block has a 1x1 convolution layer for dimension reduction, a 3x3 convolution layer, and a 1x1 convolution layer for dimension restoration.
+  </h3>
+</p>
 
-To optimize convolution operations on AIE, we vectorize the code using AIE vector intrinsics. We load 8 elements of the input channel into vector registers using vector load intrinsic. We apply the convolution operation on this loaded data, utilizing for enhanced computational efficiency. To ensure accurate convolution results, particularly at the edges of feature maps, we implement zero-padding to handle boundary conditions. This comprehensive approach optimizes convolution processing on AIE, facilitating efficient and accurate feature extraction in neural network applications. Input is 4x8 matrix corresponding to 4 element of row and 8 input channels.
+## Acceleration Techniques
+1. Depth-First Implementation: Spatial architectures provide coarse-grained flexibility that allows for tailoring of the dataflow to optimize data movement. By tailoring the dataflow, we implement depth-first schedule for a bottleneck block  routing the output of one convolutional operation on an AIE core directly to another convolutional operation on a separate AIE core, all without the need to transfer intermediate results off-chip. This approach effectively minimizes the memory footprint associated with intermediate data, mitigating the overhead of costly off-chip accesses leading to increase in the overall performance.
+
+
+
+2. Kernel Optimzation: To optimize convolution operations on AIE, we vectorize the code using AIE vector intrinsics. We load 8 elements of the input channel into vector registers using vector load intrinsic. We apply the convolution operation on this loaded data, utilizing for enhanced computational efficiency. To ensure accurate convolution results, particularly at the edges of feature maps, we implement zero-padding to handle boundary conditions. This comprehensive approach optimizes convolution processing on AIE, facilitating efficient and accurate feature extraction in neural network applications. Input is 4x8 matrix corresponding to 4 element of row and 8 input channels.
+
+3. Quantization: We use int8 precision for activationa and weights. At int8 precision, AIE offers the highest compute density with 256 MAC/cycle.  
+
+4. Layer Fused: We perform two levels of fusion. First, we fuse ReLU in convolution using SRS capabilities of AIE. Second, we fuse BatchNorm into convolution weights. 
+
+5. Data Layout: Optimize activation and weight layout to enhance memory access patterns and enables effective utilization of AIE parallel processing units, ultimately improving the performance of 2D convolution operations. 
 
 ## Data Layout
 We need to ensure that the data layout is compatible with efficient SIMD processing and rearrange the input data into a format where contiguous elements represent consecutive X-dimension values for each channel. For more efficient processing, we adopt a channels-last memory ordering, denoted as NYCXC8, to ensure that channels become the densest dimension. Operating on 8 elements simultaneously, we process 8 channels with the same width at once. Subsequently, we traverse the entire width dimension, handling the remaining channels in batches of 8. This process continues row-wise, resulting in our final data layout pattern: NYCXC8. This optimized layout enhances memory access patterns and enables effective utilization of parallel processing units, ultimately improving the performance of 2D convolution operations. This transformation ensures that data can be efficiently loaded into SIMD registers and processed in parallel. 
