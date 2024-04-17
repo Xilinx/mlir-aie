@@ -359,6 +359,13 @@ class MulElemOpConversion
 public:
   using ConvertOpToLLVMPattern<aievec::MulElemOp>::ConvertOpToLLVMPattern;
 
+  MulElemOpConversion(const LLVMTypeConverter &typeConverter,
+                      Aie2Fp32Emulation aie2Fp32EmulationOption)
+      : ConvertOpToLLVMPattern(typeConverter),
+        aie2Fp32EmulationOption(aie2Fp32EmulationOption) {}
+
+  Aie2Fp32Emulation aie2Fp32EmulationOption;
+
   struct DecodedMulElemOp {
     enum class Kind {
       // DtIn0_DtIn1_DtRes_CxMxKxN
@@ -681,10 +688,7 @@ public:
     auto [d, e, f] =
         extractV16FP32ToThreeV16BF16(adaptor.getRhs(), dZeros, eZeros, fZeros);
 
-    // 1 MUL + 8 * MACs
-    auto cfMul = rewriter.create<xllvm::MulConfBF16IntrOp>(
-        loc, VectorType::get({8}, rewriter.getI64Type()), c, f,
-        mscMacMulConfCst);
+    // Create 1 MUL and 2/5/8 MACs depending on the Aie2Fp32EmulationOption
     auto createMacOps = [&](Value lhs, Value rhs, Value acc) -> Value {
       return rewriter
           .create<xllvm::MacConfBF16IntrOp>(
@@ -692,23 +696,66 @@ public:
               mscMacMulConfCst)
           .getResult();
     };
-    auto adMac = createMacOps(
-        a, d,
-        createMacOps(
-            a, e,
-            createMacOps(
-                b, d,
-                createMacOps(
-                    d, c,
-                    createMacOps(
-                        b, e,
-                        createMacOps(
-                            a, f,
-                            createMacOps(b, f, createMacOps(c, e, cfMul))))))));
+
+    Value finalMacVal;
+    if (aie2Fp32EmulationOption == Aie2Fp32Emulation::AccuracyFast) {
+      // Fast and Accurate option. float a*b would require 6 mac operations.
+      // Input fp32 number is split in to 3 bfloat16 numbers to extract all the
+      // bits of the mantissa. float a,b; both a and b are split in to 3
+      // bfloat16 numbers each. Hence there would be 9 mac operations in
+      // multiplication of a and b. In the 9 mac operations to emulate fp32 mul,
+      // mac operations with LSBs are ignored. (3 last terms). This helps
+      // improve cycle count of mul and has least impact on accuracy of result.
+      // This is the default option to the aiecompiler
+      auto afMul = rewriter.create<xllvm::MulConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()), a, f,
+          mscMacMulConfCst);
+      finalMacVal = createMacOps(
+          a, d,
+          createMacOps(
+              a, e,
+              createMacOps(b, d,
+                           createMacOps(d, c, createMacOps(b, e, afMul)))));
+    } else if (aie2Fp32EmulationOption == Aie2Fp32Emulation::AccuracyLow) {
+      // Fast and least accurate option. float a*b would require 3 mac
+      // operations.
+      // Input fp32 number is split in to 2 bfloat16 numbers. Hence not all the
+      // bits from mantissa can be used. float a,b; Both a and b are split in to
+      // 2 bfloat16 numbers each. Hence there would be 4 mac operations in
+      // multiplication of a and b. In the 4 mac operations to emulate fp32 mul,
+      // mac operations with LSBs are ignored. (1 last term). This helps improve
+      // cycle count of mul float a, b;
+      auto bdMul = rewriter.create<xllvm::MulConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()), b, d,
+          mscMacMulConfCst);
+      finalMacVal = createMacOps(a, d, createMacOps(a, e, bdMul));
+    } else {
+      // aie2Fp32EmulationOption == Aie2Fp32Emulation::AccuracySafe
+      // Most accurate option since input fp32 number is split in to 3 bfloat16
+      // numbers to extract all the bits of the mantissa. float a*b would
+      // require 9 mac operations due to 3 bfloat16 splits each.
+      auto cfMul = rewriter.create<xllvm::MulConfBF16IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()), c, f,
+          mscMacMulConfCst);
+      finalMacVal = createMacOps(
+          a, d,
+          createMacOps(
+              a, e,
+              createMacOps(
+                  b, d,
+                  createMacOps(
+                      d, c,
+                      createMacOps(
+                          b, e,
+                          createMacOps(
+                              a, f,
+                              createMacOps(b, f,
+                                           createMacOps(c, e, cfMul))))))));
+    }
 
     // create bitcast for result
     rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 adMac);
+                                                 finalMacVal);
     return success();
   }
 
@@ -1457,8 +1504,9 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   }
 };
 
-void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
-                                            mlir::RewritePatternSet &patterns) {
+void populateAIEVecToLLVMConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
+    Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // clang-format off
   patterns.add<AddOpConversion,
                SubOpConversion,
@@ -1475,9 +1523,9 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                BroadcastOpConversion,
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
-               MulElemOpConversion,
                MatMulOpConversion,
                FoldAIECastOps>(converter);
+  patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   // clang-format on
 }
 
@@ -1492,7 +1540,8 @@ struct ConvertAIEVecToLLVMPass
     converter.addConversion(
         [&](VectorType type) -> std::optional<Type> { return type; });
 
-    populateAIEVecToLLVMConversionPatterns(converter, patterns);
+    populateAIEVecToLLVMConversionPatterns(converter, patterns,
+                                           aie2Fp32Emulation);
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<AIEVecDialect>();
