@@ -160,9 +160,6 @@ int main(int argc, const char *argv[]) {
     std::uint16_t u16= (std::uint16_t)i;
     std::bfloat16_t bf16 = *(std::bfloat16_t *)&u16;
     AVec[i] = bf16;
-
-    //AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)2.0,
-    //                                        (std::bfloat16_t)-1.0);
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 

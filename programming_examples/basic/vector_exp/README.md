@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Eltwise exp:
+# Eltwise exp
 
 This example shows how the look up table capability of the AIE can be used to perform approximations to well known functions like e^x. 
 This design uses 4 cores, and each core operates on `1024 bfloat16` numbers.  Each core contains a lookup table approximation of the e^x function, which is then used to perform the e^x operation.  
