@@ -1,13 +1,41 @@
-<!---//===- README.md --------------------------*- Markdown -*-===//
+<!---//===- README.md -----------------------------------------*- Markdown -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Eltwise Exp</ins>
+# Eltwise exp
 
-A simple element wise exponent function, using the look up table capabilities of the AI Engine
+This example shows how the look up table capability of the AIE can be used to perform approximations to well known functions like e^x. 
+This design uses 4 cores, and each core operates on `1024 bfloat16` numbers.  Each core contains a lookup table approximation of the e^x function, which is then used to perform the e^x operation.  
+e^x is typically used in machine learning applications with relatively small numbers, typically around 0..1, and also will return infinity for input values larger than 89, so a small look up table approximation method is often accurate enough compared to a more exact approximation like Taylor series expansion.
+
+## Source Files Overview
+
+1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen AI). 
+
+1. `bf16_exp.cc`: A C++ implementation of vectorized table lookup operations for AIE cores. The lookup operation `getExpBf16` operates on vectors of size `16` loading the vectorized accumulator registers with the look up table results.  It is then necessary to copy the accumulator register to a regular vector register, before storing back into memory.  The source can be found [here](../../../aie_kernels/aie2/bf16_exp.cc).
+
+1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+
+
+## Usage
+
+### C++ Testbench
+
+To compile the design and C++ testbench:
+
+```
+make
+```
+
+To run the design:
+
+```
+make run
+```
+
