@@ -11,7 +11,7 @@
 # <ins>ResNet-50 with Offloaded Conv2_x Residual Blocks</ins>
 
 ## Introduction
-ResNet-50 is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks.
+ResNet-50 [[1]](#1) is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks.
 
 This README focuses on a specific optimization technique applied to ResNet-50, specifically targeting the offloading of the conv2_x part of the residual blocks. By offloading computations to dedicated hardware accelerators or specialized processors, we aim to improve the overall efficiency and speed of the network, especially when deploying it on resource-constrained devices or in scenarios where real-time processing is critical.
 
@@ -38,7 +38,7 @@ The conv2_x stage of ResNet-50 comprises a series of residual blocks, each conta
 
 ##  Usage and Deployment
 To leverage the optimized ResNet-50 with offloaded conv2_x residual blocks:
-* Iron Programming: Demonstrates the IRON flow for offloading conv2_x to AIE.
+* [IRON Programming](https://github.com/Xilinx/mlir-aie/tree/gagan_asplos_resnet/programming_examples/ml/resnet/layers_conv2_x): Demonstrates the IRON flow for offloading conv2_x to AIE.
 
 
 ## Acceleration Techniques
@@ -107,7 +107,7 @@ make run_py
 
 
 
-## Citation
-```
+## References
+<a id="1">[1]</a> 
 He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition (pp. 770-778).
-```
+
