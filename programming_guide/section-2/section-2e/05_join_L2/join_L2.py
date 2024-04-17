@@ -17,82 +17,65 @@ def join_L2():
 
         @device(AIEDevice.ipu)
         def device_body():
-            memRef_32_ty = T.memref(32, T.i32())
+            memRef_24_ty = T.memref(24, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
 
             # Tile declarations
             ShimTile = tile(0, 0)
             MemTile = tile(0, 1)
-            ComputeTile2 = tile(0, 2)
-            ComputeTile3 = tile(0, 3)
-            ComputeTile4 = tile(0, 4)
-            ComputeTile5 = tile(1, 2)
+            ComputeTile0 = tile(0, 2)
+            ComputeTile1 = tile(0, 3)
+            ComputeTile2 = tile(0, 4)
 
             # AIE-array data movement with object fifos
             # Input
-            # Input
-            of_out0 = object_fifo("out0", MemTile, ShimTile, 2, memRef_32_ty)
-            of_out1 = object_fifo("out1", ComputeTile2, MemTile, 2, memRef_8_ty)
-            of_out2 = object_fifo("out2", ComputeTile3, MemTile, 2, memRef_8_ty)
-            of_out3 = object_fifo("out3", ComputeTile4, MemTile, 2, memRef_8_ty)
-            of_out4 = object_fifo("out4", ComputeTile5, MemTile, 2, memRef_8_ty)
-            object_fifo_loutk([of_out1, of_out2, of_out3, of_out4], of_out0)
+            of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_24_ty)
+            of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, memRef_8_ty)
+            of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, memRef_8_ty)
+            of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_8_ty)
+            object_fifo_loutk([of_out1, of_out2, of_out3], of_out0)
 
             # Set up compute tiles
             # Compute tile 2
+            @core(ComputeTile0)
+            def core_body():
+                # Effective while(1)
+                for _ in for_(8):
+                    elem = of_out0.acquire(ObjectFifoPort.Produce, 1)
+                    for i in for_(8):
+                        v0 = memref.load(elem, [i])
+                        v1 = arith.constant(1, T.i32())
+                        memref.store(v1, elem, [i])
+                        yield_([])
+                    of_out0.release(ObjectFifoPort.Produce, 1)
+                    yield_([])
+
+            # Compute tile 3
+            @core(ComputeTile1)
+            def core_body():
+                # Effective while(1)
+                for _ in for_(8):
+                    elem = of_out1.acquire(ObjectFifoPort.Produce, 1)
+                    for i in for_(8):
+                        v0 = memref.load(elem, [i])
+                        v1 = arith.constant(1, T.i32())
+                        memref.store(v1, elem, [i])
+                        yield_([])
+                    of_out1.release(ObjectFifoPort.Produce, 1)
+                    yield_([])
+
+            # Compute tile 4
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
                 for _ in for_(8):
-                    elem_in = of_out1.acquire(ObjectFifoPort.Consume, 1)
+                    elem = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(8):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        v0 = memref.load(elem, [i])
+                        v1 = arith.constant(1, T.i32())
+                        memref.store(v1, elem, [i])
                         yield_([])
-                    of_in1.release(ObjectFifoPort.Consume, 1)
-                    yield_([])
-
-            # Compute tile 3
-            @core(ComputeTile3)
-            def core_body():
-                # Effective while(1)
-                for _ in for_(8):
-                    elem_in = of_in2.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(8):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
-                        yield_([])
-                    of_in2.release(ObjectFifoPort.Consume, 1)
-                    yield_([])
-
-            # Compute tile 4
-            @core(ComputeTile4)
-            def core_body():
-                # Effective while(1)
-                for _ in for_(8):
-                    elem_in = of_in3.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(8):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
-                        yield_([])
-                    of_in3.release(ObjectFifoPort.Consume, 1)
-                    yield_([])
-
-            # Compute tile 5
-            @core(ComputeTile5)
-            def core_body():
-                # Effective while(1)
-                for _ in for_(8):
-                    elem_in = of_in4.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(8):
-                        v0 = memref.load(elem_in, [i])
-                        v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
-                        yield_([])
-                    of_in4.release(ObjectFifoPort.Consume, 1)
+                    of_out2.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
     print(ctx.module)

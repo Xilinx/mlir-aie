@@ -10,6 +10,6 @@
 
 # <ins>External Memory to Core through L2</ins>
 
-TODO: add drawing
+<img src="../../../assets/ExtMemToCoreL2.svg" height=200 width="500">
 
 TODO: Point to programming_examples that use this.

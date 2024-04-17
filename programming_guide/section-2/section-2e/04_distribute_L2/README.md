@@ -10,6 +10,6 @@
 
 # <ins>Distribute from L2</ins>
 
-TODO: add drawing
+<img src="../../../assets/DistributeL2.svg" height=200 width="700">
 
 TODO: Point to programming_examples that use this.
