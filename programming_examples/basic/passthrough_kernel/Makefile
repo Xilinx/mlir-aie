@@ -45,9 +45,17 @@ endif
 run: ${targetname}.exe build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE 
 
+run-g: ${targetname}.exe build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
+	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
+
 run_py: build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
 	${powershell} python3 test.py -s ${PASSTHROUGH_SIZE} -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE
 
+trace:
+	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
+
+clean_trace:
+	rm -rf tmpTrace trace.txt
 
 clean:
 	rm -rf build _build ${targetname}.exe
