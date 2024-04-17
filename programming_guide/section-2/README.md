@@ -48,8 +48,7 @@ This guide is split into five sections, where each section builds on top of the 
 <details><summary><a href="./section-2e">Section 2e - Practical Examples</a></summary>
 
 * Practical examples using Object FIFOs
-    * Single buffer
-    * Double buffer
+    * Single / Double buffer
     * External memory to core
     * External memory to core using L2
     * Distribute in L2
