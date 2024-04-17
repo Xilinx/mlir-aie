@@ -4,8 +4,8 @@
 // REQUIRES: ryzen_ai, chess
 // ALLOW_RETRIES: 3
 //
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/conv2dk1.cc -o conv2dk1.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8  -DINT8_ACT  -c %S/conv2dk1.cc -o conv2dk1.o
 // RUN: %python %S/aie2.py | aie-opt -cse -canonicalize -o ./aie.mlir
 // RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
-// RUN: XRT_HACK_UNSECURE_LOADING_XCLBIN=1 %python test.py | FileCheck %s
+// RUN: XRT_HACK_UNSECURE_LOADING_XCLBIN=1 %python %S/test.py | FileCheck %s
 // CHECK: PASS!

@@ -133,14 +133,11 @@ ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 # ------------------------------------------------------
 
 print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-print("ofm_mem_fmt_out::::", ofm_mem_fmt_out)
-print("golden_output::::", golden_output)
 
 assert np.allclose(
     ofm_mem_fmt_out.detach().numpy(),
     golden_output.detach().numpy(),
     rtol=0,
-    atol=2 * int8_scale,
+    atol=2*int8_scale,
 )
-
 print("\nPASS!\n")

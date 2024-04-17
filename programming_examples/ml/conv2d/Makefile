@@ -1,4 +1,4 @@
-include ../../basic/makefile-common
+include ../../makefile-common
 
 #mlirFileName = aie_1core
 mlirFileName = aieWithTrace_1core
@@ -16,7 +16,7 @@ insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=$@ $<
 
 build/conv2dk1.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
 build/final.xclbin: build/${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \
