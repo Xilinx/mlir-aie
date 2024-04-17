@@ -10,15 +10,15 @@
 
 # <ins>Vision Pipelines</ins>
 
-The vision pipeline reference designs show how complex vision pipelines can be constructed from basic vision kernel building blocks. Those building blocks can be found in [./vision_kernels](./vision_kernels) and contain example kernels written for AI engines in both scalar and unoptimized vector format. 
+The vision pipeline reference designs show how complex vision pipelines can be constructed from basic vision kernel building blocks. Those building blocks can be found in [aie_kernels/aie2](../../aie_kernels/aie2) and contain example kernels written for AI engines in both scalar and unoptimized vector format. 
 
-## <ins>[Pass Through](./passthrough/)</ins>
+## <ins>[Color Detect](./color_detect/)</ins>
 
-The [Pass Through pipeline design](./passthrough/) consists of a simple pipeline with just one `passThrough` kernel. This pipeline's main purpose is to test whether the data movement works correctly.
+The [Color Detect pipeline design](./color_detect/) consists of the following blocks arranged in a pipeline fashion for the detecting of 2 colors in a sequence of images : `rgba2hue`, `threshold`, `threshold`, `bitwiseOR`, `gray2rgba`, `bitwiseAND`.
 
 ## <ins>[Edge Detect](./edge_detect/)</ins>
 
-The [Edge Detect pipeline design](./edge_detect/) consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
+The [Edge Detect pipeline design](./edge_detect/) consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images: `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
 
 ## <ins>[Color Threshold](./color_threshold/)</ins>
 
