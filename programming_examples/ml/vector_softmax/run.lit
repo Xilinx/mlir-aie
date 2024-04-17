@@ -1,0 +1,15 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// RUN: aie-opt %S/bf16_softmax.mlir --affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o dut.cc
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -I%S/../../../aie_runtime_lib/AIE2 -c dut.cc -o dut.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp -o lut_based_ops.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/softmax.cc -o softmax.o
+// RUN: ar rvs kernels.a dut.o lut_based_ops.o softmax.o
+// RUN: %python %S/aie2.py | aie-opt -cse -canonicalize -o ./aie.mlir
+// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// CHECK: PASS!

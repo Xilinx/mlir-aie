@@ -1,4 +1,3 @@
-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,12 +5,13 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-from aie.dialects.aie import *                     # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx        # mlir ctx wrapper 
+from aie.dialects.aie import *  # primary mlir-aie dialect definitions
+from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
-from aie.dialects.aiex import *                    # extended mlir-aie dialect definitions
-from aie.dialects.scf import *                     # scf (strcutred control flow) dialect
+from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
+from aie.dialects.scf import *  # scf (strcutred control flow) dialect
 from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
+
 
 # AI Engine structural design function
 def my_first_aie_program():
@@ -52,15 +52,15 @@ def my_first_aie_program():
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elem_out, [i])
                         yield_([])
-                    
+
                     # Release input and output object FIFO objects
                     of_in0.release(ObjectFifoPort.Consume, 1)
                     of_out0.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
-            def sequence(inTensor, notUsed, outTensor):
+            @FuncOp.from_py_func(memRef_64_ty, memRef_64_ty)
+            def sequence(inTensor, outTensor):
                 ipu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
                 )
@@ -71,6 +71,7 @@ def my_first_aie_program():
 
     # Print the mlir conversion
     print(ctx.module)
+
 
 # Call design function to generate mlir code to stdout
 my_first_aie_program()

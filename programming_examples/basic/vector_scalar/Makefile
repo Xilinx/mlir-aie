@@ -6,11 +6,11 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
-
-targetname = vectorScalar
+include ../../makefile-common
 
 all: build/final.xclbin build/insts.txt
+
+targetname = vectorScalar
 
 build/%.o: %.cc
 	mkdir -p ${@D}
