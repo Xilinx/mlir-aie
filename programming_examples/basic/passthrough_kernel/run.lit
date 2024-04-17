@@ -8,4 +8,5 @@
 // RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall -DPASSTHROUGH_SIZE=4096 -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: %run_on_ipu %python %S/test.py -x aie.xclbin -i insts.txt -k MLIR_AIE -s 4096 | FileCheck %s
 // CHECK: PASS!
