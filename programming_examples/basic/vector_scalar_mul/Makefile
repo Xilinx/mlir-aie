@@ -8,6 +8,8 @@
 
 include ../../makefile-common
 
+VPATH := ../../../aie_kernels/aie2
+
 all: build/final.xclbin build/insts.txt
 
 targetname = vectorScalar
