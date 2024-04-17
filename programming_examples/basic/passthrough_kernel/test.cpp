@@ -30,19 +30,12 @@ int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
+  test_utils::add_default_options(desc);
 
   test_utils::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+  int trace_size = vm["trace_sz"].as<int>();
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
@@ -64,7 +57,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
+  auto bo_out = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE)
+                        + trace_size,
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
@@ -81,7 +75,7 @@ int main(int argc, const char *argv[]) {
 
   // Zero out buffer bo_out
   DATATYPE *bufOut = bo_out.map<DATATYPE *>();
-  memset(bufOut, 0, PASSTHROUGH_SIZE * sizeof(DATATYPE));
+  memset(bufOut, 0, PASSTHROUGH_SIZE * sizeof(DATATYPE) + trace_size);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -102,6 +96,12 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < PASSTHROUGH_SIZE; i++) {
     if (bufOut[i] != bufInA[i])
       errors++;
+  }
+
+  if(trace_size > 0) {
+    test_utils::write_out_trace(((char *)bufOut) + (PASSTHROUGH_SIZE * 
+                                sizeof(DATATYPE)), trace_size,
+                                vm["trace_file"].as<std::string>());
   }
 
   // Print Pass/Fail result of our test
