@@ -8,9 +8,13 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Convolution 2D with Fused ReLU</ins>
+# <ins>Convolution with Fused ReLU</ins>
 
-Convolution is a crucial part of various machine learning and computer vision tasks, such as image recognition, object detection, and image segmentation. At its core, it is a mathematical operation that combines an input image and a filter to produce an output image. The input data is represented as a multi-dimensional matrix, such as an image with height, width, and channels (e.g., RGB channels). The filter is also represented as a multi-dimensional matrix with filter height, width, input and output channels (the same number of channels as the input data). The filter is systematically applied to different regions of the input data. At each step, the filter is element-wise multiplied with the overlapping region of the input data. The element-wise products are summed up to produce a single value, which represents the result of the convolution operation for that region. This process is repeated for all possible regions of the input data, producing an output matrix called the feature map.
+## Introduction
+Convolution is a crucial part of various machine learning and computer vision tasks, such as image recognition, object detection, and image segmentation.  ReLU is one of the most commonly used activation functions due to its simplicity and effectiveness. This README provides instructions for implementing Convolutional Neural Networks (CNNs) with Rectified Linear Unit (ReLU) activation function. 
+
+
+At its core, convolution is a mathematical operation that combines an input image and a filter to produce an output image. The input data is represented as a multi-dimensional matrix, such as an image with height, width, and channels (e.g., RGB channels). The filter is also represented as a multi-dimensional matrix with filter height, width, input and output channels (the same number of channels as the input data). The filter is systematically applied to different regions of the input data. At each step, the filter is element-wise multiplied with the overlapping region of the input data. The element-wise products are summed up to produce a single value, which represents the result of the convolution operation for that region. This process is repeated for all possible regions of the input data, producing an output matrix called the feature map.
 
 The process of applying the filter to different regions of the input data is often visualized as a sliding window moving across the input data. The size of the sliding window corresponds to the size of the filter, and it moves with a certain stride (the number of pixels it moves at each step). The convolution operation consists of seven nested loops, iterating over the input height, input lenght, input channel, output channel, filter height, filter length, and the batch size, each loop corresponding to different aspect of the operation. This systematic process extracts features from the input image, yielding the output feature map, illustrating the computational intricacies of convolution. 
 
@@ -44,7 +48,6 @@ In the OIYXI8O8 data layout, the data is organized in memory as follows:
 
 
 ## Fusing ReLU
-
 Fusing ReLU into the convolution operation can further optimize the implementation by reducing memory bandwidth requirements and computational overhead. ReLU activation function introduces non-linearity by setting negative values to zero and leaving positive values unchanged. Utilize SIMD instructions to efficiently compute ReLU activation in parallel with convolution. After performing the convolution operation, apply ReLU activation function at vector register level. 
 We use `aie::set_rounding()` and `aie::set_saturation()` to set the rounding and saturation modes for the computed results in the accumulator. Seeting round mode `postitive_inf` rounds halfway towards positive infinity while setting saturation to `aie::saturation_mode::saturate` saturation rounds an uint8 range (0, 255). 
 

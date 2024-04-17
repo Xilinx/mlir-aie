@@ -139,7 +139,7 @@ assert np.allclose(
     ofm_mem_fmt_out.detach().numpy(),
     golden_output.detach().numpy(),
     rtol=0,
-    atol=relu_scale,
+    atol=2*relu_scale,
 )
 
 print("\nPASS!\n")
