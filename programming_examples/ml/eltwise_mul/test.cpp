@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <stdfloat>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -25,9 +26,6 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-// ------------------------------------------------------
-// Configure this to match your buffer data type
-// ------------------------------------------------------
 using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 using INOUT2_DATATYPE = std::bfloat16_t;
