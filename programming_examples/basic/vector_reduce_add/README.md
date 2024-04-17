@@ -8,9 +8,9 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Vector Reduce Min:
+# Vector Reduce Add:
 
-Single tile performs a very simple reduction operation where the kernel loads data from local memory, performs the `min` reduction and stores the resulting value back.
+Single tile performs a very simple reduction operation where the kernel loads data from local memory, performs the `add` reduction and stores the resulting value back.
 
 The kernel executes on AIE tile (0, 2). Input data is brought to the local memory of the tile from Shim tile (0, 0). The size of the input data `N` from the Shim tile is `1024xi32`. The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile.
 
@@ -32,7 +32,7 @@ To compile the design and C++ testbench:
 
 ```
 make
-make build/reduce_min.exe
+make build/reduce_add.exe
 ```
 
 To run the design:
