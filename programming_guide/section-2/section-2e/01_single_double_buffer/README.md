@@ -23,3 +23,5 @@ of_in = object_fifo("in", ComputeTile2, ComputeTile3, 2, memRef_16_ty) # double 
 This change effectively increases the number of available resources of the Object FIFO as is shown in the figure below:
 
 <img src="../../../assets/DoubleBuffer.svg" height=200 width="500">
+
+All examples available in the [programming_examples](../../../../programming_examples/) contain this data movement pattern.

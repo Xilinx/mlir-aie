@@ -12,4 +12,4 @@
 
 <img src="../../../assets/JoinL2.svg" height=200 width="700">
 
-TODO: Point to programming_examples that use this.
+Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [eltwise_mul](../../../../programming_examples/basic/eltwise_mul/) and [eltwise_exp](../../../../programming_examples/basic/eltwise_exp/).

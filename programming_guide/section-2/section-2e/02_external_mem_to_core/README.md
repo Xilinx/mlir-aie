@@ -10,10 +10,12 @@
 
 # <ins>External Memory to Core</ins>
 
-The design in [single_buffer.py](./single_buffer.py) uses an Object FIFO `of_in` to transfer data from producer tile `ComputeTile2` to consumer tile `ComputeTile3`. The Object FIFO has a depth of `1` which describes a single buffer between the two tiles as shown in the figure below.
+The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to bring data from the `ShimTile` to `ComputeTile2` and another Object FIFO `of_out` to send the data from the compute tile to external memory. Each fifo uses a double buffer.
 
 <img src="../../../assets/ExtMemToCore.svg" height=200 width="400">
 
-Both the producer and the consumer processes in this design have trivial tasks. The producer process running on `ComputeTile2` acquires the single buffer and writes `1` into all its entries before releasing it for consumption. The producer process running on `ComputeTile3` acquires the single buffer and immediately releases it back for the producer.
+Both a consumer and a producer process are running on `ComputeTile2`. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
-TODO: Point to programming_examples that use this.
+It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) will be described in detail in [Section 3](../../../section-3/). TODO: add command to all designs
+
+Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [reduce_add](../../../../programming_examples/basic/reduce_add/) and [vector_scalar](../../../../programming_examples/basic/vector_scalar/).
