@@ -42,19 +42,19 @@ shape_out = (32, 32, 32, 8)
 # ------------------------------------------------------
 # Initialize activation, weights, scaling factor for int8 model
 # ------------------------------------------------------
-int_inp = torch.randint(1, 100, (1, 64, 32, 32)).type(torch.FloatTensor)
-block_0_int_weight_1 = torch.randint(50, 100, (64, 64, 1, 1)).type(torch.FloatTensor)
-block_0_int_weight_2 = torch.randint(50, 100, (64, 64, 3, 3)).type(torch.FloatTensor)
-block_0_int_weight_3 = torch.randint(50, 100, (256, 64, 1, 1)).type(torch.FloatTensor)
-block_0_int_weight_skip = torch.randint(50, 100, (256, 64, 1, 1)).type(torch.FloatTensor)
+int_inp = torch.randint(1, 10, (1, 64, 32, 32)).type(torch.FloatTensor)
+block_0_int_weight_1 = torch.randint(10, 20, (64, 64, 1, 1)).type(torch.FloatTensor)
+block_0_int_weight_2 = torch.randint(10, 20, (64, 64, 3, 3)).type(torch.FloatTensor)
+block_0_int_weight_3 = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
+block_0_int_weight_skip = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
 
-block_1_int_weight_1 = torch.randint(50, 100, (64, 256, 1, 1)).type(torch.FloatTensor)
-block_1_int_weight_2 = torch.randint(50, 100, (64, 64, 3, 3)).type(torch.FloatTensor)
-block_1_int_weight_3 = torch.randint(50, 100, (256, 64, 1, 1)).type(torch.FloatTensor)
+block_1_int_weight_1 = torch.randint(20, 30, (64, 256, 1, 1)).type(torch.FloatTensor)
+block_1_int_weight_2 = torch.randint(20, 30, (64, 64, 3, 3)).type(torch.FloatTensor)
+block_1_int_weight_3 = torch.randint(20, 30, (256, 64, 1, 1)).type(torch.FloatTensor)
 
-block_2_int_weight_1 = torch.randint(50, 100, (64, 256, 1, 1)).type(torch.FloatTensor)
-block_2_int_weight_2 = torch.randint(50, 100, (64, 64, 3, 3)).type(torch.FloatTensor)
-block_2_int_weight_3 = torch.randint(50, 100, (256, 64, 1, 1)).type(torch.FloatTensor)
+block_2_int_weight_1 = torch.randint(30, 40, (64, 256, 1, 1)).type(torch.FloatTensor)
+block_2_int_weight_2 = torch.randint(30, 40, (64, 64, 3, 3)).type(torch.FloatTensor)
+block_2_int_weight_3 = torch.randint(30, 40, (256, 64, 1, 1)).type(torch.FloatTensor)
 
 init_scale = 0.5
 block_0_relu_1 = 0.5
