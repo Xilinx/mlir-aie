@@ -24,5 +24,5 @@ def mlir_aie_design():
 
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    mlir_aie_design() # Call design function within the mlir-aie context
-    print(ctx.module) # Print the python-to-mlir conversion to stdout
+    mlir_aie_design()  # Call design function within the mlir-aie context
+    print(ctx.module)  # Print the python-to-mlir conversion to stdout
