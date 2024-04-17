@@ -8,6 +8,7 @@
 
 from aie.dialects.aiex import *
 
+
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     trace_size_words = trace_size // 4
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint32)
@@ -23,6 +24,7 @@ def write_out_trace(trace, file_name):
     with open(file_name, "w") as f:
         f.write(out_str)
 
+
 # trace_utils.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -33,12 +35,14 @@ def write_out_trace(trace, file_name):
 
 from aie.dialects.aiex import *
 
+
 def pack4bytes(b3, b2, b1, b0):
     w = (b3 & 0xFF) << 24
     w |= (b2 & 0xFF) << 16
     w |= (b1 & 0xFF) << 8
     w |= (b0 & 0xFF) << 0
     return w
+
 
 # Configure tracing, see https://github.com/Xilinx/mlir-aie/blob/resnet/docs/Tracing.md
 # This is a very simple model of tracing, which has some big assumptions:
@@ -70,6 +74,7 @@ def pack4bytes(b3, b2, b1, b0):
 # INSTR_LOCK_RELEASE_REQ     (0x2D)  Core executes a lock release instruction
 # EVENTS_CORE_PORT_RUNNING_1 (0x4F)
 # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
+
 
 # Event numbers should be less than 128.
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
