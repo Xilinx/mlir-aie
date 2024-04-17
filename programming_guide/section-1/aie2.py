@@ -23,9 +23,8 @@ def mlir_aie_design():
             ComputeTile2 = tile(2, 3)
             ComputeTile3 = tile(2, 4)
 
-    # Print the mlir conversion
-    print(ctx.module)
-
-
+    
 # Call design function to generate mlir code to stdout
-mlir_aie_design()
+with mlir_mod_ctx() as ctx:
+    mlir_aie_design()
+    print(ctx.module) # Print the mlir conversion to stdout

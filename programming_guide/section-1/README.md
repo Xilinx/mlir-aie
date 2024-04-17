@@ -10,7 +10,7 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an MLIR-AIE design.
+When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an IRON AIE design.
 
 ## <ins>Walkthrough of python source file (aie2.py)</ins>
 At the top of this python source, we include modules that define the mlir-aie dialect and the mlir ctx wrapper which encapsulates the definition of our AI Engine enabled device (e.g. ipu or xcvc1902) and its associated structural building blocks.
