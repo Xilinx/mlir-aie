@@ -19,13 +19,13 @@ At the top of this python source, we include modules that define the IRON AIE la
 from aie.dialects.aie import * # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx # mlir-aie context
 ```
-Then we declare a structural design function that expands into mlir code when we call it from within the mlir-aie context. This context, defined in the `mlir_mod_ctx()` module, binds python functions calls to the MLIR definitions in order to define our structural AI Engine blocks and connections. 
+Then we declare a structural design function that will expand into mlir code when called from within and mlir-aie context. This context, defined in the `mlir_mod_ctx()` module, binds python functions calls to the MLIR definitions in order to define our structural AI Engine blocks and connections. We will come back to the context a little later.
 ```
 # AI Engine structural design function
 def mlir_aie_design():
     <... AI Engine device, blocks and connections ...>
 ```
-We will come back to the context a little later but for now, let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.ipu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
+ Let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.ipu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
 
 The arguments for the tile declaration are the tile coordinates (column, row) and we assign it a variable tile name in our python program.
 
