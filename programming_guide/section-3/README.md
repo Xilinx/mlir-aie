@@ -18,9 +18,7 @@ For the AIE-array structural description we will combine what you learned in [se
 
 For the AIE kernel code, we will start with non-vectorized code that will run on the scalar processor part of an AIE. [section-4](../section-4) will introduce how to vectorize a compute kernel to harvest the compute density of the AIE.
 
-The host code can be written in either C++ (as shown in the figure) or in Python. We will also introduce some convenience utility libraries for both XRT related boilerplate code and typical test functionality.   
-
-
+The host code can be written in either C++ (as shown in the figure) or in Python. We will also introduce some convenience utility libraries for typical test functionality and to simplify context and buffer creation when the [Xilinx RunTime (XRT)](https://github.com/Xilinx/XRT) is used, for instance in the [AMD XDNA Driver](https://github.com/amd/xdna-driver) for Ryzen AI devices. 
 
 * Introduce example of first simple program (vector scalar multiply)
     * Walk through syntax of aie2.py, test.cpp, test_utils.h, maybe CMakeLists.txt and Makefile/ makefile-common as well
