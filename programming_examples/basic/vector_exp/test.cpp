@@ -159,7 +159,7 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    std::uint16_t u16= (std::uint16_t)i;
+    std::uint16_t u16 = (std::uint16_t)i;
     std::bfloat16_t bf16 = *(std::bfloat16_t *)&u16;
     AVec[i] = bf16;
   }
