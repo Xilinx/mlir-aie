@@ -328,7 +328,7 @@ total_wts3 = np.concatenate(
 )
 
 total_wts3.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
-print("total_wts", total_wts2.shape)
+
 # ------------------------------------------------------
 # Main run loop
 # ------------------------------------------------------

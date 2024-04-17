@@ -24,10 +24,10 @@ build/conv2dk1_skip_init.o: conv2dk1_skip_init.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
 build/conv2dk1_ui8.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
 
 build/conv2dk1_skip.o: conv2dk1_skip.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -c $< -o $@
+	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
 
 build/final.xclbin: build/${mlirFileName}.mlir 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \
