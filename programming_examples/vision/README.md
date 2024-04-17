@@ -12,6 +12,10 @@
 
 The vision pipeline reference designs show how complex vision pipelines can be constructed from basic vision kernel building blocks. Those building blocks can be found in [aie_kernels/aie2](../../aie_kernels/aie2) and contain example kernels written for AI engines in both scalar and unoptimized vector format. 
 
+## <ins>[Vision Pass Through](./vision_passthrough/)</ins>
+
+The [Vision Pass Through pipeline design](./vision_passthrough/) consists of a simple pipeline with just one `passThrough` kernel. This pipeline's main purpose is to test whether the data movement works correctly.
+
 ## <ins>[Color Detect](./color_detect/)</ins>
 
 The [Color Detect pipeline design](./color_detect/) consists of the following blocks arranged in a pipeline fashion for the detecting of 2 colors in a sequence of images : `rgba2hue`, `threshold`, `threshold`, `bitwiseOR`, `gray2rgba`, `bitwiseAND`.
