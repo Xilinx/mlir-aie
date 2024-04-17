@@ -11,18 +11,14 @@ from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 # AI Engine structural design function
 def mlir_aie_design():
-    # ctx wrapper - to convert python to mlir
-    with mlir_mod_ctx() as ctx:
+    # Device declaration - aie2 device xcvc1902
+    @device(AIEDevice.xcvc1902)
+    def device_body():
 
-        # Device declaration - aie2 device xcvc1902
-        @device(AIEDevice.xcvc1902)
-        def device_body():
-
-            # Tile(s) declarations
-            ComputeTile1 = tile(1, 3)
-            ComputeTile2 = tile(2, 3)
-            ComputeTile3 = tile(2, 4)
-
+        # Tile(s) declarations
+        ComputeTile1 = tile(1, 3)
+        ComputeTile2 = tile(2, 3)
+        ComputeTile3 = tile(2, 4)
     
 # Call design function to generate mlir code to stdout
 with mlir_mod_ctx() as ctx:
