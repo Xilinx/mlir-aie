@@ -96,5 +96,5 @@ make
 To run the design:
 
 ```
-python3 test.py -x build/final_4096.xclbin -i build/insts.txt -k MLIR_AIE
+python3 test.py -x build/final_4096.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
 ```
