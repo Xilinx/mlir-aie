@@ -247,7 +247,7 @@ struct AIEObjectFifoStatefulTransformPass
     auto ofName = builder.getStringAttr(name);
     auto fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype,
-        dimensionsToStream, dimensionsFromStreamPerConsumer, nullptr);
+        dimensionsToStream, dimensionsFromStreamPerConsumer);
     return fifo;
   }
 
@@ -374,11 +374,11 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        BufferOp buff = builder.create<BufferOp>(
-              builder.getUnknownLoc(), elemType, creation_tile,
-              builder.getStringAttr(op.name().str() + "_buff_" +
-                                    std::to_string(of_elem_index)),
-              /*address*/ nullptr, /*initial_value*/ nullptr);
+        auto buff = builder.create<BufferOp>(
+            builder.getUnknownLoc(), elemType, creation_tile,
+            builder.getStringAttr(op.name().str() + "_buff_" +
+                                  std::to_string(of_elem_index)),
+            /*address*/ nullptr, /*initial_value*/ nullptr);
         }
         buffers.push_back(buff);
       }
@@ -1245,9 +1245,6 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
-        consumerFifo->setAttr("objFifo_to_avoid_at_alloc",
-                              createOp->getAttrOfType<FlatSymbolRefAttr>(
-                                  "objFifo_to_avoid_at_alloc"));
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo
