@@ -8,11 +8,10 @@
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
-
 # AI Engine structural design function
 def mlir_aie_design():
-    # Device declaration - aie2 device xcvc1902
-    @device(AIEDevice.xcvc1902)
+    # Device declaration - aie2 device ipu
+    @device(AIEDevice.ipu)
     def device_body():
 
         # Tile(s) declarations
@@ -20,7 +19,7 @@ def mlir_aie_design():
         ComputeTile2 = tile(2, 3)
         ComputeTile3 = tile(2, 4)
     
-# Call design function to generate mlir code to stdout
+# Call design function in a mlir context to generate mlir code to stdout
 with mlir_mod_ctx() as ctx:
     mlir_aie_design()
     print(ctx.module) # Print the mlir conversion to stdout
