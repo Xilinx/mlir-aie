@@ -42,8 +42,10 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
     std::bfloat16_t ref = exp(A[i]);
     // Let's check if they are inf or nan, and if so just pass because
     // comparisions will then fail, even for matches
-    if (isinf(ref) || isinf(C[i])) break;
-    if (isnan(ref) || isnan(C[i])) break;
+    if (isinf(ref) || isinf(C[i]))
+      break;
+    if (isnan(ref) || isnan(C[i]))
+      break;
     if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
       errors++;
