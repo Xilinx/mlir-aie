@@ -5,6 +5,7 @@
 /cmakeModules*
 .vscode
 __pycache__
+.DS_Store
 
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components
