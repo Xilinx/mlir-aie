@@ -6,12 +6,13 @@
 # (c) Copyright 2023 AMD Inc.
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
+from aie.extras.context import mlir_mod_ctx  # mlir-aie context
 
 
 # AI Engine structural design function
 def mlir_aie_design():
-    # Device declaration - aie2 device ipu
+
+    # Device declaration - aie2 device NPU
     @device(AIEDevice.ipu)
     def device_body():
 
@@ -21,7 +22,7 @@ def mlir_aie_design():
         ComputeTile3 = tile(2, 4)
 
 
-# Call design function in a mlir context to generate mlir code to stdout
+# Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    mlir_aie_design()
-    print(ctx.module)  # Print the mlir conversion to stdout
+    mlir_aie_design() # Call design function within the mlir-aie context
+    print(ctx.module) # Print the python-to-mlir conversion to stdout
