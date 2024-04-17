@@ -57,9 +57,9 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE)
-                        + trace_size,
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out =
+      xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE) + trace_size,
+              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -98,10 +98,10 @@ int main(int argc, const char *argv[]) {
       errors++;
   }
 
-  if(trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) + (PASSTHROUGH_SIZE * 
-                                sizeof(DATATYPE)), trace_size,
-                                vm["trace_file"].as<std::string>());
+  if (trace_size > 0) {
+    test_utils::write_out_trace(((char *)bufOut) +
+                                    (PASSTHROUGH_SIZE * sizeof(DATATYPE)),
+                                trace_size, vm["trace_file"].as<std::string>());
   }
 
   // Print Pass/Fail result of our test

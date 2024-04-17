@@ -105,7 +105,7 @@ def vector_softmax():
         tensor_ty = T.memref(N, T.i32())
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty)
-        def sequence(A, C):            
+        def sequence(A, C):
             ipu_dma_memcpy_nd(
                 metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
             )

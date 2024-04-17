@@ -72,7 +72,7 @@ def passthroughKernel():
         compute_tile2_col, compute_tile2_row = 0, 2
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
-        def sequence(inTensor, outTensor, notUsed):            
+        def sequence(inTensor, outTensor, notUsed):
             if enableTrace:
                 trace_utils.configure_simple_tracing_aie2(
                     ComputeTile2,
