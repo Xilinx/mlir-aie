@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Eltwise exp
+# Vector Exp
 
 This example shows how the look up table capability of the AIE can be used to perform approximations to well known functions like e^x. 
 This design uses 4 cores, and each core operates on `1024 bfloat16` numbers.  Each core contains a lookup table approximation of the e^x function, which is then used to perform the e^x operation.  
@@ -20,7 +20,7 @@ e^x is typically used in machine learning applications with relatively small num
 
 1. `bf16_exp.cc`: A C++ implementation of vectorized table lookup operations for AIE cores. The lookup operation `getExpBf16` operates on vectors of size `16` loading the vectorized accumulator registers with the look up table results.  It is then necessary to copy the accumulator register to a regular vector register, before storing back into memory.  The source can be found [here](../../../aie_kernels/aie2/bf16_exp.cc).
 
-1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
 
 ## Usage
