@@ -20,3 +20,11 @@ For the AIE kernel code, we will start with non-vectorized code that will run on
 The host code can be written in either C++ (as shown in the figure) or in Python. We will also introduce some convenience utility libraries for typical test functionality and to simplify context and buffer creation when the [Xilinx RunTime (XRT)](https://github.com/Xilinx/XRT) is used, for instance in the [AMD XDNA Driver](https://github.com/amd/xdna-driver) for Ryzen™ AI devices.
 
 Throughout this section, a [vector scalar multiplication as example design](../../programming_examples/basic/vector_scalar_mul/), available in the [programming_examples](../../programming_examples/) of this repository. We will first introduce the AIE-array structural description, the review the kernel code and then introduce the host code. Finally we will show ho to run the design on Ryzen™ AI enabled hardware.
+
+## AIE-array Structural Description
+
+## Kernel Code
+
+## Host Code
+
+## Running the Program
