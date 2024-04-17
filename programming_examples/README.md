@@ -12,8 +12,22 @@
 
 These programming examples are provided so that application programmers can learn how to leverage the Iron design flow with MLIR-AIE python bindings, and the MLIR-AIE intermediate representation directly to build applications targeting AI Engines. They are organized into the following directories:
 
-* [basic](./basic) Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI. 
-* [ml](./ml) Machine learning building blocks, design components, and reference designs for the NPU in Ryzen™ AI. 
-* [vision](./vision) Computer vision processing pipeline designs for the NPU in Ryzen™ AI.
-* [mlir](./mlir) MLIR based reference designs expressed in the MLIR-AIE intermediate representation.
-* [utils](./utils) Utilty functions leveraged in the programming examples. 
+## [basic](./basic) 
+
+Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI. 
+
+## [ml](./ml)
+
+Machine learning building blocks, design components, and reference designs for the NPU in Ryzen™ AI. 
+
+## [vision](./vision)
+
+Computer vision processing pipeline designs for the NPU in Ryzen™ AI.
+
+## [mlir](./mlir)
+
+MLIR-based reference designs expressed in the MLIR-AIE dialect intermediate representation.
+
+## [utils](./utils)
+
+Utilty functions leveraged in the programming examples. 
