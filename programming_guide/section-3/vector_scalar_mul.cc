@@ -1,4 +1,4 @@
-//===- vector_scaler_mul.cc --------------------------------------*- C++ -*-===//
+//===- vector_scaler_mul.cc -------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,6 @@
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-
 
 #include <stdint.h>
 #include <stdio.h>
