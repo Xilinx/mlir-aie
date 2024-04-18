@@ -16,7 +16,7 @@ The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to 
 
 Both a consumer and a producer process are running on `ComputeTile2`. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
-It is possible to build, run and test this design with the following command:
+It is possible to build, run and test this design with the following commands:
 ```
 make
 make run
