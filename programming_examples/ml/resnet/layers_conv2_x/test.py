@@ -241,7 +241,11 @@ class resnet_conv2_x_int8(nn.Module):
         )
 
         # **************** Bottleneck 2 ****************
-        block_2_conv1_out = self.block_2_conv1(block_1_final_out) * block_1_relu_3 * block_2_weight_scale1
+        block_2_conv1_out = (
+            self.block_2_conv1(block_1_final_out)
+            * block_1_relu_3
+            * block_2_weight_scale1
+        )
         block_2_relu1_out = torch.clamp(
             torch.round(self.block_2_relu1(block_2_conv1_out) / block_2_relu_1), min, max
         )  # convert to int and apply relu
