@@ -74,7 +74,7 @@ def my_vector_scalar():
         tensor_ty = T.memref(N, T.i32())
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
-        def sequence(A, B, C):
+        def sequence(A, C, notUsed):
 
             if enable_tracing:
                 trace_utils.configure_simple_tracing_aie2(
