@@ -397,6 +397,8 @@ print("Brevitas::", quant_model_out)
 # ------------------------------------------------------
 min = 0
 max = 255
+
+
 class resnet_conv2_x_int8(nn.Module):
     expansion = 4
     def __init__(self, in_planes=64, planes=64):
