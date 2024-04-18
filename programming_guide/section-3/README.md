@@ -28,16 +28,51 @@ Throughout this section, a [vector scalar multiplication](../../programming_exam
 
 <img align="right" width="109" height="264" src="../assets/vectorScalarMulPhysicalDataFlow.svg">
 
-Since the input vector a and output vector c are residing in external memory, the AIE-array structural description (see [section-1](../section-1) int the [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) will deploy both shimDMA (purple) for data movement and a compute core (green) for the multiplication in the operations. Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE.
+The [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) AIE-array structural description (see [section-1](../section-1) deploys both a compute core (green) for the multiplication in the operations and a shimDMA (purple) for data movement both input vector a and output vector c residing in external memory.
+
+```python
+# Device declaration - here using aie2 device NPU
+@device(AIEDevice.ipu)
+def device_body():
+
+    # Tile declarations
+    ShimTile = tile(0, 0)
+    ComputeTile2 = tile(0, 2)
+```
+
+We also need to declare that the compute core will run an external function: a kernel written in C++ that will be linked into the design as pre-compiled kernel (more details in the next subsection). With as goal to get our initial design running on the AIE-array, we will run a generic version of the vector scalar multiply run on the scalar processor of the AIE.
+
+```python
+        # Type declarations
+        memRef_ty = T.memref(n, T.i32())
+
+        # AIE Core Function declarations
+        scale_scalar_int32 = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty])
+```
+
+Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the objectFIFO data movement primitive (introduced in [section-2](../section-2/)).
+
+<img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
+
+This allow looking at the data movement in the AIE-array from a logical view where we deploy 2 objectFIFOs: "of_in" to bring in the vector a and "of_out" to move the output vector c using a shimDMA. 
+
+```python
+        # AIE-array data movement with object fifos
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
-    # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.ipu)
-    def device_body():
+We also need to set up the data movement to/from the AIE-array: configure how the shimDMAs read/write data to/from L3 external memory. For NPU, this is done using the `ipu_dma_memcpy_nd` function
 
-        # Tile declarations
-        ShimTile = tile(0, 0)
-        ComputeTile2 = tile(0, 2)
+```python
+        # To/from AIE-array data movement
+        tensor_ty = T.memref(4096, T.i32())
+
+        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        def sequence(A, C):
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
 ## Kernel Code
