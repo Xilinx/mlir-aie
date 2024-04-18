@@ -356,9 +356,7 @@ block_0_int_weight_2 = quant_model.quant_block_0_conv2.quant_weight().int(
 block_0_int_weight_3 = quant_model.quant_block_0_conv3.quant_weight().int(
     float_datatype=True
 )
-block_0_int_weight_skip = quant_model.shortcut.quant_weight().int(
-    float_datatype=True
-)
+block_0_int_weight_skip = quant_model.shortcut.quant_weight().int(float_datatype=True)
 
 block_1_int_weight_1 = quant_model.quant_block_1_conv1.quant_weight().int(
     float_datatype=True
