@@ -49,11 +49,13 @@ void scale_vectorized(T *a, T *c, T factor, const int32_t N) {
 
 extern "C" {
 
-void vector_scalar_mul_aie(int32_t *a_in, int32_t *c_out, int32_t *factor, int32_t N) {
+void vector_scalar_mul_aie(int32_t *a_in, int32_t *c_out, int32_t *factor,
+                           int32_t N) {
   scale_vectorized<int32_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out, int32_t *factor, int32_t N) {
+void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
+                                  int32_t *factor, int32_t N) {
   scale_scalar<int32_t>(a_in, c_out, *factor, N);
 }
 

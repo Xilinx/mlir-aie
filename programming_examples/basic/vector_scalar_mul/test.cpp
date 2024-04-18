@@ -67,9 +67,9 @@ int main(int argc, const char *argv[]) {
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));                        
+                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -116,13 +116,11 @@ int main(int argc, const char *argv[]) {
     int32_t test = bufOut[i];
     if (test != ref) {
       if (verbosity >= 1)
-        std::cout << "Error in output " << test << " != " << ref
-                << std::endl;
+        std::cout << "Error in output " << test << " != " << ref << std::endl;
       errors++;
     } else {
       if (verbosity >= 1)
-        std::cout << "Correct output " << test << " == " << ref
-                << std::endl;
+        std::cout << "Correct output " << test << " == " << ref << std::endl;
     }
   }
 
