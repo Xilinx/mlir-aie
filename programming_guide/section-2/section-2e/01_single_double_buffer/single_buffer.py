@@ -25,7 +25,9 @@ def single_buffer():
 
             # AIE-array data movement with object fifos
             # Input
-            of_in = object_fifo("in", ComputeTile2, ComputeTile3, 1, memRef_16_ty) # single buffer
+            of_in = object_fifo(
+                "in", ComputeTile2, ComputeTile3, 1, memRef_16_ty
+            )  # single buffer
 
             # Set up compute tiles
             # Compute tile 2
