@@ -73,8 +73,8 @@ if test -f "$VPP"; then
   export LD_LIBRARY_PATH=`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   popd
-  python3 -m pip install --upgrade --force-reinstall -r python/requirements.txt
-  python3 -m pip install --upgrade --force-reinstall -r python/requirements_ml.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   pushd programming_examples
 else
   echo "Vitis not found! Exiting..."
