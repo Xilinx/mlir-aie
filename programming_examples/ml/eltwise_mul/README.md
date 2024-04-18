@@ -8,9 +8,9 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Eltwise Add
+# Eltwise Multiplication
 
-This design implements a `bfloat16` based element wise multiplciation between two vectors, performed in parallel on two cores in a single column.  This will end up being I/O bound due to the low compute intensity, and in a practical ML implementation, is an example of the type of kernel that is likely best fused onto another more compute dense kernel (e.g. a convolution or GEMM).
+This design implements a `bfloat16` based element wise multiplication between two vectors, performed in parallel on two cores in a single column.  This will end up being I/O bound due to the low compute intensity, and in a practical ML implementation, is an example of the type of kernel that is likely best fused onto another more compute dense kernel (e.g. a convolution or GEMM).
 
 
 ## Source Files Overview
