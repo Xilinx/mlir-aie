@@ -544,9 +544,7 @@ print(
     "combined_scale block_0 after adding skip connection:",
     (block_0_combined_scale4).item(),
 )
-print(
-    "combined_scale block_0 after skip conv1x1:", block_0_combined_scale_skip.item()
-)
+print("combined_scale block_0 after skip conv1x1:", block_0_combined_scale_skip.item())
 print("--------------------------------------------------------------")
 print("combined_scale block_1 after first conv1x1:", block_1_combined_scale1.item())
 print("combined_scale block_1 after second conv3x3:", block_1_combined_scale2.item())
