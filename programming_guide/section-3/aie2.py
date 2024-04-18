@@ -14,6 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
+
 def my_vector_scalar():
 
     @device(AIEDevice.ipu)
@@ -25,14 +26,16 @@ def my_vector_scalar():
             "vector_scalar_mul_aie_scalar",
             inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()],
         )
-        
+
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
-        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32()))
+        of_factor = object_fifo(
+            "infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32())
+        )
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
         # Set up compute tiles
