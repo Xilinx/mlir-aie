@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import sys
-
-sys.path.append("../../utils")
+import math
+from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from mlutils import DataShaper
-from xrtutils import setup_aie, extract_trace, write_out_trace, execute
+from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
