@@ -52,7 +52,6 @@ def single_buffer():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
-
     print(ctx.module)
 
 
