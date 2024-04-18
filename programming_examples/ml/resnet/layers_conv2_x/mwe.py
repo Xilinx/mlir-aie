@@ -531,7 +531,7 @@ py_model.block_2_conv2.weight.data.copy_(block_2_int_weight_2)
 py_model.block_2_conv3.weight.data.copy_(block_2_int_weight_3)
 
 
-final_out=py_model(int_inp)
+final_out = py_model(int_inp)
 
 print("Pytorch::", final_out)
 
