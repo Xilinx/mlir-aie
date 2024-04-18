@@ -14,6 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
+
 def my_vector_scalar():
 
     enable_tracing = False
@@ -24,8 +25,10 @@ def my_vector_scalar():
         memRef_ty = T.memref(1024, T.i32())
 
         # AIE Core Function declarations
-        scale = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty, T.i32(), T.i32()])
-        
+        scale = external_func(
+            "scale_scalar_int32", inputs=[memRef_ty, memRef_ty, T.i32(), T.i32()]
+        )
+
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)

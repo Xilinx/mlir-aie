@@ -1,4 +1,5 @@
-//===- vector_scaler_mul.cc --------------------------------------*- C++ -*-===//
+//===- vector_scaler_mul.cc --------------------------------------*- C++
+//-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,12 +9,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <type_traits>
-
 
 template <typename T, const int N>
 void scale(T *a, T *c, T factor) {
