@@ -62,10 +62,10 @@ if test -f "$VPP"; then
   mkdir -p my_install
   pushd my_install
   # pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024031922+2de4069-py3-none-manylinux_2_35_x86_64.whl 
+  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024041721+21da018-py3-none-manylinux_2_35_x86_64.whl
   unzip -q mlir_aie-*_x86_64.whl
   # pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024030308+800de14f-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl 
+  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024040913+d022f6b8-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
   unzip -q mlir-*_x86_64.whl
   pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
   rm -rf mlir*.whl
@@ -73,7 +73,8 @@ if test -f "$VPP"; then
   export LD_LIBRARY_PATH=`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   popd
-  python3 -m pip install --upgrade --force-reinstall -r python/requirements.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
+  python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   pushd programming_examples
 else
   echo "Vitis not found! Exiting..."
