@@ -30,13 +30,17 @@ def my_vector_scalar():
     @device(AIEDevice.ipu)
     def device_body():
         memRef_ty = T.memref(n, T.i32())
+        memRef_ty2 = T.memref(1, T.i32())
 
         # AIE Core Function declarations
 
-        scale_scalar_int32 = external_func(
-            "scale_scalar_int32", inputs=[memRef_ty, memRef_ty]
+        scale_scalar = external_func(
+            "vector_scalar_mul_aie_scalar",
+            inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
-        scale_int32 = external_func("scale_int32", inputs=[memRef_ty, memRef_ty])
+        scale = external_func(
+            "vector_scalar_mul_aie", inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()]
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -44,6 +48,9 @@ def my_vector_scalar():
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
+        of_factor = object_fifo(
+            "infactor", ShimTile, ComputeTile2, buffer_depth, memRef_ty2
+        )
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
 
         # Set up a circuit-switched flow from core to shim for tracing information
@@ -57,24 +64,27 @@ def my_vector_scalar():
         def core_body():
             # Effective while(1)
             for _ in for_(sys.maxsize):
+                elem_factor = of_factor.acquire(ObjectFifoPort.Consume, 1)
                 # Number of sub-vector "tile" iterations
                 for _ in for_(N_div_n):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                     if vectorized:
-                        call(scale_int32, [elem_in, elem_out])
+                        call(scale, [elem_in, elem_out, elem_factor, n])
                     else:
-                        call(scale_scalar_int32, [elem_in, elem_out])
+                        call(scale_scalar, [elem_in, elem_out, elem_factor, n])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
+                of_factor.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
         # To/from AIE-array data movement
         tensor_ty = T.memref(N, T.i32())
+        scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
-        def sequence(A, B, C):
+        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        def sequence(A, F, C):
 
             if enable_tracing:
                 trace_utils.configure_simple_tracing_aie2(
@@ -92,6 +102,7 @@ def my_vector_scalar():
 
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
