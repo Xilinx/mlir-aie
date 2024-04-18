@@ -70,5 +70,5 @@ def my_first_aie_program():
 
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    my_first_aie_program() # Call design function within the mlir-aie context
-    print(ctx.module) # Print the python-to-mlir conversion
+    my_first_aie_program()  # Call design function within the mlir-aie context
+    print(ctx.module)  # Print the python-to-mlir conversion

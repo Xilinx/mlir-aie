@@ -14,6 +14,7 @@ from aie.extras.dialects.ext import memref, arith  # memref and arithmatic diale
 
 import aie.utils.trace as trace_utils
 
+
 # AI Engine structural design function
 def my_first_aie_program():
 
@@ -45,7 +46,7 @@ def my_first_aie_program():
         @core(ComputeTile)
         def core_body():
             for _ in for_(0xFFFFFFFF):
-            # for _ in for_(8):
+                # for _ in for_(8):
                 # Acquire input and output object FIFO objects
                 elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
@@ -95,5 +96,5 @@ def my_first_aie_program():
 
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    my_first_aie_program() # Call design function within the mlir-aie context
-    print(ctx.module) # Print the python-to-mlir conversion
+    my_first_aie_program()  # Call design function within the mlir-aie context
+    print(ctx.module)  # Print the python-to-mlir conversion

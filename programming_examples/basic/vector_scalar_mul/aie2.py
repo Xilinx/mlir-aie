@@ -14,6 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
+
 def my_vector_scalar():
     N = 4096
     N_in_bytes = N * 4
@@ -97,4 +98,3 @@ def my_vector_scalar():
 with mlir_mod_ctx() as ctx:
     my_vector_scalar()
     print(ctx.module)
-

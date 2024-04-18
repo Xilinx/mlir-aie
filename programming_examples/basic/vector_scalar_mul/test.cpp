@@ -66,9 +66,8 @@ int main(int argc, const char *argv[]) {
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out =
-      xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
-              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -80,7 +79,7 @@ int main(int argc, const char *argv[]) {
   // Initialize buffer bo_inA
   DATATYPE *bufInA = bo_inA.map<DATATYPE *>();
   for (int i = 0; i < IN_SIZE; i++)
-    bufInA[i] = i+1;
+    bufInA[i] = i + 1;
 
   // Initialize buffer bo_inB
   // DATATYPE *bufInB = bo_inB.map<DATATYPE *>();
@@ -123,8 +122,7 @@ int main(int argc, const char *argv[]) {
   }
 
   if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) +
-                                    (IN_SIZE * sizeof(DATATYPE)),
+    test_utils::write_out_trace(((char *)bufOut) + (IN_SIZE * sizeof(DATATYPE)),
                                 trace_size, vm["trace_file"].as<std::string>());
   }
 

@@ -117,8 +117,9 @@ int main(int argc, const char *argv[]) {
   auto bo_inout2 =
       xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   // auto bo_trace =
-  //     // xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  //     xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  //     // xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY,
+  //     kernel.group_id(4)); xrt::bo(device, trace_size,
+  //     XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -180,7 +181,7 @@ int main(int argc, const char *argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
     auto run =
         kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
-        // kernel(bo_instr, instr_v.size(), bo_inout0, bo_trace, bo_inout2);
+    // kernel(bo_instr, instr_v.size(), bo_inout0, bo_trace, bo_inout2);
     run.wait();
     // sleep(3);
     auto stop = std::chrono::high_resolution_clock::now();
@@ -214,10 +215,10 @@ int main(int argc, const char *argv[]) {
 
     // Write trace values if trace_size > 0
     if (trace_size > 0) {
-      test_utils::write_out_trace(((char *)bufInOut2) + INOUT2_SIZE,
-      // test_utils::write_out_trace(((char *)bufTrace),
-                                  trace_size,
-                                  vm["trace_file"].as<std::string>());
+      test_utils::write_out_trace(
+          ((char *)bufInOut2) + INOUT2_SIZE,
+          // test_utils::write_out_trace(((char *)bufTrace),
+          trace_size, vm["trace_file"].as<std::string>());
     }
 
     // Accumulate run times
