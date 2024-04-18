@@ -28,19 +28,19 @@ def join_L2():
             ComputeTile2 = tile(0, 4)
 
             # AIE-array data movement with object fifos
-            # Input
+            # Output
             of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_24_ty)
             of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, memRef_8_ty)
             of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, memRef_8_ty)
             of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_8_ty)
-            object_fifo_loutk([of_out1, of_out2, of_out3], of_out0)
+            object_fifo_link([of_out0, of_out1, of_out2], of_out)
 
             # Set up compute tiles
             # Compute tile 2
             @core(ComputeTile0)
             def core_body():
                 # Effective while(1)
-                for _ in for_(8):
+                for _ in for_(6):
                     elem = of_out0.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(8):
                         v0 = memref.load(elem, [i])
@@ -54,7 +54,7 @@ def join_L2():
             @core(ComputeTile1)
             def core_body():
                 # Effective while(1)
-                for _ in for_(8):
+                for _ in for_(6):
                     elem = of_out1.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(8):
                         v0 = memref.load(elem, [i])
@@ -68,7 +68,7 @@ def join_L2():
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
-                for _ in for_(8):
+                for _ in for_(6):
                     elem = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     for i in for_(8):
                         v0 = memref.load(elem, [i])

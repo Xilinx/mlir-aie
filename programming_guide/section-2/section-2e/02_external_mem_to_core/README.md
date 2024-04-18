@@ -16,6 +16,6 @@ The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to 
 
 Both a consumer and a producer process are running on `ComputeTile2`. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
-It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) will be described in detail in [Section 3](../../../section-3/). TODO: add command to all designs
+It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
 
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [reduce_add](../../../../programming_examples/basic/reduce_add/) and [vector_scalar](../../../../programming_examples/basic/vector_scalar/).
