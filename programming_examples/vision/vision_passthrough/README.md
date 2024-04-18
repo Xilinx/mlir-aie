@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Pass Through (with ObjectFIFOs)</ins>
+# <ins>Vision Pass Through</ins>
 
 Single tile applies a pass through kernel on data from local memory. There are three versions of this pipeline that differ in the sizes of input and output data tensors. This pipeline mainly serves to test whether the data movement between Shim tile (0, 0) and AIE tile (0, 2) works correctly.
 
