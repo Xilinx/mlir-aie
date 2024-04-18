@@ -174,6 +174,10 @@ struct AIEAssignBufferAddressesPass
       // AIE1 and 0x10000 in AIE2, but we need room at
       // the bottom for stack.
       // TODO: add function in TargetModel that returns num banks per arch
+      if (clBankAware) {
+      } else {
+
+      }
       int numBanks = 0;
       if (tile.isMemTile())
         numBanks = 1;
