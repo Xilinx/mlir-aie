@@ -64,9 +64,7 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
+  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
@@ -81,28 +79,23 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < IN_SIZE; i++)
     bufInA[i] = i + 1;
 
-  // Initialize buffer bo_inB
-  // DATATYPE *bufInB = bo_inB.map<DATATYPE *>();
-  // for (int i = 0; i < IN_SIZE; i++)
-  //   bufInA[i] = i+1;
-
-  // Zero out buffer bo_out
-  DATATYPE *bufOut = bo_out.map<DATATYPE *>();
+  // Zero out buffer bo_outC
+  DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
   memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE) + trace_size);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Execute the kernel and wait to finish
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_outC);
   run.wait();
 
   // Sync device to host memories
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   // Compare out to in
   int errors = 0;
