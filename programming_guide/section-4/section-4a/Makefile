@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../programming_examples/makefile-common
+include ../../../programming_examples/makefile-common
 
 all: build/final.xclbin
 
@@ -35,9 +35,11 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-run_g: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
+run-1: ${targetname}.exe build/final.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --iters 1 -v 2
 
+run-4: ${targetname}.exe build/final.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --iters 4 -v 2
 
 run_py: build/final.xclbin build/insts.txt
 	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

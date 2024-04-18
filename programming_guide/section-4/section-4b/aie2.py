@@ -12,6 +12,8 @@ from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
 from aie.dialects.scf import *  # scf (strcutred control flow) dialect
 from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
 
+import aie.utils.trace as trace_utils
+
 
 # AI Engine structural design function
 def my_first_aie_program():
@@ -33,8 +35,6 @@ def my_first_aie_program():
         ComputeTile = tile(0, 2)
         ShimTile = tile(0, 0)
 
-        compute_tile_col, compute_tile_row = 0, 2
-
         # Data movement with object FIFOs
         # Input (from shim tile to compute tile)
         of_in0 = object_fifo("in0", ShimTile, ComputeTile, 2, memRef_8_ty)
@@ -45,8 +45,8 @@ def my_first_aie_program():
         # Compute tile body
         @core(ComputeTile)
         def core_body():
-            #                for _ in for_(0xFFFFFFFF):
-            for _ in for_(8):
+            for _ in for_(0xFFFFFFFF):
+                # for _ in for_(8):
                 # Acquire input and output object FIFO objects
                 elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
@@ -64,7 +64,7 @@ def my_first_aie_program():
                 yield_([])
 
         # Set up a circuit-switched flow from core to shim for tracing information
-        if enable_tracing:
+        if enableTrace:
             flow(ComputeTile, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # To/from AIE-array data movement
@@ -96,5 +96,5 @@ def my_first_aie_program():
 
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    my_first_aie_program() # Call design function within the mlir-aie context
-    print(ctx.module) # Print the python-to-mlir conversion
+    my_first_aie_program()  # Call design function within the mlir-aie context
+    print(ctx.module)  # Print the python-to-mlir conversion

@@ -8,8 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
-
 #include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
@@ -26,8 +24,12 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using INOUT0_DATATYPE = std::bfloat16_t;
-using INOUT1_DATATYPE = std::bfloat16_t;
+// ------------------------------------------------------
+// Configure this to match your buffer data type
+// ------------------------------------------------------
+using INOUT0_DATATYPE = std::uint32_t;
+using INOUT1_DATATYPE = std::uint32_t;
+using INOUT2_DATATYPE = std::uint32_t;
 #endif
 
 namespace po = boost::program_options;
@@ -35,18 +37,12 @@ namespace po = boost::program_options;
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
-template <typename T>
-int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
+template <typename Tout>
+int verify(int CSize, std::vector<Tout> C, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < CSize; i++) {
-    std::bfloat16_t ref = exp(A[i]);
-    // Let's check if they are inf or nan, and if so just pass because
-    // comparisions will then fail, even for matches
-    if (isinf(ref) || isinf(C[i]))
-      break;
-    if (isnan(ref) || isnan(C[i]))
-      break;
-    if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
+    uint32_t ref = i + 2;
+    if (C[i] != ref) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
       errors++;
     } else {
@@ -76,14 +72,19 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  int INOUT0_VOLUME = 65536; // Input only, 65536x bfloat16_t
-  int INOUT1_VOLUME = 65536; // Input only, 65536x bfloat16_t
+  // ------------------------------------------------------
+  // Configure this to match your design's buffer size
+  // ------------------------------------------------------
+  int INOUT0_VOLUME = 640; // Input only, 64x uint32_t in this example
+  int INOUT1_VOLUME = 640; // Not used in this example
+  int INOUT2_VOLUME = 640; // Output only, 64x uint32_t in this example
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
+  size_t INOUT2_SIZE = INOUT2_VOLUME * sizeof(INOUT2_DATATYPE);
 
   // TODO Remove trace for now?
-  size_t OUT_SIZE = INOUT1_SIZE + trace_size;
+  size_t OUT_SIZE = INOUT2_SIZE + trace_size;
 
   srand(time(NULL));
 
@@ -96,47 +97,12 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Get device, load the xclbin & kernel and register them
   // ------------------------------------------------------
-  // Get a device handle
-  unsigned int device_index = 0;
-  auto device = xrt::device(device_index);
+  xrt::device device;
+  xrt::kernel kernel;
 
-  // Load the xclbin
-  if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
-  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-
-  // Load the kernel
-  if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
-  std::string Node = vm["kernel"].as<std::string>();
-
-  // Get the kernel from the xclbin
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node, verbosity](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 if (verbosity >= 1) {
-                                   std::cout << "Name: " << name << std::endl;
-                                 }
-                                 return name.rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
-
-  // Register xclbin
-  if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
-              << "\n";
-  device.register_xclbin(xclbin);
-
-  // Get a hardware context
-  if (verbosity >= 1)
-    std::cout << "Getting hardware context.\n";
-  xrt::hw_context context(device, xclbin.get_uuid());
-
-  // Get a kernel handle
-  if (verbosity >= 1)
-    std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::kernel(context, kernelName);
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
@@ -146,7 +112,10 @@ int main(int argc, const char *argv[]) {
   auto bo_inout0 =
       xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inout1 =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+      xrt::bo(device, INOUT1_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  // Assumes trace will only be added to inout2
+  auto bo_inout2 =
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -158,16 +127,29 @@ int main(int argc, const char *argv[]) {
   // Initialize Inout buffer 0
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
-  for (int i = 0; i < INOUT0_VOLUME; i++) {
-    std::uint16_t u16 = (std::uint16_t)i;
-    std::bfloat16_t bf16 = *(std::bfloat16_t *)&u16;
-    AVec[i] = bf16;
-  }
+  for (int i = 0; i < INOUT0_VOLUME; i++)
+    AVec[i] = i + 1;
+  // AVec.push_back(i + 1);
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
+
+  // Initialize Inout buffer 1
+  // INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
+  // std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
+  // for (int i = 0; i < INOUT1_VOLUME; i++)
+  //   BVec[i] = i + 1
+  //   //BVec.push_back(i + 1);
+  // memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
+
+  // Initialize Inout buffer 2
+  char *bufInOut2 = bo_inout2.map<char *>();
+  std::vector<INOUT2_DATATYPE> CVec(INOUT2_VOLUME);
+  memset(bufInOut2, 0, OUT_SIZE); // Zeroes out INOUT2_VOLUME + trace_size
 
   // Sync buffers to update input buffer values
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inout0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  // bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // ------------------------------------------------------
   // Initialize run configs
@@ -184,35 +166,29 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
-    if (verbosity >= 1) {
-      std::cout << "Running Kernel.\n";
-    }
-
     // Run kernel
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1);
+    auto run =
+        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
-    bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    bo_inout2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
       continue;
     }
-    std::bfloat16_t *bufOut = bo_inout1.map<std::bfloat16_t *>();
 
     // Copy output results and verify they are correct
-    std::vector<INOUT1_DATATYPE> CVec(INOUT1_VOLUME);
-
-    memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(INOUT1_DATATYPE)));
+    memcpy(CVec.data(), bufInOut2, (CVec.size() * sizeof(INOUT2_DATATYPE)));
     if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying results ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      errors = verify(INOUT1_VOLUME, AVec, CVec, verbosity);
+      errors = verify(INOUT2_VOLUME, CVec, verbosity);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
@@ -227,7 +203,9 @@ int main(int argc, const char *argv[]) {
 
     // Write trace values if trace_size > 0
     if (trace_size > 0) {
-      test_utils::write_out_trace(((char *)bufOut) + INOUT1_SIZE, trace_size,
+      // test_utils::write_out_trace(((char *)bufInOut2) + INOUT2_SIZE,
+      // trace_size,
+      test_utils::write_out_trace(((char *)bufInOut2), trace_size,
                                   vm["trace_file"].as<std::string>());
     }
 
