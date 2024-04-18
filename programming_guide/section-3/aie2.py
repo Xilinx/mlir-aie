@@ -5,70 +5,64 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
-from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir-aie context
+import sys
 
-from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.dialects.scf import *  # scf (strcutred control flow) dialect
-from aie.extras.dialects.ext import memref, arith  # memref and arithmatic dialects
+from aie.dialects.aie import *
+from aie.dialects.aiex import *
+from aie.dialects.scf import *
+from aie.extras.context import mlir_mod_ctx
+
+import aie.utils.trace as trace_utils
 
 
-# AI Engine structural design function
-def my_first_aie_program():
+def my_vector_scalar():
 
-    # Dvice declaration - aie2 device NPU
+    enable_tracing = False
+    trace_size = 8192
+
     @device(AIEDevice.ipu)
     def device_body():
-        # Memref types
-        memRef_8_ty = T.memref(8, T.i32())
-        memRef_16_ty = T.memref(16, T.i32())
-        memRef_32_ty = T.memref(32, T.i32())
-        memRef_64_ty = T.memref(64, T.i32())
+        memRef_ty = T.memref(1024, T.i32())
+
+        # AIE Core Function declarations
+        scale = external_func(
+            "scale_scalar_int32", inputs=[memRef_ty, memRef_ty, T.i32(), T.i32()]
+        )
 
         # Tile declarations
-        ComputeTile = tile(0, 2)
         ShimTile = tile(0, 0)
+        ComputeTile2 = tile(0, 2)
 
-        # Data movement with object FIFOs
-        # Input (from shim tile to compute tile)
-        of_in0 = object_fifo("in0", ShimTile, ComputeTile, 2, memRef_8_ty)
+        # AIE-array data movement with object fifos
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
-        # Output (from compute tile to shim tile)
-        of_out0 = object_fifo("out0", ComputeTile, ShimTile, 2, memRef_8_ty)
-
-        # Compute tile body
-        @core(ComputeTile)
+        # Set up compute tiles
+        # Compute tile 2
+        @core(ComputeTile2, "scale.o")
         def core_body():
-            for _ in for_(8):
-                # Acquire input and output object FIFO objects
-                elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
-
-                # Core functionality - load, add 1, store
-                for i in for_(8):
-                    v0 = memref.load(elem_in, [i])
-                    v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                    memref.store(v1, elem_out, [i])
+            # Effective while(1)
+            for _ in for_(sys.maxsize):
+                # Number of sub-vector "tile" iterations
+                for _ in for_(4):
+                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    call(scale, [elem_in, elem_out, 1024])
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-
-                # Release input and output object FIFO objects
-                of_in0.release(ObjectFifoPort.Consume, 1)
-                of_out0.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
         # To/from AIE-array data movement
-        @FuncOp.from_py_func(memRef_64_ty, memRef_64_ty)
-        def sequence(inTensor, outTensor):
-            ipu_dma_memcpy_nd(
-                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
-            )
-            ipu_dma_memcpy_nd(
-                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
-            )
+        tensor_ty = T.memref(4096, T.i32())
+
+        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        def sequence(A, C, notUsed):
+            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
-# Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    my_first_aie_program()  # Call design function within the mlir-aie context
-    print(ctx.module)  # Print the python-to-mlir conversion
+    my_vector_scalar()
+    print(ctx.module)
