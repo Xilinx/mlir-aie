@@ -100,7 +100,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
 
 ## Kernel Code
 
-
+We can program the AIE compute core using C++ code and compile it with xchesscc into an kernel object file. In this section, a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE will provide our initial implementation. [Section-4](../section-4/) will introduce how to exploit the compute dense vector processor.
 
 ```c
 void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
