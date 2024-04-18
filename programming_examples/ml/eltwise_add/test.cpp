@@ -16,7 +16,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <stdfloat>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
