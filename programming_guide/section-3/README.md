@@ -55,11 +55,12 @@ Since the compute core can only access L1 memory, input data needs to be explici
 
 <img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 2 objectFIFOs: "of_in" to bring in the vector a and "of_out" to move the output vector c using a shimDMA. Note that the objects are declared to have the `memRef_ty` type: 1024 int32 elements.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer.
 
 ```python
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32()))
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
@@ -76,7 +77,7 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
             ipu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in" and "of_out". For every processing iteration , we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
 This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function "scale.o". We run this pattern in a very large loop to enable enqueuing multiple rounds vector scalar multiply work from the host code.
 
 ```python
@@ -84,18 +85,31 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
         def core_body():
             # Effective while(1)
             for _ in for_(sys.maxsize):
+                elem_factor = of_factor.acquire(ObjectFifoPort.Consume, 1)
                 # Number of sub-vector "tile" iterations
                 for _ in for_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar_int32, [elem_in, elem_out])
+                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
+                of_factor.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 ```
 
 ## Kernel Code
+
+
+
+```c
+void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
+                                  int32_t *factor, int32_t N) {
+  for (int i = 0; i < N; i++) {
+    c[i] = *factor * a[i];
+  }
+}
+```
 
 ## Host Code
 
