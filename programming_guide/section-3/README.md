@@ -48,14 +48,16 @@ We also need to declare that the compute core will run an external function: a k
         memRef_ty = T.memref(1024, T.i32())
 
         # AIE Core Function declarations
-        scale_scalar_int32 = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty])
+        scale_scalar = external_func("vector_scalar_mul_aie_scalar",
+            inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()],
+        )
 ```
 
 Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the objectFIFO data movement primitive (introduced in [section-2](../section-2/)).
 
 <img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer. All objectFIFO are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs data movement with the processing on the compute core.
 
 ```python
         # AIE-array data movement with object fifos
@@ -69,11 +71,13 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
 ```python
         # To/from AIE-array data movement
         tensor_ty = T.memref(4096, T.i32())
+        scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
-        def sequence(A, C):
+        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        def sequence(A, F, C):
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
+            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
@@ -100,7 +104,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
 
 ## Kernel Code
 
-We can program the AIE compute core using C++ code and compile it with xchesscc into an kernel object file. In this section, a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE will provide our initial implementation. [Section-4](../section-4/) will introduce how to exploit the compute dense vector processor.
+We can program the AIE compute core using C++ code and compile it with xchesscc into an kernel object file. In this section, a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE will provide our initial implementation. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
 void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
@@ -111,6 +115,40 @@ void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
 }
 ```
 
+[Section-4](../section-4/) will introduce how to exploit the compute dense vector processor.
+Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code.
+
 ## Host Code
 
+TBD
+
+This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+
 ## Running the Program
+
+To compile the design and C++ testbench:
+
+```sh
+make
+make build/vectorScalar.exe
+```
+
+To run the design:
+
+```sh
+make run
+```
+
+### Python Testbench
+
+To compile the design and run the Python testbench:
+
+```sh
+make
+```
+
+To run the design:
+
+```sh
+python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
+```
