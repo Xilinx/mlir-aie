@@ -560,7 +560,7 @@ struct AIEControl {
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
       assert(targetOp.getDevice() == AIEDevice::ipu &&
-             "Only IPU currently supported");
+             "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
@@ -780,9 +780,9 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
   // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about IPU...
+  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
   assert(targetOp.getDevice() == AIEDevice::ipu &&
-         "Only IPU currently supported");
+         "Only NPU currently supported");
   int maxCol = 0, minCol = 0;
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     minCol = std::min(tileOp.getCol(), minCol);

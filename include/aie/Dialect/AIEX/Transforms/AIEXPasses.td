@@ -17,7 +17,7 @@ def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
   let summary = "Lower AIEX operations";
   let description = [{
 
-    AIEX Ipu Ops are removed.
+    AIEX Npu Ops are removed.
 
   }];
 
@@ -133,13 +133,13 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEDmaToIpu : Pass<"aie-dma-to-ipu", "AIE::DeviceOp"> {
+def AIEDmaToNpu : Pass<"aie-dma-to-ipu", "AIE::DeviceOp"> {
   let summary = "";
   let description = [{
 
   }];
 
-  let constructor = "xilinx::AIEX::createAIEDmaToIpuPass()";
+  let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "xilinx::AIE::AIEDialect",

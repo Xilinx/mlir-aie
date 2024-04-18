@@ -70,8 +70,8 @@ cl::opt<std::string>
              cl::init(HOST_ARCHITECTURE), cl::cat(AIE2XCLBinCat));
 
 cl::opt<std::string>
-    IPUInstsName("ipu-insts-name",
-                 cl::desc("Output instructions filename for IPU target"),
+    NPUInstsName("ipu-insts-name",
+                 cl::desc("Output instructions filename for NPU target"),
                  cl::init("ipu_insts.txt"), cl::cat(AIE2XCLBinCat));
 
 cl::opt<bool>
@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
   if (!owning)
     return 1;
 
-  if (failed(aie2xclbin(&ctx, *owning, TK, IPUInstsName.getValue(),
+  if (failed(aie2xclbin(&ctx, *owning, TK, NPUInstsName.getValue(),
                         XCLBinName.getValue())))
     return 1;
 

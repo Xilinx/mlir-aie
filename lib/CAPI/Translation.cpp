@@ -76,11 +76,11 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
   return wrap(status);
 }
 
-MlirStringRef aieTranslateToIPU(MlirOperation moduleOp) {
+MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
   std::string ipu;
   llvm::raw_string_ostream os(ipu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToIPU(mod, os)))
+  if (failed(AIETranslateToNPU(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(ipu.size()));
   ipu.copy(cStr, ipu.size());

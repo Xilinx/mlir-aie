@@ -463,7 +463,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
+def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
   ]> {
@@ -519,10 +519,10 @@ def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   let hasVerifier = 1;
 }
 
-def AIE_IpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
+def AIE_NpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let description = [{
-    The IpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
+    The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
     and issues a task-complete-token.
 
     Example:
@@ -549,7 +549,7 @@ def AIE_IpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
 }
 
 // Write RTP
-def AIE_IpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
+def AIE_NpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
   let summary = "rtp write operator";
   let arguments = (
     ins StrAttr:$buffer_sym_name,
@@ -567,7 +567,7 @@ def AIE_IpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
 }
 
 // Push BD to Queue
-def AIE_IpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
+def AIE_NpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (
     ins FlatSymbolRefAttr:$metadata,
@@ -586,7 +586,7 @@ def AIE_IpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
 }
 
 // WRITE32
-def AIE_IpuWrite32Op: AIEX_Op<"ipu.write32", []> {
+def AIE_NpuWrite32Op: AIEX_Op<"ipu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
     ins I32Attr:$column,
@@ -604,7 +604,7 @@ def AIE_IpuWrite32Op: AIEX_Op<"ipu.write32", []> {
 }
 
 // OP_SYNC
-def AIE_IpuSyncOp: AIEX_Op<"ipu.sync", []> {
+def AIE_NpuSyncOp: AIEX_Op<"ipu.sync", []> {
   let summary = "sync operator";
   let arguments = (
     ins I32Attr:$column,
@@ -624,7 +624,7 @@ def AIE_IpuSyncOp: AIEX_Op<"ipu.sync", []> {
 }
 
 // WRITEBD_EXTEND_SHIMTILE
-def AIE_IpuWriteBdExShimTileOp: AIEX_Op<"ipu.writebd_shimtile", []> {
+def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"ipu.writebd_shimtile", []> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,

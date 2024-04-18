@@ -1,4 +1,4 @@
-//===- AIEDmaToIpu.cpp ------------------------------------------*- C++ -*-===//
+//===- AIEDmaToNpu.cpp ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -20,14 +20,14 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct RtpToIpuPattern : OpConversionPattern<IpuWriteRTPOp> {
+struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  RtpToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
-  matchAndRewrite(IpuWriteRTPOp op, OpAdaptor adaptor,
+  matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
@@ -59,7 +59,7 @@ struct RtpToIpuPattern : OpConversionPattern<IpuWriteRTPOp> {
     IntegerAttr row = IntegerAttr::get(i32ty, r);
     IntegerAttr address = IntegerAttr::get(ui32ty, rtp_buffer_addr);
     IntegerAttr value = IntegerAttr::get(i32ty, v);
-    rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), row.getInt(),
+    rewriter.create<NpuWrite32Op>(op->getLoc(), column.getInt(), row.getInt(),
                                   address.getUInt(), value.getInt());
 
     rewriter.eraseOp(op);
@@ -81,14 +81,14 @@ getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
   return std::nullopt;
 }
 
-struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
+struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PushToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  PushToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
-  matchAndRewrite(IpuShimTilePushQueueOp op, OpAdaptor adaptor,
+  matchAndRewrite(NpuShimTilePushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
@@ -134,7 +134,7 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
       cmd |= 0x80000000;
     IntegerAttr value = IntegerAttr::get(ui32ty, cmd);
 
-    rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
+    rewriter.create<NpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
                                   address.getUInt(), value.getUInt());
 
     rewriter.eraseOp(op);
@@ -142,14 +142,14 @@ struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
   }
 };
 
-struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
+struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  DmaToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  DmaToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
-  matchAndRewrite(IpuDmaMemcpyNdOp op, OpAdaptor adaptor,
+  matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
@@ -320,14 +320,14 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    (void)rewriter.create<IpuWriteBdExShimTileOp>(
+    (void)rewriter.create<NpuWriteBdExShimTileOp>(
         op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
         buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
         d0_size, d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    rewriter.create<IpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
+    rewriter.create<NpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
                                             issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);
@@ -335,17 +335,17 @@ struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
   }
 };
 
-/// Convert IpuDmaWaitOp into IpuSyncOp by retrieving the necessary
+/// Convert NpuDmaWaitOp into NpuSyncOp by retrieving the necessary
 /// information from the ShimDMAAllocationOp referenced through the
 /// symbol argument of this op.
-struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
+struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  DmaWaitToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
-  matchAndRewrite(IpuDmaWaitOp op, OpAdaptor adaptor,
+  matchAndRewrite(NpuDmaWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
@@ -364,13 +364,13 @@ struct DmaWaitToIpuPattern : OpConversionPattern<IpuDmaWaitOp> {
 
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row. Row is always 0 for shim tiles.
-    (void)rewriter.replaceOpWithNewOp<IpuSyncOp>(op, column, 0, direction,
+    (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(op, column, 0, direction,
                                                  channel, 1, 1);
     return success();
   }
 };
 
-struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
+struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
@@ -379,22 +379,22 @@ struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
     target.addLegalDialect<AIEXDialect>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
-    target.addIllegalOp<IpuWriteRTPOp>();
-    target.addIllegalOp<IpuDmaMemcpyNdOp>();
-    target.addIllegalOp<IpuDmaWaitOp>();
-    target.addIllegalOp<IpuShimTilePushQueueOp>();
+    target.addIllegalOp<NpuWriteRTPOp>();
+    target.addIllegalOp<NpuDmaMemcpyNdOp>();
+    target.addIllegalOp<NpuDmaWaitOp>();
+    target.addIllegalOp<NpuShimTilePushQueueOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DmaToIpuPattern>(&getContext());
-    patterns.insert<DmaWaitToIpuPattern>(&getContext());
-    patterns.insert<PushToIpuPattern>(&getContext());
-    patterns.insert<RtpToIpuPattern>(&getContext());
+    patterns.insert<DmaToNpuPattern>(&getContext());
+    patterns.insert<DmaWaitToNpuPattern>(&getContext());
+    patterns.insert<PushToNpuPattern>(&getContext());
+    patterns.insert<RtpToNpuPattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToIpuPass() {
-  return std::make_unique<AIEDmaToIpuPass>();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
+  return std::make_unique<AIEDmaToNpuPass>();
 }

@@ -35,8 +35,8 @@ register_dialect(get_dialect_registry())
 ipu_sync = partial(ipu_sync, column_num=1, row_num=1)
 
 
-class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
-    """Specialize IpuDmaMemcpyNdOp class constructor to take python integers"""
+class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
+    """Specialize NpuDmaMemcpyNdOp class constructor to take python integers"""
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class IpuDmaMemcpyNd(IpuDmaMemcpyNdOp):
         )
 
 
-ipu_dma_memcpy_nd = IpuDmaMemcpyNd
+ipu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 
 _PROLOG = [
@@ -119,7 +119,7 @@ def _get_prolog():
     return _PROLOG[:]
 
 
-# based on https://github.com/Xilinx/mlir-aie/blob/cb232a43383ef3b8efd8b408545c9b74885578ad/lib/Targets/AIETargetIPU.cpp
+# based on https://github.com/Xilinx/mlir-aie/blob/cb232a43383ef3b8efd8b408545c9b74885578ad/lib/Targets/AIETargetNPU.cpp
 def _ipu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
     if isinstance(channel, IntegerAttr):
         channel = int(channel)

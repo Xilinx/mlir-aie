@@ -1,4 +1,4 @@
-//===- AIETargetIPU.cpp -----------------------------------------*- C++ -*-===//
+//===- AIETargetNPU.cpp -----------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -50,7 +50,7 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
                                          tailSize);
 }
 
-void appendSync(std::vector<uint32_t> &instructions, IpuSyncOp op) {
+void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
   auto words = reserveAndGetTail(instructions, 2);
 
@@ -65,7 +65,7 @@ void appendSync(std::vector<uint32_t> &instructions, IpuSyncOp op) {
   words[1] |= (op.getRowNum() & 0xff) << 8;
 }
 
-void appendWrite32(std::vector<uint32_t> &instructions, IpuWrite32Op op) {
+void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 3);
 
@@ -80,7 +80,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, IpuWrite32Op op) {
 }
 
 void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
-                           IpuWriteBdExShimTileOp op) {
+                           NpuWriteBdExShimTileOp op) {
 
   auto words = reserveAndGetTail(instructions, 10);
 
@@ -131,7 +131,7 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
 
 } // namespace
 
-std::vector<uint32_t> xilinx::AIE::AIETranslateToIPU(ModuleOp module) {
+std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
 
   std::vector<uint32_t> instructions = getProlog();
 
@@ -143,9 +143,9 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToIPU(ModuleOp module) {
     Block &entry = f.getRegion().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
-          .Case<IpuSyncOp>([&](auto op) { appendSync(instructions, op); })
-          .Case<IpuWrite32Op>([&](auto op) { appendWrite32(instructions, op); })
-          .Case<IpuWriteBdExShimTileOp>(
+          .Case<NpuSyncOp>([&](auto op) { appendSync(instructions, op); })
+          .Case<NpuWrite32Op>([&](auto op) { appendWrite32(instructions, op); })
+          .Case<NpuWriteBdExShimTileOp>(
               [&](auto op) { appendWriteBdShimTile(instructions, op); });
     }
   }
@@ -153,9 +153,9 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToIPU(ModuleOp module) {
   return instructions;
 }
 
-LogicalResult xilinx::AIE::AIETranslateToIPU(ModuleOp module,
+LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
                                              raw_ostream &output) {
-  auto instructions = AIETranslateToIPU(module);
+  auto instructions = AIETranslateToNPU(module);
   for (auto w : instructions)
     output << llvm::format("%08X\n", w);
   return success();

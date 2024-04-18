@@ -320,10 +320,10 @@ void registerAIETranslations() {
             cdoAieSim, cdoXaieDebug, cdoPartitionStartCol, cdoEnableCores);
       },
       registerDialects);
-  TranslateFromMLIRRegistration registrationIPU(
-      "aie-ipu-instgen", "Generate instructions for IPU",
+  TranslateFromMLIRRegistration registrationNPU(
+      "aie-ipu-instgen", "Generate instructions for NPU",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToIPU(module, output);
+        return AIETranslateToNPU(module, output);
       },
       registerDialects);
 }

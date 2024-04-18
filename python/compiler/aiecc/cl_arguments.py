@@ -214,7 +214,7 @@ def parse_args(args=None):
         "--ipu-insts-name",
         dest="insts_name",
         default="ipu_insts.txt",
-        help="Output instructions filename for IPU target",
+        help="Output instructions filename for NPU target",
     )
     parser.add_argument(
         "--aie-generate-cdo",

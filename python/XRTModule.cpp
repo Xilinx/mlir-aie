@@ -44,7 +44,7 @@ public:
     kernel = std::make_unique<xrt::kernel>(*context, kernelName);
   }
 
-  void loadIPUInstructions(const std::vector<uint32_t> &insts) {
+  void loadNPUInstructions(const std::vector<uint32_t> &insts) {
     ipuInstructions =
         std::make_unique<xrt::bo>(*device, insts.size() * sizeof(uint32_t),
                                   XCL_BO_FLAGS_CACHEABLE, kernel->group_id(0));
@@ -114,7 +114,7 @@ public:
     run_->start();
   }
 
-  void _runOnlyIpuInstructions() {
+  void _runOnlyNpuInstructions() {
     run_ = std::make_unique<xrt::run>(*kernel);
     run_->set_arg(0, *ipuInstructions);
     run_->set_arg(1, ipuInstructions->size());
@@ -145,11 +145,11 @@ PYBIND11_MODULE(_xrt, m) {
   py::class_<PyXCLBin>(m, "XCLBin", py::module_local())
       .def(py::init<const std::string &, const std::string &, int>(),
            "xclbin_path"_a, "kernel_name"_a, "device_index"_a = 0)
-      .def("load_ipu_instructions", &PyXCLBin::loadIPUInstructions, "insts"_a)
+      .def("load_ipu_instructions", &PyXCLBin::loadNPUInstructions, "insts"_a)
       .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
       .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
       .def("run", &PyXCLBin::run)
-      .def("_run_only_ipu_instructions", &PyXCLBin::_runOnlyIpuInstructions)
+      .def("_run_only_ipu_instructions", &PyXCLBin::_runOnlyNpuInstructions)
       .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
       .def(
           "mmap_buffers",
