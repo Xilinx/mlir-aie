@@ -491,7 +491,17 @@ class resnet_conv2_x_int8(nn.Module):
             * block_2_weight_scale2
         )
         block_2_relu2_out = torch.clamp(
-            torch.round(self.block_2_relu2(block_2_conv2_out) / block_2_relu_2), min, max
+            torch.round(self.block_2_relu2(block_2_conv2_out) / block_2_relu_2),
+            min,
+            max,
+        )
+        block_2_conv3_out = (
+            self.block_2_conv3(block_2_relu2_out)
+            * block_2_relu_2
+            * block_2_weight_scale3
+        )
+        block_2_rhf_same_scale = torch.clamp(
+            torch.round(block_2_conv3_out / block_1_relu_3), -128, 127
         )
         block_2_conv3_out = self.block_2_conv3(block_2_relu2_out) * block_2_relu_2 * block_2_weight_scale3
         block_2_rhf_same_scale = torch.clamp(torch.round(block_2_conv3_out / block_1_relu_3), -128, 127)
