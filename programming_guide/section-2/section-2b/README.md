@@ -39,9 +39,9 @@ def core_body():
 
 ### Broadcast
 
-As was explained in the Introduction [section](../section-2a/README.md#initializing-an-object-fifo) section, the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the data is copied at a low-level before being sent to each of the consumers. To achieve the broadcast, the lowering will use one output port of the producer tile to establish a connection to all consumer tiles.
+As was explained in the Introduction [section](../section-2a/README.md#initializing-an-object-fifo), the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the data is copied at a low-level before being sent to each of the consumers. To achieve the broadcast, the lowering will use one output port of the producer tile to establish a connection to all consumer tiles.
 
-For more low-level details regarding how the objects in the Object FIFO are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the MLIR-AIE tutorials [tutorials](/mlir-aie/tutorials/tutorial-7/). They are, however, not required to understand or use the Object FIFO API.
+For more low-level details regarding how the objects in the Object FIFO are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the MLIR-AIE [tutorials](/mlir-aie/tutorials/tutorial-7/). They are, however, not required to understand or use the Object FIFO API.
 
 Below is an example of an Object FIFO of depth 3 with one producer tile A and three consumer tiles B, C and D:
 ```
@@ -78,6 +78,9 @@ def core_body():
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Produce, 1)
 ```
+
+<img src="./../../assets/SkipBroadcastNoFix.svg" height="300" >
+
 Because C is waiting on B, the two tiles do not have the same rate of consumption from the broadcast connection and this results in the production rate of A being impacted. To avoid this, an additional object is required by B for `of0` which can then be used to buffer data from `of0` while waiting for the data from B via `of1`. To achieve this `of0` is created with an array of integers for its `depth`:
 ```
 of0 = object_fifo("objfifo0", A, [B, C], [1, 1, 2], T.memref(256, T.i32()))
