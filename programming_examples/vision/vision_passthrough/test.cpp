@@ -48,26 +48,7 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  try {
-    test_utils::check_arg_file_exists(vm, "xclbin");
-    test_utils::check_arg_file_exists(vm, "instr");
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-  }
+  test_utils::parse_options(argc, argv, desc, vm);
 
   // Read the input image or generate random one if no input file argument
   // provided
