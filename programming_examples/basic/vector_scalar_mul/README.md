@@ -28,7 +28,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 This simple example uses a single compute tile in the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
 1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
-1. The runtime data movement is expressed to read `4096` int32_t data from host memory to the compute tile and write the `4096` data back to host memory. 
+1. The runtime data movement is expressed to read `4096` int32_t data from host memory to the compute tile and write the `4096` data back to host memory. A single int32_t scale factor is also transferred form host memory to the Compute Tile.  
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and stores the result to another output "object" it has acquired from "of_out". Note that a scalar or vectorized kernel running on the Compute Tile's AIE core multiplies the data from the input "object" by a scale factor before storing to the output "object".
 1. After the compute is performed the Compute Tile releases the "objects" allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
@@ -48,11 +48,11 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 1. **Tile Definitions:** `ShimTile` handles data movement, and `ComputeTile2` processes the scaling operations.
 
-1. **Object Fifos:** `of_in` and `of_out` are defined to facilitate communication between `ShimTile` and `ComputeTile2`.
+1. **Object Fifos:** `of_in` and `of_out` are defined to facilitate the vector data communication between `ShimTile` and `ComputeTile2`. Similarly, `of_factor` facilitates the scale factor communication from the `ShimTile` to the `ComputeTile2`.
 
 1. **Tracing Flow Setup (Optional):** A circuit-switched flow is set up for tracing information when enabled.
 
-1. **Core Definition:** The `core_body` function loops through sub-vectors of the input data, acquiring elements from `of_in`, processing using `scale_scalar_int32` or `scale_int32`, and outputting the result to `of_out`.
+1. **Core Definition:** The `core_body` function loops through sub-vectors of the input data, acquiring elements from `of_in`, processing using `vector_scalar_mul_aie_scalar()` or `vector_scalar_mul_aie()`, and outputting the result to `of_out`.
 
 1. **Data Movement Configuration:** The `sequence` function configures data movement and synchronization on the `ShimTile` for input and output buffer management.
 
@@ -64,11 +64,11 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 `scale.cc` contains a C++ implementations of scalar and vectorized vector scalar multiplcation operation designed for AIE cores. It consists of two main sections:
 
-1. **Scalar Scaling:** The `scale()` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
+1. **Scalar Scaling:** The `scale_scalar()` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 1. **Vectorized Scaling:** The `scale_vectorized()` function processes multiple data elements simultaneously, taking advantage of AIE vector datapath capabilities to load, multiply and store data elements.
 
-1. **C-style Wrapper Functions:** `scale_int32()` and `scale_scalar_int32()` are two C-style wrapper functions to call the templated `scale_vectorized()` and `scale()` implementations inside the AIE design implemented in `aie2.py`. The functions are provided for `int32_t`.
+1. **C-style Wrapper Functions:** `vector_scalar_mul_aie_scalar()` and `vector_scalar_mul_aie()` are two C-style wrapper functions to call the templated `scale_vectorized()` and `scale_scalar()` implementations inside the AIE design implemented in `aie2.py`. The functions are provided for `int32_t`.
 
 ## Usage
 
