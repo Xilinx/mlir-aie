@@ -264,7 +264,11 @@ class resnet_conv2_x_int8(nn.Module):
 
         block_2_skip_add = block_1_relu_3 * (block_2_rhf_same_scale + block_1_final_out)
         block_2_final_out = block_2_relu_3 * (
-            torch.clamp(torch.round(self.block_2_relu3(block_2_skip_add) / block_2_relu_3), min, max)
+            torch.clamp(
+                torch.round(self.block_2_relu3(block_2_skip_add) / block_2_relu_3),
+                min,
+                max,
+            )
         )
         return block_2_final_out
 
