@@ -16,6 +16,11 @@ The design in [ext_to_coreL2.py](./ext_to_core.py) is very similar to the one in
 
 The processes on the compute tile work the same way as in the previous design. The producer process acquires one object from `of_in1` to consume and one object from `of_out1` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
-It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
+It is possible to build, run and test this design with the following command:
+```
+make
+make run
+```
+The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
