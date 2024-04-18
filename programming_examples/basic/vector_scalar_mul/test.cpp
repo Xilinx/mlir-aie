@@ -105,11 +105,13 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < IN_SIZE; i++) {
     uint32_t ref = (i + 1) * 3;
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+      if (verbosity >= 1)
+        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+      if (verbosity >= 1)
+        std::cout << "Correct output " << *(bufOut + i) << " == " << ref
                 << std::endl;
     }
   }
