@@ -77,8 +77,13 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
 ```
 
 Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in" and "of_out". For every processing iteration , we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
+This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function "scale.o". We run this pattern in a very large loop to enable enqueuing multiple rounds vector scalar multiply work from the host code.
 
 ```python
+        @core(ComputeTile2, "scale.o")
+        def core_body():
+            # Effective while(1)
+            for _ in for_(sys.maxsize):
                 # Number of sub-vector "tile" iterations
                 for _ in for_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
