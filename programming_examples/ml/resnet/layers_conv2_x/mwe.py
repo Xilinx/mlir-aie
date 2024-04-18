@@ -514,7 +514,8 @@ class resnet_conv2_x_int8(nn.Module):
         )
         return block_2_final_out
 
-py_model=resnet_conv2_x_int8()
+
+py_model = resnet_conv2_x_int8()
 
 py_model.block_0_conv1.weight.data.copy_(block_0_int_weight_1)
 py_model.block_0_conv2.weight.data.copy_(block_0_int_weight_2)
