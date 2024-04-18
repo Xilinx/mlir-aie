@@ -403,11 +403,7 @@ class resnet_conv2_x_int8(nn.Module):
     def __init__(self, in_planes=64, planes=64):
         super(resnet_conv2_x_int8, self).__init__()
         self.shortcut = nn.Conv2d(
-            in_planes,
-            self.expansion * planes,
-            kernel_size=1,
-            bias=False
-           
+            in_planes, self.expansion * planes, kernel_size=1, bias=False
         )
         # Bottleneck 0
         self.block_0_conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
