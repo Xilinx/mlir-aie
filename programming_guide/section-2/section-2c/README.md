@@ -51,7 +51,7 @@ for(int i = 0; i < size_2; i++)
 ```
 
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements of the buffer/stream every 8 elements:
-```c
+```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
 ```
 which translates to:
