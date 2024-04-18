@@ -53,10 +53,10 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
     iters = 4
     loop = False
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -109,8 +109,8 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
         ddr_id = 0
         col = 0
         for i, bd_id in enumerate(range(iters)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=K,
@@ -118,11 +118,11 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=col,
                     column_num=1,
@@ -136,9 +136,9 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(iters * K,)], np.int32)
 
         wrap_C = np.asarray(views[0])
@@ -165,10 +165,10 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
     RANDOM_WEIGHT = np.ones((K,), dtype=np.int32) * random.randint(1, 100)
     col = 2
     iters = 10
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         nonlocal col
 
         if col != 0:
@@ -206,28 +206,28 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)], np.int32)
 
         channel_index = 0
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=K,
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.shimtile_push_queue(
+        npu_insts.extend(
+            aiex.npu.shimtile_push_queue(
                 S2MM, channel_index, col, bd_id, repeats=iters - 1
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=0,
                 column=col,
                 column_num=1,
@@ -237,7 +237,7 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
             )
         )
 
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 

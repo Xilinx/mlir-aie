@@ -7,8 +7,8 @@
 // RUN: aie-translate --aie-generate-cdo aie.mlir.prj/input_physical.mlir
 // RUN: cp *.elf aie.mlir.prj/
 // RUN: cp *.bin aie.mlir.prj/
-// RUN: %python aiecc.py --no-aiesim --aie-generate-ipu --aie-generate-xclbin --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %S/aie.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %S/aie.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++
-// RUN: %run_on_ipu ./test.exe aie.xclbin | FileCheck %s
+// RUN: %run_on_npu ./test.exe aie.xclbin | FileCheck %s
 // CHECK: PASS!
 

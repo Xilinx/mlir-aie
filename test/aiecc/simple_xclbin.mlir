@@ -11,8 +11,8 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %PYTHON aiecc.py --xchesscc --no-link -nv --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %s | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %PYTHON aiecc.py --no-xchesscc --no-link -nv --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %s | FileCheck %s --check-prefix=PEANO
+// RUN: %PYTHON aiecc.py --xchesscc --no-link -nv --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %PYTHON aiecc.py --no-xchesscc --no-link -nv --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s | FileCheck %s --check-prefix=PEANO
 
 // Note that llc determines the architecture from the llvm IR.
 // XCHESSCC-NOT: {{^[^ ]*llc}}
@@ -27,7 +27,7 @@
 // PEANO: xclbinutil
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
   %12 = aie.tile(1, 2)
   %buf = aie.buffer(%12) : memref<256xi32>
   %4 = aie.core(%12)  {

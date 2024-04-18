@@ -463,7 +463,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
+def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
   ]> {
@@ -519,7 +519,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", [
   let hasVerifier = 1;
 }
 
-def AIE_NpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
+def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let description = [{
     The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
@@ -530,13 +530,13 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
       ...
       aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
       ...
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
       ...
-      aiex.ipu.dma_wait { symbol = @out0 }
+      aiex.npu.dma_wait { symbol = @out0 }
     ```
     Here, we have an objectfifo with symbol name `out0`, which is then referenced in the
-    `ipu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
-    an `ipu.dma_wait` operation references the same symbol to block until the respective DMA
+    `npu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
+    an `npu.dma_wait` operation references the same symbol to block until the respective DMA
     has executed all of its tasks.
   }];
   let arguments = (
@@ -549,7 +549,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"ipu.dma_wait", []> {
 }
 
 // Write RTP
-def AIE_NpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
+def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let summary = "rtp write operator";
   let arguments = (
     ins StrAttr:$buffer_sym_name,
@@ -567,7 +567,7 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
 }
 
 // Push BD to Queue
-def AIE_NpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
+def AIE_NpuShimTilePushQueueOp: AIEX_Op<"npu.shimtile_push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (
     ins FlatSymbolRefAttr:$metadata,
@@ -586,7 +586,7 @@ def AIE_NpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op: AIEX_Op<"ipu.write32", []> {
+def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
     ins I32Attr:$column,
@@ -604,7 +604,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"ipu.write32", []> {
 }
 
 // OP_SYNC
-def AIE_NpuSyncOp: AIEX_Op<"ipu.sync", []> {
+def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
   let arguments = (
     ins I32Attr:$column,
@@ -624,7 +624,7 @@ def AIE_NpuSyncOp: AIEX_Op<"ipu.sync", []> {
 }
 
 // WRITEBD_EXTEND_SHIMTILE
-def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"ipu.writebd_shimtile", []> {
+def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,

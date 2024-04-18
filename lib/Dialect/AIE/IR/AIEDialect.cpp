@@ -983,7 +983,7 @@ const AIETargetModel &DeviceOp::getTargetModel() {
     return VE2302model;
   case AIEDevice::xcve2802:
     return VE2802model;
-  case AIEDevice::ipu:
+  case AIEDevice::npu:
     return NPUmodel;
   }
   return VC1902model;

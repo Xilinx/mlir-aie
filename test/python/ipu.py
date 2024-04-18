@@ -23,7 +23,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.aiex import ipu_sync, ipu_dma_memcpy_nd
+from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
@@ -49,7 +49,7 @@ def my_vector_scalar(module):
 
     buffer_depth = 2
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         scale_int32 = external_func(
             "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
@@ -79,9 +79,9 @@ def my_vector_scalar(module):
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
         )
         def sequence(A, B, C):
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
     assert module.operation.verify()
 
@@ -124,7 +124,7 @@ def my_matmul(module):
 
     vectorized = True
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         zero_scalar = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
         zero = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
@@ -194,7 +194,7 @@ def my_matmul(module):
                 num_tile_rows = min(
                     [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="outC",
                     bd_id=0,
                     mem=C,
@@ -210,7 +210,7 @@ def my_matmul(module):
                         * word_size_in
                         // 4
                     )
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata="inA",
                         bd_id=2 * tile_row + 1,
                         mem=A,
@@ -218,7 +218,7 @@ def my_matmul(module):
                         sizes=[N_div_n, K_div_k, m, k_in_i32s],
                         strides=[0, k_in_i32s, K_in_i32s],
                     )
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata="inB",
                         bd_id=2 * tile_row + 2,
                         mem=B,
@@ -226,7 +226,7 @@ def my_matmul(module):
                         strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                     )
 
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     assert module.operation.verify()
 
@@ -234,7 +234,7 @@ def my_matmul(module):
 # CHECK-LABEL: edge_detect
 @construct_and_print_module
 def edge_detect(module):
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         rgba2gray_line = external_func(
             "rgba2gray_line",
@@ -441,21 +441,21 @@ def edge_detect(module):
             T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="outOF_L2L3",
                 bd_id=0,
                 mem=O,
                 sizes=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="inOF_L3L2",
                 bd_id=1,
                 mem=I,
                 sizes=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
     assert module.operation.verify()
 
@@ -463,7 +463,7 @@ def edge_detect(module):
 # CHECK-LABEL: my_add_one_objFifo
 @construct_and_print_module
 def my_add_one_objFifo(module):
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         shim_tile = tile(0, 0)
         mem_tile = tile(0, 1)
@@ -496,12 +496,12 @@ def my_add_one_objFifo(module):
             T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
             )
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
             )
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
     assert module.operation.verify()

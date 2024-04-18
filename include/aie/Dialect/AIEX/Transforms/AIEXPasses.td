@@ -133,7 +133,7 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEDmaToNpu : Pass<"aie-dma-to-ipu", "AIE::DeviceOp"> {
+def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   let summary = "";
   let description = [{
 

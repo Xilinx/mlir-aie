@@ -54,8 +54,8 @@ def test_manual_args(ctx: MLIRContext, workdir: Path):
     iters = 10
     loop = False
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -115,29 +115,29 @@ def test_manual_args(ctx: MLIRContext, workdir: Path):
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * iters, np.int32)
 
         col = 0
         channel_index = 0
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         for bd_id in range(iters):
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+            writebd_shimtile_insts = aiex.npu.writebd_shimtile(
                 col, bd_id, buffer_length=K
             )
-            ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+            npu_insts.extend(
+                aiex.npu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
                     tensor_addr=xclbin._get_buffer_host_address(bd_id),
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+            npu_insts.extend(aiex.npu.sync(column=col))
 
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 
@@ -161,8 +161,8 @@ def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
     iters = 10
     loop = False
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -222,30 +222,30 @@ def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K * iters,)] * iters, np.int32)
 
         col = 0
         channel_index = 0
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         for i in range(iters):
             bd_id = i
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+            writebd_shimtile_insts = aiex.npu.writebd_shimtile(
                 col, bd_id, buffer_length=K, buffer_offset=K * i
             )
-            ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+            npu_insts.extend(
+                aiex.npu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
                     tensor_addr=xclbin._get_buffer_host_address(i),
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+            npu_insts.extend(aiex.npu.sync(column=col))
 
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 
@@ -268,8 +268,8 @@ def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     cols = [0, 1, 2, 3]
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         for c in cols:
             tile_c_0 = aie.tile(c, 0)
             tile_c_2 = aie.tile(c, 2)
@@ -306,29 +306,29 @@ def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
 
         bd_id = 0
         channel_index = 0
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         for col in cols:
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+            writebd_shimtile_insts = aiex.npu.writebd_shimtile(
                 col, bd_id, buffer_length=K
             )
-            ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+            npu_insts.extend(
+                aiex.npu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
                     tensor_addr=xclbin._get_buffer_host_address(col),
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
+            npu_insts.extend(aiex.npu.sync(column=col))
 
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 
@@ -353,8 +353,8 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
 
     iters = 21
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         if 0 not in cols:
             tile_dummy = aie.tile(0, 3)
         for c in cols:
@@ -408,20 +408,20 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
 
         bd_id = 0
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         for i, col in enumerate(cols):
-            update_addrs = aiex.ipu._update_tensor_addr_shim_tile(
+            update_addrs = aiex.npu._update_tensor_addr_shim_tile(
                 col, bd_id, tensor_addr=xclbin._get_buffer_host_address(i)
             )
-            ipu_insts.extend(update_addrs)
-            ipu_insts.extend(aiex.ipu.enable_cores(col, compute_tile_row))
+            npu_insts.extend(update_addrs)
+            npu_insts.extend(aiex.npu.enable_cores(col, compute_tile_row))
 
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 

@@ -32,7 +32,7 @@ from ..extras.dialects.ext import memref
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
-ipu_sync = partial(ipu_sync, column_num=1, row_num=1)
+npu_sync = partial(npu_sync, column_num=1, row_num=1)
 
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
@@ -77,7 +77,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         )
 
 
-ipu_dma_memcpy_nd = NpuDmaMemcpyNd
+npu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 
 _PROLOG = [
@@ -120,7 +120,7 @@ def _get_prolog():
 
 
 # based on https://github.com/Xilinx/mlir-aie/blob/cb232a43383ef3b8efd8b408545c9b74885578ad/lib/Targets/AIETargetNPU.cpp
-def _ipu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
+def _npu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
     if isinstance(channel, IntegerAttr):
         channel = int(channel)
     words = [None] * 2
@@ -137,7 +137,7 @@ def _ipu_sync(column, row=0, direction=0, channel=0, column_num=1, row_num=1):
     return words
 
 
-def _ipu_write32(column, row, address, value):
+def _npu_write32(column, row, address, value):
     words = [None] * 3
     op_code = 2
     words[0] = (op_code & 0xFF) << 24
@@ -149,7 +149,7 @@ def _ipu_write32(column, row, address, value):
     return words
 
 
-def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=0):
+def _npu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=0):
     if isinstance(channel_index, IntegerAttr):
         channel_index = int(channel_index)
     if channel_dir == DMAChannelDir.MM2S:
@@ -165,7 +165,7 @@ def _ipu_shimtile_push_queue(channel_dir, channel_index, column, bd_id, repeats=
         value |= XAIEMLGBL_NOC_MODULE_DMA_S2MM_0_TASK_QUEUE_ENABLE_TOKEN_ISSUE_MASK
 
     row = 0
-    return _ipu_write32(column, row, address, value)
+    return _npu_write32(column, row, address, value)
 
 
 # based on ExecWriteBdExtendShimTileOpt @ dpufw/src/include/RunInstOpt.h:666
@@ -181,14 +181,14 @@ def _exec_write_bd_extend_shim_tile_opt(iptr, tensor_addr):
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(column, row, write_addr, iptr[2]),
-        *_ipu_write32(column, row, write_addr + 4, word3),
-        *_ipu_write32(column, row, write_addr + 8, word4),
-        *_ipu_write32(column, row, write_addr + 12, iptr[5]),
-        *_ipu_write32(column, row, write_addr + 16, iptr[6]),
-        *_ipu_write32(column, row, write_addr + 20, iptr[7]),
-        *_ipu_write32(column, row, write_addr + 24, iptr[8]),
-        *_ipu_write32(column, row, write_addr + 28, iptr[9]),
+        *_npu_write32(column, row, write_addr, iptr[2]),
+        *_npu_write32(column, row, write_addr + 4, word3),
+        *_npu_write32(column, row, write_addr + 8, word4),
+        *_npu_write32(column, row, write_addr + 12, iptr[5]),
+        *_npu_write32(column, row, write_addr + 16, iptr[6]),
+        *_npu_write32(column, row, write_addr + 20, iptr[7]),
+        *_npu_write32(column, row, write_addr + 24, iptr[8]),
+        *_npu_write32(column, row, write_addr + 28, iptr[9]),
     ]
     return words
 
@@ -202,14 +202,14 @@ def _update_tensor_addr_shim_tile(column, bd_id, tensor_addr, buffer_offset=0):
     write_addr = SHIM_DMA_BD0_BASE_ADDR + (bd_id * SHIM_BD_OFFSET)
     row = 0
     words = [
-        *_ipu_write32(column, row, write_addr + 4, word3),
-        *_ipu_write32(column, row, write_addr + 8, word4),
+        *_npu_write32(column, row, write_addr + 4, word3),
+        *_npu_write32(column, row, write_addr + 8, word4),
     ]
     return words
 
 
 # corresponds to ExecWriteBdExtendShimTileOpt
-def _ipu_writebd_shimtile(
+def _npu_writebd_shimtile(
     column,
     bd_id,
     buffer_length,
@@ -304,26 +304,26 @@ def _ipu_writebd_shimtile(
     return words
 
 
-def _ipu_noop():
+def _npu_noop():
     words = [None] * 1
     op_code = 0
     words[0] = (op_code & 0xFF) << 24
     return words
 
 
-def _ipu_core_enable(column, row):
+def _npu_core_enable(column, row):
     # note this clears the reset bit
-    return _ipu_write32(column, row, XAIEMLGBL_CORE_MODULE_CORE_CONTROL, 1)
+    return _npu_write32(column, row, XAIEMLGBL_CORE_MODULE_CORE_CONTROL, 1)
 
 
-class ipu:
-    noop = _ipu_noop
-    write32 = _ipu_write32
-    shimtile_push_queue = _ipu_shimtile_push_queue
-    writebd_shimtile = _ipu_writebd_shimtile
-    sync = _ipu_sync
+class npu:
+    noop = _npu_noop
+    write32 = _npu_write32
+    shimtile_push_queue = _npu_shimtile_push_queue
+    writebd_shimtile = _npu_writebd_shimtile
+    sync = _npu_sync
     get_prolog = _get_prolog
-    enable_cores = _ipu_core_enable
+    enable_cores = _npu_core_enable
     _exec_write_bd_extend_shim_tile_opt = _exec_write_bd_extend_shim_tile_opt
     _update_tensor_addr_shim_tile = _update_tensor_addr_shim_tile
 

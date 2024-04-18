@@ -38,10 +38,10 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
     init_weights = [np.random.randint(0, 10, (K,), dtype=np.int32) for _ in range(7)]
     random_numbers = [random.randint(0, 10) for _ in range(7, 7 + 3)]
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         _dummy_tile = aie.tile(0, 2)
 
         # west
@@ -170,8 +170,8 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 column=shim_tile_column,
                 bd_id=bd_id,
                 buffer_length=K,
@@ -179,16 +179,16 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.shimtile_push_queue(
+        npu_insts.extend(
+            aiex.npu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 bd_id=bd_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 direction=S2MM,
@@ -198,9 +198,9 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         [c] = xclbin.mmap_buffers([(K,)], np.int32)
         wrap_C = np.asarray(c)
         C = np.zeros((K,), dtype=np.int32)

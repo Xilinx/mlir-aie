@@ -107,11 +107,11 @@ PYBIND11_MODULE(_aie, m) {
       "enable_cores"_a = true);
 
   m.def(
-      "ipu_instgen",
+      "npu_instgen",
       [&stealCStr](MlirOperation op) {
-        py::str ipuInstructions = stealCStr(aieTranslateToNPU(op));
+        py::str npuInstructions = stealCStr(aieTranslateToNPU(op));
         auto individualInstructions =
-            ipuInstructions.attr("split")().cast<py::list>();
+            npuInstructions.attr("split")().cast<py::list>();
         for (size_t i = 0; i < individualInstructions.size(); ++i)
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;

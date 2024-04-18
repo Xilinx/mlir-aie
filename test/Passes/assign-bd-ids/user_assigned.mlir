@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --aie-assign-bd-ids --split-input-file %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(ipu) {
+// CHECK-LABEL:   aie.device(npu) {
 // CHECK:  %[[VAL_0:.*]] = aie.tile(0, 0)
 // CHECK:  %[[VAL_1:.*]] = aie.tile(0, 1)
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
@@ -28,7 +28,7 @@
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 25 : i32}
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -153,7 +153,7 @@ module @aie_module  {
 
 // -----
 
-// CHECK-LABEL:   aie.device(ipu) {
+// CHECK-LABEL:   aie.device(npu) {
 // CHECK:  %[[VAL_0:.*]] = aie.tile(0, 0)
 // CHECK:  %[[VAL_1:.*]] = aie.tile(0, 1)
 // CHECK:  %[[VAL_2:.*]] = aie.tile(0, 2)
@@ -171,7 +171,7 @@ module @aie_module  {
 // CHECK:  aie.dma_bd(%[[VAL_4]] : memref<32xi32>) {bd_id = 25 : i32}
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)

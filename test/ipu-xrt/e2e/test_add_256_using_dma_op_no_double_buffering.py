@@ -8,7 +8,7 @@
 from pathlib import Path
 import random
 
-from aie.compiler.aiecc.main import DMA_TO_IPU
+from aie.compiler.aiecc.main import DMA_TO_NPU
 from aie.compiler.util import compile_without_vectorization, make_xclbin
 from aie.dialects import aie, aiex
 from aie.dialects.aie import (
@@ -16,7 +16,7 @@ from aie.dialects.aie import (
     DMAChannelDir,
     LockAction,
     WireBundle,
-    ipu_instgen,
+    npu_instgen,
 )
 from aie.dialects.scf import for_ as range_, yield_
 from aie.extras.dialects.ext import arith, func, memref
@@ -47,8 +47,8 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
     LEN = 128
     LOCAL_MEM_SIZE = 32
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -115,7 +115,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
             _arg1: T.memref(1, T.i32()),
             arg2: T.memref(LEN, T.i32()),
         ):
-            aiex.ipu_dma_memcpy_nd(
+            aiex.npu_dma_memcpy_nd(
                 this_is_meaningless_1.sym_name.value,
                 0,
                 arg0,
@@ -123,7 +123,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
                 [1, 1, 1, LEN],
                 [0, 0, 0],
             )
-            aiex.ipu_dma_memcpy_nd(
+            aiex.npu_dma_memcpy_nd(
                 this_is_meaningless_2.sym_name.value,
                 1,
                 arg2,
@@ -132,7 +132,7 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
                 [0, 0, 0],
             )
 
-            aiex.ipu_sync(
+            aiex.npu_sync(
                 channel=0, column=0, column_num=1, direction=0, row=0, row_num=1
             )
 
@@ -188,12 +188,12 @@ def test_add_256_using_dma_op_no_double_buffering(ctx: MLIRContext, workdir: Pat
             aie.end()
 
     compile_without_vectorization(ctx.module, workdir)
-    generated_ipu_insts = run_pipeline(ctx.module, DMA_TO_IPU)
-    ipu_insts = [int(inst, 16) for inst in ipu_instgen(generated_ipu_insts.operation)]
+    generated_npu_insts = run_pipeline(ctx.module, DMA_TO_NPU)
+    npu_insts = [int(inst, 16) for inst in npu_instgen(generated_npu_insts.operation)]
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(LEN,), (LEN,), (LEN,)], np.int32)
 
         wrap_A = np.asarray(views[0])

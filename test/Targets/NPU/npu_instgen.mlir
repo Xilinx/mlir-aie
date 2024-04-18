@@ -1,4 +1,4 @@
-//===- ipu_instgen.mlir ----------------------------------------*- MLIR -*-===//
+//===- npu_instgen.mlir ----------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-ipu-instgen %s | FileCheck %s
+// RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // look for the prolog.
@@ -48,7 +48,7 @@ module {
       // CHECK: 00000009
       // CHECK: 2CD0000C
       // CHECK: 2E107041
-      aiex.ipu.writebd_shimtile { bd_id = 6 : i32,
+      aiex.npu.writebd_shimtile { bd_id = 6 : i32,
                                   buffer_length = 1 : i32,
                                   buffer_offset = 2 : i32,
                                   enable_packet = 0 : i32,
@@ -77,10 +77,10 @@ module {
       // CHECK: 02030400
       // CHECK: ABC00DEF
       // CHECK: 00000042
-      aiex.ipu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
+      aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
       // CHECK: 03030401
       // CHECK: 05010200
-      aiex.ipu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+      aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
       return
     }
   }

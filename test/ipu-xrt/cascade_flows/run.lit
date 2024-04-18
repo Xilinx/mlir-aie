@@ -6,7 +6,7 @@
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel1.cc -o ./kernel1.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel2.cc -o ./kernel2.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel3.cc -o ./kernel3.o
-// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt %S/aie.mlir
+// RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %S/aie.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!

@@ -11,7 +11,7 @@
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
@@ -31,7 +31,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
@@ -56,7 +56,7 @@ module {
 // prevent false-positives/false-negatives (I think).
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
@@ -77,7 +77,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}

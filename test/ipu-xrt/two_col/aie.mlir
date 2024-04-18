@@ -1,5 +1,5 @@
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %0 = aie.tile(0, 0)
     %1 = aie.tile(0, 1)
     %2 = aie.tile(0, 2)
@@ -123,17 +123,17 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2048 = arith.constant 2048 : i64
-      aiex.ipu.rtp_write(0, 2, 0, 50) { buffer_sym_name = "rtp0" }
-      aiex.ipu.rtp_write(0, 3, 0, 50) { buffer_sym_name = "rtp1" }
-      aiex.ipu.rtp_write(1, 4, 0, 50) { buffer_sym_name = "rtp2" }
-      aiex.ipu.rtp_write(1, 5, 0, 50) { buffer_sym_name = "rtp3" }
-      aiex.ipu.rtp_write(0, 2, 1, 0) { buffer_sym_name = "rtp0" }
-      aiex.ipu.rtp_write(0, 3, 1, 0) { buffer_sym_name = "rtp1" }
-      aiex.ipu.rtp_write(1, 4, 1, 0) { buffer_sym_name = "rtp2" }
-      aiex.ipu.rtp_write(1, 5, 1, 0) { buffer_sym_name = "rtp3" }
-      aiex.ipu.dma_memcpy_nd (0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0]) { metadata = @objFifo_out0, id = 1 : i64 } : memref<2048xi32>
-      aiex.ipu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
-      aiex.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
+      aiex.npu.rtp_write(0, 2, 0, 50) { buffer_sym_name = "rtp0" }
+      aiex.npu.rtp_write(0, 3, 0, 50) { buffer_sym_name = "rtp1" }
+      aiex.npu.rtp_write(1, 4, 0, 50) { buffer_sym_name = "rtp2" }
+      aiex.npu.rtp_write(1, 5, 0, 50) { buffer_sym_name = "rtp3" }
+      aiex.npu.rtp_write(0, 2, 1, 0) { buffer_sym_name = "rtp0" }
+      aiex.npu.rtp_write(0, 3, 1, 0) { buffer_sym_name = "rtp1" }
+      aiex.npu.rtp_write(1, 4, 1, 0) { buffer_sym_name = "rtp2" }
+      aiex.npu.rtp_write(1, 5, 1, 0) { buffer_sym_name = "rtp3" }
+      aiex.npu.dma_memcpy_nd (0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0]) { metadata = @objFifo_out0, id = 1 : i64 } : memref<2048xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
+      aiex.npu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
       return
     }
   }

@@ -101,12 +101,12 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -155,8 +155,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
             0 + d1_size_A * d1_stride_A,
         ]
         for i, bd_id in enumerate(range(2)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
@@ -164,16 +164,16 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # in B
         channel_index = 1
         ddr_id = 1
         for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -185,13 +185,13 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
             bd_id += 1
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -203,8 +203,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # out C
@@ -218,8 +218,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
         ]
 
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
@@ -231,11 +231,11 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                     d0_stride=d0_stride_C,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -408,9 +408,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -466,12 +466,12 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -515,8 +515,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
             0 + d1_size_A * d1_stride_A,
         ]
         for i, bd_id in enumerate(range(2)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
@@ -524,8 +524,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # in B
@@ -533,8 +533,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         col = 0
         ddr_id = 1
         for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -546,13 +546,13 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
             bd_id += 1
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -564,8 +564,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # out C
@@ -580,8 +580,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
         ]
 
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
@@ -593,11 +593,11 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                     d0_stride=d0_stride_C,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -736,9 +736,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -828,12 +828,12 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32_already_vectorized.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -877,8 +877,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
             0 + d1_size_A * d1_stride_A,
         ]
         for i, bd_id in enumerate(range(2)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_A * tile_n_A,
@@ -886,15 +886,15 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            npu_insts.extend(aiex.npu.write32(MM2S, channel_index, col, bd_id))
 
         # in B
         channel_index = 1
         col = 0
         ddr_id = 1
         for bd_id in range(bd_id + 1, bd_id + 1 + 4, 2):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -906,11 +906,11 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            npu_insts.extend(aiex.npu.write32(MM2S, channel_index, col, bd_id))
             bd_id += 1
             # B tiles are "tall" so need to offset by cols (i.e. d0 dim)
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_B * tile_n_B,
@@ -922,7 +922,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                     d0_stride=d0_stride_B,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(MM2S, channel_index, col, bd_id))
+            npu_insts.extend(aiex.npu.write32(MM2S, channel_index, col, bd_id))
 
         # out C
         channel_index = 0
@@ -936,8 +936,8 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
         ]
 
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + 4)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=tile_m_C * tile_n_C,
@@ -949,9 +949,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
                     d0_stride=d0_stride_C,
                 )
             )
-            ipu_insts.extend(aiex.ipu.write32(S2MM, channel_index, col, bd_id))
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(aiex.npu.write32(S2MM, channel_index, col, bd_id))
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -1030,9 +1030,9 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         wrap_A, wrap_B, wrap_C = map(
             np.asarray, xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
         )

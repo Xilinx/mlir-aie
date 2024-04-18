@@ -70,9 +70,9 @@ cl::opt<std::string>
              cl::init(HOST_ARCHITECTURE), cl::cat(AIE2XCLBinCat));
 
 cl::opt<std::string>
-    NPUInstsName("ipu-insts-name",
+    NPUInstsName("npu-insts-name",
                  cl::desc("Output instructions filename for NPU target"),
-                 cl::init("ipu_insts.txt"), cl::cat(AIE2XCLBinCat));
+                 cl::init("npu_insts.txt"), cl::cat(AIE2XCLBinCat));
 
 cl::opt<bool>
     PrintIRAfterAll("print-ir-after-all",

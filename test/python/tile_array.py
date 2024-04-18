@@ -31,8 +31,8 @@ Release = LockAction.Release
 # CHECK-LABEL: broadcast
 @construct_and_print_module
 def broadcast(module):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         df = TileArray()
         assert df[[0, 1], 0].shape == (2, 1)
         assert df[[0, 1], 3:].shape == (2, 3)
@@ -125,7 +125,7 @@ def broadcast(module):
             print(f)
 
         # CHECK: module {
-        # CHECK:   aie.device(ipu) {
+        # CHECK:   aie.device(npu) {
         # CHECK:     %tile_0_0 = aie.tile(0, 0)
         # CHECK:     %tile_0_1 = aie.tile(0, 1)
         # CHECK:     %tile_0_2 = aie.tile(0, 2)
@@ -194,8 +194,8 @@ def broadcast(module):
 # CHECK-LABEL: lshift
 @construct_and_print_module
 def lshift(module):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         fls = tiles[2, 1] << tiles[0, [2, 3]]
@@ -214,8 +214,8 @@ def lshift(module):
 # CHECK-LABEL: locks
 @construct_and_print_module
 def locks(module):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         aie.lock(tiles[0, 1].tile)
@@ -249,8 +249,8 @@ def locks(module):
 # CHECK-LABEL: neighbors
 @construct_and_print_module
 def neighbors(module):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         # CHECK: Neighbors(north=%tile_2_3 = aie.tile(2, 3), west=%tile_1_2 = aie.tile(1, 2), south=None)
@@ -279,8 +279,8 @@ def channels_basic(module):
     # CHECK-LABEL: test-basic
     print("test-basic")
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         b = aie.buffer(tiles[2, 2].tile, (10, 10), T.i32(), name="bob")
@@ -295,13 +295,13 @@ def channels_basic(module):
     # CHECK: %alice = aie.buffer(%tile_2_2) {sym_name = "alice"} : memref<10x10xi32>
     # CHECK: %alice_producer_lock = aie.lock(%tile_2_2) {sym_name = "alice_producer_lock"}
     # CHECK: %alice_consumer_lock = aie.lock(%tile_2_2) {sym_name = "alice_consumer_lock"}
-    print(ipu)
+    print(npu)
 
     # CHECK-LABEL: test-context-manager
     print("test-context-manager")
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         c = Channel(
@@ -334,14 +334,14 @@ def channels_basic(module):
     # CHECK:   aie.use_lock(%alice_producer_lock, Release)
     # CHECK:   aie.end
     # CHECK: }
-    print(ipu)
+    print(npu)
 
 
 # CHECK-LABEL: nd_channels
 @construct_and_print_module
 def nd_channels(module):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         shapes = np.array([(10, 10)], dtype="i,i").astype(object)
@@ -377,8 +377,8 @@ def nd_channels(module):
 def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this_file(
     module,
 ):
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray()
 
         shapes = [(10, 10)]

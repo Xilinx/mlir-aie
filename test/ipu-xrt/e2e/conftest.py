@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def run_around_tests():
     subprocess.check_call(
-        [str(Path(__file__).parent.parent.parent.parent / "utils" / "reset_ipu.sh")]
+        [str(Path(__file__).parent.parent.parent.parent / "utils" / "reset_npu.sh")]
     )
     yield
 

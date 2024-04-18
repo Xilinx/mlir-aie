@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     memref.global "public" @objFifo_in0 : memref<16xi32>
     memref.global "public" @objFifo_out0 : memref<16xi32>
 
@@ -65,9 +65,9 @@ module {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @objFifo_out0} : memref<64xi32>
-      aiex.ipu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c1_i64, %c64_i64][%c0_i64, %c0_i64, %c0_i64]) {id = 1 : i64, metadata = @objFifo_out0} : memref<64xi32>
+      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
 

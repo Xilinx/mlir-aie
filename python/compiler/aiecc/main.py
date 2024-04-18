@@ -89,7 +89,7 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -1014,13 +1014,13 @@ class FlowRunner:
             aie_peano_target = aie_target.lower() + "-none-elf"
 
             # Optionally generate insts.txt for NPU instruction stream
-            if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
+            if opts.npu or opts.only_npu:
+                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-ipu",
+                        "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1030,13 +1030,13 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-translate",
-                        "--aie-ipu-instgen",
+                        "--aie-npu-instgen",
                         generated_insts_mlir,
                         "-o",
                         opts.insts_name,
                     ],
                 )
-                if opts.only_ipu:
+                if opts.only_npu:
                     return
 
             chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(

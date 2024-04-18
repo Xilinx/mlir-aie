@@ -70,7 +70,7 @@ def shim_tensor_slice(
         M, N, n_tile_rows=n_tile_rows, n_tile_cols=n_tile_cols
     )
 
-    ipu_insts = aiex.ipu.writebd_shimtile(
+    npu_insts = aiex.npu.writebd_shimtile(
         column=column,
         bd_id=bd_id,
         ddr_id=ddr_id,
@@ -81,23 +81,23 @@ def shim_tensor_slice(
         d0_size=d0_size,
         d0_stride=d0_stride,
     )
-    ipu_insts.extend(
-        aiex.ipu.shimtile_push_queue(channel_dir, channel_index, column, bd_id=bd_id)
+    npu_insts.extend(
+        aiex.npu.shimtile_push_queue(channel_dir, channel_index, column, bd_id=bd_id)
     )
-    return ipu_insts
+    return npu_insts
 
 
 def shim_bd(direction, channel, buffer_length, column=0, bd_id=0, ddr_id=0):
-    ipu_insts = []
-    ipu_insts.extend(
-        aiex.ipu.writebd_shimtile(
+    npu_insts = []
+    npu_insts.extend(
+        aiex.npu.writebd_shimtile(
             column=column, bd_id=bd_id, ddr_id=ddr_id, buffer_length=buffer_length
         )
     )
-    ipu_insts.extend(
-        aiex.ipu.shimtile_push_queue(direction, channel, column, bd_id=bd_id)
+    npu_insts.extend(
+        aiex.npu.shimtile_push_queue(direction, channel, column, bd_id=bd_id)
     )
-    return ipu_insts
+    return npu_insts
 
 
 def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
@@ -136,10 +136,10 @@ def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         # col a0 (top row of matrix products)
         tiles = np.empty((5, 6), dtype=object)
         for col in [0, 1]:
@@ -167,17 +167,17 @@ def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
         # fmt: off
         column = 0
         # broadcast a0
-        ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, 0, column, MM2S, broadcast_a0_flow_ep.source_channel, 0, 0))
+        npu_insts.extend(shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, 0, column, MM2S, broadcast_a0_flow_ep.source_channel, 0, 0))
         # broadcast b0
-        ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, 0, column, MM2S, broadcast_b0_flow_ep.source_channel, 1, 1))
+        npu_insts.extend(shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, 0, column, MM2S, broadcast_b0_flow_ep.source_channel, 1, 1))
 
         column = 1
         # broadcast a1
-        ipu_insts.extend(
+        npu_insts.extend(
             shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, d1_size_A * d1_stride_A, column, MM2S, broadcast_a1_flow_ep.source_channel, 0, 0)
         )
         # broadcast b1
-        ipu_insts.extend(
+        npu_insts.extend(
             shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, d0_size_B * d0_stride_B, column, MM2S, broadcast_b1_flow_ep.source_channel, 1, 1)
         )
         # fmt: on
@@ -339,15 +339,15 @@ def test_tiled_nonsquare_tile_spatial_2x2(ctx: MLIRContext, workdir: Path):
 
         # fmt: off
         for i, (column, channel, bd_id) in enumerate(channels):
-            ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
-            ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
+            npu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
+            npu_insts.extend(aiex.npu.sync(channel=channel, column=column))
         # fmt: on
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -453,7 +453,7 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
         M, N, n_tile_rows=tile_rows_C, n_tile_cols=tile_cols_C
     )
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
     mod_aievec = ExplicitlyManagedModule()
     kernel = matmul_i32_i32_already_vectorized.emit(force=True)
@@ -462,8 +462,8 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32_already_vectorized.emit(decl=True)
         # col a0 (top row of matrix products)
         tiles = np.empty((5, 6), dtype=object)
@@ -492,17 +492,17 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
         # fmt: off
         column = 0
         # broadcast a0
-        ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, 0, column, MM2S, broadcast_a0_flow_ep.source_channel, 0, 0))
+        npu_insts.extend(shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, 0, column, MM2S, broadcast_a0_flow_ep.source_channel, 0, 0))
         # broadcast b0
-        ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, 0, column, MM2S, broadcast_b0_flow_ep.source_channel, 1, 1))
+        npu_insts.extend(shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, 0, column, MM2S, broadcast_b0_flow_ep.source_channel, 1, 1))
 
         column = 1
         # broadcast a1
-        ipu_insts.extend(
+        npu_insts.extend(
             shim_tensor_slice(M, N, tile_rows_A, tile_cols_A, d1_size_A * d1_stride_A, column, MM2S, broadcast_a1_flow_ep.source_channel, 0, 0)
         )
         # broadcast b1
-        ipu_insts.extend(
+        npu_insts.extend(
             shim_tensor_slice(M, N, tile_rows_B, tile_cols_B, d0_size_B * d0_stride_B, column, MM2S, broadcast_b1_flow_ep.source_channel, 1, 1)
         )
         # fmt: on
@@ -664,8 +664,8 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
 
         # fmt: off
         for i, (column, channel, bd_id) in enumerate(channels):
-            ipu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
-            ipu_insts.extend(aiex.ipu.sync(channel=channel, column=column))
+            npu_insts.extend(shim_tensor_slice(M, N, tile_rows_C, tile_cols_C, offsets[i], column, S2MM, channel, bd_id, 2))
+            npu_insts.extend(aiex.npu.sync(channel=channel, column=column))
         # fmt: on
 
     mod_aie = mod_aie.finish()
@@ -673,9 +673,9 @@ def test_tiled_nonsquare_tile_spatial_2x2_vectorized(ctx: MLIRContext, workdir: 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
 
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -712,8 +712,8 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
 
     dest_channels = {}
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray(cols, rows)
         for i, ((col, row), t) in enumerate(tiles[:, 2:]):
             b = aie.buffer(
@@ -784,28 +784,28 @@ def test_tiled_nonsquare_tile_spatial_4x4_weight_stationary_v1(
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * len(cols), np.int32)
 
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         bd_id = 0
         for col in cols:
             dest_channel = dest_channels[col]
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+            writebd_shimtile_insts = aiex.npu.writebd_shimtile(
                 col, bd_id, buffer_length=K
             )
-            ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+            npu_insts.extend(
+                aiex.npu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
                     tensor_addr=xclbin._get_buffer_host_address(col),
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, dest_channel, col, bd_id)
             )
-            ipu_insts.extend(aiex.ipu.sync(column=col))
-        xclbin.load_ipu_instructions(ipu_insts)
+            npu_insts.extend(aiex.npu.sync(column=col))
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 
@@ -826,8 +826,8 @@ def test_double_pump_single_buffer(ctx: MLIRContext, workdir: Path):
     source_channels = {}
     # dest_channels = {}
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tiles = TileArray(cols=[0], rows=[0, 1, 2])
         buffer = tiles[0, 2].buffer([(K,)], [T.i32()], "double_buffer")
 
@@ -969,27 +969,27 @@ def test_double_pump_single_buffer(ctx: MLIRContext, workdir: Path):
     kernel_json = emit_design_kernel_json(buffer_args=buffer_args)
     xclbin_path = make_xclbin(ctx.module, workdir, kernel_json=kernel_json)
 
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
         views = xclbin.mmap_buffers([(K,)] * 2, np.int32)
 
-        ipu_insts = aiex.ipu.get_prolog()
+        npu_insts = aiex.npu.get_prolog()
         col = 0
         for bd_id, player in enumerate(["player_a", "player_b"]):
             source_channel = source_channels[player]
-            writebd_shimtile_insts = aiex.ipu.writebd_shimtile(
+            writebd_shimtile_insts = aiex.npu.writebd_shimtile(
                 col, bd_id, buffer_length=K
             )
-            ipu_insts.extend(
-                aiex.ipu._exec_write_bd_extend_shim_tile_opt(
+            npu_insts.extend(
+                aiex.npu._exec_write_bd_extend_shim_tile_opt(
                     writebd_shimtile_insts,
                     tensor_addr=xclbin._get_buffer_host_address(col),
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, source_channel, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, source_channel, col, bd_id)
             )
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
 
         wraps = list(map(np.asarray, views))
 

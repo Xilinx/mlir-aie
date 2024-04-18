@@ -64,12 +64,12 @@ def matmul_i32_i32(
 
 
 def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -113,8 +113,8 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
         channel_index = 0
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -122,14 +122,14 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
+        npu_insts.extend(aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # in B
         channel_index = 1
         ddr_id = 1
         bd_id += 1
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -137,14 +137,14 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
+        npu_insts.extend(aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # out C
         channel_index = 0
         ddr_id = 2
         bd_id += 1
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -152,9 +152,9 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=0,
                 column=0,
                 column_num=1,
@@ -326,9 +326,9 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -358,11 +358,11 @@ def test_square_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
 
 
 def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -401,8 +401,8 @@ def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
         channel_index = 0
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -410,14 +410,14 @@ def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
+        npu_insts.extend(aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # in B
         channel_index = 1
         ddr_id = 1
         bd_id += 1
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -425,14 +425,14 @@ def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
+        npu_insts.extend(aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id))
 
         # out C
         channel_index = 0
         ddr_id = 2
         bd_id += 1
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 col,
                 bd_id,
                 buffer_length=M * N,
@@ -440,9 +440,9 @@ def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id))
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=0,
                 column=0,
                 column_num=1,
@@ -581,9 +581,9 @@ def test_square_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path):
 
     compile_with_vectorization(mod_aie, mod_aievec, workdir)
     xclbin_path = make_xclbin(mod_aie, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(M, N), (M, N), (M, N)], np.int32)
 
         wrap_A = np.asarray(views[0])

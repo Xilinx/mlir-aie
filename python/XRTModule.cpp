@@ -25,8 +25,8 @@
 namespace py = pybind11;
 using namespace py::literals;
 
-// group_id 0 is for ipu instructions
-// group_id 1 is for number of ipu instructions
+// group_id 0 is for npu instructions
+// group_id 1 is for number of npu instructions
 // host side buffers/args follow starting from position 2
 // see aiecc.main.emit_design_kernel_json
 constexpr size_t HOST_BUFFERS_START_IDX = 2;
@@ -45,13 +45,13 @@ public:
   }
 
   void loadNPUInstructions(const std::vector<uint32_t> &insts) {
-    ipuInstructions =
+    npuInstructions =
         std::make_unique<xrt::bo>(*device, insts.size() * sizeof(uint32_t),
                                   XCL_BO_FLAGS_CACHEABLE, kernel->group_id(0));
-    uint32_t *bufInstr = ipuInstructions->map<uint32_t *>();
+    uint32_t *bufInstr = npuInstructions->map<uint32_t *>();
     for (size_t i = 0; i < insts.size(); ++i)
       bufInstr[i] = insts.at(i);
-    ipuInstructions->sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    npuInstructions->sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
 
   template <typename ElementT>
@@ -107,8 +107,8 @@ public:
 
   void run() {
     run_ = std::make_unique<xrt::run>(*kernel);
-    run_->set_arg(0, *ipuInstructions);
-    run_->set_arg(1, ipuInstructions->size());
+    run_->set_arg(0, *npuInstructions);
+    run_->set_arg(1, npuInstructions->size());
     for (size_t i = 0; i < buffers.size(); ++i)
       run_->set_arg(HOST_BUFFERS_START_IDX + i, *buffers[i]);
     run_->start();
@@ -116,8 +116,8 @@ public:
 
   void _runOnlyNpuInstructions() {
     run_ = std::make_unique<xrt::run>(*kernel);
-    run_->set_arg(0, *ipuInstructions);
-    run_->set_arg(1, ipuInstructions->size());
+    run_->set_arg(0, *npuInstructions);
+    run_->set_arg(1, npuInstructions->size());
     run_->start();
   }
 
@@ -133,7 +133,7 @@ public:
   std::unique_ptr<xrt::device> device;
   std::unique_ptr<xrt::hw_context> context;
   std::unique_ptr<xrt::kernel> kernel;
-  std::unique_ptr<xrt::bo> ipuInstructions;
+  std::unique_ptr<xrt::bo> npuInstructions;
 
   std::vector<std::unique_ptr<xrt::bo>> buffers;
 
@@ -145,11 +145,11 @@ PYBIND11_MODULE(_xrt, m) {
   py::class_<PyXCLBin>(m, "XCLBin", py::module_local())
       .def(py::init<const std::string &, const std::string &, int>(),
            "xclbin_path"_a, "kernel_name"_a, "device_index"_a = 0)
-      .def("load_ipu_instructions", &PyXCLBin::loadNPUInstructions, "insts"_a)
+      .def("load_npu_instructions", &PyXCLBin::loadNPUInstructions, "insts"_a)
       .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
       .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
       .def("run", &PyXCLBin::run)
-      .def("_run_only_ipu_instructions", &PyXCLBin::_runOnlyNpuInstructions)
+      .def("_run_only_npu_instructions", &PyXCLBin::_runOnlyNpuInstructions)
       .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
       .def(
           "mmap_buffers",

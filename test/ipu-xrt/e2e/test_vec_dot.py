@@ -52,10 +52,10 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
     tiles = 4
     k = K // tiles
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -99,8 +99,8 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
         ddr_id = 0
         offsets = list(range(0, K, k))
         for i, bd_id in enumerate(range(tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=k,
@@ -108,8 +108,8 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # in B
@@ -117,8 +117,8 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
         col = 0
         ddr_id = 1
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=k,
@@ -126,8 +126,8 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # out C
@@ -135,8 +135,8 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
         col = 0
         ddr_id = 2
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=1,
@@ -144,11 +144,11 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -252,9 +252,9 @@ def test_vec_dot(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(K,), (K,), (tiles,)], np.int32)
 
         wrap_A = np.asarray(views[0])
@@ -289,10 +289,10 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
     tiles = 4
     k = K // tiles
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
         tile_0_2 = aie.tile(0, 2)
@@ -327,8 +327,8 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
         ddr_id = 0
         offsets = list(range(0, K, k))
         for i, bd_id in enumerate(range(tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=k,
@@ -336,8 +336,8 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # in B
@@ -345,8 +345,8 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
         col = 0
         ddr_id = 1
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=k,
@@ -354,8 +354,8 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(MM2S, channel_index, col, bd_id)
             )
 
         # out C
@@ -363,8 +363,8 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
         col = 0
         ddr_id = 2
         for i, bd_id in enumerate(range(bd_id + 1, bd_id + 1 + tiles)):
-            ipu_insts.extend(
-                aiex.ipu.writebd_shimtile(
+            npu_insts.extend(
+                aiex.npu.writebd_shimtile(
                     col,
                     bd_id,
                     buffer_length=1,
@@ -372,11 +372,11 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
                     ddr_id=ddr_id,
                 )
             )
-            ipu_insts.extend(
-                aiex.ipu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
+            npu_insts.extend(
+                aiex.npu.shimtile_push_queue(S2MM, channel_index, col, bd_id)
             )
-            ipu_insts.extend(
-                aiex.ipu.sync(
+            npu_insts.extend(
+                aiex.npu.sync(
                     channel=0,
                     column=0,
                     column_num=1,
@@ -440,9 +440,9 @@ def test_vec_dot_sugar(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         views = xclbin.mmap_buffers([(K,), (K,), (tiles,)], np.int32)
 
         wrap_A = np.asarray(views[0])

@@ -42,10 +42,10 @@ def test_one_global(ctx: MLIRContext, workdir: Path):
     iv = np.random.randint(0, 10, (K,), dtype=np.int32)
     column = 2
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         # TODO(max): figure this annoying thing out...
         if column != 0:
             _dummy_tile = aie.tile(0, 2)
@@ -112,8 +112,8 @@ def test_one_global(ctx: MLIRContext, workdir: Path):
 
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 column=column,
                 bd_id=bd_id,
                 buffer_length=K,
@@ -121,16 +121,16 @@ def test_one_global(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.shimtile_push_queue(
+        npu_insts.extend(
+            aiex.npu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=column,
                 bd_id=bd_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=column,
                 direction=0,
@@ -140,9 +140,9 @@ def test_one_global(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         [c] = xclbin.mmap_buffers([(K,)], np.int32)
         wrap_C = np.asarray(c)
         C = np.zeros((K,), dtype=np.int32)
@@ -166,10 +166,10 @@ def test_threesome(ctx: MLIRContext, workdir: Path):
     iv1 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         _dummy_tile = aie.tile(0, 2)
         tile_1_2 = aie.tile(1, 2)
         global_weight_1_2 = memref.global_(initial_value=iv1)
@@ -249,8 +249,8 @@ def test_threesome(ctx: MLIRContext, workdir: Path):
 
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 column=shim_tile_column,
                 bd_id=bd_id,
                 buffer_length=K,
@@ -258,16 +258,16 @@ def test_threesome(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.shimtile_push_queue(
+        npu_insts.extend(
+            aiex.npu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 bd_id=bd_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 direction=0,
@@ -277,9 +277,9 @@ def test_threesome(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         [c] = xclbin.mmap_buffers([(K,)], np.int32)
         wrap_C = np.asarray(c)
         C = np.zeros((K,), dtype=np.int32)
@@ -305,10 +305,10 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
     iv2 = np.random.randint(0, 10, (K,), dtype=np.int32)
     iv3 = np.random.randint(0, 10, (K,), dtype=np.int32)
 
-    ipu_insts = aiex.ipu.get_prolog()
+    npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.ipu)
-    def ipu():
+    @aie.device(AIEDevice.npu)
+    def npu():
         _dummy_tile = aie.tile(0, 2)
 
         tile_1_3 = aie.tile(1, 3)
@@ -407,8 +407,8 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
         ddr_id = 0
         bd_id = 0
-        ipu_insts.extend(
-            aiex.ipu.writebd_shimtile(
+        npu_insts.extend(
+            aiex.npu.writebd_shimtile(
                 column=shim_tile_column,
                 bd_id=bd_id,
                 buffer_length=K,
@@ -416,16 +416,16 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
                 ddr_id=ddr_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.shimtile_push_queue(
+        npu_insts.extend(
+            aiex.npu.shimtile_push_queue(
                 channel_dir=S2MM,
                 channel_index=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 bd_id=bd_id,
             )
         )
-        ipu_insts.extend(
-            aiex.ipu.sync(
+        npu_insts.extend(
+            aiex.npu.sync(
                 channel=flow_to_shim.dest_channel,
                 column=shim_tile_column,
                 direction=0,
@@ -435,9 +435,9 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
     compile_without_vectorization(ctx.module, workdir)
     xclbin_path = make_xclbin(ctx.module, workdir)
-    with FileLock("/tmp/ipu.lock"):
+    with FileLock("/tmp/npu.lock"):
         xclbin = XCLBin(xclbin_path, "MLIR_AIE")
-        xclbin.load_ipu_instructions(ipu_insts)
+        xclbin.load_npu_instructions(npu_insts)
         [c] = xclbin.mmap_buffers([(K,)], np.int32)
         wrap_C = np.asarray(c)
         C = np.zeros((K,), dtype=np.int32)

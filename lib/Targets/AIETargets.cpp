@@ -321,7 +321,7 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
-      "aie-ipu-instgen", "Generate instructions for NPU",
+      "aie-npu-instgen", "Generate instructions for NPU",
       [](ModuleOp module, raw_ostream &output) {
         return AIETranslateToNPU(module, output);
       },
