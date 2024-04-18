@@ -24,6 +24,7 @@ def my_first_aie_program():
         memRef_16_ty = T.memref(16, T.i32())
         memRef_32_ty = T.memref(32, T.i32())
         memRef_64_ty = T.memref(64, T.i32())
+        memRef_640_ty = T.memref(640, T.i32())
 
         # Tile declarations
         ComputeTile = tile(0, 2)
@@ -39,7 +40,7 @@ def my_first_aie_program():
         # Compute tile body
         @core(ComputeTile)
         def core_body():
-            for _ in for_(8):
+            for _ in for_(80):
                 # Acquire input and output object FIFO objects
                 elem_in = of_in0.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
@@ -57,13 +58,13 @@ def my_first_aie_program():
                 yield_([])
 
         # To/from AIE-array data movement
-        @FuncOp.from_py_func(memRef_64_ty, memRef_64_ty, memRef_64_ty)
+        @FuncOp.from_py_func(memRef_640_ty, memRef_64_ty, memRef_640_ty)
         def sequence(inTensor, unused, outTensor):
             ipu_dma_memcpy_nd(
-                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
+                metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 640]
             )
             ipu_dma_memcpy_nd(
-                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
+                metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 640]
             )
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
