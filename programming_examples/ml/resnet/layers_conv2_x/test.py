@@ -251,7 +251,11 @@ class resnet_conv2_x_int8(nn.Module):
             min,
             max,
         )  # convert to int and apply relu
-        block_2_conv2_out = self.block_2_conv2(block_2_relu1_out) * block_2_relu_1 * block_2_weight_scale2
+        block_2_conv2_out = (
+            self.block_2_conv2(block_2_relu1_out)
+            * block_2_relu_1
+            * block_2_weight_scale2
+        )
         block_2_relu2_out = torch.clamp(
             torch.round(self.block_2_relu2(block_2_conv2_out) / block_2_relu_2), min, max
         )
