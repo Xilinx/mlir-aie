@@ -18,4 +18,4 @@ Both a consumer and a producer process are running on `ComputeTile2`. The produc
 
 It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
 
-Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [reduce_add](../../../../programming_examples/basic/reduce_add/) and [vector_scalar](../../../../programming_examples/basic/vector_scalar/).
+Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [vector_reduce_add](../../../../programming_examples/basic/vector_reduce_add/) and [vector_scalar_add](../../../../programming_examples/basic/vector_scalar_add/).
