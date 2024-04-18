@@ -14,7 +14,7 @@ The design in [ext_to_coreL2.py](./ext_to_core.py) is very similar to the one in
 
 <img src="../../../assets/ExtMemToCoreL2.svg" height=200 width="500">
 
-The processes on the compute tile work the same way as in the previous design. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
+The processes on the compute tile work the same way as in the previous design. The producer process acquires one object from `of_in1` to consume and one object from `of_out1` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
 It is possible to run this design and test its output with the ??? command. The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
 
