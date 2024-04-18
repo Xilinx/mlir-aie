@@ -410,29 +410,39 @@ class resnet_conv2_x_int8(nn.Module):
         self.block_0_conv2 = nn.Conv2d(
             planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
         )
-        self.block_0_conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.block_0_conv3 = nn.Conv2d(
+            planes, self.expansion * planes, kernel_size=1, bias=False
+        )
 
         self.block_0_relu1 = nn.ReLU()
         self.block_0_relu2 = nn.ReLU()
         self.block_0_relu3 = nn.ReLU()
-        
+
         # Bottleneck 1
-        self.block_1_conv1 = nn.Conv2d(self.expansion * planes, planes, kernel_size=1, bias=False)
+        self.block_1_conv1 = nn.Conv2d(
+            self.expansion * planes, planes, kernel_size=1, bias=False
+        )
         self.block_1_conv2 = nn.Conv2d(
             planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
         )
-        self.block_1_conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.block_1_conv3 = nn.Conv2d(
+            planes, self.expansion * planes, kernel_size=1, bias=False
+        )
 
         self.block_1_relu1 = nn.ReLU()
         self.block_1_relu2 = nn.ReLU()
         self.block_1_relu3 = nn.ReLU()
 
         # Bottleneck 2
-        self.block_2_conv1 = nn.Conv2d(self.expansion * planes, planes, kernel_size=1, bias=False)
+        self.block_2_conv1 = nn.Conv2d(
+            self.expansion * planes, planes, kernel_size=1, bias=False
+        )
         self.block_2_conv2 = nn.Conv2d(
             planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
         )
-        self.block_2_conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.block_2_conv3 = nn.Conv2d(
+            planes, self.expansion * planes, kernel_size=1, bias=False
+        )
 
         self.block_2_relu1 = nn.ReLU()
         self.block_2_relu2 = nn.ReLU()
@@ -442,44 +452,82 @@ class resnet_conv2_x_int8(nn.Module):
         # **************** Bottleneck 0 ****************
         block_0_conv1_out = self.block_0_conv1(x) * init_scale * block_0_weight_scale1
         block_0_relu1_out = torch.clamp(
-            torch.round(self.block_0_relu1(block_0_conv1_out) / block_0_relu_1), min, max
+            torch.round(self.block_0_relu1(block_0_conv1_out) / block_0_relu_1),
+            min,
+            max,
         )  # convert to int and apply relu
-        block_0_conv2_out = self.block_0_conv2(block_0_relu1_out) * block_0_relu_1 * block_0_weight_scale2
-        block_0_relu2_out = torch.clamp(
-            torch.round(self.block_0_relu2(block_0_conv2_out) / block_0_relu_2), min, max
+        block_0_conv2_out = (
+            self.block_0_conv2(block_0_relu1_out)
+            * block_0_relu_1
+            * block_0_weight_scale2
         )
-        block_0_conv3_out = self.block_0_conv3(block_0_relu2_out) * block_0_relu_2 * block_0_weight_scale3
-        block_0_rhf_same_scale = torch.clamp(torch.round(block_0_conv3_out / init_scale), -128, 127)
-
+        block_0_relu2_out = torch.clamp(
+            torch.round(self.block_0_relu2(block_0_conv2_out) / block_0_relu_2),
+            min,
+            max,
+        )
+        block_0_conv3_out = (
+            self.block_0_conv3(block_0_relu2_out)
+            * block_0_relu_2
+            * block_0_weight_scale3
+        )
+        block_0_rhf_same_scale = torch.clamp(
+            torch.round(block_0_conv3_out / init_scale), -128, 127
+        )
 
         block_0_lhs_conv = self.shortcut(x) * init_scale * block_0_weight_scale_skip
         block_0_lhs_same_scale = torch.clamp(
-            torch.round(block_0_lhs_conv / init_scale),  -128, 127)
-          # convert to int and apply relu
+            torch.round(block_0_lhs_conv / init_scale), -128, 127
+        )
+        # convert to int and apply relu
 
-        block_0_skip_add = init_scale * (block_0_rhf_same_scale + block_0_lhs_same_scale)
-        block_0_final_out =  (
-            torch.clamp(torch.round(self.block_0_relu3(block_0_skip_add) / block_0_relu_3), min, max)
+        block_0_skip_add = init_scale * (
+            block_0_rhf_same_scale + block_0_lhs_same_scale
+        )
+        block_0_final_out = torch.clamp(
+            torch.round(self.block_0_relu3(block_0_skip_add) / block_0_relu_3), min, max
         )
         # **************** Bottleneck 1 ****************
-        block_1_conv1_out = self.block_1_conv1(block_0_final_out) * block_0_relu_3 * block_1_weight_scale1
-        block_1_relu1_out = torch.clamp(
-            torch.round(self.block_1_relu1(block_1_conv1_out) / block_1_relu_1), min, max
-        )  # convert to int and apply relu
-        block_1_conv2_out = self.block_1_conv2(block_1_relu1_out) * block_1_relu_1 * block_1_weight_scale2
-        block_1_relu2_out = torch.clamp(
-            torch.round(self.block_1_relu2(block_1_conv2_out) / block_1_relu_2), min, max
+        block_1_conv1_out = (
+            self.block_1_conv1(block_0_final_out)
+            * block_0_relu_3
+            * block_1_weight_scale1
         )
-        block_1_conv3_out = self.block_1_conv3(block_1_relu2_out) * block_1_relu_2 * block_1_weight_scale3
-        block_1_rhf_same_scale = torch.clamp(torch.round(block_1_conv3_out / block_0_relu_3), -128, 127)
+        block_1_relu1_out = torch.clamp(
+            torch.round(self.block_1_relu1(block_1_conv1_out) / block_1_relu_1),
+            min,
+            max,
+        )  # convert to int and apply relu
+        block_1_conv2_out = (
+            self.block_1_conv2(block_1_relu1_out)
+            * block_1_relu_1
+            * block_1_weight_scale2
+        )
+        block_1_relu2_out = torch.clamp(
+            torch.round(self.block_1_relu2(block_1_conv2_out) / block_1_relu_2),
+            min,
+            max,
+        )
+        block_1_conv3_out = (
+            self.block_1_conv3(block_1_relu2_out)
+            * block_1_relu_2
+            * block_1_weight_scale3
+        )
+        block_1_rhf_same_scale = torch.clamp(
+            torch.round(block_1_conv3_out / block_0_relu_3), -128, 127
+        )
 
         block_1_skip_add = block_0_relu_3 * (block_1_rhf_same_scale + block_0_final_out)
-        block_1_final_out = (
-            torch.clamp(torch.round(self.block_1_relu3(block_1_skip_add) / block_1_relu_3), min, max)
+        block_1_final_out = torch.clamp(
+            torch.round(self.block_1_relu3(block_1_skip_add) / block_1_relu_3), min, max
         )
 
         # **************** Bottleneck 2 ****************
-        block_2_conv1_out = self.block_2_conv1(block_1_final_out) * block_1_relu_3 * block_2_weight_scale1
+        block_2_conv1_out = (
+            self.block_2_conv1(block_1_final_out)
+            * block_1_relu_3
+            * block_2_weight_scale1
+        )
         block_2_relu1_out = torch.clamp(
             torch.round(self.block_2_relu1(block_2_conv1_out) / block_2_relu_1),
             min,
