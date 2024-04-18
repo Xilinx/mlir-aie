@@ -22,11 +22,12 @@ The host code can be written in either C++ (as shown in the figure) or in Python
 
 <img align="right" width="410" height="84" src="../assets/vectorScalarMul.svg">
 
-Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (c = a * factor) will be used as an example. Vector scalar multiplication takes an input vector a and computes the output vector c by multiplying each element of a with a factor. This design is also available in the [programming_examples](../../programming_examples) of this repository. We will first introduce the AIE-array structural description, the review the kernel code and then introduce the host code. Finally we will show ho to run the design on Ryzen™ AI enabled hardware.
+Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (c = a * factor) will be used as an example. Vector scalar multiplication takes an input vector a and computes the output vector c by multiplying each element of a with a factor. In our example, the total vector size is set to 4096 integers (32b) that will processed in chunks of 1024.
+This design is also available in the [programming_examples](../../programming_examples) of this repository. We will first introduce the AIE-array structural description, the review the kernel code and then introduce the host code. Finally we will show ho to run the design on Ryzen™ AI enabled hardware.
 
 ## AIE-array Structural Description
 
-<img align="right" width="109" height="264" src="../assets/vectorScalarMulPhysicalDataFlow.svg">
+<img align="right" width="150" height="350" src="../assets/vectorScalarMulPhysicalDataFlow.svg">
 
 The [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) AIE-array structural description (see [section-1](../section-1) deploys both a compute core (green) for the multiplication in the operations and a shimDMA (purple) for data movement both input vector a and output vector c residing in external memory.
 
@@ -44,7 +45,7 @@ We also need to declare that the compute core will run an external function: a k
 
 ```python
         # Type declarations
-        memRef_ty = T.memref(n, T.i32())
+        memRef_ty = T.memref(1024, T.i32())
 
         # AIE Core Function declarations
         scale_scalar_int32 = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty])
@@ -54,7 +55,7 @@ Since the compute core can only access L1 memory, input data needs to be explici
 
 <img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
 
-This allow looking at the data movement in the AIE-array from a logical view where we deploy 2 objectFIFOs: "of_in" to bring in the vector a and "of_out" to move the output vector c using a shimDMA. 
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 2 objectFIFOs: "of_in" to bring in the vector a and "of_out" to move the output vector c using a shimDMA. Note that the objects are declared to have the `memRef_ty` type: 1024 int32 elements.
 
 ```python
         # AIE-array data movement with object fifos
@@ -62,7 +63,7 @@ This allow looking at the data movement in the AIE-array from a logical view whe
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
-We also need to set up the data movement to/from the AIE-array: configure how the shimDMAs read/write data to/from L3 external memory. For NPU, this is done using the `ipu_dma_memcpy_nd` function
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `ipu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements. 
 
 ```python
         # To/from AIE-array data movement
@@ -73,6 +74,20 @@ We also need to set up the data movement to/from the AIE-array: configure how th
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
             ipu_sync(column=0, row=0, direction=0, channel=0)
+```
+
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in" and "of_out". For every processing iteration , we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
+
+```python
+                # Number of sub-vector "tile" iterations
+                for _ in for_(4):
+                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
+                    call(scale_scalar_int32, [elem_in, elem_out])
+                    of_in.release(ObjectFifoPort.Consume, 1)
+                    of_out.release(ObjectFifoPort.Produce, 1)
+                    yield_([])
+                yield_([])
 ```
 
 ## Kernel Code
