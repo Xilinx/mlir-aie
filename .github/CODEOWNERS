@@ -5,15 +5,15 @@ cmake/              @denolf @stephenneuendorffer
 docs/               @stephenneuendorffer
 **/ADF/             @stephenneuendorffer
 **/AIEVec/          @jsetoain
-**/AIE/             @abisca @stephenneuendorffer @fifield @makslevental
-**/AIEX/            @makslevental @jgmelber @abisca
+**/AIE/             @AndraBisca @stephenneuendorffer @fifield @makslevental
+**/AIEX/            @makslevental @jgmelber @AndraBisca
 **/XLLVM/           @jsetoain
 **/AIETargetModel.* @stephenneuendorffer @makslevental
 lib/CAPI            @makslevental
 lib/Conversion/AIEVecToLLVM/  @jsetoain
 lib/Target/LLVMIR/  @jsetoain
 lib/Targets/        @makslevental
-mlir_tutorials/     @denolf @jackl-xilinx @abisca @fifield
+mlir_tutorials/     @denolf @jackl-xilinx @AndraBisca @fifield
 platforms/          @jackl-xilinx @eddierichter-amd
 programming_examples/ @denolf @jgmelber @fifield
 python/             @makslevental
@@ -22,7 +22,7 @@ runtime_lib/        @stephenneuendorffer
 test/aie2xclbin/    @erieaton-amd @newling
 test/aievec/        @jsetoain
 test/python/        @makslevental 
-test/objectFifo*/   @abisca
+test/objectFifo*/   @AndraBisca
 tools/              @stephenneuendorffer @makslevental
 tools/aie2xclbin/   @erieaton-amd @newling
 tutorials/          @denolf
