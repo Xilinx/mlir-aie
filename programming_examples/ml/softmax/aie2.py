@@ -139,7 +139,7 @@ except ValueError:
 with mlir_mod_ctx() as ctx:
     vector_softmax(trace_size)
     res = ctx.module.operation.verify()
-    if (res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)
