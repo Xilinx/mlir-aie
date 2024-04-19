@@ -26,5 +26,5 @@ There are a number of example designs available [here](../../programming_example
 
 | Design name | Data type | Description | 
 |-|-|-|
-|[bottleneck](../../programming_examples/ml/bottleneck/)|||
-|[resnet](../../programming_examples/ml/resnet/)|||
+|[bottleneck](../../programming_examples/ml/bottleneck/)|ui8|A Bottleneck Residual Block is a variant of the residual block that utilises 1x1 convolutions to create a bottleneck. The use of a bottleneck reduces the number of parameters and computations.|
+|[resnet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x bottleneck blocks. The implementation features kernel fusion and dataflow optimizations highlighting the unique architectural capabilties of AI Engines.|
