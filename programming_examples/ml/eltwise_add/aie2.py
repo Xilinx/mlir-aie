@@ -62,7 +62,7 @@ def my_eltwise_add(trace_size):
         MemTile = tile(0, 1)
         cores = [tile(0, 2 + i) for i in range(n_cores)]
 
-                # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
             flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
