@@ -143,3 +143,6 @@ def mem_body():
         dma_bd(buff_b)
         use_lock(cons_lock_b, Release)
 ```
+
+-----
+[[Prev - Section 2e](../section-2e/)] [[Top](..)] [[Next - Section 2g](../section-2g/)]

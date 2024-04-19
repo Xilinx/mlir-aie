@@ -133,3 +133,6 @@ for i in range(n_cores):
             )
             yield_([])
 ```
+
+-----
+[[Prev - Section 2c](../section-2c/)] [[Top](..)] [[Next - Section 2e](../section-2e/)]
