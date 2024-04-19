@@ -99,8 +99,6 @@ def my_eltwise_add(trace_size):
         outC = object_fifo("outC", MemTile, ShimTile, buffer_depth, memRef_C_MT_ty)
         object_fifo_link(outC_fifo_names[0:n_cores], outC)
 
-
-
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
