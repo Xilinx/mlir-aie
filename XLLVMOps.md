@@ -65,8 +65,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a0` | vector of 32-bit signless integer values of length 8
-| `a1` | vector of 32-bit signless integer values of length 8
+| `src0` | vector of 32-bit signless integer values of length 8
+| `src1` | vector of 32-bit signless integer values of length 8
 
 #### Results:
 
@@ -81,7 +81,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 32-bit signless integer values of length 16
+| `src` | vector of 32-bit signless integer values of length 16
 | `idx` | 32-bit signless integer
 
 #### Results:
@@ -97,8 +97,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 64-bit signless integer values of length 16
-| `shft` | 32-bit signless integer
+| `src` | vector of 64-bit signless integer values of length 16
+| `shift` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
 #### Results:
@@ -184,8 +184,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 64-bit signless integer values of length 16
-| `shft` | 32-bit signless integer
+| `src` | vector of 64-bit signless integer values of length 16
+| `shift` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
 #### Results:
@@ -201,8 +201,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 64-bit signless integer values of length 16
-| `shft` | 32-bit signless integer
+| `src` | vector of 64-bit signless integer values of length 16
+| `shift` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
 #### Results:
@@ -249,8 +249,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of bfloat16 type values of length 32
-| `b` | vector of bfloat16 type values of length 16
+| `dst` | vector of bfloat16 type values of length 32
+| `src` | vector of bfloat16 type values of length 16
 | `idx` | 32-bit signless integer
 
 #### Results:
@@ -266,7 +266,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 64-bit signless integer values of length 8
+| `src` | vector of 64-bit signless integer values of length 8
 
 #### Results:
 
@@ -335,8 +335,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `a` | vector of 32-bit signless integer values of length 16
-| `b` | vector of 32-bit signless integer values of length 16
+| `src0` | vector of 32-bit signless integer values of length 16
+| `src1` | vector of 32-bit signless integer values of length 16
 | `mode` | 32-bit signless integer
 
 #### Results:

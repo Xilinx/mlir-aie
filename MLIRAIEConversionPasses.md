@@ -4,3 +4,8 @@
 _Convert AIEVec dialect to LLVM dialect_
 
 This pass converts AIEVec dialect ops to LLVM dialect calls to builtins.
+
+#### Options
+```
+-aie2-fp32-emulation-strategy : Set the AIE2 FP32 emulation strategy. Elementwise multiplication and matrix multiplication intrinsics for FP32 input type are emulated using bfloat16 data-path.
+```
