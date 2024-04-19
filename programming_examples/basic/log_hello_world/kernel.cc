@@ -16,13 +16,13 @@
 
 #include <aie_api/aie.hpp>
 
-#include "ipulog.h"
+#include "npulog.h"
 
 extern "C" {
 
 void kernel(uint32_t *in_buffer, uint32_t *out_buffer, uint8_t *logbuffer) {
 
-  IPULogger log(logbuffer, 2048);
+  NPULogger log(logbuffer, 2048);
   log.write("Starting kernel execution!\n");
 
   uint32_t col = (get_coreid() >> 16) & 0x0000FFFF;
