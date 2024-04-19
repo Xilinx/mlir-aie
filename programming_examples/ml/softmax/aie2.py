@@ -83,7 +83,6 @@ def vector_softmax(trace_size):
         if trace_size > 0:
             flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
-
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
