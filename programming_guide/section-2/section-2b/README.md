@@ -12,17 +12,17 @@
 
 The Object FIFO primitive supports several data movement patterns through its inputs and its member functions. We will now describe each of the currently supported patterns in three subsections and provide links to more in-depth practical code examples that showcase each of them.
 
-TODO: add MLIR examples for reuse and skip connection
-
 <details><summary><a href="./01_Reuse/">Object FIFO Reuse Pattern</a></summary>
 
-* Initializing an Object FIFO
+* Reuse the unreleased objects of an Object FIFO
 </details>
 <details><summary><a href="./02_Broadcast/">Object FIFO Broadcast Pattern</a></summary>
 
-* Initializing an Object FIFO
+* Broadcast data from one producer to multiple consumers
 </details>
 <details><summary><a href="./03_Link_Distribute_Join/">Object FIFO Distribute & Join Patterns with Object FIFO Link</a></summary>
 
-* Initializing an Object FIFO
+* Implicit copy of data from one Object FIFO to another via an Object FIFO Link
+* Distribute different pieces of the input data to multiple consumers 
+* Join outputs from different consumers into a bigger data tensor
 </details>
