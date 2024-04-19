@@ -28,8 +28,8 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 | Design name | Data type | Description |
 |-|-|-|
-| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 |Adds 1 to every element in  vector | 
-| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Does something more complicated | 
+| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector | 
+| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor | 
 | [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector | 
 | [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector | 
 | [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 
