@@ -44,3 +44,7 @@ This guide is split into four sections, where each section builds on top of the 
 
 * Walkthrough of the process of efficiently upgrading to designs with multiple cores
 </details>
+<details><summary><a href="./section-2g">Section 2g - Runtime Data Movement</a></summary>
+
+* Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
+</details>

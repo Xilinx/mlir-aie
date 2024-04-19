@@ -3,7 +3,6 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 
-# import argparse
 import numpy as np
 import pyxrt as xrt
 import sys
@@ -35,32 +34,12 @@ def main(opts):
         instr_text = [l for l in instr_text if l != ""]
         instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
 
+    OUT_SIZE = INOUT2_SIZE
+
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-
-    # Get a device handle
-    device = xrt.device(0)
-
-    # Load the xclbin
-    xclbin = xrt.xclbin(opts.xclbin)
-
-    # Load the kernel
-    kernels = xclbin.get_kernels()
-    try:
-        xkernel = [k for k in kernels if opts.kernel in k.get_name()][0]
-    except:
-        print(f"Kernel '{opts.kernel}' not found in '{opts.xclbin}'")
-        exit(-1)
-
-    # Register xclbin
-    device.register_xclbin(xclbin)
-
-    # Get a hardware context
-    context = xrt.hw_context(device, xclbin.get_uuid())
-
-    # get a kernel handle
-    kernel = xrt.kernel(context, xkernel.get_name())
+    (device, kernel) = test_utils.init_xrt_load_kernel(opts)
 
     # ------------------------------------------------------
     # Initialize input/ output buffer sizes and sync them
@@ -68,7 +47,8 @@ def main(opts):
     bo_instr = xrt.bo(device, len(instr_v) * 4, xrt.bo.cacheable, kernel.group_id(0))
     bo_inout0 = xrt.bo(device, INOUT0_SIZE, xrt.bo.host_only, kernel.group_id(2))
     bo_inout1 = xrt.bo(device, INOUT1_SIZE, xrt.bo.host_only, kernel.group_id(3))
-    bo_inout2 = xrt.bo(device, INOUT2_SIZE, xrt.bo.host_only, kernel.group_id(4))
+    # bo_inout2 = xrt.bo(device, INOUT2_SIZE, xrt.bo.host_only, kernel.group_id(4))
+    bo_inout2 = xrt.bo(device, OUT_SIZE, xrt.bo.host_only, kernel.group_id(4))
 
     # Initialize instruction buffer
     bo_instr.write(instr_v, 0)
@@ -114,7 +94,7 @@ def main(opts):
             continue
 
         # Copy output results and verify they are correct
-        out_size = INOUT2_SIZE + opts.trace_size
+        out_size = INOUT2_SIZE
         output_buffer = bo_inout2.read(out_size, 0).view(INOUT2_DATATYPE)
         if opts.verify:
             if opts.verbosity >= 1:
@@ -122,10 +102,6 @@ def main(opts):
             ref = np.arange(2, INOUT0_VOLUME + 2, dtype=INOUT0_DATATYPE)
             e = np.equal(output_buffer, ref)
             errors = errors + np.size(e) - np.count_nonzero(e)
-
-        # Write trace values if trace_size > 0
-        if opts.trace_size > 0:
-            print("Do something with trace!")
 
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
