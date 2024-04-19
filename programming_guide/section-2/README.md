@@ -45,7 +45,6 @@ This guide is split into five sections, where each section builds on top of the 
 
 * Walkthrough of the process of efficiently upgrading to designs with multiple cores
 </details>
-<<<<<<< HEAD
 <details><summary><a href="./section-2e">Section 2e - Practical Examples</a></summary>
 
 * Practical examples using Object FIFOs
@@ -55,9 +54,7 @@ This guide is split into five sections, where each section builds on top of the 
     * Distribute in L2
     * Join in L2
 </details>
-=======
 <details><summary><a href="./section-2g">Section 2g - Runtime Data Movement</a></summary>
 
 * Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
 </details>
->>>>>>> 4a6f5312f08a95d58a7e4bc9344604c9f66e8ee4
