@@ -1,4 +1,4 @@
-//===- ipulog.h --------------------------------------------000---*- C++
+//===- npulog.h --------------------------------------------000---*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-class IPULogger {
+class NPULogger {
 private:
   uint8_t *_buffer;
   uint32_t _maxlen;
@@ -20,12 +20,12 @@ private:
   uint32_t _dropped_msgs;
 
 public:
-  IPULogger(uint8_t *buffer, uint32_t len) : _buffer(buffer), _maxlen(len) {
+  NPULogger(uint8_t *buffer, uint32_t len) : _buffer(buffer), _maxlen(len) {
     _count = 0;
     _dropped_msgs = 0;
   }
 
-  ~IPULogger() {}
+  ~NPULogger() {}
 
   //----------------------------------
   // peel parameters of write

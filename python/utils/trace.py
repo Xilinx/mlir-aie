@@ -80,7 +80,16 @@ def pack4bytes(b3, b2, b1, b0):
 # Big assumption: The bd_id and channel are unused.  If they are used by something else, then
 # everything will probably break.
 def configure_simple_tracing_aie2(
-    tile, shim, channel, bd_id, ddr_id, size, offset, start, stop, events
+    tile,
+    shim,
+    channel=1,
+    bd_id=13,
+    ddr_id=2,
+    size=8192,
+    offset=0,
+    start=0x1,
+    stop=0x0,
+    events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
 ):
     # Shim has to be a... shim.  Also needs to be a NOC tile, but we don't have
     # an easy way of checking that through python.

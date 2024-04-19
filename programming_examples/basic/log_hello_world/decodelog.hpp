@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string>
 
-class IPULogDecoder {
+class NPULogDecoder {
   // Parses the strings file to provide a decoder for parameterising the
   // string messages from the AIE tiles
 
@@ -60,7 +60,7 @@ private:
   }
 
 public:
-  IPULogDecoder(std::string elfstrings_file)
+  NPULogDecoder(std::string elfstrings_file)
       : _elfstrings_file(elfstrings_file) {
     parse_str_map();
   }
