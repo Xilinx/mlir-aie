@@ -45,7 +45,8 @@ int main(int argc, const char *argv[]) {
   constexpr int OUT_VOLUME = IN_VOLUME;
 
   if (verbosity >= 1)
-    std::cout << "NOLF TEST.CPP VECTORSCALARMUL_SIZE: " << VECTORSCALARMUL_SIZE << "\n";
+    std::cout << "NOLF TEST.CPP VECTORSCALARMUL_SIZE: " << VECTORSCALARMUL_SIZE
+              << "\n";
 
   int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
   int OUT_SIZE = OUT_VOLUME * sizeof(DATATYPE) + trace_size;
