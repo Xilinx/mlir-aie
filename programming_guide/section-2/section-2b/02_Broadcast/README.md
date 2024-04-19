@@ -72,3 +72,6 @@ of0 = object_fifo("objfifo0", A, [B, C], [1, 1, 2], T.memref(256, T.i32()))
 where tiles A and B retain the original depth of 1 while C now has a depth of 2 objects. This change can be visualized as in the figure below where the pool of objects of `of0` in tile C has increased:
 
 <img src="./../../../assets/SkipBroadcastFix.png" height="300">
+
+-----
+[[Top](..)]
