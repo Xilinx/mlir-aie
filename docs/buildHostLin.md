@@ -1,11 +1,30 @@
 # Linux Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Only Ubuntu 22.04 LTS is supported. The instructions were tested on a ASUS Vivobook Pro 15. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Only Ubuntu 22.04 LTS is supported. 
+
+## Initial Setup
+
+#### Update BIOS:
+
+Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
+:
+   ```Advanced → CPU Configuration → IPU``` 
+
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu. 
+
+#### BIOS Settings:
+1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
+
+   ```BIOS → Security → Secure boot → Disable```
+
+1. Turn Ac Power Loss to "Always On" (Can be used for PDU reset, turns computer back on after power loss)
+
+   ```BIOS → Advanced → AMD CBS →  FCH Common Options → Ac Power Loss Options → Set Ac Power Loss to "Always On"```
 
 ## Overview
 You will...
 
-1. Install a driver for the Ryzen AI. As part of this, you will need to...
+1. Install a driver for the Ryzen™ AI. As part of this, you will need to...
 
    1. [...compile and install a more recent Linux kernel.](#update-linux)
 
@@ -15,7 +34,7 @@ You will...
 
    1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites)
 
-   1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
+   1. ...install mlir-aie [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
 
 1. Build and execute one of the example designs. This consists of...
 
@@ -25,7 +44,7 @@ You will...
    
    3. [...building and executing host (x86) code and device (NPU) code.](#build-and-run-host-part) 
 
-> Be advised that two of the steps (Linux compilation and Vitis install) may take hours. If you decide to build MLIR-AIE from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
+> Be advised that two of the steps (Linux compilation and Vitis install) may take hours. If you decide to build mlir-aie from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
 
 ## Prerequisites
 
@@ -203,7 +222,7 @@ You will...
    >  [0000:66:00.1]  :  RyzenAI-Phoenix 
    >  ```
 
-### Install Xilinx Vitis 2023.2 and Other MLIR-AIE Prerequisites
+### Install Xilinx Vitis 2023.2 and Other mlir-aie Prerequisites
 
 1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
 
@@ -225,17 +244,17 @@ You will...
        export LM_LICENSE_FILE=/opt/Xilinx.lic
        ```
 
-1. Install the following packages needed for building MLIR-AIE:
+1. Install the following packages needed for building mlir-aie:
     ``` 
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
       ```
 
-1. Choose *one* of the two options (A or B) below for installing MLIR-AIE.
+1. Choose *one* of the two options (A or B) below for installing mlir-aie.
 
-### Option A - Quick Setup for Ryzen AI Application Development
+### Option A - Quick Setup for Ryzen™ AI Application Development
 
-1. Clone [the MLIR-AIE repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
+1. Clone [the mlir-aie repository](https://github.com/Xilinx/mlir-aie.git), best under /home/username for speed (yourPathToBuildMLIR-AIE): 
    ```
    git clone https://github.com/Xilinx/mlir-aie.git
    cd mlir-aie
@@ -246,7 +265,7 @@ You will...
 
 1. Jump ahead to [Build Device AIE Part](#build-device-aie-part) step 2 below.
 
-### Option B - Build MLIR-AIE Tools from Source for Development
+### Option B - Build mlir-aie Tools from Source for Development
 
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
    ```
@@ -275,7 +294,7 @@ source ${MLIR_AIE_BUILD_DIR}/ironenv/bin/activate
 source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install/mlir_aie ${MLIR_AIE_BUILD_DIR}/my_install/mlir
 ```
 
-> Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* MLIR-AIE above. Replace `${NEW_CMAKE_DIR}` with the directory in which you installed CMake 3.28 above. Instead of search and replace, you can also define these values as environment variables.
+> Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* mlir-aie above. Replace `${NEW_CMAKE_DIR}` with the directory in which you installed CMake 3.28 above. Instead of search and replace, you can also define these values as environment variables.
 
 > For quick setup, this step is only needed if you are starting with a new terminal. If you are continuing in the same terminal you used to install the prerequisites, the environment variables should all be set.
 
@@ -289,7 +308,7 @@ source /opt/xilinx/xrt/setup.sh
 source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install ${MLIR_AIE_BUILD_DIR}/llvm/install
 ```
 
-> Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* MLIR-AIE above. Instead of search and replace, you can also define `MLIR_AIE_BUILD_DIR` as an environment variable.
+> Replace `${MLIR_AIE_BUILD_DIR}` with the directory in which you *built* mlir-aie above. Instead of search and replace, you can also define `MLIR_AIE_BUILD_DIR` as an environment variable.
 
 ## Build a Design
 
@@ -297,7 +316,7 @@ For your design of interest, for instance [add_one_objFifo](../reference_designs
 
 ### Build Device AIE Part
 
-1. Prepare your enviroment with the MLIR-AIE tools (built during prerequisites part of this guide) - see **"Setting Up Your Environment"** avove.
+1. Prepare your enviroment with the mlir-aie tools (built during prerequisites part of this guide) - see **"Setting Up Your Environment"** avove.
 
 2. Goto the design of interest and run `make`
 
