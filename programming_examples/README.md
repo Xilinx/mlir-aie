@@ -10,7 +10,7 @@
 
 # <ins>Programming Examples</ins>
 
-These programming examples are provided so that application programmers can learn how to leverage the Iron design flow with MLIR-AIE python bindings, and the MLIR-AIE intermediate representation directly to build applications targeting AI Engines. They are organized into the following directories:
+These programming examples are provided so that application programmers can learn how to leverage the IRON design flow with mlir-aie python bindings, and the mlir-aie intermediate representation directly to build applications targeting AI Engines. They are organized into the following directories:
 
 ## [basic](./basic) 
 
