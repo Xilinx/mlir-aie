@@ -107,5 +107,5 @@ try:
 except ValueError:
     print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(vector_size,trace_size)
+    my_vector_scalar(vector_size, trace_size)
     print(ctx.module)
