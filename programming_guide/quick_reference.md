@@ -12,27 +12,10 @@
 
 ## Python Bindings
 
-<style>
-table th:first-of-type {
-    width: 20%;
-}
-table th:nth-of-type(2) {
-    width: 20%;
-}
-table th:nth-of-type(3) {
-    width: 30%;
-}
-table th:nth-of-type(4) {
-    width: 10%;
-}
-table th:nth-of-type(5) {
-    width: 20%;
-}
-</style>
 | Function Signature  | Definition | Parameters | Return Type | Example | 
 |---------------------|------------|------------|-------------|---------|
 | `tile(column, row)` | Declare AI Engine tile | `column`: column index number <br> `row`: row index number | `<tile>` | ComputeTile = tile(1,3) |
-| `external_func(name, inputs, output)` | Declare external kernel function that will run on AIE Cores|  `name`: external function name <br> `input`: list of input types <br> `output` list of output types | `<external_func>` | scale_scalar = external_func("vector_scalar_mul_aie_scalar", inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()]) | |
+| `external_func(name, inputs, output)` | Declare external kernel function that will run on AIE Cores|  `name`: external function name <br> `input`: list of input types <br> `output`: list of output types | `<external_func>` | scale_scalar = external_func("vector_scalar_mul_aie_scalar", inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()]) | |
 | `npu_dma_memcpy_nd(metadata, bd_id, mem, sizes)` | configure n-dimensional DMA accessing external memory | `metadata`:  String with name of `object_fifo`<br> `bd_id`: Identifier number<br> `mem`: memory for transfer<br> `sizes`: 4-D transfer size in 4B granularity | `None` | npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N]) |
 | `npu_sync(column, row, direction, channel, column_num=1, row_num=1)` | configure host-ShimDMA syncronization for accessing external memory | `column` and `row`: Specify the tile location for initiating the synchronization. <br> `direction`: Indicates the DMA direction (0 for write to host, 1 for read from host). <br> `channel`: Identifies the DMA channel (0 or 1) for the synchronization token <br> `column_num` and `row_num` (optional): Define the range of tiles to wait for synchronization| `None` | npu_sync(column=0, row=0, direction=0, channel=1) |
 | **Object FIFO** |||
