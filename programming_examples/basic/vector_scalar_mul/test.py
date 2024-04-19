@@ -104,7 +104,6 @@ def main(opts):
         trace_buffer = entire_buffer[INOUT2_VOLUME:]
         trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
 
-        
     # ------------------------------------------------------
     # Print verification and timing results
     # ------------------------------------------------------

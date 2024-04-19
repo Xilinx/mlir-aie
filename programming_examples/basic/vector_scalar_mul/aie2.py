@@ -52,7 +52,7 @@ def my_vector_scalar(trace_size):
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
 
         # Set up a circuit-switched flow from core to shim for tracing information
-        if(trace_size > 0):
+        if trace_size > 0:
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # Set up compute tiles
@@ -84,7 +84,7 @@ def my_vector_scalar(trace_size):
         @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
 
-            if(trace_size > 0):
+            if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(
                     ComputeTile2,
                     ShimTile,
@@ -92,7 +92,6 @@ def my_vector_scalar(trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-              
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
@@ -100,7 +99,7 @@ def my_vector_scalar(trace_size):
 
 
 try:
-    trace_size = 0 if(len(sys.argv) != 2) else int(sys.argv[1])
+    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
 except ValueError:
     print("Argument is not an integer")
 with mlir_mod_ctx() as ctx:
