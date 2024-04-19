@@ -12,7 +12,7 @@
 
 ### Guide to Managing Runtime Data Movement to/from Host Memory
 
-In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `ipu_sync` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example in the Ryzen™ AI NPU).
+In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `npu_sync` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example in the Ryzen™ AI NPU).
 
 #### **Efficient Data Movement with `npu_dma_memcpy_nd`**
 
@@ -94,7 +94,7 @@ npu_dma_memcpy_nd(metadata, bd_id, mem, offsets, sizes, strides)
 
 #### **Host Synchronization with `npu_sync`**
 
-Synchronization between DMA channels and the host is facilitated by the `npu_sync` operation, ensuring data consistency and proper execution order. The `ipu_sync` operation waits until the BD in the DMA channel is complete issuing a task complete token.
+Synchronization between DMA channels and the host is facilitated by the `npu_sync` operation, ensuring data consistency and proper execution order. The `npu_sync` operation waits until the BD in the DMA channel is complete issuing a task complete token.
 
 **Function Signature**:
 ```python
@@ -120,4 +120,4 @@ npu_sync(0, 0, 0, 1)
 
 #### **Conclusion**
 
-The `npu_dma_memcpy_nd` and `ipu_sync` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+The `npu_dma_memcpy_nd` and `npu_sync` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
