@@ -115,6 +115,8 @@ object_fifo_link("objfifo0", "objfifo1")
 
 Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the to other way around.
 
+A full design example that uses this features is available in Section 2e: [03_external_mem_to_core_L2](../section-2e/03_external_mem_to_core_L2/).
+
 ### Link & Distribute
 
 By using the link with one input Object FIFO and multiple output Object FIFOs a user can describe a distribute pattern where parts of data in every object from the producer tile are distributed to each output FIFO. The `datatype` of the output FIFOs should be of a smaller size than the input one, and the sum of the sizes of the output FIFOs should equal to the size of the `datatype` of the input FIFO.
@@ -133,6 +135,8 @@ of2 = object_fifo("objfifo2", B, D, 2, T.memref(128, T.i32()))
 object_fifo_link(of0, [of1, of2])
 ```
 
+A full design example that uses this features is available in Section 2e: [04_distribute_L2](../section-2e/04_distribute_L2/).
+
 ### Link & Join
 
 The join pattern is the opposite of the distribute pattern in that the link will have multiple input Object FIFOs and a single output Object FIFO. With this pattern the user can combine the smaller inputs from multiple sources into a single bigger output data movement. The `datatype` of the input FIFOs should be of a smaller size than the output one, and the sum of the sizes of the input FIFOs should equal to the size of the `datatype` of the output FIFO.
@@ -150,3 +154,5 @@ of1 = object_fifo("objfifo1", D, B, 2, T.memref(128, T.i32()))
 of2 = object_fifo("objfifo2", B, A, 2, T.memref(256, T.i32()))
 object_fifo_link([of0, of1], of2)
 ```
+
+A full design example that uses this features is available in Section 2e: [05_join_L2](../section-2e/05_join_L2/).

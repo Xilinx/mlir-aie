@@ -87,6 +87,8 @@ def core_body():
     of0.release(ObjectFifoPort.Consume, 3)
 ```
 
+Examples of designs that use these features are available in Section 2e: [01_single_double_buffer](../section-2e/01_single_double_buffer/) and [02_external_mem_to_core](../section-2e/02_external_mem_to_core/).
+
 ### Object FIFOs with same producer / consumer
 
 An Object FIFO can be created with the same tile as both its producer and consumer tile. This is mostly done in order to ensure proper synchronization within the process itself, as opposed to synchronization across multiple processes running on different tiles as we've seen in examples up until this point. All of the functionalities described up until this point apply in the same way. Below is an example of how such an Object FIFO can be initialized and accessed:
