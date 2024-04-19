@@ -29,7 +29,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def passThroughAIE2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             # define types
             line_ty = T.memref(lineWidthInBytes, T.ui8())
@@ -101,9 +101,9 @@ def passThroughAIE2():
                     # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
 
                     # Trace_Event0  (4 slots)
-                    IpuWrite32(0, 2, 0x340E0, 0x4B222125)
+                    NpuWrite32(0, 2, 0x340E0, 0x4B222125)
                     # Trace_Event1  (4 slots)
-                    IpuWrite32(0, 2, 0x340E4, 0x2D2C1A4F)
+                    NpuWrite32(0, 2, 0x340E4, 0x2D2C1A4F)
 
                     # Event slots as configured above:
                     # 0: Kernel executes vector instruction
@@ -117,13 +117,13 @@ def passThroughAIE2():
 
                     # Stream_Switch_Event_Port_Selection_0
                     # This is necessary to capture the Port_Running_0 and Port_Running_1 events
-                    IpuWrite32(0, 2, 0x3FF00, 0x121)
+                    NpuWrite32(0, 2, 0x3FF00, 0x121)
 
                     # Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-                    IpuWrite32(0, 2, 0x340D0, 0x10000)
+                    NpuWrite32(0, 2, 0x340D0, 0x10000)
 
                     # Start trace copy out.
-                    IpuWriteBdShimTile(
+                    NpuWriteBdShimTile(
                         bd_id=3,
                         buffer_length=traceSizeInBytes,
                         buffer_offset=tensorSize,
@@ -151,21 +151,21 @@ def passThroughAIE2():
                         use_next_bd=0,
                         valid_bd=1,
                     )
-                    IpuWrite32(0, 0, 0x1D20C, 0x3)
+                    NpuWrite32(0, 0, 0x1D20C, 0x3)
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="in",
                     bd_id=1,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="out",
                     bd_id=0,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

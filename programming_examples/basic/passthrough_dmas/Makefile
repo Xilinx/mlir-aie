@@ -26,13 +26,13 @@ inst/insts.txt: aie2.py
 	rm -rf inst
 	mkdir -p inst 
 	python3 $< ${devicename} ${col} ${LENGTH} > inst/aie.mlir
-	pushd inst && aiecc.py --aie-only-generate-ipu --ipu-insts-name=insts.txt aie.mlir && popd
+	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.txt aie.mlir && popd
 	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

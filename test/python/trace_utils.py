@@ -7,14 +7,14 @@
 
 # RUN: %python %s | FileCheck %s --check-prefix TRACE
 #
-# TRACE: aiex.ipu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 65536 : ui32}
-# TRACE: aiex.ipu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-# TRACE: aiex.ipu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260527909 : ui32}
-# TRACE: aiex.ipu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 757865039 : ui32}
-# TRACE: aiex.ipu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
-# TRACE: aiex.ipu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-# TRACE: aiex.ipu.writebd_shimtile {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-# TRACE: aiex.ipu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+# TRACE: aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 65536 : ui32}
+# TRACE: aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+# TRACE: aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260527909 : ui32}
+# TRACE: aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 757865039 : ui32}
+# TRACE: aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
+# TRACE: aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+# TRACE: aiex.npu.writebd_shimtile {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+# TRACE: aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
 
 import sys
 
@@ -40,7 +40,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def passthroughKernel():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             # define types
             memRef_ty = T.memref(lineWidthInBytes, T.ui8())
@@ -96,19 +96,19 @@ def passthroughKernel():
                         events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                     )
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="in",
                     bd_id=0,
                     mem=inTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="out",
                     bd_id=1,
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

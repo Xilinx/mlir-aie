@@ -5,7 +5,7 @@
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/../../../aie_kernels/aie2/add.cc -o add.o
 // RUN: %python %S/aie2.py 4096 | aie-opt -cse -canonicalize -o ./aie.mlir
-// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt ./aie.mlir
 // RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall  -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!

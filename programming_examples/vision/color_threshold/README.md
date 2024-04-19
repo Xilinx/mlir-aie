@@ -12,7 +12,7 @@
 
 The Color Threshold pipeline design consists of 4 threshold blocks in separate AIE tiles that process a different region of an input image, as shown in the image below.
 
-The pipeline is mapped onto a single column of the ipu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). 
+The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). 
 
 <p align="center">
   <img

@@ -33,7 +33,7 @@ def my_eltwise_add(trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         memRef_ty = T.memref(n, T.bf16())
 
@@ -143,16 +143,16 @@ def my_eltwise_add(trace_size):
                     offset=N_in_bytes,
                 )
 
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
             )
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
             )
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, B_sz_in_i32s]
             )
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:

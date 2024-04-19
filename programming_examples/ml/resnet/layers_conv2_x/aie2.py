@@ -34,7 +34,7 @@ def resnet_conv_x():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def deviceBody():
 
             # define types
@@ -836,52 +836,52 @@ def resnet_conv_x():
 
                 for c, col in enumerate(rtp_name):
                     for r, row in enumerate(col):
-                        IpuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
+                        npuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
 
-                IpuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=0)
-                IpuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=1)
+                npuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=0)
+                npuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=1)
 
-                IpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=0)
+                npuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=0)
 
-                IpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=0)
+                npuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=0)
 
                 # #     # write RTP parameters
-                # IpuWriteRTPOp(
+                # npuWriteRTPOp(
                 #     "rtpComputeTile02", col=0, row=2, index=0, value=1
                 # )  # scale
-                # IpuWriteRTPOp(
+                # npuWriteRTPOp(
                 #     "rtpComputeTile03", col=0, row=3, index=0, value=1
                 # )  # scale
-                # IpuWriteRTPOp(
+                # npuWriteRTPOp(
                 #     "rtpComputeTile05", col=0, row=5, index=0, value=1
                 # )  # scale
-                # IpuWriteRTPOp(
+                # npuWriteRTPOp(
                 #     "rtpComputeTile04", col=0, row=4, index=0, value=1
                 # )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                # IpuWriteRTPOp(
+                # npuWriteRTPOp(
                 #     "rtpComputeTile04", col=0, row=4, index=1, value=0
                 # )  # skip_scale
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="act1_00_02_01",
                     bd_id=0,
                     mem=inputFromL3,
                     sizes=[1, 1, 1, activationsInSize32b],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=outputToL3,
                     sizes=[1, 1, 1, acitivationsOutSize32b],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
                     sizes=[1, 1, 1, totalWeightsSize32b_init],
                 )
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="wts_1_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
@@ -889,7 +889,7 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeightsSize32b_rest],
                 )
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="wts_2_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
@@ -902,7 +902,7 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeightsSize32b_rest],
                 )
 
-                ipu_sync(column=1, row=0, direction=0, channel=0)
+                npu_sync(column=1, row=0, direction=0, channel=0)
 
     res = ctx.module.operation.verify()
     if res == True:

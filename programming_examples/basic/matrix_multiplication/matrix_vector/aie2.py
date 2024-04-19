@@ -42,7 +42,7 @@ def my_matmul():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memRef_inA_ty = T.memref(m * k, T.bf16())
             memRef_inB_ty = T.memref(k, T.bf16())
@@ -176,7 +176,7 @@ def my_matmul():
                 T.memref(C_sz_in_i32s, T.i32()),
             )
             def sequence(A, B, C):
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata=inB_fifo_names[0],
                     bd_id=2,
                     mem=B,
@@ -186,7 +186,7 @@ def my_matmul():
                 for i in range(n_cores):
                     A_offset = i * M_div_m_div_n_cores * m * K * word_size_in // 4
                     C_offset = i * M_div_m_div_n_cores * m * word_size_out // 4
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata=memA_fifo_names[i],
                         bd_id=1,
                         mem=A,
@@ -194,7 +194,7 @@ def my_matmul():
                         sizes=[M_div_m_div_n_cores, K_div_k, m, k_in_i32s],
                         strides=[m_x_K_in_i32s, k_in_i32s, K_in_i32s],
                     )
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
                         bd_id=0,
                         mem=C,
@@ -204,7 +204,7 @@ def my_matmul():
                     )
 
                 for i in range(n_cores):
-                    ipu_sync(column=i, row=0, direction=0, channel=0)
+                    npu_sync(column=i, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
