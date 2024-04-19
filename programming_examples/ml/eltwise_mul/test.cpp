@@ -25,9 +25,6 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-// ------------------------------------------------------
-// Configure this to match your buffer data type
-// ------------------------------------------------------
 using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 using INOUT2_DATATYPE = std::bfloat16_t;
