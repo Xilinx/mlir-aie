@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -28,13 +28,13 @@
 | `packetflow(pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel, keep_pkt_header)` | Create a packet switched flow between src and dest | `pkt_id`: unique packet ID <br>  `source`: source tile of the packet flow <br> `source_port`: type of source WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `source_channel`: source channel index <br> `dest`: destination tile of the packet flow <br> `dest_port`: type of destination WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `dest_channel`: destination channel index <br>`keep_pkt_header`: boolean flag to keep header | `None` | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
 |||||
 
-Note on `tile`: The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
+> **NOTE:** `tile`: The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
 
-Note on `object_fifo`: The `producerTile` and `consumerTiles` inputs are AI Engine tiles. The `consumerTiles` may also be specified as an array of tiles for multiple consumers.
+> **NOTE:** `object_fifo`: The `producerTile` and `consumerTiles` inputs are AI Engine tiles. The `consumerTiles` may also be specified as an array of tiles for multiple consumers.
 
-Note on `<object_fifo>.{acquire,release}`: The output may be either a single object or an array of objects which can then be indexed in an array-like fashion.
+> **NOTE:** `<object_fifo>.{acquire,release}`: The output may be either a single object or an array of objects which can then be indexed in an array-like fashion.
 
-Note on `object_fifo_link` The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO.
+> **NOTE:** `object_fifo_link` The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO.
 
 ## Python helper functions
 | Function Signature | Description |
