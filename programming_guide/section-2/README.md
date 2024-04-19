@@ -54,6 +54,10 @@ This guide is split into five sections, where each section builds on top of the 
     * Distribute in L2
     * Join in L2
 </details>
+<details><summary><a href="./section-2f">Section 2f - Data Movement Without Object FIFOs</a></summary>
+
+* Walkthrough of the process of programming DMA regions
+</details>
 <details><summary><a href="./section-2g">Section 2g - Runtime Data Movement</a></summary>
 
 * Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
