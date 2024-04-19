@@ -52,7 +52,9 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...PASSTHROUGH_SIZE" height=25>
 
-1. Take a look at the testbench in our [Vector $e^x$](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Notice the data type and the size of the test vector. What do you notice?<img src="../../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+1. Take a look at the testbench in our [Vector $e^x$](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Notice the data type and the size of the test vector. What do you notice? <img src="../../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
 
-1. Which basic building block is a component in [Softmax](../../programming_examples/ml/softmax/)?
+1. What is the communication to computation ratio in [ReLU](../../programming_examples/ml/relu/) <img src="../../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+
+1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)?
 <img src="../../../mlir_tutorials/images/answer1.jpg" title="[Vector $e^x$](../../programming_examples/basic/vector_exp/)" height=25>
