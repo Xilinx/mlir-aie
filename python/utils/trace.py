@@ -8,7 +8,6 @@
 
 from aie.dialects.aiex import *
 
-
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     trace_size_words = trace_size // 4
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint32)
@@ -23,17 +22,6 @@ def write_out_trace(trace, file_name):
     out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)
     with open(file_name, "w") as f:
         f.write(out_str)
-
-
-# trace_utils.py -*- Python -*-
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-from aie.dialects.aiex import *
 
 
 def pack4bytes(b3, b2, b1, b0):
