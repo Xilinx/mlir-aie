@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -24,17 +24,17 @@
 | `object_fifo.release(port, num_elem)` | Release from Object FIFO | `port`: `ObjectFifoPort.Produce` or `ObjectFifoPort.Consume` <br> `num_elem`: | `None` | of0.release(ObjectFifoPort.Consume, 2) |
 | `object_fifo_link(fifoIns, fifoOuts)` | Create a link between Object FIFOs | `fifoIns`: list of Object FIFOs (variables or names)<br> `fifoOuts`: list of Object FIFOs (variables or names) | `None` | object_fifo_link(of0, of1) |
 | **Routing Bindings (relevant for trace and low-level design)** |||
-| `flow(srcTile, srcPort, srcChannel, dstTile, dstPort, dstChannel)` | Create a circuit switched flow between src and dest | `srcTile`: <br> `srcPort`: <br> `srcChannel`: <br> `dstTile`: <br> `dstPort`: <br> `dstChannel`:  | `None` | flow(ComputeTile, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 1) | In the case when we're routing for trace, the srcPort and srcChannel can be WireBundle.Trace and 0 respectively|
-| `packetflow(packetID, srcTile, srcPort, srcChannel, dstTile, dstPort, dstChannel, keepPktHeader)` | Create a packet switched flow between src and dest | `packetID`: <br>  `srcTile`: <br> `srcPort`: <br> `srcChannel`: <br> `dstTile`: <br> `dstPort`: <br> `dstChannel`: <br>`keepPktHeader`: boolean flag to keep header | `None` | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
+| `flow(source, source_bundle, source_channel, dest, dest_bundle, dest_channel)` | Create a circuit switched flow between src and dest | `source`: source tile of the flow <br> `source_bundle`: type of source WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `source_channel`: source channel index <br> `dest`: destination tile of the flow <br> `dest_bundle`: type of destination WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `dest_channel`: destination channel index | `None` | flow(ComputeTile, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 1) | In the case when we're routing for trace, the srcPort and srcChannel can be WireBundle.Trace and 0 respectively|
+| `packetflow(pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel, keep_pkt_header)` | Create a packet switched flow between src and dest | `pkt_id`: unique packet ID <br>  `source`: source tile of the packet flow <br> `source_port`: type of source WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `source_channel`: source channel index <br> `dest`: destination tile of the packet flow <br> `dest_port`: type of destination WireBundle (see full list in [AIEAttrs.td](../include/aie/Dialect/AIE/IR/AIEAttrs.td)) <br> `dest_channel`: destination channel index <br>`keep_pkt_header`: boolean flag to keep header | `None` | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
 |||||
 
-Note on `tile`: The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
+> **NOTE:** `tile`: The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
 
-Note on `object_fifo`: The `producerTile` and `consumerTiles` inputs are AI Engine tiles. The `consumerTiles` may also be specified as an array of tiles for multiple consumers.
+> **NOTE:** `object_fifo`: The `producerTile` and `consumerTiles` inputs are AI Engine tiles. The `consumerTiles` may also be specified as an array of tiles for multiple consumers.
 
-Note on `<object_fifo>.{acquire,release}`: The output may be either a single object or an array of objects which can then be indexed in an array-like fashion.
+> **NOTE:** `<object_fifo>.{acquire,release}`: The output may be either a single object or an array of objects which can then be indexed in an array-like fashion.
 
-Note on `object_fifo_link` The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO.
+> **NOTE:** `object_fifo_link` The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO.
 
 ## Python helper functions
 | Function Signature | Description |
@@ -50,3 +50,6 @@ Note on `object_fifo_link` The tile that is used as the shared tile in the link 
 * [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 * [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
 * [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
+
+## AIE Detailed References
+* [AIE2 - Table of suported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)
