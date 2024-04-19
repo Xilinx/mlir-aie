@@ -62,3 +62,6 @@ This guide is split into five sections, where each section builds on top of the 
 
 * Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
 </details>
+
+-----
+[[Prev - Section 1](../section-1/)] [[Top](..)] [[Next - Section 3](../section-3/)]

@@ -84,3 +84,6 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
         print(res)
     ```
     Make this change and run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says column value fails to satisfy the constraint because the minimum value is 0" height=25>
+
+-----
+[[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]
