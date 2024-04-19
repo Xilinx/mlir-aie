@@ -10,11 +10,11 @@
 
 # <ins>Section 5 - Example Vector Designs</ins>
 
-There are a number of example designs available [here](../../programming_examples/) which further help explain many of the unique features of the NPU.
+There are a number of example designs available [here](../../programming_examples/) which further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
 
 ## Simplest
 
-### Pass through
+#### Passthrough
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 4 important files here.
     * [`aie2.py`](../../programming_examples/basic/passthrough_kernel/aie2.py) The AIE structural design which includes the shim tile connected to the external memory, and a single AIE core for performing the copy.  It also shows a simple use of the ObjectFIFOs described in [section 2](../section-2)
@@ -24,7 +24,7 @@ The [passthrough](../../programming_examples/basic/passthrough_kernel/) example 
 
 The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.
 
-## Simple
+## Basic
 
 | Design name | Data type | Description |
 |-|-|-|
@@ -35,7 +35,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 
 | [Vector $e^x$](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing $e^x$ of the inputs | 
 
-## Machine learning kernels
+## Machine Kearning Kernels
 
 | Design name | Data type | Description | 
 |-|-|-|
@@ -48,4 +48,11 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector) | bfloat16 | A vector-matrix multiply returning a vector
 | [Conv2D](../../programming_examples/basic/vector_exp/) | i8 | A Conv2D | 
 
+## Exercises
 
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...PASSTHROUGH_SIZE" height=25>
+
+1. Take a look at the testbench in our [Vector $e^x$](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Notice the data type and the size of the test vector. What do you notice?<img src="../../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+
+1. Which basic building block is a component in [Softmax](../../programming_examples/ml/softmax/)?
+<img src="../../../mlir_tutorials/images/answer1.jpg" title="[Vector $e^x$](../../programming_examples/basic/vector_exp/)" height=25>
