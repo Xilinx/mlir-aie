@@ -13,7 +13,7 @@
 When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an IRON design.
 
 ## <ins>Walkthrough of python source file (aie2.py)</ins>
-At the top of this python source, we include modules that define the IRON AIE language bindings and the mlir-aie context which binds to MLIR definitions for AI Engines. Within the mlir-aie context, we define our AI Engine enabled device (e.g. ipu or xcvc1902) and its associated structural building blocks.
+At the top of this python source, we include modules that define the IRON AIE language bindings and the mlir-aie context which binds to MLIR definitions for AI Engines. Within the mlir-aie context, we define our AI Engine enabled device (e.g. npu or xcvc1902) and its associated structural building blocks.
 
 ```
 from aie.dialects.aie import * # primary mlir-aie dialect definitions
@@ -25,15 +25,15 @@ Then we declare a structural design function that will expand into mlir code whe
 def mlir_aie_design():
     <... AI Engine device, blocks and connections ...>
 ```
- Let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.ipu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
+ Let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
 
 The arguments for the tile declaration are the tile coordinates (column, row) and we assign it a variable tile name in our python program.
 
-> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen AI (`@device(AIEDevice.ipu)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
+> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen™ AI (`@device(AIEDevice.npu)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
 
 ```
     # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
 
         # Tile declarations
@@ -54,7 +54,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 
 ```
     # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
 
         # Tile declarations
@@ -84,3 +84,6 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
         print(res)
     ```
     Make this change and run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says column value fails to satisfy the constraint because the minimum value is 0" height=25>
+
+-----
+[[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]

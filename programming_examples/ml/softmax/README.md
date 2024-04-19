@@ -15,14 +15,19 @@ The softmax function is a mathematical function commonly used in machine learnin
 ## Key Characteristics
 * Exponential Normalization: The softmax function applies the exponential function to each element of the input vector and then normalizes these values by dividing by the sum of all these exponentials. This has the effect of amplifying the differences between the elements of the input vector, making the highest values stand out more prominently.
 
-* Formula: For a vector $\mathbf{z} = \begin{bmatrix}
-z_1 & z_2 & \cdots & z_n
-\end{bmatrix}$, the softmax function for each element is
+* Formula: For a vector,
 
-$$ \sigma(\mathbf{z})_i = \frac{e^{z_i}}{\sum_{j=1}^n e^{z_j}} $$
+    ```math
+    \mathbf{z} = \begin{bmatrix} z_1 & z_2 & \cdots & z_n \end{bmatrix} 
+    ```
 
+    the softmax function for each element is,
 
-where e is the base of the natural logarithm.
+    ```math
+    \sigma(\mathbf{z})_i = \frac{e^{z_i}}{\sum_{j=1}^n e^{z_j}} 
+    ```
+
+    where e is the base of the natural logarithm.
 
 * Output as Probabilities: The output of the softmax function is a vector where each component is between 0 and 1, and the sum of all components is 1. This makes it useful for interpreting the outputs as probabilities.
 

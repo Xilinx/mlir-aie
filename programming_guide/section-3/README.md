@@ -158,3 +158,5 @@ To run the design:
 ```sh
 python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
 ```
+-----
+[[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]
