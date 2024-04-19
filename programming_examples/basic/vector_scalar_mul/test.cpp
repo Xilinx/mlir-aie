@@ -25,6 +25,8 @@
 using DATATYPE = std::uint32_t;
 #endif
 
+const int scaleFactor = 3;
+
 namespace po = boost::program_options;
 
 int main(int argc, const char *argv[]) {
@@ -63,12 +65,12 @@ int main(int argc, const char *argv[]) {
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE,
+  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE,
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE,
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
+                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
+                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -82,43 +84,44 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < IN_VOLUME; i++)
     bufInA[i] = i + 1;
 
-  // Initialize buffer bo_inB
-  // DATATYPE *bufInB = bo_inB.map<DATATYPE *>();
-  // for (int i = 0; i < IN_VOLUME; i++)
-  //   bufInA[i] = i+1;
+  // Initialize buffer bo_inFactor
+  DATATYPE *bufInFactor = bo_inFactor.map<DATATYPE *>();
+  *bufInFactor = scaleFactor;
 
-  // Zero out buffer bo_out
-  DATATYPE *bufOut = bo_out.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE);
+  // Zero out buffer bo_outC
+  DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
+  memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE) + trace_size);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inFactor.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // Execute the kernel and wait to finish
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
   run.wait();
 
   // Sync device to host memories
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  // Compare out to in
+  // Compare out to golden
   int errors = 0;
   if (verbosity >= 1) {
     std::cout << "Verifying results ..." << std::endl;
   }
-  for (uint32_t i = 0; i < IN_VOLUME; i++) {
-    uint32_t ref = (i + 1) * 3;
-    if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                << std::endl;
+  for (uint32_t i = 0; i < IN_SIZE; i++) {
+    int32_t ref = bufInA[i] * scaleFactor;
+    int32_t test = bufOut[i];
+    if (test != ref) {
+      if (verbosity >= 1)
+        std::cout << "Error in output " << test << " != " << ref << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                << std::endl;
+      if (verbosity >= 1)
+        std::cout << "Correct output " << test << " == " << ref << std::endl;
     }
   }
 

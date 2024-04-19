@@ -18,7 +18,7 @@ trace_size = 8192
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
@@ -62,6 +62,7 @@ trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt
 trace_py: build/final_trace.xclbin build/insts.txt
 	${powershell} python3 test.py -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
 	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
+
 
 clean_trace:
 	rm -rf tmpTrace trace.txt

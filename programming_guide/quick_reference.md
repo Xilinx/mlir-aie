@@ -15,6 +15,7 @@
 | Syntax | Definition | Example | Notes |
 |--------|------------|---------|-------|
 | \<name\> = tile(column, row) | Declare AI Engine tile | ComputeTile = tile(1,3) | The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative corodinates as the runtime scheduler may assign it to a different available column. |
+| ipu_dma_memcpy_nd(metadata, bd_id, mem, sizes) | configure n-dimensional DMA accessing external memory | ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N]) | `metadata`:  <br> `bd_id`: <br> `mem`: <br> `sizes`: |
 
 ## Object FIFO Bindings
 

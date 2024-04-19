@@ -10,4 +10,3 @@
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // RUN: %run_on_ipu %python %S/test.py -x aie.xclbin -i insts.txt -k MLIR_AIE -s 4096 | FileCheck %s
 // CHECK: PASS!
-

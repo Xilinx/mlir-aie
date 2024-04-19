@@ -34,7 +34,7 @@ def my_eltwise_exp():
     # ctx wrapper - to convert python to mlir
     with mlir_mod_ctx() as ctx:
 
-        # Dvice declaration - aie2 device IPU (aka Ryzen AI)
+        # Device declaration - aie2 device NPU (aka Ryzen AI)
         @device(AIEDevice.ipu)
         def device_body():
 

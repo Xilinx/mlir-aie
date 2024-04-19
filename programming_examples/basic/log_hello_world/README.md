@@ -16,12 +16,12 @@ make run
 ```
 
 ### Logging from the kernel code
-Below is a simple example of how to use `ipulog.h` in a kernel.
+Below is a simple example of how to use `npulog.h` in a kernel.
 ```c++
-#include "ipulog.h"
+#include "npulog.h"
 
 void kernel(uint32_t *logbuffer) {
-	IPULogger log(logbuffer, 2048); // buffer to use, and length of buffer
+	NPULogger log(logbuffer, 2048); // buffer to use, and length of buffer
 	log.write("Hello!");
 }
 ```
@@ -33,12 +33,12 @@ python3 elfStringParser.py --input <directory where generated elfs are> --output
 ```
 
 ### Decoding the log at runtime 
-At runtime we can run the IPU and then run a decoder on the output buffer to render all the strings.
+At runtime we can run the NPU and then run a decoder on the output buffer to render all the strings.
 
 ```c++
   #include "decodelog.hpp"
   // ...
-  IPULogDecoder log_decoder("formatString.csv");
+  NPULogDecoder log_decoder("formatString.csv");
   for (const std::string &str : log_decoder.decode(logbuffer)) {
     std::cout << str << std::endl;
   }
