@@ -15,6 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext import memref, arith
 
 import aie.utils.test as test_utils
+import aie.utils.trace as trace_utils
 
 
 def main(opts):
@@ -31,11 +32,13 @@ def main(opts):
     INOUT0_VOLUME = int(opts.size)  # Input only, 64x uint32_t in this example
     INOUT1_VOLUME = int(opts.size)  # Output only, 64x uint32_t in this example
 
-    INOUT0_DATATYPE = np.uint8
-    INOUT1_DATATYPE = np.uint8
+    INOUT0_DATATYPE = np.int32
+    INOUT1_DATATYPE = np.int32
 
     INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
     INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
+
+    OUT_SIZE = INOUT1_SIZE + int(opts.trace_size)
 
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
@@ -47,14 +50,15 @@ def main(opts):
     # ------------------------------------------------------
     bo_instr = xrt.bo(device, len(instr_v) * 4, xrt.bo.cacheable, kernel.group_id(0))
     bo_inout0 = xrt.bo(device, INOUT0_SIZE, xrt.bo.host_only, kernel.group_id(2))
-    bo_inout1 = xrt.bo(device, INOUT1_SIZE, xrt.bo.host_only, kernel.group_id(3))
+    bo_inout1 = xrt.bo(device, OUT_SIZE, xrt.bo.host_only, kernel.group_id(4))
 
     # Initialize instruction buffer
     bo_instr.write(instr_v, 0)
 
     # Initialize data buffers
     inout0 = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE)
-    inout1 = np.zeros(INOUT1_VOLUME, dtype=INOUT1_DATATYPE)
+    # inout1 = np.zeros(INOUT1_VOLUME, dtype=INOUT1_DATATYPE)
+    inout1 = np.zeros(OUT_SIZE, dtype=np.uint8)
     bo_inout0.write(inout0, 0)
     bo_inout1.write(inout1, 0)
 
@@ -75,19 +79,25 @@ def main(opts):
     # Run kernel
     if opts.verbosity >= 1:
         print("Running Kernel.")
-    h = kernel(bo_instr, len(instr_v), bo_inout0, bo_inout1)
+    h = kernel(bo_instr, len(instr_v), bo_inout0, bo_inout1, bo_inout1)
     h.wait()
     bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     # Copy output results and verify they are correct
-    out_size = INOUT1_SIZE + int(opts.trace_size)
-    output_buffer = bo_inout1.read(INOUT1_SIZE, 0).view(INOUT1_DATATYPE)
+    entire_buffer = bo_inout1.read(OUT_SIZE, 0).view(np.uint32)
+    output_buffer = entire_buffer[:INOUT1_VOLUME]
     if opts.verify:
         if opts.verbosity >= 1:
             print("Verifying results ...")
-        ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE)
+        ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE) * 3
         e = np.equal(output_buffer, ref)
         errors = errors + np.size(e) - np.count_nonzero(e)
+
+    # Write trace values if trace_size > 0
+    if opts.trace_size > 0:
+        trace_buffer = entire_buffer[INOUT1_VOLUME:]
+        trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
+
 
     # ------------------------------------------------------
     # Print verification and timing results
