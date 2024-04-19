@@ -5,15 +5,17 @@
 # (c) Copyright 2024 AMD Inc.
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-
+message(dialect_libs = ${dialect_libs})
 set(AIE_LSP_LIBS
   ${dialect_libs}
+  MLIRCIR
   MLIRLspServerLib
 )
 
 add_llvm_tool(aie-lsp-server
   aie-lsp-server.cpp
 )
+
 install(TARGETS aie-lsp-server
 EXPORT AIETargets
 RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}

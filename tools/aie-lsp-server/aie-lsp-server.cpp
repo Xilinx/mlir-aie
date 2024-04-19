@@ -14,10 +14,12 @@
 #include "mlir/Tools/mlir-lsp-server/MlirLspServerMain.h"
 
 #include "aie/InitialAllDialect.h"
+#include "clang/CIR/Dialect/IR/CIRDialect.h"
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   xilinx::registerAllDialects(registry);
+  registry.insert<mlir::cir::CIRDialect>();
   return mlir::failed(mlir::MlirLspServerMain(argc, argv, registry));
 }
