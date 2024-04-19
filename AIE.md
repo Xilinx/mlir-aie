@@ -2009,7 +2009,11 @@ to it.
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
 the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
 
-Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `FlowEndPoint`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Attributes:
 
