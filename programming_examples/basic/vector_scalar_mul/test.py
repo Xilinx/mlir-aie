@@ -29,7 +29,7 @@ def main(opts):
     # Configure this to match your design's buffer size and type
     # ------------------------------------------------------------
     INOUT0_VOLUME = int(opts.size)  # Input only, 64x uint32_t in this example
-    INOUT1_VOLUME = int(1)          # Input only, 1 uint32_t scale factor
+    INOUT1_VOLUME = int(1)  # Input only, 1 uint32_t scale factor
     INOUT2_VOLUME = int(opts.size)  # Output only, 64x uint32_t in this example
 
     INOUT0_DATATYPE = np.int32
