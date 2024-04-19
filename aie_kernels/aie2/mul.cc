@@ -17,34 +17,32 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
 template <typename T_in, typename T_out, const int N>
-void scale(T_in *a, T_out *c, T_in factor) {
-  event0();
+void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
-    c[i] = factor * a[i];
+    c[i] = a[i] * b[i];
   }
-  event1();
 }
 
-// Assume factor is at least 16
 template <typename T_in, typename T_out, const int N>
-void scale_vectorized(T_in *a, T_out *c, T_in factor) {
+void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
+
   constexpr int vec_factor = 16;
   event0();
   T_in *__restrict pA1 = a;
+  T_in *__restrict pB1 = b;
   T_out *__restrict pC1 = c;
   const int F = N / vec_factor;
   for (int i = 0; i < F; i++)
     chess_prepare_for_pipelining chess_loop_range(16, ) {
       aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
-      aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
-      aie::store_v(pC1, cout.to_vector<T_out>(0));
+      aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
+      pB1 += vec_factor;
+      aie::vector<T_out, vec_factor> cout = aie::mul(A0, B0);
+      aie::store_v(pC1, cout);
       pC1 += vec_factor;
     }
   event1();
@@ -52,12 +50,12 @@ void scale_vectorized(T_in *a, T_out *c, T_in factor) {
 
 extern "C" {
 
-void scale_int32(int32_t *a_in, int32_t *c_out) {
-  scale_vectorized<int32_t, int32_t, 1024>(a_in, c_out, 3);
+void eltwise_mul_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  eltwise_mul<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
 }
 
-void scale_scalar_int32(int32_t *a_in, int32_t *c_out) {
-  scale<int32_t, int32_t, 1024>(a_in, c_out, 3);
+void eltwise_mul_bf16_vector(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  eltwise_vmul<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
 }
 
 } // extern "C"

@@ -181,7 +181,7 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
   uint32_t *bufLogOut = bo_logout.map<uint32_t *>();
 
-  IPULogDecoder logdecode(vm["elfstrings"].as<std::string>());
+  NPULogDecoder logdecode(vm["elfstrings"].as<std::string>());
   std::vector<std::string> logout = logdecode.decode(bo_out);
   for (const std::string &str : logout) {
     std::cout << str << std::endl;

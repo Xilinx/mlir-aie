@@ -16,10 +16,11 @@ all: build/final.xclbin build/insts.txt
 
 build/exp.o: ${KERNELLIB}/bf16_exp.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I${INSTALL_ROOT}/aie_runtime_lib/AIE2 -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
-build/lut_based_ops.o: ${INSTALL_ROOT}/aie_runtime_lib/AIE2/lut_based_ops.cpp
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I${INSTALL_ROOT}/aie_runtime_lib/AIE2 -c $< -o ${@F}
+build/lut_based_ops.o:
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_runtime_lib/AIE2/lut_based_ops.cpp -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
