@@ -168,4 +168,3 @@ with mlir_mod_ctx() as ctx:
         print(ctx.module)
     else:
         print(res)
-
