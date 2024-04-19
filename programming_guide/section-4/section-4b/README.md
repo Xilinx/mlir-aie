@@ -10,13 +10,12 @@
 
 # <ins>Section 4b - Trace</ins>
 
-* [Section 4 - Vector programming & Peformance Measurement](../../section-4)
+* [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
     * [Section 4a - Timers](./section-4a)
     * [Section 4b - Trace](./section-4b)
     * [Section 4c - Kernel vectorization](./section-4c)
-    * [Section 4d - Automated vectorization](./section-4d)
 
-In the previous [section-4a](../section-4a), we looked at how timers can be used to get an overview of application performance. However, for kernel programmers that want to optimize the AIE hardware to its fullest potential, being able to see how efficiently the AIE cores and data movers are running is important. As such, the AIEs are equipped with tracing hardware that provides a cycle accurate view of hardware events. More detailed specification of the AIE trace hardware can be found at [insert link here](insert_link).
+In the previous [section-4a](../section-4a), we looked at how timers can be used to get an overview of application performance. However, for kernel programmers that want to optimize the AIE hardware to its fullest potential, being able to see how efficiently the AIE cores and data movers are running is important. As such, the AIEs are equipped with tracing hardware that provides a cycle accurate view of hardware events. More detailed specification of the AIE2 trace unit can be found at in [AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace).
 
 Enabling trace support can be done with the following steps:
 
