@@ -21,6 +21,11 @@ Programming the AIE-array configures all its spatial building blocks: the comput
 This IRON AIE programming guide first introduces the language bindings for AIE-array's structural elements (section 1). After explaining how to set up explicit data movement (section 2) to transport the necessary data, you can run your first program on the AIE compute core (section 3). Section 4 adds tracing for performance analysis and explains how to exploit the compute dense vector operations. More vector design examples, basic and larger (ML or computer vision) are given in sections 5 and 6. Finally, the quick reference summarizes the most important API elements.
 
 ## Outline
+<details><summary><a href="./section-0">Section 0 - Getting Set Up for IRON</a></summary>
+
+* Introduce recommended hardware to target with IRON
+* Simple instructions to set up your hardware, tools and environment
+</details>
 <details><summary><a href="./section-1">Section 1 - Basic AI Engine building blocks</a></summary>
 
 * Introduce AI Engine building blocks with references to Tutorial material
