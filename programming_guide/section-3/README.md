@@ -124,8 +124,7 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 TBD
 
-This host code is acts as setup environment and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data. Both a C++ and Python variant of this code is available: ADD LINKS
-
+The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the memcpy results and optionally outputs trace data. Both a C++ and Python variant of this code are available.
 
 ### C++ Host Code (test.cpp)
 

@@ -18,11 +18,7 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-// ------------------------------------------------------
-// Configure this to match your buffer data type
-// ------------------------------------------------------
-// using DATATYPE = std::uint8_t;
-using DATATYPE = std::uint32_t;
+using DATATYPE = std::uint32_t; // Configure this to match your buffer data type
 #endif
 
 const int scaleFactor = 3;
