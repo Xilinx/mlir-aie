@@ -65,11 +65,11 @@ int main(int argc, const char *argv[]) {
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
+  auto bo_inA = xrt::bo(device, IN_SIZE,
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
                              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
+  auto bo_outC = xrt::bo(device, OUT_SIZE,
                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
@@ -90,7 +90,7 @@ int main(int argc, const char *argv[]) {
 
   // Zero out buffer bo_outC
   DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE) + trace_size);
+  memset(bufOut, 0, OUT_SIZE);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -112,7 +112,7 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1) {
     std::cout << "Verifying results ..." << std::endl;
   }
-  for (uint32_t i = 0; i < IN_SIZE; i++) {
+  for (uint32_t i = 0; i < IN_VOLUME; i++) {
     int32_t ref = bufInA[i] * scaleFactor;
     int32_t test = bufOut[i];
     if (test != ref) {
