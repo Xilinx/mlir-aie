@@ -4,10 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// 
+//===----------------------------------------------------------------------===//-->
 
 # <ins>Passthrough DMAs</ins>
 
-This reference design can be run on a RyzenAI NPU.
+This reference design can be run on a Ryzen™ AI NPU.
 
 In the [design](./aie2.py) data is brought from external memory to `ComputeTile2` and back, without modification from the tile, by using an implicit copy via the compute tile's Data Movement Accelerator (DMA). The data is read from and written to external memory through Shim tile (`col`, 0).
 

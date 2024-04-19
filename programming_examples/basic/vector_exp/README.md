@@ -17,7 +17,7 @@ $e^x$ is typically used in machine learning applications with relatively small n
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen AI). 
+1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `bf16_exp.cc`: A C++ implementation of vectorized table lookup operations for AIE cores. The lookup operation `getExpBf16` operates on vectors of size `16` loading the vectorized accumulator registers with the look up table results.  It is then necessary to copy the accumulator register to a regular vector register, before storing back into memory.  The source can be found [here](../../../aie_kernels/aie2/bf16_exp.cc).
 

@@ -14,7 +14,7 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen AI). 
+1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `passThrough.cc`: A C++ implementation of vectorized memcpy operations for AIE cores. Found [here](../../../aie_kernels/generic/passThrough.cc).
 
@@ -44,9 +44,9 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 1. **AIE Device Definition:** `@device` defines the target device. The `device_body` function contains the AIE array design definition.
 
-1. **Scaling Function Declarations:** `passThroughLine` is an external function imported from `passThrough.cc`.
+1. **Kernel Function Declarations:** `passThroughLine` is an external function imported from `passThrough.cc`.
 
-1. **Tile Definitions:** `ShimTile` handles data movement, and `ComputeTile2` processes the scaling operations.
+1. **Tile Definitions:** `ShimTile` handles data movement, and `ComputeTile2` processes the memcpy operations.
 
 1. **Object Fifos:** `of_in` and `of_out` are defined to facilitate communication between `ShimTile` and `ComputeTile2`.
 
