@@ -114,3 +114,6 @@ def core_body():
         of0.release(ObjectFifoPort.Consume, 1)
         yield_([])
 ```
+
+-----
+[[Top](..)] [[Next - Section 2b](../section-2b/)]

@@ -121,3 +121,6 @@ npu_sync(0, 0, 0, 1)
 #### **Conclusion**
 
 The `npu_dma_memcpy_nd` and `npu_sync` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+
+-----
+[[Prev - Section 2f](../section-2f/)] [[Top](..)]

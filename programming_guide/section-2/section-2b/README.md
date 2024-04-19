@@ -26,3 +26,6 @@ The Object FIFO primitive supports several data movement patterns through its in
 * Distribute different pieces of the input data to multiple consumers 
 * Join outputs from different consumers into a bigger data tensor
 </details>
+
+-----
+[[Prev - Section 2a](../section-2a/)] [[Top](..)] [[Next - Section 2c](../section-2c/)]

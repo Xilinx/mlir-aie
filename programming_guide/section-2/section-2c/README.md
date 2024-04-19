@@ -118,3 +118,6 @@ and further represented as in the image below,
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
+
+-----
+[[Prev - Section 2b](../section-2b/)] [[Top](..)] [[Next - Section 2d](../section-2d/)]
