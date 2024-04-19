@@ -21,7 +21,7 @@ We begin by first looking at timers for measuring application performance and wh
 ## <ins>Application timer - Modifying [test.cpp](./test.cpp)</ins>
 Adding the application timer is as simple as noting a start and stop time surrounding the calling of the kernel function. We can use the clock timer from the chrono library which is imported via `import <chrono>` but this may already be imported by other libraries (in our `test.cpp`, this is the case). Then we record the start and stop time of our chrono timer with function calls surrounding our kernel function call like the following:
 
-```
+```c++
     auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
     run.wait();
@@ -37,14 +37,14 @@ A timer for a single kernel function call is a useful starting data point for un
 
 In our example [test.cpp](./test.cpp), we wrap our calls within a for loop (based on `num_iter`/ number of iterations). 
 
-```
+```c++
   unsigned num_iter = n_iterations + n_warmup_iterations;
   for (unsigned iter = 0; iter < num_iter; iter++) {
     <... kernel run code ...>
   }
 ```
 It is also useful to run the kernel a number of times prior to recording the steady-state average. This hides initial startup timing overhead that sometimes occurs during the first few runs. We call these iniital loops warmup iterations which do not include verifying results and measuring the kernel function time.
-```
+```c++
   for (unsigned iter = 0; iter < num_iter; iter++) {
     <... kernel run code ...>    
     if (iter < n_warmup_iterations) {
@@ -55,7 +55,7 @@ It is also useful to run the kernel a number of times prior to recording the ste
   }
 ```
 Finally, we accumulate relevant timer data to calculate and track average, minimum, and maximum times.
-```
+```c++
   for (unsigned iter = 0; iter < num_iter; iter++) {
     <... kernel run code, warmup conditional, verify, and measure timers ...>
     npu_time_total += npu_time;
@@ -64,7 +64,7 @@ Finally, we accumulate relevant timer data to calculate and track average, minim
   }
 ```
 We can then compute and print the actual average, minimum and maximum.
-```
+```c++
   std::cout << "Avg NPU time: " << npu_time_total / n_iterations << "us." << std::endl;
   std::cout << "Min NPU time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU time: " << npu_time_max << "us." << std::endl;

@@ -26,6 +26,13 @@
 | \<objfifo_name\>.release(port, num_elem) | Release from Object FIFO | of0.release(ObjectFifoPort.Consume, 2) | The `port` input is either `ObjectFifoPort.Produce` or `ObjectFifoPort.Consume`. |
 | object_fifo_link(fifoIns, fifoOuts) | Create a link between Object FIFOs | object_fifo_link(of0, of1) | The tile that is used as the shared tile in the link must currently be a Mem tile. The inputs `fifoIns` and `fifoOuts` may be either a single Object FIFO or a list of them. Both can be specified either using their python variables or their names. Currently, if one of the two inputs is a list of ObjectFIFOs then the other can only be a single Object FIFO. |
 
+## Route Bindings (relevant for Trace)
+| Syntax | Definition | Example | Notes |
+|--------|------------|---------|-------|
+|flow(srcTile, srcPort, srcChannel, destTile, destPort, destChannel) | Create a circuit switched flow between src and dest | flow(ComputeTile, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 1) | In the case when we're routing for trace, the srcPort and srcChannel can be WireBundle.Trace and 0 respectively|
+|packetflow(packet ID, Source Tile, Source Port Name, Source Port Channel, Destination Tile, Destination Port Name, Destination Port Channel, Keep Packet Header boolean)| Create a packet switched flow between src and dest | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
+
+
 ## Python helper functions
 | Function | Description |
 |----------|-------------|
