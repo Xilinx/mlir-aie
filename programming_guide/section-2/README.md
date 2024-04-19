@@ -46,7 +46,7 @@ This guide is split into four sections, where each section builds on top of the 
 </details>
 <details><summary><a href="./section-2f">Section 2f - Data Movement Without Object FIFOs</a></summary>
 
-* Walkthrough of the process of efficiently upgrading to designs with multiple cores
+* Walkthrough of the process of programming DMA regions
 </details>
 <details><summary><a href="./section-2g">Section 2g - Runtime Data Movement</a></summary>
 
