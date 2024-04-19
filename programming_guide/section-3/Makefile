@@ -8,23 +8,27 @@
 
 include ../../programming_examples/makefile-common
 
-all: build/final.xclbin
+all: build/final.xclbin build/insts.txt
 
-targetname = myFirstProgram
+targetname = vectorScalar
+
+build/scale.o: vector_scalar_mul.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/final.xclbin: build/aie.mlir
+build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} 	
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -35,8 +39,6 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-run_py: build/final.xclbin build/insts.txt
-	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
-
-clean:
+clean: 
 	rm -rf build _build ${targetname}.exe
+

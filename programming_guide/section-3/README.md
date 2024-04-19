@@ -48,35 +48,41 @@ We also need to declare that the compute core will run an external function: a k
         memRef_ty = T.memref(1024, T.i32())
 
         # AIE Core Function declarations
-        scale_scalar_int32 = external_func("scale_scalar_int32", inputs=[memRef_ty, memRef_ty])
+        scale_scalar = external_func("vector_scalar_mul_aie_scalar",
+            inputs=[memRef_ty, memRef_ty, T.memref(1, T.i32()), T.i32()],
+        )
 ```
 
 Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the objectFIFO data movement primitive (introduced in [section-2](../section-2/)).
 
 <img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 2 objectFIFOs: "of_in" to bring in the vector a and "of_out" to move the output vector c using a shimDMA. Note that the objects are declared to have the `memRef_ty` type: 1024 int32 elements.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer. All objectFIFO are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs data movement with the processing on the compute core.
 
 ```python
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
+        of_factor = object_fifo("infactor", ShimTile, ComputeTile2, 2, T.memref(1, T.i32()))
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `ipu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements. 
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `ipu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `ipu_dma_memcpy_nd` needs to match the `name` argument of the corresponding object FIFO. 
 
 ```python
         # To/from AIE-array data movement
         tensor_ty = T.memref(4096, T.i32())
+        scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
-        def sequence(A, C):
+        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        def sequence(A, F, C):
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
+            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in" and "of_out". For every processing iteration , we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. After the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
+
 This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function "scale.o". We run this pattern in a very large loop to enable enqueuing multiple rounds vector scalar multiply work from the host code.
 
 ```python
@@ -84,22 +90,73 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
         def core_body():
             # Effective while(1)
             for _ in for_(sys.maxsize):
+                elem_factor = of_factor.acquire(ObjectFifoPort.Consume, 1)
                 # Number of sub-vector "tile" iterations
                 for _ in for_(4):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(scale_scalar_int32, [elem_in, elem_out])
+                    call(scale_scalar, [elem_in, elem_out, elem_factor, 1024])
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
+                of_factor.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 ```
 
 ## Kernel Code
 
+We can program the AIE compute core using C++ code and compile it with xchesscc into an kernel object file. In this section, a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE will provide our initial implementation. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
+
+```c
+void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
+                                  int32_t *factor, int32_t N) {
+  for (int i = 0; i < N; i++) {
+    c[i] = *factor * a[i];
+  }
+}
+```
+
+[Section-4](../section-4/) will introduce how to exploit the compute dense vector processor.
+
+Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code and hence needs to be dereferenced.
+
 ## Host Code
+
+TBD
+
+The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the memcpy results and optionally outputs trace data. Both a C++ and Python variant of this code are available.
+
+### C++ Host Code (test.cpp)
+
+### Python Host Code (test.py)
 
 ## Running the Program
 
+To compile the design and C++ testbench:
+
+```sh
+make
+make build/vectorScalar.exe
+```
+
+To run the design:
+
+```sh
+make run
+```
+
+### Python Testbench
+
+To compile the design and run the Python testbench:
+
+```sh
+make
+```
+
+To run the design:
+
+```sh
+python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
+```
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]
