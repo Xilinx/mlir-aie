@@ -10,11 +10,10 @@
 
 # <ins>Section 4a - Timers</ins>
 
-* [Section 4 - Vector programming & Peformance Measurement](../../section-4)
+* [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
     * [Section 4a - Timers](./section-4a)
     * [Section 4b - Trace](./section-4b)
     * [Section 4c - Kernel vectorization](./section-4c)
-    * [Section 4d - Automated vectorization](./section-4d)
 
 We begin by first looking at timers for measuring application performance and what that tells us. The performance of an accelerated AI Engine application involves a number of components on the software stack, from invoking the application at the OS level, to passing control on to the kernel drivers, moving and dispatching work to the AIE array, running the accelerated application on AIE cores, and finally returning the data to the application for next-step processing. The most straightforward way to capture the performance of this entire stack of communication and processing is with an application timer, also known as the "wall clock" time. This gives us the upper bounds for how long an AIE accelerated application takes but adds to it the OS and kernel driver overhead. This is something that can be minimized when running multiple iterations of an acclerated program or running a sufficiently compute intensive application. Let's take a look at how we add the "wall clock" timer to an example program.
 
