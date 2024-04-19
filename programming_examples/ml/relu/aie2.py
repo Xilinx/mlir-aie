@@ -32,7 +32,6 @@ def my_relu(trace_size):
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
-
     @device(AIEDevice.ipu)
     def device_body():
         memRef_ty = T.memref(n, T.bf16())
