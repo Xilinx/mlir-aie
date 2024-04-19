@@ -127,7 +127,8 @@ def my_relu(trace_size):
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
-try:
+
+
     trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
 except ValueError:
     print("Argument is not an integer")
