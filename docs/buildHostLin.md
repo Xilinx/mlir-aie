@@ -10,7 +10,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 :
    ```Advanced → CPU Configuration → IPU``` 
 
-NOTE: Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu. 
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu. 
 
 #### BIOS Settings:
 1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
