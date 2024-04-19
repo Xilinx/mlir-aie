@@ -8,13 +8,15 @@
 
 include ../../makefile-common
 
+VPATH := ../../../aie_kernels/aie2
+
 all: build/final.xclbin build/insts.txt
 
 targetname = vectorScalar
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
@@ -38,6 +40,12 @@ endif
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+
+run-g: ${targetname}.exe build/final.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
+
+run_py: build/final.xclbin build/insts.txt
+	${powershell} python3 test.py -s 4096 -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 trace:
 	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
