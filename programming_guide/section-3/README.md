@@ -66,7 +66,7 @@ This enables looking at the data movement in the AIE-array from a logical view w
         of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
 
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `ipu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements. 
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done with the `ipu_dma_memcpy_nd` function (more details in [section 2-g](../section-2/section-2g)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `metadata` argument  in the `ipu_dma_memcpy_nd` needs to match the `name` argument of the corresponding object FIFO. 
 
 ```python
         # To/from AIE-array data movement
@@ -81,7 +81,8 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
             ipu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. After the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
+
 This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function "scale.o". We run this pattern in a very large loop to enable enqueuing multiple rounds vector scalar multiply work from the host code.
 
 ```python
@@ -116,13 +117,19 @@ void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
 ```
 
 [Section-4](../section-4/) will introduce how to exploit the compute dense vector processor.
-Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code.
+
+Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code and hence needs to be dereferenced.
 
 ## Host Code
 
 TBD
 
-This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+This host code is acts as setup environment and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data. Both a C++ and Python variant of this code is available: ADD LINKS
+
+
+### C++ Host Code (test.cpp)
+
+### Python Host Code (test.py)
 
 ## Running the Program
 
