@@ -15,6 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
+
 def vector_softmax(trace_size):
 
     word_size_in = 2
