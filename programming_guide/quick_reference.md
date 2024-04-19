@@ -40,6 +40,13 @@ Note on `object_fifo_link` The tile that is used as the shared tile in the link 
 | Function Signature | Description |
 |--------------------|-------------|
 | `print(ctx.module)` | Converts our ctx wrapped structural code to mlir and prints to stdout|
-| `print(ctx.module.operation.verify())` | Runs additional structural verficiation on the python binded source code and prints to stdout |
+| `ctx.module.operation.verify()` | Runs additional structural verficiation on the python binded source code and return result to stdout |
 
 
+## AI Engine documentation
+* [Summary Documentation Links in UG1076](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation)
+* [AIE1 Architecture Manual - AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview)
+* [AIE1 Register Reference - AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview)
+* [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
+* [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
+* [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
