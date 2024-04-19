@@ -1,10 +1,8 @@
-//===- test_vck5000.cpp -----------------------------------000---*- C++ -*-===//
+//===- test.cpp -------------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2020-2022, Xilinx Inc.
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +28,7 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
-constexpr int DMA_COUNT = 4096;
+constexpr int DMA_COUNT = 64;
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {
@@ -88,7 +86,8 @@ int main(int argc, char *argv[]) {
   ext_mem_model_t buf0, buf1, buf2;
   uint32_t *in_a = (uint32_t *)mlir_aie_mem_alloc(xaie, buf0, DMA_COUNT);
   uint32_t *in_b = (uint32_t *)mlir_aie_mem_alloc(xaie, buf1, DMA_COUNT);
-  uint32_t *out = (uint32_t *)mlir_aie_mem_alloc(xaie, buf2, DMA_COUNT);
+  uint32_t *out = (uint32_t *)mlir_aie_mem_alloc(
+      xaie, buf2, 4 /* For some reason can't do 1 */);
   mlir_aie_sync_mem_dev(buf0);
   mlir_aie_sync_mem_dev(buf1);
   mlir_aie_sync_mem_dev(buf2);
@@ -98,26 +97,37 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  out[0] = 0xdeface;
   for (int i = 0; i < DMA_COUNT; i++) {
     in_a[i] = i + 1;
-    in_b[i] = i + 1;
-    out[i] = 0xdeface;
   }
+
+  in_a[DMA_COUNT / 2] = 123456;
+  in_a[DMA_COUNT - 1] = 100;
+
+  // printf("[EDDIE DEBUG] min_val before data movement is %d\n",
+  // mlir_aie_read_buffer_min_val(xaie, 0));
 
   // Pass arguments in the order of dma_memcpys in the mlir
   invoke_data_movement(queues[0], &agents[0], out, in_a);
 
   int errors = 0;
 
+  uint32_t min_val = INT_MAX;
   for (int i = 0; i < DMA_COUNT; i++) {
     uint32_t s = in_a[i];
-    uint32_t d = out[i];
-    printf("s[%d] = 0x%x\n", i, s);
-    printf("d[%d] = 0x%x\n", i, d);
-    if (d != (s * 3)) {
-      errors++;
-      printf("mismatch %x != 1 + %x\n", d, s);
+    if (s < min_val) {
+      min_val = s;
     }
+  }
+
+  // printf("[EDDIE DEBUG] min_val before data movement is %d\n",
+  // mlir_aie_read_buffer_min_val(xaie, 0));
+
+  if (*out != min_val) {
+    errors++;
+    printf("[ERROR] Minimum value is %d but kernel returned %d\n", min_val,
+           *out);
   }
 
   // destroying the queue
@@ -130,7 +140,7 @@ int main(int argc, char *argv[]) {
     printf("PASS!\n");
     return 0;
   } else {
-    printf("fail %d/%d.\n", errors, DMA_COUNT);
+    printf("fail %d/%d.\n", errors, 1);
     return -1;
   }
 }
