@@ -41,10 +41,11 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
 
   constexpr bool VERIFY = true;
-  constexpr bool ENABLE_TRACING = false;
-  // constexpr int TRACE_SIZE = 8192;
-  constexpr int IN_SIZE = 4096;
-  constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + trace_size / 4 : IN_SIZE;
+  constexpr int IN_VOLUME = 4096;
+  constexpr int OUT_VOLUME = IN_VOLUME;
+
+  int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
+  int OUT_SIZE = OUT_VOLUME * sizeof(DATATYPE) + trace_size;
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
@@ -64,12 +65,12 @@ int main(int argc, const char *argv[]) {
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_inA =
+      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
                              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
-                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_outC =
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -80,7 +81,7 @@ int main(int argc, const char *argv[]) {
 
   // Initialize buffer bo_inA
   DATATYPE *bufInA = bo_inA.map<DATATYPE *>();
-  for (int i = 0; i < IN_SIZE; i++)
+  for (int i = 0; i < IN_VOLUME; i++)
     bufInA[i] = i + 1;
 
   // Initialize buffer bo_inFactor
@@ -89,7 +90,7 @@ int main(int argc, const char *argv[]) {
 
   // Zero out buffer bo_outC
   DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE) + trace_size);
+  memset(bufOut, 0, OUT_SIZE);
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -111,7 +112,7 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1) {
     std::cout << "Verifying results ..." << std::endl;
   }
-  for (uint32_t i = 0; i < IN_SIZE; i++) {
+  for (uint32_t i = 0; i < IN_VOLUME; i++) {
     int32_t ref = bufInA[i] * scaleFactor;
     int32_t test = bufOut[i];
     if (test != ref) {
@@ -125,8 +126,8 @@ int main(int argc, const char *argv[]) {
   }
 
   if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) + (IN_SIZE * sizeof(DATATYPE)),
-                                trace_size, vm["trace_file"].as<std::string>());
+    test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
+                                vm["trace_file"].as<std::string>());
   }
 
   // Print Pass/Fail result of our test

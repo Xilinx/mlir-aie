@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar():
+def my_vector_scalar(trace_size):
     N = 4096
     N_in_bytes = N * 4
     n = 1024
@@ -24,8 +24,6 @@ def my_vector_scalar():
     buffer_depth = 2
 
     vectorized = True
-    enable_tracing = False
-    trace_size = 8192
 
     @device(AIEDevice.ipu)
     def device_body():
@@ -54,7 +52,7 @@ def my_vector_scalar():
         of_out = object_fifo("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
 
         # Set up a circuit-switched flow from core to shim for tracing information
-        if enable_tracing:
+        if trace_size > 0:
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # Set up compute tiles
@@ -86,26 +84,24 @@ def my_vector_scalar():
         @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
 
-            if enable_tracing:
+            if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(
                     ComputeTile2,
                     ShimTile,
-                    channel=1,
-                    bd_id=13,
                     ddr_id=2,
                     size=trace_size,
                     offset=N_in_bytes,
-                    start=0x1,
-                    stop=0x0,
-                    events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                 )
-
             ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
+try:
+    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+except ValueError:
+    print("Argument is not an integer")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar()
+    my_vector_scalar(trace_size)
     print(ctx.module)
