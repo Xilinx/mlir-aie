@@ -12,6 +12,6 @@ if [ x"$NUMBER" != x"" ]; then
 #    /opt/xilinx/xrt/test/example_noop_test /lib/firmware/amdipu/1502/validate.xclbin
 #  fi
 else
-  echo "couldn't find ipu"
+  echo "couldn't find npu"
 fi
 

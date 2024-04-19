@@ -293,7 +293,7 @@ source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install ${
 
 ## Build a Design
 
-For your design of interest, for instance [add_one_objFifo](../reference_designs/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin and then (ii) build the host code.
+For your design of interest, for instance [vector_add](../programming_examples/basic/vector_add/), 2 steps are needed: (i) build the AIE desgin and then (ii) build the host code.
 
 ### Build Device AIE Part
 
