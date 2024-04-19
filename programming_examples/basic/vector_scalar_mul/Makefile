@@ -8,13 +8,13 @@
 
 include ../../makefile-common
 
-ACDC_AIE = $(dir $(shell which aie-opt))/..
+VPATH := ../../../aie_kernels/aie2
+
+all: build/final.xclbin build/insts.txt
 
 targetname = vectorScalar
-devicename = ipu
-col = 0
-CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=${ACDC_AIE}/../../aie_kernels/generic/
+data_size = 4096
+trace_size = 8192
 
 all: build/final.xclbin build/insts.txt
 
@@ -23,13 +23,22 @@ scale.cc:
 
 build/scale.o: scale.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
+build/aie_trace.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< ${trace_size} > $@
+
 build/final.xclbin: build/aie.mlir build/scale.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+
+build/final_trace.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
@@ -48,8 +57,17 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-trace:
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
+run_py: build/final.xclbin build/insts.txt
+	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -s ${data_size}
+
+trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
+
+trace_py: build/final_trace.xclbin build/insts.txt
+	${powershell} python3 test.py -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
+	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
+
 
 clean_trace:
 	rm -rf tmpTrace trace.txt

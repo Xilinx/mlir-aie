@@ -80,8 +80,8 @@ def main(opts):
     bo_inout1.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     # Copy output results and verify they are correct
-    out_size = INOUT1_SIZE
-    output_buffer = bo_inout1.read(out_size, 0).view(INOUT1_DATATYPE)
+    out_size = INOUT1_SIZE + int(opts.trace_size)
+    output_buffer = bo_inout1.read(INOUT1_SIZE, 0).view(INOUT1_DATATYPE)
     if opts.verify:
         if opts.verbosity >= 1:
             print("Verifying results ...")
