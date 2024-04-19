@@ -10,11 +10,11 @@
 
 # <ins>Section 5 - Example Vector Designs</ins>
 
-There are a number of example designs available [here](../../programming_examples/) which further help explain many of the unique features of the NPU.
+There are a number of example designs available [here](../../programming_examples/) which further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
 
 ## Simplest
 
-### Pass through
+#### Passthrough
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 4 important files here.
     * [`aie2.py`](../../programming_examples/basic/passthrough_kernel/aie2.py) The AIE structural design which includes the shim tile connected to the external memory, and a single AIE core for performing the copy.  It also shows a simple use of the ObjectFIFOs described in [section 2](../section-2)
@@ -24,18 +24,18 @@ The [passthrough](../../programming_examples/basic/passthrough_kernel/) example 
 
 The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.
 
-## Simple
+## Basic
 
 | Design name | Data type | Description |
 |-|-|-|
-| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 |Adds 1 to every element in  vector | 
-| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Does something more complicated | 
+| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector | 
+| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor | 
 | [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector | 
 | [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector | 
 | [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 
-| [Vector $e^x$](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing $e^x$ of the inputs | 
+| [Vector Exp](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing $e^x$ of the inputs | 
 
-## Machine learning kernels
+## Machine Kearning Kernels
 
 | Design name | Data type | Description | 
 |-|-|-|
@@ -48,4 +48,12 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector) | bfloat16 | A vector-matrix multiply returning a vector
 | [Conv2D](../../programming_examples/basic/vector_exp/) | i8 | A Conv2D | 
 
+## Exercises
 
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...PASSTHROUGH_SIZE" height=25>
+
+1. Take a look at the testbench in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+
+1. What is the communication to computation ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+
+1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
