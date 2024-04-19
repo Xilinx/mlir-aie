@@ -18,7 +18,7 @@ import aie.utils.trace as trace_utils
 def my_vector_scalar(vector_size, trace_size):
     N = vector_size
     N_in_bytes = N * 4
-    N_div_n = 4 # chop input vector into 4 sub-vectors
+    N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
 
     buffer_depth = 2
