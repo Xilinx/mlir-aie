@@ -16,7 +16,7 @@ lib/Targets/        @makslevental
 mlir_tutorials/     @denolf @jackl-xilinx @AndraBisca @fifield
 platforms/          @jackl-xilinx @eddierichter-amd
 programming_examples/ @denolf @jgmelber @fifield
-python/             @makslevental
+python/             @makslevental @AndraBisca
 reference_designs/  @denolf @jgmelber @fifield
 runtime_lib/        @stephenneuendorffer
 test/aie2xclbin/    @erieaton-amd @newling
