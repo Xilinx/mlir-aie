@@ -125,6 +125,8 @@ prod_lock_b = lock(tile_b, lock_id=0, init=1)
 cons_lock_b = lock(tile_b, lock_id=1, init=0)
 buff_b = buffer(tile=tile_b, shape=(256,), dtype=T.i32()) # 256xi32
 
+aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
+
 @mem(tile_a)
 def mem_body():
     @dma(MM2S, 0) # output channel, port 0
@@ -135,7 +137,7 @@ def mem_body():
 
 @mem(tile_b)
 def mem_body():
-    @dma(SS2M, 0) # input channel, port 0
+    @dma(SS2M, 1) # input channel, port 1
     def dma_in_0():
         use_lock(prod_lock_b, AcquireGreaterEqual)
         dma_bd(buff_b)
