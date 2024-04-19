@@ -41,8 +41,11 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
 
   constexpr bool VERIFY = true;
-  constexpr int IN_VOLUME = 4096;
+  constexpr int IN_VOLUME = VECTORSCALARMUL_SIZE;
   constexpr int OUT_VOLUME = IN_VOLUME;
+
+  if (verbosity >= 1)
+    std::cout << "NOLF TEST.CPP VECTORSCALARMUL_SIZE: " << VECTORSCALARMUL_SIZE << "\n";
 
   int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
   int OUT_SIZE = OUT_VOLUME * sizeof(DATATYPE) + trace_size;
