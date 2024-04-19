@@ -13,7 +13,7 @@
 
 ReLU, which stands for Rectified Linear Unit, is a type of activation function that is widely used in neural networks, particularly in deep learning models. It is defined mathematically as: $ReLU(x) = max(0,x)$
 
-This function takes a single number as input and outputs the maximum of zero and the input number. Essentially, it passes positive values through unchanged, and clamps all negative values to zero.
+This function takes a single number as input and outputs the maximum of zero and the input number. Essentially, it passes positive values through unchanged, and clamps all the negative values to zero.
 
 ## Key Characteristics of ReLU:
 * Non-linear: While it looks like a linear function, ReLU introduces non-linearity into the model, which is essential for learning complex patterns in data.
