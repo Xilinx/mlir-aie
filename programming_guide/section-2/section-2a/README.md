@@ -116,4 +116,4 @@ def core_body():
 ```
 
 -----
-[[Top](..)] [[Next - Section 2b](../section-2b/)]
+[[Up](..)] [[Next - Section 2b](../section-2b/)]

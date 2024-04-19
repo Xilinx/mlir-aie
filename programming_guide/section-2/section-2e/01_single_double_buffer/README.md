@@ -27,4 +27,4 @@ This change effectively increases the number of available resources of the Objec
 All examples available in the [programming_examples](../../../../programming_examples/) contain this data movement pattern.
 
 -----
-[[Top](..)]
+[[Up](..)] [[Next](../02_external_mem_to_core/)]

@@ -145,4 +145,4 @@ def mem_body():
 ```
 
 -----
-[[Prev - Section 2e](../section-2e/)] [[Top](..)] [[Next - Section 2g](../section-2g/)]
+[[Prev - Section 2e](../section-2e/)] [[Up](..)] [[Next - Section 2g](../section-2g/)]

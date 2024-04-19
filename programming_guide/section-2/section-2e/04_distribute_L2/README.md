@@ -19,4 +19,4 @@ All compute tiles are running the same process of acquring one object from their
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 
 -----
-[[Top](..)]
+[[Prev](../03_external_mem_to_core_L2/)] [[Up](..)] [[Next](../05_join_L2/)]

@@ -135,4 +135,4 @@ for i in range(n_cores):
 ```
 
 -----
-[[Prev - Section 2c](../section-2c/)] [[Top](..)] [[Next - Section 2e](../section-2e/)]
+[[Prev - Section 2c](../section-2c/)] [[Up](..)] [[Next - Section 2e](../section-2e/)]

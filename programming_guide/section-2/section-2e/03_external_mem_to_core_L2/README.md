@@ -26,4 +26,4 @@ The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` se
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 
 -----
-[[Top](..)]
+[[Prev](../02_external_mem_to_core/)] [[Up](..)] [[Next](../04_distribute_L2/)]
