@@ -64,4 +64,4 @@ This guide is split into five sections, where each section builds on top of the 
 </details>
 
 -----
-[[Prev - Section 1]](../section-1/) [[Top]](..) [[Next - Section 3]](../section-3/)
+[[Prev - Section 1](../section-1/)] [[Top](..)] [[Next - Section 3](../section-3/)]

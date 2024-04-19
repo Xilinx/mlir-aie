@@ -57,3 +57,6 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 1. What is the communication to computation ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
 
 1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
+
+-----
+[[Prev - Section 4](../section-4/)] [[Top](..)] [[Next - Section 6](../section-6/)]
