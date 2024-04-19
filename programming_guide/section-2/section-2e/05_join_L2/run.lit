@@ -1,0 +1,10 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai
+//
+// RUN: %python %S/distribute_and_join_L2.py ipu 0 | aie-opt -cse -canonicalize -o ./aie.mlir
+// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: g++ %S/test.cpp -o test.exe -std=c++23 -Wall -I%S/../../../../runtime_lib/test_lib %S/../../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// CHECK: PASS!

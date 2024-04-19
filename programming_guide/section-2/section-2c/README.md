@@ -15,7 +15,7 @@ While the Object FIFO primitive aims to reduce the complexity tied to data movem
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
 DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
-```
+```python
 def dma_bd
     (
         buffer,
@@ -32,7 +32,7 @@ def dma_bd
 It is not necessary to understand these low-level operations in order to use the data layout transformations with the Object FIFO primitive.
 
 A data layout transformation is presented as a list of pairs, where each pair represents a `size` and a `stride` for a particular dimension of the data:
-```
+```c
 [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
 ```
 Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first element of this array gives the outer-most dimension's stride and size, while the last element of the array gives the inner-most dimension's stride and size. All strides are expressed in <u>multiples of the element width</u>.
@@ -40,7 +40,7 @@ Transformations can be expressed in up to three dimensions on each compute and S
 > **NOTE:**  Only for 4B data types the inner-most dimension's stride must be 1 by design.
 
 Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation above can be expressed as:
-```
+```c
 int *buffer;
 for(int i = 0; i < size_2; i++)
     for(int j = 0; j < size_1; j++)
@@ -51,11 +51,11 @@ for(int i = 0; i < size_2; i++)
 ```
 
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements of the buffer/stream every 8 elements:
-```
+```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
 ```
 which translates to:
-```
+```c
 for(int i = 0; i < 8; i++)          # size_2
     for(int j = 0; j < 2; j++)      # size_1
         for(int k = 0; k < 8; k++)  # size_0
@@ -70,7 +70,7 @@ for(int i = 0; i < 8; i++)          # size_2
 ### Data Layout Transformations with the Object FIFO
 
 Reminder that the Object FIFO class constructor has two default valued inputs: `dimensionsToStream` and `dimensionsFromStreamPerConsumer`.
-```
+```python
 class object_fifo:
     def __init__(
         self,
@@ -87,7 +87,7 @@ class object_fifo:
 The Object FIFO directly lowers to `AIE_DMABDOp` operations described above that can leverage data layout transformations expressed as pairs of strides and sizes. It uses the `dimensionsToStream` input in relation to the `producerTile` to describe in what layout that tile's DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMA's of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
 As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that, for every row out of two, selects one element out of two up to three elements.
-```
+```python
 A = tile(1, 1)
 B = tile(1, 3)
 of0 = object_fifo
@@ -104,7 +104,7 @@ of0 = object_fifo
     )
 ```
 The access pattern of the transformation can be written as:
-```
+```c
 for(int i = 0; i < 2; i++)      # size_1
     for(int j = 0; j < 3; j++)  # size_0
         # access/store element at/to index:
