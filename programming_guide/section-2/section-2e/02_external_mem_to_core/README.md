@@ -24,3 +24,6 @@ make run
 The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
 
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [vector_reduce_add](../../../../programming_examples/basic/vector_reduce_add/) and [vector_scalar_add](../../../../programming_examples/basic/vector_scalar_add/).
+
+-----
+[[Prev](../01_single_double_buffer/)] [[Up](..)] [[Next](../03_external_mem_to_core_L2/)]

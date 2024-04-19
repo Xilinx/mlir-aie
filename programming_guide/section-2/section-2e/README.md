@@ -32,3 +32,6 @@ This section introduces several examples with common Object FIFO data movement p
 
 * Join data from cores to external memory through L2
 </details>
+
+-----
+[[Prev - Section 2d](../section-2d/)] [[Up](..)] [[Next - Section 2f](../section-2f/)]
