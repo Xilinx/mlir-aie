@@ -22,6 +22,9 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/version.h"
+#include "clang/CIR/Dialect/IR/CIRDialect.h"
+#include "clang/CIR/Dialect/Passes.h"
+#include "clang/CIR/Passes.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -49,6 +52,23 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerTransformDialectExtension(registry);
 
   cl::AddExtraVersionPrinter(version_printer);
+
+  // ClangIR dialect
+  registry.insert<mlir::cir::CIRDialect>();
+  // ClangIR-specific passes
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return ::cir::createConvertMLIRToLLVMPass();
+  });
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return mlir::createMergeCleanupsPass();
+  });
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return ::cir::createConvertCIRToMLIRPass();
+  });
+  mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions> pipeline(
+      "cir-to-llvm", "", [](mlir::OpPassManager &pm) {
+        ::cir::direct::populateCIRToLLVMPasses(pm);
+      });
 
   return failed(
       MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));
