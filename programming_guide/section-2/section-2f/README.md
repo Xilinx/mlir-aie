@@ -36,6 +36,53 @@ def dma(
 )
 ```
 
-Finally, the data movement on each channel is described by a chain of Buffer Descriptors (or `BD`), where each BD describes what data is being moved and configures its synchornization mechanism.
+Finally, the data movement on each channel is described by a chain of Buffer Descriptors (or `BD`), where each BD describes what data is being moved and configures its synchornization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
+
+The code snippet below shows how to configure the DMA on `tile_a` such that data coming in on input channel 0 is written into `buff_in`:
+```python
+tile_a = tile(1, 3)
+
+prod_lock = lock(tile_a, lock_id=0, init=1)
+cons_lock = lock(tile_a, lock_id=1, init=0)
+buff_in = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+
+@mem(tile_a)
+def mem_body():
+    @dma(S2MM, 0) # input channel, port 0
+    def dma_in_0():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_in)
+        use_lock(cons_lock, Release)
+```
+The locks `prod_lock` and `cons_lock` follow AIE2 architecture semantics. Their task is to mark synchronization points in the tile's and its DMA's execution: for example, if the tile is currently using `buff_in` it will only release the `prod_lock` when it is done and that is when the DMA will be allowed to overwrite the data in `buff_in` with new input. Similarly, the tile's core can query the `cons_lock` to know when the new data is ready to be read.
+
+In the previous code the channel only had one BD in its chain. To add additional BDs to the chain, users can use the following constructor, which takes as input what would be the previous BD in the chain it should be added to:
+```python
+@another_bd(dma_bd)
+```
+
+This next code snippet shows how to extend the previous input channel with a double, or ping-pong, buffer using the previous constructor:
+```python
+tile_a = tile(1, 3)
+
+prod_lock = lock(tile_a, lock_id=0, init=2) # note that the producer lock now has 2 tokens
+cons_lock = lock(tile_a, lock_id=1, init=0)
+buff_ping = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+buff_pong = buffer(tile=tile_a, shape=(256,), dtype=T.i32()) # 256xi32
+
+@mem(tile_a)
+def mem_body():
+    @dma(S2MM, 0, num_blocks=2) # input channel, port 0
+    def dma_in_0():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_ping)
+        use_lock(cons_lock, Release)
+
+    @another_bd(dma_in_0)
+    def dma_in_1():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_pong)
+        use_lock(cons_lock, Release)
+```
 
 
