@@ -67,6 +67,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
+    Pure,
     FlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
