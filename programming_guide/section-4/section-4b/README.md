@@ -11,9 +11,9 @@
 # <ins>Section 4b - Trace</ins>
 
 * [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
-    * [Section 4a - Timers](./section-4a)
-    * [Section 4b - Trace](./section-4b)
-    * [Section 4c - Kernel vectorization](./section-4c)
+    * [Section 4a - Timers](../section-4a)
+    * Section 4b - Trace
+    * [Section 4c - Kernel Vectorization](../section-4c)
 
 In the previous [section-4a](../section-4a), we looked at how timers can be used to get an overview of application performance. However, for kernel programmers that want to optimize the AIE hardware to its fullest potential, being able to see how efficiently the AIE cores and data movers are running is important. As such, the AIEs are equipped with tracing hardware that provides a cycle accurate view of hardware events. More detailed specification of the AIE2 trace unit can be found at in [AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace).
 
@@ -191,3 +191,6 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 
 ## <u>Exercises</u>
 1. Ask questions about routing congestion for circuit switch and packet switch routes? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
+
+-----
+[[Prev]](../section-4a) [[Up]](../../section-4) [[Next]](../section-4c)

@@ -25,7 +25,7 @@
 | `object_fifo_link(fifoIns, fifoOuts)` | Create a link between Object FIFOs | `fifoIns`: list of Object FIFOs (variables or names)<br> `fifoOuts`: list of Object FIFOs (variables or names) | `None` | object_fifo_link(of0, of1) |
 | **Routing Bindings (relevant for trace and low-level design)** |||
 | `flow(srcTile, srcPort, srcChannel, dstTile, dstPort, dstChannel)` | Create a circuit switched flow between src and dest | `srcTile`: <br> `srcPort`: <br> `srcChannel`: <br> `dstTile`: <br> `dstPort`: <br> `dstChannel`:  | `None` | flow(ComputeTile, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 1) | In the case when we're routing for trace, the srcPort and srcChannel can be WireBundle.Trace and 0 respectively|
-| `packetflow(packetID, srcTile, srcPort, srcChannel, dstTile, dstPort, dstChannel, keepPktHeader)` | Create a packet switched flow between src and dest | `packetID`: <br>  `srcTile`: <br> `srcPort`: <br> `srcChannel`: <br> `dstTile`: <br> `dstPort`: <br> `dstChannel`: <br>`keepPktHeader`: boolean flag to keep header | `None` | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
+| `packetflow(packetID, srcTile, srcPort, srcChannel, dstTile, dstPort, dstChannel, keepPktHeader)` | Create a packet switched flow between src and dest | `packetID`: <br>  `srcTile`: <br> `srcPort`: <br> `srcChannel`: <br> `dstTile`: <br> `dstPort`: <br> `dstChannel`: <br>`keep_pkt_hdr`: boolean flag to keep header | `None` | packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) | Example shows trace routing. If you want to route from the core memory trace unit, then we would use channel 1 |
 |||||
 
 Note on `tile`: The actual tile coordinates run on the device may deviate from the ones declared here. In Ryzen AI, for example, these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column.
@@ -50,3 +50,6 @@ Note on `object_fifo_link` The tile that is used as the shared tile in the link 
 * [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 * [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
 * [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
+
+## AIE Detailedd References
+* [AIE2 - Table of suported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)
