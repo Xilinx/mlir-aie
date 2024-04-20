@@ -41,9 +41,6 @@ def my_vector_scalar():
         # Set up compute tiles
         # Compute tile 2
         @core(ComputeTile2, "scale.o")
-        # Set up compute tiles
-        # Compute tile 2
-        @core(ComputeTile2, "scale.o")
         def core_body():
             # Effective while(1)
             for _ in for_(sys.maxsize):
@@ -73,4 +70,8 @@ def my_vector_scalar():
 
 with mlir_mod_ctx() as ctx:
     my_vector_scalar()
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
