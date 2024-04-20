@@ -134,7 +134,7 @@ The host code contains following elements:
 
 1. *Create XRT environment*: so that we can use the XRT runtime
 
-1. *Create XRT buffer objects* for the instruction sequence, inputs (vector a and factor) and output (vector c) 
+1. *Create XRT buffer objects* for the instruction sequence, inputs (vector a and factor) and output (vector c). Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 2 for the first sequence argument and then icrementing by 1.   
 
 1. *Initialize and synchronize*: host to device XRT buffer objects
 
