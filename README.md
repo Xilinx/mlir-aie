@@ -24,8 +24,10 @@ This project is primarily intended to support the open-source community, particu
 
 [Getting Started and Running on Linux Ryzen™ AI](docs/buildHostLin.md)
 
+[IRON AIE Application Programming Guide](programming_guide)
+
 [Full Documentation](https://xilinx.github.io/mlir-aie/)
 
 -----
 
-<p align="center">Copyright&copy; 2019-2023 Advanced Micro Devices, Inc</p>
+<p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
