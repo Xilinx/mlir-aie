@@ -14,6 +14,16 @@ The design in [join_L2.py](./join_L2.py) uses three Object FIFOs from each of th
 
 <img src="../../../assets/JoinL2.svg" height=200 width="700">
 
+```python
+  # AIE-array data movement with object fifos
+  # Output
+  of_out = object_fifo("out", MemTile, ShimTile, 2, memRef_24_ty)
+  of_out0 = object_fifo("out0", ComputeTile0, MemTile, 2, memRef_8_ty)
+  of_out1 = object_fifo("out1", ComputeTile1, MemTile, 2, memRef_8_ty)
+  of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_8_ty)
+  object_fifo_link([of_out0, of_out1, of_out2], of_out)
+```
+
 All compute tiles are running the same process of acquring one object from their respective input Object FIFOs to produce, write `1` to all of its entries, and release the object.
 
 This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py). It is possible to build, run and test it with the following commands:
