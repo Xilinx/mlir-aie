@@ -58,9 +58,8 @@ data_size = 48
 tile_size = data_size // 3
 
 buffer_depth = 2
-memRef_tiles_ty = T.memref(tile_size, T.i32())
 memRef_data_ty = T.memref(data_size, T.i32())
-
+memRef_tiles_ty = T.memref(tile_size, T.i32())
 
 # Input data movement
 
