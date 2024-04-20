@@ -71,7 +71,7 @@ def my_vector_scalar():
 with mlir_mod_ctx() as ctx:
     my_vector_scalar()
     res = ctx.module.operation.verify()
-    if(res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)
