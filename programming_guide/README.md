@@ -70,5 +70,8 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 
 ### [Quick Reference](./quick_reference.md)
 
+## AI Engine architecture documentation
+* [AIE1 Architecture Manual - AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview)
+* [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 
 
