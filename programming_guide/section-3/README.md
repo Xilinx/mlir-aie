@@ -55,7 +55,7 @@ We also need to declare that the compute core will run an external function: a k
 
 Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the objectFIFO data movement primitive (introduced in [section-2](../section-2/)).
 
-<img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
+<img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
 This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer. All objectFIFO are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs data movement with the processing on the compute core.
 
