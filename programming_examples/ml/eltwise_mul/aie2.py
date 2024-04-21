@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_eltwise_mul():
+def my_eltwise_mul(trace_size):
 
     word_size_in = 2
     N = 65536
