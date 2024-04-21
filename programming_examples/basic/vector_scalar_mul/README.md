@@ -24,7 +24,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 ## Design Overview
 
-<img align="right" width="300" height="300" src="../../../programming_guide/assets/passthrough_simple.svg"> 
+<img align="right" width="300" height="300" src="../../../programming_guide/assets/vector_scalar.svg"> 
 
 This simple example uses a single compute tile in the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
 1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
