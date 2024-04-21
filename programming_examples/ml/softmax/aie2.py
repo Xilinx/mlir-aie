@@ -12,8 +12,10 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
+import aie.utils.trace as trace_utils
 
-def my_eltwise_add():
+
+def vector_softmax(trace_size):
 
     word_size_in = 2
     N = 262144  # *1024
@@ -26,7 +28,7 @@ def my_eltwise_add():
     n = 1024
     N_div_n = N // n
 
-    n_cores = 4
+    n_cores = 2
     tiles = N_div_n // n_cores
     buffer_depth = 2
 
@@ -53,8 +55,23 @@ def my_eltwise_add():
             # Tile declarations
             ShimTile = tile(0, 0)
 
-            MemTile = tile(0, 1)
-            cores = [tile(0, 2 + i) for i in range(n_cores)]
+        # Set up a circuit-switched flow from core to shim for tracing information
+        if trace_size > 0:
+            flow(cores[0], WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+
+        # Set up compute tiles
+        for i in range(n_cores):
+            # Compute tile i
+            @core(cores[i], "kernels.a")
+            def core_body():
+                for _ in for_(0xFFFFFFFF):
+                    for _ in for_(tiles):
+                        elem_out = outC_fifos[outC_fifo_names[i]].acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
+                        elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
 
             inA_fifo_names = [f"memA{i}" for i in range(n_cores)]
             outC_fifo_names = [f"memC{i}" for i in range(n_cores)]
@@ -107,17 +124,36 @@ def my_eltwise_add():
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty)
-            def sequence(A, C):
-                ipu_dma_memcpy_nd(
-                    metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
+        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        def sequence(A, C):
+
+            if trace_size > 0:
+                trace_utils.configure_simple_tracing_aie2(
+                    cores[0],
+                    ShimTile,
+                    ddr_id=1,
+                    size=trace_size,
+                    offset=N_in_bytes,
                 )
-                ipu_dma_memcpy_nd(
-                    metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
-                )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
 
-    print(ctx.module)
+            ipu_dma_memcpy_nd(
+                metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
+            )
+            ipu_dma_memcpy_nd(
+                metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
+            )
+            ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
-my_eltwise_add()
+try:
+    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+except ValueError:
+    print("Argument is not an integer")
+
+with mlir_mod_ctx() as ctx:
+    vector_softmax(trace_size)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
