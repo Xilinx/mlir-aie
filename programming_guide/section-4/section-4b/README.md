@@ -120,7 +120,7 @@ As described in [python/utils](../../../python/utils) for `trace.py`, we configu
 | 1 | inout1 |
 | 2 | inout2 |
 
-An example of this is in the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/aie2.py), where it uses the 2nd pattern above (input A, input B, output C + trace). In the vector scalar multiply case, input B is actually unused. Since we're sharing the trace data with the output buffer on `inout2`, we set `ddr_id=2`. In addition, we set the offset to be the output data buffer size since the trace data is appended after the data (`offset=N_in_bytes`).
+An example of this is in the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/aie2.py), where it uses the 2nd pattern above (input A, input B, output C + trace). In the vector scalar multiply case, A is used for the input vector and B for the scalar factor. Since we're sharing the trace data with the output buffer on `inout2`, we set `ddr_id=2`. In addition, we set the offset to be the output data buffer size since the trace data is appended after the data (`offset=N_in_bytes`).
 
 Once [aie2.py](./aie2.py) is configured to output trace data through one of the 3 inout buffers with matching `ddr_id` config and offset, we turn our attention to the host code to read the DDR data and write it to a file.
 
