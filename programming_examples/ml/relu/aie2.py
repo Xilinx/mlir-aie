@@ -125,7 +125,7 @@ def my_relu(trace_size):
                 metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
             )
             ipu_sync(column=0, row=0, direction=0, channel=0)
-            
+
 
 try:
     trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
