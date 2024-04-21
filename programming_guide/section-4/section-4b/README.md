@@ -32,7 +32,7 @@ Enabling trace support can be done with the following steps:
 Enabling tracing means (1a) configuring the trace units for a given tile and then (1b) routing the generated events packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing.
 
 ### <u>(1a) Configure trace units for an AIE tile</u>
-The first necessary component for trace configuraton is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the gneerated packets will need to be routed to shimDMA and then written to one of the 3 inout buffers. We have abstracted these two steps with the python wrapper function `configure_simple_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail in the [README.md under python/utils](../../../python/utils). An example of how this function is used is shown below for quick reference
+The first necessary component for trace configuraton is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated packets will need to be routed to shimDMA and then written to one of the 3 inout buffers. We have abstracted these two steps with the python wrapper function `configure_simple_tracing_aie2` which is in [python/utils/test.py](../../../python/utils/test.py) and is described in more detail in the [README.md under python/utils](../../../python/utils). An example of how this function is used is shown below for quick reference
 ```python
     trace_utils.configure_simple_tracing_aie2(
         ComputeTile2,
@@ -42,7 +42,7 @@ The first necessary component for trace configuraton is setting the right values
         offset=tensorSize,
     )
 ```
-This block is defined within the sequence definition for `@FuncOp.from_py_func` where we define the shimDMA data movment to the 3 inout buffers. 
+This block is defined within the sequence definition for `@FuncOp.from_py_func` where we define the shimDMA data movement to the 3 inout buffers. 
 **Note** that this simplification works very well for the trace buffer from a single tile to the shimDMA. However, if we want to do something more complicated like allocating the trace buffer from multiple tiles into a single larger buffer, this function will not be able to express that. For that, please consult the [README.md under python/utils](../../../python/utils) for more guidance on how to customize the trace configuration.
 
 ### <u>(1b) Define trace event routes from tile to shimDMA</u>
