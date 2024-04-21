@@ -73,7 +73,7 @@ The packet IDs can be anything you want as long as they are globally unique to d
 
 In IRON python bindings, we declare packet flows with the following syntax:
 
-`packetflow(packet ID, Source Tile, Source Port Name, Source Port Channel, Destination Tile, Destination Port Name, Destination Port Channel, Keep Packet Header boolean)`
+`packetflow(packet ID, Source Tile, Source Port, Source Port Channel, Destination Tile, Destination Port, Destination Port Channel, Keep Packet Header boolean)`
 
 ```python
 packetflow(1, ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1, keep_pkt_hdr=True) # core trace
@@ -84,9 +84,9 @@ packetflow(4, ComputeTile3, WireBundle.Trace, 1, ShimTile, WireBundle.DMA, 1, ke
 * packet ID - The first argument that uniquely identifies each packet flow. 
 
 Then we have 3 arguments for the source and 3 for the destination. 
-* Tile name - Previously defined tile name
-* Tile port - Wire bundles for the port including `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`, etc. 
-* Tile channel # - For a given port name, we often multiple channels such as DMA channel 0 and DMA channel 1. Another example in AIE2, trace ports use channel 0 for the core and 1 for the core memory.
+* `Tile` - Previously defined tile
+* `Port` - Wire bundles for the port including `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`, etc. 
+* `Channel` # - For a given port, we often use multiple channels such as DMA channel 0 and DMA channel 1. Another example in AIE2, trace ports use channel 0 for the core and 1 for the core memory.
 
 MLIR examples are similar and are includeed below for quick reference but are more fully defined in the [AIE Dielect online documentation](https://xilinx.github.io/mlir-aie/AIE.html):
 ```mlir
