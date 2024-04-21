@@ -13,19 +13,19 @@
 When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to external memory. In this programming guide, we will be utilizing the IRON python bindings for MLIR-AIE components to describe our design at the tile level of granularity. Later on, when we focus on kernel programming, we will explore vector programming in C/C++. But let's first look at a basic python source file (named [aie2.py](./aie2.py)) for an IRON design.
 
 ## <ins>Walkthrough of python source file (aie2.py)</ins>
-At the top of this python source, we include modules that define the IRON AIE language bindings and the mlir-aie context which binds to MLIR definitions for AI Engines. Within the mlir-aie context, we define our AI Engine enabled device (e.g. npu or xcvc1902) and its associated structural building blocks.
+At the top of this python source, we include modules that define the IRON AIE language bindings `aie.dialects.aie` and the mlir-aie context `aie.extras.context` which binds to MLIR definitions for AI Engines.
 
 ```
 from aie.dialects.aie import * # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx # mlir-aie context
 ```
-Then we declare a structural design function that will expand into mlir code when called from within and mlir-aie context. This context, defined in the `mlir_mod_ctx()` module, binds python functions calls to the MLIR definitions in order to define our structural AI Engine blocks and connections. We will come back to the context a little later.
+Then we declare a structural design function that will expand into mlir code when it will get called from within an mlir-aie context (see last part of this subsection).
 ```
 # AI Engine structural design function
 def mlir_aie_design():
     <... AI Engine device, blocks and connections ...>
 ```
- Let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
+Let's look at how we declare the AI Engine device, blocks and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which in this first example are simply AIE compute tiles. 
 
 The arguments for the tile declaration are the tile coordinates (column, row) and we assign it a variable tile name in our python program.
 
