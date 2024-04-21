@@ -14,9 +14,7 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
-
-
-
+def my_eltwise_mul():
 
     word_size_in = 2
     N = 65536
@@ -157,12 +155,10 @@ import aie.utils.trace as trace_utils
             ipu_sync(column=0, row=0, direction=0, channel=0)
 
 
-
-except ValueError:
+try:
     trace_size = 0 if (len(sys.argv) < 2) else int(sys.argv[1])
 except ValueError:
     print("Argument is not an integer")
-
 with mlir_mod_ctx() as ctx:
     my_eltwise_mul(trace_size)
     res = ctx.module.operation.verify()
