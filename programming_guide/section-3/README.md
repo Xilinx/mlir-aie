@@ -12,7 +12,7 @@
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
-This section creates a first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries. The host code loads the AIE-array binaries and contains the test functionality.
+This section creates a first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
 
 For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in python with the data movement part from [section-2](../section-2).
 
@@ -55,7 +55,7 @@ We also need to declare that the compute core will run an external function: a k
 
 Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the objectFIFO data movement primitive (introduced in [section-2](../section-2/)).
 
-<img align="right" width="300" height="300" src="../assets/passthrough_simple.svg">
+<img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
 This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector a, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector c, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer. All objectFIFO are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs data movement with the processing on the compute core.
 
@@ -122,13 +122,26 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ## Host Code
 
-TBD
+The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the memcpy results and optionally outputs trace data. Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variant of this code are available.
 
-The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the memcpy results and optionally outputs trace data. Both a C++ and Python variant of this code are available.
+For convenience a set of test utilities support common elements of command line parsing, the XRT-based environment setup and with testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
-### C++ Host Code (test.cpp)
+The host code contains following elements:
 
-### Python Host Code (test.py)
+1. *Parse program arguments and set up constants*: the host code typically takes at least as arguments: `-x` the XCLBIN file, `-k` kernel name (with default name "MLIR_AIE"),  and `-i` the instruction sequence file as arguments since it is its task to load those files and set the kernel name. Both the XCLBIN and instruction sequence are generated when compiling the AIE-array Structural Description and kernel code with `aiecc.py`.
+
+1. *Read instruction sequence*: load the instruction sequence from the specified file in memory
+
+1. *Create XRT environment*: so that we can use the XRT runtime
+
+1. *Create XRT buffer objects* for the instruction sequence, inputs (vector a and factor) and output (vector c). Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 2 for the first sequence argument and then icrementing by 1.   
+
+1. *Initialize and synchronize*: host to device XRT buffer objects
+
+1. *Run on AIE and synchronize*: Execute the kernel, wait to finish, and synchronize device to host XRT buffer objects
+
+1. *Run testbench checks*: Compare device results to reference and report test status
+
 
 ## Running the Program
 
@@ -156,7 +169,7 @@ make
 To run the design:
 
 ```sh
-python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
+make run_py
 ```
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]
