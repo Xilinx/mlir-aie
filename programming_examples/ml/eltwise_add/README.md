@@ -37,3 +37,9 @@ To run the design:
 ```
 make run
 ```
+
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
+
+```
+make trace
+```
