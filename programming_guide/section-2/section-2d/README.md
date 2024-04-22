@@ -51,16 +51,15 @@ object_fifo_link(of_out0, of_out)
 
 <img src="../../assets/SingleDesign.svg" height="300" width="700">
 
-We can apply the same method as in the tile declaration to generate the data movement from the Mem tile to the three compute tiles and back. The `object_fifo_link` operations change from the 1-to-1 case to distributing the original `<48xi32>` data tensors to the three compute tiles as smaller `<16xi32>` tensors on the input side, and to joining the output from each compute tile to the Mem tile on the output side. A list of names and a map from names to Object FIFO is used in order to keep track of the input and output Object FIFOs. With these changes the code becomes:
+We can apply the same method as in the tile declaration to generate the data movement from the Mem tile to the three compute tiles and back ([see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md)). The `object_fifo_link` operations change from the 1-to-1 case to distributing the original `<48xi32>` data tensors to the three compute tiles as smaller `<16xi32>` tensors on the input side, and to joining the output from each compute tile to the Mem tile on the output side. A list of names and a map from names to Object FIFO is used in order to keep track of the input and output Object FIFOs. With these changes the code becomes:
 ```python
 n_cores = 3
 data_size = 48
 tile_size = data_size // 3
 
 buffer_depth = 2
-memRef_tiles_ty = T.memref(tile_size, T.i32())
 memRef_data_ty = T.memref(data_size, T.i32())
-
+memRef_tiles_ty = T.memref(tile_size, T.i32())
 
 # Input data movement
 
