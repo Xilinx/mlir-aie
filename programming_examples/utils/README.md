@@ -13,10 +13,10 @@
 
 These utilities are helpful in the current programming examples context and include helpful C/C++ libraries, and python and shell scripts.
 
-- [Open CV Utilities](#Open-CV-Utilities-(OpenCVUtils.h)) ([OpenCVUtils.h](./OpenCVUtils.h))
-- [Clean microcode shell script](#Clean-microcode-shell-script) ([clean_microcode.sh](./clean_microcode.sh))
-- [Trace parser - eventIR based](#Trace-parser---eventIR-based-(parse_eventIR.py)) ([parse_eventIR.py](./parse_eventIR.py))
-- [Trace parser, custom](#Trace-parser,-custom) ([parse_trace.py](./parse_trace.py))
+- [Open CV Utilities](#open-cv-utilities-opencvutilsh) ([OpenCVUtils.h](./OpenCVUtils.h))
+- [Clean microcode shell script](#clean-microcode-shell-script-clean_microcodesh) ([clean_microcode.sh](./clean_microcode.sh))
+- [Trace parser - eventIR based](#trace-parser---eventir-based-parse_eventirpy) ([parse_eventIR.py](./parse_eventIR.py))
+- [Trace parser, custom](#trace-parser-custom-parse_tracepy) ([parse_trace.py](./parse_trace.py))
 
 ## <u>Open CV Utilities ([OpenCVUtils.h](./OpenCVUtils.h))</u>
 OpenCV utilities used in vision processing pipelines to help read and/or initialize images and video. Currently supported functions include the following. Please view header for more specific function information. 
@@ -43,12 +43,13 @@ parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 >
 * **--colshift** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. Usually 1 is the right value. **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 
 The parse script create a temporary directory `tmpTrace` performs the following steps within that folder:
-1. Fixes raw trace data 
-1. Parse MLIR to build event table
-1. Create .target file
-1. Create config.json
-1. Run Vitis/aietools hwfrontend utility to parse raw trace data --> generates eventIR.txt
-1. Convert eventIR.txt to perfetto_compatible.json 
+1. [Fixes raw trace data](#1-fixes-raw-trace-data)
+1. [Parse MLIR to build event table](#2-parse-mlir-to-build-event-table)
+1. [Create .target file](#3-create-target-file)
+1. [Create config.json](#4-create-configjson)
+1. [Run Vitis/aietools hwfrontend utility to parse raw trace data --> generates eventIR.txt](#5-run-vitisaietools-hwfrontend-utility-to-parse-raw-trace-data----generates-eventirtxt)
+1. [Convert eventIR.txt to perfetto_compatible.json](#6-convert-eventirtxt-to-perfetto_compatiblejson)
+* [Additional Tips](#tips)
 
 ### <u>1. Fixes raw trace data</u>
 We prepend `0x` before each hex line and save it `prep.<trace file>` since the `hwfrontend` utility expects it.
