@@ -31,11 +31,11 @@ def dma_bd
 ```
 It is not necessary to understand these low-level operations in order to use the data layout transformations with the Object FIFO primitive.
 
-A data layout transformation is presented as a list of pairs, where each pair represents a `size` and a `stride` for a particular dimension of the data:
+A data layout transformation is presented as a tuple of pairs, where each pair represents a `size` and a `stride` for a particular dimension of the data:
 ```c
 [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
 ```
-Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first element of this array gives the outer-most dimension's stride and size, while the last element of the array gives the inner-most dimension's stride and size. All strides are expressed in <u>multiples of the element width</u>.
+Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first pair of this array gives the outer-most dimension's stride and size `<size_2, stride_2>`, while the last pair of the array gives the inner-most dimension's stride and size `<size_0,stride_0>`. All strides are expressed in <u>multiples of the element width</u>.
 
 > **NOTE:**  Only for 4B data types the inner-most dimension's stride must be 1 by design.
 
@@ -50,7 +50,7 @@ for(int i = 0; i < size_2; i++)
             #                                   + k * stride_0]
 ```
 
-As a practical example, here is an access pattern that corresponds to alternating between even and odd elements of the buffer/stream every 8 elements:
+As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
 ```
