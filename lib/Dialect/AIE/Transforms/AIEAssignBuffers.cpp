@@ -22,9 +22,97 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIEAssignBufferAddressesPass
-    : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
+//===----------------------------------------------------------------------===//
+// BasicAllocation : sequential alloc from largest to smallest
+//===----------------------------------------------------------------------===//
+class BasicAllocation {
 
+public:
+  BasicAllocation(DeviceOp &device) {
+    for (auto tile : device.getOps<TileOp>()) {
+      const auto &targetModel = getTargetModel(tile);
+      int maxDataMemorySize = 0;
+      if (tile.isMemTile())
+        maxDataMemorySize = targetModel.getMemTileSize();
+      else
+        maxDataMemorySize = targetModel.getLocalMemorySize();
+
+      SmallVector<BufferOp, 4> buffers;
+      // Collect all the buffers for this tile.
+      device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+        if (buffer.getTileOp() == tile)
+          buffers.push_back(buffer);
+      });
+      // Sort by allocation size.
+      std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+        return a.getAllocationSize() > b.getAllocationSize();
+      });
+
+      // Address range owned by the MemTile is 0x80000.
+      // Address range owned by the tile is 0x8000 in
+      // AIE1 and 0x10000 in AIE2, but we need room at
+      // the bottom for stack.
+      int stacksize = 0;
+      int address = 0;
+      if (auto core = tile.getCoreOp()) {
+        stacksize = core.getStackSize();
+        address += stacksize;
+      }
+
+      for (auto buffer : buffers) {
+        if (buffer.getAddress())
+          buffer->emitWarning("Overriding existing address");
+        buffer.setAddress(address);
+        address += buffer.getAllocationSize();
+      }
+
+      // Sort by smallest address before printing memory map.
+      std::sort(buffers.begin(), buffers.end(),
+                [](BufferOp a, BufferOp b) {
+                  assert(a.getAddress().has_value() &&
+                         "buffer must have address assigned");
+                  assert(b.getAddress().has_value() &&
+                         "buffer must have address assigned");
+                  return a.getAddress().value() < b.getAddress().value();
+                });
+      // Check if memory was exceeded on any bank and print debug info.
+      checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize, buffers);
+    }
+  }
+
+  void checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
+                             int stacksize, SmallVector<BufferOp, 4> buffers) {
+    if (address > maxDataMemorySize) {
+      InFlightDiagnostic error =
+          tile.emitOpError("allocated buffers exceeded available memory\n");
+      auto &note = error.attachNote() << "MemoryMap:\n";
+      auto printbuffer = [&](StringRef name, int address, int size) {
+        note << "\t" << name << " \t"
+              << ": 0x" << llvm::utohexstr(address) << "-0x"
+              << llvm::utohexstr(address + size - 1) << " \t(" << size
+              << " bytes)\n";
+      };
+      if (stacksize > 0)
+        printbuffer("(stack)", 0, stacksize);
+      else
+        error << "(no stack allocated)\n";
+
+      for (auto buffer : buffers) {
+        assert(buffer.getAddress().has_value() &&
+                "buffer must have address assigned");
+        printbuffer(buffer.name(), buffer.getAddress().value(),
+                    buffer.getAllocationSize());
+      }
+      return signalPassFailure();
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// SimpleBankAwareAllocation : round-robin each alloc over available banks
+//===----------------------------------------------------------------------===//
+class SimpleBankAwareAllocation {
+  DenseMap<std::pair<Value, int>, int> locksPerTile;
   typedef struct BankLimits {
     int64_t startAddr;
     int64_t endAddr;
@@ -39,9 +127,84 @@ struct AIEAssignBufferAddressesPass
       bankLimits; // for each tile, the entries contain pairs of start and
                   // end addresses for each bank
 
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<func::FuncDialect>();
-    registry.insert<AIEDialect>();
+public:
+  SimpleBankAwareAllocation(DeviceOp &device) {
+    for (auto tile : device.getOps<TileOp>()) {
+      const auto &targetModel = getTargetModel(tile);
+      int maxDataMemorySize = 0;
+      if (tile.isMemTile())
+        maxDataMemorySize = targetModel.getMemTileSize();
+      else
+        maxDataMemorySize = targetModel.getLocalMemorySize();
+
+      int numBanks = getNumBanks(tile);
+      int bankSize = maxDataMemorySize / numBanks;
+
+      // Address range owned by the MemTile is 0x80000.
+      // Address range owned by the tile is 0x8000 in
+      // AIE1 and 0x10000 in AIE2, but we need room at
+      // the bottom for stack.
+      int stacksize = 0;
+      if (nextAddrInBanks.find(tile) == nextAddrInBanks.end()) {
+        std::vector<int64_t> nextAddresses;
+        nextAddrInBanks[tile] = nextAddresses;
+      }
+      for (int i = 0; i < numBanks; i++)
+        nextAddrInBanks[tile].push_back(bankSize * i);
+      if (auto core = tile.getCoreOp()) {
+        stacksize = core.getStackSize();
+        nextAddrInBanks[tile][0] += stacksize;
+      }
+      fillBankLimits(tile, numBanks, bankSize);
+
+      SmallVector<BufferOp, 4> buffers;
+      SmallVector<BufferOp, 4> allBuffers;
+      // Collect all the buffers for this tile.
+      // If possible, the buffers with an already specified address will not
+      // be overwritten (the available address range of the bank the buffers
+      // are in will start AFTER the specified adress + buffer size).
+      // Buffers with a specified mem_bank will be assigned first, after
+      // the above.
+      for (auto buffer : device.getOps<BufferOp>()) {
+        if (buffer.getTileOp() == tile) {
+          bool has_addr = checkAndAddBufferWithAddress(tile, buffer, numBanks);
+          bool has_bank = checkAndAddBufferWithMemBank(tile, buffer, numBanks);
+          if (!has_addr && !has_bank)
+            buffers.push_back(buffer);
+          allBuffers.push_back(buffer);
+        }
+      }
+
+      // Sort by largest allocation size before allocating.
+      std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+        return a.getAllocationSize() > b.getAllocationSize();
+      });
+
+      // Set addresses for remaining buffers.
+      int bankIndex = 0;
+      for (auto buffer : buffers)
+        bankIndex = setBufferAddress(tile, buffer, numBanks, bankIndex);
+
+      // Sort by smallest address before printing memory map.
+      std::sort(allBuffers.begin(), allBuffers.end(),
+                [](BufferOp a, BufferOp b) {
+                  assert(a.getAddress().has_value() &&
+                         "buffer must have address assigned");
+                  assert(b.getAddress().has_value() &&
+                         "buffer must have address assigned");
+                  return a.getAddress().value() < b.getAddress().value();
+                });
+      // Check if memory was exceeded on any bank and print debug info.
+      checkAndPrintOverflow(tile, numBanks, stacksize);
+    }
+  }
+
+  // TODO: add to target model
+  int getNumBanks(TileOp tile) {
+    if (tile.isMemTile())
+      return 1;
+    else
+      return 4;
   }
 
   // Function that given a number of banks and their size, computes
@@ -147,6 +310,63 @@ struct AIEAssignBufferAddressesPass
     return bankIndex;
   }
 
+  void checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
+                             SmallVector<BufferOp, 4> allBuffers) {
+    bool foundOverflow = false;
+    std::vector<int> overflow_banks;
+    for (int i = 0; i < numBanks; i++) {
+      if (nextAddrInBanks[tile][i] > bankLimits[tile][i].endAddr) {
+        foundOverflow = true;
+        overflow_banks.push_back(i);
+      }
+    }
+    if (foundOverflow) {
+      InFlightDiagnostic error =
+          tile.emitOpError("allocated buffers exceeded available memory\n");
+      auto &note = error.attachNote() << "Error in bank(s) : ";
+      for (auto bank : overflow_banks)
+        note << bank << " ";
+      note << "\n";
+      note << "MemoryMap:\n";
+      auto printbuffer = [&](StringRef name, int address, int size) {
+        note << "\t"
+              << "\t" << name << " \t"
+              << ": 0x" << llvm::utohexstr(address) << "-0x"
+              << llvm::utohexstr(address + size - 1) << " \t(" << size
+              << " bytes)\n";
+      };
+      for (int i = 0; i < numBanks; i++) {
+        note << "\t"
+              << "bank : " << i << "\t"
+              << "0x" << llvm::utohexstr(bankLimits[tile][i].startAddr)
+              << "-0x" << llvm::utohexstr(bankLimits[tile][i].endAddr - 1)
+              << "\n";
+        if (i == 0) {
+          if (stacksize > 0)
+            printbuffer("(stack)", 0, stacksize);
+          else
+            error << "(no stack allocated)\n";
+        }
+        for (auto buffer : allBuffers) {
+          auto addr = buffer.getAddress().value();
+          auto mem_bank = buffer.getMemBank().value();
+          if (mem_bank == i)
+            printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+        }
+      }
+      return signalPassFailure();
+    }
+  }
+};
+
+struct AIEAssignBufferAddressesPass
+    : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<func::FuncDialect>();
+    registry.insert<AIEDialect>();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
@@ -161,125 +381,13 @@ struct AIEAssignBufferAddressesPass
       }
     });
 
-    for (auto tile : device.getOps<TileOp>()) {
-      const auto &targetModel = getTargetModel(tile);
-      int maxDataMemorySize = 0;
-      if (tile.isMemTile())
-        maxDataMemorySize = targetModel.getMemTileSize();
-      else
-        maxDataMemorySize = targetModel.getLocalMemorySize();
-
-      // Address range owned by the MemTile is 0x80000.
-      // Address range owned by the tile is 0x8000 in
-      // AIE1 and 0x10000 in AIE2, but we need room at
-      // the bottom for stack.
-      // TODO: add function in TargetModel that returns num banks per arch
-      if (clBankAware) {
-      } else {
-
-      }
-      int numBanks = 0;
-      if (tile.isMemTile())
-        numBanks = 1;
-      else
-        numBanks = 4;
-      int bankSize = maxDataMemorySize / numBanks;
-      int stacksize = 0;
-      if (nextAddrInBanks.find(tile) == nextAddrInBanks.end()) {
-        std::vector<int64_t> nextAddresses;
-        nextAddrInBanks[tile] = nextAddresses;
-      }
-      for (int i = 0; i < numBanks; i++)
-        nextAddrInBanks[tile].push_back(bankSize * i);
-      if (auto core = tile.getCoreOp()) {
-        stacksize = core.getStackSize();
-        nextAddrInBanks[tile][0] += stacksize;
-      }
-      fillBankLimits(tile, numBanks, bankSize);
-
-      SmallVector<BufferOp, 4> buffers;
-      SmallVector<BufferOp, 4> allBuffers;
-      // Collect all the buffers for this tile.
-      // If possible, the buffers with an already specified address will not
-      // be overwritten (the available address range of the bank the buffers
-      // are in will start AFTER the specified adress + buffer size).
-      // Buffers with a specified mem_bank will be assigned first, after
-      // the above.
-      for (auto buffer : device.getOps<BufferOp>()) {
-        if (buffer.getTileOp() == tile) {
-          bool has_addr = checkAndAddBufferWithAddress(tile, buffer, numBanks);
-          bool has_bank = checkAndAddBufferWithMemBank(tile, buffer, numBanks);
-          if (!has_addr && !has_bank)
-            buffers.push_back(buffer);
-          allBuffers.push_back(buffer);
-        }
-      }
-
-      // Sort by largest allocation size before allocating.
-      std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
-        return a.getAllocationSize() > b.getAllocationSize();
-      });
-
-      // Set addresses for remaining buffers.
-      int bankIndex = 0;
-      for (auto buffer : buffers)
-        bankIndex = setBufferAddress(tile, buffer, numBanks, bankIndex);
-
-      // Sort by smallest address before printing memory map.
-      std::sort(allBuffers.begin(), allBuffers.end(),
-                [](BufferOp a, BufferOp b) {
-                  assert(a.getAddress().has_value() &&
-                         "buffer must have address assigned");
-                  assert(b.getAddress().has_value() &&
-                         "buffer must have address assigned");
-                  return a.getAddress().value() < b.getAddress().value();
-                });
-
-      // Check if memory was exceeded on any bank and print debug info.
-      bool foundOverflow = false;
-      std::vector<int> overflow_banks;
-      for (int i = 0; i < numBanks; i++) {
-        if (nextAddrInBanks[tile][i] > bankLimits[tile][i].endAddr) {
-          foundOverflow = true;
-          overflow_banks.push_back(i);
-        }
-      }
-      if (foundOverflow) {
-        InFlightDiagnostic error =
-            tile.emitOpError("allocated buffers exceeded available memory\n");
-        auto &note = error.attachNote() << "Error in bank(s) : ";
-        for (auto bank : overflow_banks)
-          note << bank << " ";
-        note << "\n";
-        note << "MemoryMap:\n";
-        auto printbuffer = [&](StringRef name, int address, int size) {
-          note << "\t"
-               << "\t" << name << " \t"
-               << ": 0x" << llvm::utohexstr(address) << "-0x"
-               << llvm::utohexstr(address + size - 1) << " \t(" << size
-               << " bytes)\n";
-        };
-        for (int i = 0; i < numBanks; i++) {
-          note << "\t"
-               << "bank : " << i << "\t"
-               << "0x" << llvm::utohexstr(bankLimits[tile][i].startAddr)
-               << "-0x" << llvm::utohexstr(bankLimits[tile][i].endAddr - 1)
-               << "\n";
-          if (i == 0) {
-            if (stacksize > 0)
-              printbuffer("(stack)", 0, stacksize);
-            else
-              error << "(no stack allocated)\n";
-          }
-          for (auto buffer : allBuffers) {
-            auto addr = buffer.getAddress().value();
-            auto mem_bank = buffer.getMemBank().value();
-            if (mem_bank == i)
-              printbuffer(buffer.name(), addr, buffer.getAllocationSize());
-          }
-        }
-        return signalPassFailure();
-      }
+    // Select allocation scheme
+    if (clBasicAlloc) {
+      // create alloc scheme
+      basicAlloc BasicAllocation(device);
+    } else {
+      // create alloc scheme
+      bankAwareAlloc SimpleBankAwareAllocation(device);
     }
   }
 };
