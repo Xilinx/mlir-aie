@@ -14,6 +14,16 @@ The design in [distribute_L2.py](./distribute_L2.py) uses an Object FIFO `of_in`
 
 <img src="../../../assets/DistributeL2.svg" height=200 width="700">
 
+```python
+  # AIE-array data movement with object fifos
+  # Input
+  of_in = object_fifo("in", ShimTile, MemTile, 2, memRef_24_ty)
+  of_in0 = object_fifo("in0", MemTile, ComputeTile0, 2, memRef_8_ty)
+  of_in1 = object_fifo("in1", MemTile, ComputeTile1, 2, memRef_8_ty)
+  of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_8_ty)
+  object_fifo_link(of_in, [of_in0, of_in1, of_in2])
+```
+
 All compute tiles are running the same process of acquring one object from their respective input Object FIFOs to consume, add `1` to all of its entries, and release the object. The [join design](../05_join_L2/) shows how the data is sent back out to external memory and tested.
 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).

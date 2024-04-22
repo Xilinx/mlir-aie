@@ -10,17 +10,17 @@ include ../../makefile-common
 
 targetname = testExp
 
-KERNELLIB = ${REPO_ROOT}/aie_kernels/aie2
-
 all: build/final.xclbin build/insts.txt
 
-build/exp.o: ${KERNELLIB}/bf16_exp.cc
-	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
+VPATH := ../../../aie_kernels/aie2
 
-build/lut_based_ops.o:
+build/exp.o: bf16_exp.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_runtime_lib/AIE2/lut_based_ops.cpp -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+
+build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+

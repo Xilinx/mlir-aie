@@ -56,7 +56,7 @@ def my_reduce_add():
             # Set up compute tiles
 
             # Compute tile 2
-            @core(ComputeTile2, "reduce_add.cc.o")
+            @core(ComputeTile2, "reduce_add.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
