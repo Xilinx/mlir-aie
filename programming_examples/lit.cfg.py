@@ -104,11 +104,13 @@ else:
     opencv_flags = ""
 config.substitutions.append(("%opencv_flags", opencv_flags))
 
-# if config.torch_include_dir and config.torch_libs:
-print("torch found")
-config.available_features.add("torch")
-# else:
-#    print("torch not found")
+try:
+    import torch
+    print("torch found")
+    config.available_features.add("torch")
+except:
+    print("torch not found")
+    pass
 
 VitisSysrootFlag = ""
 if config.aieHostTarget == "x86_64":
