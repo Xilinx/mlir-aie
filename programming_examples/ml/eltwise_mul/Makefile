@@ -12,9 +12,11 @@ all: build/final.xclbin
 
 targetname = myEltwiseMul
 
-build/mul.o:
+VPATH := ../../../aie_kernels/aie2
+
+build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/mul.cc -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
