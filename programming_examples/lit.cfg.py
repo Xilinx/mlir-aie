@@ -170,7 +170,7 @@ try:
 
     config.available_features.add("torch")
 except ImportError:
-    print("torch not found")
+    print("torch not found", file=sys.stder)
     pass
 
 VitisSysrootFlag = ""
