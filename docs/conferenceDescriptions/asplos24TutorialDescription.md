@@ -25,7 +25,7 @@ Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI en
 | 08:30am | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
 | 08:45am | "Hello World" from Ryzen AI | Jack | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
-| 09:30am | Your First Program | All | [My First Program](../../programming_guide/section-3) |
+| 09:30am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 10:00am | Break | | |
 | 10:30am | Exercise 2: Vector-Scalar Mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
