@@ -14,19 +14,20 @@ targetname = reduce_max
 devicename = ipu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=../../../aie_kernels/aie2
 
 all: build/final.xclbin build/insts.txt
 
-build/reduce_max.cc.o: ${KERNEL_LIB}/reduce_max.cc
+VPATH := ../../../aie_kernels/aie2
+
+build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
-build/final.xclbin: build/aie.mlir build/reduce_max.cc.o
+build/final.xclbin: build/aie.mlir build/reduce_max.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)

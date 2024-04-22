@@ -10,6 +10,13 @@
 
 # <ins>IRON Quick Reference</ins>
 
+* [Python Bindings](#python-bindings)
+* [Python Helper Functions](#python-helper-functions)
+* [Helpful AI Engine Architecture References and Tables](#helpful-ai-engine-architecture-references-and-tables)
+* [AI Engine documentation](#ai-engine-documentation)
+
+----
+
 ## Python Bindings
 
 | Function Signature  | Definition | Parameters | Return Type | Example | 
@@ -42,6 +49,22 @@
 | `print(ctx.module)` | Converts our ctx wrapped structural code to mlir and prints to stdout|
 | `ctx.module.operation.verify()` | Runs additional structural verficiation on the python binded source code and return result to stdout |
 
+## Helpful AI Engine Architecture References and Tables
+* [AIE2 - Table of supported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)
+
+* Some useful Tile core Trace Events
+    | Some common events | event ID | dec value |
+    |--------------------|----------|-----------|
+    | True                       |0x01| 1 |
+    | Stream stalls              |0x18| 24 |
+    | Core Instruction - Event 0  |0x21| 33|
+    | Core Instruction - Event 1  |0x22| 34 |
+    | Vector Instructions (e.g. VMAC, VADD, VCMP) |0x25|  37 |
+    | Lock acquire requests      |0x2C|  44 |
+    | Lock release requests      |0x2D|  45 | 
+    | Lock stall                 |0x1A|  26 |
+    | Core Port Running 1        |0x4F|  79 |
+    | Core Port Running 0        |0x4B|  75 | 
 
 ## AI Engine documentation
 * [Summary Documentation Links in UG1076](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation)
@@ -51,5 +74,4 @@
 * [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
 * [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
 
-## AIE Detailedd References
-* [AIE2 - Table of supported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)
+
