@@ -106,9 +106,6 @@ config.substitutions.append(("%opencv_flags", opencv_flags))
 
 try:
     import torch
-
-
-
     config.available_features.add("torch")
 except:
     print("torch not found")
