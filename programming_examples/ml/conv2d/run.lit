@@ -1,0 +1,10 @@
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess, torch
+//
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8  -DINT8_ACT  -c %S/../../../aie_kernels/aie2/conv2dk1_i8.cc -o conv2dk1_i8.o
+// RUN: %python %S/aie2.py | aie-opt -cse -canonicalize -o ./aie.mlir
+// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: %run_on_ipu %python %S/test.py | FileCheck %s
+// CHECK: PASS!

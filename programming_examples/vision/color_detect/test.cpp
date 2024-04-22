@@ -80,27 +80,7 @@ int main(int argc, const char *argv[]) {
                                        "optional video input file name");
   po::variables_map vm;
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  try {
-    test_utils::check_arg_file_exists(vm, "xclbin");
-    test_utils::check_arg_file_exists(vm, "instr");
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    return 1;
-  }
+  test_utils::parse_options(argc, argv, desc, vm);
 
   std::cout << "Running colorDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
