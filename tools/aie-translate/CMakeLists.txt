@@ -30,13 +30,15 @@ target_link_libraries(aie-translate
   AIEXTransforms
   AIEXUtils
   AIETargets
+  clangCIR
+  clangCIRLoweringDirectToLLVM
   MLIRAIEVecDialect
   MLIRAIEVecAIE1Dialect
-  MLIRXLLVMToLLVMIRTranslation
   MLIRIR
   MLIRParser
   MLIRPass
   MLIRTargetAIEVecCpp
   MLIRTargetLLVMIRExport
   MLIRTargetLLVMIRImport
+  MLIRXLLVMToLLVMIRTranslation
 )

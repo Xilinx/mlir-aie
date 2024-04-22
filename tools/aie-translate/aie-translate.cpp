@@ -20,47 +20,72 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
-using namespace mlir;
-
 namespace aie {
 // We redefine the MLIR -> LLVM IR translation to include our AIE intrinsics
 // translations.
 void registerToLLVMIRTranslation() {
-  TranslateFromMLIRRegistration registration(
+  mlir::TranslateFromMLIRRegistration registration(
       "mlir-to-llvmir", "Translate MLIR to LLVMIR",
-      [](Operation *op, raw_ostream &output) {
+      [](mlir::Operation *op, mlir::raw_ostream &output) {
         llvm::LLVMContext llvmContext;
         auto llvmModule = translateModuleToLLVMIR(op, llvmContext);
         if (!llvmModule)
-          return failure();
+          return mlir::failure();
 
         llvmModule->print(output, nullptr);
-        return success();
+        return mlir::success();
       },
-      [](DialectRegistry &registry) {
-        registry.insert<DLTIDialect, func::FuncDialect>();
+      [](mlir::DialectRegistry &registry) {
+        registry.insert<mlir::DLTIDialect, mlir::func::FuncDialect>();
         xilinx::registerAllAIEToLLVMIRTranslations(registry);
         registerAllToLLVMIRTranslations(registry);
       });
 }
 } // namespace aie
 
+// TODO refactor clang/tools/cir-translate/cir-translate.cpp to avoid the
+// following copy-paste
+namespace cir {
+namespace direct {
+extern void registerCIRDialectTranslation(mlir::DialectRegistry &registry);
+extern std::unique_ptr<llvm::Module>
+lowerDirectlyFromCIRToLLVMIR(mlir::ModuleOp theModule,
+                             llvm::LLVMContext &llvmCtx,
+                             bool disableVerifier = false);
+} // namespace direct
+
+void registerToLLVMTranslation() {
+  mlir::TranslateFromMLIRRegistration registration(
+      "cir-to-llvmir", "Translate CIR to LLVMIR",
+      [](mlir::Operation *op, mlir::raw_ostream &output) {
+        llvm::LLVMContext llvmContext;
+        auto llvmModule = cir::direct::lowerDirectlyFromCIRToLLVMIR(
+            llvm::dyn_cast<mlir::ModuleOp>(op), llvmContext);
+        if (!llvmModule)
+          return mlir::failure();
+        llvmModule->print(output, nullptr);
+        return mlir::success();
+      },
+      [](mlir::DialectRegistry &registry) {
+        registry.insert<mlir::DLTIDialect, mlir::func::FuncDialect>();
+        mlir::registerAllToLLVMIRTranslations(registry);
+        cir::direct::registerCIRDialectTranslation(registry);
+      });
+}
+} // namespace cir
+
 void version_printer(raw_ostream &os) {
   os << "aie-translate " << AIE_GIT_COMMIT << "\n";
 }
 
 int main(int argc, char **argv) {
-  // NOTE: these are the contents of registerAllTranslations();
-  registerFromLLVMIRTranslation();
-  registerFromSPIRVTranslation();
-  registerToCppTranslation();
+  // mlir::registerAllTranslations();
+  cir::registerToLLVMTranslation();
   aie::registerToLLVMIRTranslation();
-  registerToSPIRVTranslation();
-
   xilinx::AIE::registerAIETranslations();
   xilinx::aievec::registerAIEVecToCppTranslation();
 
   llvm::cl::AddExtraVersionPrinter(version_printer);
 
-  return failed(mlirTranslateMain(argc, argv, "AIE Translation Tool"));
+  return failed(mlir::mlirTranslateMain(argc, argv, "AIE Translation Tool"));
 }
