@@ -15,8 +15,10 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
+
 
 def main(opts):
     design = "conv2d"
@@ -71,7 +73,6 @@ def main(opts):
         trace_size=trace_size,
     )
 
-
     # ------------------------------------------------------
     # Define your golden reference
     # ------------------------------------------------------
@@ -88,7 +89,6 @@ def main(opts):
             )  # converting to int8 range
             return out_float
 
-
     # ------------------------------------------------------
     # Pytorch baseline
     # ------------------------------------------------------
@@ -103,7 +103,9 @@ def main(opts):
     # ------------------------------------------------------
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
+    before_input.tofile(
+        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
+    )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
@@ -120,7 +122,9 @@ def main(opts):
         stop = time.time_ns()
 
         if enable_trace:
-            aie_output, trace = extract_trace(aie_output, shape_out, dtype_out, trace_size)
+            aie_output, trace = extract_trace(
+                aie_output, shape_out, dtype_out, trace_size
+            )
             write_out_trace(trace, trace_file)
 
         npu_time = stop - start
@@ -132,7 +136,9 @@ def main(opts):
     temp_out = aie_output.reshape(32, 8, 32, 8)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(64, 32, 32)
-    ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d")
+    ofm_mem_fmt.tofile(
+        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
+    )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
     # ------------------------------------------------------

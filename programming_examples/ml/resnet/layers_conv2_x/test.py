@@ -15,8 +15,10 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
+
 
 def main(opts):
     design = "resnet_conv2_x_int8"
@@ -51,14 +53,24 @@ def main(opts):
     int_inp = torch.randint(1, 10, (1, 64, 32, 32)).type(torch.FloatTensor)
     block_0_int_weight_1 = torch.randint(10, 20, (64, 64, 1, 1)).type(torch.FloatTensor)
     block_0_int_weight_2 = torch.randint(10, 20, (64, 64, 3, 3)).type(torch.FloatTensor)
-    block_0_int_weight_3 = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
-    block_0_int_weight_skip = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
+    block_0_int_weight_3 = torch.randint(10, 20, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
+    block_0_int_weight_skip = torch.randint(10, 20, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
 
-    block_1_int_weight_1 = torch.randint(20, 30, (64, 256, 1, 1)).type(torch.FloatTensor)
+    block_1_int_weight_1 = torch.randint(20, 30, (64, 256, 1, 1)).type(
+        torch.FloatTensor
+    )
     block_1_int_weight_2 = torch.randint(20, 30, (64, 64, 3, 3)).type(torch.FloatTensor)
-    block_1_int_weight_3 = torch.randint(20, 30, (256, 64, 1, 1)).type(torch.FloatTensor)
+    block_1_int_weight_3 = torch.randint(20, 30, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
 
-    block_2_int_weight_1 = torch.randint(30, 40, (64, 256, 1, 1)).type(torch.FloatTensor)
+    block_2_int_weight_1 = torch.randint(30, 40, (64, 256, 1, 1)).type(
+        torch.FloatTensor
+    )
     block_2_int_weight_2 = torch.randint(30, 40, (64, 64, 3, 3)).type(torch.FloatTensor)
     block_2_int_weight_3 = torch.randint(30, 40, (256, 64, 1, 1)).type(torch.FloatTensor)
 
