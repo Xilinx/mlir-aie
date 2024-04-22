@@ -73,7 +73,7 @@ def my_reduce_max():
 
 
 with mlir_mod_ctx() as ctx:
-    my_reduce_min()
+    my_reduce_max()
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
