@@ -22,18 +22,19 @@ Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI en
 
 | Time | Topic | Presenter | Slides or Code |
 |------|-------|-----------|----------------|
-| 08:30am | Intro to spatial compute and explicit data movement | Kristof | tbd |
-| 08:45am | "Hello World" from Ryzen AI | Jack | tbd |
-| 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | tbd |
-| 09:30am | Exersise 1: Build and run your first program | All | tbd |
-| 09:45am | Exersise 2: Vector-scalar | All |tbd |
+| 08:30am | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
+| 08:45am | "Hello World" from Ryzen AI | Jack | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
+| 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
+| 09:30am | Your First Program | All | [My First Program](../../programming_guide/section-3) |
+| 09:50am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 10:00am | Break | | |
-| 11:00am | Tracing and performance analysis | Jack | tbd |
-| 11:10am | Exercise 3: Tracing vector-scalar | All | tbd |
-| 11:30am | Vectorizing on AIE | Kristof | tbd |
-| 11:40am | Exercise 4: Vectorized vector-scalar | All | tbd |
-| 12:00pm | Dataflow and larger designs | Joe | tbd |
-| 12:15pm | Exercises | All | |
+| 10:30am | Exercise 2: Vector-Scalar Mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 10:40am | Tracing and performance analysis | Jack | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 11:10am | Exercise 3: Tracing vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 11:30am | Vectorizing on AIE | Phil | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
+| 11:40am | Exercise 4: Vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 12:00pm | Dataflow and larger designs | Sam | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 12:15pm | Exercises | All | [Programming Examples](../../programming_examples/) |
 | 12:30pm | Close Tutorial | All | |
 
 
