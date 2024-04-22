@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -34,7 +34,7 @@ The softmax function is a mathematical function commonly used in machine learnin
 
 ## Compilation details
 
-The softmax function employs the exponential function $e^x$, similar to the example found [here](../../basic/eltwise_exp/). Again to efficiently implement softmax, a lookup table approximation is utilized.
+The softmax function employs the exponential function $e^x$, similar to the example found [here](../../basic/vector_exp/). Again to efficiently implement softmax, a lookup table approximation is utilized.
 
 In addition, and unlike any of the other current design examples, this example uses MLIR dialects as direct input, including the `vector`,`affine`,`arith` and `math` dialects.  This is shown in the [source](./bf16_softmax.mlir).  This is intended to be generated from a higher level description, but is shown here as an example of how you can use other MLIR dialects as input.
 
@@ -62,4 +62,10 @@ To run the design:
 
 ```
 make run
+```
+
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
+
+```
+make trace
 ```

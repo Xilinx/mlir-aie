@@ -14,6 +14,12 @@ The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to 
 
 <img src="../../../assets/ExtMemToCore.svg" height=200 width="400">
 
+```python
+  # AIE-array data movement with object fifos
+  of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_24_ty)   # Input
+  of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_24_ty) # Output
+```
+
 Both a consumer and a producer process are running on `ComputeTile2`. The producer process acquires one object from `of_in` to consume and one object from `of_out` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
 It is possible to build, run and test this design with the following commands:
@@ -21,6 +27,9 @@ It is possible to build, run and test this design with the following commands:
 make
 make run
 ```
-The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 3](../../../section-3/).
+The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 2g](../../section-2g/).
 
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [vector_reduce_add](../../../../programming_examples/basic/vector_reduce_add/) and [vector_scalar_add](../../../../programming_examples/basic/vector_scalar_add/).
+
+-----
+[[Prev](../01_single_double_buffer/)] [[Up](..)] [[Next](../03_external_mem_to_core_L2/)]

@@ -23,7 +23,6 @@ of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32())) # 3 objects: obje
 @core(B)
 def core_body():
     ### Situation 1
-    for _ in range_(3):
     elems = of0.acquire(ObjectFifoPort.Consume, 2) # acquires object0 and object1
     call(test_func2, [elems[0], elems[1]])
     of0.release(ObjectFifoPort.Consume, 1) # releases object0
@@ -63,3 +62,6 @@ def core_body():
         call(test_func2, [elems[0], elems[1]])
         of0.release(ObjectFifoPort.Consume, 1)
 ```
+
+-----
+[[Up](..)] [[Next](../02_Broadcast/)]

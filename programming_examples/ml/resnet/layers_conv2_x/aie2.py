@@ -8,7 +8,7 @@
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.dialects.ext import memref, arith
-from aie.extras.dialects.ext.scf import range_, yield_
+from aie.dialects.scf import for_, yield_
 from aie.extras.context import mlir_mod_ctx
 from aie.ir import MemRefType, TypeAttr
 
@@ -21,21 +21,16 @@ enableTrace = False
 
 # Define bottleneck layer sizes
 
-tensorInW = 32
-tensorInH = 32
-tensorInC = 256
 
-tensorL1InC = tensorInC
-tensorL1OutC = tensorL1InC // 4
+def resnet_conv_x():
 
-tensorL2InC = tensorL1OutC
-tensorL2OutC = tensorL2InC
+    tensorInW = 32
+    tensorInH = 32
+    tensorInCInit = 64
+    tensorInCRest = 4 * tensorInCInit
+    n_cols = 3
+    repeat = 2
 
-tensorL3InC = tensorL2OutC
-tensorL3OutC = tensorL3InC * 4
-
-
-def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.ipu)
@@ -44,23 +39,36 @@ def bottleneck4AIEs():
             # define types
             uint8_ty = IntegerType.get_unsigned(8)
             int8_ty = IntegerType.get_signless(8)
-            int16_ty = IntegerType.get_signless(16)
             int32_ty = IntegerType.get_signless(32)
 
-            tensorLayer1In_ty = MemRefType.get(
+            tensorLayer1In_ty_init = MemRefType.get(
                 (
                     tensorInW,
                     1,
-                    tensorL1InC,
+                    tensorInCInit,
                 ),
                 int8_ty,
             )
-            weightsLayer1_ty = MemRefType.get((tensorL1InC * tensorL1OutC,), int8_ty)
+            tensorLayer1In_ty_rest = MemRefType.get(
+                (
+                    tensorInW,
+                    1,
+                    tensorInCRest,
+                ),
+                uint8_ty,
+            )
+            weightsLayer1_ty_init = MemRefType.get(
+                (tensorInCInit * tensorInCInit,), int8_ty
+            )
+            weightsLayer1_ty_rest = MemRefType.get(
+                (tensorInCRest * tensorInCInit,), int8_ty
+            )
+
             tensorLayer1Out_ty = MemRefType.get(
                 (
                     tensorInW,
                     1,
-                    tensorL1OutC,
+                    tensorInCInit,
                 ),
                 uint8_ty,
             )
@@ -69,18 +77,18 @@ def bottleneck4AIEs():
                 (
                     tensorInW,
                     1,
-                    tensorL2InC,
+                    tensorInCInit,
                 ),
                 uint8_ty,
             )
             weightsLayer2_ty = MemRefType.get(
-                (3 * 3 * tensorL2InC * tensorL2OutC,), int8_ty
+                (3 * 3 * tensorInCInit * tensorInCInit,), int8_ty
             )
             tensorLayer2Out_ty = MemRefType.get(
                 (
                     tensorInW,
                     1,
-                    tensorL2OutC // 2,
+                    tensorInCInit // 2,
                 ),
                 uint8_ty,
             )
@@ -89,35 +97,51 @@ def bottleneck4AIEs():
                 (
                     tensorInW,
                     1,
-                    tensorL3InC // 2,
+                    tensorInCInit // 2,
                 ),
                 uint8_ty,
             )
-            weightsLayer3_ty = MemRefType.get((tensorL3InC * tensorL3OutC,), int8_ty)
+            weightsLayer3_ty_init = MemRefType.get(
+                (2 * tensorInCInit * tensorInCRest,), int8_ty
+            )
+            weightsLayer3_ty_rest = MemRefType.get(
+                (tensorInCRest // 4 * tensorInCRest,), int8_ty
+            )
+
             tensorLayer3Out_ty = MemRefType.get(
                 (
                     tensorInW,
                     1,
-                    tensorL3OutC,
+                    tensorInCRest,
                 ),
                 uint8_ty,
             )
 
-            allWeights_ty = MemRefType.get(
+            allWeights_ty_init = MemRefType.get(
                 (
-                    tensorL1InC * tensorL1OutC
-                    + 3 * 3 * tensorL2InC * tensorL2OutC
-                    + tensorL3InC * tensorL3OutC,
+                    tensorInCInit * tensorInCInit
+                    + 3 * 3 * tensorInCInit * tensorInCInit
+                    + tensorInCInit * tensorInCRest
+                    + tensorInCInit * tensorInCRest,
+                ),
+                int8_ty,
+            )
+
+            allWeights_ty_rest = MemRefType.get(
+                (
+                    tensorInCRest * tensorInCInit
+                    + 3 * 3 * tensorInCInit * tensorInCInit
+                    + tensorInCInit * tensorInCRest,
                 ),
                 int8_ty,
             )
 
             # kernel definitions
-            conv2dk1 = external_func(
+            conv2dk1_i8 = external_func(
                 "conv2dk1_i8",
                 inputs=[
-                    tensorLayer1In_ty,
-                    weightsLayer1_ty,
+                    tensorLayer1In_ty_init,
+                    weightsLayer1_ty_init,
                     tensorLayer1Out_ty,
                     int32_ty,
                     int32_ty,
@@ -143,14 +167,42 @@ def bottleneck4AIEs():
                     int32_ty,
                 ],
             )
-            conv2dk1_skip = external_func(
-                "conv2dk1_skip_i8",
+            conv2dk1_skip_init_i8 = external_func(
+                "conv2dk1_skip_init_i8",
                 inputs=[
                     tensorLayer3In_ty,
                     tensorLayer3In_ty,
-                    weightsLayer3_ty,
+                    weightsLayer3_ty_init,
                     tensorLayer3Out_ty,
-                    tensorLayer1In_ty,
+                    tensorLayer1In_ty_init,
+                    int32_ty,
+                    int32_ty,
+                    int32_ty,
+                    int32_ty,
+                    int32_ty,
+                ],
+            )
+            conv2dk1_ui8 = external_func(
+                "conv2dk1_ui8",
+                inputs=[
+                    tensorLayer3Out_ty,
+                    weightsLayer1_ty_rest,
+                    tensorLayer1Out_ty,
+                    int32_ty,
+                    int32_ty,
+                    int32_ty,
+                    int32_ty,
+                ],
+            )
+
+            conv2dk1_skip_ui8 = external_func(
+                "conv2dk1_skip_ui8",
+                inputs=[
+                    tensorLayer3In_ty,
+                    tensorLayer3In_ty,
+                    weightsLayer3_ty_rest,
+                    tensorLayer3Out_ty,
+                    tensorLayer3Out_ty,
                     int32_ty,
                     int32_ty,
                     int32_ty,
@@ -159,461 +211,658 @@ def bottleneck4AIEs():
                 ],
             )
 
-            ShimTile = tile(0, 0)
-            MemTile = tile(0, 1)
-            ComputeTile2 = tile(0, 2)
-            ComputeTile3 = tile(0, 3)
-            ComputeTile4 = tile(0, 4)
-            ComputeTile5 = tile(0, 5)
+            ShimTile00 = tile(0, 0)
+            MemTile01 = tile(0, 1)
+            ComputeTile02 = tile(0, 2)
+            ComputeTile03 = tile(0, 3)
+            ComputeTile04 = tile(0, 4)
+            ComputeTile05 = tile(0, 5)
+
+            ShimTile10 = tile(1, 0)
+            MemTile11 = tile(1, 1)
+            ComputeTile12 = tile(1, 2)
+            ComputeTile13 = tile(1, 3)
+            ComputeTile14 = tile(1, 4)
+            ComputeTile15 = tile(1, 5)
+
+            ShimTile20 = tile(2, 0)
+            MemTile21 = tile(2, 1)
+            ComputeTile22 = tile(2, 2)
+            ComputeTile23 = tile(2, 3)
+            ComputeTile24 = tile(2, 4)
+            ComputeTile25 = tile(2, 5)
+
+            shims = [ShimTile00, ShimTile10, ShimTile20]
+            mems = [MemTile01, MemTile11, MemTile21]
+            wts_sizes = [allWeights_ty_init, allWeights_ty_rest, allWeights_ty_rest]
+            layer1_wts_sizes = [
+                weightsLayer1_ty_init,
+                weightsLayer1_ty_rest,
+                weightsLayer1_ty_rest,
+            ]
+            laye1_act_sizes = [
+                tensorLayer1In_ty_init,
+                tensorLayer1In_ty_rest,
+                tensorLayer1In_ty_rest,
+            ]
+            layer3_wts_sizes = [
+                weightsLayer3_ty_init,
+                weightsLayer3_ty_rest,
+                weightsLayer3_ty_rest,
+            ]
+
+            cores = [
+                [ComputeTile02, ComputeTile03, ComputeTile04, ComputeTile05],
+                [ComputeTile15, ComputeTile14, ComputeTile13, ComputeTile12],
+                [ComputeTile22, ComputeTile23, ComputeTile24, ComputeTile25],
+            ]
 
             if enableTrace:
-                flow(ComputeTile4, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
+                flow(ComputeTile04, WireBundle.Trace, 0, ShimTile00, WireBundle.DMA, 1)
 
             # runtime parameters
 
-            rtpComputeTile2 = Buffer(ComputeTile2, [16], T.i32(), "rtpComputeTile2")
-            rtpComputeTile3 = Buffer(ComputeTile3, [16], T.i32(), "rtpComputeTile3")
-            rtpComputeTile4 = Buffer(ComputeTile4, [16], T.i32(), "rtpComputeTile4")
-            rtpComputeTile5 = Buffer(ComputeTile5, [16], T.i32(), "rtpComputeTile5")
+            rtpComputeTile02 = Buffer(ComputeTile02, [16], T.i32(), "rtpComputeTile02")
+            rtpComputeTile03 = Buffer(ComputeTile03, [16], T.i32(), "rtpComputeTile03")
+            rtpComputeTile04 = Buffer(ComputeTile04, [16], T.i32(), "rtpComputeTile04")
+            rtpComputeTile05 = Buffer(ComputeTile05, [16], T.i32(), "rtpComputeTile05")
 
+            rtpComputeTile12 = Buffer(ComputeTile12, [16], T.i32(), "rtpComputeTile12")
+            rtpComputeTile13 = Buffer(ComputeTile13, [16], T.i32(), "rtpComputeTile13")
+            rtpComputeTile14 = Buffer(ComputeTile14, [16], T.i32(), "rtpComputeTile14")
+            rtpComputeTile15 = Buffer(ComputeTile15, [16], T.i32(), "rtpComputeTile15")
+
+            rtpComputeTile22 = Buffer(ComputeTile22, [16], T.i32(), "rtpComputeTile22")
+            rtpComputeTile23 = Buffer(ComputeTile23, [16], T.i32(), "rtpComputeTile23")
+            rtpComputeTile24 = Buffer(ComputeTile24, [16], T.i32(), "rtpComputeTile24")
+            rtpComputeTile25 = Buffer(ComputeTile25, [16], T.i32(), "rtpComputeTile25")
+
+            rtp = [
+                [
+                    rtpComputeTile02,
+                    rtpComputeTile03,
+                    rtpComputeTile04,
+                    rtpComputeTile05,
+                ],
+                [
+                    rtpComputeTile15,
+                    rtpComputeTile14,
+                    rtpComputeTile13,
+                    rtpComputeTile12,
+                ],
+                [
+                    rtpComputeTile22,
+                    rtpComputeTile23,
+                    rtpComputeTile24,
+                    rtpComputeTile25,
+                ],
+            ]
+            rtp_name = [
+                [
+                    "rtpComputeTile02",
+                    "rtpComputeTile03",
+                    "rtpComputeTile04",
+                    "rtpComputeTile05",
+                ],
+                [
+                    "rtpComputeTile12",
+                    "rtpComputeTile13",
+                    "rtpComputeTile14",
+                    "rtpComputeTile15",
+                ],
+                [
+                    "rtpComputeTile22",
+                    "rtpComputeTile23",
+                    "rtpComputeTile24",
+                    "rtpComputeTile25",
+                ],
+            ]
             # set up data movement with OFs
+            conv1_kernels = ["conv2dk1_i8.o", "conv2dk1_ui8.o", "conv2dk1_ui8.o"]
+            conv1_kernels_call = [conv2dk1_i8, conv2dk1_ui8, conv2dk1_ui8]
+
+            conv3_kernels = [
+                "conv2dk1_skip_init.o",
+                "conv2dk1_skip.o",
+                "conv2dk1_skip.o",
+            ]
+            conv3_kernels_call = [
+                conv2dk1_skip_init_i8,
+                conv2dk1_skip_ui8,
+                conv2dk1_skip_ui8,
+            ]
+
+            act1_fifo_names = ["act1_00_02_01", "act1_04_15_01", "act1_13_22_21"]
+            act1_fifos = {}
+
+            wts_fifo_names = ["wts_0_L3L2", "wts_1_L3L2", "wts_2_L3L2"]
+            wts_fifos = {}
+            wts_sub_fifo_names = [
+                ["wts_buf_00", "wts_buf_01", "wts_buf_02"],
+                ["wts_buf_10", "wts_buf_11", "wts_buf_12"],
+                ["wts_buf_20", "wts_buf_21", "wts_buf_22"],
+            ]
+            wts_sub_fifos = {}
+
+            for i in range(n_cols):
+                wts_fifos[wts_fifo_names[i]] = object_fifo(
+                    wts_fifo_names[i], shims[i], mems[i], 1, wts_sizes[i]
+                )
+                wts_sub_fifos[wts_sub_fifo_names[i][0]] = object_fifo(
+                    wts_sub_fifo_names[i][0],
+                    mems[i],
+                    cores[i][0],
+                    1,
+                    layer1_wts_sizes[i],
+                )
+                wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
+                    wts_sub_fifo_names[i][1],
+                    mems[i],
+                    [cores[i][1], cores[i][3]],
+                    1,
+                    weightsLayer2_ty,
+                )
+                wts_sub_fifos[wts_sub_fifo_names[i][2]] = object_fifo(
+                    wts_sub_fifo_names[i][2],
+                    mems[i],
+                    cores[i][2],
+                    1,
+                    layer3_wts_sizes[i],
+                )
+                object_fifo_link(
+                    wts_fifo_names[i],
+                    [
+                        wts_sub_fifo_names[i][0],
+                        wts_sub_fifo_names[i][1],
+                        wts_sub_fifo_names[i][2],
+                    ],
+                )
+
             # input tensor (with broadcast for skip connection)
-            of_inOF_act_L3L2 = object_fifo(
-                "inOF_act_L3L2",
-                ShimTile,
-                [ComputeTile2, MemTile],
+            act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
+            act1_fifos = {}
+
+            skip_fifo_names = ["skip_0", "skip_1", "skip_2"]
+            skip_fifos = {}
+
+            act1_fifos[act1_fifo_names[0]] = object_fifo(
+                act1_fifo_names[0],
+                shims[0],
+                [cores[0][0], mems[0]],
                 [2, 2, 4],
-                tensorLayer1In_ty,
+                laye1_act_sizes[0],
             )
-            of_skip_buf = object_fifo(
-                "skip_buf", MemTile, ComputeTile4, 2, tensorLayer1In_ty
+            skip_fifos[skip_fifo_names[0]] = object_fifo(
+                skip_fifo_names[0], mems[0], cores[0][2], 2, laye1_act_sizes[0]
             )
-            object_fifo_link(of_inOF_act_L3L2, of_skip_buf)
+            object_fifo_link(act1_fifo_names[0], skip_fifo_names[0])
 
-            # weights
-            inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, allWeights_ty
-            )
-            of_wts_buf_00 = object_fifo(
-                "wts_buf_00", MemTile, ComputeTile2, 1, weightsLayer1_ty
-            )
-            wts_buf_01 = object_fifo(
-                "wts_buf_01",
-                MemTile,
-                [ComputeTile3, ComputeTile5],
-                1,
-                weightsLayer2_ty,
-            )
-            wts_buf_02 = object_fifo(
-                "wts_buf_02", MemTile, ComputeTile4, 1, weightsLayer3_ty
-            )
-            object_fifo_link(inOF_wts_0_L3L2, [of_wts_buf_00, wts_buf_01, wts_buf_02])
+            for i in range(1, repeat + 1):
+                act1_fifos[act1_fifo_names[i]] = object_fifo(
+                    act1_fifo_names[i],
+                    cores[i - 1][2],
+                    [cores[i][0], mems[i - 1]],
+                    [2, 2, 4],
+                    laye1_act_sizes[i],
+                )
+                skip_fifos[skip_fifo_names[i]] = object_fifo(
+                    skip_fifo_names[i],
+                    mems[i - 1],
+                    cores[i][2],
+                    2,
+                    laye1_act_sizes[i],
+                )
+                object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
 
-            # activation tensor
-            of_act_2_3_5 = object_fifo(
-                "act_2_3_5",
-                ComputeTile2,
-                [ComputeTile3, ComputeTile5],
-                [2, 4, 4],
-                tensorLayer1Out_ty,
-            )  # 1x1 -> 3x3
-            act_3_4 = object_fifo(
-                "act_3_4", ComputeTile3, ComputeTile4, 2, tensorLayer2Out_ty
-            )  # 3x3 -> 1x1
-            act_5_4 = object_fifo(
-                "act_5_4", ComputeTile5, ComputeTile4, 2, tensorLayer2Out_ty
-            )  # 3x3 -> 1x1
+            act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
+            act2_fifos = {}
+
+            act3_fifo_names_1 = ["act3_03_04", "act3_14_13", "act3_23_24"]
+            act3_fifo_1 = {}
+
+            act3_fifo_names_2 = ["act3_05_04", "act3_12_13", "act3_25_24"]
+            act3_fifo_2 = {}
+
+            for i in range(n_cols):
+                # 1x1 -> 3x3
+                act2_fifos[act2_fifo_names[i]] = object_fifo(
+                    act2_fifo_names[i],
+                    cores[i][0],
+                    [cores[i][1], cores[i][3]],
+                    2,
+                    tensorLayer1Out_ty,
+                )
+
+                # 3x3 -> 1x1
+                act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
+                    act3_fifo_names_1[i],
+                    cores[i][1],
+                    cores[i][2],
+                    2,
+                    tensorLayer2Out_ty,
+                )
+                # 3x3 -> 1x1
+                act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
+                    act3_fifo_names_2[i],
+                    cores[i][3],
+                    cores[i][2],
+                    2,
+                    tensorLayer2Out_ty,
+                )
 
             # output tensor
             outOFL2L3 = object_fifo(
-                "outOFL2L3", ComputeTile4, ShimTile, 2, tensorLayer3Out_ty
+                "outOFL2L3", cores[2][2], shims[2], 2, tensorLayer3Out_ty
             )
+            conv3_out_fifo = [
+                act1_fifos[act1_fifo_names[1]],
+                act1_fifos[act1_fifo_names[2]],
+                outOFL2L3,
+            ]
+            conv3_out_fifo_names = ["act1_04_15_11", "act1_13_22_21", "outOFL2L3"]
+            # # 1x1 conv2d
+            for i in range(n_cols):
 
-            # 1x1 conv2d
-            @core(ComputeTile2, "conv2dk1.o")
-            def core_body():
-                for _ in range_(sys.maxsize):
+                @core(cores[i][0], conv1_kernels[i])
+                def core_body():
+                    for _ in for_(sys.maxsize):
 
-                    # acquire weights once
-                    element0Weights = of_wts_buf_00.acquire(ObjectFifoPort.Consume, 1)
-                    scale = memref.load(rtpComputeTile2, [0])
-                    for _ in range_(tensorInH):
-                        element0ActivactionsIn = of_inOF_act_L3L2.acquire(
-                            ObjectFifoPort.Consume, 1
+                        # acquire weights once
+                        element0Weights = wts_sub_fifos[
+                            wts_sub_fifo_names[i][0]
+                        ].acquire(ObjectFifoPort.Consume, 1)
+                        scale = memref.load(rtp[i][0], [0])
+                        for _ in for_(tensorInH):
+                            element0ActivactionsIn = act1_fifos[
+                                act1_fifo_names[i]
+                            ].acquire(ObjectFifoPort.Consume, 1)
+                            element0ActivactionsOut = act2_fifos[
+                                act2_fifo_names[i]
+                            ].acquire(ObjectFifoPort.Produce, 1)
+                            res = call(
+                                conv1_kernels_call[i],
+                                [
+                                    element0ActivactionsIn,
+                                    element0Weights,
+                                    element0ActivactionsOut,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCInit,
+                                    scale,
+                                ],
+                            )
+
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, act1_fifo_names[i], 1
+                            )
+
+                            objectfifo_release(
+                                ObjectFifoPort.Produce, act2_fifo_names[i], 1
+                            )
+                            yield_([])
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][0], 1
                         )
-                        element0ActivactionsOut = of_act_2_3_5.acquire(
-                            ObjectFifoPort.Produce, 1
+                        yield_([])
+
+            # 3x3 conv2d OFM 0-31
+            for i in range(n_cols):
+
+                @core(cores[i][1], "conv2dk3.o")
+                def core_body():
+                    scale = 11
+                    for _ in for_(sys.maxsize):
+
+                        # acquire weights and rtps once
+                        element0Weights = wts_sub_fifos[
+                            wts_sub_fifo_names[i][1]
+                        ].acquire(ObjectFifoPort.Consume, 1)
+                        # scale = memref.load(rtpComputeTile03, 0)
+
+                        # pre-amble: top row
+                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                            ObjectFifoPort.Consume, 2
                         )
+                        element0ActivactionsOut = act3_fifo_1[
+                            act3_fifo_names_1[i]
+                        ].acquire(ObjectFifoPort.Produce, 1)
                         res = call(
-                            conv2dk1,
+                            conv2dk3,
                             [
-                                element0ActivactionsIn,
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[1],
                                 element0Weights,
                                 element0ActivactionsOut,
                                 tensorInW,
-                                tensorL1InC,
-                                tensorL1OutC,
+                                tensorInCInit,
+                                tensorInCInit,
+                                3,
+                                3,
+                                0,
                                 scale,
+                                0,
                             ],
                         )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "inOF_act_L3L2", 1)
-
-                        objectfifo_release(ObjectFifoPort.Produce, "act_2_3_5", 1)
-                        yield_([])
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_00", 1)
-                    yield_([])
-
-            # 3x3 conv2d OFM 0-31
-            @core(ComputeTile3, "conv2dk3.o")
-            def core_body():
-                scale = 11
-                for _ in range_(sys.maxsize):
-
-                    # acquire weights and rtps once
-                    element0Weights = wts_buf_01.acquire(ObjectFifoPort.Consume, 1)
-                    # scale = memref.load(rtpComputeTile3, 0)
-
-                    # pre-amble: top row
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            0,
-                            scale,
-                            0,
-                        ],
-                    )
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
-
-                    # middle
-                    for _ in range_(tensorInH - 2):
-                        elementActivactionsIn = of_act_2_3_5.acquire(
-                            ObjectFifoPort.Consume, 3
+                        objectfifo_release(
+                            ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
                         )
-                        element0ActivactionsOut = act_3_4.acquire(
-                            ObjectFifoPort.Produce, 1
+
+                        # middle
+                        for _ in for_(tensorInH - 2):
+                            elementActivactionsIn = act2_fifos[
+                                act2_fifo_names[i]
+                            ].acquire(ObjectFifoPort.Consume, 3)
+                            element0ActivactionsOut = act3_fifo_1[
+                                act3_fifo_names_1[i]
+                            ].acquire(ObjectFifoPort.Produce, 1)
+                            res = call(
+                                conv2dk3,
+                                [
+                                    elementActivactionsIn[0],
+                                    elementActivactionsIn[1],
+                                    elementActivactionsIn[2],
+                                    element0Weights,
+                                    element0ActivactionsOut,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCInit,
+                                    3,
+                                    3,
+                                    1,
+                                    scale,
+                                    0,
+                                ],
+                            )
+
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, act2_fifo_names[i], 1
+                            )
+                            objectfifo_release(
+                                ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
+                            )
+                            yield_([])
+
+                        # last part
+                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                            ObjectFifoPort.Consume, 2
                         )
+                        element0ActivactionsOut = act3_fifo_1[
+                            act3_fifo_names_1[i]
+                        ].acquire(ObjectFifoPort.Produce, 1)
                         res = call(
                             conv2dk3,
                             [
                                 elementActivactionsIn[0],
                                 elementActivactionsIn[1],
-                                elementActivactionsIn[2],
+                                elementActivactionsIn[1],
                                 element0Weights,
                                 element0ActivactionsOut,
                                 tensorInW,
-                                tensorL2InC,
-                                tensorL2OutC,
+                                tensorInCInit,
+                                tensorInCInit,
                                 3,
                                 3,
-                                1,
+                                2,
                                 scale,
                                 0,
                             ],
                         )
 
-                        objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, act2_fifo_names[i], 2
+                        )
+                        objectfifo_release(
+                            ObjectFifoPort.Produce, act3_fifo_names_1[i], 1
+                        )
+
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
+                        )
                         yield_([])
 
-                    # last part
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            2,
-                            scale,
-                            0,
-                        ],
-                    )
-
-                    objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
-
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
-                    yield_([])
-
             # 3x3 conv2d OFM 32-63
-            @core(ComputeTile5, "conv2dk3.o")
-            def core_body():
-                scale = 11
-                for _ in range_(sys.maxsize):
 
-                    # acquire weights and rtps once
-                    element0Weights = wts_buf_01.acquire(ObjectFifoPort.Consume, 1)
-                    # scale = memref.load(rtpComputeTile5, 0)
+            for i in range(n_cols):
 
-                    # pre-amble: top row
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_5_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            0,
-                            scale,
-                            tensorL2OutC // 2,
-                        ],
-                    )
+                @core(cores[i][3], "conv2dk3.o")
+                def core_body():
+                    scale = 11
+                    for _ in for_(sys.maxsize):
 
-                    objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
+                        # acquire weights and rtps once
+                        element0Weights = wts_sub_fifos[
+                            wts_sub_fifo_names[i][1]
+                        ].acquire(ObjectFifoPort.Consume, 1)
+                        # scale = memref.load(rtpComputeTile05, 0)
 
-                    # middle
-                    for _ in range_(tensorInH - 2):
-                        elementActivactionsIn = of_act_2_3_5.acquire(
-                            ObjectFifoPort.Consume, 3
+                        # pre-amble: top row
+                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                            ObjectFifoPort.Consume, 2
                         )
-                        element0ActivactionsOut = act_5_4.acquire(
-                            ObjectFifoPort.Produce, 1
+                        element0ActivactionsOut = act3_fifo_2[
+                            act3_fifo_names_2[i]
+                        ].acquire(ObjectFifoPort.Produce, 1)
+                        res = call(
+                            conv2dk3,
+                            [
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[1],
+                                element0Weights,
+                                element0ActivactionsOut,
+                                tensorInW,
+                                tensorInCInit,
+                                tensorInCInit,
+                                3,
+                                3,
+                                0,
+                                scale,
+                                tensorInCInit // 2,
+                            ],
                         )
+
+                        objectfifo_release(
+                            ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
+                        )
+
+                        # middle
+                        for _ in for_(tensorInH - 2):
+                            elementActivactionsIn = act2_fifos[
+                                act2_fifo_names[i]
+                            ].acquire(ObjectFifoPort.Consume, 3)
+                            element0ActivactionsOut = act3_fifo_2[
+                                act3_fifo_names_2[i]
+                            ].acquire(ObjectFifoPort.Produce, 1)
+                            res = call(
+                                conv2dk3,
+                                [
+                                    elementActivactionsIn[0],
+                                    elementActivactionsIn[1],
+                                    elementActivactionsIn[2],
+                                    element0Weights,
+                                    element0ActivactionsOut,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCInit,
+                                    3,
+                                    3,
+                                    1,
+                                    scale,
+                                    tensorInCInit // 2,
+                                ],
+                            )
+
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, act2_fifo_names[i], 1
+                            )
+                            objectfifo_release(
+                                ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
+                            )
+                            yield_([])
+
+                        # last part
+                        elementActivactionsIn = act2_fifos[act2_fifo_names[i]].acquire(
+                            ObjectFifoPort.Consume, 2
+                        )
+                        element0ActivactionsOut = act3_fifo_2[
+                            act3_fifo_names_2[i]
+                        ].acquire(ObjectFifoPort.Produce, 1)
                         res = call(
                             conv2dk3,
                             [
                                 elementActivactionsIn[0],
                                 elementActivactionsIn[1],
-                                elementActivactionsIn[2],
+                                elementActivactionsIn[1],
                                 element0Weights,
                                 element0ActivactionsOut,
                                 tensorInW,
-                                tensorL2InC,
-                                tensorL2OutC,
+                                tensorInCInit,
+                                tensorInCInit,
                                 3,
                                 3,
-                                1,
+                                2,
                                 scale,
-                                tensorL2OutC // 2,
+                                tensorInCInit // 2,
                             ],
                         )
-
-                        objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, act2_fifo_names[i], 2
+                        )
+                        objectfifo_release(
+                            ObjectFifoPort.Produce, act3_fifo_names_2[i], 1
+                        )
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][1], 1
+                        )
                         yield_([])
-
-                    # last part
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_5_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            tensorL2InC,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            2,
-                            scale,
-                            tensorL2OutC // 2,
-                        ],
-                    )
-                    objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
-                    objectfifo_release(ObjectFifoPort.Produce, "act_5_4", 1)
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
-                    yield_([])
 
             # # 1x1 conv2d and add skip
-            @core(ComputeTile4, "conv2dk1_skip.o")
-            def core_body():
-                for _ in range_(sys.maxsize):
+            for i in range(n_cols):
 
-                    # acquire weights and rtps once
-                    element0Weights = wts_buf_02.acquire(ObjectFifoPort.Consume, 1)
-                    scale = memref.load(rtpComputeTile4, [0])
-                    skipScale = memref.load(rtpComputeTile4, [1])
+                @core(cores[i][2], conv3_kernels[i])
+                def core_body():
+                    for _ in for_(sys.maxsize):
 
-                    for _ in range_(tensorInH):
-                        element0ActivactionsIn = act_3_4.acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
-                        element1ActivactionsIn = act_5_4.acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
-                        elementSkipsIn = of_skip_buf.acquire(ObjectFifoPort.Consume, 1)
-                        elementActivactionsOut = outOFL2L3.acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
+                        # acquire weights and rtps once
+                        element0Weights = wts_sub_fifos[
+                            wts_sub_fifo_names[i][2]
+                        ].acquire(ObjectFifoPort.Consume, 1)
+                        scale = memref.load(rtp[i][2], [0])
+                        skipScale = memref.load(rtp[i][2], [1])
 
-                        call(
-                            conv2dk1_skip,
-                            [
-                                element0ActivactionsIn,
-                                element1ActivactionsIn,
-                                element0Weights,
-                                elementActivactionsOut,
-                                elementSkipsIn,
-                                tensorInW,
-                                tensorL3InC,
-                                tensorL3OutC,
-                                scale,
-                                skipScale,
-                            ],
+                        for _ in for_(tensorInH):
+                            element0ActivactionsIn = act3_fifo_1[
+                                act3_fifo_names_1[i]
+                            ].acquire(ObjectFifoPort.Consume, 1)
+                            element1ActivactionsIn = act3_fifo_2[
+                                act3_fifo_names_2[i]
+                            ].acquire(ObjectFifoPort.Consume, 1)
+
+                            elementActivactionsOut = conv3_out_fifo[i].acquire(
+                                ObjectFifoPort.Produce, 1
+                            )
+                            elementSkipsIn = skip_fifos[skip_fifo_names[i]].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            call(
+                                conv3_kernels_call[i],
+                                [
+                                    element0ActivactionsIn,
+                                    element1ActivactionsIn,
+                                    element0Weights,
+                                    elementActivactionsOut,
+                                    elementSkipsIn,
+                                    tensorInW,
+                                    tensorInCInit,
+                                    tensorInCRest,
+                                    scale,
+                                    skipScale,
+                                ],
+                            )
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, act3_fifo_names_1[i], 1
+                            )
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, act3_fifo_names_2[i], 1
+                            )
+                            objectfifo_release(
+                                ObjectFifoPort.Produce, conv3_out_fifo_names[i], 1
+                            )
+
+                            objectfifo_release(
+                                ObjectFifoPort.Consume, skip_fifo_names[i], 1
+                            )
+                            yield_([])
+                        objectfifo_release(
+                            ObjectFifoPort.Consume, wts_sub_fifo_names[i][2], 1
                         )
-                        objectfifo_release(ObjectFifoPort.Produce, "outOFL2L3", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "act_3_4", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "act_5_4", 1)
-                        objectfifo_release(ObjectFifoPort.Consume, "skip_buf", 1)
                         yield_([])
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_02", 1)
-                    yield_([])
 
             # instruction stream generation
-            activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
-            acitivationsOutSize32b = activationsInSize32b
-            totalWeightsSize32b = (
-                tensorL1InC * tensorL1OutC
-                + 3 * 3 * tensorL2InC * tensorL2OutC
-                + tensorL3InC * tensorL3OutC
+            activationsInSize32b = (tensorInW * tensorInH * tensorInCInit) // 4
+            acitivationsOutSize32b = (tensorInW * tensorInH * tensorInCRest) // 4
+
+            totalWeightsSize32b_init = (
+                tensorInCInit * tensorInCInit
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + 2 * tensorInCInit * tensorInCRest
             ) // 4
 
-            activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
-            weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
+            totalWeightsSize32b_rest = (
+                tensorInCInit * tensorInCRest
+                + 3 * 3 * tensorInCInit * tensorInCInit
+                + tensorInCInit * tensorInCRest
+            ) // 4
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
+            totalWeightsSize32b_complete = (
+                totalWeightsSize32b_init + repeat * totalWeightsSize32b_rest
+            )
+
+            activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
+            activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
+            weightsInL3_ty_init = MemRefType.get((totalWeightsSize32b_init,), int32_ty)
+            weightsInL3_ty_rest = MemRefType.get((totalWeightsSize32b_rest,), int32_ty)
+
+            weightsInL3_ty_complete = MemRefType.get(
+                (totalWeightsSize32b_complete,), int32_ty
+            )
+
+            @FuncOp.from_py_func(
+                activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
+            )
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-                if enableTrace:
-                    # Trace output
+                for c, col in enumerate(rtp_name):
+                    for r, row in enumerate(col):
+                        IpuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
 
-                    # Trace_Event0, Trace_Event1: Select which events to trace.
-                    # Note that the event buffers only appear to be transferred to DDR in
-                    # bursts of 256 bytes. If less than 256 bytes are written, you may not
-                    # see trace output, or only see it on the next iteration of your
-                    # kernel invocation, as the buffer gets filled up. Note that, even
-                    # though events are encoded as 4 byte words, it may take more than 64
-                    # events to fill the buffer to 256 bytes and cause a flush, since
-                    # multiple repeating events can be 'compressed' by the trace mechanism.
-                    # In order to always generate sufficient events, we add the "assert
-                    # TRUE" event to one slot, which fires every cycle, and thus fills our
-                    # buffer quickly.
+                IpuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=0)
+                IpuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=1)
 
-                    # Some events:
-                    # TRUE                       (0x01)
-                    # STREAM_STALL               (0x18)
-                    # LOCK_STALL                 (0x1A)
-                    # EVENTS_CORE_INSTR_EVENT_1  (0x22)
-                    # EVENTS_CORE_INSTR_EVENT_0  (0x21)
-                    # INSTR_VECTOR               (0x25)  Core executes a vecotr MAC, ADD or compare instruction
-                    # INSTR_LOCK_ACQUIRE_REQ     (0x2C)  Core executes a lock .acquire instruction
-                    # INSTR_LOCK_.release_REQ     (0x2D)  Core executes a lock .release instruction
-                    # EVENTS_CORE_PORT_RUNNING_1 (0x4F)
-                    # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
+                IpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=0)
 
-                    # Trace_Event0  (4 slots)
-                    ipu_write32(0, 4, 0x340E0, 0x4B222125)
-                    # Trace_Event1  (4 slots)
-                    ipu_write32(0, 4, 0x340E4, 0x2D2C1A4F)
+                IpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=0)
 
-                    # Event slots as configured above:
-                    # 0: Kernel executes vector instruction
-                    # 1: Event 0 -- Kernel starts
-                    # 2: Event 1 -- Kernel done
-                    # 3: Port_Running_0
-                    # 4: Port_Running_1
-                    # 5: Lock Stall
-                    # 6: Lock .acquire Instr
-                    # 7: Lock .release Instr
-
-                    # Stream_Switch_Event_Port_Selection_0
-                    # This is necessary to capture the Port_Running_0 and Port_Running_1 events
-                    ipu_write32(0, 4, 0x3FF00, 0x121)
-
-                    # Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-                    ipu_write32(0, 4, 0x340D0, 0x10000)
-
-                    # Start trace copy out.
-                    ipu_writebd_shimtile(
-                        bd_id=3,
-                        buffer_length=trace_sz_in_i32s,
-                        buffer_offset=acitivationsOutSize32b,
-                        enable_packet=0,
-                        out_of_order_id=0,
-                        packet_id=0,
-                        packet_type=0,
-                        column=0,
-                        column_num=1,
-                        d0_stepsize=0,
-                        d0_wrap=0,
-                        d1_stepsize=0,
-                        d1_wrap=0,
-                        d2_stepsize=0,
-                        ddr_id=2,
-                        iteration_current=0,
-                        iteration_stepsize=0,
-                        iteration_wrap=0,
-                        lock_acq_enable=0,
-                        lock_acq_id=0,
-                        lock_acq_val=0,
-                        lock_rel_id=0,
-                        lock_rel_val=0,
-                        next_bd=0,
-                        use_next_bd=0,
-                        valid_bd=1,
-                    )
-                    ipu_write32(0, 2, 0x1D20C, 0x3)
-
-                # write RTP parameters
-                IpuWriteRTPOp(
-                    "rtpComputeTile2", col=0, row=2, index=0, value=1
-                )  # scale
-                IpuWriteRTPOp(
-                    "rtpComputeTile3", col=0, row=3, index=0, value=1
-                )  # scale
-                IpuWriteRTPOp(
-                    "rtpComputeTile5", col=0, row=5, index=0, value=1
-                )  # scale
-                IpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=0, value=1
-                )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                IpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=1, value=0
-                )  # skip_scale
+                # #     # write RTP parameters
+                # IpuWriteRTPOp(
+                #     "rtpComputeTile02", col=0, row=2, index=0, value=1
+                # )  # scale
+                # IpuWriteRTPOp(
+                #     "rtpComputeTile03", col=0, row=3, index=0, value=1
+                # )  # scale
+                # IpuWriteRTPOp(
+                #     "rtpComputeTile05", col=0, row=5, index=0, value=1
+                # )  # scale
+                # IpuWriteRTPOp(
+                #     "rtpComputeTile04", col=0, row=4, index=0, value=1
+                # )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
+                # IpuWriteRTPOp(
+                #     "rtpComputeTile04", col=0, row=4, index=1, value=0
+                # )  # skip_scale
 
                 ipu_dma_memcpy_nd(
-                    metadata="inOF_act_L3L2",
+                    metadata="act1_00_02_01",
                     bd_id=0,
                     mem=inputFromL3,
                     sizes=[1, 1, 1, activationsInSize32b],
@@ -625,15 +874,40 @@ def bottleneck4AIEs():
                     sizes=[1, 1, 1, acitivationsOutSize32b],
                 )
                 ipu_dma_memcpy_nd(
-                    metadata="inOF_wts_0_L3L2",
+                    metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
-                    sizes=[1, 1, 1, totalWeightsSize32b],
+                    sizes=[1, 1, 1, totalWeightsSize32b_init],
                 )
 
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                ipu_dma_memcpy_nd(
+                    metadata="wts_1_L3L2",
+                    bd_id=1,
+                    mem=weightsFromL3,
+                    offsets=[0, 0, 0, totalWeightsSize32b_init],
+                    sizes=[1, 1, 1, totalWeightsSize32b_rest],
+                )
 
-    print(ctx.module)
+                ipu_dma_memcpy_nd(
+                    metadata="wts_2_L3L2",
+                    bd_id=1,
+                    mem=weightsFromL3,
+                    offsets=[
+                        0,
+                        0,
+                        0,
+                        totalWeightsSize32b_init + totalWeightsSize32b_rest,
+                    ],
+                    sizes=[1, 1, 1, totalWeightsSize32b_rest],
+                )
+
+                ipu_sync(column=1, row=0, direction=0, channel=0)
+
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
 
 
-bottleneck4AIEs()
+resnet_conv_x()

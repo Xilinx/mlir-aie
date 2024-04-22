@@ -15,7 +15,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
   ```Advanced → CPU Configuration → IPU```
 
-NOTE: Some manufacturers only provide Windows executables to update the BIOS. 
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS. 
 
 #### BIOS Settings:
 1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
