@@ -13,7 +13,6 @@ all: build/final.xclbin
 targetname = myEltwiseAdd
 trace_size = 8192
 
-
 VPATH := ../../../aie_kernels/aie2
 
 build/%.o: %.cc
@@ -28,6 +27,10 @@ build/aie_trace.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 
+
+build/aie_trace.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< ${trace_size} > $@
 
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
