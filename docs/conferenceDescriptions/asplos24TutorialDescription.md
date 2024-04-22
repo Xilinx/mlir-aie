@@ -33,7 +33,7 @@ Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI en
 | 11:10am | Exercise 3: Tracing vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 11:30am | Vectorizing on AIE | Phil | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
 | 11:40am | Exercise 4: Vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 12:00pm | Dataflow and larger designs | Sam | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 12:00pm | Dataflow and larger designs | Joe | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
 | 12:15pm | Exercises | All | [Programming Examples](../../programming_examples/) |
 | 12:30pm | Close Tutorial | All | |
 
