@@ -103,7 +103,6 @@ public:
         printbuffer(buffer.name(), buffer.getAddress().value(),
                     buffer.getAllocationSize());
       }
-      return signalPassFailure();
     }
   }
 };
@@ -195,7 +194,7 @@ public:
                   return a.getAddress().value() < b.getAddress().value();
                 });
       // Check if memory was exceeded on any bank and print debug info.
-      checkAndPrintOverflow(tile, numBanks, stacksize);
+      checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers);
     }
   }
 
@@ -354,7 +353,6 @@ public:
             printbuffer(buffer.name(), addr, buffer.getAllocationSize());
         }
       }
-      return signalPassFailure();
     }
   }
 };
@@ -384,10 +382,10 @@ struct AIEAssignBufferAddressesPass
     // Select allocation scheme
     if (clBasicAlloc) {
       // create alloc scheme
-      basicAlloc BasicAllocation(device);
+      BasicAllocation basicAlloc(device);
     } else {
       // create alloc scheme
-      bankAwareAlloc SimpleBankAwareAllocation(device);
+      SimpleBankAwareAllocation bankAwareAlloc(device);
     }
   }
 };
