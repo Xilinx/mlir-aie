@@ -17,8 +17,10 @@ N = 4096
 M = 64
 K = 64
 
-if len(sys.argv) == 2:
-    N = int(sys.argv[1])
+if len(sys.argv) == 3:
+    M = int(sys.argv[1])
+    K = int(sys.argv[2])
+    N = M * K
 
 
 def my_passthrough():

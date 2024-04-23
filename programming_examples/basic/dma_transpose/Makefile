@@ -13,11 +13,12 @@ SHELL := /bin/bash
 all: build/final.xclbin build/insts.txt
 
 targetname = dmaTranspose
-LENGTH ?= 4096
+M ?= 64
+K ?= 32
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} > $@
+	python3 $< ${M} ${K} > $@
 
 .PHONY: inst/insts.txt
 inst/insts.txt: aie2.py
@@ -44,7 +45,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --M ${M} --K ${K}
 
 clean:
 	rm -rf build _build inst ${targetname}.exe
