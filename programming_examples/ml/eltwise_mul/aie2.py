@@ -160,6 +160,7 @@ try:
     trace_size = 0 if (len(sys.argv) < 2) else int(sys.argv[1])
 except ValueError:
     print("Argument is not an integer")
+
 with mlir_mod_ctx() as ctx:
     my_eltwise_mul(trace_size)
     res = ctx.module.operation.verify()

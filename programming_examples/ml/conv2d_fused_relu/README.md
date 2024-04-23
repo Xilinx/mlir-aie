@@ -88,12 +88,5 @@ make
 
 To run the design:
 ```
-make run
-```
-
-### Prerequisites
-To install the dependencies, run the following command:
-```
-pip install -r requirements.txt
-
+make run_py
 ```
