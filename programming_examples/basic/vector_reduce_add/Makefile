@@ -19,7 +19,7 @@ all: build/final.xclbin build/insts.txt
 
 VPATH := ../../../aie_kernels/aie2
 
-build/%.o: %.cc
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
@@ -27,7 +27,7 @@ build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
-build/final.xclbin: build/aie.mlir build/reduce_add.o
+build/final.xclbin: build/aie.mlir build/reduce_add.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
