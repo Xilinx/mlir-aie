@@ -28,8 +28,8 @@ build/passThrough.cc.o: passThrough.cc
 	
 build/final_${PASSTHROUGH_SIZE}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

@@ -450,11 +450,11 @@ public:
   }
 };
 
-class IPUTargetModel : public AIE2TargetModel {
+class NPUTargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
 
 public:
-  IPUTargetModel() = default;
+  NPUTargetModel() = default;
 
   int columns() const override { return 5; }
 

@@ -3,8 +3,8 @@
 //
 // REQUIRES: ryzen_ai
 //
-// RUN: %python %S/aie2.py ipu 0 > ./aie.mlir
-// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: %python %S/aie2.py npu 0 > ./aie.mlir
+// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt ./aie.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt -l 4096 | FileCheck %s
+// RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt -l 4096 | FileCheck %s
 // CHECK: PASS!

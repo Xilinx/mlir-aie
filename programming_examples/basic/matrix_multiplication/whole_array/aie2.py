@@ -74,7 +74,7 @@ def my_matmul(M=512, K=512, N=512):
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memRef_inA_ty = T.memref(m * k, T.bf16())
             memRef_inB_ty = T.memref(k * n, T.bf16())
@@ -317,7 +317,7 @@ def my_matmul(M=512, K=512, N=512):
                     for i in range(n_cols):
                         C_col_offset = i * n * word_size_out
                         C_offset_in_i32s = (C_col_offset + C_row_offset) // 4
-                        ipu_dma_memcpy_nd(
+                        npu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
                             bd_id=0,
                             mem=C,
@@ -345,7 +345,7 @@ def my_matmul(M=512, K=512, N=512):
                             )
                             A_col_offset_in_i32s = i * m * K * word_size_in // 4
                             B_col_offset_in_i32s = i * n * word_size_in // 4
-                            ipu_dma_memcpy_nd(
+                            npu_dma_memcpy_nd(
                                 metadata=inA_fifo_names[i],
                                 bd_id=2 * tile_row + 1,
                                 mem=A,
@@ -358,7 +358,7 @@ def my_matmul(M=512, K=512, N=512):
                                 sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
                                 strides=[0, k_in_i32s, K_in_i32s],
                             )
-                            ipu_dma_memcpy_nd(
+                            npu_dma_memcpy_nd(
                                 metadata=inB_fifo_names[i],
                                 bd_id=2 * tile_row + 2,
                                 mem=B,
@@ -367,7 +367,7 @@ def my_matmul(M=512, K=512, N=512):
                                 strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
                             )
                     for i in range(n_cols):
-                        ipu_sync(column=i, row=0, direction=0, channel=0)
+                        npu_sync(column=i, row=0, direction=0, channel=0)
 
     # print(ctx.module.operation.verify())
     print(ctx.module)

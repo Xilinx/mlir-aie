@@ -5,7 +5,7 @@
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -DBIT_WIDTH=8 -c %S/../../../aie_kernels/aie2/threshold.cc -o ./threshold.cc.o
 // RUN: %python %S/aie2_colorThreshold.py 1920 1080 > ./aie.mlir
-// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: %python aiecc.py --xbridge --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt ./aie.mlir
 // RUN: g++ %S/test.cpp -o test.exe -std=c++23 -Wall -DCOLORTHRESHOLD_WIDTH=1920 -DCOLORTHRESHOLD_HEIGHT=1080 -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp -I%S/../../utils %S/../../utils/OpenCVUtils.cpp %xrt_flags %opencv_flags  -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!

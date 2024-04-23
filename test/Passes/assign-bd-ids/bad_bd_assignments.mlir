@@ -11,7 +11,7 @@
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_2 = aie.tile(0, 2)
     %double_buffer = aie.buffer(%tile_0_2) : memref<32xi32>
     %lock_Y = aie.lock(%tile_0_2) {init = 0 : i32}
@@ -30,7 +30,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_2 = aie.tile(0, 2)
     %double_buffer = aie.buffer(%tile_0_2) : memref<32xi32>
     %lock_X = aie.lock(%tile_0_2) {init = 0 : i32}
@@ -49,7 +49,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %buffer_0_1 = aie.buffer(%tile_0_1) : memref<32xi32>
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
@@ -69,7 +69,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
@@ -90,7 +90,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
@@ -110,7 +110,7 @@ module {
 // -----
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
