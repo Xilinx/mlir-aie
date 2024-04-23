@@ -30,9 +30,9 @@ class object_fifo:
 ```
 We will now go over each of the inputs, what they represents and why they are required by the abstraction. We will first focus on the mandatory inputs and in a later section of the guide on the default valued ones (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
 
-First of all, an Object FIFO has a unique `name` which is required for the lowering steps. It functions as an ordered buffer that has `depth`-many objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). The `depth` can be either an integer or an array of integers. The latter is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the Key Object FIFO Patterns [section](../section-2b/02_Broadcast/README.md#object-fifo-broadcast-pattern).
+First of all, an Object FIFO has a unique `name` which is required for the lowering steps. It functions as an ordered buffer that has `depth`-many objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). The `depth` can be either an integer or an array of integers. The latter is explained further down in this section.
 
-An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. Below, you can see an example of an Object FIFO created between producer tile A and consumer tile B:
+An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also refered to as the `actors` of the Object FIFO, based on dataflow theory terminology. Below, you can see an example of an Object FIFO created between producer tile A and consumer tile B:
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
@@ -114,6 +114,75 @@ def core_body():
         of0.release(ObjectFifoPort.Consume, 1)
         yield_([])
 ```
+
+### Specifying the Object FIFO Depth as an Array
+
+As was mentioned in the beginning of this section, the AIE architecture is a spatial architecture that requires explicit data movement. As such, while the Object FIFO's conceptual design is that of an ordered buffer between two or more AIE tiles, in reality its conceptual depth is spread out over multiple resource pools that may be located at different levels of the memory hierarchy and on different tiles.
+
+A more in-depth yet still logical view of the Object FIFO's depth is that the producer and each consumer have their own working resource pool available in their local memory modules which they can use to send and receive data in relation to the data movement described by the fifo. The Object FIFO primitive and its lowering typically allocate the depth of each of these pools such that the resulting behaviour matches that of the conceptual depth.
+
+The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to more finely control it.
+
+For example in the code snippet below `of0` describes the data movement between producer A and consumer B:
+```python
+A = tile(1, 3)
+B = tile(2, 4)
+of0 = object_fifo("objfifo0", A, B, 3, T.memref(256, T.i32()))
+```
+The conceptual depth of the Object FIFO is `3`. The reasoning behind this choice of depth can be understood by looking at the acquire and release patterns of the two actors:
+```python
+@core(A)
+def core_body():
+    for _ in range_(9):
+        elem0 = of0.acquire(ObjectFifoPort.Produce, 1)
+        call(produce_func, [elem0])
+        of0.release(ObjectFifoPort.Produce, 1)
+        yield_([])
+
+@core(B)
+def core_body():
+    for _ in range_(9):
+        elems = of0.acquire(ObjectFifoPort.Consume, 2)
+        call(consume_func, [elems[0], elems[1]])
+        of0.release(ObjectFifoPort.Consume, 2)
+        yield_([])
+```
+Each iteration:
+* producer A acquires one object to produce into, calls the kernel function `produce_func` to store new data in it for B to consume, and releases the object,
+* consumer B acquires two objects to consume, reads the data and applies kernel function `consume_func`, then releases both objects.
+
+A conceptual depth of `2` would have sufficed for this system to function without deadlocking. However, with a depth of `3`, A and B can execute concurrently, i.e., while B consumes two objects and applies the kernel function A has one object available into which it can produce at the same time.
+
+The equivalent of this conceptual depth of `3` using an array of depths would be:
+```python
+of0 = object_fifo("objfifo0", A, B, [1, 2], T.memref(256, T.i32()))
+```
+where `1` is the number of resources available locally to producer A and `2` is the number available to consumer B.
+
+> **NOTE:**  For a correct lowering, this feature should be used in situations where the producers and consumers of the Object FIFO are running on different tiles.
+
+The feature of specifying the depths of the resource pools for different actors of the Object FIFO is used to support a specific dependency that can arise when working with multiple Object FIFOs and it is further explained in the Key Object FIFO Patterns [section](../section-2b/02_Broadcast/README.md#object-fifo-broadcast-pattern).
+
+### Advanced Topic : Data Movement Accelerators
+
+The following topic is not required to understand the rest of this guide. 
+
+This part of the guide introduces a few lower level concepts in the AIE hardware and takes a closer look at the individual resource pools on each tile and the reasoning behind their depths.
+
+Every tile in the AIE array has its own dedicated Data Movement Accelerator (or `DMA`). The DMAs are responsible for moving data from the tile's memory module to the AXI stream interconnect or from the stream to the memory module. In the case of compute tiles, both the compute core and the tile's DMA are able to access the tile's memory module. Because of this, there is a need for a <u>synchronization mechanism</u> that will allow the compute core and the DMA to signal to each other when data is available for the other party to read or write in order to avoid data corruption. This is very similar to the concept of the Object FIFO where producers and consumers must first acquire objects before they can access them, and release them when they are done so they may be acquired by the other party.
+
+The figure below showcases a high-level view of a compute tile, where the compute core and the DMA are both reading and writing data to a location `buff` in the local memory module:
+
+<img src="./../../assets/ComputeTile.png" height="250">
+
+The intent of this high-level view is to showcase how the DMA is able to interact with memory locations while the core is computing. It can send the data in them over the AXI stream and receive data from the stream to write into the memory locations as well, for example for the core to execute on. Because of this potential for concurrency, it is often the case that a ping-pong, or double, buffer is used instead of a single buffer. This is showcased in the figure below where the `buff` has been extended to a `buff_ping` and `buff_pong`:
+
+<img src="./../../assets/ComputeTile_2.png" height="250">
+
+## <u>Exercises</u>
+1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[1, 2]` which is sufficient for that design to run without deadlocking. With the advanced knowledge on the topic of DMAs, do you think those depths suffice for the compute cores on tiles A and B to run concurrently with their local DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object was allocated for the design which results in the compute core and the DMA having to wait while the other party respectively computes or moves the data. This is similar for consumer B, where the compute core acquires both allocated objects, leaving none for the DMA to interact with." height=25>
+
+1. How would you update the depths? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
 -----
 [[Up](..)] [[Next - Section 2b](../section-2b/)]
