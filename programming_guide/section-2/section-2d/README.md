@@ -18,7 +18,7 @@ ShimTile = tile(0, 0)
 MemTile = tile(0, 1)
 ComputeTile = tile(0, 2)
 ```
-For our scale out design we will keep a using a single Shim tile and a single Mem tile but we will increase the number of compute tiles to three. We can do so cleanly and efficiently in the following way:
+For our scale out design we will keep a using a single Shim tile and a single Mem tile, but we will increase the number of compute tiles to three. We can do so cleanly and efficiently in the following way:
 ```python
 n_cores = 3
 
@@ -28,7 +28,7 @@ ComputeTiles = [tile(0, 2 + i) for i in range(n_cores)]
 ```
 Each compute tile can now be accessed by indexing into the `ComputeTiles` array.
 
-Once the tiles have been declared the next step is to setup the data movement using Object FIFOs. The simple design has a total of four double-buffered Object FIFOs and two object_fifo_links. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from the Shim tile to the Mem tile and is linked to `of_in0` which brings data from the Mem tile to the compute tile. For the output side, `of_out0` brings data from the compute tile to the Mem tile where it is linked to `of_out` to bring the data out through the Shim tile. The corresponding code is shown below:
+Once the tiles have been declared, the next step is to set up the data movement using Object FIFOs. The simple design has a total of four double-buffered Object FIFOs and two `object_fifo_links`. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from the Shim tile to the Mem tile and is linked to `of_in0` which brings data from the Mem tile to the compute tile. For the output side, `of_out0` brings data from the compute tile to the Mem tile where it is linked to `of_out` to bring the data out through the Shim tile. The corresponding code is shown below:
 ```python
 data_size = 48
 buffer_depth = 2
@@ -106,7 +106,7 @@ def core_body():
         of_out0.release(ObjectFifoPort.Produce, 1)
         yield_([])
 ```
-Once again we apply the same logic and use a for loop over our three cores to write the code which will be executed on the three compute tiles. Each tile will index the `inX_fifos` and `outX_fifos` maps to retrieve the Object FIFOs it will acquire and release from. This process results in the following code:
+Once again we apply the same logic and use a `for`-loop over our three cores to write the code which will be executed on the three compute tiles. Each tile will index the `inX_fifos` and `outX_fifos` maps to retrieve the Object FIFOs it will acquire and release from. This process results in the following code:
 ```python
 for i in range(n_cores):
     # Compute tile i
