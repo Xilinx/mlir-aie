@@ -273,241 +273,6 @@ Example:
 &laquo;unnamed&raquo; | index
 
 
-### `aiex.ipu.dma_memcpy_nd` (::xilinx::AIEX::IpuDmaMemcpyNdOp)
-
-_Half dma operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
-              custom<DynamicIndexList>($offsets, $static_offsets) ``
-              custom<DynamicIndexList>($sizes, $static_sizes) ``
-              custom<DynamicIndexList>($strides, $static_strides) `)`
-              attr-dict `:` type($memref)
-```
-
-An nd half dma operator.
-
-Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
-pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
-and `static_strides`. The operator references the target channel through the `metadata`
-symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
-when lowered further. The `issue_token` attribute specifies whether the execution of this
-operation should issue a token which can be received and read for synchronization purposes.
-This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
-and **is always set to true for** `S2MM` channels.
-
-Traits: `AttrSizedOperandSegments`
-
-Interfaces: `MyOffsetSizeAndStrideOpInterface`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>x</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
-<tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
-<tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
-<tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
-<tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
-<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
-<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `memref` | memref of any type values
-| `offsets` | variadic of 64-bit signless integer
-| `sizes` | variadic of 64-bit signless integer
-| `strides` | variadic of 64-bit signless integer
-
-
-### `aiex.ipu.dma_wait` (::xilinx::AIEX::IpuDmaWaitOp)
-
-_Blocking operation to wait for a DMA to complete execution._
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.dma_wait` attr-dict
-```
-
-The IpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
-and issues a task-complete-token.
-
-Example:
-```mlir
-  ...
-  aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
-  ...
-  aiex.ipu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
-  ...
-  aiex.ipu.dma_wait { symbol = @out0 }
-```
-Here, we have an objectfifo with symbol name `out0`, which is then referenced in the
-`ipu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
-an `ipu.dma_wait` operation references the same symbol to block until the respective DMA
-has executed all of its tasks.
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-</table>
-
-
-### `aiex.ipu.rtp_write` (::xilinx::AIEX::IpuWriteRTPOp)
-
-_Rtp write operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.rtp_write` `(` $col `,` $row `,` $index `,` $value `)` attr-dict
-```
-
-rtp write operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>buffer_sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-
-### `aiex.ipu.shimtile_push_queue` (::xilinx::AIEX::IpuShimTilePushQueueOp)
-
-_Bd queue push operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.shimtile_push_queue` attr-dict
-```
-
-bd queue push operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-
-### `aiex.ipu.sync` (::xilinx::AIEX::IpuSyncOp)
-
-_Sync operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.sync` attr-dict
-```
-
-tct sync operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>direction</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-
-### `aiex.ipu.write32` (::xilinx::AIEX::IpuWrite32Op)
-
-_Write32 operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.write32` attr-dict
-```
-
-write32 operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-</table>
-
-
-### `aiex.ipu.writebd_shimtile` (::xilinx::AIEX::IpuWriteBdExShimTileOp)
-
-_Dma operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.ipu.writebd_shimtile` attr-dict
-```
-
-writebd_shimtile operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>ddr_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>buffer_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>buffer_offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>enable_packet</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>packet_type</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d0_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d0_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d1_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d1_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>d2_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>iteration_current</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>iteration_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>iteration_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>use_next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>valid_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>lock_rel_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>lock_rel_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>lock_acq_enable</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>lock_acq_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>lock_acq_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-
 ### `aiex.iter` (::xilinx::AIEX::IterOp)
 
 _An iter operation_
@@ -683,6 +448,241 @@ Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 | Operand | Description |
 | :-----: | ----------- |
 | `tile` | index
+
+
+### `aiex.npu.dma_memcpy_nd` (::xilinx::AIEX::NpuDmaMemcpyNdOp)
+
+_Half dma operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.dma_memcpy_nd` `(` $x `,` $y `,` $memref ``
+              custom<DynamicIndexList>($offsets, $static_offsets) ``
+              custom<DynamicIndexList>($sizes, $static_sizes) ``
+              custom<DynamicIndexList>($strides, $static_strides) `)`
+              attr-dict `:` type($memref)
+```
+
+An nd half dma operator.
+
+Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
+pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
+and `static_strides`. The operator references the target channel through the `metadata`
+symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
+when lowered further. The `issue_token` attribute specifies whether the execution of this
+operation should issue a token which can be received and read for synchronization purposes.
+This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
+and **is always set to true for** `S2MM` channels.
+
+Traits: `AttrSizedOperandSegments`
+
+Interfaces: `MyOffsetSizeAndStrideOpInterface`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>x</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
+<tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
+<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `memref` | memref of any type values
+| `offsets` | variadic of 64-bit signless integer
+| `sizes` | variadic of 64-bit signless integer
+| `strides` | variadic of 64-bit signless integer
+
+
+### `aiex.npu.dma_wait` (::xilinx::AIEX::NpuDmaWaitOp)
+
+_Blocking operation to wait for a DMA to complete execution._
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.dma_wait` attr-dict
+```
+
+The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
+and issues a task-complete-token.
+
+Example:
+```mlir
+  ...
+  aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
+  ...
+  aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+  ...
+  aiex.npu.dma_wait { symbol = @out0 }
+```
+Here, we have an objectfifo with symbol name `out0`, which is then referenced in the
+`npu.dma_memcpy_nd` operation as the target for the respective DMA operation. Afterwards,
+an `npu.dma_wait` operation references the same symbol to block until the respective DMA
+has executed all of its tasks.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+
+### `aiex.npu.rtp_write` (::xilinx::AIEX::NpuWriteRTPOp)
+
+_Rtp write operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.rtp_write` `(` $col `,` $row `,` $index `,` $value `)` attr-dict
+```
+
+rtp write operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>buffer_sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aiex.npu.shimtile_push_queue` (::xilinx::AIEX::NpuShimTilePushQueueOp)
+
+_Bd queue push operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.shimtile_push_queue` attr-dict
+```
+
+bd queue push operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aiex.npu.sync` (::xilinx::AIEX::NpuSyncOp)
+
+_Sync operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.sync` attr-dict
+```
+
+tct sync operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>direction</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `aiex.npu.write32` (::xilinx::AIEX::NpuWrite32Op)
+
+_Write32 operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.write32` attr-dict
+```
+
+write32 operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+</table>
+
+
+### `aiex.npu.writebd_shimtile` (::xilinx::AIEX::NpuWriteBdExShimTileOp)
+
+_Dma operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.writebd_shimtile` attr-dict
+```
+
+writebd_shimtile operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>ddr_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>buffer_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>buffer_offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>enable_packet</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet_type</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d2_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_current</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>use_next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>valid_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_rel_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_rel_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_enable</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 
 ### `aiex.place` (::xilinx::AIEX::PlaceOp)
