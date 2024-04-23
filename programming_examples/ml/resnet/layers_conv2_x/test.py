@@ -15,8 +15,10 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
+
 
 def main(opts):
     design = "resnet_conv2_x_int8"
@@ -51,16 +53,28 @@ def main(opts):
     int_inp = torch.randint(1, 10, (1, 64, 32, 32)).type(torch.FloatTensor)
     block_0_int_weight_1 = torch.randint(10, 20, (64, 64, 1, 1)).type(torch.FloatTensor)
     block_0_int_weight_2 = torch.randint(10, 20, (64, 64, 3, 3)).type(torch.FloatTensor)
-    block_0_int_weight_3 = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
-    block_0_int_weight_skip = torch.randint(10, 20, (256, 64, 1, 1)).type(torch.FloatTensor)
+    block_0_int_weight_3 = torch.randint(10, 20, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
+    block_0_int_weight_skip = torch.randint(10, 20, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
 
-    block_1_int_weight_1 = torch.randint(20, 30, (64, 256, 1, 1)).type(torch.FloatTensor)
+    block_1_int_weight_1 = torch.randint(20, 30, (64, 256, 1, 1)).type(
+        torch.FloatTensor
+    )
     block_1_int_weight_2 = torch.randint(20, 30, (64, 64, 3, 3)).type(torch.FloatTensor)
-    block_1_int_weight_3 = torch.randint(20, 30, (256, 64, 1, 1)).type(torch.FloatTensor)
+    block_1_int_weight_3 = torch.randint(20, 30, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
 
-    block_2_int_weight_1 = torch.randint(30, 40, (64, 256, 1, 1)).type(torch.FloatTensor)
+    block_2_int_weight_1 = torch.randint(30, 40, (64, 256, 1, 1)).type(
+        torch.FloatTensor
+    )
     block_2_int_weight_2 = torch.randint(30, 40, (64, 64, 3, 3)).type(torch.FloatTensor)
-    block_2_int_weight_3 = torch.randint(30, 40, (256, 64, 1, 1)).type(torch.FloatTensor)
+    block_2_int_weight_3 = torch.randint(30, 40, (256, 64, 1, 1)).type(
+        torch.FloatTensor
+    )
 
     init_scale = 0.5
     block_0_relu_1 = 0.5
@@ -151,7 +165,6 @@ def main(opts):
         trace_size=trace_size,
     )
 
-
     # ------------------------------------------------------
     # Define your golden reference
     # ------------------------------------------------------
@@ -167,7 +180,12 @@ def main(opts):
             # Bottleneck 0
             self.block_0_conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
             self.block_0_conv2 = nn.Conv2d(
-                planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
+                planes,
+                planes,
+                kernel_size=3,
+                padding=1,
+                padding_mode="zeros",
+                bias=False,
             )
             self.block_0_conv3 = nn.Conv2d(
                 planes, self.expansion * planes, kernel_size=1, bias=False
@@ -182,7 +200,12 @@ def main(opts):
                 self.expansion * planes, planes, kernel_size=1, bias=False
             )
             self.block_1_conv2 = nn.Conv2d(
-                planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
+                planes,
+                planes,
+                kernel_size=3,
+                padding=1,
+                padding_mode="zeros",
+                bias=False,
             )
             self.block_1_conv3 = nn.Conv2d(
                 planes, self.expansion * planes, kernel_size=1, bias=False
@@ -197,7 +220,12 @@ def main(opts):
                 self.expansion * planes, planes, kernel_size=1, bias=False
             )
             self.block_2_conv2 = nn.Conv2d(
-                planes, planes, kernel_size=3, padding=1, padding_mode="zeros", bias=False
+                planes,
+                planes,
+                kernel_size=3,
+                padding=1,
+                padding_mode="zeros",
+                bias=False,
             )
             self.block_2_conv3 = nn.Conv2d(
                 planes, self.expansion * planes, kernel_size=1, bias=False
@@ -209,7 +237,9 @@ def main(opts):
 
         def forward(self, x):
             # **************** Bottleneck 0 ****************
-            block_0_conv1_out = self.block_0_conv1(x) * init_scale * block_0_weight_scale1
+            block_0_conv1_out = (
+                self.block_0_conv1(x) * init_scale * block_0_weight_scale1
+            )
             block_0_relu1_out = torch.clamp(
                 torch.round(self.block_0_relu1(block_0_conv1_out) / block_0_relu_1),
                 min,
@@ -244,7 +274,9 @@ def main(opts):
                 block_0_rhf_same_scale + block_0_lhs_same_scale
             )
             block_0_final_out = torch.clamp(
-                torch.round(self.block_0_relu3(block_0_skip_add) / block_0_relu_3), min, max
+                torch.round(self.block_0_relu3(block_0_skip_add) / block_0_relu_3),
+                min,
+                max,
             )
             # **************** Bottleneck 1 ****************
             block_1_conv1_out = (
@@ -276,9 +308,13 @@ def main(opts):
                 torch.round(block_1_conv3_out / block_0_relu_3), -128, 127
             )
 
-            block_1_skip_add = block_0_relu_3 * (block_1_rhf_same_scale + block_0_final_out)
+            block_1_skip_add = block_0_relu_3 * (
+                block_1_rhf_same_scale + block_0_final_out
+            )
             block_1_final_out = torch.clamp(
-                torch.round(self.block_1_relu3(block_1_skip_add) / block_1_relu_3), min, max
+                torch.round(self.block_1_relu3(block_1_skip_add) / block_1_relu_3),
+                min,
+                max,
             )
 
             # **************** Bottleneck 2 ****************
@@ -311,7 +347,9 @@ def main(opts):
                 torch.round(block_2_conv3_out / block_1_relu_3), -128, 127
             )
 
-            block_2_skip_add = block_1_relu_3 * (block_2_rhf_same_scale + block_1_final_out)
+            block_2_skip_add = block_1_relu_3 * (
+                block_2_rhf_same_scale + block_1_final_out
+            )
             block_2_final_out = block_2_relu_3 * (
                 torch.clamp(
                     torch.round(self.block_2_relu3(block_2_skip_add) / block_2_relu_3),
@@ -320,7 +358,6 @@ def main(opts):
                 )
             )
             return block_2_final_out
-
 
     # ------------------------------------------------------
     # Pytorch baseline
@@ -347,7 +384,9 @@ def main(opts):
     # ------------------------------------------------------
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
+    before_input.tofile(
+        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
+    )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
@@ -407,7 +446,9 @@ def main(opts):
         stop = time.time_ns()
 
         if enable_trace:
-            aie_output, trace = extract_trace(aie_output, shape_out, dtype_out, trace_size)
+            aie_output, trace = extract_trace(
+                aie_output, shape_out, dtype_out, trace_size
+            )
             write_out_trace(trace, trace_file)
 
         npu_time = stop - start
@@ -419,7 +460,9 @@ def main(opts):
     temp_out = aie_output.reshape(32, 32, 32, 8)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(256, 32, 32)
-    ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d")
+    ofm_mem_fmt.tofile(
+        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
+    )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
     # ------------------------------------------------------
@@ -435,6 +478,7 @@ def main(opts):
     )
 
     print("\nPASS!\n")
+
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()

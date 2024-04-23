@@ -15,8 +15,10 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
+
 
 def main(opts):
     design = "bottleneck_int8"
@@ -90,7 +92,6 @@ def main(opts):
         trace_size=trace_size,
     )
 
-
     # ------------------------------------------------------
     # Define your golden reference
     # ------------------------------------------------------
@@ -117,13 +118,14 @@ def main(opts):
                 torch.round(self.relu2(conv2_out) / inp_scale3), min, max
             )
             conv3_out = self.conv3(relu2_out) * inp_scale3 * weight_scale3
-            same_scale_init = torch.clamp(torch.round(conv3_out / inp_scale1), -128, 127)
+            same_scale_init = torch.clamp(
+                torch.round(conv3_out / inp_scale1), -128, 127
+            )
             skip_add = inp_scale1 * (same_scale_init + int_inp)
             final_out = inp_scale4 * (
                 torch.clamp(torch.round(skip_add / inp_scale4), min, max)
             )
             return final_out
-
 
     # ------------------------------------------------------
     # Pytorch baseline
@@ -141,7 +143,9 @@ def main(opts):
     # ------------------------------------------------------
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
+    before_input.tofile(
+        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
+    )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
@@ -161,7 +165,9 @@ def main(opts):
         stop = time.time_ns()
 
         if enable_trace:
-            aie_output, trace = extract_trace(aie_output, shape_out, dtype_out, trace_size)
+            aie_output, trace = extract_trace(
+                aie_output, shape_out, dtype_out, trace_size
+            )
             write_out_trace(trace, trace_file)
 
         npu_time = stop - start
@@ -173,7 +179,9 @@ def main(opts):
     temp_out = aie_output.reshape(32, 32, 32, 8)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(256, 32, 32)
-    ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d")
+    ofm_mem_fmt.tofile(
+        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
+    )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
     # ------------------------------------------------------
@@ -189,6 +197,7 @@ def main(opts):
     )
 
     print("\nPASS!\n")
+
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
