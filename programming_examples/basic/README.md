@@ -21,4 +21,3 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Vector Reduce Min](./vector_reduce_min) - Single tile performs a reduction of a vector to return the `min` of the elements.
 * [Vector Exp](./vector_exp) - A simple element wise exponent function, using the look up table capabilities of the AI Engine.
 * [Matrix Multiplication](./matrix_multiplication) - This directory contains multiple designs spanning: single core and multi-core (whole array) matrix-matrix multiplication, and matrix-vector multiplication designs. It also contains sweep infrastructure for benchmarking.
-* [Hello World (printf log)](./log_hello_world) - Single tile performs a self-query and `printf` function where printed data is moved from local buffers to external memory to be read by the host processor.
