@@ -8,6 +8,7 @@
 
 from aie.dialects.aiex import *
 
+
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     trace_size_words = trace_size // 4
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint32)
