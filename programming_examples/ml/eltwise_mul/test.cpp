@@ -84,7 +84,6 @@ int main(int argc, const char *argv[]) {
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
   size_t INOUT2_SIZE = INOUT2_VOLUME * sizeof(INOUT2_DATATYPE);
 
-  // TODO Remove trace for now?
   size_t OUT_SIZE = INOUT2_SIZE + trace_size;
 
   srand(time(NULL));

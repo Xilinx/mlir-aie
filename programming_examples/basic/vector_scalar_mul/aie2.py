@@ -15,11 +15,11 @@ from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar(trace_size):
-    N = 4096
+def my_vector_scalar(vector_size, trace_size):
+    N = vector_size
     N_in_bytes = N * 4
-    n = 1024
-    N_div_n = N // n
+    N_div_n = 4  # chop input vector into 4 sub-vectors
+    n = N // N_div_n
 
     buffer_depth = 2
 
@@ -99,9 +99,13 @@ def my_vector_scalar(trace_size):
 
 
 try:
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+    vector_size = int(sys.argv[1])
+    if vector_size % 64 != 0 or vector_size <= 512:
+        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+        raise ValueError
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
-    print("Argument is not an integer")
+    print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(trace_size)
+    my_vector_scalar(vector_size, trace_size)
     print(ctx.module)

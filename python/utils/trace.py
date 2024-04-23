@@ -25,17 +25,6 @@ def write_out_trace(trace, file_name):
         f.write(out_str)
 
 
-# trace_utils.py -*- Python -*-
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-from aie.dialects.aiex import *
-
-
 def pack4bytes(b3, b2, b1, b0):
     w = (b3 & 0xFF) << 24
     w |= (b2 & 0xFF) << 16
