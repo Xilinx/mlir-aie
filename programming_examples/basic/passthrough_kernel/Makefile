@@ -6,35 +6,35 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-VPATH := ../../../aie_kernels/generic
+include ${srcdir}/../../makefile-common
 
 PASSTHROUGH_SIZE = 4096
-
 targetname = passThroughKernel
+VPATH := ${srcdir}/../../../aie_kernels/generic
 
 .PHONY: all template clean
 
 all: build/final_${PASSTHROUGH_SIZE}.xclbin
 
-build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir: aie2.py
+build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${PASSTHROUGH_SIZE} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 	
 build/final_${PASSTHROUGH_SIZE}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
