@@ -165,6 +165,14 @@ else:
     opencv_flags = ""
 config.substitutions.append(("%opencv_flags", opencv_flags))
 
+try:
+    import torch
+
+    config.available_features.add("torch")
+except ImportError:
+    print("torch not found", file=sys.stderr)
+    pass
+
 VitisSysrootFlag = ""
 if "x86_64" in config.aieHostTarget:
     config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))

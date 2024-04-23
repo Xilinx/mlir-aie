@@ -32,4 +32,4 @@ clean:
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 run_py: 
-	${powershell} python3 test.py
+	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
