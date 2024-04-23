@@ -52,7 +52,7 @@ def my_reduce_min():
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "reduce_min.cc.o")
+        @core(ComputeTile2, "reduce_min.o")
         def core_body():
             for _ in for_(0xFFFFFFFF):
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
