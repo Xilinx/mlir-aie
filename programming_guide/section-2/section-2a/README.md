@@ -165,7 +165,7 @@ The feature of specifying the depths of the resource pools for different actors 
 
 ### Advanced Topic : Data Movement Accelerators
 
-The following topic is not required to understand the rest of this guide. 
+**The following topic is not required to understand the rest of this guide.**
 
 This part of the guide introduces a few lower level concepts in the AIE hardware and takes a closer look at the individual resource pools on each tile and the reasoning behind their depths.
 
@@ -179,8 +179,10 @@ The intent of this high-level view is to showcase how the DMA is able to interac
 
 <img src="./../../assets/ComputeTile_2.png" height="250">
 
+> **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2f](../section-2f/README.md).
+
 ## <u>Exercises</u>
-1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[1, 2]` which is sufficient for that design to run without deadlocking. With the advanced knowledge on the topic of DMAs, do you think those depths suffice for the compute cores on tiles A and B to run concurrently with their local DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object was allocated for the design which results in the compute core and the DMA having to wait while the other party respectively computes or moves the data. This is similar for consumer B, where the compute core acquires both allocated objects, leaving none for the DMA to interact with." height=25>
+1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[1, 2]`. With the advanced knowledge on the topic of DMAs, do you think those depths suffice for the compute cores on tiles A and B to run concurrently with their local DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object was allocated for the design which results in the compute core and the DMA having to wait while the other party respectively computes or moves the data. This is similar for consumer B, where the compute core acquires both allocated objects, leaving none for the DMA to interact with." height=25>
 
 1. How would you update the depths? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
