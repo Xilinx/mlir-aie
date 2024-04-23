@@ -10,7 +10,7 @@ include ../../makefile-common
 
 all: build/final.xclbin
 
-targetname = vectorBiasAdd
+targetname = vectorScalarAdd
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
