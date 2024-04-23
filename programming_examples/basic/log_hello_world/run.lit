@@ -10,5 +10,5 @@
 // RUN: %python %S/elfStringParser.py --input . --output elf_string.csv
 // RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt -e elf_string.csv | FileCheck %s
 // CHECK: Starting kernel execution
-// CHECK: Core Location col={{.*} row=2
+// CHECK: Core Location col={{.*}} row=2
 // CHECK: Completed executing. cycles=
