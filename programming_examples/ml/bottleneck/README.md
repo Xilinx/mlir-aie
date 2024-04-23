@@ -116,10 +116,3 @@ To run the design:
 ```
 make run_py
 ```
-
-### Prerequisites
-To install the dependencies, run the following command:
-```
-pip install -r requirements.txt
-
-```
