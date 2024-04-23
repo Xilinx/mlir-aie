@@ -13,15 +13,15 @@ ACDC_AIE = $(dir $(shell which aie-opt))/..
 SHELL := /bin/bash
 
 targetname = matrixAddOne
-devicename = ipu
+devicename = npu
 col = 0
 
 all: build/final.xclbin
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

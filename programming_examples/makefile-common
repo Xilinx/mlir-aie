@@ -1,4 +1,4 @@
-# Contains common definitions used across the Makefiles of ipu-xrt tests.
+# Contains common definitions used across the Makefiles of npu-xrt tests.
 REPO_ROOT ?= $(shell realpath $(dir $(shell which aie-opt))/../../..)
 INSTALL_ROOT ?= $(shell realpath $(dir $(shell which aie-opt))/..)
 

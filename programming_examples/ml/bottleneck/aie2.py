@@ -38,7 +38,7 @@ tensorL3OutC = tensorL3InC * 4
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def deviceBody():
 
             # define types
@@ -543,9 +543,9 @@ def bottleneck4AIEs():
                     # EVENTS_CORE_PORT_RUNNING_0 (0x4B)
 
                     # Trace_Event0  (4 slots)
-                    ipu_write32(0, 4, 0x340E0, 0x4B222125)
+                    npu_write32(0, 4, 0x340E0, 0x4B222125)
                     # Trace_Event1  (4 slots)
-                    ipu_write32(0, 4, 0x340E4, 0x2D2C1A4F)
+                    npu_write32(0, 4, 0x340E4, 0x2D2C1A4F)
 
                     # Event slots as configured above:
                     # 0: Kernel executes vector instruction
@@ -559,13 +559,13 @@ def bottleneck4AIEs():
 
                     # Stream_Switch_Event_Port_Selection_0
                     # This is necessary to capture the Port_Running_0 and Port_Running_1 events
-                    ipu_write32(0, 4, 0x3FF00, 0x121)
+                    npu_write32(0, 4, 0x3FF00, 0x121)
 
                     # Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-                    ipu_write32(0, 4, 0x340D0, 0x10000)
+                    npu_write32(0, 4, 0x340D0, 0x10000)
 
                     # Start trace copy out.
-                    ipu_writebd_shimtile(
+                    npu_writebd_shimtile(
                         bd_id=3,
                         buffer_length=trace_sz_in_i32s,
                         buffer_offset=acitivationsOutSize32b,
@@ -593,45 +593,45 @@ def bottleneck4AIEs():
                         use_next_bd=0,
                         valid_bd=1,
                     )
-                    ipu_write32(0, 2, 0x1D20C, 0x3)
+                    npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
-                IpuWriteRTPOp(
+                NpuWriteRTPOp(
                     "rtpComputeTile2", col=0, row=2, index=0, value=1
                 )  # scale
-                IpuWriteRTPOp(
+                NpuWriteRTPOp(
                     "rtpComputeTile3", col=0, row=3, index=0, value=1
                 )  # scale
-                IpuWriteRTPOp(
+                NpuWriteRTPOp(
                     "rtpComputeTile5", col=0, row=5, index=0, value=1
                 )  # scale
-                IpuWriteRTPOp(
+                NpuWriteRTPOp(
                     "rtpComputeTile4", col=0, row=4, index=0, value=1
                 )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                IpuWriteRTPOp(
+                NpuWriteRTPOp(
                     "rtpComputeTile4", col=0, row=4, index=1, value=0
                 )  # skip_scale
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
                     bd_id=0,
                     mem=inputFromL3,
                     sizes=[1, 1, 1, activationsInSize32b],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=outputToL3,
                     sizes=[1, 1, 1, acitivationsOutSize32b],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="inOF_wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
                     sizes=[1, 1, 1, totalWeightsSize32b],
                 )
 
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

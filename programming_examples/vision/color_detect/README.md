@@ -12,7 +12,7 @@
 
 The Color Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detecting of 2 colors in a sequence of images : `rgba2hue`, `threshold`, `threshold`, `bitwiseOR`, `gray2rgba`, `bitwiseAND`.
 
-The pipeline is mapped onto a single column of the ipu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2hue`, and the two `threshold` kernels are each mapped onto one compute tile, while `bitwiseOR`, `gray2rgba` and `bitwiseAND` are mapped together on AIE tile (0, 5). 
+The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2hue`, and the two `threshold` kernels are each mapped onto one compute tile, while `bitwiseOR`, `gray2rgba` and `bitwiseAND` are mapped together on AIE tile (0, 5). 
 
 <p align="center">
   <img

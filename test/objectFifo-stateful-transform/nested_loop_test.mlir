@@ -9,7 +9,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: aie.device(ipu)
+// CHECK-LABEL: aie.device(npu)
 //       CHECK:   scf.for
 //       CHECK:   {
 //       CHECK:     aie.use_lock
@@ -74,7 +74,7 @@
 //       CHECK:     aie.use_lock
 //       CHECK:   }
 
-aie.device(ipu) {
+aie.device(npu) {
   %tile_0_1 = aie.tile(0, 1)
   %tile_1_2 = aie.tile(1, 2)
   %tile_0_2 = aie.tile(0, 2)

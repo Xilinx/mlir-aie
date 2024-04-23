@@ -12,7 +12,7 @@
 
 // CHECK: error: 'aie.dma' op DMAOp can only appear in single block region
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %tile_0_1 = aie.tile(0, 1)
     %objFifo_in0_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<16xi32>
     %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32}

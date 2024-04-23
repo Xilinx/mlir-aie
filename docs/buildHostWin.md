@@ -58,7 +58,7 @@ All steps in WSL Ubuntu terminal.
 
 1. After installing the updated RyzenAI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
     ```
-    mkdir /mnt/c/Technical/xrtIPUfromDLL; cd /mnt/c/Technical/xrtIPUfromDLL
+    mkdir /mnt/c/Technical/xrtNPUfromDLL; cd /mnt/c/Technical/xrtNPUfromDLL
     cp /mnt/c/Windows/System32/AMD/xrt_coreutil.dll .
     gendef xrt_coreutil.dll
     ```
@@ -67,7 +67,7 @@ All steps in WSL Ubuntu terminal.
 
 All steps in Win11 (powershell where needed).
 
-1. Upgrade the IPU driver IPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
+1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
@@ -79,7 +79,7 @@ All steps in Win11 (powershell where needed).
 1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`
 1. Create a .lib file from the .dll shipping with the driver
     - In wsl, generate a .def file (see above)
-    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtIPUfromDLL` and run command: 
+    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command: 
       ```
       lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
       ```
@@ -113,7 +113,7 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/in
 
 ## Build a Design
 
-For your design of interest, for instance [add_one_objFifo](../reference_designs/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+For your design of interest, for instance [vector_add](../programming_examples/basic/vector_add/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (built during Prerequisites part of this guide). See [Set up your environment](#set-up-your-environment) above.

@@ -12,7 +12,7 @@
 // CHECK: error{{.*}}'aie.shim_dma' op uses more input channels than available on this tile
 
 module @test {
-  aie.device(ipu) {
+  aie.device(npu) {
     %t00 = aie.tile(0, 0)
 
     %buf_e = aie.external_buffer : memref<256xi32>

@@ -47,14 +47,14 @@ struct AIEXToStandardPass : AIEXToStandardBase<AIEXToStandardPass> {
     ModuleOp m = getOperation();
     ConversionTarget target(getContext());
     RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<AIEXOpRemoval<IpuDmaMemcpyNdOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<IpuDmaWaitOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<IpuShimTilePushQueueOp>>(m.getContext(),
+    removepatterns.add<AIEXOpRemoval<NpuDmaMemcpyNdOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuDmaWaitOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuShimTilePushQueueOp>>(m.getContext(),
                                                               m);
-    removepatterns.add<AIEXOpRemoval<IpuWriteRTPOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<IpuWrite32Op>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<IpuSyncOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<IpuWriteBdExShimTileOp>>(m.getContext(),
+    removepatterns.add<AIEXOpRemoval<NpuWriteRTPOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuWrite32Op>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuSyncOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuWriteBdExShimTileOp>>(m.getContext(),
                                                               m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))

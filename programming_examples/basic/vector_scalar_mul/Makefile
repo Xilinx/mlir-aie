@@ -36,12 +36,12 @@ build/aie_trace_${data_size}.mlir: aie2.py
 build/final_${data_size}.xclbin: build/aie_${data_size}.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 build/final_trace_${data_size}.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts_${data_size}.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
 ${targetname}_${data_size}.exe: test.cpp
 	rm -rf _build

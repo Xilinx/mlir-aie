@@ -10,11 +10,11 @@
 
 # <ins>Vector Add</ins>
 
-Single tile performs a very simple `+` operations from two vectors loaded into memory. The tile then stores the sum of those two vectors back to external memory. This reference design can be run on either a RyzenAI IPU or a VCK5000. 
+Single tile performs a very simple `+` operations from two vectors loaded into memory. The tile then stores the sum of those two vectors back to external memory. This reference design can be run on either a RyzenAI NPU or a VCK5000. 
 
-The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targetting IPU or VCK5000. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
+The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targetting NPU or VCK5000. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
 
-To compile and run the design for IPU:
+To compile and run the design for NPU:
 ```
 make
 make run
