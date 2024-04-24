@@ -25,7 +25,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 //===----------------------------------------------------------------------===//
-// BasicAllocation : sequential alloc from largest to smallest
+// BasicAllocation : sequential alloc from largest to smallest buffer size
 //===----------------------------------------------------------------------===//
 struct BasicAllocationPattern : public OpRewritePattern<TileOp> {
   using OpRewritePattern<TileOp>::OpRewritePattern;
@@ -106,6 +106,7 @@ struct BasicAllocationPattern : public OpRewritePattern<TileOp> {
         printbuffer(buffer.name(), buffer.getAddress().value(),
                     buffer.getAllocationSize());
       }
+      return failure();
     }
     return success();
   }
