@@ -314,10 +314,11 @@ private:
     return bankIndex;
   }
 
-  LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                             SmallVector<BufferOp, 4> allBuffers,
-                             std::vector<int64_t> &nextAddrInBanks,
-                             std::vector<BankLimits> &bankLimits) const {
+  LogicalResult
+  checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
+                        SmallVector<BufferOp, 4> allBuffers,
+                        std::vector<int64_t> &nextAddrInBanks,
+                        std::vector<BankLimits> &bankLimits) const {
     bool foundOverflow = false;
     std::vector<int> overflow_banks;
     for (int i = 0; i < numBanks; i++) {
