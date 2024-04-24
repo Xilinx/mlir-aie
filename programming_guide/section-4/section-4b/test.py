@@ -10,6 +10,7 @@ import sys
 import time
 
 import aie.utils.test as test_utils
+import aie.utils.trace as trace_utils
 
 # ------------------------------------------------------
 # Configure this to match your design's buffer size
@@ -35,12 +36,12 @@ def main(opts):
         instr_text = [l for l in instr_text if l != ""]
         instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
 
-    OUT_SIZE = INOUT2_SIZE + opts.trace_size
+    OUT_SIZE = INOUT2_SIZE + int(opts.trace_size)
 
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    (device, kernel) = init_xrt_load_kernel(opts)
+    (device, kernel) = test_utils.init_xrt_load_kernel(opts)
 
     # ------------------------------------------------------
     # Initialize input/ output buffer sizes and sync them
@@ -95,23 +96,20 @@ def main(opts):
             continue
 
         # Copy output results and verify they are correct
-        out_size = INOUT2_SIZE + opts.trace_size
-        print("out_size:", out_size)
-        output_buffer = bo_inout2.read(out_size, 0).view(INOUT2_DATATYPE)
-        dout_buffer = output_buffer[0 : INOUT2_VOLUME - 1]
-        trace_buffer = output_buffer[INOUT2_VOLUME - 1 :]
+        entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint32)
+        output_buffer = entire_buffer[:INOUT2_VOLUME]
         if opts.verify:
             if opts.verbosity >= 1:
                 print("Verifying results ...")
             ref = np.arange(2, INOUT0_VOLUME + 2, dtype=INOUT0_DATATYPE)
-            # e = np.equal(output_buffer, ref)
-            e = np.equal(dput_buffer, ref)
+            e = np.equal(output_buffer, ref)
+            # e = np.equal(dput_buffer, ref)
             errors = errors + np.size(e) - np.count_nonzero(e)
 
         # Write trace values if trace_size > 0
-        # if opts.trace_size > 0:
-        #     print("Do something with trace!")
-        #     test_utils.write_out_trace(trace_buffer, opts.trace_size, opts.trace_file)
+        if opts.trace_size > 0:
+            trace_buffer = entire_buffer[INOUT2_VOLUME:]
+            trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
 
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time

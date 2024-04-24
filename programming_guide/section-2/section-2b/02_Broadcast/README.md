@@ -27,7 +27,7 @@ of0 = object_fifo("objfifo0", A, [B, C, D], 3, T.memref(256, T.i32()))
 
 The `depth` input of an Object FIFO can also be specified as an array of integers, which describe the number of objects that are available to each tile (the producer tile plus each consumer tile) when accessing the Object FIFO. For the previous example, each of the four tiles has a resource pool of 3 objects available to perform the data movement of `of_0`.
 
-> **NOTE:**  This functionality of the Object FIFO primitive exposes what is actually going on at the hardware level when the data movement is established for a broadcast. The object pool of the Object FIFO is not a single structure but rather composed of several pools of objects that are allocated in the memory module of each tile involved in the data movement. Specifying the `depth` as an array of integers allows the user full control to set the sizes of the pools on each individual tile.
+> **NOTE:**  This functionality of the Object FIFO primitive exposes what is actually going on at the hardware level when the data movement is established for a broadcast. The object pool of the Object FIFO is not a single structure but rather composed of several pools of objects that are allocated in the memory module of each tile involved in the data movement. Specifying the `depth` as an array of integers allows the user full control to set the sizes of the pools on each individual tile. Please see [Section 2a](../../section-2a/README.md/#specifying-the-object-fifo-depth-as-an-array) for more details.
 
 The main advantage of this feature comes to light during a situation like the one showcased in the example below, which we refer to as a broadcast with a <u>skip-connection</u>. In the example below two Object FIFOs are created: `of0` is a broadcast from producer tile A to consumer tiles B and C, while `of1` is a 1-to-1 data movement from producer tile B to consumer tile C. We refer to `of0` as a skip-connection because it skips over B in the A &rarr; B &rarr; C chain when connecting A &rarr; C.
 ```python
@@ -62,7 +62,7 @@ def core_body():
 ```
 We can see that C requires one object from both `of0` and `of1` before it can proceed with its execution. However, B also requires an object from `of0` before it can produce the data for `of1`. Because C is waiting on B, the two tiles do not have the same rate of consumption from the broadcast connection and this results in the production rate of A being impacted. 
 
-To further represent this we can take the slightly lower lever view that the consumer tiles each have a pool of objects allocated for their Object FIFOs. To simplify things, only the pools used by the consumers are shown (for example, for `of1` only the pool on the side of consumer tile C is visible). Currently, all the pools have a depth of `1`.
+To further represent this we can take the slightly lower-level view that the consumer tiles each have a pool of objects allocated for their Object FIFOs. To simplify things, only the pools used by the consumers are shown (for example, for `of1` only the pool on the side of consumer tile C is visible). Currently, all the pools have a depth of `1`.
 <img src="./../../../assets/SkipBroadcastNoFix.png" height="300">
 
 To avoid having the production of A impacted by the skip-connection, an additional object is required by C for `of0`. It can be used as buffering space for data coming from `of0` while waiting for the data from B via `of1`. To achieve this `of0` is created with an array of integers for its `depth`:

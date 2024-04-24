@@ -65,6 +65,7 @@
     | Lock stall                 |0x1A|  26 |
     | Core Port Running 1        |0x4F|  79 |
     | Core Port Running 0        |0x4B|  75 | 
+    * A more exhaustive list of events for core tile, core memory, memtile and shim tile can be found in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h)
 
 ## AI Engine documentation
 * [Summary Documentation Links in UG1076](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation)
@@ -73,5 +74,8 @@
 * [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 * [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
 * [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
+* [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
+* [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
-
+## AIE Detailed References
+* [AIE2 - Table of supported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)

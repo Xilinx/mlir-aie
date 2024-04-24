@@ -10,16 +10,16 @@
 
 # <ins>Section 2f - Data Movement Without Object FIFOs</ins>
 
-Not all data movement patterns can be described with Object FIFOs. This section goes into detail about how a user can express data movement using the Data Movement Accelerators (or `DMA`) on AIE tiles.
+Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Data Movement Accelerators (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
 
-The AIE architecture currently has three different types of tiles: compute tiles referred to as `tile`, memory tiles reffered to as `Mem tile`, and external memory interface tiles referred to as `Shim tile`. Each of these tiles has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be intialized using the constructors in [aie.py](../../../python/dialects/aie.py):
+The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles have their own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be intialized using the constructors in [aie.py](../../../python/dialects/aie.py):
 ```python
 @mem(tile) # compute tile DMA
 @shim_dma(tile) # Shim tile DMA
 @memtile_dma(tile) # Mem tile DMA
 ```
 
-The DMA hardware component has a certain number of input and output `channels`, and each one has a direction and a port index. Input channels are denoted with the keyword `SS2M` and output ones with `M2SS`. Port indices vary per tile, for example compute tiles have two input and two output ports, same as Shim tiles, whereas Mem tiles have six input and six output ports.
+The DMA hardware component has a certain number of input and output `channels`, and each one has a direction and a port index. Input channels are denoted with the keyword `S2MM` and output ones with `MM2S`. Port indices vary per tile. For example, compute and Shim tiles have two input and two output ports, whereas Mem tiles have six input and six output ports.
 
 A channel in any tile's DMA can be initialized using the unified `dma` constructor:
 ```python
@@ -36,7 +36,7 @@ def dma(
 )
 ```
 
-The data movement on each channel is described by a chain of Buffer Descriptors (or `BD`), where each BD describes what data is being moved and configures its synchornization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
+The data movement on each channel is described by a chain of Buffer Descriptors (or "BDs"), where each BD describes what data is being moved and configures its synchornization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
 
 The code snippet below shows how to configure the DMA on `tile_a` such that data coming in on input channel 0 is written into `buff_in`:
 ```python
@@ -54,9 +54,9 @@ def mem_body():
         dma_bd(buff_in)
         use_lock(cons_lock, Release)
 ```
-The locks `prod_lock` and `cons_lock` follow AIE2 architecture semantics. Their task is to mark synchronization points in the tile's and its DMA's execution: for example, if the tile is currently using `buff_in` it will only release the `prod_lock` when it is done and that is when the DMA will be allowed to overwrite the data in `buff_in` with new input. Similarly, the tile's core can query the `cons_lock` to know when the new data is ready to be read (i.e., when the DMA releases the lock so the core can acquire it).
+The locks `prod_lock` and `cons_lock` follow AIE-ML architecture semantics. Their task is to mark synchronization points in the tile's and its DMA's execution: for example, if the tile is currently using `buff_in`, it will only release the `prod_lock` when it is done, and that is when the DMA will be allowed to overwrite the data in `buff_in` with new input. Similarly, the tile's core can query the `cons_lock` to know when the new data is ready to be read (i.e., when the DMA releases the lock so the core can acquire it).
 
-In the previous code the channel only had one BD in its chain. To add additional BDs to the chain, users can use the following constructor, which takes as input what would be the previous BD in the chain it should be added to:
+In the previous code, the channel only had one BD in its chain. To add additional BDs to the chain, users can use the following constructor, which takes as input what would be the previous BD in the chain it should be added to:
 ```python
 @another_bd(dma_bd)
 ```
@@ -102,11 +102,11 @@ def flow(
 )
 ```
 The `flow` is established between channels of two DMAs (other endpoints are available, but they are beyond the scope of this section) and as such it requires:
-* their `source` and `dest` tiles,
-* their `source_bundle` and `dest_bundle`, which represent the type of endpoints (for our scope, these will be `WireBundle.DMA`),
-* and their `source_channel` and `dest_channel`, which represent the index of the channel.
+* its `source` and `dest` tiles,
+* its `source_bundle` and `dest_bundle`, which represent the type of endpoints (for our scope, these will be `WireBundle.DMA`),
+* and its `source_channel` and `dest_channel`, which represent the index of the channel.
 
-For example, to create a flow between tile `tile_a` and tile `tile_b` where `tile_a` is sending data on its output channel 0 to `tile_b`'s input channel 1, the user can write:
+For example, to create a flow between tile `tile_a` and tile `tile_b`, where `tile_a` is sending data on its output channel 0 to `tile_b`'s input channel 1, the user can write:
 ```python
 aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
 ```
