@@ -67,7 +67,7 @@ void scale_vectorized<int32_t>(int32_t *a, int32_t *c, int32_t factor,
       aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
       aie::store_v(pC1, cout.template to_vector<int32_t>(0));
       pC1 += vec_factor;
-  }
+    }
   event1();
 }
 
@@ -80,18 +80,18 @@ void vector_scalar_mul_int32_scalar(int32_t *a_in, int32_t *c_out,
   scale_scalar<int32_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_int32_vector(int32_t *a_in, int32_t *c_out, 
+void vector_scalar_mul_int32_vector(int32_t *a_in, int32_t *c_out,
                                     int32_t *factor, int32_t N) {
   scale_vectorized<int32_t>(a_in, c_out, *factor, N);
 }
 
 // 32-bit datatype
 void vector_scalar_mul_int16_scalar(int16_t *a_in, int16_t *c_out,
-                                  int32_t *factor, int32_t N) {
+                                    int32_t *factor, int32_t N) {
   scale_scalar<int16_t>(a_in, c_out, *factor, N);
 }
 
-void vector_scalar_mul_int16_vector(int16_t *a_in, int16_t *c_out, 
+void vector_scalar_mul_int16_vector(int16_t *a_in, int16_t *c_out,
                                     int32_t *factor, int32_t N) {
   scale_vectorized<int16_t>(a_in, c_out, *factor, N);
 }

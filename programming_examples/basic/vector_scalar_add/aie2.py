@@ -73,7 +73,7 @@ def my_vector_bias_add():
 with mlir_mod_ctx() as ctx:
     my_vector_bias_add()
     res = ctx.module.operation.verify()
-    if(res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)
