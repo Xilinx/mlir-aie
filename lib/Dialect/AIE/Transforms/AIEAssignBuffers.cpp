@@ -44,7 +44,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
 
     for (auto buffer : buffers) {
       assert(buffer.getAddress().has_value() &&
-              "buffer must have address assigned");
+             "buffer must have address assigned");
       printbuffer(buffer.name(), buffer.getAddress().value(),
                   buffer.getAllocationSize());
     }
