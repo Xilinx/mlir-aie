@@ -100,7 +100,7 @@ def my_vector_scalar(vector_size, trace_size):
 
 try:
     vector_size = int(sys.argv[1])
-    if vector_size % 64 != 0 or vector_size <= 512:
+    if vector_size % 64 != 0 or vector_size < 512:
         print("Vector size must be a multiple of 64 and greater than or equal to 512")
         raise ValueError
     trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])

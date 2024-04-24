@@ -33,8 +33,6 @@ endif()
 set(VECTORSCALARMUL_SIZE 4096 CACHE STRING "vector size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
-message(STATUS "NOLF NOLF VECTORSCALARMUL_SIZE: ${VECTORSCALARMUL_SIZE}")
-
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
