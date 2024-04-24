@@ -210,8 +210,8 @@ private:
   // Function that given a number of banks and their size, computes
   // the start and end addresses for each bank and fills in the entry
   // in the bankLimits vector.
-  void fillBankLimits(int numBanks, int bankSize, std::vector<BankLimits>
-                      &bankLimits) const {
+  void fillBankLimits(int numBanks, int bankSize,
+                      std::vector<BankLimits> &bankLimits) const {
     for (int i = 0; i < numBanks; i++) {
       auto startAddr = bankSize * i;
       auto endAddr = bankSize * (i + 1);
