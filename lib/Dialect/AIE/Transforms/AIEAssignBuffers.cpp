@@ -254,10 +254,9 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
     };
     for (int i = 0; i < numBanks; i++) {
       note << "\t"
-            << "bank : " << i << "\t"
-            << "0x" << llvm::utohexstr(bankLimits[i].startAddr)
-            << "-0x" << llvm::utohexstr(bankLimits[i].endAddr - 1)
-            << "\n";
+           << "bank : " << i << "\t"
+           << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+           << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
       if (i == 0) {
         if (stacksize > 0)
           printbuffer("(stack)", 0, stacksize);
