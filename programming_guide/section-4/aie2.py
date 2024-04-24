@@ -24,7 +24,6 @@ def my_first_aie_program():
         memRef_16_ty = T.memref(16, T.i32())
         memRef_32_ty = T.memref(32, T.i32())
         memRef_64_ty = T.memref(64, T.i32())
-        memRef_640_ty = T.memref(640, T.i32())
 
         # Tile declarations
         ComputeTile = tile(0, 2)
@@ -72,8 +71,4 @@ def my_first_aie_program():
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
     my_first_aie_program()  # Call design function within the mlir-aie context
-    res = ctx.module.operation.verify()  # Verify mlir context
-    if res == True:
-        print(ctx.module)  # Print the python-to-mlir conversion
-    else:
-        print(res)
+    print(ctx.module)  # Print the python-to-mlir conversion

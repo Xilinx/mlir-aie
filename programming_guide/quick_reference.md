@@ -49,12 +49,6 @@
 | `print(ctx.module)` | Converts our ctx wrapped structural code to mlir and prints to stdout|
 | `ctx.module.operation.verify()` | Runs additional structural verficiation on the python binded source code and return result to stdout |
 
-## Common AIE API functions for Kernel Programming
-| Function Signature  | Definition | Parameters | Return Type | Example | 
-|---------------------|------------|------------|-------------|---------|
-| `aie::vector<T, vec_factor> my_vector` | Declare vector type | `T`: data type <br> `vec_factor`: vector width | n/a | aie::vector<int16_t, 32> my_vector; |
-| `aie::load_v<vec_factor>(pA1);` | Vector load | `vec_factor`: vector width | `aie::vector` | aie::vector<int16_t, 32> my_vector; |
-
 ## Helpful AI Engine Architecture References and Tables
 * [AIE2 - Table of supported data types and vector sizes (AIE API)](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html)
 

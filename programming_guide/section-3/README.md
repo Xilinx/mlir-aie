@@ -149,6 +149,7 @@ To compile the design and C++ testbench:
 
 ```sh
 make
+make build/vectorScalar.exe
 ```
 
 To run the design:

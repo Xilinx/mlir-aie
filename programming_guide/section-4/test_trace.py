@@ -3,6 +3,7 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 
+# import argparse
 import numpy as np
 import pyxrt as xrt
 import sys
@@ -34,12 +35,12 @@ def main(opts):
         instr_text = [l for l in instr_text if l != ""]
         instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
 
-    OUT_SIZE = INOUT2_SIZE
+    OUT_SIZE = INOUT2_SIZE + opts.trace_size
 
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    (device, kernel) = test_utils.init_xrt_load_kernel(opts)
+    (device, kernel) = init_xrt_load_kernel(opts)
 
     # ------------------------------------------------------
     # Initialize input/ output buffer sizes and sync them
@@ -94,14 +95,23 @@ def main(opts):
             continue
 
         # Copy output results and verify they are correct
-        out_size = INOUT2_SIZE
+        out_size = INOUT2_SIZE + opts.trace_size
+        print("out_size:", out_size)
         output_buffer = bo_inout2.read(out_size, 0).view(INOUT2_DATATYPE)
+        dout_buffer = output_buffer[0 : INOUT2_VOLUME - 1]
+        trace_buffer = output_buffer[INOUT2_VOLUME - 1 :]
         if opts.verify:
             if opts.verbosity >= 1:
                 print("Verifying results ...")
             ref = np.arange(2, INOUT0_VOLUME + 2, dtype=INOUT0_DATATYPE)
-            e = np.equal(output_buffer, ref)
+            # e = np.equal(output_buffer, ref)
+            e = np.equal(dput_buffer, ref)
             errors = errors + np.size(e) - np.count_nonzero(e)
+
+        # Write trace values if trace_size > 0
+        # if opts.trace_size > 0:
+        #     print("Do something with trace!")
+        #     test_utils.write_out_trace(trace_buffer, opts.trace_size, opts.trace_file)
 
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time

@@ -17,7 +17,7 @@
 
 -----
 
-Now that we are able to measure the total application time ([section-4a](../section-4a/)) and have examined the kernel performance via tracing ([section-4b](../section-4b)), we will take a closer look at kernel vectorization. We will be using the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/) rather than a local copy of that same design to illustrate kernel vectorization concepts. Note that by default, that example design is working with 16-bit data (vs 32-bit of our local examples) and has `vectorized=True`.
+Now that we are able to measure the total application time ([section-4a](../section-4a/)) and have examined the kernel performance via tracing ([section-4b](../section-4b)), we will take a closer look at kernel vectorization. We will be using the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/) to illustrate kernel vectorization concepts.
 
 Go ahead and read the design example summary for [vector-scalar multiply](../../../programming_examples/basic/vector_scalar_mul/) first to get an idea of the different components of this example design. Then, let's take a closer look at the kernel source file ([scale.cc](../../../aie_kernels/aie2/scale.cc)).
 

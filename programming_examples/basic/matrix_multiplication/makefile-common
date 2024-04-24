@@ -100,4 +100,4 @@ clean: clean_trace
 
 .PHONY: clean_trace
 clean_trace:
-	rm -rf tmpTrace parse*.json  trace.txt
+	rm -rf tmpTrace parse*.json 

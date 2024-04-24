@@ -24,7 +24,7 @@ Adding the application timer is as simple as noting a start and stop time surrou
 
 ```c++
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
 
@@ -77,6 +77,9 @@ We can then compute and print the actual average, minimum and maximum run times.
 1. Our design was run once with a single iteration and no warmup. Let's run our design again by calling `make run` again. What reported Avg NPU time did you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
 
 1. Let's set our iterations to 10 and run again with `make run` which recompiles our host code for `test.cpp`. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can be anywhere from 430-480us but is likely different than before" height=25>
+
+1. Let's change our design and increase the loop size of our kernel by a factor of 10. This involves changing the outer loop from 8 to 80. What reported times do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="? us" height=25>
+
 
 -----
 [[Up]](../../section-4) [[Next]](../section-4b)

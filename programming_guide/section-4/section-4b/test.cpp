@@ -1,4 +1,4 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
+//===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,26 +8,59 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string>
+#include <vector>
+
+#include "xrt/xrt_bo.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
 
 #include "test_utils.h"
-#include "xrt/xrt_bo.h"
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using DATATYPE = std::uint32_t; // Configure this to match your buffer data type
+// ------------------------------------------------------
+// Configure this to match your buffer data type
+// ------------------------------------------------------
+using INOUT0_DATATYPE = std::uint32_t;
+using INOUT1_DATATYPE = std::uint32_t;
+using INOUT2_DATATYPE = std::uint32_t;
 #endif
-
-const int scaleFactor = 3;
 
 namespace po = boost::program_options;
 
+// ----------------------------------------------------------------------------
+// Verify results (specific to our design example)
+// ----------------------------------------------------------------------------
+template <typename Tout>
+int verify(int CSize, std::vector<Tout> C, int verbosity) {
+  int errors = 0;
+  for (uint32_t i = 0; i < CSize; i++) {
+    uint32_t ref = i + 2;
+    if (C[i] != ref) {
+      std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
+      errors++;
+    } else {
+      if (verbosity > 1)
+        std::cout << "Correct output " << C[i] << " == " << ref << std::endl;
+    }
+  }
+  return errors;
+}
+
+// ----------------------------------------------------------------------------
+// Main
+// ----------------------------------------------------------------------------
 int main(int argc, const char *argv[]) {
 
-  // Program arguments parsing
+  // ------------------------------------------------------
+  // Parse program arguments
+  // ------------------------------------------------------
   po::options_description desc("Allowed options");
   po::variables_map vm;
   test_utils::add_default_options(desc);
@@ -39,20 +72,31 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  constexpr bool VERIFY = true;
-  constexpr int IN_VOLUME = 4096;
+  // ------------------------------------------------------
+  // Configure this to match your design's buffer size
+  // ------------------------------------------------------
+  int INOUT0_VOLUME = 64; // Input only, 64x uint32_t in this example
+  int INOUT1_VOLUME = 64; // Not used in this example
+  int INOUT2_VOLUME = 64; // Output only, 64x uint32_t in this example
 
-  constexpr int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
-  int OUT_SIZE = IN_SIZE + trace_size;
+  size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
+  size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
+  size_t INOUT2_SIZE = INOUT2_VOLUME * sizeof(INOUT2_DATATYPE);
+
+  // TODO Remove trace for now?
+  size_t OUT_SIZE = INOUT2_SIZE + trace_size;
+
+  srand(time(NULL));
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_sequence(vm["instr"].as<std::string>());
-
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
-  // Start the XRT context and load the kernel
+  // ------------------------------------------------------
+  // Get device, load the xclbin & kernel and register them
+  // ------------------------------------------------------
   xrt::device device;
   xrt::kernel kernel;
 
@@ -60,41 +104,61 @@ int main(int argc, const char *argv[]) {
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
 
-  // set up the buffer objects
+  // ------------------------------------------------------
+  // Initialize input/ output buffer sizes and sync them
+  // ------------------------------------------------------
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA =
-      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
-                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_outC =
+  auto bo_inout0 =
+      xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_inout1 =
+      xrt::bo(device, INOUT1_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  // Assumes trace will only be added to inout2
+  auto bo_inout2 =
       xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  // auto bo_trace =
+  //     // xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY,
+  //     kernel.group_id(4)); xrt::bo(device, trace_size,
+  //     XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  // Copy instruction stream to xrt buffer object
+  // Initialize instruction buffer
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
-  // Initialize buffer bo_inA
-  DATATYPE *bufInA = bo_inA.map<DATATYPE *>();
-  for (int i = 0; i < IN_VOLUME; i++)
-    bufInA[i] = i + 1;
+  // Initialize Inout buffer 0
+  INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
+  std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
+  for (int i = 0; i < INOUT0_VOLUME; i++)
+    AVec[i] = i + 1;
+  // AVec.push_back(i + 1);
+  memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
-  // Initialize buffer bo_inFactor
-  DATATYPE *bufInFactor = bo_inFactor.map<DATATYPE *>();
-  *bufInFactor = scaleFactor;
+  // Initialize Inout buffer 1
+  // INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
+  // std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
+  // for (int i = 0; i < INOUT1_VOLUME; i++)
+  //   BVec[i] = i + 1
+  //   //BVec.push_back(i + 1);
+  // memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
 
-  // Zero out buffer bo_outC
-  DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE);
+  // Initialize Inout buffer 2
+  char *bufInOut2 = bo_inout2.map<char *>();
+  std::vector<INOUT2_DATATYPE> CVec(INOUT2_VOLUME);
+  memset(bufInOut2, 0, OUT_SIZE); // Zeroes out INOUT2_VOLUME + trace_size
+  // memset(bufInOut2, 0, INOUT2_SIZE); // Zeroes out INOUT2_VOLUME + trace_size
 
-  // sync host to device memories
+  // char *bufTrace = bo_trace.map<char *>();
+  // memset(bufTrace, 0, trace_size);
+
+  // Sync buffers to update input buffer values
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inFactor.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  // bo_inout1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_inout2.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  // bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   // ------------------------------------------------------
   // Initialize run configs
@@ -115,12 +179,14 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    auto run =
+        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
+    // kernel(bo_instr, instr_v.size(), bo_inout0, bo_trace, bo_inout2);
     run.wait();
+    // sleep(3);
     auto stop = std::chrono::high_resolution_clock::now();
-
-    // Sync device to host memories
-    bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    bo_inout2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    // bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
@@ -128,26 +194,13 @@ int main(int argc, const char *argv[]) {
     }
 
     // Copy output results and verify they are correct
-    // Copy output results and verify they are correct
+    memcpy(CVec.data(), bufInOut2, (CVec.size() * sizeof(INOUT2_DATATYPE)));
     if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying results ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      for (uint32_t i = 0; i < IN_VOLUME; i++) {
-        int32_t ref = bufInA[i] * scaleFactor;
-        int32_t test = bufOut[i];
-        if (test != ref) {
-          if (verbosity >= 1)
-            std::cout << "Error in output " << test << " != " << ref
-                      << std::endl;
-          errors++;
-        } else {
-          if (verbosity >= 1)
-            std::cout << "Correct output " << test << " == " << ref
-                      << std::endl;
-        }
-      }
+      errors = verify(INOUT2_VOLUME, CVec, verbosity);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
@@ -162,7 +215,7 @@ int main(int argc, const char *argv[]) {
 
     // Write trace values if trace_size > 0
     if (trace_size > 0) {
-      test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
+      test_utils::write_out_trace(((char *)bufInOut2) + INOUT2_SIZE, trace_size,
                                   vm["trace_file"].as<std::string>());
     }
 
@@ -202,15 +255,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max)
               << std::endl;
 
-  // Print Pass/Fail result of our test
   if (!errors) {
-    std::cout << std::endl << "PASS!" << std::endl << std::endl;
+    std::cout << "\nPASS!\n\n";
     return 0;
   } else {
-    std::cout << std::endl
-              << errors << " mismatches." << std::endl
-              << std::endl;
-    std::cout << std::endl << "fail." << std::endl << std::endl;
+    std::cout << "\nError count: " << errors << "\n\n";
+    std::cout << "\nFailed.\n\n";
     return 1;
   }
 }

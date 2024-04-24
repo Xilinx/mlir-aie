@@ -75,9 +75,9 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Configure this to match your design's buffer size
   // ------------------------------------------------------
-  int INOUT0_VOLUME = 64; // Input only, 64x uint32_t in this example
-  int INOUT1_VOLUME = 64; // Not used in this example
-  int INOUT2_VOLUME = 64; // Output only, 64x uint32_t in this example
+  int INOUT0_VOLUME = 640; // Input only, 64x uint32_t in this example
+  int INOUT1_VOLUME = 640; // Not used in this example
+  int INOUT2_VOLUME = 640; // Output only, 64x uint32_t in this example
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
   size_t INOUT1_SIZE = INOUT1_VOLUME * sizeof(INOUT1_DATATYPE);
