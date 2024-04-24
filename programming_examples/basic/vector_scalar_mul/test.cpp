@@ -22,7 +22,8 @@
 // Configure this to match your buffer data type
 // ------------------------------------------------------
 // using DATATYPE = std::uint8_t;
-using DATATYPE = std::uint32_t;
+// using DATATYPE = std::uint32_t;
+using DATATYPE = std::uint16_t;
 #endif
 
 const int scaleFactor = 3;
@@ -67,7 +68,7 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA =
       xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
+  auto bo_inFactor = xrt::bo(device, 1 * sizeof(int32_t),
                              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_outC =
       xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
@@ -85,8 +86,8 @@ int main(int argc, const char *argv[]) {
     bufInA[i] = i + 1;
 
   // Initialize buffer bo_inFactor
-  DATATYPE *bufInFactor = bo_inFactor.map<DATATYPE *>();
-  *bufInFactor = scaleFactor;
+  int32_t *bufInFactor = bo_inFactor.map<int32_t *>();
+  *bufInFactor = (DATATYPE)scaleFactor;
 
   // Zero out buffer bo_outC
   DATATYPE *bufOut = bo_outC.map<DATATYPE *>();

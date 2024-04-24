@@ -16,7 +16,7 @@ It's helpful to first examine perfomance measurement before we delve into vector
 
 * [Section 4a - Timers](./section-4a)
 * [Section 4b - Trace](./section-4b)
-* [Section 4c - Kernel vectorization](./section-4c)
+* [Section 4c - Kernel vectorization and optimization](./section-4c)
 
 -----
 [[Prev - Section 3](../section-3/)] [[Top](..)] [[Next - Section 5](../section-5/)]
