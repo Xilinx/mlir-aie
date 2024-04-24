@@ -4,7 +4,7 @@
 // REQUIRES: valid_xchess_license
 // REQUIRES: peano
 // RUN: mkdir -p %t/data; cd %t
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" %vector-to-llvmir% -o llvmir.mlir
+// RUN: aie-opt %s %vector-to-generic-llvmir% -o llvmir.mlir
 // RUN: aie-translate llvmir.mlir %llvmir-to-ll% -o dut.ll
 // RUN: %PEANO_INSTALL_DIR/bin/clang %clang_aie2_args -c dut.ll -o dut.o
 // RUN: xchesscc_wrapper %xchesscc_aie2_args -DTO_LLVM +w work +o work -I%S -I. %S/testbench.cc dut.o
@@ -13,15 +13,15 @@
 // CHECK: TEST PASSED
 
 module {
-  func.func @dut(%arg0: memref<1024xi16>, %arg1: memref<1024xi16>, %arg2: memref<1024xi32>) {
-    memref.assume_alignment %arg0, 32 : memref<1024xi16>
-    memref.assume_alignment %arg1, 32 : memref<1024xi16>
+  func.func @dut(%arg0: memref<1024xi8>, %arg1: memref<1024xi8>, %arg2: memref<1024xi32>) {
+    memref.assume_alignment %arg0, 32 : memref<1024xi8>
+    memref.assume_alignment %arg1, 32 : memref<1024xi8>
     memref.assume_alignment %arg2, 32 : memref<1024xi32>
     affine.for %arg3 = 0 to 1024 {
-      %0 = affine.load %arg0[%arg3] : memref<1024xi16>
-      %1 = affine.load %arg1[%arg3] : memref<1024xi16>
-      %2 = arith.extsi %0 : i16 to i32
-      %3 = arith.extsi %1 : i16 to i32
+      %0 = affine.load %arg0[%arg3] : memref<1024xi8>
+      %1 = affine.load %arg1[%arg3] : memref<1024xi8>
+      %2 = arith.extsi %0 : i8 to i32
+      %3 = arith.extsi %1 : i8 to i32
       %4 = arith.muli %2, %3 : i32
       affine.store %4, %arg2[%arg3] : memref<1024xi32>
     }

@@ -12,14 +12,13 @@
 
 module {
   func.func @dut(%arg0: memref<1024xi16>, %arg1: memref<1024xi16>, %arg2: memref<1024xi32>) {
-    %c0_i16 = arith.constant 0 : i16
-    affine.for %arg3 = 0 to 1024 step 32 {
-      %0 = vector.transfer_read %arg0[%arg3], %c0_i16 : memref<1024xi16>, vector<32xi16>
-      %1 = arith.extsi %0 : vector<32xi16> to vector<32xi32>
-      %2 = vector.transfer_read %arg1[%arg3], %c0_i16 : memref<1024xi16>, vector<32xi16>
-      %3 = arith.extsi %2 : vector<32xi16> to vector<32xi32>
-      %4 = arith.muli %1, %3 : vector<32xi32>
-      vector.transfer_write %4, %arg2[%arg3] : vector<32xi32>, memref<1024xi32>
+    affine.for %arg3 = 0 to 1024 {
+      %0 = affine.load %arg0[%arg3] : memref<1024xi16>
+      %1 = affine.load %arg1[%arg3] : memref<1024xi16>
+      %2 = arith.extsi %0 : i16 to i32
+      %3 = arith.extsi %1 : i16 to i32
+      %4 = arith.muli %2, %3 : i32
+      affine.store %4, %arg2[%arg3] : memref<1024xi32>
     }
     return
   }
