@@ -43,7 +43,7 @@ build/final_trace_${data_size}.xclbin: build/aie_trace.mlir build/scale.o
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
-${targetname}_${data_size}.exe: test.cpp
+${targetname}.exe: test.cpp
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}_${data_size} -DVECTORSCALARMUL_SIZE=${data_size}
