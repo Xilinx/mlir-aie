@@ -350,7 +350,8 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
               return a.getAddress().value() < b.getAddress().value();
             });
   // Check if memory was exceeded on any bank and print debug info.
-  return checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers, nextAddrInBanks, bankLimits);
+  return checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers,
+                               nextAddrInBanks, bankLimits);
 }
 
 struct AIEAssignBufferAddressesPass
