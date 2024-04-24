@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 4c - Kernel Vectorization and Optimization</ins>
 
-* [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
+* [Section 4 - Vector Programming & Performance Measurement](../../section-4)
     * [Section 4a - Timers](../section-4a)
     * [Section 4b - Trace](../section-4b)
     * Section 4c - Kernel Vectorization and Optimization
@@ -36,7 +36,7 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
 Here, the code iterates over the input vector (`a`) and multiplies each element from the vector with a scalar value (`factor`) before storing the results in output vector (`c`). The simple C/C++ code for this consists of a for-loop, with a simple read and scalar multiply operation inside the loop.
 
 ### <u>AIE API</u>
-To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with an higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/modules.html). To view details on the vector x scalar mutlipler, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int. 
+To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with an higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/modules.html). To view details on the vector x scalar multiplier, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int. 
 
 To be able to use this AIE API function in our kernel code, we first need to include the AIE API headers.
 ```C++
@@ -72,12 +72,11 @@ We can load the vector register from local L1 memory with the `aie::load_v` func
 ```
 Here, we use `__restict` to qualify the pointer to indicate that it's a restrict pointer which says that the pointer is the only thing that accesses the underlying object. It eliminates the potential for pointer aliasing, enabling better optimization by the compiler.
 
-#### <u>Vector Multiply</u>
 The vector load has a template argument `vec_factor` to match the one used in the `aie::vector` declaration.
 
-At this point, it would be good to take a closer look the AIE Archtecture as being able to optim
+#### <u>Vector Multiply and Store</u>
 
-Finally, we get to the `aie::mul` call which takes a vector and a scalar as arguments and stores the result in an accumulator register desginated by:
+Finally, we get to the `aie::mul` call which takes a vector and a scalar as arguments and stores the result in an accumulator register designated by:
 ```C++
       aie::accum<acc32, vec_factor> cout
 ```
@@ -111,7 +110,10 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   event1();
 }
 ```
-In this first example, the vectorization strategy was relatively straight forward. Instead of iterating over a vector of values and doing a single scalar multiply, we load a vector of input values, iterate over a smaller loop to perfrom a vector*scalar operation using the AIE API functions, and then store the vector of results back to local memory.
+
+In this first example, the vectorization strategy was relatively straight forward. Instead of iterating over a vector of values and doing a single scalar multiply, we load a vector of input values, iterate over a smaller loop to perform a vector*scalar operation using the AIE API functions, and then store the vector of results back to local memory.
+
+> **NOTE** - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into  generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html) and [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
 ## <u>Vectorization Exercises</u>
 1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [aie2.py](../../../programming_examples/basic/vector_scalar_mul/aie2.py) source file has `vectorized=False`. In the [aie2.py](../../../programming_examples/basic/vector_scalar_mul/aie2.py) sourcee code, we simply select the scalar version of the kernel function. Then run `make trace`. After the trace compilation is complete, open `trace_vs.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~10,256 cycles" height=25> 
@@ -124,11 +126,11 @@ In this first example, the vectorization strategy was relatively straight forwar
 
     Now, we're really seeing some savings (another factor ~6X savings or ~140X compare to the scalar version) The line we added help guide the compiler to find optimal schedules. In particular for kernel loops, `chess_prepare_for_pipelining` and `chess_loop_range(16, )` are particularly useful.
     * `chess_prepare_for_pipelining` - Used in the innermost loop to tell the compiler to enable software pipelining. This is necessary for subsequent loop optimization pragmas to be useful
-    * `chess_loop_range(MIN, MAX)` - An extremely helpful pragma. This tells the compiler how many minimum or maximum iterations we expect this loop to have. We often paramterize loop bounds based on size and even if the upper bound is declared as a const, it's still a runtime computed value. Giving the MIN value is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions.
+    * `chess_loop_range(MIN, MAX)` - An extremely helpful pragma. This tells the compiler how many minimum or maximum iterations we expect this loop to have. We often parameterize loop bounds based on size and even if the upper bound is declared as a const, it's still a runtime computed value. Giving the MIN value is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions.
 
 ## Optimization - Coding for the Architecture
 
-At this point, We've vectorized our code to better leverage the AIE hardware and saw signficant performance gains, but is our design fully optimized? How do we know if we've used the powerful AIE hardware to its full potential? This requires a deeper understanding of the underlying AIE architecture and coding for performance with the hardware in mind. For this next section, we will focus on **AIE2** (aka AIE-ML) that's at the heart of the Ryzen AI NPU. AIE2 is optimized for ML workloads which means matrix mulitplication style compute would leverage the hardware the best. We will also start our exploration by continuing with the vector-scalar multiply example. While it is true that vector-scalar multiply isn't matrix multiply, it does provides a good starting point in understanding what design considerations are needed to code optimal designs.
+At this point, we've vectorized our code to better leverage the AIE hardware and saw significant performance gains, but is our design fully optimized? How do we know if we've used the powerful AIE hardware to its full potential? This requires a deeper understanding of the underlying AIE architecture and coding for performance with the hardware in mind. For this next section, we will focus on **AIE2** (aka AIE-ML) that's at the heart of the Ryzen AI NPU. AIE2 is optimized for ML workloads which means multiply-accumulate operations like matrix multiplication style compute would leverage the hardware the best. We will also start our exploration by continuing with the vector-scalar multiply example. While it does not expose a sufficient amount of compute to exploit every optimization, it still provides a good starting point in understanding what design considerations are needed to code optimal designs.
 
 ### The Vector Unit - Loads
 
@@ -140,7 +142,7 @@ As we can see, vector registers are loaded from 2 parallel Load Units, each capa
 
 ### The Vector Unit - Multiply and Add (MAC)
 
-Once data is loaded and permuted, it passes to the Mutliplier block which supports a wide list of AIE data types. The multiply results then pass through an optional post-add step (very common for matrix multiply) before eventualy being stored in the accumulator registers. There are 9x 512-bit accumulator registers. Accumulator registers are larger so data precision can be maintained. A well optimized piece of code woudl schedule 1 vector MAC (VMAC) every cycle.
+Once data is loaded and permuted, it passes to the Multiplier block which supports a wide list of AIE data types. The multiply results then pass through an optional post-add step (very common for matrix multiply) before eventually being stored in the accumulator registers. There are 9x 512-bit accumulator registers. Accumulator registers are larger so data precision can be maintained. A well optimized piece of code would schedule 1 vector MAC (VMAC) every cycle.
 
 ### The Vector Unit - SRS and Stores
 
@@ -165,26 +167,26 @@ Now that we have a better understanding of the architecture, let's take a closer
 
 <img src="../../assets/aie_compute_details1.png" title="AIE Compute Details." height=450>
 
-**NOTE** - Matrix multiplication mode table is in the AIE API User Guide [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__mmul.html). Another way to see the total number of MACs for different bit precisions is the `Table: Supported Precision Width of the Vector Data Path` in the [AM020 spec](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview).
+> **NOTE** - Matrix multiplication mode table is in the AIE API User Guide [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__mmul.html). Another way to see the total number of MACs for different bit precisions is the `Table: Supported Precision Width of the Vector Data Path` in the [AM020 spec](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview).
 
-This table tells us that for 16-bit x 16-bit compute, we have 64 MACs avaialable per cycle. However, these MACs are targetign Matrix Multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle. 
+This table tells us that for 16-bit x 16-bit compute, we have 64 MACs available per cycle. However, these MACs are targeting Matrix Multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle. 
 
 #### <u>MAC efficiency</u>
-Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passses in an array of 1024 16-bit data. With 32 MACs available, our `vector_factor` is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs per clock eltwise vector MAC cofiguratoin. Our final optimized cycle count for the kernel was 72 cycles or roughly 2x the ideal number of cycles.
+Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passes in an array of 1024 16-bit data. With 32 MACs available, our `vector_factor` is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs per clock eltwise vector MAC configuration. Our final optimized cycle count for the kernel was 72 cycles or roughly 2x the ideal number of cycles.
 
 Total MAC efficiency is a product of the (MAC schedule efficiency) x (per clock MAC utilization efficiency). 
 * MAC schedule efficiency - Ideal MAC cycles / Actual MAC cycles (e.g. 32/ 72 = 44%)
-* per clock MAC utilization efficiency - # of MACs used/ total # of MACs avaialable (e.g. 32/ 64 = 50%)
-Therefore, the total MAC efficiency is 44% x 50% = 22%..
+* per clock MAC utilization efficiency - # of MACs used/ total # of MACs available (e.g. 32/ 64 = 50%)
+Therefore, the total MAC efficiency is 44% x 50% = 22%.
 
-Let's file that result away but look at our algorithm from load/ store bandwidth perspective. 
+Let's file that result away but look at our algorithm from load/store bandwidth perspective. 
 
 #### <u>Load/ Store Bandwidth efficiency</u>
 
-To process a vector of 32 int16 values times a scalar, let's ignor the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles per MAC. It might be possible to do it in a single cycle if the data is striped across banks perfectly. We also need to store 2x 256-bits which must take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs an store the outputs. This explains why our optimized vector results was 72, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 6 cycles is loop preamble, loop postamble and function initailzation and cleanup overhead.
+To process a vector of 32 int16 values times a scalar, let's ignore the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles per MAC. It might be possible to do it in a single cycle if the data is striped across banks perfectly. We also need to store 2x 256-bits which will take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs an store the outputs. This explains why our optimized vector results was 72, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 6 cycles is loop preamble, loop postamble and function initialization and cleanup overhead.
 
 #### <u>Data routing efficiency</u>
-So we saw why load/sore bandwidth is the bottleneck in our 16-bit Vector Scalar Multiply example for the compute. But what about data movement via streams and DMAs. We need to process 1024 chunks of 16-bit data or 512 32-bit quantities. Because our stream switch move data in 32-bit granuliarity, we need 512 cycles in order to load in the data to L1 and to move the data out of L1 to L2/L3.
+The load/store bandwidth is already a bottleneck in our 16-bit Vector Scalar Multiply example for the compute. But what about data movement via streams and DMAs. We need to process 1024 chunks of 16-bit data or 512 32-bit quantities. Because our stream switch moves data in 32-bit granularity, we need 512 cycles in order to load in the data to L1 and to move the data out of L1 to L2/L3.
 
 #### <u>Hardware efficiency summary</u>
 
@@ -203,39 +205,38 @@ Looking at this table, we quickly see that the data movement is the bottleneck.
 
     Mouse over the blocks of PortRuning0 and PortRunning1, what is the measured number of cycles per chunk? <img src="../../../mlir_tutorials/images/answer1.jpg" title="512 cycles" height=25> This matches what we expected to see. But note how it's obvious from the waveform how dominant data movement is as compared to compute. 
 
-
-**TODO** - Looking at int32 version? matmul?
-
-
 ## <u>Diving Deep - Examining the Microcode</u>
-Let's take a look again at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also take go back one step comment out `chess_prepare_for_pipelining chess_loop_range(16, )` and rerun the compilation (`make clean; make trace`). 
+Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `chess_prepare_for_pipelining chess_loop_range(16, )` and rerun the compilation (`make clean; make trace`). 
 
 At this point, we can actually take a look at the `microcode`. The `microcode` is the precise schedule of instructions that our AIE executes in order to run the kernel program. This microcode can usually be found under `build/core_0_2.elf.lst` where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own .lst file. If you were to open the file, you will see a lot of information. Comment lines will have a . in front of it. The other lines are the instructions  and are structured as follows:
 
+```
 Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA commands
+```
 
 | Example ISA commands | Description |
 |----------------------|-------------|
 | NOP .. | No op |
 | JL #XXX | Jump and link to instruction line # |
 | MOV r1, r2 | Move register values from r2 to r1 |
-| LD .. | Scalra load |
+| LD .. | Scalar load |
 | ST ..  | Scalar store |
 | VLDA | Vector load unit A, |
 | VLDB | Vector load unit B, |
-| VMUL ..  | Vector mulitply |
-| VMAC ..  | Vector mutliple and accumulate |
+| VMUL ..  | Vector multiply |
+| VMAC ..  | Vector multiply and accumulate |
 | VST .. | Vector store |
 | VSRS .. | Vector SRS |
 | VSHUFFLE .. | Vector shuffle |
 
-Fully analzying and understanding this microcode is beyond the scope of this programming guide but we We will focus on key parts of this microcode, labled by 3 types of comments in particular, 
+Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular: 
 
 `.label vector_scalar_mul_aie` followed by `.function_start` - The start of the function we're interested in. The name after label is the function name but this might have additional characters if the function is generated from a template.
 
 `.label ZLS_...` - The start of a zero-overhead loop
 
-`.label ZLE_...` - The end of a zero-overhead loop. **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `ZLS` and `ZLE`. In general, labels pertain the line after the label.
+`.label ZLE_...` - The end of a zero-overhead loop. 
+> **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `ZLS` and `ZLE`. In general, labels pertain the line after the label.
 
 Let's examine this more closely in our example.
 
