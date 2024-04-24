@@ -41,7 +41,7 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
 
   constexpr bool VERIFY = true;
-  constexpr int IN_VOLUME = 4096;
+  constexpr int IN_VOLUME = VECTORSCALARMUL_SIZE;
   constexpr int OUT_VOLUME = IN_VOLUME;
 
   int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);

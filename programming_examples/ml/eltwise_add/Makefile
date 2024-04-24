@@ -11,8 +11,11 @@ include ../../makefile-common
 all: build/final.xclbin
 
 targetname = myEltwiseAdd
+trace_size = 8192
 
-build/add.o:
+VPATH := ../../../aie_kernels/aie2
+
+build/%.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/add.cc -o ${@F}
 
@@ -20,10 +23,24 @@ build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
+build/aie_trace.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< ${trace_size} > $@
+
+
+build/aie_trace.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< ${trace_size} > $@
+
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+
+build/final_trace.xclbin: build/aie_trace.mlir build/add.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
@@ -39,8 +56,9 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
-run_py: build/final.xclbin build/insts.txt
-	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+trace: ${targetname}.exe build/final_trace.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
+	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

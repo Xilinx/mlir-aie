@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-aie.device(ipu) {
+aie.device(npu) {
 
   //shim
   %tile00 = aie.tile(0, 0)
@@ -909,9 +909,9 @@ aie.device(ipu) {
 
 
       // Trace_Event0  (4 slots)
-      aiex.ipu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
       // Trace_Event1  (4 slots)
-      aiex.ipu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
 
       // Event slots as configured above:
       // 0: Kernel executes vector instruction
@@ -925,13 +925,13 @@ aie.device(ipu) {
 
       // Stream_Switch_Event_Port_Selection_0
       // This is necessary to capture the Port_Running_0 and Port_Running_1 events
-      aiex.ipu.write32 { column = 2 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
 
       // Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-      aiex.ipu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
 
       // Start trace copy out.
-      aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
+      aiex.npu.writebd_shimtile { bd_id = 3 : i32,
                                   buffer_length = 16384 : i32,
                                   buffer_offset = 262144 : i32,
                                   enable_packet = 0 : i32,
@@ -965,30 +965,30 @@ aie.device(ipu) {
                                   next_bd = 0 : i32,
                                   use_next_bd = 0 : i32,
                                   valid_bd = 1 : i32}
-      aiex.ipu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
+      aiex.npu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
 
     //End trace dump
 
       
 
-      aiex.ipu.rtp_write(0, 2, 0,  1) { buffer_sym_name = "rtp2" }  
-      aiex.ipu.rtp_write(0, 3, 0,  1) { buffer_sym_name = "rtp3" } 
-      aiex.ipu.rtp_write(0, 5, 0,  1) { buffer_sym_name = "rtp4" }  
-      aiex.ipu.rtp_write(0, 4, 0,  1)  { buffer_sym_name = "rtp5" }  
-      aiex.ipu.rtp_write(0, 4, 1,  0)  { buffer_sym_name = "rtp5" }  
-      aiex.ipu.rtp_write(0, 4, 2,  1)  { buffer_sym_name = "rtp5" }  
+      aiex.npu.rtp_write(0, 2, 0,  1) { buffer_sym_name = "rtp2" }  
+      aiex.npu.rtp_write(0, 3, 0,  1) { buffer_sym_name = "rtp3" } 
+      aiex.npu.rtp_write(0, 5, 0,  1) { buffer_sym_name = "rtp4" }  
+      aiex.npu.rtp_write(0, 4, 0,  1)  { buffer_sym_name = "rtp5" }  
+      aiex.npu.rtp_write(0, 4, 1,  0)  { buffer_sym_name = "rtp5" }  
+      aiex.npu.rtp_write(0, 4, 2,  1)  { buffer_sym_name = "rtp5" }  
 
-      aiex.ipu.rtp_write(1, 5, 0,  1) { buffer_sym_name = "rtp15" }  
-      aiex.ipu.rtp_write(1, 4, 0,  1) { buffer_sym_name = "rtp14" }  
-      aiex.ipu.rtp_write(1, 2, 0,  1) { buffer_sym_name = "rtp12" }  
-      aiex.ipu.rtp_write(1, 3, 0,  1)  { buffer_sym_name = "rtp13" }  
-      aiex.ipu.rtp_write(1, 3, 1,  0)  { buffer_sym_name = "rtp13" }  
+      aiex.npu.rtp_write(1, 5, 0,  1) { buffer_sym_name = "rtp15" }  
+      aiex.npu.rtp_write(1, 4, 0,  1) { buffer_sym_name = "rtp14" }  
+      aiex.npu.rtp_write(1, 2, 0,  1) { buffer_sym_name = "rtp12" }  
+      aiex.npu.rtp_write(1, 3, 0,  1)  { buffer_sym_name = "rtp13" }  
+      aiex.npu.rtp_write(1, 3, 1,  0)  { buffer_sym_name = "rtp13" }  
 
-      aiex.ipu.rtp_write(2, 2, 0,  1) { buffer_sym_name = "rtp22" }  
-      aiex.ipu.rtp_write(2, 3, 0,  1) { buffer_sym_name = "rtp23" }  
-      aiex.ipu.rtp_write(2, 5, 0,  1) { buffer_sym_name = "rtp25" }  
-      aiex.ipu.rtp_write(2, 4, 0,  1)  { buffer_sym_name = "rtp24" }  
-      aiex.ipu.rtp_write(2, 4, 1,  0)  { buffer_sym_name = "rtp24" } 
+      aiex.npu.rtp_write(2, 2, 0,  1) { buffer_sym_name = "rtp22" }  
+      aiex.npu.rtp_write(2, 3, 0,  1) { buffer_sym_name = "rtp23" }  
+      aiex.npu.rtp_write(2, 5, 0,  1) { buffer_sym_name = "rtp25" }  
+      aiex.npu.rtp_write(2, 4, 0,  1)  { buffer_sym_name = "rtp24" }  
+      aiex.npu.rtp_write(2, 4, 1,  0)  { buffer_sym_name = "rtp24" } 
 
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
@@ -1000,13 +1000,13 @@ aie.device(ipu) {
       %total_wts_3_off = arith.constant  35840 : i64 
 
       //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-      aiex.ipu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
-      aiex.ipu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
 
-      aiex.ipu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
 

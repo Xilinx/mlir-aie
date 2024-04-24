@@ -42,7 +42,7 @@ traceSizeInInt32s = trace_size // 4
 def conv2dk1():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
 
             actIn_ty = T.memref(actIn, T.i8())
@@ -162,14 +162,14 @@ def conv2dk1():
                     #              BB      <- Event to start trace capture
                     #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
                     # Configure so that "Event 1" (always true) causes tracing to start
-                    ipu_write32(
+                    npu_write32(
                         column=compute_tile2_col,
                         row=compute_tile2_row,
                         address=0x340D0,
                         value=0x00010000,
                     )
                     # 0x340D4: Trace Control 1
-                    ipu_write32(
+                    npu_write32(
                         column=compute_tile2_col,
                         row=compute_tile2_row,
                         address=0x340D4,
@@ -177,7 +177,7 @@ def conv2dk1():
                     )
                     # 0x340E0: Trace Event Group 1  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    ipu_write32(
+                    npu_write32(
                         column=compute_tile2_col,
                         row=compute_tile2_row,
                         address=0x340E0,
@@ -185,14 +185,14 @@ def conv2dk1():
                     )
                     # 0x340E4: Trace Event Group 2  (Which events to trace)
                     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    ipu_write32(
+                    npu_write32(
                         column=compute_tile2_col,
                         row=compute_tile2_row,
                         address=0x340E4,
                         value=0x2D2C1A4F,
                     )
 
-                    ipu_write32(
+                    npu_write32(
                         column=compute_tile2_col,
                         row=compute_tile2_row,
                         address=0x3FF00,
@@ -203,7 +203,7 @@ def conv2dk1():
                     # out to host DDR memory
                     trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
                     output_size = bufOut
-                    ipu_writebd_shimtile(
+                    npu_writebd_shimtile(
                         bd_id=trace_bd_id,
                         buffer_length=trace_size,
                         buffer_offset=output_size,
@@ -232,29 +232,29 @@ def conv2dk1():
                         valid_bd=1,
                     )
                     # Set start BD to our shim bd_Id (3)
-                    ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
+                    npu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
-                IpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=10)
+                NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=10)
 
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
                     bd_id=0,
                     mem=I,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=O,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="inOF_wts_0_L3L2",
                     bd_id=2,
                     mem=W,
                     sizes=[1, 1, 1, weightsInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

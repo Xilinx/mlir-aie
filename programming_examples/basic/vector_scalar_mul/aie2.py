@@ -15,17 +15,17 @@ from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_vector_scalar(trace_size):
-    N = 4096
+def my_vector_scalar(vector_size, trace_size):
+    N = vector_size
     N_in_bytes = N * 4
-    n = 1024
-    N_div_n = N // n
+    N_div_n = 4  # chop input vector into 4 sub-vectors
+    n = N // N_div_n
 
     buffer_depth = 2
 
     vectorized = True
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         memRef_ty = T.memref(n, T.i32())
         memRef_ty2 = T.memref(1, T.i32())
@@ -92,16 +92,20 @@ def my_vector_scalar(trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
+    vector_size = int(sys.argv[1])
+    if vector_size % 64 != 0 or vector_size <= 512:
+        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+        raise ValueError
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
 except ValueError:
-    print("Argument is not an integer")
+    print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    my_vector_scalar(trace_size)
+    my_vector_scalar(vector_size, trace_size)
     print(ctx.module)

@@ -54,7 +54,7 @@ The parse script create a temporary directory `tmpTrace` performs the following 
 We prepend `0x` before each hex line and save it `prep.<trace file>` since the `hwfrontend` utility expects it.
 
 ### <u>2. Parse MLIR to build event table</u>
-The MLIR parser is pretty rudimentary as it scans the source mlir file looking for `aiex.ipu.write32` calls and does a pattern match for trace unit config address and then grab the hex events, which it looks up from an internal table to provide waveform labels. It would be better to use an MLIR pass that already has the config information and cross reference it with a more official event-to-label lookup table instead. 
+The MLIR parser is pretty rudimentary as it scans the source mlir file looking for `aiex.npu.write32` calls and does a pattern match for trace unit config address and then grab the hex events, which it looks up from an internal table to provide waveform labels. It would be better to use an MLIR pass that already has the config information and cross reference it with a more official event-to-label lookup table instead. 
 
 ### <u>3. Create .target file</u>
 Create a dummy file (`.target`) in the `tmpTrace` with the file content 'hw' since `hwfrontend` utility expects it.

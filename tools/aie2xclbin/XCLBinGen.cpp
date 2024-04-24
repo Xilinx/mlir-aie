@@ -815,7 +815,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
 }
 
 LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
-                                 XCLBinGenConfig &TK, StringRef OutputIPU,
+                                 XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin) {
   PassManager pm(ctx, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
@@ -842,25 +842,25 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     return moduleOp.emitOpError()
            << "Unexpected target architecture: " << TK.TargetArch;
 
-  // generateIPUInstructions
+  // generateNPUInstructions
   {
     PassManager pm(ctx, moduleOp.getOperationName());
     applyConfigToPassManager(TK, pm);
 
-    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToIpuPass());
+    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
-      return moduleOp.emitOpError("IPU Instruction pipeline failed");
+      return moduleOp.emitOpError("NPU Instruction pipeline failed");
 
     std::string errorMessage;
-    auto output = openOutputFile(OutputIPU, &errorMessage);
+    auto output = openOutputFile(OutputNPU, &errorMessage);
     if (!output) {
       llvm::errs() << errorMessage << "\n";
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToIPU(copy, output->os())))
-      return moduleOp.emitOpError("IPU Instruction translation failed");
+    if (failed(AIE::AIETranslateToNPU(copy, output->os())))
+      return moduleOp.emitOpError("NPU Instruction translation failed");
 
     output->keep();
     copy->erase();

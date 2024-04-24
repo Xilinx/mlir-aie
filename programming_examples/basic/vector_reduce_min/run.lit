@@ -4,8 +4,8 @@
 // REQUIRES: ryzen_ai, chess
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/../../../aie_kernels/aie2/reduce_min.cc -o reduce_min.cc.o
-// RUN: %python %S/aie2.py ipu 0 | aie-opt -cse -canonicalize -o ./aie.mlir
-// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=aie.xclbin --ipu-insts-name=insts.txt ./aie.mlir
+// RUN: %python %S/aie2.py npu 0 | aie-opt -cse -canonicalize -o ./aie.mlir
+// RUN: %python aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt ./aie.mlir
 // RUN: g++ %S/test.cpp -o test.exe -std=c++23 -Wall -I%S/../../../runtime_lib/test_lib %S/../../../runtime_lib/test_lib/test_utils.cpp %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_ipu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
+// RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt | FileCheck %s
 // CHECK: PASS!

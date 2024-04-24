@@ -11,7 +11,7 @@ include ../../makefile-common
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
 targetname = reduce_min
-devicename = ipu
+devicename = npu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
 KERNEL_LIB=../../../aie_kernels/aie2
@@ -29,7 +29,7 @@ build/aie.mlir: aie2.py
 build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

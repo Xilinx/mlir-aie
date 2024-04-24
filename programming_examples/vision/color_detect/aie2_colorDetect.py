@@ -32,7 +32,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def color_detect():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def deviceBody():
             line_bytes_ty = MemRefType.get((lineWidthInBytes,), T.ui8())
             line_ty = MemRefType.get((lineWidth,), T.ui8())
@@ -254,19 +254,19 @@ def color_detect():
 
             @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="inOF_L3L2",
                     bd_id=1,
                     mem=I,
                     sizes=[1, 1, 1, height * lineWidthInInt32s],
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="outOF_L2L3",
                     bd_id=0,
                     mem=O,
                     sizes=[1, 1, 1, height * lineWidthInInt32s],
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

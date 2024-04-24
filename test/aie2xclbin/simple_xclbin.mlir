@@ -19,7 +19,7 @@
 // PEANO-NOT: xchesscc_wrapper
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %12 = aie.tile(1, 2)
     %buf = aie.buffer(%12) : memref<256xi32>
     %4 = aie.core(%12)  {

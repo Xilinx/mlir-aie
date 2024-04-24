@@ -31,9 +31,9 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
-mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
+mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
-std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp);
+std::vector<uint32_t> AIETranslateToNPU(mlir::ModuleOp);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);

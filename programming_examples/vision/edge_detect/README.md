@@ -12,7 +12,7 @@
 
 The Edge Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
 
-The pipeline is mapped onto a single column of the ipu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2gray`, `filter2D` and `threshold` kernels are each mapped onto one compute tile, while `gray2rgba` and `addWeighted` are mapped together on AIE tile (0, 5). 
+The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2gray`, `filter2D` and `threshold` kernels are each mapped onto one compute tile, while `gray2rgba` and `addWeighted` are mapped together on AIE tile (0, 5). 
 
 <p align="center">
   <img
