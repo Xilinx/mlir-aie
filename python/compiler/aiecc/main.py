@@ -49,7 +49,7 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-create-packet-flows")
-        .add_pass("aie-lower-multicast")
+        .add_pass("aie-lower-multicast"),
     )
     .convert_scf_to_cf()
 )
