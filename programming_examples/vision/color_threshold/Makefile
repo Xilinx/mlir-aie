@@ -36,8 +36,8 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: aie2_colorThreshold.py
 
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

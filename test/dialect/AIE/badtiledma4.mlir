@@ -12,7 +12,7 @@
 // CHECK: error{{.*}}'aie.mem' op uses more output channels than available on this tile
 
 module @test {
-  aie.device(ipu) {
+  aie.device(npu) {
     %t03 = aie.tile(0, 3)
 
     %buf_e = aie.buffer(%t03) : memref<256xi32>

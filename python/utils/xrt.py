@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
-
 # from npu.runtime
 import pyxrt as xrt
 

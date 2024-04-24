@@ -27,14 +27,13 @@ if (NOT WSL)
 else()
     set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
 
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
-
 
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})

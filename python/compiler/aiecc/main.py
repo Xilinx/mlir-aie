@@ -89,7 +89,7 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_IPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -659,6 +659,19 @@ class FlowRunner:
                     ],
                 )
 
+            if opts.link_against_hsa:
+                file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-hsa",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+
             cmd = ["clang++", "-std=c++17"]
             if opts.host_target:
                 cmd += ["--target=" + opts.host_target]
@@ -781,20 +794,26 @@ class FlowRunner:
 
         install_path = aie.compiler.aiecc.configure.install_path()
 
+        # Setting everything up if linking against HSA
+        if opts.link_against_hsa:
+            arch_name = opts.host_target.split("-")[0] + "-hsa"
+        else:
+            arch_name = opts.host_target.split("-")[0]
+
         runtime_simlib_path = os.path.join(
             install_path, "aie_runtime_lib", aie_target.upper(), "aiesim"
         )
         runtime_testlib_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "lib",
         )
         runtime_testlib_include_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "include",
         )
@@ -840,6 +859,7 @@ class FlowRunner:
             "-lxtlm",
             "-flto",
         ]
+
         processes = []
         processes.append(
             self.do_call(
@@ -993,14 +1013,14 @@ class FlowRunner:
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-elf"
 
-            # Optionally generate insts.txt for IPU instruction stream
-            if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
+            # Optionally generate insts.txt for NPU instruction stream
+            if opts.npu or opts.only_npu:
+                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-ipu",
+                        "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1010,13 +1030,13 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-translate",
-                        "--aie-ipu-instgen",
+                        "--aie-npu-instgen",
                         generated_insts_mlir,
                         "-o",
                         opts.insts_name,
                     ],
                 )
-                if opts.only_ipu:
+                if opts.only_npu:
                     return
 
             chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(

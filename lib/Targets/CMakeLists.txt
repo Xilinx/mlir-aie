@@ -11,9 +11,10 @@ add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
-  AIETargetIPU.cpp
+  AIETargetNPU.cpp
   AIETargetLdScript.cpp
   AIETargetXAIEV2.cpp
+  AIETargetHSA.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
   ADFGenerateCppGraph.cpp

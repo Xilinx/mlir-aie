@@ -14,6 +14,11 @@ get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 add_mlir_tool(aie-translate
   aie-translate.cpp
 )
+install(TARGETS aie-translate
+EXPORT AIETargets
+RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+COMPONENT aie-translate)
+
 llvm_update_compile_flags(aie-translate)
 target_link_libraries(aie-translate
   PRIVATE

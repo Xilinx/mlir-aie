@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def my_vector_bias_add():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memRef_16_ty = T.memref(16, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
@@ -61,13 +61,13 @@ def my_vector_bias_add():
 
             @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
             def sequence(inTensor, notUsed, outTensor):
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

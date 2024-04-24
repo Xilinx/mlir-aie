@@ -43,12 +43,12 @@ build/aie_trace.mlir: aie2.py
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 
 ${targetname}.exe: test.cpp

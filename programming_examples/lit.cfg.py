@@ -7,9 +7,11 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
 import os
+import platform
 import re
 import shutil
 import subprocess
+import tempfile
 
 import lit.formats
 import lit.util
@@ -19,9 +21,12 @@ from lit.llvm import llvm_config
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = "AIE_REFERENCE_DESIGNS"
+config.name = "AIE_TUTORIALS"
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.environment["PYTHONPATH"] = "{}".format(
+    os.path.join(config.aie_obj_root, "python")
+)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir"]
@@ -45,15 +50,76 @@ llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for python
 llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
 
-if config.enable_board_tests:
-    config.substitutions.append(
-        ("%run_on_board", "echo %T >> /home/xilinx/testlog | sync | sudo")
-    )
-else:
-    config.substitutions.append(("%run_on_board", "echo"))
-
-run_on_ipu = "echo"
+run_on_npu = "echo"
 xrt_flags = ""
+
+# Not using run_on_board anymore, need more specific per-platform commands
+config.substitutions.append(("%run_on_board", "echo"))
+
+if config.hsa_dir and (not ("NOTFOUND" in config.hsa_dir)):
+    if not "hsa" in config.aieHostTarget:
+        print(
+            "ROCm found, but disabled because host target {}".format(
+                config.aieHostTarget
+            )
+        )
+        config.substitutions.append(("%run_on_vck5000", "echo"))
+        config.substitutions.append(("%link_against_hsa%", ""))
+        config.substitutions.append(("%HSA_DIR%", ""))
+
+    else:
+        # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
+        # directory so need to go up three directories
+        rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
+        print("Found ROCm:", rocm_root)
+        config.available_features.add("hsa")
+        config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
+        config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
+        found_vck5000 = False
+
+        if config.enable_board_tests:
+            # If board tests are enabled, make sure there is an AIE ROCm device that we can find
+            try:
+                # Making sure that we use the experimental ROCm install that can see the AIE device
+                my_env = os.environ.copy()
+                my_env.update(LD_LIBRARY_PATH="{}/lib/".format(rocm_root))
+                result = subprocess.run(
+                    ["rocminfo"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=my_env,
+                )
+                result = result.stdout.decode("utf-8").split("\n")
+
+                # Go through result and look for the VCK5000
+                for l in result:
+                    if "Versal VCK5000" in l:
+                        print("Found VCK500 in rocminfo. Enabling on board tests")
+                        found_vck5000 = True
+                        config.substitutions.append(
+                            ("%run_on_vck5000", "flock /tmp/vck5000.lock")
+                        )
+                        break
+
+                if not found_vck5000:
+                    config.substitutions.append(("%run_on_vck5000", "echo"))
+                    print(
+                        "Enable board set and HSA found but couldn't find device using rocminfo"
+                    )
+
+            except:
+                print("Enable board set and HSA found but unable to run rocminfo")
+                pass
+        else:
+            print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
+            config.substitutions.append(("%run_on_vck5000", "echo"))
+else:
+    print("ROCm not found")
+    config.substitutions.append(("%run_on_vck5000", "echo"))
+    config.substitutions.append(("%link_against_hsa%", ""))
+    config.substitutions.append(("%HSA_DIR%", ""))
+
+
 if config.xrt_lib_dir:
     print("xrt found at", os.path.dirname(config.xrt_lib_dir))
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
@@ -76,8 +142,8 @@ if config.xrt_lib_dir:
                     aie_model = m.group(2)
                     print("\tmodel:", aie_model)
                 config.available_features.add("ryzen_ai")
-                run_on_ipu = (
-                    f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
+                run_on_npu = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
     except:
         print("Failed to run xbutil")
@@ -85,7 +151,7 @@ if config.xrt_lib_dir:
 else:
     print("xrt not found")
 
-config.substitutions.append(("%run_on_ipu", run_on_ipu))
+config.substitutions.append(("%run_on_npu", run_on_npu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 config.environment["XRT_HACK_UNSECURE_LOADING_XCLBIN"] = "1"
@@ -113,7 +179,7 @@ except ImportError:
     pass
 
 VitisSysrootFlag = ""
-if config.aieHostTarget == "x86_64":
+if "x86_64" in config.aieHostTarget:
     config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))
 elif config.aieHostTarget == "aarch64":
     config.substitutions.append(("%aieHostTargetTriplet%", "aarch64-linux-gnu"))

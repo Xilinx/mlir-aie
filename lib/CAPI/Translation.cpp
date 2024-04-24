@@ -76,15 +76,15 @@ aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
   return wrap(status);
 }
 
-MlirStringRef aieTranslateToIPU(MlirOperation moduleOp) {
-  std::string ipu;
-  llvm::raw_string_ostream os(ipu);
+MlirStringRef aieTranslateToNPU(MlirOperation moduleOp) {
+  std::string npu;
+  llvm::raw_string_ostream os(npu);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToIPU(mod, os)))
+  if (failed(AIETranslateToNPU(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(ipu.size()));
-  ipu.copy(cStr, ipu.size());
-  return mlirStringRefCreate(cStr, ipu.size());
+  char *cStr = static_cast<char *>(malloc(npu.size()));
+  npu.copy(cStr, npu.size());
+  return mlirStringRefCreate(cStr, npu.size());
 }
 
 MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {
@@ -92,6 +92,17 @@ MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp) {
   llvm::raw_string_ostream os(xaie);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   if (failed(AIETranslateToXAIEV2(mod, os)))
+    return mlirStringRefCreate(nullptr, 0);
+  char *cStr = static_cast<char *>(malloc(xaie.size()));
+  xaie.copy(cStr, xaie.size());
+  return mlirStringRefCreate(cStr, xaie.size());
+}
+
+MlirStringRef aieTranslateToHSA(MlirOperation moduleOp) {
+  std::string xaie;
+  llvm::raw_string_ostream os(xaie);
+  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
+  if (failed(AIETranslateToHSA(mod, os)))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(xaie.size()));
   xaie.copy(cStr, xaie.size());

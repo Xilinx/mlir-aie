@@ -15,20 +15,34 @@ from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 
-if len(sys.argv) == 2:
+
+# Deciphering the command line arguments
+if len(sys.argv) < 3:
+    raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
+
+if len(sys.argv) == 4:
     N = int(sys.argv[1])
+
+if sys.argv[1] == "npu":
+    dev = AIEDevice.npu
+elif sys.argv[1] == "xcvc1902":
+    dev = AIEDevice.xcvc1902
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+
+col = int(sys.argv[2])
 
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(dev)
         def device_body():
             memRef_ty = T.memref(1024, T.i32())
 
             # Tile declarations
-            ShimTile = tile(0, 0)
-            ComputeTile2 = tile(0, 2)
+            ShimTile = tile(col, 0)
+            ComputeTile2 = tile(col, 2)
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
@@ -48,9 +62,9 @@ def my_passthrough():
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
-                ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

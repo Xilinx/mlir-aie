@@ -16,7 +16,7 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 
 This project is primarily intended to support the open-source community, particularly tool builders, with low-level access to AIE devices and enable the development of a wide variety of programming models from higher level abstractions. We provide an example programming flow: Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around the mlir-aie dialect. As such, it contains some examples, however this project is not intended to represent an end-to-end compilation flow for all application designs. If you're looking for an out-of-the-box experience for highly efficient machine learning, check out the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/).
 
-[Getting Started with MLIR](docs/Building.md)
+[Getting Started on a Versal™ board](docs/Building.md)
 
 [Running on a Versal™ board](docs/Platform.md)
 

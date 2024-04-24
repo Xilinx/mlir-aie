@@ -21,7 +21,7 @@ from .._mlir_libs._aie import (
     generate_bcf,
     generate_cdo,
     generate_xaie,
-    ipu_instgen,
+    npu_instgen,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
@@ -617,7 +617,7 @@ def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
-    assert int(device.device) == int(AIEDevice.ipu), "only ipu supported"
+    assert int(device.device) == int(AIEDevice.npu), "only npu supported"
 
     neighbors = {}
     col, row = map(int, (tile.col, tile.row))

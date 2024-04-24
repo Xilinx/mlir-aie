@@ -265,7 +265,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16; // (10):BLEN=16 (256Byte) (corresponds to
-                          // 0x800000000 from targetipu)
+                          // 0x800000000 from target)
     size_t qOs = 0;
     size_t cache = 0;
     size_t secure = 0;
@@ -413,7 +413,6 @@ struct AIEControl {
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
-
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
@@ -560,8 +559,8 @@ struct AIEControl {
       int32_t col = switchboxOp.colIndex();
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
-      assert(targetOp.getDevice() == AIEDevice::ipu &&
-             "Only IPU currently supported");
+      assert(targetOp.getDevice() == AIEDevice::npu &&
+             "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
@@ -781,9 +780,9 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
   // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about IPU...
-  assert(targetOp.getDevice() == AIEDevice::ipu &&
-         "Only IPU currently supported");
+  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
+  assert(targetOp.getDevice() == AIEDevice::npu &&
+         "Only NPU currently supported");
   int maxCol = 0, minCol = 0;
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     minCol = std::min(tileOp.getCol(), minCol);

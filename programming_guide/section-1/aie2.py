@@ -13,7 +13,7 @@ from aie.extras.context import mlir_mod_ctx  # mlir-aie context
 def mlir_aie_design():
 
     # Device declaration - aie2 device NPU
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
 
         # Tile(s) declarations

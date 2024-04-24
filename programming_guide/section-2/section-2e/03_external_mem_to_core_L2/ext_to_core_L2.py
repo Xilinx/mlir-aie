@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def external_mem_to_core_L2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memRef_24_ty = T.memref(24, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
@@ -58,13 +58,13 @@ def external_mem_to_core_L2():
             # To/from AIE-array data movement
             @FuncOp.from_py_func(memRef_48_ty, memRef_48_ty, memRef_48_ty)
             def sequence(inTensor, notUsed, outTensor):
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
                 )
-                ipu_dma_memcpy_nd(
+                npu_dma_memcpy_nd(
                     metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
                 )
-                ipu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

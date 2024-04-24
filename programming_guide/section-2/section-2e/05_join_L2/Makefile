@@ -9,7 +9,7 @@
 include ../../../../programming_examples/makefile-common
 
 targetname = distribute_and_join_L2
-devicename = ipu
+devicename = npu
 col = 0
 
 all: build/final.xclbin build/insts.txt
@@ -21,7 +21,7 @@ build/aie.mlir: distribute_and_join_L2.py
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build

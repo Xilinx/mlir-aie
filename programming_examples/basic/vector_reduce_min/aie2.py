@@ -24,8 +24,8 @@ def my_reduce_min():
     if len(sys.argv) != 3:
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
-    if sys.argv[1] == "ipu":
-        dev = AIEDevice.ipu
+    if sys.argv[1] == "npu":
+        dev = AIEDevice.npu
     elif sys.argv[1] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:
@@ -67,9 +67,9 @@ def my_reduce_min():
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty)
         def sequence(A, C):
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 1])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 1])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 with mlir_mod_ctx() as ctx:

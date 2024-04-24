@@ -16,14 +16,10 @@ build/scale.o: vector_scalar_mul.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
-build/aie.mlir: aie2.py
-	mkdir -p ${@D}
-	python3 $< > $@
-
-build/final.xclbin: build/aie.mlir build/scale.o
+build/final.xclbin: aie.mlir build/kernel1.o build/kernel2.o build/kernel3.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
@@ -34,7 +30,7 @@ ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
 	cp _build/${targetname} $@ 
-endif
+endif 
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

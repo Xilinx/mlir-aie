@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
-
 import os
 from torch.utils.data import Dataset
 

@@ -129,6 +129,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
   // have been created and should be used
+  std::vector<ObjectFifoCreateOp>
+      splitBecauseLink; // objfifos which have been split because they are
+  // part of a Link, not because they didn't have a shared memory module
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -174,6 +177,7 @@ struct AIEObjectFifoStatefulTransformPass
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
+    bool isUsedInLinkOp = false;
 
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
@@ -181,10 +185,16 @@ struct AIEObjectFifoStatefulTransformPass
       // Test for shared memory
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
-                dyn_cast<TileOp>(consumerTile.getDefiningOp());
-            isSharedMemory(createOp.getProducerTileOp(), consumerTileOp,
-                           &share_direction))
-          hasSharedMemory = true;
+                dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                         createOp))
+            hasSharedMemory =
+                isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
+          else
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
+                                             consumerTileOp, &share_direction);
+        }
       }
     }
 
@@ -201,7 +211,17 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform;
+    // Only test for this objfifo belonging to a LinkOp if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
+    if (hasSharedMemory) {
+      if (auto linkOp = getOptionalLinkOp(createOp)) {
+        splitBecauseLink.push_back(createOp);
+        isUsedInLinkOp = true;
+      }
+    }
+
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
+           isUsedInLinkOp;
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
@@ -848,6 +868,34 @@ struct AIEObjectFifoStatefulTransformPass
                       std::vector<std::vector<int>> &dependencies, Value base,
                       int64_t step, bool inLoop) {
     std::vector<Operation *> duplicatedOperations; // operations in current
+    // Recursive function to replace operands, uses recursion to handle nested
+    // loop structures.
+    std::function<void(Operation *, unsigned &, unsigned)> replaceOpsNested =
+        [&](Operation *op, unsigned &opIndex,
+            unsigned numDuplications) -> void {
+      if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
+        Block *body = loopOp.getBody();
+        auto withoutTerminator = --body->end();
+        // NOTE(jornt): This only handles the cases where the nested scf::for is
+        // located at the start of the body. This should be the most common
+        // case, but is not fully generic.
+        if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
+          opIndex++;
+          replaceOperands(builder, nestedLoop, opIndex, base, step, inLoop,
+                          numDuplications, dependencies, duplicatedOperations);
+          replaceOpsNested(nestedLoop, opIndex, numDuplications);
+        } else {
+          for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
+               ++loopBodyOp) {
+            opIndex++;
+            replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop,
+                            numDuplications, dependencies,
+                            duplicatedOperations);
+          }
+        }
+      }
+    };
+
     // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       duplicatedOperations.clear();
@@ -858,17 +906,7 @@ struct AIEObjectFifoStatefulTransformPass
         replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
                         dependencies, duplicatedOperations);
         builder.insert(clone);
-
-        if (auto nestedLoop = dyn_cast<scf::ForOp>(clone)) {
-          Block *body = nestedLoop.getBody();
-          auto withoutTerminator = --body->end();
-          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
-               ++loopOp) {
-            opIndex++;
-            replaceOperands(builder, &*loopOp, opIndex, base, step, inLoop, i,
-                            dependencies, duplicatedOperations);
-          }
-        }
+        replaceOpsNested(clone, opIndex, i);
       }
     }
   }

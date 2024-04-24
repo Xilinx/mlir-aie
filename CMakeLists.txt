@@ -98,6 +98,7 @@ find_package(Vitis 2023.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(XRT)
+find_package(hsa-runtime64)
 
 # Set up default Vitis Sysroot as sysroot when testing on aarch64
 list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)

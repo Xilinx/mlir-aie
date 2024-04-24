@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: !hsa
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test.elf -L%host_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
 // RUN: aie_row.mlir.prj/aiesim.sh | FileCheck %s

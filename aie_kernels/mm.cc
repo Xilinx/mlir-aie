@@ -242,15 +242,43 @@ void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
       pA, offsetA, pB, offsetB, pC, offsetC);
 }
 
+<<<<<<< HEAD
 extern "C" {
 
 #define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
+=======
+template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+                                      unsigned offsetA,
+                                      const bfloat16 *__restrict pB,
+                                      unsigned offsetB, float *__restrict pC,
+                                      unsigned offsetC) {
+  constexpr int r = 4;
+  constexpr int s = 8;
+  constexpr int t = 4;
+  static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
+  static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
+  static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
+  return matmul_vectorized<bfloat16, float, m / r, k / s, n / t, r, s, t>(
+      pA, offsetA, pB, offsetB, pC, offsetC);
+}
+
+extern "C" {
+
+#define combos(X)                                                              \
+  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
+  X(bfloat16, bf16, float, f32, 4, 8, 4)
+>>>>>>> 626182746a720c85748e232366b8649386f24b3a
 
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
   void matmul_##mlir_type_in##_##mlir_type_out(                                \
       ctype_in *a_in, unsigned offsetA, ctype_in *b_in, unsigned offsetB,      \
+<<<<<<< HEAD
       ctype_in *c_out, unsigned offsetC) {                                     \
+=======
+      ctype_out *c_out, unsigned offsetC) {                                    \
+>>>>>>> 626182746a720c85748e232366b8649386f24b3a
     matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
         64, 64, 64>(a_in, offsetA, b_in, offsetB, c_out, offsetC);             \
   }

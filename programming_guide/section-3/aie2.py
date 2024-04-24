@@ -17,7 +17,7 @@ import aie.utils.trace as trace_utils
 
 def my_vector_scalar():
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         memRef_ty = T.memref(1024, T.i32())
 
@@ -62,10 +62,10 @@ def my_vector_scalar():
 
         @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
-            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])
+            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 with mlir_mod_ctx() as ctx:

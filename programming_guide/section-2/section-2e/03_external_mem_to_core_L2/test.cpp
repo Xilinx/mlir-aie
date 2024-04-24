@@ -10,6 +10,7 @@
 
 #include <boost/program_options.hpp>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
