@@ -246,10 +246,10 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
     note << "MemoryMap:\n";
     auto printbuffer = [&](StringRef name, int address, int size) {
       note << "\t"
-            << "\t" << name << " \t"
-            << ": 0x" << llvm::utohexstr(address) << "-0x"
-            << llvm::utohexstr(address + size - 1) << " \t(" << size
-            << " bytes)\n";
+           << "\t" << name << " \t"
+           << ": 0x" << llvm::utohexstr(address) << "-0x"
+           << llvm::utohexstr(address + size - 1) << " \t(" << size
+           << " bytes)\n";
     };
     for (int i = 0; i < numBanks; i++) {
       note << "\t"
