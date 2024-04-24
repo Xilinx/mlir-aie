@@ -104,7 +104,7 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static IPUTargetModel IPUmodel;
+static NPUTargetModel NPUmodel;
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -983,8 +983,8 @@ const AIETargetModel &DeviceOp::getTargetModel() {
     return VE2302model;
   case AIEDevice::xcve2802:
     return VE2802model;
-  case AIEDevice::ipu:
-    return IPUmodel;
+  case AIEDevice::npu:
+    return NPUmodel;
   }
   return VC1902model;
 }

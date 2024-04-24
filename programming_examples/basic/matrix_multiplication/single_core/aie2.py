@@ -55,7 +55,7 @@ def my_matmul():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memref_a_ty = T.memref(m, k, T.bf16())
             memref_b_ty = T.memref(k, n, T.bf16())
@@ -195,7 +195,7 @@ def my_matmul():
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata="outC",
                         bd_id=0,
                         mem=C,
@@ -211,7 +211,7 @@ def my_matmul():
                             * word_size_in
                             // 4
                         )
-                        ipu_dma_memcpy_nd(
+                        npu_dma_memcpy_nd(
                             metadata="inA",
                             bd_id=2 * tile_row + 1,
                             mem=A,
@@ -219,7 +219,7 @@ def my_matmul():
                             sizes=[N_div_n, K_div_k, m, k_in_i32s],
                             strides=[0, k_in_i32s, K_in_i32s],
                         )
-                        ipu_dma_memcpy_nd(
+                        npu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
@@ -227,7 +227,7 @@ def my_matmul():
                             strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                         )
 
-                    ipu_sync(column=0, row=0, direction=0, channel=0)
+                    npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

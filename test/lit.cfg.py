@@ -54,7 +54,7 @@ config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
-run_on_ipu = "echo"
+run_on_npu = "echo"
 xrt_flags = ""
 
 # Not using run_on_board anymore, need more specific per-platform commands
@@ -144,8 +144,8 @@ if config.xrt_lib_dir:
                     aie_model = m.group(2)
                     print("\tmodel:", aie_model)
                 config.available_features.add("ryzen_ai")
-                run_on_ipu = (
-                    f"flock /tmp/ipu.lock {config.aie_src_root}/utils/run_on_ipu.sh"
+                run_on_npu = (
+                    f"flock /tmp/npu.lock {config.aie_src_root}/utils/run_on_npu.sh"
                 )
     except:
         print("Failed to run xbutil")
@@ -153,7 +153,7 @@ if config.xrt_lib_dir:
 else:
     print("xrt not found")
 
-config.substitutions.append(("%run_on_ipu", run_on_ipu))
+config.substitutions.append(("%run_on_npu", run_on_npu))
 config.substitutions.append(("%xrt_flags", xrt_flags))
 config.substitutions.append(("%XRT_DIR", config.xrt_dir))
 

@@ -93,7 +93,7 @@ def configure_simple_tracing_aie2(
     #              BB      <- Event to start trace capture
     #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
     # Configure so that "Event 1" (always true) causes tracing to start
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340D0,
@@ -102,7 +102,7 @@ def configure_simple_tracing_aie2(
     # 0x340D4: Trace Control 1
     # This is used to control packet routing.  For the moment
     # only deal with the simple case of circuit routing.
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340D4,
@@ -110,7 +110,7 @@ def configure_simple_tracing_aie2(
     )
     # 0x340E0: Trace Event Group 1  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E0,
@@ -118,7 +118,7 @@ def configure_simple_tracing_aie2(
     )
     # 0x340E4: Trace Event Group 2  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E4,
@@ -132,13 +132,13 @@ def configure_simple_tracing_aie2(
     def slave(port):
         return port
 
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x3FF00,
         value=pack4bytes(0, 0, slave(1), master(1)),  # port 1 is FIFO0?
     )
-    ipu_write32(
+    npu_write32(
         column=int(tile.col),
         row=int(tile.row),
         address=0x3FF04,
@@ -147,7 +147,7 @@ def configure_simple_tracing_aie2(
 
     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
     # out to host DDR memory
-    ipu_writebd_shimtile(
+    npu_writebd_shimtile(
         bd_id=bd_id,
         buffer_length=size,
         buffer_offset=offset,
@@ -176,7 +176,7 @@ def configure_simple_tracing_aie2(
         valid_bd=1,
     )
     # configure S2MM channel
-    ipu_write32(
+    npu_write32(
         column=int(shim.col),
         row=int(shim.row),
         address=0x1D204 if channel == 0 else 0x1D20C,

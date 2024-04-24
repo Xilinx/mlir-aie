@@ -55,7 +55,7 @@ Test/ Host code utilities.
     * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing betweent he two however. To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
 
 
-Within the `func.func @sequence` block, we add a set of configuration register writes (`aiex.ipu.write32`) to configure the tile trace units and the shimDMA. 
+Within the `func.func @sequence` block, we add a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and the shimDMA.
 ### <u>How to configure wrapper and default values</u>
 The minimum function call we need is:
 ```python
@@ -105,14 +105,14 @@ The table below describes the general trace control registers.
 in C/C++
 ```c++
 // Start event = 1, Stop event = 0, Mode = event-time
-aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
-aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D4 : ui32, value = 0x0 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340D4 : ui32, value = 0x0 : ui32 }
 ```
 in Python
 ```python
 # Start event = 1, Stop event = 0, Mode = event-time
-ipu_write32(column=0, row=4, address=0x340D0, value=pack4bytes(stop, start, 0, 0),)
-ipu_write32(column=0, row=4, address=0x340D4, value=0,)
+npu_write32(column=0, row=4, address=0x340D0, value=pack4bytes(stop, start, 0, 0),)
+npu_write32(column=0, row=4, address=0x340D4, value=0,)
 ```
 
 The table below describes which events the trace hardware monitors.
@@ -160,7 +160,7 @@ in C/C++
 // Core Instruction - Event 0 (0x21)
 // Core Instruction - Event 1 (0x22)
 // Core Port Running 0 (0x4B) 
-aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
 
 // Events 4-7 monitored
 // ------------------------
@@ -168,13 +168,13 @@ aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, va
 // Lock stalls (0x1A)
 // Lock acquire requests (0x2C)
 // Lock release requests (0x2D)
-aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
 ```
 in Python
 ```python
 # events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F]
-ipu_write32(column=0, row=4, address=0x340E0, value=*events[0:4],)
-ipu_write32(column=0, row=4, address=0x340E4, value=*events[4:8],)
+npu_write32(column=0, row=4, address=0x340E0, value=*events[0:4],)
+npu_write32(column=0, row=4, address=0x340E4, value=*events[4:8],)
 ```
 
 Some configurations like the Port Running 0/1 events are further configured by a secondary configuration register. In this case, we route the port activity from the stream switch to Port running 0 or 1. 
@@ -204,7 +204,7 @@ in C/C++
 // Stream_Switch_Event_Port_Selection_0
 // This is necessary to capture the Port_Running_0 and Port_Running_1 events
 // Port 0 - Master/ID=1, Port 1 - Slave/ID=1
-aiex.ipu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
 ```
 in Python
 ```python
@@ -214,8 +214,8 @@ in Python
 # def slave(port):
 #     return port
 
-ipu_write32(column=0, row=4, address=0x3FF00, value=pack4bytes(0, 0, slave(1), master(1)),)  # port 1 is FIFO0?
-ipu_write32(column=0, row=4, address=0x3FF04, value=pack4bytes(0, 0, 0, 0),)
+npu_write32(column=0, row=4, address=0x3FF00, value=pack4bytes(0, 0, slave(1), master(1)),)  # port 1 is FIFO0?
+npu_write32(column=0, row=4, address=0x3FF04, value=pack4bytes(0, 0, 0, 0),)
 ```
 
 ### <u>Configure shimDMA</u>
@@ -239,7 +239,7 @@ An example ddr_id to inout buffer mapping is below:
 
 in C/C++
 ```c++
-aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
+aiex.npu.writebd_shimtile { bd_id = 3 : i32,
                             buffer_length = 16384 : i32,
                             buffer_offset = 262144 : i32,
                             enable_packet = 0 : i32,
@@ -274,11 +274,11 @@ aiex.ipu.writebd_shimtile { bd_id = 3 : i32,
                             use_next_bd = 0 : i32,
                             valid_bd = 1 : i32}
 // Set start BD to our shim bd_Id (3)
-aiex.ipu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
 ```
 in Python
 ```python
-ipu_writebd_shimtile(
+npu_writebd_shimtile(
     bd_id=3,
     buffer_length=16384,
     buffer_offset=262144,

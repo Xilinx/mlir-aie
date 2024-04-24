@@ -29,7 +29,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 
 def passthroughKernel():
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         # define types
         memRef_ty = T.memref(lineWidthInBytes, T.ui8())
@@ -87,19 +87,19 @@ def passthroughKernel():
                     events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                 )
 
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="in",
                 bd_id=0,
                 mem=inTensor,
                 sizes=[1, 1, 1, tensorSizeInInt32s],
             )
-            ipu_dma_memcpy_nd(
+            npu_dma_memcpy_nd(
                 metadata="out",
                 bd_id=1,
                 mem=outTensor,
                 sizes=[1, 1, 1, tensorSizeInInt32s],
             )
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 with mlir_mod_ctx() as ctx:

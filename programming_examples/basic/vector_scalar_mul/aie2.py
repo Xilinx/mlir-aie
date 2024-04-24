@@ -25,7 +25,7 @@ def my_vector_scalar(vector_size, trace_size):
 
     vectorized = True
 
-    @device(AIEDevice.ipu)
+    @device(AIEDevice.npu)
     def device_body():
         memRef_ty = T.memref(n, T.i32())
         memRef_ty2 = T.memref(1, T.i32())
@@ -92,10 +92,10 @@ def my_vector_scalar(vector_size, trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            ipu_sync(column=0, row=0, direction=0, channel=0)
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
+            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:
