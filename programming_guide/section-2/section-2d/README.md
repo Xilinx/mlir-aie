@@ -18,7 +18,7 @@ ShimTile = tile(0, 0)
 MemTile = tile(0, 1)
 ComputeTile = tile(0, 2)
 ```
-For our scale out design we will keep a using a single Shim tile and a single Mem tile, but we will increase the number of compute tiles to three. We can do so cleanly and efficiently in the following way:
+For our scale out design we will keep using a single Shim tile and a single Mem tile, but we will increase the number of compute tiles to three. We can do so cleanly and efficiently in the following way:
 ```python
 n_cores = 3
 
