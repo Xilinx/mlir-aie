@@ -996,19 +996,23 @@ class FlowRunner:
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             if opts.basic_alloc_scheme:
-                file_with_addresses = do_run(
+                do_run(
                     [
                         "aie-opt",
                         "--aie-assign-buffer-addresses=basic-alloc",
                         file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
                     ],
                 )
             else:
-                file_with_addresses = do_run(
+                do_run(
                     [
                         "aie-opt",
                         "--aie-assign-buffer-addresses",
                         file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
                     ],
                 )
 
