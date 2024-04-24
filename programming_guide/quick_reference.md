@@ -79,7 +79,7 @@
 * [AIE1 Register Reference - AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview)
 * [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
 * [AIE2 Register Reference - AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview)
-* [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
+* [AIE API User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html)
 * [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html)
 * [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
