@@ -96,8 +96,8 @@ LogicalResult basicAllocation(TileOp &tile) {
 
   // Sort by smallest address before printing memory map.
   std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
-    assert(a.getAddress().has_value() && "buffer must have address assigned");
-    assert(b.getAddress().has_value() && "buffer must have address assigned");
+    assert(a.getAddress().has_value() && "buffer must have address assigned2");
+    assert(b.getAddress().has_value() && "buffer must have address assigned2");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
