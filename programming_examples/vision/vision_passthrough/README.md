@@ -15,7 +15,7 @@ Single tile applies a pass through kernel on data from local memory. There are t
 To compile desing in Windows:
 ```
 make
-make build/passThrough.exe
+make passThrough.exe
 ```
 
 To run the design:
