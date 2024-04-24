@@ -207,8 +207,8 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 // calls of this function to ensure a round-robin allocation scheme
 // over the available banks).
 int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
-                      std::vector<int64_t> &nextAddrInBanks,
-                      std::vector<BankLimits> &bankLimits) {
+                     std::vector<int64_t> &nextAddrInBanks,
+                     std::vector<BankLimits> &bankLimits) {
   int bankIndex = startBankIndex;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
