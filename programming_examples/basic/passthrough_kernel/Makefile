@@ -10,31 +10,33 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-PASSTHROUGH_SIZE = 4096
 targetname = passThroughKernel
 VPATH := ${srcdir}/../../../aie_kernels/generic
+data_size = 4096
+trace_size = 8192
+PASSTHROUGH_SIZE = data_size
 
 .PHONY: all template clean
 
-all: build/final_${PASSTHROUGH_SIZE}.xclbin
+all: build/final_${data_size}.xclbin
 
-build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir: ${srcdir}/aie2.py
+build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${PASSTHROUGH_SIZE} > $@
+	python3 $< ${data_size} ${trace_size} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 	
-build/final_${PASSTHROUGH_SIZE}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_SIZE}.mlir build/passThrough.cc.o
+build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DPASSTHROUGH_SIZE=${data_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -42,20 +44,20 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
-	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE 
+run: ${targetname}.exe build/final_${data_size}.xclbin build/insts.txt
+	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts.txt -k MLIR_AIE 
 
-run-g: ${targetname}.exe build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
-	${powershell} ./$< -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
+run-g: ${targetname}.exe build/final_${data_size}.xclbin build/insts.txt
+	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
 
-run_py: build/final_${PASSTHROUGH_SIZE}.xclbin build/insts.txt
-	${powershell} python3 test.py -s ${PASSTHROUGH_SIZE} -x build/final_${PASSTHROUGH_SIZE}.xclbin -i build/insts.txt -k MLIR_AIE
+run_py: build/final_${data_size}.xclbin build/insts.txt
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts.txt -k MLIR_AIE
 
 trace:
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > parse_eventIR_vs.json
+	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie2_lineBased_8b_${data_size}.mlir --colshift 1 > parse_eventIR_vs.json
 
 clean_trace:
-	rm -rf tmpTrace trace.txt
+	rm -rf tmpTrace trace.txt parse_eventIR_vs.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

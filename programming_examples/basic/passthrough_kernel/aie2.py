@@ -14,20 +14,11 @@ from aie.extras.context import mlir_mod_ctx
 
 import aie.utils.trace as trace_utils
 
-N = 1024
 
-if len(sys.argv) == 2:
-    N = int(sys.argv[1])
-
-lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
-lineWidthInInt32s = lineWidthInBytes // 4
-
-enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
-
-
-def passthroughKernel():
+def passthroughKernel(vector_size, trace_size):
+    N = vector_size
+    lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
+    lineWidthInInt32s = lineWidthInBytes // 4
 
     @device(AIEDevice.npu)
     def device_body():
@@ -43,7 +34,8 @@ def passthroughKernel():
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
 
-        if enableTrace:
+         # Set up a circuit-switched flow from core to shim for tracing information
+        if trace_size > 0:
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
         # AIE-array data movement with object fifos
@@ -71,18 +63,13 @@ def passthroughKernel():
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
-            if enableTrace:
+            if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(
                     ComputeTile2,
                     ShimTile,
-                    channel=1,
-                    bd_id=13,
                     ddr_id=1,
-                    size=traceSizeInBytes,
+                    size=trace_size,
                     offset=tensorSize,
-                    start=0x1,
-                    stop=0x0,
-                    events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
                 )
 
             npu_dma_memcpy_nd(
@@ -100,6 +87,14 @@ def passthroughKernel():
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 
+try:
+    vector_size = int(sys.argv[1])
+    if vector_size % 64 != 0 or vector_size < 512:
+        print("Vector size must be a multiple of 64 and greater than or equal to 512")
+        raise ValueError
+    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
+except ValueError:
+    print("Argument has inappropriate value")
 with mlir_mod_ctx() as ctx:
-    passthroughKernel()
+    passthroughKernel(vector_size, trace_size)
     print(ctx.module)
