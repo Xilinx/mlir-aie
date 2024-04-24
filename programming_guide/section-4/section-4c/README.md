@@ -208,30 +208,33 @@ Let's take another look at the results of our [vector_scalar_mul design](../../.
 
 At this point, we can actually take a look at the `microcode`. The `microcode` is the precise schedule of instructions that our AIE executes in order to run the kernel program. This microcode can usually be found under `build/core_0_2.elf.lst` where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own .lst file. If you were to open the file, you will see a lot of information. Comment lines will have a . in front of it. The other lines are the instructions  and are structured as follows:
 
+```
 Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA commands
+```
 
 | Example ISA commands | Description |
 |----------------------|-------------|
 | NOP .. | No op |
 | JL #XXX | Jump and link to instruction line # |
 | MOV r1, r2 | Move register values from r2 to r1 |
-| LD .. | Scalra load |
+| LD .. | Scalar load |
 | ST ..  | Scalar store |
 | VLDA | Vector load unit A, |
 | VLDB | Vector load unit B, |
-| VMUL ..  | Vector mulitply |
-| VMAC ..  | Vector mutliple and accumulate |
+| VMUL ..  | Vector multiply |
+| VMAC ..  | Vector multiply and accumulate |
 | VST .. | Vector store |
 | VSRS .. | Vector SRS |
 | VSHUFFLE .. | Vector shuffle |
 
-Fully analzying and understanding this microcode is beyond the scope of this programming guide but we We will focus on key parts of this microcode, labled by 3 types of comments in particular, 
+Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular: 
 
 `.label vector_scalar_mul_aie` followed by `.function_start` - The start of the function we're interested in. The name after label is the function name but this might have additional characters if the function is generated from a template.
 
 `.label ZLS_...` - The start of a zero-overhead loop
 
-`.label ZLE_...` - The end of a zero-overhead loop. **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `ZLS` and `ZLE`. In general, labels pertain the line after the label.
+`.label ZLE_...` - The end of a zero-overhead loop. 
+> **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `ZLS` and `ZLE`. In general, labels pertain the line after the label.
 
 Let's examine this more closely in our example.
 
