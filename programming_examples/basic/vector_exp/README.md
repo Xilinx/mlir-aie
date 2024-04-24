@@ -30,10 +30,16 @@ The design also uses a single file from the AIE runtime, in order to initialize 
 
 ### C++ Testbench
 
-To compile the design and C++ testbench:
+To compile the design:
 
 ```
 make
+```
+
+To compile the C++ testbench:
+
+```
+make testExp.exe
 ```
 
 To run the design:
