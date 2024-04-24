@@ -137,8 +137,8 @@ void fillBankLimits(int numBanks, int bankSize,
 // the given start_addr. It also updates the entry in the
 // nextAddrInBanks for the corresponding bank.
 void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
-                                int64_t end_addr, std::vector<int64_t>
-                                &nextAddrInBanks) {
+                               int64_t end_addr,
+                               std::vector<int64_t> &nextAddrInBanks) {
   // Fixme: alignment
   buffer.setAddress(start_addr);
   nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
