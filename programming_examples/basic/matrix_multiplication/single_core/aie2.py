@@ -11,6 +11,7 @@ from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
+
 def my_matmul():
     M = 256
     K = 256
