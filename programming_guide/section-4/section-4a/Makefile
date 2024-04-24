@@ -16,10 +16,14 @@ build/aie.mlir: aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/final.xclbin: build/aie.mlir
+build/scale.o: vector_scalar_mul.cc
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+
+build/final.xclbin: build/aie.mlir build/scale.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 ${targetname}.exe: test.cpp
 	rm -rf _build
