@@ -12,11 +12,15 @@ all: build/final.xclbin build/insts.txt
 
 targetname = vectorScalar
 
+build/aie.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< > $@
+	
 build/scale.o: vector_scalar_mul.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
-build/final.xclbin: aie.mlir build/kernel1.o build/kernel2.o build/kernel3.o
+build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)

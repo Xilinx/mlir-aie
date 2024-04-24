@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../tutorials/makefile-common
+include ../../programming_examples/makefile-common
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
