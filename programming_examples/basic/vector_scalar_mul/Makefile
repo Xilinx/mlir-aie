@@ -12,8 +12,6 @@ VPATH := ../../../aie_kernels/aie2
 
 targetname = vectorScalar
 data_size = 4096
-#data_size = 512
-#data_size = 1024
 trace_size = 8192
 
 all: build/final_${data_size}.xclbin build/insts_${data_size}.txt
