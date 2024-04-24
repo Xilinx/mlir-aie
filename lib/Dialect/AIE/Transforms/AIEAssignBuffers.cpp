@@ -87,9 +87,9 @@ struct BasicAllocationPattern : public OpRewritePattern<TileOp> {
       auto &note = error.attachNote() << "MemoryMap:\n";
       auto printbuffer = [&](StringRef name, int address, int size) {
         note << "\t" << name << " \t"
-              << ": 0x" << llvm::utohexstr(address) << "-0x"
-              << llvm::utohexstr(address + size - 1) << " \t(" << size
-              << " bytes)\n";
+             << ": 0x" << llvm::utohexstr(address) << "-0x"
+             << llvm::utohexstr(address + size - 1) << " \t(" << size
+             << " bytes)\n";
       };
       if (stacksize > 0)
         printbuffer("(stack)", 0, stacksize);
