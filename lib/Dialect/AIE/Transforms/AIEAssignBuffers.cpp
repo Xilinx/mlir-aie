@@ -156,8 +156,7 @@ bool checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
   if (auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address")) {
     int addr = addrAttr.getInt();
     for (int i = 0; i < numBanks; i++) {
-      if (bankLimits[i].startAddr <= addr &&
-          addr < bankLimits[i].endAddr) {
+      if (bankLimits[i].startAddr <= addr && addr < bankLimits[i].endAddr) {
         if (addr >= nextAddrInBanks[i]) {
           nextAddrInBanks[i] = addr + buffer.getAllocationSize();
           buffer.setMemBank(i);
