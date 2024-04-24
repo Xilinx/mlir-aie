@@ -322,8 +322,10 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   // the above.
   for (auto buffer : device.getOps<BufferOp>()) {
     if (buffer.getTileOp() == tile) {
-      bool has_addr = checkAndAddBufferWithAddress(buffer, numBanks, nextAddrInBanks, bankLimits);
-      bool has_bank = checkAndAddBufferWithMemBank(buffer, numBanks, nextAddrInBanks, bankLimits);
+      bool has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
+                                                   nextAddrInBanks, bankLimits);
+      bool has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
+                                                   nextAddrInBanks, bankLimits);
       if (!has_addr && !has_bank)
         buffers.push_back(buffer);
       allBuffers.push_back(buffer);
