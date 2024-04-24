@@ -34,7 +34,7 @@ def passthroughKernel(vector_size, trace_size):
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
 
-         # Set up a circuit-switched flow from core to shim for tracing information
+        # Set up a circuit-switched flow from core to shim for tracing information
         if trace_size > 0:
             flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
