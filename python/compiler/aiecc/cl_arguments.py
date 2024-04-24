@@ -264,6 +264,13 @@ def parse_args(args=None):
         default="0x901",
         help="Kernel id in xclbin file",
     )
+    parser.add_argument(
+        "--basic-alloc-scheme",
+        dest="basic_alloc_scheme",
+        default=False,
+        action="store_const",
+        help="Use basic memory allocation scheme for AIE buffer address assignment",
+    )
 
     opts = parser.parse_args(args)
     return opts
