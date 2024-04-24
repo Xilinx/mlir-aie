@@ -30,8 +30,7 @@ using namespace xilinx::AIE;
 struct BasicAllocationPattern : public OpRewritePattern<TileOp> {
   using OpRewritePattern<TileOp>::OpRewritePattern;
 
-  BasicAllocationPattern(
-      MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  BasicAllocationPattern(MLIRContext *ctx) : OpRewritePattern(ctx) {}
 
   LogicalResult matchAndRewrite(TileOp tile,
                                 PatternRewriter &rewriter) const override {
