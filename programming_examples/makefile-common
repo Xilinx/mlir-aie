@@ -2,7 +2,6 @@
 REPO_ROOT ?= $(shell realpath $(dir $(shell which aie-opt))/../../..)
 INSTALL_ROOT ?= $(shell realpath $(dir $(shell which aie-opt))/..)
 
-
 # VITIS related variables
 VITIS_ROOT ?= $(shell realpath $(dir $(shell which vitis))/../)
 VITIS_AIETOOLS_DIR ?= ${VITIS_ROOT}/aietools

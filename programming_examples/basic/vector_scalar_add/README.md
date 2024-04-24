@@ -30,7 +30,7 @@ To compile the design and C++ testbench:
 
 ```
 make
-make build/vectorScalarAdd.exe
+make vectorScalarAdd.exe
 ```
 
 To run the design:

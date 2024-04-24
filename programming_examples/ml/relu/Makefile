@@ -13,9 +13,11 @@ all: build/final.xclbin
 targetname = myReLU
 trace_size = 8192
 
-build/relu.o:
+VPATH := ../../../aie_kernels/aie2
+
+build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/relu.cc -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}

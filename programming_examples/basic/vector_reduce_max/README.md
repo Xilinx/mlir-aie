@@ -32,7 +32,7 @@ To compile the design and C++ testbench:
 
 ```
 make
-make build/reduce_max.exe
+make reduce_max.exe
 ```
 
 To run the design:

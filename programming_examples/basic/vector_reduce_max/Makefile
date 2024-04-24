@@ -14,13 +14,14 @@ targetname = reduce_max
 devicename = npu
 col = 0
 CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
-KERNEL_LIB=../../../aie_kernels/aie2
 
 all: build/final.xclbin build/insts.txt
 
-build/reduce_max.cc.o: ${KERNEL_LIB}/reduce_max.cc
+VPATH := ../../../aie_kernels/aie2
+
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESS_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
