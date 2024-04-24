@@ -112,8 +112,7 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = 
-        kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
 
@@ -137,11 +136,13 @@ int main(int argc, const char *argv[]) {
         int32_t test = bufOut[i];
         if (test != ref) {
           if (verbosity >= 1)
-            std::cout << "Error in output " << test << " != " << ref << std::endl;
+            std::cout << "Error in output " << test << " != " << ref
+                      << std::endl;
           errors++;
         } else {
           if (verbosity >= 1)
-            std::cout << "Correct output " << test << " == " << ref << std::endl;
+            std::cout << "Correct output " << test << " == " << ref
+                      << std::endl;
         }
       }
       auto vstop = std::chrono::system_clock::now();

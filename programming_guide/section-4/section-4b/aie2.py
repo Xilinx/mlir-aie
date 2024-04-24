@@ -75,7 +75,7 @@ def my_vector_scalar():
                     ShimTile,
                     ddr_id=2,
                     size=trace_size,
-                    offset=4096*4, # offset in bytes
+                    offset=4096 * 4,  # offset in bytes
                 )
 
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
