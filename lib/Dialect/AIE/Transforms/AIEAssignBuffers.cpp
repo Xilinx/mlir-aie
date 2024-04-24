@@ -114,8 +114,7 @@ struct BasicAllocationPattern : public OpRewritePattern<TileOp> {
 struct SimpleBankAwareAllocationPattern : public OpRewritePattern<TileOp> {
   using OpRewritePattern<TileOp>::OpRewritePattern;
 
-  SimpleBankAwareAllocationPattern(
-      MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  SimpleBankAwareAllocationPattern(MLIRContext *ctx) : OpRewritePattern(ctx) {}
 
   typedef struct BankLimits {
     int64_t startAddr;
