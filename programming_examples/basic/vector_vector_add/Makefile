@@ -6,7 +6,9 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
@@ -23,10 +25,10 @@ build/final.xclbin: build/aie.mlir
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -34,7 +36,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
