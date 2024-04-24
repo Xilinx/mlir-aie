@@ -16,11 +16,11 @@ all: build/final.xclbin build/insts.txt
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-build/exp.o: ${srcdir}/bf16_exp.cc
+build/exp.o: bf16_exp.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
-build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
+build/lut_based_ops.o: ${srcdir}/../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $< -o ${@F}
 
