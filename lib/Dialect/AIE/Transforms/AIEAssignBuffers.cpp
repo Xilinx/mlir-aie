@@ -12,12 +12,18 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
+<<<<<<< HEAD
+=======
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
+    >>>>>>> 80cc5d5a2d5457d8f69e2ab325d642c814eb964c
 
 #include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-assign-buffers"
 
-using namespace mlir;
+    using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
