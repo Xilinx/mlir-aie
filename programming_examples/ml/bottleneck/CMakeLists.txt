@@ -50,13 +50,8 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 
 add_executable(${currentTarget}
-<<<<<<< HEAD
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/OpenCVUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/xrtUtils.cpp
-=======
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
->>>>>>> 626182746a720c85748e232366b8649386f24b3a
     test.cpp
 )
 
@@ -67,12 +62,7 @@ target_compile_definitions(${currentTarget} PUBLIC
         )
 
 target_include_directories (${currentTarget} PUBLIC 
-<<<<<<< HEAD
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
-=======
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
->>>>>>> 626182746a720c85748e232366b8649386f24b3a
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
