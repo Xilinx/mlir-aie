@@ -19,7 +19,7 @@ from lit.llvm import llvm_config
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = "AIE_REFERENCE_DESIGNS"
+config.name = "AIE_TUTORIALS"
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 

@@ -18,7 +18,7 @@ NUM_EVENTS = 8  # number of events we can view per trace
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
 
 DEBUG = False
-verbose = False
+verbose = True
 
 eventIRFile = "eventIR.txt"
 tmpTraceDirName = "tmpTrace"
@@ -733,6 +733,8 @@ def lookup_event_name_by_type(trace_type, code):
     if trace_type == 0:
         if code == 0x1:
             event = "True"
+        elif code == 23:  # 0x17:
+            event = "MemoryStall"
         elif code == 24:  # 0x18:
             event = "StreamStall"
         elif code == 26:  # 0x1A:

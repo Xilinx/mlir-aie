@@ -16,10 +16,10 @@ import aie.utils.trace as trace_utils
 ```
 Thereafter, functions defined in the file can be called via `trace_utils.configure_simple_tracing_aie2(...)`.
 
-- [Test utilities](#Test-utilities) ([test.py](./test.py))
-- [Trace utilities](#Trace-utilities-(trace.py)) ([trace.py](./trace.py))
-- [XRT utilities](#XRT-utilities) ([xrt.py](./xrt.py))
-- [Machine Learning (ML) utilities](#Machine-Langauge-(ML)-utilities-(ml.py)) ([ml.py](./ml.py))
+- [Test utilities](#test-utilites-testpy) ([test.py](./test.py))
+- [Trace utilities](#trace-utilites-tracepy) ([trace.py](./trace.py))
+- [XRT utilities](#xrt-utilites-xrtpy) ([xrt.py](./xrt.py))
+- [Machine Learning (ML) utilities](#machine-language-ml-utilites-mlpyss) ([ml.py](./ml.py))
 
 ## <u>Test utilites ([test.py](./test.py))</u>
 Test/ Host code utilities.
@@ -81,7 +81,8 @@ This one allows us to control the size, offset, and inout buffer mapping.
 ### <u>Configure tile trace settings</u>
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
-The table below describes the general trace control registers.
+AIE2 core module registers can be found in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/).
+The table below describes the trace control registers for the core module.
 
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
@@ -90,6 +91,8 @@ The table below describes the general trace control registers.
 | Trace Control 0 | 0x340D0 | Mode | [1:0], 0x-------N | 0 | Trace mode. 00=event-time, 01=event-PC, 10=execution |
 | Trace Control 1 | 0x340D4 | Packet Type | [14:12], 0x----N--- | 0 | Detination trace packet - packet type |
 | Trace Control 1 | 0x340D4 | Packet ID | [4:0], 0x------NN | 0 | Detination trace packet - packet ID |
+
+This info is also found online in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/) for [Trace Control 0](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Control0-CORE_MODULE-Register) and [Trace Control 1](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Control1-CORE_MODULE-Register).
 
 **Note** that Trace Control 0 is all you need for circuit switched flows. For packet switched flows, however, you will also need to configure Trace Control 1. Here, the packet type matches the types we define to support post-run parsing. Here is a table of trace unit types and packet type.
 
@@ -128,6 +131,9 @@ The table below describes which events the trace hardware monitors.
 | Trace Event Group 0 | 0x340E0 | Trace Event 1 | [14:8], 0x----NN-- | 0 | 2nd trace event to monitor |
 | Trace Event Group 0 | 0x340E0 | Trace Event 0 | [6:0], 0x------NN | 0 | 1st trace event to monitor |
 
+This info is also found online in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/) for [Trace Event 0](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Event0-CORE_MODULE-Register) and [Trace Event 1](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Event1-CORE_MODULE-Register).
+
+
 There is an extensive lists of trace events but here, we will only describe a few common ones.
 | Some common events | event ID | dec value |
 |--------------------|----------|-----------|
@@ -141,6 +147,7 @@ There is an extensive lists of trace events but here, we will only describe a fe
 | Lock stall                 |0x1A|  26 |
 | Core Port Running 1        |0x4F|  79 |
 | Core Port Running 0        |0x4B|  75 | 
+* A more exhaustive list of events for core tile, core memory, memtile and shim tile can be found in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h). However, not all events are yet supported in `parse_eventIR.py` at this time.
 
 **NOTE**: The "Core Instruction - Event 0/1" are special intrinsics you can add to your kernel code to trigger an event during the running of your core program. Within the kernel code, they look like:
 ```c++
@@ -196,6 +203,9 @@ Some configurations like the Port Running 0/1 events are further configured by a
 | Stream Switch Event Port Selection 0 | 0x3FF00 | Port 1 ID | [12:8], 0x----NN-- | 0 | Select port ID for port 1 event gen |
 | Stream Switch Event Port Selection 0 | 0x3FF00 | Port 0 Master/Slave | [5], 0x------N- | 0 | Master or slave for port 0, 1=master, 0=slave |
 | Stream Switch Event Port Selection 0 | 0x3FF00 | Port 0 ID | [4:0], 0x------NN | 0 | Select port ID for port 0 event gen |
+
+This info is also found online in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/) for [Stream Switch Event Port Selection 0](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Stream_Switch_Event_Port_Selection_0-CORE_MODULE-Register) and [Stream Switch Event Port Selection 1](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Stream_Switch_Event_Port_Selection_1-CORE_MODULE-Register).
+
 
 <u>Example Port Selection 0</u>
 

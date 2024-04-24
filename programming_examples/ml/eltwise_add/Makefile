@@ -17,7 +17,7 @@ VPATH := ../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_kernels/aie2/add.cc -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
