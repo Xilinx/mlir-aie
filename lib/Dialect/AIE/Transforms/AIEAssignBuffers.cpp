@@ -13,6 +13,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "llvm/ADT/Twine.h"
