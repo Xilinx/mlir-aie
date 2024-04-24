@@ -71,7 +71,6 @@ void scale_vectorized<int32_t>(int32_t *a, int32_t *c, int32_t factor,
   event1();
 }
 
-
 extern "C" {
 
 // 16-bit datatype
@@ -95,6 +94,5 @@ void vector_scalar_mul_int16_vector(int16_t *a_in, int16_t *c_out,
                                     int32_t *factor, int32_t N) {
   scale_vectorized<int16_t>(a_in, c_out, *factor, N);
 }
-
 
 } // extern "C"
