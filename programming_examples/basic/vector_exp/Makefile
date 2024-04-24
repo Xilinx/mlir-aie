@@ -6,26 +6,28 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 targetname = testExp
 
 all: build/final.xclbin build/insts.txt
 
-VPATH := ../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-build/exp.o: bf16_exp.cc
+build/exp.o: ${srcdir}/bf16_exp.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
 build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $< -o ${@F}
 
 build/kernels.a: build/exp.o build/lut_based_ops.o
 	ar rvs $@ $+
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
@@ -34,10 +36,10 @@ build/final.xclbin: build/aie.mlir build/kernels.a
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

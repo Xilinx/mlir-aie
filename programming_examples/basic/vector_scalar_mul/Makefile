@@ -6,9 +6,11 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-VPATH := ../../../aie_kernels/aie2
+include ${srcdir}/../../makefile-common
+
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 targetname = vectorScalar
 data_size = 4096
@@ -20,9 +22,9 @@ kristof: build/insts_${data_size}.txt
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
-build/aie_${data_size}.mlir: aie2.py
+build/aie_${data_size}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${data_size} 0 > $@
 
@@ -41,10 +43,10 @@ build/final_trace_${data_size}.xclbin: build/aie_trace_${data_size}.mlir build/s
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts_${data_size}.txt $(<:%=../%)
 
-${targetname}_${data_size}.exe: test.cpp
+${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}_${data_size} -DVECTORSCALARMUL_SIZE=${data_size}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}_${data_size} -DVECTORSCALARMUL_SIZE=${data_size}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}_${data_size}.exe $@

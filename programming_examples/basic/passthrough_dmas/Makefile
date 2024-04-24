@@ -6,23 +6,21 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-ACDC_AIE = $(dir $(shell which aie-opt))/..
-
-SHELL := /bin/bash
+include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin build/insts.txt
 
 targetname = passThroughDMAs
 LENGTH ?= 4096
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} ${LENGTH} ${LENGTH} > $@
 
 .PHONY: inst/insts.txt
-inst/insts.txt: aie2.py
+inst/insts.txt: ${srcdir}/aie2.py
 	rm -rf inst
 	mkdir -p inst 
 	python3 $< ${devicename} ${col} ${LENGTH} > inst/aie.mlir
@@ -34,10 +32,10 @@ build/final.xclbin: build/aie.mlir
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

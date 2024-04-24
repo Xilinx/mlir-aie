@@ -6,7 +6,9 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 
@@ -17,13 +19,13 @@ CHESS_FLAGS=${CHESSCCWRAP2_FLAGS}
 
 all: build/final.xclbin build/insts.txt
 
-VPATH := ../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
@@ -32,10 +34,10 @@ build/final.xclbin: build/aie.mlir build/reduce_add.cc.o
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
