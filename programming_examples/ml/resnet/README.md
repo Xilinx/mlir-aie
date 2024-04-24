@@ -107,14 +107,6 @@ To run the design:
 make run_py
 ```
 
-### Prerequisites
-
-To install the dependencies, run the following command:
-```
-pip install -r requirements.txt
-
-```
-
 ## References
 <a id="1">[1]</a> 
 He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition (pp. 770-778).
