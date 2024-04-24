@@ -186,7 +186,8 @@ struct SimpleBankAwareAllocationPattern : public OpRewritePattern<TileOp> {
     // Set addresses for remaining buffers.
     int bankIndex = 0;
     for (auto buffer : buffers)
-      bankIndex = setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks, bankLimits);
+      bankIndex = setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
+                                   bankLimits);
 
     // Sort by smallest address before printing memory map.
     std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
