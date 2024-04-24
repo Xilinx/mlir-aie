@@ -200,25 +200,25 @@ extern "C" {
 
 #ifdef SCALAR
 
-  #ifdef INT8_ACT
+#ifdef INT8_ACT
 
-  void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
-                  const int32_t input_width, const int32_t input_channels,
-                  const int32_t output_channels, const int scale) {
-    conv2dk1_i8_scalar(input, kernels, output, input_width, input_channels,
-                      output_channels, scale);
-  }
-  #endif // INT8_ACT
-#else // Vector
+void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
+                 const int32_t input_width, const int32_t input_channels,
+                 const int32_t output_channels, const int scale) {
+  conv2dk1_i8_scalar(input, kernels, output, input_width, input_channels,
+                     output_channels, scale);
+}
+#endif // INT8_ACT
+#else  // Vector
 
-  #ifdef INT8_ACT
+#ifdef INT8_ACT
 
-  void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
-                  const int32_t input_width, const int32_t input_channels,
-                  const int32_t output_channels, const int scale) {
-    conv2dk1_i8_vector(input, kernels, output, input_width, input_channels,
-                      output_channels, scale);
-  }
-  #endif // INT8_ACT
+void conv2dk1_i8(int8_t *input, int8_t *kernels, int8_t *output,
+                 const int32_t input_width, const int32_t input_channels,
+                 const int32_t output_channels, const int scale) {
+  conv2dk1_i8_vector(input, kernels, output, input_width, input_channels,
+                     output_channels, scale);
+}
+#endif // INT8_ACT
 #endif // Vector
 } // extern "C"
