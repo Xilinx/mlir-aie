@@ -24,8 +24,9 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-LogicalResult checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
-                            int stacksize, SmallVector<BufferOp, 4> buffers) {
+LogicalResult checkAndPrintOverflow(TileOp tile, int address,
+                                    int maxDataMemorySize, int stacksize,
+                                    SmallVector<BufferOp, 4> buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
         tile.emitOpError("allocated buffers exceeded available memory\n");
