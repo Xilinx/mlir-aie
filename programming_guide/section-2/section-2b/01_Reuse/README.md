@@ -10,9 +10,9 @@
 
 # <ins>Object FIFO Reuse Pattern</ins>
 
-During the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the Object FIFO acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an Object FIFO releases less objects than it had previously acquired. As acquiring from an Object FIFO does not destroy the data, unreleased objects can be reused without requiring new copies of the data.
+In the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the Object FIFO acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an Object FIFO releases less objects than it had previously acquired. As acquiring from an Object FIFO does not destroy the data, unreleased objects can continue to be used without requiring new copies of the data.
 
-It is important to note that each new acquire function will return a new object or array of objects that a process can access, which <u>includes unreleased objects from previous acquires</u>. The process should always use the result of the <u>most recent</u> acquire call to access unreleased objects to ensure a proper lowering through the Object FIFO primitive.
+It is important to note that each new acquire function will return a new object or array of objects that a process can access, which **includes unreleased objects from previous acquire calls**. The process should always use the result of the **most recent** acquire call to access unreleased objects to ensure a proper lowering through the Object FIFO primitive.
 
 In the example below `of0` is created between producer A and consumer B with a depth of 3 objects: object0, object1, and object2. The process running on the core of tile B is showcased in the next figure and explained in-depth below. 
 ```python
@@ -43,13 +43,13 @@ def core_body():
 
 The figure below represents the status of the system in each of the marked situations 1 through 4:    
 1. Consumer B first acquires 2 elements from `of0` in the variable `elems`. As this is the first time that B acquires, it will have access to object0 and object1. B then applies `test_func2` on the two acquired elements. Finally, B releases a single object, the oldest acquired one, and keeps object1.
-2. B acquires 2 elements in variable `elems_2`. It already has access to object1 which remains unreleased from 1, but also to the newly acquired object2. B again applies the function after which it only releases a single object and keeps object2.
+2. B acquires 2 elements in variable `elems_2`. It now has access to object1 (which remains acquired from the first acquire call at step 1), and also to the newly acquired object2. B again applies the function, after which it only releases a single object and keeps object2.
 3. B acquires 2 objects in `elems_3` and has access to object2 and object0. B releases a single object and keeps object0.
-4. B acquires 2 objects in `elems_4` and has access to object0 and object1 thus returning to the situation at the beginning of 1.
+4. B acquires 2 objects in `elems_4` and has access to object0 and object1 thus returning to the situation at the beginning of step 1.
 
 <img src="./../../../assets/Reuse.png" height="400">
 
-The situations above can be fused into a for loop with 4 iterations. By continuously releasing one less element than it acquired every iteration, the consumer process running on tile B is implementing the behaviour of a sliding window with 2 objects that slides down by 1 each new iteration. 
+The situations above can be fused into a `for`-loop with 4 iterations. By continuously releasing one less element than it acquired every iteration, the consumer process running on tile B is implementing the behaviour of a sliding window with 2 objects that slides down by 1 in each iteration. 
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
