@@ -10,6 +10,7 @@
 
 #include <boost/program_options.hpp>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -20,8 +21,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 48;
-constexpr int OUT_SIZE = 48;
+constexpr int IN_SIZE = 4096;
+constexpr int OUT_SIZE = 4096;
 
 namespace po = boost::program_options;
 
@@ -144,10 +145,10 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  uint32_t *bufInA = bo_inA.map<uint32_t *>();
+  int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
   for (int i = 0; i < IN_SIZE; i++)
-    srcVecA.push_back(1);
+    srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -167,8 +168,8 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < 48; i++) {
-    uint32_t ref = 2;
+  for (uint32_t i = 0; i < OUT_SIZE; i++) {
+    uint32_t ref = (i + 1) * 3;
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;

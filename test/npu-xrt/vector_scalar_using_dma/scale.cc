@@ -17,17 +17,24 @@
 #include <stdlib.h>
 #include <type_traits>
 
+#define REL_WRITE 0
+#define REL_READ 1
+
 #include <aie_api/aie.hpp>
 
-// Softmax DUT generated from vector dialect
-extern void dut(bfloat16 *a_in, bfloat16 *cout);
+template <typename T_in, typename T_out, int N>
+void scale(T_in *a, T_out *c, T_in factor) {
+  event0();
+  for (int i = 0; i < N; i++) {
+    c[i] = factor * a[i];
+  }
+  event1();
+}
 
 extern "C" {
 
-void softmax_bf16_vector(bfloat16 *a_in, bfloat16 *c_out) {
-  event0();
-  dut(a_in, c_out);
-  event1();
+void scale_int32(int32_t *a_in, int32_t *c_out) {
+  scale<int32_t, int32_t, 1024>(a_in, c_out, 3);
 }
 
 } // extern "C"
