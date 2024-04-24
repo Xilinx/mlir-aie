@@ -34,13 +34,10 @@ int main(int argc, const char *argv[]) {
 
   test_utils::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
-  int trace_size = vm["trace_sz"].as<int>();
 
   constexpr bool VERIFY = true;
-  constexpr bool ENABLE_TRACING = false;
-  // constexpr int TRACE_SIZE = 8192;
   constexpr int IN_SIZE = 4096;
-  constexpr int OUT_SIZE = ENABLE_TRACING ? IN_SIZE + trace_size / 4 : IN_SIZE;
+  constexpr int OUT_SIZE = IN_SIZE;
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
@@ -64,7 +61,7 @@ int main(int argc, const char *argv[]) {
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
                              XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE) + trace_size,
+  auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE),
                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
@@ -85,7 +82,7 @@ int main(int argc, const char *argv[]) {
 
   // Zero out buffer bo_outC
   DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE) + trace_size);
+  memset(bufOut, 0, OUT_SIZE * sizeof(DATATYPE));
 
   // sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -118,11 +115,6 @@ int main(int argc, const char *argv[]) {
       if (verbosity >= 1)
         std::cout << "Correct output " << test << " == " << ref << std::endl;
     }
-  }
-
-  if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) + (IN_SIZE * sizeof(DATATYPE)),
-                                trace_size, vm["trace_file"].as<std::string>());
   }
 
   // Print Pass/Fail result of our test
