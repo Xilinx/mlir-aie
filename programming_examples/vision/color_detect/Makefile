@@ -42,7 +42,7 @@ build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_W
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-build/${targetname}.exe: test.cpp
+${targetname}.exe: test.cpp
 	mkdir -p ${@D}
 	rm -rf _build
 	mkdir -p _build
@@ -55,7 +55,7 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: build/${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin build/insts.txt
+run: ${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${COLORDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:

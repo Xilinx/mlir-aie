@@ -16,10 +16,10 @@ import aie.utils.trace as trace_utils
 ```
 Thereafter, functions defined in the file can be called via `trace_utils.configure_simple_tracing_aie2(...)`.
 
-- [Test utilities](#Test-utilities) ([test.py](./test.py))
-- [Trace utilities](#Trace-utilities-(trace.py)) ([trace.py](./trace.py))
-- [XRT utilities](#XRT-utilities) ([xrt.py](./xrt.py))
-- [Machine Learning (ML) utilities](#Machine-Langauge-(ML)-utilities-(ml.py)) ([ml.py](./ml.py))
+- [Test utilities](#test-utilites-testpy) ([test.py](./test.py))
+- [Trace utilities](#trace-utilites-tracepy) ([trace.py](./trace.py))
+- [XRT utilities](#xrt-utilites-xrtpy) ([xrt.py](./xrt.py))
+- [Machine Learning (ML) utilities](#machine-language-ml-utilites-mlpyss) ([ml.py](./ml.py))
 
 ## <u>Test utilites ([test.py](./test.py))</u>
 Test/ Host code utilities.
@@ -147,6 +147,7 @@ There is an extensive lists of trace events but here, we will only describe a fe
 | Lock stall                 |0x1A|  26 |
 | Core Port Running 1        |0x4F|  79 |
 | Core Port Running 0        |0x4B|  75 | 
+* A more exhaustive list of events for core tile, core memory, memtile and shim tile can be found in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h). However, not all events are yet supported in `parse_eventIR.py` at this time.
 
 **NOTE**: The "Core Instruction - Event 0/1" are special intrinsics you can add to your kernel code to trigger an event during the running of your core program. Within the kernel code, they look like:
 ```c++

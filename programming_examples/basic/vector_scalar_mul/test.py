@@ -33,9 +33,9 @@ def main(opts):
     INOUT1_VOLUME = int(1)  # Input only, 1 uint32_t scale factor
     INOUT2_VOLUME = int(opts.size)  # Output only, 64x uint32_t in this example
 
-    INOUT0_DATATYPE = np.int32
+    INOUT0_DATATYPE = np.int16
     INOUT1_DATATYPE = np.int32
-    INOUT2_DATATYPE = np.int32
+    INOUT2_DATATYPE = np.int16
 
     INOUT0_SIZE = INOUT0_VOLUME * INOUT0_DATATYPE().itemsize
     INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
@@ -90,7 +90,7 @@ def main(opts):
     bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     # Copy output results and verify they are correct
-    entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint32)
+    entire_buffer = bo_inout2.read(OUT_SIZE, 0).view(np.uint16)
     output_buffer = entire_buffer[:INOUT2_VOLUME]
     if opts.verify:
         if opts.verbosity >= 1:

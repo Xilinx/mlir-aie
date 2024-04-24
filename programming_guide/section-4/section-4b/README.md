@@ -13,7 +13,7 @@
 * [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
     * [Section 4a - Timers](../section-4a)
     * Section 4b - Trace
-    * [Section 4c - Kernel Vectorization](../section-4c)
+    * [Section 4c - Kernel Vectorization and Optimization](../section-4c)
 
 -----
 
@@ -102,7 +102,7 @@ packetflow(1) {
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
 
-Once the trace units are configured and enabled, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. 
+Once the trace units are configured and enabled, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design sourc files and Makefile whose kernel is based off the [Vector Scalar Add example](../../../programming_examples/basic/vector_scalar_add/). 
 
 ### <u>AIE structural design code ([aie2.py](./aie2.py))</u>
 In order to write the DDR data to a text file, we need to decide where we want the DDR data to first be stored and then read from that location, before writing to a text file. This starts inside the [aie2.py](./aie2.py) file where we use the `configure_simple_tracing_aie2` function call to configure the trace units and program the shimDMA to write to one of the 3 inout buffers. There are many ways to configure our structural design to write this data out but one pattern is the following: `inout0` is for input data, `inout1` is for output data, and `inout2` is for output trace data as illustrated below: 
@@ -124,37 +124,38 @@ As described in [python/utils](../../../python/utils) for `trace.py`, we configu
 | 1 | inout1 |
 | 2 | inout2 |
 
-An example of this is in the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/aie2.py), where it uses the 2nd pattern above (input A, input B, output C + trace). In the vector scalar multiply case, A is used for the input vector and B for the scalar factor. Since we're sharing the trace data with the output buffer on `inout2`, we set `ddr_id=2`. In addition, we set the offset to be the output data buffer size since the trace data is appended after the data (`offset=N_in_bytes`).
+An example of this is in the Vector Scalar Multiply example ([aie2.py](../../../programming_examples/basic/vector_scalar_mul/aie2.py)), where it uses the 2nd pattern above (input A, input B, output C + trace). In the vector scalar multiply case, A is used for the input vector and B for the scalar factor. Since we're sharing the trace data with the output buffer on `inout2`, we set `ddr_id=2`. In addition, we set the offset to be the output data buffer size since the trace data is appended after the data (`offset=N_in_bytes`). For our local design ([aie2.py](./aie.py)), we have variation of the 2nd pattern but the second inout buffer is unused (input A, unused, output C + trace). `ddr_id=2` is still used since our output buffer is mapped to `inout2` and our trace data offset is specified as `C_sz_in_bytes`.
 
 Once [aie2.py](./aie2.py) is configured to output trace data through one of the 3 inout buffers with matching `ddr_id` config and `offset`, we turn our attention to the host code to read the DDR data and write it to a file.
 
-**NOTE**: In the  [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/aie2.py) and associated [Makefile](../../../programming_examples/basic/vector_scalar_mul/Makefile), we provide a Makefile target `run` for standard build and `trace` for trace-enabld build. The trace-enabled build passes the trace buffer size as an argument to [aie2.py](./aie2.py) which conditionally enables the trace `flow` and calls `configure_simple_tracing_aie2` as long as `trace_size` is > 0. 
+**NOTE**: In our example design, the [aie2.py](./aie2.py) and associated [Makefile](./Makefile), we provide a Makefile target `run` for standard build and `trace` for trace-enabld build. The trace-enabled build passes the trace buffer size as an argument to [aie2.py](./aie2.py) which conditionally enables the trace `flow` and calls `configure_simple_tracing_aie2` as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
 
 ### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp))</u>
 The main changes needed for [test.cpp](./test.cpp) is the increase in the output buffer size to account for the trace buffer size, being careful to read only the output buffer portion when verifying correctness of the results. We also need to be sure to pass the correct buffer offset which points to the trace buffer data when calling `write_out_trace`. 
 
-You can see in the Vector Scalar Multiply example [test.cpp](../../../programming_examples/basic/vector_scalar_mul/test.cpp) that trace_size is set based on an input argument of `-t $(trace_size)` which is defined and passed in the [Makefile](../../../programming_examples/basic/vector_scalar_mul/Makefile). The `trace` target from the [Makefile](../../../programming_examples/basic/vector_scalar_mul/Makefile) is shown below. 
+You can see in [test.cpp](.test.cpp) that trace_size is set based on an input argument of `-t $(trace_size)` which is defined and passed in the [Makefile](.Makefile). The `trace` target from the [Makefile](./Makefile) is shown below. 
 
 ```Makefile
-trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt 
-	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size}
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace__${data_size}.mlir --colshift 1 > parse_eventIR_vs.json
+trace: ${targetname}.exe build/final.xclbin build/insts.txt 
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -t 8192
+	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie.mlir --colshift 1 > trace_4b.json
 ```
-Following the invocation of the executable, we call the `parse_eventIR.py` python script which we will cover in more detail in step 3. 
-Within the Vector Scalar Multiply example [test.cpp](../../../programming_examples/basic/vector_scalar_mul/test.cpp), we redefine OUT_SIZE to be the sum of output buffer size (in bytes) and the trace buffer size. 
+Following the invocation of the executable, we call the `parse_trace.py` python script which we will cover in more detail in step 3. 
+Within the [test.cpp](./test.cpp), we redefine OUT_SIZE to be the sum of output buffer size (in bytes) and the trace buffer size. 
 ```c++
-    int OUT_SIZE = OUT_VOLUME * sizeof(DATATYPE) + trace_size;
+    int OUT_SIZE = INOUT2_SIZE + trace_size;
 ```
-All subsuquent references to the output buffer size should use  `OUT_SIZE`. The exception is when we want to verify the output results which should be bounded by the original output buffer size, in this case `IN_VOLUME`.
+All subsuquent references to the output buffer size should use  `OUT_SIZE`. The exception is when we want to verify the output results which should be bounded by the original output buffer size, in this case `INOUT2_VOLUME`.
 
 Finally, the function to write the trace output to a file as defined in `aie.utils.trace` is `write_out_trace` and we need to pass it the pointer in the output buffer where the trace data begins, the trace buffer size and the trace file name (default is `trace.txt`).
 ```c++
-    test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
-                                vm["trace_file"].as<std::string>());
+      test_utils::write_out_trace(
+          ((char *)bufInOut2) + INOUT2_SIZE,
+          trace_size, vm["trace_file"].as<std::string>());
 ```
 
 ### <u>(2b) Python Host code ([test.py](./test.py))</u>
-In the [Makefile](../../../programming_examples/basic/vector_scalar_mul/Makefile), we also have a `trace_py` target which calls the python host code `test.py`. Here in addition to the `-t ${trace_size}`, we also define the `-s ${data_size}` which is the data size (in uint32) for our Vector Scalar Multiply kernel.
+In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py`. Here in addition to the `-t ${trace_size}`, we also define the `-s ${data_size}` which is the data size (in uint32) for our Vector Scalar Multiply kernel.
 ```Makefile
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.txt
 	${powershell} python3 test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.txt -k MLIR_AIE -t ${trace_size} -s ${data_size}
@@ -177,10 +178,9 @@ Finally, we read `trace buffer` from the entire_buffer starting a the offset of 
 ```
 
 ## <u>3. Parse text file to generate a waveform json file</u>
-Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_eventIR.py](../../../programming_examples/utils/parse_eventIR.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). 
+Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../programming_examples/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). 
 ```Makefile
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace__${data_size}.mlir --colshift 1 > parse_eventIR_vs.json
-json
+	../../../programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > trace_vs.json
 ```
 This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). Follow [this link](../../../programming_examples/utils/) to get more details about how to use the python parse scripts and how they are coded. 
 
@@ -194,7 +194,14 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * Check matching packet IDs for packet-routed flows. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed.
 
 ## <u>Exercises</u>
-1. Ask questions about routing congestion for circuit switch and packet switch routes? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
+1. Let's give tracing a try. In this directory, we're been examining a design based off the `Vector Scalar Add` example. Run `make trace` to compile the design and generate a trace file and run the `prase_trace.py` script on it to generate the `trace_4b.json` waveform file. Open this in http://ui.perfetto.dev. if you zoom into the region of interest with the W and S to zoom in and out respectively and A adn D to pan left and right. You should seem a wave like the following:
+
+    <img src="../../assets/trace_vector_scalar_add1.png" title="AIE-ML Vector Unit." height=250>
+
+    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_tutorials/images/answer1.jpg" title="8" height=25> How many input and output chunks are there? <img src="../../../mlir_tutorials/images/answer1.jpg" title="8" height=25> This shoudl match iteration loop bounds in our exmple design.
+
+1. **TODO** Additional questions about routing congestion for circuit switch and packet switch routes for trace packets? <img src="../../../mlir_tutorials/images/answer1.jpg" title="AMD!" height=25>
+
 
 -----
 [[Prev]](../section-4a) [[Up]](../../section-4) [[Next]](../section-4c)

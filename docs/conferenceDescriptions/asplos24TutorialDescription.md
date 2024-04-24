@@ -16,7 +16,7 @@ This tutorial will cover the following key topics:
 
 Date: Saturday April 27th 2024 (morning)  
 Location: Hilton La Jolla Torrey Pines, San Diego, California (with ASPLOS’24)  
-Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI enabled miniPCs for the hands-on excersizes.
+Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI enabled miniPCs for the hands-on exercises.
 
 ### Contents and Timeline (tentative)
 

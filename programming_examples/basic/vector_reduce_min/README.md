@@ -32,7 +32,7 @@ To compile the design and C++ testbench:
 
 ```
 make
-make build/reduce_min.exe
+make reduce_min.exe
 ```
 
 To run the design:
