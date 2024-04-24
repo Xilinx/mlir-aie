@@ -27,11 +27,12 @@
 # - M, K, N	 -- (optional) dimensions of matrices, may be used by design;
 #					  N=1 for matrix-vector
 
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 #include ${CURDIR}/../../makefile-common
 current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 #include ${current_dir}../../makefile-common
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
-include ${SELF_DIR}../../makefile-common
+include ${current_dir}../../makefile-common
 
 # defaults; overwrite if needed
 M?=512	
@@ -46,16 +47,16 @@ insts_target?=build/insts_${M}x${K}x${N}.txt
 
 runargs?=-v 1 --warmup 10 --iters 10
 
-kernels_dir=../../../../aie_kernels/aie2
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
 .PHONY: all
 all: ${xclbin_target} ${insts_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
-${mlir_target}: aie2.py
+${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< -M $M -K $K -N $N > $@
 
@@ -64,10 +65,10 @@ ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
-${targetname}.exe: test.cpp ../test.cpp ../common.h
+${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake ../.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
