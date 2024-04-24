@@ -17,7 +17,7 @@
 
 #define DEBUG_TYPE "aie-assign-buffers"
 
-    using namespace mlir;
+using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
