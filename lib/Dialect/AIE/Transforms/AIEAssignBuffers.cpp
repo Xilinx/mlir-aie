@@ -225,9 +225,9 @@ int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
 }
 
 LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                            SmallVector<BufferOp, 4> allBuffers,
-                            std::vector<int64_t> &nextAddrInBanks,
-                            std::vector<BankLimits> &bankLimits) {
+                                    SmallVector<BufferOp, 4> allBuffers,
+                                    std::vector<int64_t> &nextAddrInBanks,
+                                    std::vector<BankLimits> &bankLimits) {
   bool foundOverflow = false;
   std::vector<int> overflow_banks;
   for (int i = 0; i < numBanks; i++) {
