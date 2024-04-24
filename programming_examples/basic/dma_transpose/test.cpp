@@ -65,13 +65,11 @@ int main(int argc, const char *argv[]) {
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
       "M", po::value<int>()->default_value(64),
-      "M, number of rows in the input matrix")
-      (
+      "M, number of rows in the input matrix")(
       "K", po::value<int>()->default_value(64),
       "K, number of columns in the input matrix");
 
   po::variables_map vm;
-
 
   try {
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -95,15 +93,16 @@ int main(int argc, const char *argv[]) {
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
-    std::cout << "Sequence instr count: "
-	      << instr_v.size() << std::endl;
+    std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   uint32_t M = vm["M"].as<int>();
   uint32_t K = vm["K"].as<int>();
   uint32_t N = M * K;
 
   if ((N % 1024)) {
-    std::cerr << "Length (M * K) must be a multiple of 1024. Change M and K inputs" << std::endl;
+    std::cerr
+        << "Length (M * K) must be a multiple of 1024. Change M and K inputs"
+        << std::endl;
     return 1;
   }
 
@@ -128,15 +127,13 @@ int main(int argc, const char *argv[]) {
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                [Node](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 std::cout << "Name: "
-					   << name << std::endl;
+                                 std::cout << "Name: " << name << std::endl;
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();
 
   if (verbosity >= 1)
-    std::cout << "Registering xclbin: "
-	      << vm["xclbin"].as<std::string>()
+    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
               << "\n";
 
   device.register_xclbin(xclbin);
@@ -189,18 +186,17 @@ int main(int argc, const char *argv[]) {
 
   // Doing a transpose on the source vector to produce a ref vector
   for (uint32_t i = 0; i < M; i++) {
-      for (uint32_t j = 0; j < K; j++) {
-	uint32_t src_index = i * K + j;
-	uint32_t dst_index = j * M + i;
-	refVecA[dst_index] = srcVecA[src_index];
-      }
+    for (uint32_t j = 0; j < K; j++) {
+      uint32_t src_index = i * K + j;
+      uint32_t dst_index = j * M + i;
+      refVecA[dst_index] = srcVecA[src_index];
+    }
   }
-  
+
   for (uint32_t i = 0; i < N; i++) {
     uint32_t ref = refVecA[i];
     if (*(bufOut + i) != ref) {
-      std::cout << "ref = " << ref
-		<< " result = " << *(bufOut + i) << "\n";
+      std::cout << "ref = " << ref << " result = " << *(bufOut + i) << "\n";
       errors++;
     }
   }
