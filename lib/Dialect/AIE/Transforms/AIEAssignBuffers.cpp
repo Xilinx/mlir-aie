@@ -282,13 +282,12 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
     return failure();
 
   std::vector<int64_t>
-    nextAddrInBanks; // each entry is the next address available for use
-                      // for that bank
-                      // (e.g. nextAddrInBanks[tile_0][1] = next available
-                      // address in bank 1 for tile_0)
-  std::vector<BankLimits>
-      bankLimits; // the entries contain pairs of start and end addresses
-                  // for each bank
+      nextAddrInBanks; // each entry is the next address available for use
+                       // for that bank
+                       // (e.g. nextAddrInBanks[tile_0][1] = next available
+                       // address in bank 1 for tile_0)
+  std::vector<BankLimits> bankLimits; // the entries contain pairs of start and
+                                      // end addresses for each bank
 
   const auto &targetModel = getTargetModel(tile);
   int maxDataMemorySize = 0;
