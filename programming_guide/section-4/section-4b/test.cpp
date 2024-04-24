@@ -217,7 +217,6 @@ int main(int argc, const char *argv[]) {
     if (trace_size > 0) {
       test_utils::write_out_trace(
           ((char *)bufInOut2) + INOUT2_SIZE,
-          // test_utils::write_out_trace(((char *)bufTrace),
           trace_size, vm["trace_file"].as<std::string>());
     }
 

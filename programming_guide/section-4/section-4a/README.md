@@ -13,7 +13,7 @@
 * [Section 4 - Vector Programming & Peformance Measurement](../../section-4)
     * Section 4a - Timers
     * [Section 4b - Trace](../section-4b)
-    * [Section 4c - Kernel Vectorization](../section-4c)
+    * [Section 4c - Kernel Vectorization and Optimization](../section-4c)
 
 -----
 

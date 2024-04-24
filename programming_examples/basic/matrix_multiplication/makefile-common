@@ -38,6 +38,8 @@ M?=512
 K?=512
 N?=512
 
+trace_size=16384
+
 mlir_target?=build/aie_${M}x${K}x${N}.mlir
 xclbin_target?=build/final_${M}x${K}x${N}.xclbin
 insts_target?=build/insts_${M}x${K}x${N}.txt
@@ -83,14 +85,19 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target} #sign
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
 
-.PHONY: clean
-clean:
-	rm -rf build _build ${targetname}.exe
+trace: ${targetname}.exe ${xclbin_target} ${insts_target} # sign
+	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
+	../../../utils/parse_trace.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > parse_trace_mm.json
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_eventIR.py --filename trace.txt --mlir ./build/aie.mlir --colshift 1 > trace_eventIR.json
+	../../../utils/parse_trace.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > parse_trace_mm.json
+
+.PHONY: clean
+clean: clean_trace
+	rm -rf build _build ${targetname}.exe
 
 .PHONY: clean_trace
 clean_trace:
-	rm -rf tmpTrace trace_eventIR.json
+	rm -rf tmpTrace parse*.json 
