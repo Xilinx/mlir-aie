@@ -101,7 +101,8 @@ LogicalResult basicAllocation(TileOp &tile) {
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize, buffers);
+  return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
+                               buffers);
 }
 
 //===----------------------------------------------------------------------===//
