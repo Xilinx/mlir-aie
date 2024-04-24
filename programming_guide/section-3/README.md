@@ -14,7 +14,7 @@
 
 This section creates a first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
 
-For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in python with the data movement part from [section-2](../section-2).
+For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in Python with the data movement part from [section-2](../section-2).
 
 For the AIE kernel code, we will start with non-vectorized code that will run on the scalar processor part of an AIE. [section-4](../section-4) will introduce how to vectorize a compute kernel to harvest the compute density of the AIE.
 
@@ -29,7 +29,7 @@ This design is also available in the [programming_examples](../../programming_ex
 
 <img align="right" width="150" height="350" src="../assets/vectorScalarMulPhysicalDataFlow.svg">
 
-The [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) AIE-array structural description (see [section-1](../section-1) deploys both a compute core (green) for the multiplication in the operations and a shimDMA (purple) for data movement both input vector a and output vector c residing in external memory.
+The [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) AIE-array structural description (see [section-1](../section-1)) deploys both a compute core (green) for the multiplication and a shimDMA (purple) for data movement of both input vector a and output vector c residing in external memory.
 
 ```python
 # Device declaration - here using aie2 device NPU
@@ -41,7 +41,7 @@ def device_body():
     ComputeTile2 = tile(0, 2)
 ```
 
-We also need to declare that the compute core will run an external function: a kernel written in C++ that will be linked into the design as pre-compiled kernel (more details in the next subsection). With as goal to get our initial design running on the AIE-array, we will run a generic version of the vector scalar multiply run on the scalar processor of the AIE.
+We also need to declare that the compute core will run an external function: a kernel written in C++ that will be linked into the design as pre-compiled kernel (more details in the next subsection). To get our initial design running on the AIE-array, we will run a generic version of the vector scalar multiply run on the scalar processor of the AIE.
 
 ```python
         # Type declarations
@@ -105,7 +105,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
 
 ## Kernel Code
 
-We can program the AIE compute core using C++ code and compile it with xchesscc into an kernel object file. In this section, a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE will provide our initial implementation. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
+We can program the AIE compute core using C++ code and compile it with `xchesscc` into an kernel object file. In this section, we will use a generic implementation of the vector scalar multiplication that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
 void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
@@ -122,9 +122,9 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ## Host Code
 
-The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the memcpy results and optionally outputs trace data. Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variant of this code are available.
+The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data. Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variant of this code are available.
 
-For convenience a set of test utilities support common elements of command line parsing, the XRT-based environment setup and with testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
+For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and with testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
 The host code contains following elements:
 
