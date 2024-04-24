@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
+// RUN: not %PYTHON aiecc.py --basic-alloc-scheme %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.dma_bd' op Core tile DMAs can only access a buffer in the same tile.
 
 module @test {
