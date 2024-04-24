@@ -39,7 +39,8 @@ def my_vector_scalar(vector_size, trace_size):
             inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
         scale = external_func(
-            "vector_scalar_mul_int16_vector", inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()]
+            "vector_scalar_mul_int16_vector",
+            inputs=[memRef_ty, memRef_ty, memRef_ty2, T.i32()],
         )
 
         # Tile declarations
@@ -94,7 +95,9 @@ def my_vector_scalar(vector_size, trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            ipu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N_in_i32s])
+            ipu_dma_memcpy_nd(
+                metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N_in_i32s]
+            )
             ipu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N_in_i32s])
             ipu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             ipu_sync(column=0, row=0, direction=0, channel=0)
