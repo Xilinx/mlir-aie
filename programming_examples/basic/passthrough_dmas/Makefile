@@ -12,18 +12,19 @@ include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin build/insts.txt
 
+devicename ?= npu
 targetname = passThroughDMAs
 LENGTH ?= 4096
 
 build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} ${LENGTH} ${LENGTH} > $@
+	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
 .PHONY: inst/insts.txt
 inst/insts.txt: ${srcdir}/aie2.py
 	rm -rf inst
 	mkdir -p inst 
-	python3 $< ${devicename} ${col} ${LENGTH} > inst/aie.mlir
+	python3 $< ${LENGTH} > inst/aie.mlir
 	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.txt aie.mlir && popd
 	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
 
@@ -64,7 +65,8 @@ vck5000: build/aie.mlir
 		-Wl,-rpath,${ROCM_ROOT}/lib \
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
-
+run_vck5000:
+	test.elf
 
 clean:
 	rm -rf build _build inst ${targetname}.exe
