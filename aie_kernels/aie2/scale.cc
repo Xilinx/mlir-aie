@@ -29,8 +29,7 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
   event1();
 }
 
-
-// Vectorized scale template 
+// Vectorized scale template
 // Assume N is multiple of 16
 template <typename T>
 void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
@@ -41,8 +40,7 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   const int F = N / vec_factor;
   T fac = factor;
   for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(16, )
-  {
+    chess_prepare_for_pipelining chess_loop_range(16, ) {
       aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
       pA1 += vec_factor;
       aie::accum<acc32, vec_factor> cout = aie::mul(A0, fac);
