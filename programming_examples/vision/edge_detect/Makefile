@@ -6,9 +6,11 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-VPATH := ../../../aie_kernels/aie2
+include ${srcdir}/../../makefile-common
+
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
@@ -27,13 +29,13 @@ mlir: build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 
 build/combined_gray2rgba_addWeighted.a: build/gray2rgba.cc.o build/addWeighted.cc.o
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^)
 
-build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: aie2_edgeDetect.py
+build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: ${srcdir}/aie2_edgeDetect.py
 	mkdir -p ${@D}
 	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > $@
 
@@ -42,10 +44,10 @@ build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WID
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -57,4 +59,4 @@ run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build ${targetname}.exe
+	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg

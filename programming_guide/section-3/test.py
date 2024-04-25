@@ -15,7 +15,6 @@ from aie.extras.context import mlir_mod_ctx
 from aie.extras.dialects.ext import memref, arith
 
 import aie.utils.test as test_utils
-import aie.utils.trace as trace_utils
 
 
 def main(opts):
@@ -41,7 +40,7 @@ def main(opts):
     INOUT1_SIZE = INOUT1_VOLUME * INOUT1_DATATYPE().itemsize
     INOUT2_SIZE = INOUT2_VOLUME * INOUT2_DATATYPE().itemsize
 
-    OUT_SIZE = INOUT2_SIZE + int(opts.trace_size)
+    OUT_SIZE = INOUT2_SIZE
 
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
@@ -98,11 +97,6 @@ def main(opts):
         ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE) * scale_factor
         e = np.equal(output_buffer, ref)
         errors = errors + np.size(e) - np.count_nonzero(e)
-
-    # Write trace values if trace_size > 0
-    if opts.trace_size > 0:
-        trace_buffer = entire_buffer[INOUT2_VOLUME:]
-        trace_utils.write_out_trace(trace_buffer, str(opts.trace_file))
 
     # ------------------------------------------------------
     # Print verification and timing results
