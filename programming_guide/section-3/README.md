@@ -12,7 +12,7 @@
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
-This section creates a first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
+This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
 
 For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in Python with the data movement part from [section-2](../section-2).
 
@@ -82,7 +82,7 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
             npu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. And finally after the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from "of_in" and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. And finally after the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
 
 This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function `"scale.o"`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
 

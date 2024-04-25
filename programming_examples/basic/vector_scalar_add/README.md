@@ -12,7 +12,7 @@
 
 Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
 
-The kernel executes on AIE tile (0, 2). Input data is brought to the local memory of the tile from Shim tile (0, 0), through Mem tile (0, 1). The size of the input data from the Shim tile is `16xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `8xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
+The kernel executes on AIE tile (0, 2). Input data is brought to the local memory of the tile from the Shim tile (0, 0) through the Mem tile (0, 1). The size of the input data from the Shim tile is `16xi32`. The data is stored in the Mem tile and sent to the AIE tile in smaller pieces of size `8xi32`. Output data from the AIE tile to the Shim tile follows the same process, in reverse.
 
 This example does not contain a C++ kernel file. The kernel is expressed in Python bindings for the `memref` and `arith` dialects that is then compiled with the AIE compiler to generate the AIE core binary.
 
