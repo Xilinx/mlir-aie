@@ -54,26 +54,5 @@ trace:
 clean_trace:
 	rm -rf tmpTrace trace.txt
 
-# Changing variables when we target VCK5000
-vck5000: devicename=xcvc1902
-vck5000: col=6
-vck5000: CHESS_FLAGS=${CHESSCCWRAP1_FLAGS}
-vck5000: KERNEL_LIB=${ACDC_AIE}/../aie_kernels/aie1/
-
-vck5000: build/aie.mlir build/scale.o
-	cp build/scale.o* ./
-	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
-		-I/opt/xaiengine/include \
-		-I$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/include \
-            	-I${ROCM_ROOT}/include \
-		-L/opt/xaiengine/lib \
-            	-L/lib/x86_64-linux-gnu/ \
-		test_vck5000.cpp \
-		$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-            	${ROCM_ROOT}/lib/libhsa-runtime64.so.1.9.0 \
-		-Wl,-R/opt/xaiengine/lib \
-            	-Wl,-rpath,${ROCM_ROOT}/lib \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
-
 clean: clean_trace
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

@@ -22,8 +22,6 @@ This example does not contain a C++ kernel file. The kernel is expressed in Pyth
 
 1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE2). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
-1. `test_vck5000.cpp`: This C++ code is a testbench for the design example targetting the VCK5000 PCIe card (AIE1). The code is responsible for configuring the AIEs, allocating memory, providing input data, and executing the AIE design on the VCK5000. After executing, the program verifies the results.
-
 ## Ryzen™ AI Usage
 
 ### C++ Testbench
@@ -41,18 +39,3 @@ To run the design:
 make run
 ```
 
-## VCK5000 Usage
-
-### C++ Testbench
-
-To compile the design and C++ testbench:
-
-```
-make vck5000
-```
-
-To run the design:
-
-```
-./test.elf
-```
