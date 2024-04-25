@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Matrix Addition</ins>
+# <ins>Matrix Scalar Addition</ins>
 
 Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back. The DMA in the Shim tile is programmed to bring the bottom left `8x16` portion of a larger `16x128` matrix into the tile to perform the operation. This reference design can be run on either a RyzenAI NPU or a VCK5000.
 

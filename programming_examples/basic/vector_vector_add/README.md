@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Vector Add</ins>
+# <ins>Vector Vector Add</ins>
 
 Single tile performs a very simple `+` operations from two vectors loaded into memory. The tile then stores the sum of those two vectors back to external memory. This reference design can be run on either a RyzenAI NPU or a VCK5000. 
 

@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Vector Multiplication</ins>
+# <ins>Vector Vector Multiplication</ins>
 
 Single tile performs a very simple `*` operations from two vectors loaded into memory. The tile then stores the element wise multiplication of those two vectors back to external memory. This reference design can be run on either a RyzenAI NPU or a VCK5000.
 
