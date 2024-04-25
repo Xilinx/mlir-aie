@@ -52,33 +52,43 @@ Test/ Host code utilities.
 * `pack4bytes`
     * Pack 4 bytes into a 32-bit word
 * `configure_simple_tracing_aie2`
-    * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing betweent he two however. To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
+    * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing between the two however. 
 
+        Function arguments:
+        * `channel` - S2MM channel used
+        * `bd_id` - DMA bd used. Be careful that we do not conflict with the auto-assigned bds from allocated by `npu_dma_memcpy_nd` calls
+        * `ddr_id` - Maps to one of the 3 inout buffers (1,2,3)
+        * `size` - trace buffer size (in bytes)
+        * `offset`- offset (in bytes) where trace buffer data should begin
+        * `start`- start event
+        * `stop`- stop event
+        * `events`- Vector of 8 events that we are tracing
 
-Within the `func.func @sequence` block, we add a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and the shimDMA.
-### <u>How to configure wrapper and default values</u>
-The minimum function call we need is:
-```python
-trace_utils.configure_simple_tracing_aie2(tile, shim)
-```
-This version allows the default values to make certain assumptions such as:
-* `channel`=1 - to configure S2MM channel
-* `bd_id`=13 - 13 is far enough that's unlikely to have conflict
-* `ddr_id`=2 - Maps to inout2 buffer
-* `size`=8192 - 8,192 bytes for trace buffer size
-* `offset`=0 - An offset=0 means the trace data is in its own inout buffer (not appended to another channel)
-* `start`=0x1 - Start event triggers right away
-* `stop`=0x0 - No Stop event
-* `events`=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F] - standard template of events commonly used
+        The minimum function call supported is:
+        ```python
+        trace_utils.configure_simple_tracing_aie2(tile, shim)
+        ```
+        This version allows the default argument values as described below:
+        * `channel`=1 - to configure S2MM channel 1
+        * `bd_id`=13 - 13 is far enough that's unlikely to have conflict
+        * `ddr_id`=2 - Maps to inout2 buffer
+        * `size`=8192 - 8,192 bytes for trace buffer size
+        * `offset`=0 - An offset=0 means the trace data is in its own inout buffer (not appended to another channel)
+        * `start`=0x1 - Start event triggers right away when tile is enabled
+        * `stop`=0x0 - No Stop event
+        * `events`=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F] - standard template of events commonly used
 
-Another common use case might be:
-```python
-trace_utils.configure_simple_tracing_aie2(tile, shim, size=8192, offset=output_size, ddr_id_=2)
-```
-This one allows us to control the size, offset, and inout buffer mapping.
+        A more common use case might be:
+        ```python
+        trace_utils.configure_simple_tracing_aie2(tile, shim, size=8192, offset=output_size, ddr_id_=2)
+        ```
+        This one allows us to control the size, offset, and inout buffer mapping.
 
+        To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
 
 ### <u>Configure tile trace settings</u>
+Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd_shimtile`) to configure the shimDMA. 
+
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
 AIE2 core module registers can be found in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/).
@@ -134,7 +144,7 @@ The table below describes which events the trace hardware monitors.
 This info is also found online in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/) for [Trace Event 0](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Event0-CORE_MODULE-Register) and [Trace Event 1](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Event1-CORE_MODULE-Register).
 
 
-There is an extensive lists of trace events but here, we will only describe a few common ones.
+There is an extensive lists of trace events, but we will only list a few common ones here.
 | Some common events | event ID | dec value |
 |--------------------|----------|-----------|
 | True                       |0x01| 1 |
@@ -147,7 +157,7 @@ There is an extensive lists of trace events but here, we will only describe a fe
 | Lock stall                 |0x1A|  26 |
 | Core Port Running 1        |0x4F|  79 |
 | Core Port Running 0        |0x4B|  75 | 
-* A more exhaustive list of events for core tile, core memory, memtile and shim tile can be found in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h). However, not all events are yet supported in `parse_eventIR.py` at this time.
+* A more exhaustive list of events for core tile, core memory, memtile and shim tile can be found in this [header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h). However, not all events are yet supported in `parse_eventIR.py` at this time.
 
 **NOTE**: The "Core Instruction - Event 0/1" are special intrinsics you can add to your kernel code to trigger an event during the running of your core program. Within the kernel code, they look like:
 ```c++
@@ -158,6 +168,8 @@ event1();
 This can be placed at the beginning and end of your code block to estimate the total execution time of your kernel program.
 
 <u>Example Trace Events 0/1 Config</u>
+
+Setting the trace events registers can again be done using the `aiex.npu.write32` function targeting the correct register address (0x340E0 and 0x340E4 for core tiles). An example of setting them in your host code is below:
 
 in C/C++
 ```c++
@@ -215,6 +227,7 @@ in C/C++
 // This is necessary to capture the Port_Running_0 and Port_Running_1 events
 // Port 0 - Master/ID=1, Port 1 - Slave/ID=1
 aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x3FF04 : ui32, value = 0x0 : ui32 }
 ```
 in Python
 ```python

@@ -25,7 +25,7 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
   event1();
 }
 
-// Vectorized scale template
+// Vectorized scale template (general case)
 // Assume N is multiple of 16
 template <typename T>
 void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
@@ -46,7 +46,7 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
   event1();
 }
 
-// Vectorized scale template for int32_t (acc64 used)
+// Vectorized scale template (int32_t case, acc64 used)
 // Assume N is multiple of 16
 template <>
 void scale_vectorized<int32_t>(int32_t *a, int32_t *c, int32_t factor,
