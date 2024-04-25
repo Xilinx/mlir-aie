@@ -10,6 +10,17 @@
 
 # <ins>Section 2d - Programming for multiple cores</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * [Section 2a - Introduction](../section-2a/)
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * Section 2d - Programming for multiple cores
+    * [Section 2e - Practical Examples](../section-2e/)
+    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
+    * [Section 2g - Runtime Data Movement](../section-2g/)
+
+-----
+
 This section will focus on the process of taking code written for a single core and transforming it into a design with multiple cores relatively quickly. For this we will start with the code in [aie2.py](./aie2.py) which contains a simple design running on a single compute tile, and progressively turn it into the code in [aie2_multi.py](./aie2_multi.py) which contains the same design that distributes the work to three compute tiles.
 
 The first step in the design is the tile declaration. In the simple design we use one Shim tile to bring data from external memory into the AIE array inside of a Mem tile that will then send the data to a compute tile, wait for the output and send it back to external memory through the Shim tile. Below is how those tiles are declared in the simple design:
