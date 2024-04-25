@@ -6,24 +6,26 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 all: build/final.xclbin
 
 targetname = myEltwiseMul
 trace_size = 8192
 
-VPATH := ../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 build/%.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/aie_trace.mlir: aie2.py
+build/aie_trace.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 
@@ -38,10 +40,10 @@ build/final_trace.xclbin: build/aie_trace.mlir build/mul.o
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir}/ -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
