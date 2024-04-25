@@ -286,6 +286,7 @@ endif()
 
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
 add_subdirectory(programming_examples)
+add_subdirectory(programming_guide)
 add_subdirectory(test)
 add_subdirectory(mlir_tutorials)
 add_subdirectory(cmake/modules)
