@@ -6,36 +6,38 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 targetname = testSoftmax
 trace_size = 8192
 
 all: build/final.xclbin build/insts.txt
 
-build/dut.cc: bf16_softmax.mlir
+build/dut.cc: ${srcdir}/bf16_softmax.mlir
 	mkdir -p ${@D}
-	cd ${@D} &&	aie-opt ../$< -affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o ${@F}
+	cd ${@D} &&	aie-opt $< -affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o ${@F}
 
 build/dut.o: build/dut.cc
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
-build/lut_based_ops.o:
+build/lut_based_ops.o: ../../../aie_runtime_lib/AIE2/lut_based_ops.cpp
 	mkdir -p ${@D}
-	cd ${@D} &&	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c ../../../../aie_runtime_lib/AIE2/lut_based_ops.cpp -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -c $(<:%=../%) -o ${@F}
 
-build/softmax.o: softmax.cc
+build/softmax.o: ${srcdir}/softmax.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -I. -I../../../../aie_runtime_lib/AIE2 -c $< -o ${@F}
 
 build/kernels.a: build/softmax.o build/lut_based_ops.o build/dut.o
 	ar rvs $@ $+
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/aie_trace.mlir: aie2.py
+build/aie_trace.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< ${trace_size} > $@
 
@@ -51,10 +53,10 @@ build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

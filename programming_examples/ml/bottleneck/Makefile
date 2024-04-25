@@ -5,26 +5,30 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 mlirFileName = aie
 
+VPATH := ${srcdir}/../../../aie_kernels/aie2
+
 all: build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o build/final.xclbin
 
-build/${mlirFileName}.mlir: aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
 insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
-build/conv2dk1.o: ../../../aie_kernels/aie2/conv2dk1.cc
+build/conv2dk1.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
-build/conv2dk3.o: ../../../aie_kernels/aie2/conv2dk3.cc
+build/conv2dk3.o: conv2dk3.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DUINT8_ACT -c $< -o $@
 
-build/conv2dk1_skip.o: ../../../aie_kernels/aie2/conv2dk1_skip.cc
+build/conv2dk1_skip.o: conv2dk1_skip.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
 build/final.xclbin: build/${mlirFileName}.mlir 

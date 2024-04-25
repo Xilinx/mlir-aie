@@ -5,15 +5,17 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 mlirFileName = aieWithTrace_1core
 
-VPATH := ../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 all: build/conv2dk1.o build/final.xclbin
 
-build/${mlirFileName}.mlir: aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
