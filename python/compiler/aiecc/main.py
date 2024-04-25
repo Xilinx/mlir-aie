@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
+INPUT_WITH_SWITCHBOXES_PIPELINE = (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -49,8 +49,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-create-packet-flows")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses"),
+        .add_pass("aie-lower-multicast"),
     )
     .convert_scf_to_cf()
 )
@@ -986,14 +985,36 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE.materialize(module=True)
+            file_with_switchboxes = self.prepend_tmp("input_with_switchboxes.mlir")
+            pass_pipeline = INPUT_WITH_SWITCHBOXES_PIPELINE.materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
-                file_with_addresses,
+                file_with_switchboxes,
                 self.opts.verbose,
             )
+
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            if opts.basic_alloc_scheme:
+                do_run(
+                    [
+                        "aie-opt",
+                        "--aie-assign-buffer-addresses=basic-alloc",
+                        file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
+                    ],
+                )
+            else:
+                do_run(
+                    [
+                        "aie-opt",
+                        "--aie-assign-buffer-addresses",
+                        file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
+                    ],
+                )
 
             cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
