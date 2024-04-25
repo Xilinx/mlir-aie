@@ -1,8 +1,8 @@
-# ASPLOS'24 Tutorial: Levering MLIR to Design for AI Engines on Ryzen AI
+# ASPLOS'24 Tutorial: Levering MLIR to Design for AI Engines on Ryzen™ AI
 
 ## Introduction
 
-The AI Engine array in the NPU of the AMD Ryzen AI device includes a set of VLIW vector processors with adaptable interconnect. This tutorial is targeted at performance engineers and tool developers who are looking for fast and completely open source design tools to support their research. Participants will first get insight into the AI Engine compute and data movement capabilities. Through small design examples expressed in the MLIR-AIE python language bindings and executed on an Ryzen AI device, participants will leverage AI Engine features for optimizing performance of increasingly complex designs. The labs will be done on Ryzen AI enabled miniPCs giving participants the ability to execute their own designs on real hardware.
+The AI Engine array in the NPU of the AMD Ryzen™ AI device includes a set of VLIW vector processors with adaptable interconnect. This tutorial is targeted at performance engineers and tool developers who are looking for fast and completely open source design tools to support their research. Participants will first get insight into the AI Engine compute and data movement capabilities. Through small design examples expressed in the MLIR-AIE python language bindings and executed on an Ryzen™ AI device, participants will leverage AI Engine features for optimizing performance of increasingly complex designs. The labs will be done on Ryzen™ AI enabled miniPCs giving participants the ability to execute their own designs on real hardware.
 
 
 This tutorial will cover the following key topics:
@@ -16,15 +16,15 @@ This tutorial will cover the following key topics:
 
 Date: Saturday April 27th 2024 (morning)  
 Location: Hilton La Jolla Torrey Pines, San Diego, California (with ASPLOS’24)  
-Prerequisite: please bring your laptop, so that you can ssh into our Ryzen AI enabled miniPCs for the hands-on exercises.
+Prerequisite: please bring your laptop, so that you can ssh into our Ryzen™ AI enabled miniPCs for the hands-on exercises.
 
 ### Contents and Timeline (tentative)
 
 | Time | Topic | Presenter | Slides or Code |
 |------|-------|-----------|----------------|
 | 08:30am | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
-| 08:45am | "Hello World" from Ryzen AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
-| 09:00am | Data movement on Ryzen AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
+| 08:45am | "Hello World" from Ryzen™ AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
+| 09:00am | Data movement on Ryzen™ AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
 | 09:30am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 10:00am | Break | | |
