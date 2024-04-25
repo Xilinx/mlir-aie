@@ -24,7 +24,6 @@
 
 namespace po = boost::program_options;
 
-
 int main(int argc, const char *argv[]) {
 
   // ------------------------------------------------------
