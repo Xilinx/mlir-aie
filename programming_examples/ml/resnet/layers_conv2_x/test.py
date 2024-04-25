@@ -442,7 +442,7 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.time_ns()
-        aie_output = execute(app, ifm_mem_fmt, total_wts) * block_2_relu_3
+        aie_output = execute(app, ifm_mem_fmt, total_wts3) * block_2_relu_3
         stop = time.time_ns()
 
         if enable_trace:
