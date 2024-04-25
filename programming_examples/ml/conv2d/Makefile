@@ -27,7 +27,7 @@ insts.txt: build/${mlirFileName}.mlir
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
-build/final.xclbin: build/${mlirFileName}.mlir 
+build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o  
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
