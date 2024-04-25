@@ -10,6 +10,17 @@
 
 # <ins>Section 2a - Introduction</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * Section 2a - Introduction
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * [Section 2d - Programming for multiple cores](../section-2d/)
+    * [Section 2e - Practical Examples](../section-2e/)
+    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
+    * [Section 2g - Runtime Data Movement](../section-2g/)
+
+-----
+
 ### Initializing an Object FIFO
 
 An Object FIFO represents the data movement connection between a point A and a point B. In the AIE array, these points are AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and compute tile) is different, but there is no difference between them when using an Object FIFO. 

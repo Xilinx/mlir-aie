@@ -10,6 +10,17 @@
 
 # <ins>Section 2f - Data Movement Without Object FIFOs</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * [Section 2a - Introduction](../section-2a/)
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * [Section 2d - Programming for multiple cores](../section-2d/)
+    * [Section 2e - Practical Examples](../section-2e/)
+    * Section 2f - Data Movement Without Object FIFOs
+    * [Section 2g - Runtime Data Movement](../section-2g/)
+
+-----
+
 Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Data Movement Accelerators (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
 
 The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles have their own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be intialized using the constructors in [aie.py](../../../python/dialects/aie.py):
