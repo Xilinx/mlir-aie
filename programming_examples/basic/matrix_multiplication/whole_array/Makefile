@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
 ##===----------------------------------------------------------------------===##
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 subdir=whole_array
 targetname=matrixMultiplication
@@ -14,4 +15,4 @@ M?=512
 K?=512
 N?=512
 
-include ../makefile-common
+include ${srcdir}/../makefile-common
