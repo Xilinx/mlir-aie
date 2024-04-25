@@ -13,6 +13,11 @@ aie.buffer operations without an address.  This pass determines
 updates each aie.buffer operation without an address to have a
 well-defined address.  This enables later passes to have a
 consistent view of the memory map of a system.
+
+#### Options
+```
+-basic-alloc : Flag to enable the basic sequential allocation scheme (not bank-aware).
+```
 ### `-aie-assign-lock-ids`
 
 _Assigns the lockIDs of locks that do not have IDs._
