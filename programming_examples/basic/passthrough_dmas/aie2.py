@@ -14,23 +14,22 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 4096
+dev = AIEDevice.npu
+col = 0
 
-
-# Deciphering the command line arguments
-if len(sys.argv) < 3:
-    raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-if len(sys.argv) == 4:
+if len(sys.argv) > 1:
     N = int(sys.argv[1])
 
-if sys.argv[1] == "npu":
-    dev = AIEDevice.npu
-elif sys.argv[1] == "xcvc1902":
-    dev = AIEDevice.xcvc1902
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+if len(sys.argv) > 2:
+    if sys.argv[2] == "npu":
+        dev = AIEDevice.npu
+    elif sys.argv[2] == "xcvc1902":
+        dev = AIEDevice.xcvc1902
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
 
-col = int(sys.argv[2])
+if len(sys.argv) > 3:
+    col = int(sys.argv[3])
 
 
 def my_passthrough():
