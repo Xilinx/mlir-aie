@@ -184,7 +184,7 @@ int main(int argc, const char *argv[]) {
     } else {
       if (verbosity >= 1)
         std::cout << "Correct output " << *(bufOut + i)
-                << " == " << *(bufInA + i) * *(bufInB + i) << std::endl;
+                  << " == " << *(bufInA + i) * *(bufInB + i) << std::endl;
     }
   }
 
