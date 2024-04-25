@@ -36,17 +36,17 @@ The softmax function is a mathematical function commonly used in machine learnin
 
 The softmax function employs the exponential function $e^x$, similar to the example found [here](../../basic/vector_exp/). Again to efficiently implement softmax, a lookup table approximation is utilized.
 
-In addition, and unlike any of the other current design examples, this example uses MLIR dialects as direct input, including the `vector`,`affine`,`arith` and `math` dialects.  This is shown in the [source](./bf16_softmax.mlir).  This is intended to be generated from a higher level description, but is shown here as an example of how you can use other MLIR dialects as input.
+In addition, and unlike any of the other current design examples, this example uses MLIR dialects as direct input, including the `vector`,`affine`,`arith` and `math` dialects.  This is shown in the [source](./bf16_softmax.mlir).  This is intended to be generated from a higher-level description but is shown here as an example of how you can use other MLIR dialects as input.
 
 The compilation process is different from the other design examples, and is shown in the [Makefile](./Makefile).
 
 1. The input MLIR is first vectorized into chunks of size 16, and a C++ file is produced which has mapped the various MLIR dialects into AIE intrinsics, including vector loads and stores, vectorized arithmetic on those registers, and the $e^x$ approximation using look up tables
 1. This generated C++ is compiled into a first object file
-1. A file called `lut_based_ops.cpp` from the AIE2 runtime libary is compiled into a second object file.  This file contains the look up table contents to approximate the $e^x$ function.
+1. A file called `lut_based_ops.cpp` from the AIE2 runtime library is compiled into a second object file.  This file contains the look up table contents to approximate the $e^x$ function.
 1. A wrapper file is also compiled into an object file, which prevents C++ name mangling, and allows the wrapped C function to be called from the strucural Python
-1. These 3 object files and combined into a single .a file, which is then referenced inside the aie2.py structural Python.
+1. These 3 object files are combined into a single .a file, which is then referenced inside the aie2.py structural Python.
 
-This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library based flow can also be used.
+This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library-based flow can also be used.
 
 ## Usage
 

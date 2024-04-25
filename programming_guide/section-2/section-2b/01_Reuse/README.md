@@ -10,7 +10,7 @@
 
 # <ins>Object FIFO Reuse Pattern</ins>
 
-In the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the Object FIFO acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an Object FIFO releases less objects than it had previously acquired. As acquiring from an Object FIFO does not destroy the data, unreleased objects can continue to be used without requiring new copies of the data.
+In the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the Object FIFO acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an Object FIFO releases fewer objects than it had previously acquired. As acquiring from an Object FIFO does not destroy the data, unreleased objects can continue to be used without requiring new copies of the data.
 
 It is important to note that each new acquire function will return a new object or array of objects that a process can access, which **includes unreleased objects from previous acquire calls**. The process should always use the result of the **most recent** acquire call to access unreleased objects to ensure a proper lowering through the Object FIFO primitive.
 

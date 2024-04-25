@@ -12,7 +12,7 @@
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
-This section creates a first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
+This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("inst.txt"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
 
 For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in Python with the data movement part from [section-2](../section-2).
 
@@ -81,7 +81,7 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
             npu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read from from "of_in" and and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. After the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire and object of 1024 integers to read  from "of_in" and  one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. After the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
 
 This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function "scale.o". We run this pattern in a very large loop to enable enqueuing multiple rounds vector scalar multiply work from the host code.
 
@@ -122,11 +122,11 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ## Host Code
 
-The host code is acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data. Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variant of this code are available.
+The host code acts as environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data. Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variant of this code are available.
 
 For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and with testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
-The host code contains following elements:
+The host code contains the following elements:
 
 1. *Parse program arguments and set up constants*: the host code typically takes at least as arguments: `-x` the XCLBIN file, `-k` kernel name (with default name "MLIR_AIE"),  and `-i` the instruction sequence file as arguments since it is its task to load those files and set the kernel name. Both the XCLBIN and instruction sequence are generated when compiling the AIE-array Structural Description and kernel code with `aiecc.py`.
 
@@ -134,7 +134,7 @@ The host code contains following elements:
 
 1. *Create XRT environment*: so that we can use the XRT runtime
 
-1. *Create XRT buffer objects* for the instruction sequence, inputs (vector a and factor) and output (vector c). Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 2 for the first sequence argument and then icrementing by 1.   
+1. *Create XRT buffer objects* for the instruction sequence, inputs (vector a and factor) and output (vector c). Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of Python AIE-array structural description, starting with ID number 2 for the first sequence argument and then incrementing by 1.   
 
 1. *Initialize and synchronize*: host to device XRT buffer objects
 
