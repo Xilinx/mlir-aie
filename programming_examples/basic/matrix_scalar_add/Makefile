@@ -10,8 +10,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-ACDC_AIE = $(dir $(shell which aie-opt))/..
-
 SHELL := /bin/bash
 
 targetname = matrixAddOne
@@ -46,17 +44,14 @@ vck5000: col=6
 
 vck5000: build/aie.mlir
 	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
-						-I/opt/xaiengine/include \
-						-I$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/include \
-            -I${ROCM_ROOT}/include \
-						-L/opt/xaiengine/lib \
-            -L/lib/x86_64-linux-gnu/ \
-						test_vck5000.cpp \
-						$(ACDC_AIE)/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-            ${ROCM_ROOT}/lib/libhsa-runtime64.so.1.9.0 \
-						-Wl,-R/opt/xaiengine/lib \
-            -Wl,-rpath,${ROCM_ROOT}/lib \
-						-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
+			-I/opt/xaiengine/include \
+			-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
+			-L/opt/xaiengine/lib \
+			-L/lib/x86_64-linux-gnu/ \
+			${srcdir}/test_vck5000.cpp \
+			${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
+			-Wl,-R/opt/xaiengine/lib \
+			-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
