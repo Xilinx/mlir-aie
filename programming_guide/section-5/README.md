@@ -30,12 +30,14 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 |-|-|-|
 | [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector | 
 | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor | 
+| [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector | 
+| [Vector Vector Multiply](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a vector |
 | [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector | 
 | [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector | 
 | [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 
 | [Vector Exp](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing $e^x$ of the inputs | 
 | [DMA Transpose](../../programming_examples/basic/dma_transpose/) | i32 | Transposes a matrix with the Shim DMA using `npu_dma_memcpy_nd` | 
-| [Single core GEMM](../../programming_examples/basic/matrix_multiplication/single_core) | bfloat16 | A single core matrix-matrix multiply | 
+| [Matrix Scalar Add](../../programming_examples/basic/matrix_scalar_add/) | i32 | Returns a matrix multiplied by a scalar | [Single core GEMM](../../programming_examples/basic/matrix_multiplication/single_core) | bfloat16 | A single core matrix-matrix multiply | 
 | [Multi core GEMM](../../programming_examples/basic/matrix_multiplication/whole_array) | bfloat16 | A matrix-matrix multiply using 16 AIEs with operand broadcast.  Uses a simple "accumulate in place" strategy | 
 | [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector) | bfloat16 | A vector-matrix multiply returning a vector
 
