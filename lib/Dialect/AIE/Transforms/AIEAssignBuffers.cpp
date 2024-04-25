@@ -27,30 +27,7 @@ using namespace xilinx::AIE;
 LogicalResult checkAndPrintOverflow(TileOp tile, int address,
                                     int maxDataMemorySize, int stacksize,
                                     SmallVector<BufferOp, 4> buffers) {
-  if (address > maxDataMemorySize) {
-    InFlightDiagnostic error =
-        tile.emitOpError("allocated buffers exceeded available memory\n");
-    auto &note = error.attachNote() << "MemoryMap:\n";
-    auto printbuffer = [&](StringRef name, int address, int size) {
-      note << "\t" << name << " \t"
-           << ": 0x" << llvm::utohexstr(address) << "-0x"
-           << llvm::utohexstr(address + size - 1) << " \t(" << size
-           << " bytes)\n";
-    };
-    if (stacksize > 0)
-      printbuffer("(stack)", 0, stacksize);
-    else
-      error << "(no stack allocated)\n";
-
-    for (auto buffer : buffers) {
-      assert(buffer.getAddress().has_value() &&
-             "buffer must have address assigned");
-      printbuffer(buffer.name(), buffer.getAddress().value(),
-                  buffer.getAllocationSize());
-    }
-    return failure();
-  }
-  return success();
+  
 }
 
 LogicalResult basicAllocation(TileOp &tile) {
@@ -96,13 +73,35 @@ LogicalResult basicAllocation(TileOp &tile) {
 
   // Sort by smallest address before printing memory map.
   std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
-    assert(a.getAddress().has_value() && "buffer must have address assigned2");
-    assert(b.getAddress().has_value() && "buffer must have address assigned2");
+    assert(a.getAddress().has_value() && "buffer must have address assigned");
+    assert(b.getAddress().has_value() && "buffer must have address assigned");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
-                               buffers);
+  if (address > maxDataMemorySize) {
+    InFlightDiagnostic error =
+        tile.emitOpError("allocated buffers exceeded available memory\n");
+    auto &note = error.attachNote() << "MemoryMap:\n";
+    auto printbuffer = [&](StringRef name, int address, int size) {
+      note << "\t" << name << " \t"
+           << ": 0x" << llvm::utohexstr(address) << "-0x"
+           << llvm::utohexstr(address + size - 1) << " \t(" << size
+           << " bytes)\n";
+    };
+    if (stacksize > 0)
+      printbuffer("(stack)", 0, stacksize);
+    else
+      error << "(no stack allocated)\n";
+
+    for (auto buffer : buffers) {
+      assert(buffer.getAddress().has_value() &&
+             "buffer must have address assigned");
+      printbuffer(buffer.name(), buffer.getAddress().value(),
+                  buffer.getAllocationSize());
+    }
+    return failure();
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
