@@ -10,15 +10,15 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-ACDC_AIE = $(dir $(shell which aie-opt))/..
-
-SHELL := /bin/bash
-
 targetname = vectorAdd
 devicename = npu
 col = 0
 
 all: build/final.xclbin
+
+build/aie.mlir: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< ${devicename} ${col} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -36,11 +36,9 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-build/aie.mlir: ${srcdir}/aie2.py
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
-
 # Changing variables when we target VCK5000
+ACDC_AIE = $(dir $(shell which aie-opt))/..
+
 vck5000: devicename=xcvc1902
 vck5000: col=6
 
