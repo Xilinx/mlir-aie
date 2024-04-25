@@ -10,7 +10,7 @@
 
 # <ins>Section 5 - Example Vector Designs</ins>
 
-The [programming examples](../../programming_examples) are a number of sample designs which further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
+The [programming examples](../../programming_examples) are a number of sample designs that further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
 
 ## Simplest
 
@@ -39,7 +39,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [Multi core GEMM](../../programming_examples/basic/matrix_multiplication/whole_array) | bfloat16 | A matrix-matrix multiply using 16 AIEs with operand broadcast.  Uses a simple "accumulate in place" strategy | 
 | [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector) | bfloat16 | A vector-matrix multiply returning a vector
 
-## Machine Kearning Kernels
+## Machine Learning Kernels
 
 | Design name | Data type | Description | 
 |-|-|-|
@@ -56,7 +56,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 1. Take a look at the testbench in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
 
-1. What is the communication to computation ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+1. What is the communication-to-computation  ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
 
 1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
 

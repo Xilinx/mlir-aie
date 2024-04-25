@@ -13,12 +13,12 @@
 In this section of the programming guide, we introduce the Object FIFO high-level communication primitive used to describe the data movement within the AIE array. At the end of this guide you will:
 1. have a high-level understanding of the communication primitive API,
 2. have learned how to initialize and access an Object FIFO through meaningful design examples,
-3. understand the design decisions which led to current limitations and/or restrictions in the Object FIFO design,
+3. understand the design decisions, which led to current limitations and/or restrictions in the Object FIFO design,
 4. know where to find more in-depth material of the Object FIFO implementation and lower-level lowering.
 
-To understand the need for a data movement abstraction we must first understand the hardware architecture with which we are working. The AIE array is a [spatial compute architecture](../README.md) with explicit data movement requirements. Each compute unit of the array works on data that is stored within its L1 memory module and that data needs to be explicitly moved there as part of the AIE's array global data movement configuration. This configuration involves several specialized hardware resources which handle the data movement over the entire array in such a way that data arrives at its destination without loss. The Object FIFO provides users with a way to specify the data movement in a more human-comprehensible and accessible manner, without sacrificing some of the more advanced control possibilities which the hardware provides.
+To understand the need for a data movement abstraction we must first understand the hardware architecture with which we are working. The AIE array is a [spatial compute architecture](../README.md) with explicit data movement requirements. Each compute unit of the array works on data that is stored within its L1 memory module and that data needs to be explicitly moved there as part of the AIE's array global data movement configuration. This configuration involves several specialized hardware resources that handle the data movement over the entire array in such a way that data arrives at its destination without loss. The Object FIFO provides users with a way to specify the data movement in a more human-comprehensible and accessible manner, without sacrificing some of the more advanced control possibilities which the hardware provides.
 
-> **NOTE:**  For more in-depth, low-level material on Object FIFO programming in MLIR please see the MLIR-AIE [tutorials](../mlir_tutorials).
+> **NOTE:**  For more in-depth, low-level material on Object FIFO programming in MLIR, please see the MLIR-AIE [tutorials](../mlir_tutorials).
 
 This guide is split into five sections, where each section builds on top of the previous ones:
 > **NOTE:**  Section 2e contains several practical code examples with common design patterns using the Object FIFO which can be quickly picked up and tweaked for desired use.
