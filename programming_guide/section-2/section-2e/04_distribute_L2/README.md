@@ -24,7 +24,7 @@ The design in [distribute_L2.py](./distribute_L2.py) uses an Object FIFO `of_in`
   object_fifo_link(of_in, [of_in0, of_in1, of_in2])
 ```
 
-All compute tiles are running the same process of acquring one object from their respective input Object FIFOs to consume, adding `1` to all of its entries, and releasing the object. The [join design](../05_join_L2/) shows how the data is sent back out to external memory and tested.
+All compute tiles are running the same process of acquiring one object from their respective input Object FIFOs to consume, adding `1` to all of its entries, and releasing the object. The [join design](../05_join_L2/) shows how the data is sent back out to external memory and tested.
 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 
