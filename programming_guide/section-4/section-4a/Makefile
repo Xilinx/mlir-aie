@@ -6,30 +6,32 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../../programming_examples/makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../../programming_examples/makefile-common
 
 all: build/final.xclbin
 
 targetname = myFirstProgram
 
-build/aie.mlir: aie2.py
+build/aie.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/scale.o: vector_scalar_mul.cc
+build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake .. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} 
-	cd _build && ${powershell} cmake --build . --config Release
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake ${srcdir} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} 
+	cd _build && ${powershell} cmake --build , --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
