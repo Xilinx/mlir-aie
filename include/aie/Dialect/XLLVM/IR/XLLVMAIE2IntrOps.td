@@ -159,16 +159,16 @@ def ExtI256I512IntrOp :
 def ConcatI512I256IntrOp :
     AIEVec2_IntrOp<"concat.I512.I256",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src0,
-                   VectorOfLengthAndType<[8], [I32]>:$src1)>;
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$lhs,
+                   VectorOfLengthAndType<[8], [I32]>:$rhs)>;
 
 // ----- SHUFFLE ----- 
 
 def VectorShuffleIntrOp :
     AIEVec2_IntrOp<"vshuffle",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src0,
-                   VectorOfLengthAndType<[16], [I32]>:$src1,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$mode)>;
 
 // ----- UNDEF ----- 
