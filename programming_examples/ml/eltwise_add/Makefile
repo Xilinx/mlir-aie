@@ -50,9 +50,6 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-build/aie.mlir: aie2.py
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
