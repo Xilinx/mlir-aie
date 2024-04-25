@@ -59,7 +59,7 @@ def passthroughKernel(vector_size, trace_size):
 
         tensorSize = N
         tensorSizeInInt32s = tensorSize // 4
-        tensor_ty = T.memref(lineWidthInInt32s, T.i32())
+        tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
