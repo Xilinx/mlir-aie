@@ -10,7 +10,7 @@
 
 # <ins>Section 0 - Getting Set Up for IRON</ins>
 
-This programming guide focuses on application programming for the NPU found in Ryzen™ AI laptops and mini PCs. The latest information on Ryzen AI CPUs can be found [here](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html).
+This programming guide focuses on application programming for the NPU found in Ryzen™ AI laptops and mini PCs. The latest information on Ryzen™ AI CPUs can be found [here](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html).
 
 ## <ins>Recommended Hardware</ins>
 

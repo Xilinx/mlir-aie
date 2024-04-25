@@ -10,13 +10,24 @@
 
 # <ins>Section 2g - Runtime Data Movement</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * [Section 2a - Introduction](../section-2a/)
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * [Section 2d - Programming for multiple cores](../section-2d/)
+    * [Section 2e - Practical Examples](../section-2e/)
+    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
+    * Section 2g - Runtime Data Movement
+
+-----
+
 In the preceding sections, we looked at how we can describe data movement between tiles *within* the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e. from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. 
 
 The operations that will be described in this section must be placed in a separate `sequence` function. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../../programming_examples/) contains an example.
 
 ### Guide to Managing Runtime Data Movement to/from Host Memory
 
-In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `npu_sync` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example in the Ryzen™ AI NPU).
+In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `npu_sync` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).
 
 #### **Efficient Data Movement with `npu_dma_memcpy_nd`**
 
@@ -118,7 +129,7 @@ npu_sync(0, 0, 0, 1)
 
 #### **Best Practices for Data Movement and Synchronization**
 
-- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly syncronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
+- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
 - **Minimize Synchronization Overhead**: Synchronize judiciously to avoid excessive overhead that might degrade performance.
 

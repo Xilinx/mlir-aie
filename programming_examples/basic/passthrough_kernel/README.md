@@ -10,11 +10,11 @@
 
 # Passthrough Kernel:
 
-This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for vectorized memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element sized subvectors, and is invoked multiple times to complete the full copy. The example consists of two primary design files: `aie2.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
+This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for vectorized memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors and is invoked multiple times to complete the full copy. The example consists of two primary design files: `aie2.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `passThrough.cc`: A C++ implementation of vectorized memcpy operations for AIE cores. Found [here](../../../aie_kernels/generic/passThrough.cc).
 
@@ -30,15 +30,15 @@ This simple example effectively passes data through a single compute tile in the
 1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
 1. The runtime data movement is expressed to read `4096` uint8_t data from host memory to the compute tile and write the `4096` data back to host memory. 
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". Note that a vectorized kernel running on the Compute Tile's AIE core copies the data from the input "object" to the output "object".
-1. After the vectorized copy is performed the Compute Tile releases the "objects" allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
+1. After the vectorized copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
-It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core is also processing data concurrent with the data movement. This is made possible by expressing depth `2` in declaring, for example, `object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)` to denote ping-pong buffers.
+It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing depth `2` in declaring, for example, `object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)` to denote ping-pong buffers.
 
 ## Design Component Details
 
 ### AIE Array Structural Design
 
-This design performs a memcpy operation on a vector of input data. The AIE design is described in a python module as follows:
+This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
 
 1. **Constants & Configuration:** The script defines input/output dimensions (`N`, `n`), buffer sizes in `lineWidthInBytes` and `lineWidthInInt32s`, and tracing support.
 
