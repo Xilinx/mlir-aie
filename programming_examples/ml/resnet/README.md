@@ -8,93 +8,59 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>ResNet with Offloaded Conv2_x Bottleneck Blocks</ins>
+# <ins>ResNet with Offloaded Conv2_x Layers</ins>
 
 ## Introduction
-ResNet [[1]](#1) is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks.
-
-This README focuses on a specific optimization technique applied to ResNet, specifically targeting the offloading of the conv2_x part of the bottleneck blocks. By offloading computations to dedicated hardware accelerators or specialized processors, we aim to improve the overall efficiency and speed of the network, especially when deploying it on resource-constrained devices or in scenarios where real-time processing is critical.
-
+ResNet [[1]](#1) is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks. This README focuses on our implementation of the conv2_x layers of the ResNet architecture using three columns of NPU. 
 
 ## ResNet Architecture Overview
-ResNet consists of several key components:
+ResNet consists of the following key components:
 
-1. Input Layer: Accepts input image data with dimensions typically set to 224x224x3 (width, height, RGB channels).
+1. Input Layer: This layer accepts input image data with dimensions typically set to 224x224x3 (width, height, and RGB channels).
 2. Convolutional Layers: The initial layers perform convolution operations to extract basic features from the input image.
 3. Bottleneck Blocks:
-    * ResNet is composed of multiple bottleneck blocks grouped into different stages (conv2_x, conv3_x, conv4_x, conv5_x).
-    * Each bottleneck block contains convolutional layers and shortcut connections that facilitate the learning of residual mappings.
-    * The conv2_x stage is particularly targeted for offloading computations in this optimization.
+ * ResNet is composed of multiple bottleneck blocks grouped into different stages (conv2_x, conv3_x, conv4_x, conv5_x).
+ * Each bottleneck block contains convolutional layers and shortcut connections that facilitate the learning of residual mappings.
+ * The conv2_x stage is particularly targeted for offloading computations in this optimization.
 4. Pooling Layers: Max pooling layers reduce the spatial dimensions of the feature maps.
 5. Fully Connected Layer: Produces the final output predictions, typically followed by a softmax activation for classification tasks.
 
+## Source Files Overview
 
-## Offloading Conv2_x Bottleneck Blocks
-The conv2_x stage of ResNet comprises a series of bottleneck blocks, each containing convolutional layers responsible for learning more complex features from the input data. By offloading the computations within these blocks to AI Engine, we aim to:
+```
+.
++-- layers_conv2_x                  # Implementation of ResNet conv2_x layers on NPU
+|   +-- aie2.py                     # A Python script that defines the AIE array structural design using MLIR-AIE operations.
+|   +-- Makefile                    # Contains instructions for building and compiling software projects.
+|   +-- resnet_conv2x_pipeline.png  # Figure describing our implementation of conv2_x layers on NPU.
+|   +-- run.lit                     # For LLVM Integrated Tester (LIT) of the design.
+|   +-- test.py                     # Python code testbench for the design example.
++-- README.md                       # This file.
+
+```
+
+## NPU Implementation
+The conv2_x stage of ResNet comprises a series of bottleneck blocks, each containing convolutional, batch norm, and ReLU layers responsible for learning more complex features from the input data. By offloading the computations within these blocks to AI Engine, we aim to:
 
 * Reduce the computational burden on the main processing unit (e.g., CPU or GPU).
-* Improve overall inference speed and efficiency, especially in scenarios where real-time processing is crucial.
-* Enable deployment on resource-constrained devices with limited computational resources.
+* Improve overall inference speed and efficiency.
 
-##  Usage and Deployment
-To leverage the optimized ResNet with offloaded conv2_x bottleneck blocks:
-* [IRON Programming](https://github.com/Xilinx/mlir-aie/tree/gagan_asplos_resnet/programming_examples/ml/resnet/layers_conv2_x): Demonstrates the IRON flow for offloading conv2_x to AIE.
+The below figures shows our implementation of the conv2_x layers of the ResNet architecture using three columns of NPU.
+<p align="center">
+ <picture>
+ <source media="(prefers-color-scheme: light)" srcset="./layers_conv2_x/resnet_conv2x_pipeline.png">
+ <img alt="block" src="./layers_conv2_x/resnet_conv2x_pipeline.png">
+</picture>
+ <h3 align="center">ResNet conv2_x stage's bottleneck blocks are stacked depth-first to avoid unnecessary off-chip data movement.
+ </h3>
+</p>
 
+Similar to our [bottleneck](../../bottleneck) design, we implement conv2_x layers depth-first. Our implementation connects the output of one bottleneck block on an NPU column to another on a separate column, all without the necessity of transferring intermediate results off-chip. Compared to [bottleneck](../../bottleneck) design, the first bottleneck block in the conv2_x stage requires an additional 1x1 convolution on the `AIE (0,4)` tile to handle channel mismatch for the skip addition between the input from the skip path and the input from the non-skip path. This mismatch arises because the initial input activation transferred from the skip path possesses fewer input channels compared to the output on the non-skip path. To overcome this issue, an additional 1x1 convolution is introduced in the skip path that the increases the number of channels.
 
-## Acceleration Techniques
-1. Depth-First/Layer-Fused Implementation: Spatial architectures provide coarse-grained flexibility that allows for tailoring of the dataflow to optimize data movement. By tailoring the dataflow, we implement depth-first schedule for a bottleneck block  routing the output of one convolutional operation on an AIE core directly to another convolutional operation on a separate AIE core, all without the need to transfer intermediate results off-chip. This approach effectively minimizes the memory footprint associated with intermediate data, mitigating the overhead of costly off-chip accesses leading to increase in the overall performance.
-
-
-2. Data Layout: Optimize activation and weight layout to enhance memory access patterns and enables effective utilization of AIE parallel processing units, ultimately improving the performance of 2D convolution operations. 
-
-3. Kernel Optimzation: To optimize convolution operations on AIE, we vectorize the code using AIE vector intrinsics. We load 8 elements of the input channel into vector registers using vector load intrinsic. We apply the convolution operation on this loaded data, utilizing for enhanced computational efficiency. To ensure accurate convolution results, particularly at the edges of feature maps, we implement zero-padding to handle boundary conditions. This comprehensive approach optimizes convolution processing on AIE, facilitating efficient and accurate feature extraction in neural network applications. Input is 4x8 matrix corresponding to 4 element of row and 8 input channels.
-
-4. Quantization: We use int8 precision for activationa and weights. At int8 precision, AIE offers the highest compute density with 256 MAC/cycle.  
-
-5. Layer Fused: We perform two levels of fusion. First, we fuse ReLU in convolution using SRS capabilities of AIE. Second, we fuse BatchNorm into convolution weights. 
+After the initial processing in the first bottleneck block, the output is sent directly to the second bottleneck block on a separate NPU column. The output activation is broadcasted to both `AIE (1,5)` and `AIE (1,3)` via `Mem Tile (1,1)`. The second bottleneck's processing proceeds as described in [bottleneck](../../bottleneck) design. Similarly, the subsequent bottleneck block requires the output from the second bottleneck, avoiding any need to send intermediate activations off-chip. Upon processing in the third bottleneck block, the final output is transmitted from tile `AIE (2,4)` back to the output via `Shim tile (2,0)`, completing the seamless flow of computation within the NPU architecture. Thus, our depth-first implementation avoids any unnecessary off-chip data movement for intermediate tensors.
 
 
-## Data Layout
-We need to ensure that the data layout is compatible with efficient SIMD processing and rearrange the input data into a format where contiguous elements represent consecutive X-dimension values for each channel. For more efficient processing, we adopt a channels-last memory ordering, denoted as NYCXC8, to ensure that channels become the densest dimension. Operating on 8 elements simultaneously, we process 8 channels with the same width at once. Subsequently, we traverse the entire width dimension, handling the remaining channels in batches of 8. This process continues row-wise, resulting in our final data layout pattern: NYCXC8. This optimized layout enhances memory access patterns and enables effective utilization of parallel processing units, ultimately improving the performance of 2D convolution operations. This transformation ensures that data can be efficiently loaded into SIMD registers and processed in parallel. 
 
-YCXC8 Input/Output Data Layout:
-
-In the YCXC8 (with N=1) data layout, the data is organized in memory as follows:
-
-* Y: Represents the output feature map dimension.
-* C: Denotes the number of channels.
-* X: Represents the input feature map dimension.
-* C8: Indicates that 8 elements of the input channel are processed together.
-
-OIYXI8O8 Weight Layout:
-
-We align the weight layout as specified: O,I,Y,X,I8,O8, to match the input image processing. We first load the weight tensor, organizing it to match this layout, where dimensions represent: output channels, input channels, kernel height, kernel width, input channel groups of 8, and output channel groups of 8. By aligning the weight layout in this manner, we enable seamless integration with the input data layout, maximizing parallelism and minimizing memory access overhead. 
-
-In the OIYXI8O8 data layout, the data is organized in memory as follows:
-
-* O: Denotes the number of output channels.
-* I: Denotes the number of input channels.
-* Y: Represents the kernel height.
-* X: Represents the kernel weight.
-* I8: Indicates that 8 elements of the input channel are processed together.
-* O8: Indicates that 8 elements of the output channel are processed together.
-
-## Fusing Convolution and Batch Normalization
-
-We assume the BatchNorm layer is fused into Convoluion Layer. Fusing BatchNorm into convolution involves incorporating the normalization step directly into the convolution operation. This is achieved by modifying the weights of the convolutional filters to include the scaling and shifting factors. Specifically, the weights are adjusted such that the convolution operation performs the normalization, scaling, and shifting in a single step.
-
-## Fusing ReLU
-
-Fusing ReLU into the convolution operation can further optimize the implementation by reducing memory bandwidth requirements and computational overhead. ReLU activation function introduces non-linearity by setting negative values to zero and leaving positive values unchanged. Utilize SIMD instructions to efficiently compute ReLU activation in parallel with convolution. After performing the convolution operation, apply ReLU activation function at vector register level. 
-We use `aie::set_rounding()` and `aie::set_saturation()` to set the rounding and saturation modes for the computed results in the accumulator. Seeting round mode `postitive_inf` rounds halfway towards positive infinity while setting saturation to `aie::saturation_mode::saturate` saturation rounds an uint8 range (0, 255). 
-
-```
-::aie::set_saturation(
-      aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-::aie::set_rounding(
-      aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
-```
-After convolution and ReLU fusion, the output data is generate in YCXC8 layout. Ensure that the output data layout is compatible with subsequent layers or processing steps in the neural network architecture.
 
 ## Compilation
 To compile the design:

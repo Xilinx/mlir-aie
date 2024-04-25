@@ -10,11 +10,22 @@
 
 # <ins>Section 2c - Data Layout Transformations</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * [Section 2a - Introduction](../section-2a/)
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * Section 2c - Data Layout Transformations
+    * [Section 2d - Programming for multiple cores](../section-2d/)
+    * [Section 2e - Practical Examples](../section-2e/)
+    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
+    * [Section 2g - Runtime Data Movement](../section-2g/)
+
+-----
+
 While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Data Movement Accelerators (DMAs). **This is available on AIE-ML devices.**
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
-DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
+DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated Python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
 ```python
 def dma_bd
     (

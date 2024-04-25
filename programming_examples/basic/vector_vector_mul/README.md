@@ -10,9 +10,9 @@
 
 # <ins>Vector Vector Multiplication</ins>
 
-Single tile performs a very simple `*` operations from two vectors loaded into memory. The tile then stores the element wise multiplication of those two vectors back to external memory. This reference design can be run on either a RyzenAI NPU or a VCK5000.
+A single tile performs a very simple `*` operation from two vectors loaded into memory. The tile then stores the element-wise multiplication of those two vectors back to external memory. This reference design can be run on either a Ryzen™ AI NPU or a VCK5000.
 
-The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targetting NPU or VCK5000. The AIE tile performs the multiplication operations and the Shim tile brings the data back out to external memory.
+The kernel executes on the AIE tile (`col`, 2). Both input vectors are brought into the tile from the Shim tile (`col`, 0). The value of `col` depends on whether the application targets NPU or VCK5000. The AIE tile performs the multiplication operations, and the Shim tile brings the data back out to external memory.
 
 To compile and run the design for NPU:
 ```

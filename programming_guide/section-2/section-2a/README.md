@@ -10,6 +10,17 @@
 
 # <ins>Section 2a - Introduction</ins>
 
+* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+    * Section 2a - Introduction
+    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * [Section 2d - Programming for multiple cores](../section-2d/)
+    * [Section 2e - Practical Examples](../section-2e/)
+    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
+    * [Section 2g - Runtime Data Movement](../section-2g/)
+
+-----
+
 ### Initializing an Object FIFO
 
 An Object FIFO represents the data movement connection between a point A and a point B. In the AIE array, these points are AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and compute tile) is different, but there is no difference between them when using an Object FIFO. 
@@ -54,7 +65,7 @@ def acquire(self, port, num_elem)
 ```
 Based on the `num_elem` input representing the number of acquired elements, the acquire function will either directly return an object, or an array of objects. 
 
-The Object FIFO is an ordered primitive and the API keeps track for each process which object is the next one that they will have access to when acquiring, based on how many they have already acquired and released. Specifically, the first time a process acquires an object it will have access to the first object of the Object FIFO, and after releasing it and acquiring a new one, it'll have access to the second object, and so on until the last object, after which the order starts from the first one again. When acquiring multiple objects and accessing them in the returned array, the object at index 0 will always be the <u>oldest</u> object that that process has access to, which may not be the first object in the pool of that Object FIFO.
+The Object FIFO is an ordered primitive and the API keeps track for each process which object is the next one that they will have access to when acquiring, based on how many they have already acquired and released. Specifically, the first time a process acquires an object it will have access to the first object of the Object FIFO, and after releasing it and acquiring a new one, it'll have access to the second object, and so on until the last object, after which the order starts from the first one again. When acquiring multiple objects and accessing them in the returned array, the object at index 0 will always be the <u>oldest</u> object that process has access to, which may not be the first object in the pool of that Object FIFO.
 
 To release one or multiple objects users should use the release function of the `object_fifo` class:
 ```python
@@ -89,7 +100,7 @@ def core_body():
     of0.release(ObjectFifoPort.Consume, 3)
 ```
 
-The figure below illustrates this code: Each of the 4 drawings represents the state of the system during one iteration of execution. In the first three iterations, the producer process on tile A, drawn in blue, progressively acquires the elements of `of0` one by one. Once the third element has been released in the forth iteration, the consumer process on tile B, drawn in green, is able to acquire all three objects at once.
+The figure below illustrates this code: Each of the 4 drawings represents the state of the system during one iteration of execution. In the first three iterations, the producer process on tile A, drawn in blue, progressively acquires the elements of `of0` one by one. Once the third element has been released in the fourth iteration, the consumer process on tile B, drawn in green, is able to acquire all three objects at once.
 
 <img src="./../../assets/AcquireRelease.png" height="400">
 
@@ -121,7 +132,7 @@ As was mentioned in the beginning of this section, the AIE architecture is a spa
 
 A more in-depth, yet still abstract, view of the Object FIFO's depth is that the producer and each consumer have their own working resource pool available in their local memory modules which they can use to send and receive data in relation to the data movement described by the Object FIFO. The Object FIFO primitive and its lowering typically allocate the depth of each of these pools such that the resulting behaviour matches that of the conceptual depth.
 
-The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to more finely control it.
+The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to control it more finely.
 
 For example, in the code snippet below `of0` describes the data movement between producer A and consumer B:
 ```python

@@ -10,7 +10,7 @@
 
 # <ins>Matrix Multiplication Array</ins>
 
-Multiple tiles in a single column perform a `matrix * matrix` multiply on bfloat16 data type where `MxKxN` is `256x256x256`. The kernel itself computes `64x64x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
+Multiple tiles in a single column perform a `matrix * matrix` multiply on bfloat16 data type where `MxKxN` is `256x256x256`. The kernel computes `64x64x64 (MxKxN)`, which is invoked multiple times to complete the full matmul compute.
 
 You need c++23 for bfloat16_t support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
 
