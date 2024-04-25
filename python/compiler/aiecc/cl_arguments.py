@@ -139,6 +139,13 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
+        "--basic-alloc-scheme",
+        dest="basic_alloc_scheme",
+        default=False,
+        action="store_true",
+        help="Use basic memory allocation scheme for AIE buffer address assignment",
+    )
+    parser.add_argument(
         "--aie-generate-airbin",
         dest="airbin",
         default=False,
