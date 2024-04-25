@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
+// RUN: not %PYTHON aiecc.py --basic-alloc-scheme %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.lock' op lock assigned invalid id (maximum is 63)
 module @test {
   aie.device(xcve2802) {
