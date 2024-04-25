@@ -33,6 +33,7 @@ build/conv2dk1_skip.o: conv2dk1_skip.cc
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o  
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
+		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 clean:
