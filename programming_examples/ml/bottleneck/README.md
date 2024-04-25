@@ -10,7 +10,7 @@
 
 # <ins>Bottleneck Block</ins>
 ## Introduction
-The bottleneck block is a key component in deep neural network architectures like ResNet. It is designed to help address the challenge of training deep networks by reducing computational costs while maintaining or improving performance. This README provides an overview of the process and considerations for accelerating a bottleneck block on a single NPU column.
+The bottleneck block is a key component in deep neural network architectures like ResNet. It is designed to help address the challenge of training deep networks by reducing computational costs while maintaining or improving performance. This README provides an overview of the process and considerations for accelerating a bottleneck block on a single NPU column using four AI Engine (AIE) cores.
 
 
 ## Bottleneck Block Overview

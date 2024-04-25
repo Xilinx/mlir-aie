@@ -12,7 +12,7 @@
 
 ## Introduction
 
-In [conv2d](../conv2d), we describe how to implement a two-dimensional convolution kernel on AIE. While [relu](../relu) describes the implementation of the Rectified Linear Unit (ReLU) activation function on AIE. This README provides instructions for fusing convolution with the ReLU activation function on AI Engine (AIE). 
+In [conv2d](../conv2d), we describe how to implement a two-dimensional convolution kernel on AIE. While [relu](../relu) describes the implementation of the Rectified Linear Unit (ReLU) activation function on AIE. This README provides instructions for fusing convolution with the ReLU activation function on a single AI Engine (AIE) core
 
 
 ## Source Files Overview

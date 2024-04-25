@@ -10,7 +10,7 @@
 
 # <ins>Convolution 2D </ins>
 ## Introduction
-Convolution is a crucial part of various machine learning and computer vision tasks, such as image recognition, object detection, and image segmentation. This README provides instructions for implementing convolution on AI Engine with 8-bit precision. 
+Convolution is a crucial part of various machine learning and computer vision tasks, such as image recognition, object detection, and image segmentation. This README provides instructions for implementing convolution on a single AI Engine (AIE) core with 8-bit precision. 
 
 At its core, it is a mathematical operation that combines an input tensor and a filter to produce an output tensor. The input tensor is a multi-dimensional matrix with input weight, height, and channel. The filter is also represented as a multi-dimensional matrix with filter height, width, input, and output channels (the same number of channels as the input tensor). The filter is systematically applied to different regions of the input data. At each step, the filter is element-wise multiplied by the overlapping region of the input tensor. The element-wise products are summed up to produce a single value, representing the result of the convolution operation for that region. This process is repeated for all possible regions of the input tensor, producing an output tensor called the feature map.
 
