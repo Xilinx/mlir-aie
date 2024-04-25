@@ -34,6 +34,7 @@ actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2  # double buffer
 actOutInt32s = actOut // 4
 
+
 def conv2dk1():
     with mlir_mod_ctx() as ctx:
 
