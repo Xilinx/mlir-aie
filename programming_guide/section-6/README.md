@@ -31,7 +31,7 @@ There are a number of example designs available [here](../../programming_example
 
 ## Exercises
 
-1. In [bottleneck](../../programming_examples/ml/bottleneck/) design following a dataflow approach, how many elements does the 3x3 convolution operation require to proceed with its computation? <img src="../../mlir_tutorials/images/answer1.jpg" title="3. This allows for the necessary neighborhood information required by the convolutional kernel to be available for processing." height=25>
+1. In [bottleneck](../../programming_examples/ml/bottleneck/) design following a dataflow approach, how many rows of input data does the 3x3 convolution operation require to proceed with its computation? <img src="../../mlir_tutorials/images/answer1.jpg" title="3. This allows for the necessary neighborhood information required by the convolutional kernel to be available for processing." height=25>
 2. Suppose you have a bottleneck block with input dimensions of 32x32x256. After passing through the 1x1 convolutional layer, the output dimensions become 32x32x64. What would be the output dimensions after the subsequent 3x3 convolutional layer, assuming a stride of 1 and no padding and output channel of 64? <img src="../../mlir_tutorials/images/answer1.jpg" title="30×30×64. Without padding, the spatial dimensions would shrink by two pixels in each dimension due to the 3x3 convolution operation." height=25>
 
 -----
