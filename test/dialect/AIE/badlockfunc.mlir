@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
+// RUN: not %PYTHON aiecc.py --basic-alloc-scheme %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.lock' op is accessed outside of a tile
 module @test {
   %t1 = aie.tile(1, 1)
