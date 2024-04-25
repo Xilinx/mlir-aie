@@ -24,6 +24,35 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
+LogicalResult checkAndPrintOverflow(TileOp tile, int address,
+                                    int maxDataMemorySize, int stacksize,
+                                    SmallVector<BufferOp, 4> buffers) {
+  if (address > maxDataMemorySize) {
+    InFlightDiagnostic error =
+        tile.emitOpError("allocated buffers exceeded available memory\n");
+    auto &note = error.attachNote() << "MemoryMap:\n";
+    auto printbuffer = [&](StringRef name, int address, int size) {
+      note << "\t" << name << " \t"
+           << ": 0x" << llvm::utohexstr(address) << "-0x"
+           << llvm::utohexstr(address + size - 1) << " \t(" << size
+           << " bytes)\n";
+    };
+    if (stacksize > 0)
+      printbuffer("(stack)", 0, stacksize);
+    else
+      error << "(no stack allocated)\n";
+
+    for (auto buffer : buffers) {
+      assert(buffer.getAddress().has_value() &&
+             "buffer must have address assigned");
+      printbuffer(buffer.name(), buffer.getAddress().value(),
+                  buffer.getAllocationSize());
+    }
+    return failure();
+  }
+  return success();
+}
+
 LogicalResult basicAllocation(TileOp &tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
@@ -67,35 +96,13 @@ LogicalResult basicAllocation(TileOp &tile) {
 
   // Sort by smallest address before printing memory map.
   std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
-    assert(a.getAddress().has_value() && "buffer must have address assigned1");
-    assert(b.getAddress().has_value() && "buffer must have address assigned2");
+    assert(a.getAddress().has_value() && "buffer must have address assigned");
+    assert(b.getAddress().has_value() && "buffer must have address assigned");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  if (address > maxDataMemorySize) {
-    InFlightDiagnostic error =
-        tile.emitOpError("allocated buffers exceeded available memory\n");
-    auto &note = error.attachNote() << "MemoryMap:\n";
-    auto printbuffer = [&](StringRef name, int address, int size) {
-      note << "\t" << name << " \t"
-           << ": 0x" << llvm::utohexstr(address) << "-0x"
-           << llvm::utohexstr(address + size - 1) << " \t(" << size
-           << " bytes)\n";
-    };
-    if (stacksize > 0)
-      printbuffer("(stack)", 0, stacksize);
-    else
-      error << "(no stack allocated)\n";
-
-    for (auto buffer : buffers) {
-      assert(buffer.getAddress().has_value() &&
-             "buffer must have address assigned3");
-      printbuffer(buffer.name(), buffer.getAddress().value(),
-                  buffer.getAllocationSize());
-    }
-    return failure();
-  }
-  return success();
+  return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
+                               buffers);
 }
 
 //===----------------------------------------------------------------------===//
@@ -303,41 +310,44 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   }
   fillBankLimits(numBanks, bankSize, bankLimits);
 
-  SmallVector<BufferOp, 4> buffers;
+  SmallVector<BufferOp, 4> buffersToAlloc;
   SmallVector<BufferOp, 4> allBuffers;
   // Collect all the buffers for this tile.
+  device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+    if (buffer.getTileOp() == tile)
+      allBuffers.push_back(buffer);
+  });
   // If possible, the buffers with an already specified address will not
   // be overwritten (the available address range of the bank the buffers
   // are in will start AFTER the specified adress + buffer size).
   // Buffers with a specified mem_bank will be assigned first, after
   // the above.
-  for (auto buffer : device.getOps<BufferOp>()) {
+  for (auto buffer : allBuffers) {
     if (buffer.getTileOp() == tile) {
       bool has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
       bool has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
       if (!has_addr && !has_bank)
-        buffers.push_back(buffer);
-      allBuffers.push_back(buffer);
+        buffersToAlloc.push_back(buffer);
     }
   }
 
   // Sort by largest allocation size before allocating.
-  std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+  std::sort(buffersToAlloc.begin(), buffersToAlloc.end(), [](BufferOp a, BufferOp b) {
     return a.getAllocationSize() > b.getAllocationSize();
   });
 
   // Set addresses for remaining buffers.
   int bankIndex = 0;
-  for (auto buffer : buffers)
+  for (auto buffer : buffersToAlloc)
     bankIndex = setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
                                  bankLimits);
 
   // Sort by smallest address before printing memory map.
   std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
-    assert(a.getAddress().has_value() && "buffer must have address assigned4");
-    assert(b.getAddress().has_value() && "buffer must have address assigned5");
+    assert(a.getAddress().has_value() && "buffer must have address assigned");
+    assert(b.getAddress().has_value() && "buffer must have address assigned");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
