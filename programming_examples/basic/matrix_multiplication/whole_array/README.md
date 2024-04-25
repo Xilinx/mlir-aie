@@ -205,11 +205,11 @@ The function signature of the `sequence()` function lists as its arguments all t
 * The `tile_row_block` variable segments the M (rows of A) into smaller chunks, each containing `rows_per_block` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
 * For each column `i`:
     * For each `tile_row` in the current row block:
-        * The DMA transfer function `ipu_dma_memcpy_nd` loads a segment of matrix A and matrix B data (submatrix a, submatrix b) from the host into the corresponding `inA_fifos` for the respective column, maintaining the appropriate strides and offsets.
+        * The DMA transfer function `npu_dma_memcpy_nd` loads a segment of matrix A and matrix B data (submatrix a, submatrix b) from the host into the corresponding `inA_fifos` for the respective column, maintaining the appropriate strides and offsets.
         * Analogously to the data layout transformations described [further above](#tiling-and-data-layout-transformations) to translate a `m`&times;`k` matrix into blocks of `r`&times;`s`-submatrices, this transfer translates the input `M`&times;`K` and `K`&times;`N` matrices into submatrices of size `m`&times;`k` and `k`&times;`n`.
-           > Note that data layout transformations in the `ipu_dma_memcpy_nd` operation are expressed in units of 4 bytes. This is why you will see all strides and the lowest-dimension length multiplied by a factor of `word_size_in` or `word_size_out` (to get the size in bytes) and then divided by four (to get the size in units of 4 bytes). This discrepancy will be streamlined in future versions.
-    * The DMA transfer function `ipu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
-    * After completing DMA transfers for each column, `ipu_sync` is used to synchronize their completion.
+           > Note that data layout transformations in the `npu_dma_memcpy_nd` operation are expressed in units of 4 bytes. This is why you will see all strides and the lowest-dimension length multiplied by a factor of `word_size_in` or `word_size_out` (to get the size in bytes) and then divided by four (to get the size in units of 4 bytes). This discrepancy will be streamlined in future versions.
+    * The DMA transfer function `npu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
+    * After completing DMA transfers for each column, `npu_sync` is used to synchronize their completion.
 
 ## Compute Microkernels
 
