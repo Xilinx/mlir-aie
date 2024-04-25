@@ -334,9 +334,10 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   }
 
   // Sort by largest allocation size before allocating.
-  std::sort(buffersToAlloc.begin(), buffersToAlloc.end(), [](BufferOp a, BufferOp b) {
-    return a.getAllocationSize() > b.getAllocationSize();
-  });
+  std::sort(buffersToAlloc.begin(), buffersToAlloc.end(),
+            [](BufferOp a, BufferOp b) {
+              return a.getAllocationSize() > b.getAllocationSize();
+            });
 
   // Set addresses for remaining buffers.
   int bankIndex = 0;
