@@ -189,14 +189,17 @@ def main(opts):
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
-    assert np.allclose(
+    if np.allclose(
         ofm_mem_fmt_out.detach().numpy(),
         golden_output.detach().numpy(),
         rtol=0,
         atol=inp_scale4,
-    )
-
-    print("\nPASS!\n")
+    ):
+        print("\nPASS!\n")
+        exit(0)
+    else:
+        print("\nFailed.\n")
+        exit(-1)
 
 
 if __name__ == "__main__":
