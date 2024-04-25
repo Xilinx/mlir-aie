@@ -32,7 +32,7 @@ In summary, this design leverages an AI Engine accelerator to accomplish matrix 
 
 ## Building and Running the Design
 
-As configured, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `bfloat16` data type, with `A`, `B` and `C` matrices all of size `512 &times; 512 &times; 512`. The tiling size is configured as `64 &times; 64` for `a`, `b`, and `c`.
+As configured, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `bfloat16` data type, with `A`, `B` and `C` matrices all of size `512` &times; `512` &times; `512`. The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c`.
 
 You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
 
