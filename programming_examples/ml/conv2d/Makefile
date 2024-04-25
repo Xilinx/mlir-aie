@@ -29,7 +29,7 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o
 		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
 run_py: build/final.xclbin build/insts.txt
-	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
