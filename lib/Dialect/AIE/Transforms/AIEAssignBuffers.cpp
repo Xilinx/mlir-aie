@@ -24,12 +24,6 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-LogicalResult checkAndPrintOverflow(TileOp tile, int address,
-                                    int maxDataMemorySize, int stacksize,
-                                    SmallVector<BufferOp, 4> buffers) {
-  
-}
-
 LogicalResult basicAllocation(TileOp &tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
