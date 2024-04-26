@@ -15,10 +15,60 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/DenseMap.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
+
+namespace {
+
+// Helper class to get a ShimDMAAllocationOp for a given <device, symbol name>
+// pair. An object of this class is invalidated if, for any symbol_name, a
+// ShimDMAAllocationOp that uses it changes, as the cache is not updated in this
+// case.
+struct ShimDMAllocationGetter {
+
+public:
+  // Return the first ShimDMAAllocationOp nested inside the DeviceOp 'dev' that
+  // uses the symbol 'sym_name'
+  std::optional<AIE::ShimDMAAllocationOp> get(AIE::DeviceOp dev,
+                                              StringRef sym_name) {
+
+    auto key = std::make_pair(dev, sym_name);
+    auto it = allocGetter.find(key);
+    if (it != allocGetter.end())
+      return it->second;
+
+    auto allocOp = cachelessGet(dev, sym_name);
+    allocGetter[key] = allocOp;
+    return allocOp;
+  }
+
+private:
+  llvm::DenseMap<std::pair<AIE::DeviceOp, StringRef>,
+                 std::optional<AIE::ShimDMAAllocationOp>>
+      allocGetter;
+
+  // Finding the ShimDMAAllocationOp for a given <DeviceOp, symbol_name> pair
+  // can be slow when the symbol is used in many places. This version of the
+  // function is only called when the cache does not have a ShimDMAAllocationOp
+  // stored from a previous lookup.
+  std::optional<AIE::ShimDMAAllocationOp> cachelessGet(AIE::DeviceOp dev,
+                                                       StringRef sym_name) {
+    auto *sym = dev.lookupSymbol(sym_name);
+    if (!sym)
+      return std::nullopt;
+
+    auto uses = SymbolTable::getSymbolUses(sym, dev);
+    for (auto use : *uses)
+      if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
+        return infoOp;
+
+    return std::nullopt;
+  }
+};
+} // namespace
 
 struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -29,7 +79,7 @@ struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto ctx = op->getContext();
+    auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto ui32ty =
         IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
@@ -49,9 +99,10 @@ struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
         rtp_buffer_addr = static_cast<uint32_t>(buffer.getAddress().value());
       }
 
-    if (rtp_buffer_addr == UINT_MAX)
-      return op.emitOpError("RTP buffer address cannot be found. Has an RTP "
-                            "buffer been allocated?\n");
+    if (rtp_buffer_addr == UINT_MAX) {
+      return op->emitOpError("RTP buffer address cannot be found. Has "
+                             "an RTP buffer been allocated?");
+    }
 
     rtp_buffer_addr += idx * sizeof(uint32_t);
 
@@ -67,30 +118,22 @@ struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
   }
 };
 
-std::optional<AIE::ShimDMAAllocationOp>
-getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
-  auto sym = dev.lookupSymbol(sym_name);
-  if (!sym)
-    return std::nullopt;
-
-  auto uses = SymbolTable::getSymbolUses(sym, dev);
-  for (auto use : *uses)
-    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-      return infoOp;
-
-  return std::nullopt;
-}
-
 struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
+
+private:
+  ShimDMAllocationGetter &allocGetter;
+
+public:
   using OpConversionPattern::OpConversionPattern;
 
-  PushToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  PushToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+                   PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
   LogicalResult
   matchAndRewrite(NpuShimTilePushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto ctx = op->getContext();
+    auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
     auto ui32ty =
@@ -101,13 +144,11 @@ struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
     // initialize fields to zero
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
-      return failure();
+      return op->emitOpError("couldn't find parent of type DeviceOp");
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
-    if (!infoOp) {
-      op.emitOpError("couldn't find shim_dma_allocation op");
-      return failure();
-    }
+    auto infoOp = allocGetter.get(dev, op.getMetadata());
+    if (!infoOp)
+      return op->emitOpError("couldn't find shim_dma_allocation op.");
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
@@ -136,7 +177,6 @@ struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
 
     rewriter.create<NpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
                                   address.getUInt(), value.getUInt());
-
     rewriter.eraseOp(op);
     return success();
   }
@@ -145,13 +185,18 @@ struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
 struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  DmaToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+private:
+  ShimDMAllocationGetter &allocGetter;
+
+public:
+  DmaToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+                  PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto ctx = op->getContext();
+    auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
     auto memref = adaptor.getMemref();
@@ -160,10 +205,9 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     if (!dev)
       return failure();
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
+    auto infoOp = allocGetter.get(dev, op.getMetadata());
     if (!infoOp) {
-      op.emitOpError("couldn't find shim_dma_allocation op");
-      return failure();
+      return op->emitOpError("couldn't find shim_dma_allocation op.");
     }
 
     auto channelDir = infoOp->getChannelDir();
@@ -339,23 +383,28 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
 /// information from the ShimDMAAllocationOp referenced through the
 /// symbol argument of this op.
 struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
+
+private:
+  ShimDMAllocationGetter &allocGetter;
+
+public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  DmaWaitToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+                      PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
-      return op.emitOpError("couldn't find parent of type DeviceOp");
+      return op->emitError("couldn't find parent of type DeviceOp");
 
     std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
-        getAllocOpForSymbol(dev, op.getSymbol());
+        allocGetter.get(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
-      op.emitOpError("couldn't find shim_dma_allocation op");
-      return failure();
+      return op->emitError("couldn't find shim_dma_allocation op");
     }
     AIE::DMAChannelDir channelDir = shimDmaAllocOp->getChannelDir();
     int channel = shimDmaAllocOp->getChannelIndex();
@@ -373,6 +422,8 @@ struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
   void runOnOperation() override {
 
+    ShimDMAllocationGetter cachingGetter;
+
     AIE::DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
@@ -385,9 +436,9 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addIllegalOp<NpuShimTilePushQueueOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DmaToNpuPattern>(&getContext());
-    patterns.insert<DmaWaitToNpuPattern>(&getContext());
-    patterns.insert<PushToNpuPattern>(&getContext());
+    patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
+    patterns.insert<DmaWaitToNpuPattern>(&getContext(), cachingGetter);
+    patterns.insert<PushToNpuPattern>(&getContext(), cachingGetter);
     patterns.insert<RtpToNpuPattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
