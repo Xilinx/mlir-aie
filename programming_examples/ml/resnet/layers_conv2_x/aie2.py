@@ -358,13 +358,13 @@ def resnet_conv_x():
             object_fifo_link(act1_fifo_names[0], skip_fifo_names[0])
 
             for i in range(1, repeat + 1):
-                if(i==1):
+                if i == 1:
                     act1_fifos[act1_fifo_names[i]] = object_fifo(
-                    act1_fifo_names[i],
-                    cores[i - 1][2],
-                    [cores[i][0], mems[i - 1]],
-                    [2, 2, 4],
-                    laye1_act_sizes[i],
+                        act1_fifo_names[i],
+                        cores[i - 1][2],
+                        [cores[i][0], mems[i - 1]],
+                        [2, 2, 4],
+                        laye1_act_sizes[i],
                     )
                     skip_fifos[skip_fifo_names[i]] = object_fifo(
                         skip_fifo_names[i],
@@ -401,7 +401,7 @@ def resnet_conv_x():
             act3_fifo_2 = {}
 
             for i in range(n_cols):
-                if(i==1):
+                if i == 1:
                     # 1x1 -> 3x3
                     act2_fifos[act2_fifo_names[i]] = object_fifo(
                         act2_fifo_names[i],
@@ -463,7 +463,7 @@ def resnet_conv_x():
             wts_sub_fifos = {}
 
             for i in range(n_cols):
-                
+
                 wts_fifos[wts_fifo_names[i]] = object_fifo(
                     wts_fifo_names[i], shims[i], mems[i], 1, wts_sizes[i]
                 )
@@ -474,15 +474,15 @@ def resnet_conv_x():
                     1,
                     layer1_wts_sizes[i],
                 )
-                if(i==1):
-                        wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
+                if i == 1:
+                    wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
                         wts_sub_fifo_names[i][1],
                         mems[i],
                         [cores[i][3], cores[i][1]],
                         1,
                         weightsLayer2_ty,
                     )
-                
+
                 else:
                     wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
                         wts_sub_fifo_names[i][1],
@@ -535,7 +535,7 @@ def resnet_conv_x():
                             element0ActivactionsOut = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Produce, 1)
-                            if i==0:
+                            if i == 0:
                                 res = call(
                                     conv1_kernels_call[i],
                                     [
@@ -550,17 +550,17 @@ def resnet_conv_x():
                                 )
                             else:
                                 res = call(
-                                conv1_kernels_call[i],
-                                [
-                                    element0ActivactionsIn,
-                                    element0Weights,
-                                    element0ActivactionsOut,
-                                    tensorInW,
-                                    tensorInCRest,
-                                    tensorInCInit,
-                                    scale,
-                                ],
-                            )
+                                    conv1_kernels_call[i],
+                                    [
+                                        element0ActivactionsIn,
+                                        element0Weights,
+                                        element0ActivactionsOut,
+                                        tensorInW,
+                                        tensorInCRest,
+                                        tensorInCInit,
+                                        scale,
+                                    ],
+                                )
 
                             objectfifo_release(
                                 ObjectFifoPort.Consume, act1_fifo_names[i], 1
@@ -818,10 +818,10 @@ def resnet_conv_x():
                         element0Weights = wts_sub_fifos[
                             wts_sub_fifo_names[i][2]
                         ].acquire(ObjectFifoPort.Consume, 1)
-                        if(i==0):
-                           scale = memref.load(rtp[0][3], [0])
-                           skipScale = memref.load(rtp[0][3], [1])
-                           skipConvScale = memref.load(rtp[0][3], [2])
+                        if i == 0:
+                            scale = memref.load(rtp[0][3], [0])
+                            skipScale = memref.load(rtp[0][3], [1])
+                            skipConvScale = memref.load(rtp[0][3], [2])
                         else:
                             scale = memref.load(rtp[i][2], [0])
                             skipScale = memref.load(rtp[i][2], [1])
@@ -840,23 +840,23 @@ def resnet_conv_x():
                             elementSkipsIn = skip_fifos[skip_fifo_names[i]].acquire(
                                 ObjectFifoPort.Consume, 1
                             )
-                            if(i==0):
+                            if i == 0:
                                 call(
-                                conv3_kernels_call[0],
-                                [
-                                    element0ActivactionsIn,
-                                    element1ActivactionsIn,
-                                    element0Weights,
-                                    elementActivactionsOut,
-                                    elementSkipsIn,
-                                    tensorInW,
-                                    tensorInCInit,
-                                    tensorInCRest,
-                                    tensorInCInit,
-                                    scale,
-                                    skipScale,
-                                    skipConvScale,
-                                ],
+                                    conv3_kernels_call[0],
+                                    [
+                                        element0ActivactionsIn,
+                                        element1ActivactionsIn,
+                                        element0Weights,
+                                        elementActivactionsOut,
+                                        elementSkipsIn,
+                                        tensorInW,
+                                        tensorInCInit,
+                                        tensorInCRest,
+                                        tensorInCInit,
+                                        scale,
+                                        skipScale,
+                                        skipConvScale,
+                                    ],
                                 )
                             else:
                                 call(
