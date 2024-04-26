@@ -71,8 +71,13 @@ void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
     return printAfter;
   };
 
+
   pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass,
                       TK.PrintIRModuleScope);
+
+  bool timing = TK.Timing;
+  if (timing) pm.enableTiming();
+
 }
 } // namespace
 
