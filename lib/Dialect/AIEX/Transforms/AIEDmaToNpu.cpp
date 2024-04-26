@@ -149,7 +149,6 @@ public:
     auto infoOp = allocGetter.get(dev, op.getMetadata());
     if (!infoOp)
       return op->emitOpError("couldn't find shim_dma_allocation op.");
-    
 
     auto channelDir = infoOp->getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
