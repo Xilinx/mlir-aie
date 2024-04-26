@@ -46,7 +46,7 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let description = [{
     This pass inserts a toplevel device operation in designs that do not have one.
     This allows us to support backwards compatability for older models targetting the VC1902
-    device without explicit device operations. 
+    device without explicit device operations.
   }];
 
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
@@ -129,10 +129,10 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
 
 def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   let summary = "Route aie.flow and aie.packetflow operations through switchboxes";
-  let description = [{    
-    Uses Pathfinder congestion-aware algorithm. 
+  let description = [{
+    Uses Pathfinder congestion-aware algorithm.
     Each aie.flow is replaced with aie.connect operation.
-    Each aie.packetflow is replace with the set of aie.amsel, aie.masterset 
+    Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
     and aie.packet_rules operations.
   }];
 
@@ -143,9 +143,9 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
 
   let options = [
     Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
-            "Flag to enable aie.flow lowering.">,      
+            "Flag to enable aie.flow lowering.">,
     Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
-            "Flag to enable aie.packetflow lowering.">,     
+            "Flag to enable aie.packetflow lowering.">,
   ];
 }
 
@@ -179,16 +179,16 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
   let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
   let description = [{
-    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
+    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the
     producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
     operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
     each process.
 
-    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
+    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
     Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-    based on the number of elements in the objectFifos. If the number of iterations of the loop 
-    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+    based on the number of elements in the objectFifos. If the number of iterations of the loop
+    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after
     the original loop.
   }];
 
@@ -210,7 +210,7 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {
   let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
   let description = [{
-    Generate acquire/release patterns in the CoreOps of associated cores for each 
+    Generate acquire/release patterns in the CoreOps of associated cores for each
     aie.objectfifo.register_process operation. Patterns are generated as for loops
     of different sizes depending on input patterns.
   }];
@@ -227,8 +227,8 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
   let description = [{
-    Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade` 
-    operations. 
+    Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade`
+    operations.
   }];
 
   let constructor = "xilinx::AIE::createAIELowerCascadeFlowsPass()";
@@ -266,9 +266,25 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
   let options = [
     Option<"clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string", /*default=*/"\"shim-only\"",
-            "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,      
+            "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
-            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
+            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
+  ];
+}
+
+def CIRtoAIEidioms : Pass<"cir-to-aie-idioms", "mlir::ModuleOp"> {
+  let summary = "Transform some AIE++ patterns in CIR into AIE equivalent operations";
+  let description = [{
+    Some AIE constructs are represented in AIE++ by C++ abstractions expressed
+    in normal C++. These are compiled to CIR as plain C++ constructs.
+    This pass recognize these AIE++ C++ constructs and replace them by
+    equivalent AIE operations.
+  }];
+
+  let constructor = "xilinx::AIE::createCIRtoAIEidiomsPass()";
+  let dependentDialects = [
+    "mlir::cir::CIRDialect",
+    "xilinx::AIE::AIEDialect",
   ];
 }
 

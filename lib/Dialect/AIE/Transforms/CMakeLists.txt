@@ -22,6 +22,7 @@ add_mlir_dialect_library(
   AIEObjectFifoRegisterProcess.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
+  CIRtoAIEidioms.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -35,6 +36,7 @@ add_mlir_dialect_library(
   MLIRAIEPassIncGen
 
   LINK_LIBS PUBLIC
+  clangCIR
   MLIRIR
   MLIRPass
   MLIRSupport

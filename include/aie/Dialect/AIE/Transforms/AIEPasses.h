@@ -13,6 +13,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "clang/CIR/Dialect/IR/CIRDialect.h"
 
 #include "mlir/Pass/Pass.h"
 
@@ -46,6 +47,8 @@ createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createCIRtoAIEidiomsPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
