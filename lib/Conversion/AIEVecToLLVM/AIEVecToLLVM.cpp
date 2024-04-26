@@ -1294,6 +1294,64 @@ public:
   }
 };
 
+class ShiftOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::ShiftOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::ShiftOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ShiftOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    if (resultVectorSize != 512) {
+      op.emitWarning() << "aievec.shift conversion with result vector size "
+                       << resultVectorSize << " is not implemented.\n";
+      return failure();
+    }
+
+    // assume step is always zero
+    auto stepCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+
+    // create xllvm intrinsic
+    Value shiftOp = nullptr;
+    SmallVector<Value> operands(
+        {adaptor.getLhs(), adaptor.getRhs(), stepCst, adaptor.getShift()});
+    if (resultScaTy.isa<IntegerType>()) {
+      // Integer types
+      shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({16}, rewriter.getI32Type()),
+               VectorType::get({16}, rewriter.getI32Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    } else {
+      // Float types
+      shiftOp = rewriter.create<xllvm::VectorShiftBF512BF512IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getBF16Type()),
+               VectorType::get({32}, rewriter.getBF16Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    }
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 shiftOp);
+
+    return success();
+  }
+};
+
 class FMAElemOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp> {
 public:
@@ -1524,6 +1582,7 @@ void populateAIEVecToLLVMConversionPatterns(
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
                MatMulOpConversion,
+               ShiftOpConversion,
                FoldAIECastOps>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   // clang-format on
