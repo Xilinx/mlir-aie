@@ -219,3 +219,49 @@ llvm.func @upd_bf512_bf256(%a : vector<32xbf16>, %b : vector<16xbf16>, %idx : i3
     %0 = "xllvm.intr.aie2.upd.bf512.bf256"(%a, %b, %idx) : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
     llvm.return %0 : vector<32xbf16>
 }
+
+// ----- SHIFT ----- 
+
+// CHECK-LABEL: define <16 x i32> @vshift_i512_i512
+llvm.func @vshift_i512_i512(%a : vector<16xi32>, %b : vector<16xi32>, %step : i32, %shift : i32) -> vector<16xi32> {
+    // CHECK: call <16 x i32> @llvm.aie2.vshift.I512.I512(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}},
+    // CHECK-SAME: i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vshift.I512.I512"(%a, %b, %step, %shift) : (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
+    llvm.return %0 : vector<16xi32>
+}
+
+// CHECK-LABEL: define <32 x bfloat> @vshift_bf512_bf512
+llvm.func @vshift_bf512_bf512(%a : vector<32xbf16>, %b : vector<32xbf16>, %step : i32, %shift : i32) -> vector<32xbf16> {
+    // CHECK: call <32 x bfloat> @llvm.aie2.vshift.bf512.bf512(
+    // CHECK-SAME: <32 x bfloat> %{{[0-9]+}}, <32 x bfloat> %{{[0-9]+}},
+    // CHECK-SAME: i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vshift.bf512.bf512"(%a, %b, %step, %shift) : (vector<32xbf16>, vector<32xbf16>, i32, i32) -> vector<32xbf16>
+    llvm.return %0 : vector<32xbf16>
+}
+
+// ----- EXTRACT ELEMENT ----- 
+
+// CHECK-LABEL: define i32 @vextract_elem8_i512
+llvm.func @vextract_elem8_i512(%a : vector<64xi8>, %idx : i32, %sign : i32) -> i32 {
+    // CHECK: call i32 @llvm.aie2.vextract.elem8.I512(
+    // CHECK-SAME: <64 x i8> %{{[0-9]+}}, i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vextract.elem8.I512"(%a, %idx, %sign) : (vector<64xi8>, i32, i32) -> i32
+    llvm.return %0 : i32
+}
+
+// CHECK-LABEL: define i32 @vextract_elem16_i512
+llvm.func @vextract_elem16_i512(%a : vector<32xi16>, %idx : i32, %sign : i32) -> i32 {
+    // CHECK: call i32 @llvm.aie2.vextract.elem16.I512(
+    // CHECK-SAME: <32 x i16> %{{[0-9]+}}, i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vextract.elem16.I512"(%a, %idx, %sign) : (vector<32xi16>, i32, i32) -> i32
+    llvm.return %0 : i32
+}
+
+// CHECK-LABEL: define i32 @vextract_elem32_i512
+llvm.func @vextract_elem32_i512(%a : vector<16xi32>, %idx : i32, %sign : i32) -> i32 {
+    // CHECK: call i32 @llvm.aie2.vextract.elem32.I512(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vextract.elem32.I512"(%a, %idx, %sign) : (vector<16xi32>, i32, i32) -> i32
+    llvm.return %0 : i32
+}
