@@ -181,6 +181,8 @@ def resnet_conv_x():
                     int32_ty,
                     int32_ty,
                     int32_ty,
+                    int32_ty,
+                    int32_ty,
                 ],
             )
             conv2dk1_ui8 = external_func(
@@ -265,8 +267,8 @@ def resnet_conv_x():
 
             rtpComputeTile02 = Buffer(ComputeTile02, [16], T.i32(), "rtpComputeTile02")
             rtpComputeTile03 = Buffer(ComputeTile03, [16], T.i32(), "rtpComputeTile03")
-            rtpComputeTile04 = Buffer(ComputeTile04, [16], T.i32(), "rtpComputeTile04")
-            rtpComputeTile05 = Buffer(ComputeTile05, [16], T.i32(), "rtpComputeTile05")
+            rtpComputeTile04 = Buffer(ComputeTile05, [16], T.i32(), "rtpComputeTile04")
+            rtpComputeTile05 = Buffer(ComputeTile04, [16], T.i32(), "rtpComputeTile05")
 
             rtpComputeTile12 = Buffer(ComputeTile12, [16], T.i32(), "rtpComputeTile12")
             rtpComputeTile13 = Buffer(ComputeTile13, [16], T.i32(), "rtpComputeTile13")
@@ -336,49 +338,6 @@ def resnet_conv_x():
             act1_fifo_names = ["act1_00_02_01", "act1_04_15_01", "act1_13_22_21"]
             act1_fifos = {}
 
-            wts_fifo_names = ["wts_0_L3L2", "wts_1_L3L2", "wts_2_L3L2"]
-            wts_fifos = {}
-            wts_sub_fifo_names = [
-                ["wts_buf_00", "wts_buf_01", "wts_buf_02"],
-                ["wts_buf_10", "wts_buf_11", "wts_buf_12"],
-                ["wts_buf_20", "wts_buf_21", "wts_buf_22"],
-            ]
-            wts_sub_fifos = {}
-
-            for i in range(n_cols):
-                wts_fifos[wts_fifo_names[i]] = object_fifo(
-                    wts_fifo_names[i], shims[i], mems[i], 1, wts_sizes[i]
-                )
-                wts_sub_fifos[wts_sub_fifo_names[i][0]] = object_fifo(
-                    wts_sub_fifo_names[i][0],
-                    mems[i],
-                    cores[i][0],
-                    1,
-                    layer1_wts_sizes[i],
-                )
-                wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
-                    wts_sub_fifo_names[i][1],
-                    mems[i],
-                    [cores[i][1], cores[i][3]],
-                    1,
-                    weightsLayer2_ty,
-                )
-                wts_sub_fifos[wts_sub_fifo_names[i][2]] = object_fifo(
-                    wts_sub_fifo_names[i][2],
-                    mems[i],
-                    cores[i][2],
-                    1,
-                    layer3_wts_sizes[i],
-                )
-                object_fifo_link(
-                    wts_fifo_names[i],
-                    [
-                        wts_sub_fifo_names[i][0],
-                        wts_sub_fifo_names[i][1],
-                        wts_sub_fifo_names[i][2],
-                    ],
-                )
-
             # input tensor (with broadcast for skip connection)
             act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
             act1_fifos = {}
@@ -399,21 +358,38 @@ def resnet_conv_x():
             object_fifo_link(act1_fifo_names[0], skip_fifo_names[0])
 
             for i in range(1, repeat + 1):
-                act1_fifos[act1_fifo_names[i]] = object_fifo(
+                if(i==1):
+                    act1_fifos[act1_fifo_names[i]] = object_fifo(
                     act1_fifo_names[i],
                     cores[i - 1][2],
                     [cores[i][0], mems[i - 1]],
                     [2, 2, 4],
                     laye1_act_sizes[i],
-                )
-                skip_fifos[skip_fifo_names[i]] = object_fifo(
-                    skip_fifo_names[i],
-                    mems[i - 1],
-                    cores[i][2],
-                    2,
-                    laye1_act_sizes[i],
-                )
-                object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
+                    )
+                    skip_fifos[skip_fifo_names[i]] = object_fifo(
+                        skip_fifo_names[i],
+                        mems[i - 1],
+                        cores[i][2],
+                        2,
+                        laye1_act_sizes[i],
+                    )
+                    object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
+                else:
+                    act1_fifos[act1_fifo_names[i]] = object_fifo(
+                        act1_fifo_names[i],
+                        cores[i - 1][2],
+                        [cores[i][0], mems[i]],
+                        [2, 2, 4],
+                        laye1_act_sizes[i],
+                    )
+                    skip_fifos[skip_fifo_names[i]] = object_fifo(
+                        skip_fifo_names[i],
+                        mems[i],
+                        cores[i][2],
+                        2,
+                        laye1_act_sizes[i],
+                    )
+                    object_fifo_link(act1_fifo_names[i], skip_fifo_names[i])
 
             act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
             act2_fifos = {}
@@ -425,35 +401,114 @@ def resnet_conv_x():
             act3_fifo_2 = {}
 
             for i in range(n_cols):
-                # 1x1 -> 3x3
-                act2_fifos[act2_fifo_names[i]] = object_fifo(
-                    act2_fifo_names[i],
+                if(i==1):
+                    # 1x1 -> 3x3
+                    act2_fifos[act2_fifo_names[i]] = object_fifo(
+                        act2_fifo_names[i],
+                        cores[i][0],
+                        [cores[i][3], cores[i][1]],
+                        4,
+                        tensorLayer1Out_ty,
+                    )
+
+                    # 3x3 -> 1x1
+                    act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
+                        act3_fifo_names_1[i],
+                        cores[i][1],
+                        cores[i][2],
+                        2,
+                        tensorLayer2Out_ty,
+                    )
+                    # 3x3 -> 1x1
+                    act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
+                        act3_fifo_names_2[i],
+                        cores[i][3],
+                        cores[i][2],
+                        2,
+                        tensorLayer2Out_ty,
+                    )
+                else:
+                    # 1x1 -> 3x3
+                    act2_fifos[act2_fifo_names[i]] = object_fifo(
+                        act2_fifo_names[i],
+                        cores[i][0],
+                        [cores[i][1], cores[i][3]],
+                        4,
+                        tensorLayer1Out_ty,
+                    )
+
+                    # 3x3 -> 1x1
+                    act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
+                        act3_fifo_names_1[i],
+                        cores[i][1],
+                        cores[i][2],
+                        2,
+                        tensorLayer2Out_ty,
+                    )
+                    # 3x3 -> 1x1
+                    act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
+                        act3_fifo_names_2[i],
+                        cores[i][3],
+                        cores[i][2],
+                        2,
+                        tensorLayer2Out_ty,
+                    )
+            wts_fifo_names = ["wts_0_L3L2", "wts_1_L3L2", "wts_2_L3L2"]
+            wts_fifos = {}
+            wts_sub_fifo_names = [
+                ["wts_buf_00", "wts_buf_01", "wts_buf_02"],
+                ["wts_buf_10", "wts_buf_11", "wts_buf_12"],
+                ["wts_buf_20", "wts_buf_21", "wts_buf_22"],
+            ]
+            wts_sub_fifos = {}
+
+            for i in range(n_cols):
+                
+                wts_fifos[wts_fifo_names[i]] = object_fifo(
+                    wts_fifo_names[i], shims[i], mems[i], 1, wts_sizes[i]
+                )
+                wts_sub_fifos[wts_sub_fifo_names[i][0]] = object_fifo(
+                    wts_sub_fifo_names[i][0],
+                    mems[i],
                     cores[i][0],
-                    [cores[i][1], cores[i][3]],
-                    2,
-                    tensorLayer1Out_ty,
+                    1,
+                    layer1_wts_sizes[i],
                 )
-
-                # 3x3 -> 1x1
-                act3_fifo_1[act3_fifo_names_1[i]] = object_fifo(
-                    act3_fifo_names_1[i],
-                    cores[i][1],
+                if(i==1):
+                        wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
+                        wts_sub_fifo_names[i][1],
+                        mems[i],
+                        [cores[i][3], cores[i][1]],
+                        1,
+                        weightsLayer2_ty,
+                    )
+                
+                else:
+                    wts_sub_fifos[wts_sub_fifo_names[i][1]] = object_fifo(
+                        wts_sub_fifo_names[i][1],
+                        mems[i],
+                        [cores[i][1], cores[i][3]],
+                        1,
+                        weightsLayer2_ty,
+                    )
+                wts_sub_fifos[wts_sub_fifo_names[i][2]] = object_fifo(
+                    wts_sub_fifo_names[i][2],
+                    mems[i],
                     cores[i][2],
-                    2,
-                    tensorLayer2Out_ty,
+                    1,
+                    layer3_wts_sizes[i],
                 )
-                # 3x3 -> 1x1
-                act3_fifo_2[act3_fifo_names_2[i]] = object_fifo(
-                    act3_fifo_names_2[i],
-                    cores[i][3],
-                    cores[i][2],
-                    2,
-                    tensorLayer2Out_ty,
+                object_fifo_link(
+                    wts_fifo_names[i],
+                    [
+                        wts_sub_fifo_names[i][0],
+                        wts_sub_fifo_names[i][1],
+                        wts_sub_fifo_names[i][2],
+                    ],
                 )
-
             # output tensor
             outOFL2L3 = object_fifo(
-                "outOFL2L3", cores[2][2], shims[2], 2, tensorLayer3Out_ty
+                "outOFL2L3", cores[2][2], shims[1], 2, tensorLayer3Out_ty
             )
             conv3_out_fifo = [
                 act1_fifos[act1_fifo_names[1]],
@@ -480,14 +535,28 @@ def resnet_conv_x():
                             element0ActivactionsOut = act2_fifos[
                                 act2_fifo_names[i]
                             ].acquire(ObjectFifoPort.Produce, 1)
-                            res = call(
+                            if i==0:
+                                res = call(
+                                    conv1_kernels_call[i],
+                                    [
+                                        element0ActivactionsIn,
+                                        element0Weights,
+                                        element0ActivactionsOut,
+                                        tensorInW,
+                                        tensorInCInit,
+                                        tensorInCInit,
+                                        scale,
+                                    ],
+                                )
+                            else:
+                                res = call(
                                 conv1_kernels_call[i],
                                 [
                                     element0ActivactionsIn,
                                     element0Weights,
                                     element0ActivactionsOut,
                                     tensorInW,
-                                    tensorInCInit,
+                                    tensorInCRest,
                                     tensorInCInit,
                                     scale,
                                 ],
@@ -537,7 +606,7 @@ def resnet_conv_x():
                                 element0ActivactionsOut,
                                 tensorInW,
                                 tensorInCInit,
-                                tensorInCInit,
+                                tensorInCInit // 2,
                                 3,
                                 3,
                                 0,
@@ -567,7 +636,7 @@ def resnet_conv_x():
                                     element0ActivactionsOut,
                                     tensorInW,
                                     tensorInCInit,
-                                    tensorInCInit,
+                                    tensorInCInit // 2,
                                     3,
                                     3,
                                     1,
@@ -601,7 +670,7 @@ def resnet_conv_x():
                                 element0ActivactionsOut,
                                 tensorInW,
                                 tensorInCInit,
-                                tensorInCInit,
+                                tensorInCInit // 2,
                                 3,
                                 3,
                                 2,
@@ -654,7 +723,7 @@ def resnet_conv_x():
                                 element0ActivactionsOut,
                                 tensorInW,
                                 tensorInCInit,
-                                tensorInCInit,
+                                tensorInCInit // 2,
                                 3,
                                 3,
                                 0,
@@ -685,7 +754,7 @@ def resnet_conv_x():
                                     element0ActivactionsOut,
                                     tensorInW,
                                     tensorInCInit,
-                                    tensorInCInit,
+                                    tensorInCInit // 2,
                                     3,
                                     3,
                                     1,
@@ -719,7 +788,7 @@ def resnet_conv_x():
                                 element0ActivactionsOut,
                                 tensorInW,
                                 tensorInCInit,
-                                tensorInCInit,
+                                tensorInCInit // 2,
                                 3,
                                 3,
                                 2,
@@ -749,8 +818,13 @@ def resnet_conv_x():
                         element0Weights = wts_sub_fifos[
                             wts_sub_fifo_names[i][2]
                         ].acquire(ObjectFifoPort.Consume, 1)
-                        scale = memref.load(rtp[i][2], [0])
-                        skipScale = memref.load(rtp[i][2], [1])
+                        if(i==0):
+                           scale = memref.load(rtp[0][3], [0])
+                           skipScale = memref.load(rtp[0][3], [1])
+                           skipConvScale = memref.load(rtp[0][3], [2])
+                        else:
+                            scale = memref.load(rtp[i][2], [0])
+                            skipScale = memref.load(rtp[i][2], [1])
 
                         for _ in for_(tensorInH):
                             element0ActivactionsIn = act3_fifo_1[
@@ -766,8 +840,9 @@ def resnet_conv_x():
                             elementSkipsIn = skip_fifos[skip_fifo_names[i]].acquire(
                                 ObjectFifoPort.Consume, 1
                             )
-                            call(
-                                conv3_kernels_call[i],
+                            if(i==0):
+                                call(
+                                conv3_kernels_call[0],
                                 [
                                     element0ActivactionsIn,
                                     element1ActivactionsIn,
@@ -777,10 +852,28 @@ def resnet_conv_x():
                                     tensorInW,
                                     tensorInCInit,
                                     tensorInCRest,
+                                    tensorInCInit,
                                     scale,
                                     skipScale,
+                                    skipConvScale,
                                 ],
-                            )
+                                )
+                            else:
+                                call(
+                                    conv3_kernels_call[i],
+                                    [
+                                        element0ActivactionsIn,
+                                        element1ActivactionsIn,
+                                        element0Weights,
+                                        elementActivactionsOut,
+                                        elementSkipsIn,
+                                        tensorInW,
+                                        tensorInCInit,
+                                        tensorInCRest,
+                                        scale,
+                                        skipScale,
+                                    ],
+                                )
                             objectfifo_release(
                                 ObjectFifoPort.Consume, act3_fifo_names_1[i], 1
                             )
@@ -834,16 +927,16 @@ def resnet_conv_x():
             )
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-                for c, col in enumerate(rtp_name):
-                    for r, row in enumerate(col):
-                        npuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
+                # for c, col in enumerate(rtp_name):
+                #     for r, row in enumerate(col):
+                #         NpuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
 
-                npuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=0)
-                npuWriteRTPOp("rtpComputeTile04", col=0, row=4, index=0, value=1)
+                # NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=1, value=0)
+                # NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=2, value=1)
 
-                npuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=0)
+                # NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=1, value=0)
 
-                npuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=0)
+                # NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=1, value=0)
 
                 # #     # write RTP parameters
                 # npuWriteRTPOp(
