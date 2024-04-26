@@ -81,6 +81,12 @@ cl::opt<bool>
                     cl::init(false), cl::cat(AIE2XCLBinCat));
 
 cl::opt<bool>
+    Timing("timing",
+           cl::desc("Configure all pass managers in lowering from aie to "
+                    "xclbin to print timing information for each pass"),
+           cl::init(false), cl::cat(AIE2XCLBinCat));
+
+cl::opt<bool>
     PrintIRBeforeAll("print-ir-before-all",
                      cl::desc("Configure all pass managers in lowering from "
                               "aie to xclbin to print IR before all passes"),
@@ -142,6 +148,7 @@ int main(int argc, char *argv[]) {
   TK.PrintIRAfterAll = PrintIRAfterAll;
   TK.PrintIRBeforeAll = PrintIRBeforeAll;
   TK.PrintIRModuleScope = PrintIRModuleScope;
+  TK.Timing = Timing;
 
   if (TK.UseChess)
     findVitis(TK);
