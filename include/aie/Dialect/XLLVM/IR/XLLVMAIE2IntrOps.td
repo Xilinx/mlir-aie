@@ -186,4 +186,45 @@ def UpdBF512BF256IntrOp :
                    VectorOfLengthAndType<[16], [BF16]>:$src,
                    I32:$idx)>;
 
+// ----- SHIFT ----- 
+
+def VectorShiftI512I512IntrOp :
+    AIEVec2_IntrOp<"vshift.I512.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$step,
+                   I32:$shift)>;
+
+def VectorShiftBF512BF512IntrOp :
+    AIEVec2_IntrOp<"vshift.bf512.bf512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$step,
+                   I32:$shift)>;
+
+// ----- EXTRACT ELEMENT ----- 
+
+def VectorExtractElem8I512IntrOp :
+    AIEVec2_IntrOp<"vextract.elem8.I512",
+        [TypeIs<"res", I32>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$src,
+                   I32:$idx,
+                   I32:$sign)>;
+
+def VectorExtractElem16I512IntrOp :
+    AIEVec2_IntrOp<"vextract.elem16.I512",
+        [TypeIs<"res", I32>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$src,
+                   I32:$idx,
+                   I32:$sign)>;
+
+def VectorExtractElem32I512IntrOp :
+    AIEVec2_IntrOp<"vextract.elem32.I512",
+        [TypeIs<"res", I32>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
+                   I32:$idx,
+                   I32:$sign)>;
+
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
