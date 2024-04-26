@@ -16,7 +16,7 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 
-build/${mlirFileName}.mlir: aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 insts.txt: build/${mlirFileName}.mlir
