@@ -16,11 +16,9 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 all: build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o build/final.xclbin
 
-
-build/${mlirFileName}.mlir: ${srcdir}/aie.mlir
+build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	cp $< $@
-
+	python3 $< > $@
 insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
@@ -42,11 +40,10 @@ build/conv2dk1_skip.o: conv2dk1_skip.cc
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk1_skip_init.o build/conv2dk3.o build/conv2dk1_skip.o build/conv2dk1_ui8.o
 	cd build && aiecc.py --basic-alloc-scheme --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-
 clean:
-	rm -rf build *.elf* *.lst *.bif log* ${mlirFileName}.mlir.prj *.xclbin sim \
-		chess* *.o insts.txt \
-		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
+	rm -rf  build/*.elf* build/*.lst build/*.bif log* build/${mlirFileName}.mlir.prj build/*.xclbin sim \
+		build/chess* build/insts.txt \
+		build/*.log build/aie_partition.json build/*.bin build/BOOT.BIN _x test.exe
 
 run_py: 
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
