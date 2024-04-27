@@ -35,6 +35,7 @@ struct XCLBinGenConfig {
   bool PrintIRAfterAll = false;
   bool PrintIRBeforeAll = false;
   bool PrintIRModuleScope = false;
+  bool Timing = false;
 };
 
 void findVitis(XCLBinGenConfig &TK);
