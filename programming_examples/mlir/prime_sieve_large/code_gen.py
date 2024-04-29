@@ -78,14 +78,14 @@ def main():
 
     for col in range(startcol, startcol + arraycols):  # col 0 is reserved in aie
         for row in range(1, rows):  # row 1 -> 8
-            f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" % (col, row, col, row))
+            f.write("  %%tile%d_%d = aie.tile(%d, %d)\n" % (col, row, col, row))
 
-    # %objFifo = AIE.objectfifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectfifo<memref<16xi32>>
+    # %objFifo = aie.objectfifo.createObjectFifo(%tile12, {%tile33}, 2) : !aie.objectfifo<memref<16xi32>>
 
-    # %subview = AIE.objectfifo.acquire<Produce>(%objFifo : !AIE.objectfifo<memref<16xi32>>, 1) : !AIE.objectfifosubview<memref<16xi32>>
-    # %elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+    # %subview = aie.objectfifo.acquire<Produce>(%objFifo : !aie.objectfifo<memref<16xi32>>, 1) : !aie.objectfifosubview<memref<16xi32>>
+    # %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
-    # AIE.objectfifo.release<Produce>(%objFifo : !AIE.objectfifo<memref<16xi32>>, 1)
+    # aie.objectfifo.release<Produce>(%objFifo : !aie.objectfifo<memref<16xi32>>, 1)
 
     f.write("\n")
     col = startcol
@@ -98,7 +98,7 @@ def main():
                 lockrow = row
                 lockcol = col
             f.write(
-                "  %%lock%d_%d = AIE.lock(%%tile%d_%d)\n" % (col, row, lockcol, lockrow)
+                "  %%lock%d_%d = aie.lock(%%tile%d_%d)\n" % (col, row, lockcol, lockrow)
             )
 
         col = col + 1
@@ -115,7 +115,7 @@ def main():
                 lockrow = row
                 lockcol = col
             f.write(
-                "  %%lock%d_%d = AIE.lock(%%tile%d_%d)%s\n"
+                "  %%lock%d_%d = aie.lock(%%tile%d_%d)%s\n"
                 % (col, row, lockcol, lockrow, symbol)
             )
         col = col + 1
@@ -147,7 +147,7 @@ def main():
                 lockrow = row
                 lockcol = col
         f.write(
-            '  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = "%s" } : memref<%dxi32>\n'
+            '  %%buf%d_%d = aie.buffer(%%tile%d_%d) { sym_name = "%s" } : memref<%dxi32>\n'
             % (col, row, lockcol, lockrow, symbol, bufsize)
         )
 
@@ -170,7 +170,7 @@ def main():
         """  
           %core"""
         + str(startcol)
-        + """_1 = AIE.core(%tile"""
+        + """_1 = aie.core(%tile"""
         + str(startcol)
         + """_1) {
     %c0 = arith.constant 0 : index
@@ -199,10 +199,10 @@ def main():
         + """xi32>
       scf.yield %sum_next : i32
     }
-    AIE.useLock(%lock"""
+    aie.use_lock(%lock"""
         + str(startcol)
         + """_1, "Release", 1)
-    AIE.end
+    aie.end
   }
   func.func @do_sieve(%bufin: memref<"""
         + str(bufsize)
@@ -292,16 +292,16 @@ def main():
         if col == startcol and row == 1:
             None
         else:
-            f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" % (col, row, col, row))
-            f.write('    AIE.useLock(%%lock%d_%d, "Acquire", 1)\n' % (col_p, row_p))
-            f.write('    AIE.useLock(%%lock%d_%d, "Acquire", 0)\n' % (col, row))
+            f.write("  %%core%d_%d = aie.core(%%tile%d_%d) {\n" % (col, row, col, row))
+            f.write('    aie.use_lock(%%lock%d_%d, "Acquire", 1)\n' % (col_p, row_p))
+            f.write('    aie.use_lock(%%lock%d_%d, "Acquire", 0)\n' % (col, row))
             f.write(
                 "    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<%dxi32>, memref<%dxi32>) -> ()\n"
                 % (col_p, row_p, col, row, bufsize, bufsize)
             )
-            f.write('    AIE.useLock(%%lock%d_%d, "Release", 0)\n' % (col_p, row_p))
-            f.write('    AIE.useLock(%%lock%d_%d, "Release", 1)\n' % (col, row))
-            f.write("    AIE.end\n")
+            f.write('    aie.use_lock(%%lock%d_%d, "Release", 0)\n' % (col_p, row_p))
+            f.write('    aie.use_lock(%%lock%d_%d, "Release", 1)\n' % (col, row))
+            f.write("    aie.end\n")
             f.write("  }\n\n")
 
     col = startcol

@@ -5,15 +5,17 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../makefile-common
 
 mlirFileName = aieWithTrace_1core
 
-VPATH := ../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 all: build/conv2dk1.o build/final.xclbin
 
-build/${mlirFileName}.mlir: aie2.py
+build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
@@ -24,9 +26,9 @@ insts.txt: build/${mlirFileName}.mlir
 build/conv2dk1.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DINT8_ACT -c $< -o $@
 
-build/final.xclbin: build/${mlirFileName}.mlir 
+build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 clean:
 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
@@ -34,4 +36,4 @@ clean:
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
 run_py: 
-	${powershell} python3 test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

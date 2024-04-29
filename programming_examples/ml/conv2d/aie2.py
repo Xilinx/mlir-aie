@@ -34,10 +34,6 @@ actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2  # double buffer
 actOutInt32s = actOut // 4
 
-enableTrace = False
-trace_size = 16384
-traceSizeInInt32s = trace_size // 4
-
 
 def conv2dk1():
     with mlir_mod_ctx() as ctx:
@@ -82,9 +78,6 @@ def conv2dk1():
             MemTile = tile(0, 1)
             ComputeTile2 = tile(0, 2)
             compute_tile2_col, compute_tile2_row = 0, 2
-
-            if enableTrace:
-                flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 
             # AIE-array data movement with object fifos
             # Input
@@ -155,85 +148,6 @@ def conv2dk1():
 
             @FuncOp.from_py_func(tensor_ty, memRef_wts_ty, tensor_ty)
             def sequence(I, W, O):
-                if enableTrace:
-                    # 0x340D0: Trace Control 0
-                    #          0xAABB---C
-                    #            AA        <- Event to stop trace capture
-                    #              BB      <- Event to start trace capture
-                    #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
-                    # Configure so that "Event 1" (always true) causes tracing to start
-                    npu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340D0,
-                        value=0x00010000,
-                    )
-                    # 0x340D4: Trace Control 1
-                    npu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340D4,
-                        value=0x00000000,
-                    )
-                    # 0x340E0: Trace Event Group 1  (Which events to trace)
-                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    npu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340E0,
-                        value=0x4B222125,
-                    )
-                    # 0x340E4: Trace Event Group 2  (Which events to trace)
-                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    npu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340E4,
-                        value=0x2D2C1A4F,
-                    )
-
-                    npu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x3FF00,
-                        value=0x00000121,
-                    )
-
-                    # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
-                    # out to host DDR memory
-                    trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
-                    output_size = bufOut
-                    npu_writebd_shimtile(
-                        bd_id=trace_bd_id,
-                        buffer_length=trace_size,
-                        buffer_offset=output_size,
-                        enable_packet=0,
-                        out_of_order_id=0,
-                        packet_id=0,
-                        packet_type=0,
-                        column=0,
-                        column_num=1,
-                        d0_size=0,
-                        d0_stride=0,
-                        d1_size=0,
-                        d1_stride=0,
-                        d2_stride=0,
-                        ddr_id=2,
-                        iteration_current=0,
-                        iteration_size=0,
-                        iteration_stride=0,
-                        lock_acq_enable=0,
-                        lock_acq_id=0,
-                        lock_acq_val=0,
-                        lock_rel_id=0,
-                        lock_rel_val=0,
-                        next_bd=0,
-                        use_next_bd=0,
-                        valid_bd=1,
-                    )
-                    # Set start BD to our shim bd_Id (3)
-                    npu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
-
                 NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=10)
 
                 npu_dma_memcpy_nd(

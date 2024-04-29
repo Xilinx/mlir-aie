@@ -27,7 +27,7 @@ def my_matmul():
 
     vectorized = True
     enable_tracing = False
-    trace_size = 16384
+    trace_size = 65536
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
