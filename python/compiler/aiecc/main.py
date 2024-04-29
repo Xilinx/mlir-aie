@@ -48,7 +48,6 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-create-packet-flows")
         .add_pass("aie-lower-multicast"),
     )
     .convert_scf_to_cf()
@@ -624,7 +623,6 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
                     "--aie-lower-multicast",
                     file_with_addresses,
