@@ -624,7 +624,6 @@ class FlowRunner:
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
                     "--aie-create-packet-flows",
-                    "--aie-lower-multicast",
                     file_with_addresses,
                     "-o",
                     file_physical,
