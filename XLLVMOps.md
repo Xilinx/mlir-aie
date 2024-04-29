@@ -65,8 +65,8 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `src0` | vector of 32-bit signless integer values of length 8
-| `src1` | vector of 32-bit signless integer values of length 8
+| `lhs` | vector of 32-bit signless integer values of length 8
+| `rhs` | vector of 32-bit signless integer values of length 8
 
 #### Results:
 
@@ -329,14 +329,101 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.vextract.elem16.I512` (::xilinx::xllvm::VectorExtractElem16I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 16-bit signless integer values of length 32
+| `idx` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vextract.elem32.I512` (::xilinx::xllvm::VectorExtractElem32I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 32-bit signless integer values of length 16
+| `idx` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vextract.elem8.I512` (::xilinx::xllvm::VectorExtractElem8I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 8-bit signless integer values of length 64
+| `idx` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vshift.bf512.bf512` (::xilinx::xllvm::VectorShiftBF512BF512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32
+| `rhs` | vector of bfloat16 type values of length 32
+| `step` | 32-bit signless integer
+| `shift` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vshift.I512.I512` (::xilinx::xllvm::VectorShiftI512I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16
+| `rhs` | vector of 32-bit signless integer values of length 16
+| `step` | 32-bit signless integer
+| `shift` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.vshuffle` (::xilinx::xllvm::VectorShuffleIntrOp)
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `src0` | vector of 32-bit signless integer values of length 16
-| `src1` | vector of 32-bit signless integer values of length 16
+| `lhs` | vector of 32-bit signless integer values of length 16
+| `rhs` | vector of 32-bit signless integer values of length 16
 | `mode` | 32-bit signless integer
 
 #### Results:
