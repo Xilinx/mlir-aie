@@ -581,7 +581,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["bo0", "bo1", "bo2", "bo3", "bo4", "bo5"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
