@@ -1500,6 +1500,30 @@ ParseResult UnpackOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// ExtElemOp
+//===----------------------------------------------------------------------===//
+
+// Verify Extract Element op.
+LogicalResult ExtElemOp::verify() {
+  // Verify the types
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+
+  if (!sourceType)
+    return emitError("source requires vector type");
+
+  // The element type of vectors must always be the same
+  Type stype = sourceType.getElementType();
+  Type rtype = getResult().getType();
+
+  if (stype != rtype) {
+    return emitError("the type of result must be the same as the element "
+                     "type of source vector");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ShiftOp
 //===----------------------------------------------------------------------===//
 

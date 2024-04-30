@@ -729,7 +729,7 @@ def AIEVec_ExtElemOp:
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.}];
   let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def AIEVec_NegOp:
