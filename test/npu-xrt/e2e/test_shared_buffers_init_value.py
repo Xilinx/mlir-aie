@@ -40,7 +40,7 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         _dummy_tile = aie.tile(0, 2)
 

@@ -200,6 +200,10 @@ public:
 
   // Run consistency checks on the target model.
   void validate() const;
+
+  // Return true if this is an NPU-based device
+  // There are several special cases for handling the NPU at the moment.
+  virtual bool isNPU() const { return false; }
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -450,13 +454,9 @@ public:
   }
 };
 
-class NPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
-
+class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  NPUTargetModel() = default;
-
-  int columns() const override { return 5; }
+  BaseNPUTargetModel() = default;
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -465,12 +465,8 @@ public:
   bool isCoreTile(int col, int row) const override { return row > 1; }
   bool isMemTile(int col, int row) const override { return row == 1; }
 
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
-  }
-
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
+    return false; // No PL
   }
 
   bool isShimNOCorPLTile(int col, int row) const override {
@@ -480,25 +476,46 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override {
-    if (isCoreTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-        destIndex == 0)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-        destIndex == 0)
-      return true;
-    return false;
+                          int destIndex) const override;
+
+  // Return true if the device model is virtualized.  This is used
+  // during CDO code generation to configure aie-rt properly.
+  virtual bool isVirtualized() const = 0;
+
+  virtual bool isNPU() const override { return true; }
+};
+
+// The full Phoenix NPU
+class NPUTargetModel : public BaseNPUTargetModel {
+public:
+  NPUTargetModel() = default;
+
+  int columns() const override { return 5; }
+
+  bool isShimNOCTile(int col, int row) const override {
+    return row == 0 && col > 0;
   }
+
+  bool isShimPLTile(int col, int row) const override {
+    // This isn't useful because it's not connected to anything.
+    return row == 0 && col == 0;
+  }
+
+  bool isVirtualized() const override { return false; }
+};
+
+// A sub-portion of the NPU
+class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
+  int cols;
+
+public:
+  VirtualizedNPUTargetModel(int _cols) : BaseNPUTargetModel(), cols(_cols) {}
+
+  int columns() const override { return cols; }
+
+  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+
+  bool isVirtualized() const override { return true; }
 };
 
 } // namespace xilinx::AIE

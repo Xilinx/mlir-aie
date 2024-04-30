@@ -93,7 +93,7 @@
 // CHECK: }
 
 module {
-  aie.device(npu) {
+  aie.device(npu1) {
     %02 = aie.tile(0, 2)
     %12 = aie.tile(1, 2)
     %22 = aie.tile(2, 2)

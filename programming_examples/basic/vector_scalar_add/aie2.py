@@ -20,7 +20,7 @@ AIE_TILE_WIDTH = 32
 
 def my_vector_bias_add():
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         memRef_mem_tile_ty = T.memref(MEM_TILE_WIDTH, T.i32())
         memRef_aie_tile_ty = T.memref(AIE_TILE_WIDTH, T.i32())

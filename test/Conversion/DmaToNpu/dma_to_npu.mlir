@@ -18,7 +18,7 @@
 // CHECK: aiex.npu.writebd_shimtile
 // CHECK-SAME: ddr_id = 1 : i32
 module  {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     memref.global "public" @fromMem : memref<16xi32>
     func.func @dma_memcpy_nd_0(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
@@ -46,7 +46,7 @@ module  {
 // CHECK-SAME: row = 0 : i32
 // CHECK-SAME: row_num = 1 : i32
 module  {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     func.func @dma_wait_s2mm(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
@@ -72,7 +72,7 @@ module  {
 // CHECK-SAME: row = 0 : i32
 // CHECK-SAME: row_num = 1 : i32
 module  {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     func.func @dma_wait_mm2s(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>

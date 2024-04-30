@@ -54,7 +54,7 @@ def test_manual_args(ctx: MLIRContext, workdir: Path):
     iters = 10
     loop = False
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -161,7 +161,7 @@ def test_manual_args_with_offset(ctx: MLIRContext, workdir: Path):
     iters = 10
     loop = False
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -268,7 +268,7 @@ def test_manual_args_with_different_cols(ctx: MLIRContext, workdir: Path):
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     cols = [0, 1, 2, 3]
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         for c in cols:
             tile_c_0 = aie.tile(c, 0)
@@ -353,7 +353,7 @@ def test_manual_args_with_shim_dma(ctx: MLIRContext, workdir: Path):
 
     iters = 21
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         if 0 not in cols:
             tile_dummy = aie.tile(0, 3)

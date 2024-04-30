@@ -22,7 +22,7 @@
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 0
 module  {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     memref.global "public" @fromMem : memref<16xi32>
     func.func @test1(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {

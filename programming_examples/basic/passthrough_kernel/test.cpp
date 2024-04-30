@@ -37,6 +37,8 @@ int main(int argc, const char *argv[]) {
   int verbosity = vm["verbosity"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
+  std::cout << std::endl << "Running...";
+
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_sequence(vm["instr"].as<std::string>());

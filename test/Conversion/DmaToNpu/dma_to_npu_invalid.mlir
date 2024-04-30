@@ -11,7 +11,7 @@
 // RUN: aie-opt --split-input-file --aie-dma-to-npu --verify-diagnostics %s
 
 module  {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     func.func @sequence() {
       // expected-error@+2 {{failed to legalize operation 'aiex.npu.dma_wait' that was explicitly marked illegal}}
