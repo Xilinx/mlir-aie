@@ -20,7 +20,7 @@ import aie.utils.test as test_utils
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
-from utils import  unpickle,load_class_label
+from utils import unpickle, load_class_label
 import torchvision
 from torchvision import transforms
 from PIL import Image
@@ -38,6 +38,7 @@ from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate_b
 from brevitas_examples.imagenet_classification.utils import generate_dataloader
 from brevitas_examples.imagenet_classification.utils import SEED
 from brevitas_examples.imagenet_classification.utils import validate
+
 
 def main(opts):
     design = "resnet_conv2_x_int8"
@@ -71,7 +72,7 @@ def main(opts):
     # ------------------------------------------------------
     num_classes = 10
     model = res.Resnet50_conv2x_offload(num_classes)
-    weights = "trained_resnet50/weight.tar" #trained FP model
+    weights = "trained_resnet50/weight.tar"  # trained FP model
     saved_model_dict = torch.load(weights, map_location=torch.device("cpu"))
     model.load_state_dict(saved_model_dict)
 
@@ -112,8 +113,12 @@ def main(opts):
     indices = torch.arange(256)
     tr_sub = data_utils.Subset(train_dataset, indices)
     val_sub = data_utils.Subset(test_dataset, indices)
-    calib_loader = torch.utils.data.DataLoader(dataset=tr_sub, batch_size=64, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_sub, batch_size=64, shuffle=False)
+    calib_loader = torch.utils.data.DataLoader(
+        dataset=tr_sub, batch_size=64, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        dataset=val_sub, batch_size=64, shuffle=False
+    )
     img_shape = 32
     model_aie = preprocess_for_flexml_quantize(
         model.aie,
@@ -153,11 +158,10 @@ def main(opts):
     calibrate(calib_loader, model)
     model.eval()
     device, dtype = (
-    next(model.parameters()).device,
-    next(model.parameters()).dtype,
+        next(model.parameters()).device,
+        next(model.parameters()).dtype,
     )
     # -----------------------
-
 
     from numpy import load
 
@@ -167,7 +171,9 @@ def main(opts):
         if isinstance(module, QuantConv2d):
             # print(name)
             # print(module.quant_weight().scale)
-            weights[name + ".int_weight"] = module.quant_weight().int(float_datatype=False)
+            weights[name + ".int_weight"] = module.quant_weight().int(
+                float_datatype=False
+            )
             params[name + "_scale"] = module.quant_weight().scale.detach().numpy()
         if isinstance(module, QuantIdentity):
             # print(name)
@@ -182,11 +188,13 @@ def main(opts):
     int_wts_data = load("int_weights.npz", allow_pickle=True)
     int_scale_data = load("int_conv_scale.npz", allow_pickle=True)
 
-    int_wts_data_lst = int_wts_data.files    
+    int_wts_data_lst = int_wts_data.files
     block_0_int_weight_1 = torch.from_numpy(int_wts_data["aie.layer1.conv1.int_weight"])
     block_0_int_weight_2 = torch.from_numpy(int_wts_data["aie.layer1.conv2.int_weight"])
     block_0_int_weight_3 = torch.from_numpy(int_wts_data["aie.layer1.conv3.int_weight"])
-    block_0_int_weight_skip = torch.from_numpy(int_wts_data["aie.layer1.shortcut.0.int_weight"])
+    block_0_int_weight_skip = torch.from_numpy(
+        int_wts_data["aie.layer1.shortcut.0.int_weight"]
+    )
 
     block_1_int_weight_1 = torch.from_numpy(int_wts_data["aie.layer2.conv1.int_weight"])
     block_1_int_weight_2 = torch.from_numpy(int_wts_data["aie.layer2.conv2.int_weight"])
@@ -232,20 +240,20 @@ def main(opts):
             param.data.fill_(0)
 
     block_0_combined_scale1 = -math.log(
-    init_scale * block_0_weight_scale_1 / block_0_relu_1, 2
+        init_scale * block_0_weight_scale_1 / block_0_relu_1, 2
     )  # after conv1x1
     block_0_combined_scale2 = -math.log(
-    block_0_relu_1 * block_0_weight_scale_2 / block_0_relu_2, 2
+        block_0_relu_1 * block_0_weight_scale_2 / block_0_relu_2, 2
     )  # after conv3x3
     block_0_combined_scale3 = -math.log(
-    block_0_relu_2 * block_0_weight_scale_3 / block_0_add_scale, 2
+        block_0_relu_2 * block_0_weight_scale_3 / block_0_add_scale, 2
     )  # after conv1x1
     block_0_combined_scale4 = -math.log(
-    block_0_add_scale / block_0_relu_3, 2
+        block_0_add_scale / block_0_relu_3, 2
     )  # after skip addition using init scale
     # combined_scale4=-math.log(inp_scale1/inp_scale4)
     block_0_combined_scale_skip = -math.log(
-    init_scale * block_0_weight_scale_skip / block_0_add_scale, 2
+        init_scale * block_0_weight_scale_skip / block_0_add_scale, 2
     )  # after LHS conv1x1
 
     block_1_combined_scale1 = -math.log(
@@ -278,14 +286,18 @@ def main(opts):
     print("Block0 combined_scale after first conv1x1:", block_0_combined_scale1)
     print("Block0 combined_scale after second conv3x3:", block_0_combined_scale2)
     print("Block0 combined_scale after third conv1x1:", block_0_combined_scale3)
-    print("Block0 combined_scale after adding skip connection:", (block_0_combined_scale4))
+    print(
+        "Block0 combined_scale after adding skip connection:", (block_0_combined_scale4)
+    )
     print("Block0 combined_scale after skip conv1x1:", block_0_combined_scale_skip)
 
     print("--------------------------------------------------------------")
     print("Block1 combined_scale after first conv1x1:", block_1_combined_scale1)
     print("Block1 combined_scale after second conv3x3:", block_1_combined_scale2)
     print("Block1 combined_scale after third conv1x1:", block_1_combined_scale3)
-    print("Block1 combined_scale after adding skip connection:", (block_1_combined_scale4))
+    print(
+        "Block1 combined_scale after adding skip connection:", (block_1_combined_scale4)
+    )
     print("--------------------------------------------------------------")
     print("Block2 combined_scale block2 after first conv1x1:", block_2_combined_scale1)
     print("Block2 combined_scale block2 after second conv3x3:", block_2_combined_scale2)
@@ -295,7 +307,7 @@ def main(opts):
         (block_2_combined_scale4),
     )
     print("------------------------------------------------------------------")
-        # ------------------------------------------------------
+    # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
     app = setup_aie(
@@ -387,7 +399,6 @@ def main(opts):
         im_name = f"./cifar_images/image_{i}.png"
         cv2.imwrite(im_name, im)
 
-
     label_path = "data/cifar10_label_map.txt"
     model_num_classes = 10
     class_label_map = load_class_label(label_path, model_num_classes)
@@ -396,13 +407,16 @@ def main(opts):
     )
     quant_id_1.eval()
 
-
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
-   
+
     for i in range(0, 64):
-        print("____________________________________IMAGE {}____________________________________________".format(i))
+        print(
+            "____________________________________IMAGE {}____________________________________________".format(
+                i
+            )
+        )
         image_name = f"./cifar_images/image_{i}.png"
         img = Image.open(image_name)
         input_tensor = transform_test(img)
@@ -443,10 +457,14 @@ def main(opts):
 
             # Calculate the five categories with the highest classification probability
             prediction_class_index = (
-                torch.topk(final_output_aie, k=5, sorted=True).indices.squeeze(0).tolist()
+                torch.topk(final_output_aie, k=5, sorted=True)
+                .indices.squeeze(0)
+                .tolist()
             )
             golden_prediction_class_index = (
-                torch.topk(final_output_base, k=5, sorted=True).indices.squeeze(0).tolist()
+                torch.topk(final_output_base, k=5, sorted=True)
+                .indices.squeeze(0)
+                .tolist()
             )
             npu_time = stop - start
     npu_time_total = npu_time_total + npu_time
@@ -456,11 +474,12 @@ def main(opts):
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / 64) / 1000)))
     for x, y in zip(predicted_label, predicted_label):
-       if x != y:
-           print("\nFailed.\n")
-           exit(-1)
+        if x != y:
+            print("\nFailed.\n")
+            exit(-1)
     print("\nPASS!\n")
     exit(0)
+
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()

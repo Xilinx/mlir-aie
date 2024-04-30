@@ -580,7 +580,7 @@ def resnet_conv_x():
 
                 @core(cores[i][1], "conv2dk3.o")
                 def core_body():
-                    if(i==2):
+                    if i == 2:
                         scale = 9
                     else:
                         scale = 9
@@ -700,7 +700,7 @@ def resnet_conv_x():
 
                 @core(cores[i][3], "conv2dk3.o")
                 def core_body():
-                    if(i==2):
+                    if i == 2:
                         scale = 9
                     else:
                         scale = 9
@@ -948,16 +948,16 @@ def resnet_conv_x():
                 NpuWriteRTPOp("rtpComputeTile12", col=1, row=2, index=0, value=9)
                 NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=12)
                 NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=1, value=0)
-                
+
                 NpuWriteRTPOp("rtpComputeTile22", col=2, row=2, index=0, value=9)
                 NpuWriteRTPOp("rtpComputeTile23", col=2, row=3, index=0, value=9)
-                NpuWriteRTPOp("rtpComputeTile25", col=2, row=5, index=0, value=9)        
+                NpuWriteRTPOp("rtpComputeTile25", col=2, row=5, index=0, value=9)
                 NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=12)
                 NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=1, value=0)
 
-                rtp_1=[7,10,13,-2,10]
-                rtp_2=[8,10,12]
-                rtp_3=[9,9,12]
+                rtp_1 = [7, 10, 13, -2, 10]
+                rtp_2 = [8, 10, 12]
+                rtp_3 = [9, 9, 12]
 
                 npu_dma_memcpy_nd(
                     metadata="act1_00_02_01",

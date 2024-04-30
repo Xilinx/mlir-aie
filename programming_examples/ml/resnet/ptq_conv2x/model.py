@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class CombinedModel(nn.Module):
     def __init__(self, first, aie, post):
         super(CombinedModel, self).__init__()
@@ -14,6 +15,7 @@ class CombinedModel(nn.Module):
         x = self.aie(x)
         x = self.post(x)
         return x
+
 
 class PreAIELayers(nn.Module):
     def __init__(self):
@@ -70,6 +72,8 @@ class PostAIELayers(nn.Module):
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
+
+
 class Bottleneck_projected(nn.Module):
     expansion = 4
 
@@ -97,6 +101,7 @@ class Bottleneck_projected(nn.Module):
                 ),
                 nn.BatchNorm2d(self.expansion * planes),
             )
+
     def forward(self, x):
         out = self.relu1(self.bn1(self.conv1(x)))
         out = self.relu2(self.bn2(self.conv2(out)))
@@ -104,6 +109,7 @@ class Bottleneck_projected(nn.Module):
         out = out + self.shortcut(x)
         out = self.relu3(out)
         return out
+
 
 class Bottleneck_fused_projected(nn.Module):
     expansion = 4
@@ -137,7 +143,8 @@ class Bottleneck_fused_projected(nn.Module):
         out += self.shortcut(x)
         out = self.relu3(out)
         return out
-        
+
+
 def Resnet50_conv2x_offload(num_classes):
     return CombinedModel(
         PreAIELayers(),
@@ -146,6 +153,6 @@ def Resnet50_conv2x_offload(num_classes):
             [
                 1,
             ],
-        ), 
+        ),
         PostAIELayers(Bottleneck_projected, [4, 6, 3], num_classes),
     )
