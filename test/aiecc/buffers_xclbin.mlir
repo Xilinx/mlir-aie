@@ -10,7 +10,7 @@
 
 // REQUIRES: chess
 // RUN: %PYTHON aiecc.py --xchesscc --no-link -nv --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 
-// RUN: FileCheck %s --input-file=%T/buffers_xclbin.mlir.prj/kernels.json
+// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels.json
 
 // CHECK: {
 // CHECK:   "ps-kernels": {

@@ -12,7 +12,7 @@
 
 // RUN: aie2xclbin -v --host-target=aarch64-linux-gnu --peano=%PEANO_INSTALL_DIR %s --xclbin-name=test.xclbin 
 
-// RUN: FileCheck %s --input-file=%T/buffers_xclbin.mlir.prj/kernels.json
+// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels.json
 
 // CHECK: {
 // CHECK:   "ps-kernels": {
