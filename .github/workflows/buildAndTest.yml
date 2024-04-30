@@ -36,6 +36,12 @@ jobs:
         ubuntu_version: [ 20.04, 22.04 ]
 
     steps:
+      - name: Dump github context
+        run:   echo "$GITHUB_CONTEXT"
+        shell: bash
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+          
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
