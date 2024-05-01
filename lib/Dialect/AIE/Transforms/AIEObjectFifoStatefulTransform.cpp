@@ -174,13 +174,13 @@ struct AIEObjectFifoStatefulTransformPass
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
   // the producer wants to use the multi-dimensional address generation
   // features of the DMA, if the objectFifo is part of a LinkOp, or if the
-  // via_AXI4_stream attribute of the objectFifo is set.
+  // via_DMA attribute of the objectFifo is set.
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
     bool isUsedInLinkOp = false;
 
-    if (createOp.getVia_AXI4Stream())
+    if (createOp.getVia_DMA())
       return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&

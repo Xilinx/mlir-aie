@@ -104,7 +104,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<size = 1, stride = 2>], {%[[VAL1]] fromStream [<size = 1, stride = 2>]}, 2 : i32) {via_AXI4_stream = true} : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<size = 1, stride = 2>], {%[[VAL1]] fromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -120,7 +120,7 @@ def objFifo():
             T.memref(12, T.f16()),
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
-            via_AXI4_stream=True,
+            via_DMA=True,
         )
         end()
 
