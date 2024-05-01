@@ -1199,6 +1199,7 @@ Interfaces: `Symbol`
 <tr><td><code>elemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of AIE objectFifo type</td></tr>
 <tr><td><code>dimensionsToStream</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
+<tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
