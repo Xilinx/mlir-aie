@@ -72,14 +72,13 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 ### C++ Testbench
 
-To compile the design and C++ testbench:
+To compile the design:
 
 ```
 make
-make build/passThroughKernel.exe
 ```
 
-To run the design:
+To complete compiling the C++ testbench and run the design:
 
 ```
 make run
@@ -87,7 +86,7 @@ make run
 
 ### Python Testbench
 
-To compile the design and run the Python testbench:
+To compile the design:
 
 ```
 make
@@ -96,5 +95,5 @@ make
 To run the design:
 
 ```
-python3 test.py -x build/final_4096.xclbin -i build/insts.txt -k MLIR_AIE -s 4096
+make run_py
 ```

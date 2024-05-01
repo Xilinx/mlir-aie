@@ -580,7 +580,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["in", "tmp", "out"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -993,7 +993,7 @@ class FlowRunner:
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             if opts.basic_alloc_scheme:
-                do_run(
+                r = do_run(
                     [
                         "aie-opt",
                         "--aie-assign-buffer-addresses=basic-alloc",
@@ -1003,7 +1003,7 @@ class FlowRunner:
                     ],
                 )
             else:
-                do_run(
+                r = do_run(
                     [
                         "aie-opt",
                         "--aie-assign-buffer-addresses",
@@ -1012,6 +1012,10 @@ class FlowRunner:
                         file_with_addresses,
                     ],
                 )
+            if r.returncode != 0:
+                print("Error encountered while assigning buffer addresses. Exiting...")
+                print(r.stderr, file=sys.stderr)
+                sys.exit(r.returncode)
 
             cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
