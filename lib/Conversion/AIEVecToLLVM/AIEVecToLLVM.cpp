@@ -1259,12 +1259,12 @@ public:
       return failure();
     }
 
-    Value src = adaptor.getSource();
-    Type srcType = src.getType();
-    unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
-
     // Integer types
     if (resultScaTy.isa<IntegerType>()) {
+      Value src = adaptor.getSource();
+      Type srcType = src.getType();
+      unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
+
       if (srcBitWidth < 32) {
         src = rewriter.create<LLVM::SExtOp>(loc, rewriter.getI32Type(), src);
       } else if (srcBitWidth > 32) {
