@@ -29,13 +29,6 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-std::vector<uint32_t> getProlog() {
-  return {0x00000011, 0x01000405, 0x01000100, 0x0B590100, 0x000055FF,
-          0x00000001, 0x00000010, 0x314E5A5F, 0x635F5F31, 0x676E696C,
-          0x39354E5F, 0x6E693131, 0x5F727473, 0x64726F77, 0x00004573,
-          0x07BD9630, 0x000055FF};
-}
-
 // Example:
 // - instructions = {3,4,5}
 // - tailSize = 2
@@ -133,7 +126,7 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
 
 std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
 
-  std::vector<uint32_t> instructions = getProlog();
+  std::vector<uint32_t> instructions;
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   auto funcOps = deviceOp.getOps<func::FuncOp>();

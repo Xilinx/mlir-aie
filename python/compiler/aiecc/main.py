@@ -110,25 +110,18 @@ def emit_design_kernel_json(
     buffer_args=None,
 ):
     if buffer_args is None:
-        buffer_args = ["in", "tmp", "out"]
+        buffer_args = [f"bo{i}" for i in range(4)]
 
     arguments = [
         {
-            "name": "instr",
-            "memory-connection": "SRAM",
-            "address-qualifier": "GLOBAL",
-            "type": "char *",
-            "offset": "0x00",
-        },
-        {
-            "name": "ninstr",
-            "address-qualifier": "SCALAR",
-            "type": "uint64_t",
-            "offset": "0x08",
+            "name" : "opcode",
+            "address-qualifier" : "SCALAR",
+            "type" : "uint64_t",
+            "offset" : "0x00"
         },
     ]
 
-    offset = 0x10
+    offset = 0x08
     for buf in buffer_args:
         arg = {
             "name": buf,
@@ -140,6 +133,33 @@ def emit_design_kernel_json(
         arguments.append(arg)
         offset += 0x8
 
+    inst_arguments = [
+        {
+            "name": "instr",
+            "memory-connection": "SRAM",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": str(hex(offset)),
+        },
+        {
+            "name": "ninstr",
+            "address-qualifier": "SCALAR",
+            "type": "uint32_t",
+            "offset": str(hex(offset+8)),
+        },
+    ]
+    arguments.append(inst_arguments[0])
+    arguments.append(inst_arguments[1])
+    offset += 12
+    arg = {
+        "name": "mc",
+        "memory-connection": "HOST",
+        "address-qualifier": "GLOBAL",
+        "type": "char *",
+        "offset": str(hex(offset)),
+    }
+    arguments.append(arg)
+
     return {
         "ps-kernels": {
             "kernels": [
@@ -148,7 +168,7 @@ def emit_design_kernel_json(
                     "type": "dpu",
                     "extended-data": {
                         "subtype": "DPU",
-                        "functional": "1",
+                        "functional": "0",
                         "dpu_kernel_id": kernel_id,
                     },
                     "arguments": arguments,
@@ -570,7 +590,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = [f"bo{i}" for i in range(6)]
+        buffer_arg_names = [f"bo{i}" for i in range(4)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
