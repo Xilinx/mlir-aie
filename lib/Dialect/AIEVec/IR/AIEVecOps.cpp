@@ -540,8 +540,8 @@ LogicalResult BroadcastScalarOp::verify() {
   if (!resultType)
     return emitError("requires vector type");
 
-  if (!sourceType)
-    return emitError("requires source type");
+  if (!sourceType.isa<IntegerType, FloatType>())
+    return emitError("requires source type to be integer or float");
 
   return success();
 }
