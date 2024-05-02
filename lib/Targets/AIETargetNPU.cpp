@@ -45,81 +45,112 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 
 void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
-  auto words = reserveAndGetTail(instructions, 2);
+  auto words = reserveAndGetTail(instructions, 4);
 
-  uint32_t opCode = 3;
-  words[0] |= (opCode & 0xff) << 24;
-  words[0] |= (op.getColumn() & 0xff) << 16;
-  words[0] |= (op.getRow() & 0xff) << 8;
-  words[0] |= op.getDirection() & 0x1;
+  uint32_t opCode = 0x80;
+  // XAIE_IO_CUSTOM_OP_BEGIN
+  // Wait until the number of BDs in the same channel of all tiles equal to 0
+  words[0] |= (opCode & 0xff);
+  words[0] |= (op.getColumn() & 0xff) << 8;
+  words[0] |= (op.getRow() & 0xff) << 16;
+  words[0] |= 0 << 24; // Padding
 
-  words[1] |= (op.getChannel() & 0xff) << 24;
-  words[1] |= (op.getColumnNum() & 0xff) << 16;
-  words[1] |= (op.getRowNum() & 0xff) << 8;
+  words[1] = 4; // Operation Size
+
+  words[2] |= op.getDirection() & 0xff;
+  words[2] |= (op.getRow() & 0xff) << 8;
+  words[2] |= (op.getColumn() & 0xff) << 16;
+  
+  words[3] |= (op.getRowNum() & 0xff) << 8;
+  words[3] |= (op.getColumnNum() & 0xff) << 16;
+  words[3] |= (op.getChannel() & 0xff) << 24;
 }
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
-  auto words = reserveAndGetTail(instructions, 3);
+  auto words = reserveAndGetTail(instructions, 6);
 
-  uint32_t opCode = 2;
-  words[0] |= (opCode & 0xff) << 24;
-  words[0] |= (op.getColumn() & 0xff) << 16;
-  words[0] |= (op.getRow() & 0xff) << 8;
+  uint32_t opCode = 0;
+  // XAIE_IO_WRITE
+  words[0] |= (opCode & 0xff);
+  words[0] |= (op.getColumn() & 0xff) << 8;
+  words[0] |= (op.getRow() & 0xff) << 16;
+  words[0] |= 0 << 24; // Padding
 
-  words[1] = op.getAddress();
+  words[1] = op.getAddress(); // ADDR_LOW
+  words[2] = 0; // ADDR_HIGH
 
-  words[2] = op.getValue();
+  words[3] = op.getValue(); // Value
+
+  words[4] = 6; // Operation Size
+
+  words[5] = 0; // Padding
 }
 
 void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
                            NpuWriteBdExShimTileOp op) {
 
-  auto words = reserveAndGetTail(instructions, 10);
+  auto words = reserveAndGetTail(instructions, 12);
 
-  uint32_t opCode = 6;
-  words[0] |= (opCode & 0xff) << 24;
-  words[0] |= (op.getColumn() & 0xff) << 16;
-  words[0] |= (op.getColumnNum() & 0xff) << 8;
-  words[0] |= (op.getDdrId() & 0xf) << 4;
-  words[0] |= (op.getBdId() & 0xf);
+  uint32_t opCode = 1;
+  words[0] |= (opCode & 0xff);
+  words[0] |= (op.getColumn() & 0xff) << 8;
+  words[0] |= (0 & 0xff) << 16;
+  words[0] |= (op.getColumn() & 0xff) << 24;
 
-  // TODO: Address Incr
-  // words[1] = ...
+  words[1] |= (0 & 0xff);
+  words[1] |= (0 & 0xff) << 8;
+  words[1] |= (op.getColumn() & 0xff) << 16;
+  words[1] |= 0 << 24; // Padding
+  
+  auto bd_id = op.getBdId();
+  uint32_t bd_addr = 0x1D000 + bd_id * 0x20;
+  words[2] = bd_addr; // ADDR
 
-  words[2] = op.getBufferLength();
-  words[3] = op.getBufferOffset();
+  words[3] = 12; // Operation Size;
 
+  // DMA_BDX_0
+  words[4] = op.getBufferLength();
+
+  // DMA_BDX_1
+  words[5] = op.getBufferOffset();
+
+  // DMA_BDX_2
   // En Packet , OoO BD ID , Packet ID , Packet Type
-  words[4] |= (op.getEnablePacket() & 0x1) << 30;
-  words[4] |= (op.getOutOfOrderId() & 0x3f) << 24;
-  words[4] |= (op.getPacketId() & 0x1f) << 19;
-  words[4] |= (op.getPacketType() & 0x7) << 16;
+  words[6] |= (op.getEnablePacket() & 0x1) << 30;
+  words[6] |= (op.getOutOfOrderId() & 0x3f) << 24;
+  words[6] |= (op.getPacketId() & 0x1f) << 19;
+  words[6] |= (op.getPacketType() & 0x7) << 16;
 
+  // DMA_BDX_3
   // TODO: Secure Access
-  words[5] |= (op.getD0Size() & 0x3ff) << 20;
-  words[5] |= op.getD0Stride() & 0xfffff;
+  words[7] |= (op.getD0Size() & 0x3ff) << 20;
+  words[7] |= op.getD0Stride() & 0xfffff;
 
-  words[6] = 0x80000000; // burst length;
-  words[6] |= (op.getD1Size() & 0x3ff) << 20;
-  words[6] |= op.getD1Stride() & 0xfffff;
+  // DMA_BDX_4
+  words[8] = 0x80000000; // burst length;
+  words[8] |= (op.getD1Size() & 0x3ff) << 20;
+  words[8] |= op.getD1Stride() & 0xfffff;
 
+  // DMA_BDX_5
   // TODO: SIMID, AxCache, AXQoS
-  words[7] = op.getD2Stride() & 0xfffff;
+  words[9] = op.getD2Stride() & 0xfffff;
 
-  words[8] |= (op.getIterationCurrent() & 0x3f) << 26;
-  words[8] |= (op.getIterationSize() & 0x3f) << 20;
-  words[8] |= op.getIterationStride() & 0xfffff;
+  // DMA_BDX_6
+  words[10] |= (op.getIterationCurrent() & 0x3f) << 26;
+  words[10] |= (op.getIterationSize() & 0x3f) << 20;
+  words[10] |= op.getIterationStride() & 0xfffff;
 
+  // DMA_BDX_7
   // TODO: TLAST Suppress
-  words[9] |= (op.getNextBd() & 0xf) << 27;
-  words[9] |= (op.getUseNextBd() & 0x1) << 26;
-  words[9] |= (op.getValidBd() & 0x1) << 25;
-  words[9] |= (op.getLockRelVal() & 0xef) << 18;
-  words[9] |= (op.getLockRelId() & 0xf) << 13;
-  words[9] |= (op.getLockAcqEnable() & 0x1) << 12;
-  words[9] |= (op.getLockAcqVal() & 0xef) << 5;
-  words[9] |= op.getLockAcqId() & 0xf;
+  words[11] |= (op.getNextBd() & 0xf) << 27;
+  words[11] |= (op.getUseNextBd() & 0x1) << 26;
+  words[11] |= (op.getValidBd() & 0x1) << 25;
+  words[11] |= (op.getLockRelVal() & 0xef) << 18;
+  words[11] |= (op.getLockRelId() & 0xf) << 13;
+  words[11] |= (op.getLockAcqEnable() & 0x1) << 12;
+  words[11] |= (op.getLockAcqVal() & 0xef) << 5;
+  words[11] |= op.getLockAcqId() & 0xf;
 }
 
 } // namespace

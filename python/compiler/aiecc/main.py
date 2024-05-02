@@ -110,7 +110,7 @@ def emit_design_kernel_json(
     buffer_args=None,
 ):
     if buffer_args is None:
-        buffer_args = [f"bo{i}" for i in range(4)]
+        buffer_args = [f"bo{i}" for i in range(5)]
 
     arguments = [
         {
@@ -120,18 +120,7 @@ def emit_design_kernel_json(
             "offset" : "0x00"
         },
     ]
-
     offset = 0x08
-    for buf in buffer_args:
-        arg = {
-            "name": buf,
-            "memory-connection": "HOST",
-            "address-qualifier": "GLOBAL",
-            "type": "char *",
-            "offset": str(hex(offset)),
-        }
-        arguments.append(arg)
-        offset += 0x8
 
     inst_arguments = [
         {
@@ -151,14 +140,16 @@ def emit_design_kernel_json(
     arguments.append(inst_arguments[0])
     arguments.append(inst_arguments[1])
     offset += 12
-    arg = {
-        "name": "mc",
-        "memory-connection": "HOST",
-        "address-qualifier": "GLOBAL",
-        "type": "char *",
-        "offset": str(hex(offset)),
-    }
-    arguments.append(arg)
+
+    for buf in buffer_args:
+        arg = {
+            "name": buf,
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": str(hex(offset)),
+        }
+        arguments.append(arg)
+        offset += 0x8
 
     return {
         "ps-kernels": {
@@ -590,7 +581,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = [f"bo{i}" for i in range(4)]
+        buffer_arg_names = [f"bo{i}" for i in range(5)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
