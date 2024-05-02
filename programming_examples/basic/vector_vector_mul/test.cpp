@@ -40,8 +40,8 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
 
-  constexpr int IN_SIZE = 1024;
-  constexpr int OUT_SIZE = 1024;
+  constexpr int IN_SIZE = 256;
+  constexpr int OUT_SIZE = 256;
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
