@@ -1034,13 +1034,59 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
+    SmallVector<Value> sources = adaptor.getSources();
+    Value src = sources.front();
+    VectorType srcType = cast<VectorType>(src.getType());
+    Type srcScalarType = srcType.getElementType();
+    unsigned srcBitWidth = srcScalarType.getIntOrFloatBitWidth();
+    int srcLanes = getVectorLaneSize(srcType);
+    int srcVectorSize = srcBitWidth * srcLanes;
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    if (sources.size() != 2 && sources.size() != 4) {
+      op.emitWarning() << "aievec.concat with the number of source vectors = "
+                       << sources.size() << " is not supported.\n";
+      return failure();
+    }
+
     // create xllvm intrinsic
-    auto concatOp = rewriter.create<xllvm::ConcatI512I256IntrOp>(
-        loc, VectorType::get({16}, rewriter.getI32Type()),
-        forceCastOperandsToSignature(
-            rewriter, loc, adaptor.getSources(),
-            {VectorType::get({8}, rewriter.getI32Type()),
-             VectorType::get({8}, rewriter.getI32Type())}));
+    Value concatOp = nullptr;
+    if (srcVectorSize == 256 && resultVectorSize == 512) {
+      concatOp = rewriter.create<xllvm::ConcatI512I256IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, adaptor.getSources(),
+              {VectorType::get({8}, rewriter.getI32Type()),
+               VectorType::get({8}, rewriter.getI32Type())}));
+    } else if (srcVectorSize == 256 && resultVectorSize == 1024) {
+      concatOp = rewriter.create<xllvm::ConcatI1024I256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, adaptor.getSources(),
+              {VectorType::get({8}, rewriter.getI32Type()),
+               VectorType::get({8}, rewriter.getI32Type()),
+               VectorType::get({8}, rewriter.getI32Type()),
+               VectorType::get({8}, rewriter.getI32Type())}));
+    } else if (srcVectorSize == 512 && resultVectorSize == 1024) {
+      concatOp = rewriter.create<xllvm::ConcatI1024I512IntrOp>(
+          loc, VectorType::get({32}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, adaptor.getSources(),
+              {VectorType::get({16}, rewriter.getI32Type()),
+               VectorType::get({16}, rewriter.getI32Type())}));
+    } else {
+      op.emitWarning() << "aievec.concat with source vector size = "
+                       << srcVectorSize
+                       << ", and result vector size = " << resultVectorSize
+                       << " is not supported.\n";
+      return failure();
+    }
 
     // create bitcast for result
     rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
