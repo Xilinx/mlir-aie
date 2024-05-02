@@ -190,6 +190,26 @@ llvm.func @concat_i512_i256(%a : vector<8xi32>, %b : vector<8xi32>) -> vector<16
     llvm.return %0 : vector<16xi32>
 }
 
+// CHECK-LABEL: define <32 x i32> @concat_i1024_i256
+llvm.func @concat_i1024_i256(%a : vector<8xi32>, %b : vector<8xi32>, 
+                             %c : vector<8xi32>, %d : vector<8xi32>) -> vector<32xi32> {
+    // CHECK: call <32 x i32> @llvm.aie2.concat.I1024.I256(
+    // CHECK-SAME: <8 x i32> %{{[0-9]+}}, <8 x i32> %{{[0-9]+}},
+    // CHECK-SAME: <8 x i32> %{{[0-9]+}}, <8 x i32> %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.concat.I1024.I256"(%a, %b, %c, %d) : 
+            (vector<8xi32>, vector<8xi32>, vector<8xi32>, vector<8xi32>) -> vector<32xi32>
+    llvm.return %0 : vector<32xi32>
+}
+
+// CHECK-LABEL: define <32 x i32> @concat_i1024_i512
+llvm.func @concat_i1024_i512(%a : vector<16xi32>, %b : vector<16xi32>) -> vector<32xi32> {
+    // CHECK: call <32 x i32> @llvm.aie2.concat.I1024.I512(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.concat.I1024.I512"(%a, %b) : 
+                                        (vector<16xi32>, vector<16xi32>) -> vector<32xi32>
+    llvm.return %0 : vector<32xi32>
+}
+
 // ----- SHUFFLE ----- 
 
 // CHECK-LABEL: define <16 x i32> @shuffle_i512
