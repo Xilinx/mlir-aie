@@ -416,7 +416,7 @@ public:
     unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
 
     // Integer types
-    if (lhsScaTy.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
       if (lhsBitWidth == 8) {
         return {DecodedMulElemOp::Kind::I8_I8_I32_32x1x2x1,
                 aiev2_mul_mac_compute_control(
@@ -842,7 +842,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // Integer types
-    if (resultScaTy.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(resultScaTy)) {
       // create constant for sign
       auto signCst = rewriter.create<LLVM::ConstantOp>(
           loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
@@ -1251,7 +1251,7 @@ public:
     unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
 
     // Integer types
-    if (resultScaTy.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(resultScaTy)) {
       Value src = adaptor.getSource();
       Type srcType = src.getType();
       unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
@@ -1324,7 +1324,7 @@ public:
     Value shiftOp = nullptr;
     SmallVector<Value> operands(
         {adaptor.getLhs(), adaptor.getRhs(), stepCst, adaptor.getShift()});
-    if (resultScaTy.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(resultScaTy)) {
       // Integer types
       shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
           loc, VectorType::get({16}, rewriter.getI32Type()),

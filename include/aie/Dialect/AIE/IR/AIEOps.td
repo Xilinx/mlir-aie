@@ -1384,7 +1384,7 @@ def AIE_GetStreamOp: AIE_Op<"get_stream", [
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() {
-      return getStreamValue().getType().isa<mlir::FloatType>();
+      return llvm::isa<mlir::FloatType>(getStreamValue().getType());
     }
   }];
 }
@@ -1407,7 +1407,7 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() {
-      return getStreamValue().getType().isa<mlir::FloatType>();
+      return llvm::isa<mlir::FloatType>(getStreamValue().getType());
     }
   }];
 }
@@ -1920,24 +1920,21 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
     ObjectFifoCreateOp getObjectFifo();
 
     mlir::DenseIntElementsAttr getAcquirePattern() {
-      return getAcquirePatternTensor()
+      return llvm::cast<mlir::DenseIntElementsAttr>(getAcquirePatternTensor()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::DenseIntElementsAttr>();
+          .getValue());
     }
 
     mlir::DenseIntElementsAttr getReleasePattern() {
-      return getReleasePatternTensor()
+      return llvm::cast<mlir::DenseIntElementsAttr>(getReleasePatternTensor()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::DenseIntElementsAttr>();
+          .getValue());
     }
 
     int getProcessLength() {
-      return getLength()
+      return llvm::cast<mlir::IntegerAttr>(getLength()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::IntegerAttr>()
+          .getValue())
           .getInt();
     }
   }];
