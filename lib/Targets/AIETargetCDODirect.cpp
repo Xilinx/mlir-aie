@@ -96,7 +96,7 @@ static const std::map<WireBundle, StrmSwPortType>
     WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
         {WireBundle::Core, StrmSwPortType::CORE},
         {WireBundle::DMA, StrmSwPortType::DMA},
-        // missing control from StrmSwPortType
+        {WireBundle::Ctrl, StrmSwPortType::CTRL},
         {WireBundle::FIFO, StrmSwPortType::FIFO},
         {WireBundle::South, StrmSwPortType::SOUTH},
         {WireBundle::West, StrmSwPortType::WEST},

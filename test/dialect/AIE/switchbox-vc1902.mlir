@@ -22,6 +22,8 @@ module {
       aie.connect<North: 3, South: 3> // 4 southgoing connections
       aie.connect<West: 3, East: 3> // 4 eastgoing connections
       aie.connect<Trace: 0, South: 1>
+      aie.connect<Ctrl: 0, North: 2>
+      aie.connect<North: 2, Ctrl: 0>
     }
 
     %30 = aie.tile(3, 0) // Shim-NOC
@@ -89,6 +91,8 @@ module {
       aie.connect<East: 3, West: 3> // 4 westgoing connections
       aie.connect<North: 3, South: 3> // 4 southgoing connections
       aie.connect<West: 3, East: 3> // 4 eastgoing connections
+      aie.connect<Ctrl: 0, North: 1>
+      aie.connect<North: 2, Ctrl: 0>
     }
   }
 }
