@@ -99,21 +99,21 @@ int main(int argc, char *argv[]) {
 
   model.validate();
 
-  bool used[model.columns()][model.rows()];
+  std::vector<bool> used(model.columns() * model.rows());
   for (int col = 0; col < model.columns(); col++) {
     for (int row = 0; row < model.rows(); row++) {
-      used[col][row] = false;
+      used[col + model.columns() * row] = false;
     }
   }
   for (auto tile : deviceOp.getOps<AIE::TileOp>()) {
-    used[tile.getCol()][tile.getRow()] = true;
+    used[tile.getCol() + model.columns() * tile.getRow()] = true;
   }
 
   std::cout << model.columns() << " Columns and " << model.rows() << " Rows\n";
   for (int row = model.rows() - 1; row >= 0; row--) {
     std::cout << reset << row % 10 << " ";
     for (int col = 0; col < model.columns(); col++) {
-      if (used[col][row])
+      if (used[col + model.columns() * row])
         std::cout << bgray;
       else
         std::cout << dim;
