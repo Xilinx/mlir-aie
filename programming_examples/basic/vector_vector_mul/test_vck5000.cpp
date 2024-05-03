@@ -30,7 +30,7 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
-constexpr int DMA_COUNT = 64;
+constexpr int DMA_COUNT = 256;
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {
