@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses="basicAlloc" %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-assign-buffer-addresses="basic-alloc" %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
 
 module @test {

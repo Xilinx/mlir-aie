@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc=False: (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -49,7 +49,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc=False: (
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses", basicAlloc=basic_alloc),
+        .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
     )
     .convert_scf_to_cf()
 )
