@@ -90,11 +90,11 @@ void registerToSPIRVTranslation();
 // Mainly copy-paste registerAllTranslations() to handle "mlir-to-llvmir" option
 // duplicated by aie-translate
 inline void registerAllTranslationsWithoutToLLVMIR() {
-  static bool initOnce = []() {
+  static bool initOnce = [] {
     registerFromLLVMIRTranslation();
     registerFromSPIRVTranslation();
     registerToCppTranslation();
-    // "mlir-to-llvmir" is now handle by aie::registerToLLVMIRTranslation();
+    // "mlir-to-llvmir" is now handled by aie::registerToLLVMIRTranslation();
     //registerToLLVMIRTranslation();
     registerToSPIRVTranslation();
     return true;

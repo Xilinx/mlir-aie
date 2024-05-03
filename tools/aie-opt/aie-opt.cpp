@@ -26,16 +26,13 @@
 #include "clang/CIR/Dialect/Passes.h"
 #include "clang/CIR/Passes.h"
 
-using namespace llvm;
-using namespace mlir;
-
 void version_printer(raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
 }
 
 int main(int argc, char **argv) {
 
-  registerAllPasses();
+  mlir::registerAllPasses();
   xilinx::registerConversionPasses();
   xilinx::AIE::registerAIEPasses();
   xilinx::AIEX::registerAIEXPasses();
@@ -43,7 +40,7 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();
 
-  DialectRegistry registry;
+  mlir::DialectRegistry registry;
   registerAllDialects(registry);
   xilinx::registerAllDialects(registry);
 
