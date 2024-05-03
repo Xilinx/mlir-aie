@@ -30,6 +30,7 @@
 
 #define DEBUG_TYPE "aievec-optimize"
 
+using namespace llvm;
 using namespace mlir;
 using namespace arith;
 using namespace vector;
@@ -60,7 +61,7 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   if (!shiftOp)
     return false;
 
-  VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
+  VectorType vType = cast<VectorType>(shiftOp->getResult(0).getType());
   int32_t elemSize = getElementSizeInBits(vType);
   auto constOp = cast<arith::ConstantOp>(shiftOp.getShift().getDefiningOp());
   int32_t shiftBytes = cast<IntegerAttr>(constOp.getValue()).getInt();
@@ -184,7 +185,7 @@ struct FoldAIEShiftAndBroadcast
       return failure();
     }
 
-    VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
+    VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
 
     rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType,
                                                      shiftOp.getLhs(), idx);
