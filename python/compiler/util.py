@@ -311,7 +311,8 @@ def compile_with_vectorization(
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
         mod_aie,
-        Pipeline().convert_linalg_to_affine_loops() + INPUT_WITH_ADDRESSES_PIPELINE(basicAlloc),
+        Pipeline().convert_linalg_to_affine_loops()
+        + INPUT_WITH_ADDRESSES_PIPELINE(basicAlloc),
         enable_ir_printing=debug,
     )
 
@@ -407,7 +408,9 @@ def compile_without_vectorization(
         enable_ir_printing=debug,
     )
     input_with_addresses = run_pipeline(
-        lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE(basicAlloc), enable_ir_printing=debug
+        lowered_linalg,
+        INPUT_WITH_ADDRESSES_PIPELINE(basicAlloc),
+        enable_ir_printing=debug,
     )
 
     for col, row, _ in generate_cores_list(str(module)):
