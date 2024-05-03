@@ -53,6 +53,27 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
     .convert_scf_to_cf()
 )
 
+INPUT_WITH_ADDRESSES_PIPELINE = (
+    lambda basic_alloc=False: (
+        Pipeline()
+        .lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass("aie-objectFifo-stateful-transform")
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-buffer-addresses", basicAlloc=basic_alloc),
+        )
+        .convert_scf_to_cf()
+    )
+)
+
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
@@ -996,7 +1017,7 @@ class FlowRunner:
                 r = do_run(
                     [
                         "aie-opt",
-                        "--aie-assign-buffer-addresses=basic-alloc",
+                        "--aie-assign-buffer-addresses=basicAlloc",
                         file_with_switchboxes,
                         "-o",
                         file_with_addresses,
