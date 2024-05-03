@@ -22,6 +22,7 @@
 #include "xrt/xrt_kernel.h"
 
 namespace po = boost::program_options;
+constexpr std::uint64_t DDR_AIE_ADDR_OFFSET = std::uint64_t{0x80000000};
 
 void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   if (!vm_in.count(name)) {
@@ -140,15 +141,10 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(5));
-  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(1));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(2));
-  auto bo_inC = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(0));
+  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(0));
+  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(0));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -161,19 +157,36 @@ int main(int argc, const char *argv[]) {
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
+  //memset(bufInstr, 0, 1 * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  //bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
-  uint64_t opcode = 1;
-  auto run = kernel(opcode, bo_inA, bo_inB, bo_out, bo_inC, bo_instr, uint32_t(instr_v.size()));
-  run.wait();
+  uint64_t opcode = 2;
+  //auto run = kernel(opcode, bo_instr, instr_v.size(), 
+  //                  bo_inA.address() + DDR_AIE_ADDR_OFFSET, 
+  //                  bo_inB.address() + DDR_AIE_ADDR_OFFSET, 
+  //                  bo_out.address() + DDR_AIE_ADDR_OFFSET);
+  //run.wait();
+  xrt::run aie_run(kernel);
+  aie_run.set_arg(0, opcode);
+  aie_run.set_arg(1, bo_instr);
+  aie_run.set_arg(2, uint32_t(bo_instr.size() / sizeof(int)));
+  aie_run.set_arg(3, bo_inA.address() + DDR_AIE_ADDR_OFFSET);
+  aie_run.set_arg(4, bo_inB.address() + DDR_AIE_ADDR_OFFSET);
+  aie_run.set_arg(5, bo_out.address() + DDR_AIE_ADDR_OFFSET);
+  aie_run.set_arg(6, 0);
+  aie_run.set_arg(7, 0);
+
+  aie_run.start();
+  aie_run.wait2(20000*std::chrono::milliseconds{1});
+
   if (verbosity >= 1)
     std::cout << "Kernel Done." << std::endl;
 
-  bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  //bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
