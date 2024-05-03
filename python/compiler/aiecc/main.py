@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_SWITCHBOXES_PIPELINE = (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc=False: (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -48,30 +48,10 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast"),
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-buffer-addresses", basicAlloc=basic_alloc),
     )
     .convert_scf_to_cf()
-)
-
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc=False: (
-        Pipeline()
-        .lower_affine()
-        .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass("aie-objectFifo-stateful-transform")
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-buffer-addresses", basicAlloc=basic_alloc),
-        )
-        .convert_scf_to_cf()
-    )
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -1003,40 +983,19 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_switchboxes = self.prepend_tmp("input_with_switchboxes.mlir")
-            pass_pipeline = INPUT_WITH_SWITCHBOXES_PIPELINE.materialize(module=True)
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            if opts.basic_alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(True).materialize(
+                    module=True
+                )
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
-                file_with_switchboxes,
+                file_with_addresses,
                 self.opts.verbose,
             )
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            if opts.basic_alloc_scheme:
-                r = do_run(
-                    [
-                        "aie-opt",
-                        "--aie-assign-buffer-addresses=basicAlloc",
-                        file_with_switchboxes,
-                        "-o",
-                        file_with_addresses,
-                    ],
-                )
-            else:
-                r = do_run(
-                    [
-                        "aie-opt",
-                        "--aie-assign-buffer-addresses",
-                        file_with_switchboxes,
-                        "-o",
-                        file_with_addresses,
-                    ],
-                )
-            if r.returncode != 0:
-                print("Error encountered while assigning buffer addresses. Exiting...")
-                print(r.stderr, file=sys.stderr)
-                sys.exit(r.returncode)
 
             cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
