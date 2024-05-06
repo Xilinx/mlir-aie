@@ -283,7 +283,7 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   endif()
 endif()
 
-
+add_subdirectory(example)
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
 add_subdirectory(programming_examples)
 add_subdirectory(programming_guide)
