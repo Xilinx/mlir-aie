@@ -103,9 +103,16 @@ def VectorSetI512I256IntrOp :
 
 // ----- SRS ----- 
 
-def I512V32Acc32SrsIntrOp :
-    AIEVec2_IntrOp<"I512.v32.acc32.srs",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+def I256V16Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I256V16Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
@@ -117,9 +124,23 @@ def I256V32Acc32SrsIntrOp :
                    I32:$shift,
                    I32:$sign)>;
 
+def I256V8Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v8.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
 def I512V16Acc64SrsIntrOp :
     AIEVec2_IntrOp<"I512.v16.acc64.srs",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I512V32Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I512.v32.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
