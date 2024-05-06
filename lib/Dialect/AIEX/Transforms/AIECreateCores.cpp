@@ -113,8 +113,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
         for (unsigned i = 0; i < callOperands.size(); i++) {
           Value operand = callOperands[i]; // Should be produced by an AllocOp
           MemRefType t = nullptr;
-          if (operand.getType().isa<MemRefType>()) {
-            t = operand.getType().cast<MemRefType>();
+          if (llvm::isa<MemRefType>(operand.getType())) {
+            t = llvm::cast<MemRefType>(operand.getType());
           } else if (operand.getType().isIntOrFloat()) {
             // promote scalar type to memref type
             int64_t shape[1] = {1};

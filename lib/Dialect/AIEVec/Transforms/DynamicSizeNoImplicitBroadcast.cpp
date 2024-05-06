@@ -27,6 +27,7 @@
 
 #define DEBUG_TYPE "dynamic-size-no-implicit-broadcast"
 
+using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aievec;
@@ -68,8 +69,7 @@ struct DynamicSizeNoImplicitBroadcastPattern : RewritePattern {
 
     // If ConstantOp is 1 for Integer/Index, replace cmpiOp as constant 0
     auto constantOp = cast<arith::ConstantOp>(rhsOp);
-    if (constantOp.getValue().cast<IntegerAttr>().getValue().getZExtValue() !=
-        1)
+    if (cast<IntegerAttr>(constantOp.getValue()).getValue().getZExtValue() != 1)
       return failure();
 
     // Check the DimOp's input is a dynamic dim from the given index
@@ -78,7 +78,7 @@ struct DynamicSizeNoImplicitBroadcastPattern : RewritePattern {
       return failure();
 
     auto index =
-        constIndexOp.getValue().cast<IntegerAttr>().getValue().getZExtValue();
+        cast<IntegerAttr>(constIndexOp.getValue()).getValue().getZExtValue();
     auto inputDimType = dyn_cast<ShapedType>(lhsOp->getOperand(0).getType());
     if (!inputDimType || !inputDimType.isDynamicDim(index))
       return failure();
