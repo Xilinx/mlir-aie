@@ -152,6 +152,14 @@ llvm.func @vbroadcast8_i512(%val : i32) -> vector<64xi8> {
     llvm.return %0 : vector<64xi8>
 }
 
+// CHECK-LABEL: define <32 x i16> @vbroadcast16_i512
+llvm.func @vbroadcast16_i512(%val : i32) -> vector<32xi16> {
+    // CHECK: call <32 x i16> @llvm.aie2.vbroadcast16.I512(
+    // CHECK-SAME: i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vbroadcast16.I512"(%val) : (i32) -> vector<32xi16>
+    llvm.return %0 : vector<32xi16>
+}
+
 // CHECK-LABEL: define <16 x i32> @vbroadcast32_i512
 llvm.func @vbroadcast32_i512(%val : i32) -> vector<16xi32> {
     // CHECK: call <16 x i32> @llvm.aie2.vbroadcast32.I512(
@@ -166,6 +174,14 @@ llvm.func @vbroadcast16_bf512(%val : bf16) -> vector<32xbf16> {
     // CHECK-SAME: bfloat %{{[0-9]+}})
     %0 = "xllvm.intr.aie2.vbroadcast16.bf512"(%val) : (bf16) -> vector<32xbf16>
     llvm.return %0 : vector<32xbf16>
+}
+
+// CHECK-LABEL: define <16 x float> @vbroadcastfloat_i512
+llvm.func @vbroadcastfloat_i512(%val : f32) -> vector<16xf32> {
+    // CHECK: call <16 x float> @llvm.aie2.vbroadcastfloat.I512(
+    // CHECK-SAME: float %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vbroadcastfloat.I512"(%val) : (f32) -> vector<16xf32>
+    llvm.return %0 : vector<16xf32>
 }
 
 // ----- EXT ----- 
