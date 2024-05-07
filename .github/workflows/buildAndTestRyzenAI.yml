@@ -6,6 +6,7 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
+  merge_queue:
 
   # Allows you to run this workflow manually from the Actions tab by
   # selecting CI and then "Run workflow" menu on the right branch
