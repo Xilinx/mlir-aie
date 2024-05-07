@@ -1050,8 +1050,8 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     if (sources.size() != 2 && sources.size() != 4) {
-      op.emitWarning() << "aievec.concat with the number of source vectors = "
-                       << sources.size() << " is not supported.\n";
+      op.emitWarning() << "aievec.concat with " << sources.size()
+                       << " operands is not supported.\n";
       return failure();
     }
 
@@ -1081,10 +1081,9 @@ public:
               {VectorType::get({16}, rewriter.getI32Type()),
                VectorType::get({16}, rewriter.getI32Type())}));
     } else {
-      op.emitWarning() << "aievec.concat with source vector size = "
-                       << srcVectorSize
-                       << ", and result vector size = " << resultVectorSize
-                       << " is not supported.\n";
+      op.emitWarning() << "aievec.concat with " << srcVectorSize
+                       << "-bit operands, and " << resultVectorSize
+                       << "-bit result is not supported.\n";
       return failure();
     }
 
