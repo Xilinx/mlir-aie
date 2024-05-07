@@ -18,6 +18,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 
+using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aievec;
@@ -281,10 +282,10 @@ LogicalResult SRSOp::verify() {
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
-  if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
+  if (isa<IntegerType>(atype) && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (atype.isa<FloatType>() && stypeWidth != 16 &&
+  else if (isa<FloatType>(atype) && stypeWidth != 16 &&
            stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "same as the result vector");
@@ -345,7 +346,7 @@ OpFoldResult UPSOp::fold(FoldAdaptor adaptor) {
   auto srcDefOp = getSource().getDefiningOp();
   if (!srcDefOp)
     return nullptr;
-  auto srsOp = dyn_cast<SRSOp>(srcDefOp);
+  auto srsOp = llvm::dyn_cast<SRSOp>(srcDefOp);
   if (!srsOp)
     return nullptr;
   return srsOp.getSource();
@@ -540,8 +541,14 @@ LogicalResult BroadcastScalarOp::verify() {
   if (!resultType)
     return emitError("requires vector type");
 
-  if (!sourceType)
-    return emitError("requires source type");
+  if (!sourceType.isa<IntegerType, FloatType>())
+    return emitError("requires source type to be integer or float");
+
+  Type resultElemType = resultType.getElementType();
+  if (sourceType != resultElemType) {
+    return emitError("the element type of result vector must be the same as "
+                     "the source type");
+  }
 
   return success();
 }
@@ -652,13 +659,13 @@ void aievec::FMAOp::print(OpAsmPrinter &p) {
 template <typename T>
 LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
-  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
+  auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
   if (!resultType)
     return op.emitError("requires vector type");
 
@@ -694,15 +701,15 @@ LogicalResult verifyMulFMAOp(T op) {
                         "operand vectors must match");
 
   // The datatype of accumulator must always be greater width
-  if (atype.isa<IntegerType>()) {
-    if (!ltype.isa<IntegerType>())
+  if (isa<IntegerType>(atype)) {
+    if (!isa<IntegerType>(ltype))
       return op.emitError("Integer result must have integer operands");
 
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return op.emitError("the element type of accumulator must have "
                           "wider width than that of the operand vectors");
-  } else if (atype.isa<FloatType>()) {
-    if (!ltype.isa<FloatType>())
+  } else if (isa<FloatType>(atype)) {
+    if (!isa<FloatType>(ltype))
       return op.emitError("Floating point result must have "
                           "floating point operands");
 
@@ -851,13 +858,13 @@ void aievec::FMAElemOp::print(OpAsmPrinter &p) {
 template <typename T>
 LogicalResult verifyMulFMAElemOp(T op) {
   // Verify the types
-  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
+  auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
 
   if (!resultType)
     return op.emitError("requires vector type");
@@ -887,15 +894,15 @@ LogicalResult verifyMulFMAElemOp(T op) {
                         "operand vectors must match");
 
   // The integer datatype of accumulator must always be greater width
-  if (atype.isa<IntegerType>()) {
-    if (!ltype.isa<IntegerType>())
+  if (isa<IntegerType>(atype)) {
+    if (!isa<IntegerType>(ltype))
       return op.emitError("Integer result must have integer operands");
 
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return op.emitError("the element type of accumulator must have "
                           "wider width than that of the operand vectors");
-  } else if (atype.isa<FloatType>()) {
-    if (!ltype.isa<FloatType>())
+  } else if (isa<FloatType>(atype)) {
+    if (!isa<FloatType>(ltype))
       return op.emitError("Floating point result must have "
                           "floating point operands");
   }
@@ -1016,9 +1023,9 @@ void aievec::SubOp::print(OpAsmPrinter &p) {
 template <typename T>
 LogicalResult verifyAddSubOp(T op) {
   // Verify the types
-  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
-  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
+  auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
+  auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
 
   if (!lhsType || !rhsType || !resultType)
     return op.emitError("requires vector type");
@@ -1191,7 +1198,7 @@ ConcatOp::inferReturnTypes(MLIRContext *, std::optional<Location>,
   }
   inferredReturnTypes.push_back(VectorType::get(
       {totalLength},
-      srcs[0].getType().dyn_cast<VectorType>().getElementType()));
+      llvm::dyn_cast<VectorType>(srcs[0].getType()).getElementType()));
   return success();
 }
 
@@ -1418,8 +1425,8 @@ void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 template <typename T>
 LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
-  auto sourceType = op.getSource().getType().template dyn_cast<VectorType>();
-  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
+  auto sourceType = llvm::dyn_cast<VectorType>(op.getSource().getType());
+  auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
   if (!sourceType || !resultType)
     return op.emitError("requires vector type");
 
@@ -1497,6 +1504,30 @@ ParseResult PackOp::parse(OpAsmParser &parser, OperationState &result) {
 
 ParseResult UnpackOp::parse(OpAsmParser &parser, OperationState &result) {
   return parsePackUnpackOp(parser, result);
+}
+
+//===----------------------------------------------------------------------===//
+// ExtElemOp
+//===----------------------------------------------------------------------===//
+
+// Verify Extract Element op.
+LogicalResult ExtElemOp::verify() {
+  // Verify the types
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+
+  if (!sourceType)
+    return emitError("source requires vector type");
+
+  // The element type of vectors must always be the same
+  Type stype = sourceType.getElementType();
+  Type rtype = getResult().getType();
+
+  if (stype != rtype) {
+    return emitError("the type of result must be the same as the element "
+                     "type of source vector");
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1727,8 +1758,8 @@ void aievec::FMAConvOp::print(OpAsmPrinter &p) {
 template <typename T>
 LogicalResult verifyMulFMAConvOp(T op) {
   // Verify the types
-  auto lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
-  auto rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+  auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
+  auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
@@ -1740,7 +1771,7 @@ LogicalResult verifyMulFMAConvOp(T op) {
     return op.emitError(
         "M and N should be larger than 0 and 2*M should be no less than M+N-1");
 
-  auto resultType = op.getResult().getType().template dyn_cast<VectorType>();
+  auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
 
   if (!resultType)
     return op.emitError("requires vector type");
@@ -1756,8 +1787,8 @@ LogicalResult verifyMulFMAConvOp(T op) {
     return op.emitError("The element type of lhs and rhs "
                         "operand vectors must match");
 
-  if (!ltype.isa<IntegerType>() || !rtype.isa<IntegerType>() ||
-      !atype.isa<IntegerType>()) {
+  if (!isa<IntegerType>(ltype) || !isa<IntegerType>(rtype) ||
+      !isa<IntegerType>(atype)) {
     return op.emitError("requires integer type");
   }
 
