@@ -303,25 +303,17 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         std::string targetLower = StringRef(TK.TargetArch).lower();
         SmallVector<std::string, 10> flags;
         flags.push_back("-O2");
-#ifdef _WIN32
-        // TODO: Windows tries to load the wrong builtins path.
-        std::string targetFlag = "--target=" + targetLower;
-#else
         std::string targetFlag = "--target=" + targetLower + "-none-elf";
-#endif
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.InstallDir);
         sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
                           "me_basic.o");
         flags.emplace_back(meBasicPath);
-#ifndef _WIN32
-        // TODO: No libc build on windows
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");
         flags.emplace_back(libcPath);
-#endif
         flags.push_back("-Wl,--gc-sections");
         std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
         flags.push_back(ldScriptFlag);

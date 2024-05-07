@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py --basic-alloc-scheme %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.buffer' op in Column 1 and Row 1 is accessed from an unreachable tile in Column 4 and Row 4
 
 module @test {

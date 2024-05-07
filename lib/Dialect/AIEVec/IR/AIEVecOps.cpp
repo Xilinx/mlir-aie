@@ -541,8 +541,14 @@ LogicalResult BroadcastScalarOp::verify() {
   if (!resultType)
     return emitError("requires vector type");
 
-  if (!sourceType)
-    return emitError("requires source type");
+  if (!sourceType.isa<IntegerType, FloatType>())
+    return emitError("requires source type to be integer or float");
+
+  Type resultElemType = resultType.getElementType();
+  if (sourceType != resultElemType) {
+    return emitError("the element type of result vector must be the same as "
+                     "the source type");
+  }
 
   return success();
 }
@@ -1498,6 +1504,30 @@ ParseResult PackOp::parse(OpAsmParser &parser, OperationState &result) {
 
 ParseResult UnpackOp::parse(OpAsmParser &parser, OperationState &result) {
   return parsePackUnpackOp(parser, result);
+}
+
+//===----------------------------------------------------------------------===//
+// ExtElemOp
+//===----------------------------------------------------------------------===//
+
+// Verify Extract Element op.
+LogicalResult ExtElemOp::verify() {
+  // Verify the types
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+
+  if (!sourceType)
+    return emitError("source requires vector type");
+
+  // The element type of vectors must always be the same
+  Type stype = sourceType.getElementType();
+  Type rtype = getResult().getType();
+
+  if (stype != rtype) {
+    return emitError("the type of result must be the same as the element "
+                     "type of source vector");
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

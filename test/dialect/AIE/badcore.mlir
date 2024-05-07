@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py --basic-alloc-scheme %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.core' op failed to verify that op exists in a core tile
 
 module @test {
