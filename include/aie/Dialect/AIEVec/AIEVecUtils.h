@@ -46,7 +46,7 @@ inline mlir::VectorType createVectorType(unsigned lanes,
 
 // Return the size (in bits) of the underlying element type of the vector
 inline int32_t getElementSizeInBits(mlir::VectorType type) {
-  return type.cast<mlir::ShapedType>().getElementTypeBitWidth();
+  return llvm::cast<mlir::ShapedType>(type).getElementTypeBitWidth();
 }
 
 // Return the number of lanes along the vectorized dimension for the vector
@@ -147,7 +147,7 @@ flattenedStridedExpr(llvm::ArrayRef<int64_t> sizes,
 
 // Construct a linearized affine expression for the upd op.
 inline mlir::AffineExpr constructLinearizedAffineExprForUPDOp(UPDOp updOp) {
-  auto memRefType = updOp.getSource().getType().cast<mlir::MemRefType>();
+  auto memRefType = llvm::cast<mlir::MemRefType>(updOp.getSource().getType());
   mlir::MLIRContext *context = memRefType.getContext();
 
   llvm::SmallVector<mlir::AffineExpr, 8> exprVec;
@@ -164,7 +164,8 @@ inline mlir::AffineExpr constructLinearizedAffineExprForUPDOp(UPDOp updOp) {
 
       for (auto index : apOf.getMapOperands())
         if (auto cIdx = index.getDefiningOp<mlir::arith::ConstantOp>()) {
-          auto idxVal = cIdx.getValue().cast<mlir::IntegerAttr>().getValue();
+          auto idxVal =
+              llvm::cast<mlir::IntegerAttr>(cIdx.getValue()).getValue();
           unsigned idx = idxVal.getSExtValue();
           indexExprs.push_back(getAffineConstantExpr(idx, context));
         } else {
@@ -176,7 +177,7 @@ inline mlir::AffineExpr constructLinearizedAffineExprForUPDOp(UPDOp updOp) {
 
       exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
     } else if (auto cOp = value.getDefiningOp<mlir::arith::ConstantOp>()) {
-      auto idxVal = cOp.getValue().cast<mlir::IntegerAttr>().getValue();
+      auto idxVal = llvm::cast<mlir::IntegerAttr>(cOp.getValue()).getValue();
       unsigned idx = idxVal.getSExtValue();
       exprVec.push_back(getAffineConstantExpr(idx, context));
     } else {
