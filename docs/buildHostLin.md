@@ -123,9 +123,9 @@ You will...
 
     ```
     cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.8.0-rc2+_6.8.0-rc2-g82a462b7144c-4_amd64.deb
-    sudo dpkg -i linux-image-6.8.0-rc2+_6.8.0-rc2-g82a462b7144c-4_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.8.0-rc2-g82a462b7144c-4_amd64.deb
+    sudo dpkg -i linux-headers-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb
+    sudo dpkg -i linux-image-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb 
+    sudo dpkg -i linux-libc-dev_6.8.8-g7575202b6461-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
