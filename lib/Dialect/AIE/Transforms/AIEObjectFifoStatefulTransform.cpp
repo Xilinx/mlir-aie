@@ -171,13 +171,17 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
-  // the objectFifo broadcasts to multiple tiles, or if one of the consumers
-  // or the producer wants to use the multi-dimensional address generation
-  // features of the DMA.
+  // the objectFifo broadcasts to multiple tiles, if one of the consumers or
+  // the producer wants to use the multi-dimensional address generation
+  // features of the DMA, if the objectFifo is part of a LinkOp, or if the
+  // via_DMA attribute of the objectFifo is set.
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
     bool isUsedInLinkOp = false;
+
+    if (createOp.getVia_DMA())
+      return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
@@ -308,8 +312,8 @@ struct AIEObjectFifoStatefulTransformPass
       return;
 
     std::vector<BufferOp> buffers;
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
@@ -333,16 +337,14 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        auto fifoInType = linkOp->getInputObjectFifos()[0]
-                              .getElemType()
-                              .cast<AIEObjectFifoType>();
-        auto elemInType = fifoInType.getElementType().cast<MemRefType>();
+        auto fifoInType = llvm::cast<AIEObjectFifoType>(
+            linkOp->getInputObjectFifos()[0].getElemType());
+        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
         int inSize = elemInType.getNumElements();
 
-        auto fifoOutType = linkOp->getOutputObjectFifos()[0]
-                               .getElemType()
-                               .cast<AIEObjectFifoType>();
-        auto elemOutType = fifoOutType.getElementType().cast<MemRefType>();
+        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+            linkOp->getOutputObjectFifos()[0].getElemType());
+        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
 
         if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
           if (op.name() != fifoIn.name())
@@ -488,8 +490,8 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int len = elemType.getNumElements();
 
     // search for the buffers/locks (based on if this objFifo has a link)
@@ -644,8 +646,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (numBlocks == 0)
       return;
 
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int lenOut = elemType.getNumElements();
     int acqNum = 1;
     int relNum = 1;
@@ -668,8 +670,9 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoIns().size();
           } else {
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              auto fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
-              auto elemType = fifoType.getElementType().cast<MemRefType>();
+              auto fifoType =
+                  llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoIn.name() == op.name())
                 break;
               extraOffset += elemType.getNumElements();
@@ -683,8 +686,9 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoOuts().size();
           } else {
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              auto fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
-              auto elemType = fifoType.getElementType().cast<MemRefType>();
+              auto fifoType =
+                  llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoOut.name() == op.name())
                 break;
               extraOffset += elemType.getNumElements();
@@ -692,9 +696,10 @@ struct AIEObjectFifoStatefulTransformPass
           }
         } else {
           if (target != op) {
-            auto targetFifo = target.getElemType().cast<AIEObjectFifoType>();
+            auto targetFifo =
+                llvm::cast<AIEObjectFifoType>(target.getElemType());
             auto targetElemType =
-                targetFifo.getElementType().cast<MemRefType>();
+                llvm::cast<MemRefType>(targetFifo.getElementType());
             lenOut = targetElemType.getNumElements();
           }
         }
@@ -1221,7 +1226,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         builder.setInsertionPointAfter(createOp);
-        auto datatype = createOp.getElemType().cast<AIEObjectFifoType>();
+        auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
@@ -1592,8 +1597,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto sym_name = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType =
-          createOp.getElemType().cast<AIEObjectFifoType>().getElementType();
+      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
+                            .getElementType();
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);

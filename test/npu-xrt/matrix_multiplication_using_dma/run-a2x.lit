@@ -1,7 +1,7 @@
 // (c) Copyright 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai
+// REQUIRES: ryzen_ai, chess
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm.cc -o ./mm.o
 // RUN: aie2xclbin --use-chess --xclbin-name=aie2.xclbin --npu-insts-name=insts2.txt --tmpdir=aie2xclbin.prj -v %S/aie.mlir

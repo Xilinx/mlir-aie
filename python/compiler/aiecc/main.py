@@ -48,7 +48,6 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-create-packet-flows")
         .add_pass("aie-lower-multicast"),
     )
     .convert_scf_to_cf()
@@ -581,7 +580,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["in", "tmp", "out"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -624,9 +623,7 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
-                    "--aie-lower-multicast",
                     file_with_addresses,
                     "-o",
                     file_physical,

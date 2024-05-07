@@ -352,7 +352,7 @@ def AIEVec_BroadcastScalarOp:
   AIEVec_Op<"broadcast_scalar", [
     Pure
   ]>,
-  Arguments<(ins AnyType:$source)>,
+  Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast scalar";
   let description = [{
