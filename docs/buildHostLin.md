@@ -86,7 +86,7 @@ You will...
 1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
 
     ```
-    git clone --branch iommu_sva_part4_v6_v6.8_rc2 https://github.com/AMDESE/linux.git
+    git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
