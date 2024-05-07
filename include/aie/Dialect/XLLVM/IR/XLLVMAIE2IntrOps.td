@@ -172,6 +172,20 @@ def ConcatI512I256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$lhs,
                    VectorOfLengthAndType<[8], [I32]>:$rhs)>;
 
+def ConcatI1024I256IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src0,
+                   VectorOfLengthAndType<[8], [I32]>:$src1,
+                   VectorOfLengthAndType<[8], [I32]>:$src2,
+                   VectorOfLengthAndType<[8], [I32]>:$src3)>;
+
+def ConcatI1024I512IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs)>;
+
 // ----- SHUFFLE ----- 
 
 def VectorShuffleIntrOp :
