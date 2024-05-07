@@ -59,6 +59,40 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.concat.I1024.I256` (::xilinx::xllvm::ConcatI1024I256IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src0` | vector of 32-bit signless integer values of length 8
+| `src1` | vector of 32-bit signless integer values of length 8
+| `src2` | vector of 32-bit signless integer values of length 8
+| `src3` | vector of 32-bit signless integer values of length 8
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.concat.I1024.I512` (::xilinx::xllvm::ConcatI1024I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16
+| `rhs` | vector of 32-bit signless integer values of length 16
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.concat.I512.I256` (::xilinx::xllvm::ConcatI512I256IntrOp)
 
 #### Operands:
