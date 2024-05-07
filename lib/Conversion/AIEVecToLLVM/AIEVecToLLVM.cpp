@@ -1267,8 +1267,6 @@ public:
 
       if (srcBitWidth < 32) {
         src = rewriter.create<LLVM::SExtOp>(loc, rewriter.getI32Type(), src);
-      } else if (srcBitWidth > 32) {
-        src = rewriter.create<LLVM::TruncOp>(loc, rewriter.getI32Type(), src);
       }
 
       if (resultBitWidth == 8) {
