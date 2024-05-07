@@ -992,11 +992,11 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            if opts.basic_alloc_scheme:
+            if opts.alloc_scheme:
                 r = do_run(
                     [
                         "aie-opt",
-                        "--aie-assign-buffer-addresses=basic-alloc",
+                        "--aie-assign-buffer-addresses=alloc-scheme=basic-sequential",
                         file_with_switchboxes,
                         "-o",
                         file_with_addresses,

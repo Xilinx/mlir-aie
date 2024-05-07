@@ -27,8 +27,8 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
   let options = [
-    Option<"clBasicAlloc", "basic-alloc", "bool", /*default=*/"false",
-            "Flag to enable the basic sequential allocation scheme (not bank-aware).">
+    Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
+           "Choose allocation scheme; possibilities: basic-sequential, bank-aware. By default, bank-aware is tried followed by basic-sequential if it fails.">,
   ];
 }
 

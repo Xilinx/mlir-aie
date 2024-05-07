@@ -139,11 +139,10 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
-        "--basic-alloc-scheme",
-        dest="basic_alloc_scheme",
-        default=False,
-        action="store_true",
-        help="Use basic memory allocation scheme for AIE buffer address assignment",
+        "--alloc-scheme",
+        dest="alloc_scheme",
+        default=None,
+        help="Choose allocation scheme for AIE buffer address assignment; possibilities: basic-sequential, bank-aware. By default, bank-aware is tried followed by basic-sequential if it fails.",
     )
     parser.add_argument(
         "--aie-generate-airbin",

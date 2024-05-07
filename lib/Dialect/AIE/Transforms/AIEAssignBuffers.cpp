@@ -53,7 +53,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
   return success();
 }
 
-LogicalResult basicAllocation(TileOp &tile) {
+LogicalResult basicAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
     return failure();
@@ -379,15 +379,21 @@ struct AIEAssignBufferAddressesPass
     });
 
     // Select allocation scheme
-    if (clBasicAlloc) {
+    if (clBasicAlloc == "basic-sequential") {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = basicAllocation(tile); res.failed())
+          return signalPassFailure();
+      }
+    } else if (clBasicAlloc == "bank-aware") {
+      for (auto tile : device.getOps<TileOp>()) {
+        if (auto res = simpleBankAwareAllocation(tile); res.failed())
           return signalPassFailure();
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = simpleBankAwareAllocation(tile); res.failed())
-          return signalPassFailure();
+          if (auto res2 = basicAllocation(tile); res2.failed())
+            return signalPassFailure();
       }
     }
   }
