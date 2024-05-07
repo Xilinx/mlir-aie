@@ -239,7 +239,7 @@ Effects: `MemoryEffects::Effect{}`
 
 | Operand | Description |
 | :-----: | ----------- |
-| `source` | any type
+| `source` | bfloat16 type or 32-bit float or 32-bit signless integer or 16-bit signless integer or 8-bit signless integer
 
 #### Results:
 

@@ -290,7 +290,22 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `value` | bfloat16 type
+| `src` | bfloat16 type
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vbroadcast16.I512` (::xilinx::xllvm::VectorBroadcast16I512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | 32-bit signless integer
 
 #### Results:
 
@@ -305,7 +320,7 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `value` | 32-bit signless integer
+| `src` | 32-bit signless integer
 
 #### Results:
 
@@ -320,7 +335,22 @@ Types and operations for external LLVM dialect
 
 | Operand | Description |
 | :-----: | ----------- |
-| `value` | 32-bit signless integer
+| `src` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vbroadcastfloat.I512` (::xilinx::xllvm::VectorBroadcastfloatI512IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | 32-bit float
 
 #### Results:
 
