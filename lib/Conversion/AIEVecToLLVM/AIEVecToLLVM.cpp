@@ -1249,6 +1249,15 @@ public:
     VectorType resultType = cast<VectorType>(result.getType());
     Type resultScaTy = resultType.getElementType();
     unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    if (resultVectorSize != 512) {
+      op.emitWarning()
+          << "aievec.broadcast_scalar conversion with result vector size "
+          << resultVectorSize << " is not implemented.\n";
+      return failure();
+    }
 
     // Integer types
     if (llvm::isa<IntegerType>(resultScaTy)) {
@@ -1257,16 +1266,15 @@ public:
       unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
 
       if (srcBitWidth < 32) {
-        src = rewriter.create<LLVM::SExtOp>(loc, rewriter.getI32Type(),
-                                            adaptor.getSource());
-      } else if (srcBitWidth > 32) {
-        src = rewriter.create<LLVM::TruncOp>(loc, rewriter.getI32Type(),
-                                             adaptor.getSource());
+        src = rewriter.create<LLVM::SExtOp>(loc, rewriter.getI32Type(), src);
       }
 
       if (resultBitWidth == 8) {
         rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast8I512IntrOp>(
             op, VectorType::get({64}, rewriter.getI8Type()), src);
+      } else if (resultBitWidth == 16) {
+        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast16I512IntrOp>(
+            op, VectorType::get({32}, rewriter.getI16Type()), src);
       } else if (resultBitWidth == 32) {
         rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast32I512IntrOp>(
             op, VectorType::get({16}, rewriter.getI32Type()), src);
@@ -1281,6 +1289,10 @@ public:
       if (resultBitWidth == 16) {
         rewriter.replaceOpWithNewOp<xllvm::VectorBroadcast16BF512IntrOp>(
             op, VectorType::get({32}, rewriter.getBF16Type()),
+            adaptor.getSource());
+      } else if (resultBitWidth == 32) {
+        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcastfloatI512IntrOp>(
+            op, VectorType::get({16}, rewriter.getF32Type()),
             adaptor.getSource());
       } else {
         op.emitWarning()

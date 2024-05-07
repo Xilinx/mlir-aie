@@ -134,17 +134,27 @@ def Vector16AccFloatToV16BF16IntrOp :
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
+
+def VectorBroadcast16I512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast16.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast32I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast32.I512",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast16BF512IntrOp :
     AIEVec2_IntrOp<"vbroadcast16.bf512",
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-    Arguments<(ins BF16:$value)>;
+    Arguments<(ins BF16:$src)>;
+
+def VectorBroadcastfloatI512IntrOp :
+    AIEVec2_IntrOp<"vbroadcastfloat.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins F32:$src)>;
 
 // ----- EXT ----- 
 
