@@ -201,6 +201,7 @@ You will...
        ```
        cd $XDNA_SRC_DIR/xrt/build/Release
        sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xrt.deb
+       sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xbflash2.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
