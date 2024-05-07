@@ -267,12 +267,13 @@ You will...
     build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6 virtualenv
       ```
 
-1. Install g++13 needed for some programming examples:
+1. Install g++13 and opencv needed for some programming examples:
 
    ```
    sudo add-apt-repository ppa:ubuntu-toolchain-r/test
    sudo apt update
    sudo apt install gcc-13 g++-13 -y
+   sudo apt install libopencv-dev python3-opencv
    ```
 
 1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
