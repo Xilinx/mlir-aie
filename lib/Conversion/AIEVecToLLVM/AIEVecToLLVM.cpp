@@ -1516,7 +1516,7 @@ public:
     }
 
     // create truncation op (and bitcast op)
-    if (resultType.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(resultType)) {
       if (resultBitWidth < 32) {
         rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
       } else {
