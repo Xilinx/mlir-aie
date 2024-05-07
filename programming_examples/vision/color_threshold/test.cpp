@@ -21,8 +21,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "OpenCVUtils.h"
-#include "xrtUtils.h"
+#include "test_utils.h"
 
 // #define IMAGE_WIDTH_IN 256
 // #define IMAGE_HEIGHT_IN 256
@@ -67,22 +66,7 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
 
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    return 1;
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  test_utils::parse_options(argc, argv, desc, vm);
 
   /*
    ****************************************************************************
@@ -90,7 +74,7 @@ int main(int argc, const char *argv[]) {
    ****************************************************************************
    */
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
@@ -104,8 +88,9 @@ int main(int argc, const char *argv[]) {
   xrt::device device;
   xrt::kernel kernel;
 
-  initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
-                    vm["kernel"].as<std::string>());
+  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
+                                   vm["xclbin"].as<std::string>(),
+                                   vm["kernel"].as<std::string>());
 
   /*
    ****************************************************************************

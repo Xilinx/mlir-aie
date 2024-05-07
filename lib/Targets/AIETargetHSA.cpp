@@ -14,7 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h" // Eddie added to get the IPU func ops
+#include "mlir/Dialect/Func/IR/FuncOps.h" // Eddie added to get the NPU func ops
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -95,7 +95,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Looping over every Memcpy operation so we take the correct number of
   // buffers
   int num_ops = 0;
-  for (auto op : funcOp.getOps<IpuDmaMemcpyNdOp>()) {
+  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
     // Getting the IDs of the buffers
     auto memref = op.getMemref();
     Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
@@ -117,7 +117,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   output << "\tuint64_t packet_id = 0;\n";
 
   int op_count = 0;
-  for (auto op : funcOp.getOps<IpuDmaMemcpyNdOp>()) {
+  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
     auto dev = funcOp->getParentOfType<AIE::DeviceOp>();
     if (!dev) {
       op.emitOpError("couldn't get DeviceOp");

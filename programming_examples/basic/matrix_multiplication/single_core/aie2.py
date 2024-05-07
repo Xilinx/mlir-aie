@@ -9,6 +9,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+import aie.utils.trace as trace_utils
 
 
 def my_matmul():
@@ -26,7 +27,7 @@ def my_matmul():
 
     vectorized = True
     enable_tracing = False
-    trace_size = 16384
+    trace_size = 65536
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -54,7 +55,7 @@ def my_matmul():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.ipu)
+        @device(AIEDevice.npu)
         def device_body():
             memref_a_ty = T.memref(m, k, T.bf16())
             memref_b_ty = T.memref(k, n, T.bf16())
@@ -174,85 +175,14 @@ def my_matmul():
             )
             def sequence(A, B, C):
 
-                # Configure tracing, see https://github.com/Xilinx/mlir-aie/blob/resnet/docs/Tracing.md
                 if enable_tracing:
-                    # 0x340D0: Trace Control 0
-                    #          0xAABB---C
-                    #            AA        <- Event to stop trace capture
-                    #              BB      <- Event to start trace capture
-                    #                   C  <- Trace mode, 00=event=time, 01=event-PC, 10=execution
-                    # Configure so that "Event 1" (always true) causes tracing to start
-                    ipu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340D0,
-                        value=0x00010000,
-                    )
-                    # 0x340D4: Trace Control 1
-                    ipu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340D4,
-                        value=0x00000000,
-                    )
-                    # 0x340E0: Trace Event Group 1  (Which events to trace)
-                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    ipu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340E0,
-                        value=0x4B222125,
-                    )
-                    # 0x340E4: Trace Event Group 2  (Which events to trace)
-                    #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
-                    ipu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x340E4,
-                        value=0x2D2C1A4F,
-                    )
-
-                    ipu_write32(
-                        column=compute_tile2_col,
-                        row=compute_tile2_row,
-                        address=0x3FF00,
-                        value=0x00000121,
-                    )
-
-                    # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
-                    # out to host DDR memory
-                    trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
-                    output_size = C_sz_in_bytes
-                    ipu_writebd_shimtile(
-                        bd_id=trace_bd_id,
-                        buffer_length=trace_size,
-                        buffer_offset=output_size,
-                        enable_packet=0,
-                        out_of_order_id=0,
-                        packet_id=0,
-                        packet_type=0,
-                        column=0,
-                        column_num=1,
-                        d0_size=0,
-                        d0_stride=0,
-                        d1_size=0,
-                        d1_stride=0,
-                        d2_stride=0,
+                    trace_utils.configure_simple_tracing_aie2(
+                        compute_tile2,
+                        shim_tile,
                         ddr_id=2,
-                        iteration_current=0,
-                        iteration_size=0,
-                        iteration_stride=0,
-                        lock_acq_enable=0,
-                        lock_acq_id=0,
-                        lock_acq_val=0,
-                        lock_rel_id=0,
-                        lock_rel_val=0,
-                        next_bd=0,
-                        use_next_bd=0,
-                        valid_bd=1,
+                        size=trace_size,
+                        offset=C_sz_in_bytes,
                     )
-                    # Set start BD to our shim bd_Id (3)
-                    ipu_write32(column=0, row=0, address=0x1D20C, value=trace_bd_id)
 
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
@@ -265,7 +195,7 @@ def my_matmul():
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
-                    ipu_dma_memcpy_nd(
+                    npu_dma_memcpy_nd(
                         metadata="outC",
                         bd_id=0,
                         mem=C,
@@ -281,7 +211,7 @@ def my_matmul():
                             * word_size_in
                             // 4
                         )
-                        ipu_dma_memcpy_nd(
+                        npu_dma_memcpy_nd(
                             metadata="inA",
                             bd_id=2 * tile_row + 1,
                             mem=A,
@@ -289,7 +219,7 @@ def my_matmul():
                             sizes=[N_div_n, K_div_k, m, k_in_i32s],
                             strides=[0, k_in_i32s, K_in_i32s],
                         )
-                        ipu_dma_memcpy_nd(
+                        npu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
@@ -297,7 +227,7 @@ def my_matmul():
                             strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                         )
 
-                    ipu_sync(column=0, row=0, direction=0, channel=0)
+                    npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

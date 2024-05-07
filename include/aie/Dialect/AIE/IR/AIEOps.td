@@ -67,6 +67,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
+    Pure,
     FlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
@@ -1257,7 +1258,8 @@ def AIE_BufferOp: AIE_Op<"buffer", [
     ins Index:$tile,
     OptionalAttr<StrAttr>:$sym_name,
     OptionalAttr<AIEI32Attr>:$address,
-    OptionalAttr<ElementsAttr>:$initial_value
+    OptionalAttr<ElementsAttr>:$initial_value,
+    OptionalAttr<AIEI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1382,7 +1384,7 @@ def AIE_GetStreamOp: AIE_Op<"get_stream", [
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() {
-      return getStreamValue().getType().isa<mlir::FloatType>();
+      return llvm::isa<mlir::FloatType>(getStreamValue().getType());
     }
   }];
 }
@@ -1405,7 +1407,7 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() {
-      return getStreamValue().getType().isa<mlir::FloatType>();
+      return llvm::isa<mlir::FloatType>(getStreamValue().getType());
     }
   }];
 }
@@ -1607,7 +1609,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
-        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA
   );
 
   let assemblyFormat = [{
@@ -1917,24 +1920,21 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
     ObjectFifoCreateOp getObjectFifo();
 
     mlir::DenseIntElementsAttr getAcquirePattern() {
-      return getAcquirePatternTensor()
+      return llvm::cast<mlir::DenseIntElementsAttr>(getAcquirePatternTensor()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::DenseIntElementsAttr>();
+          .getValue());
     }
 
     mlir::DenseIntElementsAttr getReleasePattern() {
-      return getReleasePatternTensor()
+      return llvm::cast<mlir::DenseIntElementsAttr>(getReleasePatternTensor()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::DenseIntElementsAttr>();
+          .getValue());
     }
 
     int getProcessLength() {
-      return getLength()
+      return llvm::cast<mlir::IntegerAttr>(getLength()
           .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue()
-          .cast<mlir::IntegerAttr>()
+          .getValue())
           .getInt();
     }
   }];

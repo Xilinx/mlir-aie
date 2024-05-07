@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-standard-lowering %s | FileCheck %s
 
 module {
-  aie.device(ipu) {
+  aie.device(npu) {
     %t33 = aie.tile(3, 3)
     %t42 = aie.tile(4, 2)
     %t44 = aie.tile(4, 4)

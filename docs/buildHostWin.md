@@ -1,14 +1,34 @@
 # Windows Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15. 
 
 You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community.
 
-- Rely on WSL Ubuntu 22.04 LTS for Vitis tool install and to build and run our MLIR-AIE tools
+- Rely on WSL Ubuntu 22.04 LTS for Vitis tool install and to build and run our mlir-aie tools
 - Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp)
 
+## Initial Setup
+
+#### Update BIOS:
+
+Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
+
+  ```Advanced → CPU Configuration → IPU```
+
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS. 
+
+#### BIOS Settings:
+1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
+
+   ```BIOS → Security → Secure boot → Disable```
+
+1. Turn Ac Power Loss to "Always On" (Can be used for PDU reset, turns computer back on after power loss)
+
+   ```BIOS → Advanced → AMD CBS →  FCH Common Options → Ac Power Loss Options → Set Ac Power Loss to "Always On"```
+
+
 ## Prerequisites
-### MLIR-AIE tools: WSL Ubuntu 22.04
+### mlir-aie tools: WSL Ubuntu 22.04
 All steps in WSL Ubuntu terminal.
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
    ```
@@ -44,7 +64,7 @@ All steps in WSL Ubuntu terminal.
       ip link set vmnic0 addr <yourMACaddress>
       ```
 
-1. Install or Build MLIR-AIE tools under WSL2:
+1. Install or Build mlir-aie tools under WSL2:
 
    * Use quick setup script to install from whls:
      ```
@@ -56,9 +76,9 @@ All steps in WSL Ubuntu terminal.
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
-1. After installing the updated RyzenAI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
+1. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
     ```
-    mkdir /mnt/c/Technical/xrtIPUfromDLL; cd /mnt/c/Technical/xrtIPUfromDLL
+    mkdir /mnt/c/Technical/xrtNPUfromDLL; cd /mnt/c/Technical/xrtNPUfromDLL
     cp /mnt/c/Windows/System32/AMD/xrt_coreutil.dll .
     gendef xrt_coreutil.dll
     ```
@@ -67,7 +87,7 @@ All steps in WSL Ubuntu terminal.
 
 All steps in Win11 (powershell where needed).
 
-1. Upgrade the IPU driver IPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
+1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
@@ -79,11 +99,11 @@ All steps in Win11 (powershell where needed).
 1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`
 1. Create a .lib file from the .dll shipping with the driver
     - In wsl, generate a .def file (see above)
-    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtIPUfromDLL` and run command: 
+    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command: 
       ```
       lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
       ```
-1. Clone [https://github.com/Xilinx/mlir-aie.git]([https://gitenterprise.xilinx.com/XRLabs/pynqMLIR-AIE](https://github.com/Xilinx/mlir-aie.git)) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithMLIR-AIE) 
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithMLIR-AIE) 
 
 ## Set up your environment
 
@@ -91,7 +111,7 @@ To make the compilation toolchain available for use in your WSL terminal, you wi
 
 ### `setup.sh` - Option A - Using Quick Setup
 
-If you used the quick setup script (precompiled MLIR-AIE binaries), use this setup script.
+If you used the quick setup script (precompiled mlir-aie binaries), use this setup script.
 
 ```
 # NOTE: if you did NOT exit the terminal you can skip this step.
@@ -113,7 +133,7 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/in
 
 ## Build a Design
 
-For your design of interest, for instance [add_one_objFifo](../reference_designs/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (built during Prerequisites part of this guide). See [Set up your environment](#set-up-your-environment) above.

@@ -6,9 +6,11 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-VPATH := ../vision_kernels
+include ${srcdir}/../../makefile-common
+
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080
@@ -24,25 +26,21 @@ mlir: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $< -o ${@F}
 	
-build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: aie2_colorThreshold.py
+build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/aie2_colorThreshold.py
 	mkdir -p ${@D}
 	python3 $< ${COLORTHRESHOLD_WIDTH} ${COLORTHRESHOLD_HEIGHT} > $@
 
-#build/aie.mlir: aie.mlir
-#	mkdir -p ${@D}
-#	cp $< $@
-
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host --basic-alloc-scheme \
+		--xclbin-name=${@F} --npu-insts-name=insts.txt $(<:%=../%)
 
-${targetname}.exe: test.cpp
+${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DCOLORTHRESHOLD_WIDTH=${COLORTHRESHOLD_WIDTH} -DCOLORTHRESHOLD_HEIGHT=${COLORTHRESHOLD_HEIGHT}
+	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname} -DCOLORTHRESHOLD_WIDTH=${COLORTHRESHOLD_WIDTH} -DCOLORTHRESHOLD_HEIGHT=${COLORTHRESHOLD_HEIGHT} -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

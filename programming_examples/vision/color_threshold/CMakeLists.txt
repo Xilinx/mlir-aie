@@ -25,7 +25,7 @@ else()
     set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
 set(COLORTHRESHOLD_WIDTH 128 CACHE STRING "image width")
@@ -50,8 +50,8 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 
 add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/xrtUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
@@ -62,7 +62,8 @@ target_compile_definitions(${currentTarget} PUBLIC
 )
 
 target_include_directories (${currentTarget} PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}

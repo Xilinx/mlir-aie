@@ -31,7 +31,7 @@ aie.device(xcve2802) {
 
 // CHECK: error{{.*}}'aie.cascade_flow' op shimTile row has no cascade stream interface
 
-aie.device(ipu) {
+aie.device(npu) {
   %t10 = aie.tile(1, 0)
   %t20 = aie.tile(2, 0)
   aie.cascade_flow(%t10, %t20)
@@ -41,7 +41,7 @@ aie.device(ipu) {
 
 // CHECK: error{{.*}}'aie.cascade_flow' op memTile row has no cascade stream interface
 
-aie.device(ipu) {
+aie.device(npu) {
   %t11 = aie.tile(1, 1)
   %t21 = aie.tile(2, 1)
   aie.cascade_flow(%t11, %t21)
@@ -87,7 +87,7 @@ aie.device(xcve2802) {
 
 // CHECK: error{{.*}}'aie.configure_cascade' op memTile row has no cascade stream interface
 
-aie.device(ipu) {
+aie.device(npu) {
   %t11 = aie.tile(1, 1)
   aie.configure_cascade(%t11, North, West)
 }

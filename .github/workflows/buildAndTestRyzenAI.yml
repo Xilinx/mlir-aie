@@ -123,10 +123,11 @@ jobs:
         run: |
 
           pip cache purge
-
+          source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
+          pip install -r python/requirements_ml.txt
           pip install jupyter
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py

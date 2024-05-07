@@ -64,7 +64,7 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
   return success();
 }
 
-LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
+LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   if (buffer.getElementTypeBitWidth() != 32)
     return emitOpError("must be used with memref type with element width 32.");
@@ -105,7 +105,16 @@ LogicalResult AIEX::IpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
-LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
+LogicalResult AIEX::NpuDmaWaitOp::verify() {
+  AIE::DeviceOp dev = (*this)->getParentOfType<AIE::DeviceOp>();
+  // Some passes (e.g. aie-standard-lowering) use aiex ops outside a DeviceOp,
+  // so we can't expect the device to always exist.
+  if (dev && !dev.lookupSymbol(getSymbol()))
+    return emitOpError("couldn't find symbol in parent device");
+  return success();
+}
+
+LogicalResult AIEX::NpuShimTilePushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)
@@ -115,7 +124,7 @@ LogicalResult AIEX::IpuShimTilePushQueueOp::verify() {
   return success();
 }
 
-LogicalResult AIEX::IpuWriteBdExShimTileOp::verify() {
+LogicalResult AIEX::NpuWriteBdExShimTileOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(0, 0); // assume shim
   if (getBdId() > numBds)

@@ -104,7 +104,7 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static IPUTargetModel IPUmodel;
+static NPUTargetModel NPUmodel;
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -275,7 +275,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
       return failure();
 
     // Check that the type is a MemRef type.
-    if (!elementType.isa<MemRefType>()) {
+    if (!llvm::isa<MemRefType>(elementType)) {
       parser.emitError(typeLoc, "element type for an objectFifo must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -297,7 +297,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
       return failure();
 
     // Check that the type is a MemRefType.
-    if (!elementType.isa<MemRefType>()) {
+    if (!llvm::isa<MemRefType>(elementType)) {
       parser.emitError(typeLoc, "element type for a subview must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -340,14 +340,14 @@ Type AIEDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print an instance of a type registered to the AIE dialect.
 void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
-  if (type.isa<AIEObjectFifoType>()) {
-    auto objectFifoType = type.cast<AIEObjectFifoType>();
+  if (llvm::isa<AIEObjectFifoType>(type)) {
+    auto objectFifoType = llvm::cast<AIEObjectFifoType>(type);
     printer << "objectfifo<";
     printer << objectFifoType.getElementType();
     printer << '>';
 
-  } else if (type.isa<AIEObjectFifoSubviewType>()) {
-    auto subviewType = type.cast<AIEObjectFifoSubviewType>();
+  } else if (llvm::isa<AIEObjectFifoSubviewType>(type)) {
+    auto subviewType = llvm::cast<AIEObjectFifoSubviewType>(type);
     printer << "objectfifosubview<";
     printer << subviewType.getElementType();
     printer << '>';
@@ -561,7 +561,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     auto elemType =
-        fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
+        llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
     int64_t outputSize = 1;
     for (auto dim : elemType.getShape())
       outputSize *= dim;
@@ -569,7 +569,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
       auto elemType =
-          fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
+          llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
       int64_t nextInputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextInputSize *= dim;
@@ -592,7 +592,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     }
 
     auto elemType =
-        fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
+        llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
     int64_t inputSize = 1;
     for (auto dim : elemType.getShape())
       inputSize *= dim;
@@ -611,7 +611,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
       }
 
       auto elemType =
-          fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
+          llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
       int64_t nextOutputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextOutputSize *= dim;
@@ -744,9 +744,11 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   }
 
   auto objFifoElem =
-      getObjectFifo().getElemType().cast<AIEObjectFifoType>().getElementType();
+      llvm::cast<AIEObjectFifoType>(getObjectFifo().getElemType())
+          .getElementType();
   auto objFifoSubviewElem =
-      getResult().getType().cast<AIEObjectFifoSubviewType>().getElementType();
+      llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
+          .getElementType();
   if (objFifoElem != objFifoSubviewElem)
     return emitOpError(
         "ObjectFifo element and ObjectFifoSubview element must match.\n");
@@ -983,8 +985,8 @@ const AIETargetModel &DeviceOp::getTargetModel() {
     return VE2302model;
   case AIEDevice::xcve2802:
     return VE2802model;
-  case AIEDevice::ipu:
-    return IPUmodel;
+  case AIEDevice::npu:
+    return NPUmodel;
   }
   return VC1902model;
 }
@@ -1275,7 +1277,7 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 //===----------------------------------------------------------------------===//
 
 int64_t BufferOp::getAllocationSize() {
-  auto type = getType().cast<MemRefType>();
+  auto type = llvm::cast<MemRefType>(getType());
   return type.getNumElements() * type.getElementTypeBitWidth() / 8;
 }
 

@@ -17,11 +17,11 @@ include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 
 def AIE_ObjectFifoType :
-    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
+    DialectType<AIE_Dialect, CPred<"llvm::isa<AIEObjectFifoType>($_self)">,
                 "AIE objectFifo type">;
 
 def AIE_ObjectFifoSubviewType :
-    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
+    DialectType<AIE_Dialect, CPred<"llvm::isa<AIEObjectFifoSubviewType>($_self)">,
                 "AIE ObjectFifoSubview type">;
 
 def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;

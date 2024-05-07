@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
+INPUT_WITH_SWITCHBOXES_PIPELINE = (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -48,9 +48,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-create-packet-flows")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses"),
+        .add_pass("aie-lower-multicast"),
     )
     .convert_scf_to_cf()
 )
@@ -89,7 +87,7 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_IPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -582,7 +580,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["in", "tmp", "out"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -625,9 +623,7 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
-                    "--aie-lower-multicast",
                     file_with_addresses,
                     "-o",
                     file_physical,
@@ -986,14 +982,40 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE.materialize(module=True)
+            file_with_switchboxes = self.prepend_tmp("input_with_switchboxes.mlir")
+            pass_pipeline = INPUT_WITH_SWITCHBOXES_PIPELINE.materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
-                file_with_addresses,
+                file_with_switchboxes,
                 self.opts.verbose,
             )
+
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            if opts.basic_alloc_scheme:
+                r = do_run(
+                    [
+                        "aie-opt",
+                        "--aie-assign-buffer-addresses=basic-alloc",
+                        file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
+                    ],
+                )
+            else:
+                r = do_run(
+                    [
+                        "aie-opt",
+                        "--aie-assign-buffer-addresses",
+                        file_with_switchboxes,
+                        "-o",
+                        file_with_addresses,
+                    ],
+                )
+            if r.returncode != 0:
+                print("Error encountered while assigning buffer addresses. Exiting...")
+                print(r.stderr, file=sys.stderr)
+                sys.exit(r.returncode)
 
             cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
@@ -1013,14 +1035,14 @@ class FlowRunner:
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-elf"
 
-            # Optionally generate insts.txt for IPU instruction stream
-            if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
+            # Optionally generate insts.txt for NPU instruction stream
+            if opts.npu or opts.only_npu:
+                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-ipu",
+                        "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1030,13 +1052,13 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-translate",
-                        "--aie-ipu-instgen",
+                        "--aie-npu-instgen",
                         generated_insts_mlir,
                         "-o",
                         opts.insts_name,
                     ],
                 )
-                if opts.only_ipu:
+                if opts.only_npu:
                     return
 
             chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(

@@ -18,7 +18,7 @@ NUM_EVENTS = 8  # number of events we can view per trace
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
 
 DEBUG = False
-verbose = False
+verbose = True
 
 eventIRFile = "eventIR.txt"
 tmpTraceDirName = "tmpTrace"
@@ -594,9 +594,9 @@ def parse_mlir_trace_events(lines):
 
     # TODO Need to check if this line is commented out, check for // ? (harder to check of /* */)
     # TODO Need to support value in hex with 0x or decimal
-    # pattern = r"AIEX.ipu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"
-    # pattern = r"AIEX.ipu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
-    pattern = r"aiex.ipu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"
+    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+    pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
 
     pid_events = list()
     for t in range(NumTraceTypes):
@@ -733,6 +733,8 @@ def lookup_event_name_by_type(trace_type, code):
     if trace_type == 0:
         if code == 0x1:
             event = "True"
+        elif code == 23:  # 0x17:
+            event = "MemoryStall"
         elif code == 24:  # 0x18:
             event = "StreamStall"
         elif code == 26:  # 0x1A:
