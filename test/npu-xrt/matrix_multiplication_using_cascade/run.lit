@@ -1,0 +1,10 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm_cascade.cc -o ./mm_cascade.o
+// RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2.xclbin --npu-insts-name=insts2.txt aie.mlir
+// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: %run_on_npu ./test.exe -x aie2.xclbin -k MLIR_AIE -i insts2.txt | FileCheck %s
+// CHECK: PASS!
