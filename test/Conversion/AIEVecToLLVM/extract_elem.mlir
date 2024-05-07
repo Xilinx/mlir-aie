@@ -46,8 +46,7 @@ func.func @i32_extract_elem(%arg0 : vector<16xi32>, %index : i32) -> i32 {
 // CHECK-NEXT: %[[VEXTELEM:.*]] = "xllvm.intr.aie2.vextract.elem32.I512"(
 // CHECK-SAME: %[[ARG0]], %[[INDEX]], %[[CST]]) : 
 // CHECK-SAME: (vector<16xi32>, i32, i32) -> i32
-// CHECK-NEXT: %[[RES:.*]] = llvm.trunc %[[VEXTELEM]] : i32 to i32
-// CHECK-NEXT: return %[[RES]] : i32
+// CHECK-NEXT: return %[[VEXTELEM]] : i32
 
 // -----
 
@@ -83,6 +82,5 @@ func.func @f32_extract_elem(%arg0 : vector<16xf32>, %index : i32) -> f32 {
 // CHECK-NEXT: %[[VEXTELEM:.*]] = "xllvm.intr.aie2.vextract.elem32.I512"(
 // CHECK-SAME: %[[BITCAST]], %[[INDEX]], %[[CST]]) : 
 // CHECK-SAME: (vector<16xi32>, i32, i32) -> i32
-// CHECK-NEXT: %[[TRUNC:.*]] = llvm.trunc %[[VEXTELEM]] : i32 to i32
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[TRUNC]] : i32 to f32
+// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[VEXTELEM]] : i32 to f32
 // CHECK-NEXT: return %[[RES]] : f32

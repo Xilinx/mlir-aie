@@ -1415,13 +1415,18 @@ public:
 
     // create truncation op (and bitcast op)
     if (resultType.isa<IntegerType>()) {
-      rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
+      if (resultBitWidth < 32) {
+        rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
+      } else {
+        rewriter.replaceOp(op, extElemOp);
+      }
     } else {
       // Float types
-      auto intResType =
-          resultBitWidth == 16 ? rewriter.getI16Type() : rewriter.getI32Type();
-      auto truncOp = rewriter.create<LLVM::TruncOp>(loc, intResType, extElemOp);
-      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, resultType, truncOp);
+      if (resultBitWidth == 16) {
+        extElemOp = rewriter.create<LLVM::TruncOp>(loc, rewriter.getI16Type(),
+                                                   extElemOp);
+      }
+      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, resultType, extElemOp);
     }
 
     return success();
