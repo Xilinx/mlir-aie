@@ -42,7 +42,7 @@ def my_matmul():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_4col)
         def device_body():
             memRef_inA_ty = T.memref(m * k, T.bf16())
             memRef_inB_ty = T.memref(k, T.bf16())

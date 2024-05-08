@@ -105,7 +105,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -470,7 +470,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -832,7 +832,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32_already_vectorized.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)

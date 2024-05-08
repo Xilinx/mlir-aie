@@ -27,7 +27,7 @@
 // PEANO: xclbinutil
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
   %12 = aie.tile(1, 2)
   %buf = aie.buffer(%12) : memref<256xi32>
   %4 = aie.core(%12)  {

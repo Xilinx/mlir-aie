@@ -50,7 +50,7 @@ def test_vec_add(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -280,7 +280,7 @@ def test_vec_add_sugar(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)

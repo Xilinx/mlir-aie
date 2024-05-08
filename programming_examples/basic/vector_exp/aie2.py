@@ -32,7 +32,7 @@ def my_eltwise_exp():
     buffer_depth = 2
 
     # Device declaration - aie2 device NPU (aka Ryzen AI)
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
 
         memRef_ty = T.memref(n, T.bf16())

@@ -49,7 +49,7 @@ def my_vector_scalar(module):
 
     buffer_depth = 2
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_4col)
     def device_body():
         scale_int32 = external_func(
             "scale_int32", inputs=[T.memref(n, T.i32()), T.memref(n, T.i32())]
@@ -124,7 +124,7 @@ def my_matmul(module):
 
     vectorized = True
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_4col)
     def device_body():
         zero_scalar = external_func("zero_scalar_i16", inputs=[T.memref(m, n, T.i16())])
         zero = external_func("zero_i16", inputs=[T.memref(m, n, T.i16())])
@@ -234,7 +234,7 @@ def my_matmul(module):
 # CHECK-LABEL: edge_detect
 @construct_and_print_module
 def edge_detect(module):
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_4col)
     def device_body():
         rgba2gray_line = external_func(
             "rgba2gray_line",
@@ -463,7 +463,7 @@ def edge_detect(module):
 # CHECK-LABEL: my_add_one_objFifo
 @construct_and_print_module
 def my_add_one_objFifo(module):
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_4col)
     def device_body():
         shim_tile = tile(0, 0)
         mem_tile = tile(0, 1)

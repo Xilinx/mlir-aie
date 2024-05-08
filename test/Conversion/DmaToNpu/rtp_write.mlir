@@ -11,7 +11,7 @@
 // CHECK: aiex.npu.write32 {address = 3216 : ui32, column = 0 : i32, row = 2 : i32, value = 99 : ui32}
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     %0 = aie.tile(2, 3)
     %1 = aie.buffer(%0) {address = 1536 : i32, sym_name = "rtp"} : memref<16xi32>
     %2 = aie.tile(0, 2)

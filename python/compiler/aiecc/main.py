@@ -192,8 +192,21 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         max_col = max([t.col.value for t in tiles])
 
     num_cols = max_col - min_col + 1
+    device = find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+    )
+
     if start_columns is None:
-        start_columns = list(range(1, 6 - num_cols))
+        # It's arguable that this should should come from the device model
+        # somehow.  Or perhaps that it shouldn't be needed in the
+        # XCLbin at all, since it is basically describing information
+        # which is already inherent in the CDO.
+        # For the time being, we just leave it here.
+        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
+            start_columns = [0]
+        else:
+            start_columns = list(range(1, 6 - num_cols))
 
     uuid = random.randint(2222, 9999)
     return {

@@ -20,7 +20,7 @@ def passthroughKernel(vector_size, trace_size):
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
     lineWidthInInt32s = lineWidthInBytes // 4
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         # define types
         memRef_ty = T.memref(lineWidthInBytes, T.ui8())
