@@ -49,11 +49,12 @@ def EastWire:   I32EnumAttrCase<"East", 6>;
 def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
 def NOCWire:    I32EnumAttrCase<"NOC", 8>;
 def TraceWire:  I32EnumAttrCase<"Trace", 9>;
+def ControlWire:  I32EnumAttrCase<"Ctrl", 10>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   [
     CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire
+    EastWire, PLIOWire, NOCWire, TraceWire, ControlWire
   ]> {
 
   let cppNamespace = "xilinx::AIE";
