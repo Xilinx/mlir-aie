@@ -125,6 +125,40 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.I256.v16.acc32.srs` (::xilinx::xllvm::I256V16Acc32SrsIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 64-bit signless integer values of length 8
+| `shift` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.I256.v16.acc64.srs` (::xilinx::xllvm::I256V16Acc64SrsIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 64-bit signless integer values of length 16
+| `shift` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.I256.v32.acc32.srs` (::xilinx::xllvm::I256V32Acc32SrsIntrOp)
 
 #### Operands:
@@ -132,6 +166,23 @@ Types and operations for external LLVM dialect
 | Operand | Description |
 | :-----: | ----------- |
 | `src` | vector of 64-bit signless integer values of length 16
+| `shift` | 32-bit signless integer
+| `sign` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.I256.v8.acc64.srs` (::xilinx::xllvm::I256V8Acc64SrsIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 64-bit signless integer values of length 8
 | `shift` | 32-bit signless integer
 | `sign` | 32-bit signless integer
 
