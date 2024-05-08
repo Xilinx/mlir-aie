@@ -58,4 +58,17 @@ void matmul_scalar_put_4x1x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
 void matmul_scalar_get_4x1x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
   matmul_scalar_cascade_i32_i32<false, true, 4, 1, 4, 4, 8, 4>(a, b, c);
 }
+void matmul_scalar_put_4x1x4_4x4x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
+  matmul_scalar_cascade_i32_i32<true, false, 4, 1, 4, 4, 4, 4>(a, b, c);
+}
+void matmul_scalar_get_4x1x4_4x4x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
+  matmul_scalar_cascade_i32_i32<false, true, 4, 1, 4, 4, 4, 4>(a, b, c);
+}
+void matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(int32_t *a, int32_t *b,
+                                               int32_t *c) {
+  matmul_scalar_cascade_i32_i32<true, true, 4, 1, 4, 4, 4, 4>(a, b, c);
+}
+void matmul_scalar_4x2x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
+  matmul_scalar_cascade_i32_i32<false, false, 4, 2, 4, 4, 8, 4>(a, b, c);
+}
 }
