@@ -42,70 +42,8 @@ env:
 jobs:
   build-tests:
     name: Run Tests
-
     runs-on: amd7940hs
-
     steps:
-
-      - name: Display environment variables
-        run: env
-
-      - name: User and group ids
-        run: id -a
-
-      - name: Execution context information
-        # Display a lot of information to help further development
-        # https://docs.github.com/en/actions/learn-github-actions/variables
-        # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
-        # The problem is that echo-ing directly "${{ toJSON(github) }}"
-        # in the shell is not escaped and for example '&' breaks
-        # things or can lead to server-side script injection. :-(
-        # So, use environment setting and display the environment
-        # variable in the shell between "" to avoid unsafe
-        # interpretation.
-        env:
-          execution_context_var_github: ${{ toJSON(github) }}
-          execution_context_var_env: ${{ toJSON(env) }}
-          execution_context_var_vars: ${{ toJSON(vars) }}
-          execution_context_var_job: ${{ toJSON(job) }}
-          execution_context_var_steps: ${{ toJSON(steps) }}
-          execution_context_var_runner: ${{ toJSON(runner) }}
-          execution_context_var_strategy: ${{ toJSON(strategy) }}
-          execution_context_var_matrix: ${{ toJSON(matrix) }}
-          execution_context_var_needs: ${{ toJSON(needs) }}
-          execution_context_var_inputs: ${{ toJSON(inputs) }}
-        run: |
-          echo "::group::github context"
-          echo "$execution_context_var_github"
-          echo "::endgroup::"
-          echo "::group::env context"
-          echo "$execution_context_var_env"
-          echo "::endgroup::"
-          echo "::group::vars context"
-          echo "$execution_context_var_vars"
-          echo "::endgroup::"
-          echo "::group::job context"
-          echo "$execution_context_var_job"
-          echo "::endgroup::"
-          echo "::group::steps context"
-          echo "$execution_context_var_steps"
-          echo "::endgroup::"
-          echo "::group::runner context"
-          echo "$execution_context_var_runner"
-          echo "::endgroup::"
-          echo "::group::strategy context"
-          echo "$execution_context_var_strategy"
-          echo "::endgroup::"
-          echo "::group::matrix context"
-          echo "$execution_context_var_matrix"
-          echo "::endgroup::"
-          echo "::group::needs context"
-          echo "$execution_context_var_needs"
-          echo "::endgroup::"
-          echo "::group::inputs context"
-          echo "$execution_context_var_inputs"
-          echo "::endgroup::"
-
       - uses: actions/checkout@v3
         with:
           submodules: "true"
@@ -163,10 +101,6 @@ jobs:
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
 
           ninja install
-
-          # hack: timed out tests aren't fails...
-          LIT_PATH=$(python -c "import lit; from pathlib import Path; print(Path(lit.__file__).parent)")
-          sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
 
           export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
           ninja check-aie
@@ -175,70 +109,8 @@ jobs:
 
   build-examples:
     name: Run Examples
-
     runs-on: amd8700g
-
     steps:
-
-      - name: Display environment variables
-        run: env
-
-      - name: User and group ids
-        run: id -a
-
-      - name: Execution context information
-        # Display a lot of information to help further development
-        # https://docs.github.com/en/actions/learn-github-actions/variables
-        # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
-        # The problem is that echo-ing directly "${{ toJSON(github) }}"
-        # in the shell is not escaped and for example '&' breaks
-        # things or can lead to server-side script injection. :-(
-        # So, use environment setting and display the environment
-        # variable in the shell between "" to avoid unsafe
-        # interpretation.
-        env:
-          execution_context_var_github: ${{ toJSON(github) }}
-          execution_context_var_env: ${{ toJSON(env) }}
-          execution_context_var_vars: ${{ toJSON(vars) }}
-          execution_context_var_job: ${{ toJSON(job) }}
-          execution_context_var_steps: ${{ toJSON(steps) }}
-          execution_context_var_runner: ${{ toJSON(runner) }}
-          execution_context_var_strategy: ${{ toJSON(strategy) }}
-          execution_context_var_matrix: ${{ toJSON(matrix) }}
-          execution_context_var_needs: ${{ toJSON(needs) }}
-          execution_context_var_inputs: ${{ toJSON(inputs) }}
-        run: |
-          echo "::group::github context"
-          echo "$execution_context_var_github"
-          echo "::endgroup::"
-          echo "::group::env context"
-          echo "$execution_context_var_env"
-          echo "::endgroup::"
-          echo "::group::vars context"
-          echo "$execution_context_var_vars"
-          echo "::endgroup::"
-          echo "::group::job context"
-          echo "$execution_context_var_job"
-          echo "::endgroup::"
-          echo "::group::steps context"
-          echo "$execution_context_var_steps"
-          echo "::endgroup::"
-          echo "::group::runner context"
-          echo "$execution_context_var_runner"
-          echo "::endgroup::"
-          echo "::group::strategy context"
-          echo "$execution_context_var_strategy"
-          echo "::endgroup::"
-          echo "::group::matrix context"
-          echo "$execution_context_var_matrix"
-          echo "::endgroup::"
-          echo "::group::needs context"
-          echo "$execution_context_var_needs"
-          echo "::endgroup::"
-          echo "::group::inputs context"
-          echo "$execution_context_var_inputs"
-          echo "::endgroup::"
-
       - uses: actions/checkout@v3
         with:
           submodules: "true"
@@ -296,10 +168,6 @@ jobs:
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
 
           ninja install
-
-          # hack: timed out tests aren't fails...
-          LIT_PATH=$(python -c "import lit; from pathlib import Path; print(Path(lit.__file__).parent)")
-          sed -i.bak 's/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", True)/TIMEOUT = ResultCode("TIMEOUT", "Timed Out", False)/g' $LIT_PATH/Test.py
 
           export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
           ninja check-reference-designs
