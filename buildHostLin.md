@@ -346,18 +346,6 @@ For your design of interest, for instance from [programming_examples](../program
 
 2. Goto the design of interest and run `make`
 
-3. Signing your array configuration binary aka. XCLBIN
-    ```
-    sudo bash
-    source /opt/xilinx/xrt/setup.sh
-    # Assume adding an unsigned xclbin on Phoenix, run
-    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
-
-    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
-    # When xrt_plugin package is removed, it will automatically cleanup.
-    ```
-    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdnpu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
-
 ### Build and Run Host Part
 
 Note that your design of interest might need an adapted `CMakeLists.txt` file. Also pay attention to accurately set the paths CMake parameters `BOOST_ROOT`, `XRT_INC_DIR` and `XRT_LIB_DIR` used in the `CMakeLists.txt`, either in the file or as CMake command line parameters.
@@ -376,6 +364,20 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
     ```
 
 # Troubleshooting
+
+## Signing your XCLBIN (older xdna Linux drivers)
+
+1. Signing your array configuration binary aka. XCLBIN
+    ```
+    sudo bash
+    source /opt/xilinx/xrt/setup.sh
+    # Assume adding an unsigned xclbin on Phoenix, run
+    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
+
+    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
+    # When xrt_plugin package is removed, it will automatically cleanup.
+    ```
+    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdnpu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
 
 ## Resetting the NPU
 
@@ -403,7 +405,7 @@ terminate called after throwing an instance of 'xrt_core::system_error'
 Aborted (core dumped)
 ```
 
-This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
+This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins for some versions of the driver. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
 
 ## Signing the `xclbin` hangs
 
