@@ -41,7 +41,7 @@ env:
 
 jobs:
   build-tests:
-    name: Build and Test with AIE tools on Ryzen AI
+    name: Run Tests
 
     runs-on: amd7940hs
 
@@ -174,7 +174,7 @@ jobs:
           popd
 
   build-examples:
-    name: Build and Run Examples with AIE tools on Ryzen AI
+    name: Run Examples
 
     runs-on: amd8700g
 
