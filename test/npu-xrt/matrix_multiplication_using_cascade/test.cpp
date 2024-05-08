@@ -161,13 +161,13 @@ int main(int argc, const char *argv[]) {
 
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
-    //std::vector<C_DATATYPE> CVecRef(C_VOLUME);
+    // std::vector<C_DATATYPE> CVecRef(C_VOLUME);
     if (VERIFY) {
       if (verbosity >= 1) {
         std::cout << "Verifying against reference matmul ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      //matmul_common::matmul_naive(M, N, K, AVec, BVec, CVecRef);
+      // matmul_common::matmul_naive(M, N, K, AVec, BVec, CVecRef);
       errors = matmul_common::verify(M, N, K, AVec, BVec, CVec);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
@@ -206,12 +206,13 @@ int main(int argc, const char *argv[]) {
 
   if (VERIFY && !errors) {
     std::cout << "\nPASS!\n\n";
-    
+
     // Open the CSV file in appending mode
     std::ofstream outfile;
     outfile.open("../results.csv", std::ios_base::app);
     // Write M, N, K, and avg runtime to the CSV file
-    outfile << M << "," << N << "," << K << "," << npu_time_total / num_iter << "," << macs / (1000 * npu_time_total / num_iter) << std::endl;
+    outfile << M << "," << N << "," << K << "," << npu_time_total / num_iter
+            << "," << macs / (1000 * npu_time_total / num_iter) << std::endl;
     // Close the CSV file
     outfile.close();
 

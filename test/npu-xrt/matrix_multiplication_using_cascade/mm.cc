@@ -16,9 +16,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-template <bool put, bool get, int M_tile, int K_tile, int N_tile, int M, int K, int N>
+template <bool put, bool get, int M_tile, int K_tile, int N_tile, int M, int K,
+          int N>
 void matmul_scalar_cascade_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
-  event0();  
+  event0();
   for (int m_t = 0; m_t < M_tile; m_t++) {
     for (int n_t = 0; n_t < N_tile; n_t++) {
       for (int k_t = 0; k_t < K_tile; k_t++) {
@@ -57,6 +58,4 @@ void matmul_scalar_put_4x1x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
 void matmul_scalar_get_4x1x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
   matmul_scalar_cascade_i32_i32<false, true, 4, 1, 4, 4, 8, 4>(a, b, c);
 }
-
 }
-

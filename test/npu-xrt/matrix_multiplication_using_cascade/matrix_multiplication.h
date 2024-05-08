@@ -262,15 +262,14 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
   std::vector<Tout> CRef(M * N);
   if (K % K_block_size == 0) {
     matmul(M, N, K, A, B, CRef);
-  }
-  else{
+  } else {
     matmul_naive(M, N, K, A, B, CRef);
   }
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
       if (!nearly_equal(CRef[row * N + col], C[row * N + col], relTol,
-          absTol)) {
+                        absTol)) {
         errors++;
         if (errors < max_printable_errors) {
           std::cout << "Error in row " << row << ", col " << col << ". "
