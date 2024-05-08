@@ -373,7 +373,11 @@ Interfaces: `AIETarget`
 * xcvc1902 (`xcvc1902`)
 * xcve2302 (`xcve2302`)
 * xcve2802 (`xcve2802`)
-* npu (`npu`){{% /markdown %}}</details></td></tr>
+* npu1 (`npu1`)
+* npu1_1col (`npu1_1col`)
+* npu1_2col (`npu1_2col`)
+* npu1_3col (`npu1_3col`)
+* npu1_4col (`npu1_4col`){{% /markdown %}}</details></td></tr>
 </table>
 
 
