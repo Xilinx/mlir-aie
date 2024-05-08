@@ -3,7 +3,7 @@
 //
 // REQUIRES: ryzen_ai, chess
 //
-// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm_cascade.cc -o ./mm_cascade.o
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm.cc -o ./mm.o
 // RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2.xclbin --npu-insts-name=insts2.txt %S/aie.mlir
 // RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
 // RUN: %run_on_npu ./test.exe -x aie2.xclbin -k MLIR_AIE -i insts2.txt | FileCheck %s
