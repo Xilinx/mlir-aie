@@ -842,6 +842,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // Integer types
+    Operation *srsIntrOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
       // create constant for sign
       auto signCst = rewriter.create<LLVM::ConstantOp>(
@@ -852,46 +853,90 @@ public:
           {adaptor.getSource(), adaptor.getShift(), signCst});
       if (resultVectorSize == 512) {
         if (resultBitWidth == 16) {
-          rewriter.replaceOpWithNewOp<xllvm::I512V32Acc32SrsIntrOp>(
-              op, VectorType::get({32}, rewriter.getI16Type()),
+          // v32acc32 -> v32int16
+          srsIntrOp = rewriter.create<xllvm::I512V32Acc32SrsIntrOp>(
+              loc, VectorType::get({32}, rewriter.getI16Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32) {
-          rewriter.replaceOpWithNewOp<xllvm::I512V16Acc64SrsIntrOp>(
-              op, VectorType::get({16}, rewriter.getI32Type()),
+          // v16acc64 -> v16int32
+          srsIntrOp = rewriter.create<xllvm::I512V16Acc64SrsIntrOp>(
+              loc, VectorType::get({16}, rewriter.getI32Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 256) {
-        rewriter.replaceOpWithNewOp<xllvm::I256V32Acc32SrsIntrOp>(
-            op, VectorType::get({32}, rewriter.getI8Type()),
-            forceCastOperandsToSignature(
-                rewriter, loc, operands,
-                {VectorType::get({16}, rewriter.getI64Type()),
-                 rewriter.getI32Type(), rewriter.getI32Type()}));
-      } else {
-        op.emitWarning() << "aievec.srs with result vector size = "
-                         << resultVectorSize << " is not supported.\n";
-        return failure();
+        Value src = adaptor.getSource();
+        VectorType srcType = cast<VectorType>(src.getType());
+        Type srcScaType = srcType.getElementType();
+        unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
+
+        if (resultBitWidth == 16 && srcBitWidth == 32) {
+          // v16acc32 -> v16int16
+          srsIntrOp = rewriter.create<xllvm::I256V16Acc32SrsIntrOp>(
+              loc, VectorType::get({16}, rewriter.getI16Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({8}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 8 && srcBitWidth == 32) {
+          // v32acc32 -> v32int8
+          srsIntrOp = rewriter.create<xllvm::I256V32Acc32SrsIntrOp>(
+              loc, VectorType::get({32}, rewriter.getI8Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({16}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 16 && srcBitWidth == 64) {
+          // v16acc64 -> v16int16
+          srsIntrOp = rewriter.create<xllvm::I256V16Acc64SrsIntrOp>(
+              loc, VectorType::get({16}, rewriter.getI16Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({16}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 32 && srcBitWidth == 64) {
+          // v8acc64 -> v8int32
+          srsIntrOp = rewriter.create<xllvm::I256V8Acc64SrsIntrOp>(
+              loc, VectorType::get({8}, rewriter.getI32Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({8}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        }
       }
     } else {
       // Float types
       if (resultVectorSize == 256) {
-        rewriter.replaceOpWithNewOp<xllvm::Vector16AccFloatToV16BF16IntrOp>(
-            op, VectorType::get({16}, rewriter.getBF16Type()),
+        // v16accfloat -> v16bfloat16
+        srsIntrOp = rewriter.create<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+            loc, VectorType::get({16}, rewriter.getBF16Type()),
             forceCastOperandsToSignature(
                 rewriter, loc, {adaptor.getSource()},
                 {VectorType::get({8}, rewriter.getI64Type())}));
-      } else {
-        op.emitWarning() << "aievec.srs with result vector size = "
-                         << resultVectorSize << " is not supported.\n";
-        return failure();
+      } else if (resultVectorSize == 512) {
+        // v32accfloat -> v32bfloat16
+        // Implement this scenario in emulation. The CPP example is below:
+        //   v32bfloat16 to_v32bfloat16(v32accfloat acc) {
+        //     v16bfloat16 x0 = to_v16bfloat16(extract_v16accfloat(acc, 0));
+        //     v16bfloat16 x1 = to_v16bfloat16(extract_v16accfloat(acc, 1));
+        //     return concat(x0, x1);
+        //   }
+        // TODO: implement this after adding 1024->512 vector extraction
+        // intrinsic
       }
     }
+
+    if (!srsIntrOp) {
+      op.emitWarning() << "aievec.srs is not supported.\n";
+      return failure();
+    }
+
+    rewriter.replaceOp(op, srsIntrOp);
 
     return success();
   }
@@ -1471,7 +1516,7 @@ public:
     }
 
     // create truncation op (and bitcast op)
-    if (resultType.isa<IntegerType>()) {
+    if (llvm::isa<IntegerType>(resultType)) {
       if (resultBitWidth < 32) {
         rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
       } else {
