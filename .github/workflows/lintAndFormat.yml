@@ -184,7 +184,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      contents: read
+      checks: write
+      issues: write
       pull-requests: write
 
     steps:
