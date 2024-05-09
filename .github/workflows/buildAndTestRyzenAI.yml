@@ -53,8 +53,8 @@ env:
 
 jobs:
   build-tests:
-    name: Run Tests
-    runs-on: amd7940hs
+    name: Run Tests on Ryzen AI
+    runs-on: amd8700g
     steps:
       - uses: actions/checkout@v3
         with:
@@ -110,8 +110,8 @@ jobs:
           popd
 
   build-examples:
-    name: Run Examples
-    runs-on: amd8700g
+    name: Run Examples on Ryzen AI
+    runs-on: amd7940hs
     steps:
       - uses: actions/checkout@v3
         with:
