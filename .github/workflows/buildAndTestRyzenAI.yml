@@ -38,6 +38,20 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  VITIS: /opt/Xilinx/Vitis/2023.2
+  CMAKE_ARGS: |
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DXRT_ROOT=/opt/xilinx/xrt \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
+            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
+  LIT_OPTS: |
+            -sv --time-tests --timeout 600 \
+            --show-unsupported --show-excluded
 
 jobs:
   build-tests:
@@ -86,23 +100,13 @@ jobs:
           export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DXRT_ROOT=/opt/xilinx/xrt \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
+            $CMAKE_ARGS
 
           ninja install
-
-          export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
           ninja check-aie
 
           popd
@@ -150,26 +154,16 @@ jobs:
           mkdir build
           pushd build
 
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DXRT_ROOT=/opt/xilinx/xrt \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
+            $CMAKE_ARGS
 
           ninja install
-
-          export LIT_OPTS="-sv --time-tests --timeout 600 -j12 --show-unsupported --show-excluded"
           ninja check-reference-designs
 
           popd
