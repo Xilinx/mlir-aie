@@ -35,7 +35,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_SWITCHBOXES_PIPELINE = (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -48,7 +48,8 @@ INPUT_WITH_SWITCHBOXES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast"),
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
     )
     .convert_scf_to_cf()
 )
@@ -191,8 +192,21 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         max_col = max([t.col.value for t in tiles])
 
     num_cols = max_col - min_col + 1
+    device = find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+    )
+
     if start_columns is None:
-        start_columns = list(range(1, 6 - num_cols))
+        # It's arguable that this should should come from the device model
+        # somehow.  Or perhaps that it shouldn't be needed in the
+        # XCLbin at all, since it is basically describing information
+        # which is already inherent in the CDO.
+        # For the time being, we just leave it here.
+        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
+            start_columns = [0]
+        else:
+            start_columns = list(range(1, 6 - num_cols))
 
     uuid = random.randint(2222, 9999)
     return {
@@ -982,40 +996,19 @@ class FlowRunner:
                 "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            file_with_switchboxes = self.prepend_tmp("input_with_switchboxes.mlir")
-            pass_pipeline = INPUT_WITH_SWITCHBOXES_PIPELINE.materialize(module=True)
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            if opts.basic_alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(True).materialize(
+                    module=True
+                )
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
-                file_with_switchboxes,
+                file_with_addresses,
                 self.opts.verbose,
             )
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            if opts.basic_alloc_scheme:
-                r = do_run(
-                    [
-                        "aie-opt",
-                        "--aie-assign-buffer-addresses=basic-alloc",
-                        file_with_switchboxes,
-                        "-o",
-                        file_with_addresses,
-                    ],
-                )
-            else:
-                r = do_run(
-                    [
-                        "aie-opt",
-                        "--aie-assign-buffer-addresses",
-                        file_with_switchboxes,
-                        "-o",
-                        file_with_addresses,
-                    ],
-                )
-            if r.returncode != 0:
-                print("Error encountered while assigning buffer addresses. Exiting...")
-                print(r.stderr, file=sys.stderr)
-                sys.exit(r.returncode)
 
             cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(

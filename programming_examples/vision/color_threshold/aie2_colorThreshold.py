@@ -30,7 +30,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def color_threshold():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             line_channels_ty = T.memref(lineWidthChannels, T.ui8())
             line_ty = T.memref(lineWidth, T.ui8())

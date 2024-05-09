@@ -306,11 +306,13 @@ def compile_with_vectorization(
     cdo_debug=False,
     partition_start_col=1,
     enable_cores=True,
+    basic_alloc=True,
 ):
     debug = debug or xaie_debug or cdo_debug
     input_with_addresses = run_pipeline(
         mod_aie,
-        Pipeline().convert_linalg_to_affine_loops() + INPUT_WITH_ADDRESSES_PIPELINE,
+        Pipeline().convert_linalg_to_affine_loops()
+        + INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
         enable_ir_printing=debug,
     )
 
@@ -371,7 +373,7 @@ def compile_with_vectorization(
         mod_aie,
         CREATE_PATH_FINDER_FLOWS
         + Pipeline().convert_linalg_to_affine_loops()
-        + INPUT_WITH_ADDRESSES_PIPELINE,
+        + INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
         enable_ir_printing=debug,
     )
     with _global_debug(debug):
@@ -396,6 +398,7 @@ def compile_without_vectorization(
     cdo_debug=False,
     partition_start_col=1,
     enable_cores=True,
+    basic_alloc=True,
 ):
     debug = debug or xaie_debug or cdo_debug
     module = run_pipeline(module, Pipeline().canonicalize())
@@ -405,7 +408,9 @@ def compile_without_vectorization(
         enable_ir_printing=debug,
     )
     input_with_addresses = run_pipeline(
-        lowered_linalg, INPUT_WITH_ADDRESSES_PIPELINE, enable_ir_printing=debug
+        lowered_linalg,
+        INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
+        enable_ir_printing=debug,
     )
 
     for col, row, _ in generate_cores_list(str(module)):
@@ -431,7 +436,7 @@ def compile_without_vectorization(
 
     input_physical = run_pipeline(
         module,
-        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE,
+        CREATE_PATH_FINDER_FLOWS + INPUT_WITH_ADDRESSES_PIPELINE(basic_alloc),
         enable_ir_printing=debug,
     )
     with _global_debug(debug):

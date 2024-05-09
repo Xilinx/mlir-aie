@@ -17,7 +17,7 @@ import aie.utils.trace as trace_utils
 
 def my_vector_scalar():
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_4col)
     def device_body():
         memRef_ty = T.memref(1024, T.i32())
 

@@ -101,7 +101,11 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"xcvc1902", 1>,
     I32EnumAttrCase<"xcve2302", 2>,
     I32EnumAttrCase<"xcve2802", 3>,
-    I32EnumAttrCase<"npu", 4>
+    I32EnumAttrCase<"npu1", 4>,
+    I32EnumAttrCase<"npu1_1col", 5>,
+    I32EnumAttrCase<"npu1_2col", 6>,
+    I32EnumAttrCase<"npu1_3col", 7>,
+    I32EnumAttrCase<"npu1_4col", 8>
   ]> {
 
   let cppNamespace = "xilinx::AIE";

@@ -613,5 +613,27 @@ void AIETargetModel::validate() const {
              getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
 }
 
+bool BaseNPUTargetModel::isValidTraceMaster(int col, int row,
+                                            WireBundle destBundle,
+                                            int destIndex) const {
+  if (isCoreTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
+    return true;
+  if (isMemTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+      destIndex == 0)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+      destIndex == 0)
+    return true;
+  return false;
+}
+
 } // namespace AIE
 } // namespace xilinx

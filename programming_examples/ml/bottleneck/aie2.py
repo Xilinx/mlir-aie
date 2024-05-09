@@ -38,7 +38,7 @@ tensorL3OutC = tensorL3InC * 4
 def bottleneck4AIEs():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def deviceBody():
 
             # define types

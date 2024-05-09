@@ -619,7 +619,7 @@ def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
-    assert int(device.device) == int(AIEDevice.npu), "only npu supported"
+    assert int(device.device) == int(AIEDevice.npu1), "only npu supported"
 
     neighbors = {}
     col, row = map(int, (tile.col, tile.row))

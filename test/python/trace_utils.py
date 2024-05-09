@@ -40,7 +40,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def passthroughKernel():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_4col)
         def device_body():
             # define types
             memRef_ty = T.memref(lineWidthInBytes, T.ui8())

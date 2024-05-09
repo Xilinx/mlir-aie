@@ -38,7 +38,7 @@ actOutInt32s = actOut // 4
 def conv2dk1():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
 
             actIn_ty = T.memref(actIn, T.i8())
