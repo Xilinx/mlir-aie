@@ -12,7 +12,7 @@
 
 // CHECK-LABEL: func.func @npu_dma_wait
 // CHECK: aiex.npu.dma_wait {symbol = @out0}
-aie.device(npu) {
+aie.device(npu1_4col) {
   memref.global "public" @out0 : memref<16xi32>
   func.func @npu_dma_wait() {
     aiex.npu.dma_wait {symbol = @out0}

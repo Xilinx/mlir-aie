@@ -12,7 +12,7 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @bad_npu_nd_length(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -29,7 +29,7 @@ module {
 // -----
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @bad_npu_nd_repeat(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -50,7 +50,7 @@ module {
 // -----
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @bad_npu_nd_stride(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -67,7 +67,7 @@ module {
 // -----
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @bad_npu_nd_type(%in : memref<1920x1080xi8>, %buf : memref<32xi32>, %out : memref<1920x1080xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64

@@ -69,7 +69,7 @@ def test_vec_add_vectorized(ctx: MLIRContext, workdir: Path):
     npu_insts = aiex.npu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -362,7 +362,7 @@ def test_vec_add_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     npu_insts = aiex.npu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)

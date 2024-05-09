@@ -91,20 +91,18 @@ PYBIND11_MODULE(_aie, m) {
       "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath, bool bigendian,
          bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
-         size_t partitionStartCol, bool enableCores) {
+         bool enableCores) {
         mlir::python::CollectDiagnosticsToStringScope scope(
             mlirOperationGetContext(op));
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
                 op, {workDirPath.data(), workDirPath.size()}, bigendian,
-                emitUnified, cdoDebug, aieSim, xaieDebug, partitionStartCol,
-                enableCores)))
+                emitUnified, cdoDebug, aieSim, xaieDebug, enableCores)))
           throw py::value_error("Failed to generate cdo because: " +
                                 scope.takeMessage());
       },
       "module"_a, "work_dir_path"_a, "bigendian"_a = false,
       "emit_unified"_a = false, "cdo_debug"_a = false, "aiesim"_a = false,
-      "xaie_debug"_a = false, "partition_start_col"_a = 1,
-      "enable_cores"_a = true);
+      "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
       "npu_instgen",

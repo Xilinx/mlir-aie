@@ -13,7 +13,7 @@
 // CHECK: aiex.npu.write32 {address = 119316 : ui32, column = 0 : i32, row = 0 : i32, value = 0 : ui32}
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     memref.global "public" @of_toMem : memref<32xi32>
     memref.global "public" @of_fromMem : memref<32xi32>
     func.func @sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {

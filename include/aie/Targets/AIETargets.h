@@ -50,8 +50,7 @@ mlir::LogicalResult
 AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
                         bool bigEndian = false, bool emitUnified = false,
                         bool cdoDebug = false, bool aieSim = false,
-                        bool xaieDebug = false, size_t partitionStartCol = 1,
-                        bool enableCores = true);
+                        bool xaieDebug = false, bool enableCores = true);
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
