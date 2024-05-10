@@ -57,5 +57,8 @@ endif()
 if(AIETools_AIE2_FOUND)
   add_subdirectory(AIE2)
 endif()
+if(AIETools_AIE2P_FOUND)
+  add_subdirectory(AIE2P)
+endif()
 
 

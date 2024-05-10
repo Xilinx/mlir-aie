@@ -21,9 +21,9 @@ fi
 AIETOOLS_PATH=`realpath $(dirname $(which xchesscc))/../`
 AIETOOLS="${AIETOOLS:-${AIETOOLS_PATH}}"
 
-if [ $TARGET != "AIE" -a $TARGET != "AIE2" ]
+if [ $TARGET != "AIE" -a $TARGET != "AIE2" -a $TARGET != "AIE2P" ]
   then
-    echo "xchesscc_wrapper: first argument is expected to be the target architecture (aie or aie2)"
+    echo "xchesscc_wrapper: first argument is expected to be the target architecture (aie or aie2 or aie2p)"
     exit 1
 fi
 if [ $TARGET == "AIE" ]
@@ -36,6 +36,15 @@ elif [ $TARGET == "AIE2" ]
     EXTRA_DEFS="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
     AIEARCH=aie2
     AIETARGET=aie_ml
+elif [ $TARGET == "AIE2P" ]
+  then
+    EXTRA_DEFS="-D__AIE_ARCH__=21 -D__AIEARCH__=21"
+    AIEARCH=aie2p
+    AIETARGET=aie2p
+else
+  then
+    echo "xchesscc_wrapper unknown architecture $TARGET"
+    exit 1
 fi
 if [ -z "$AIETOOLS" ]
   then
