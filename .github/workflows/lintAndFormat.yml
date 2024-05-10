@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
+  merge_group:
 
 env:
   # Run apt package manager in the CI in non-interactive mode.
@@ -183,7 +184,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      contents: read
+      checks: write
+      issues: write
       pull-requests: write
 
     steps:

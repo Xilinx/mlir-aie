@@ -352,7 +352,7 @@ def AIEVec_BroadcastScalarOp:
   AIEVec_Op<"broadcast_scalar", [
     Pure
   ]>,
-  Arguments<(ins AnyType:$source)>,
+  Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast scalar";
   let description = [{
@@ -729,7 +729,7 @@ def AIEVec_ExtElemOp:
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.}];
   let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def AIEVec_NegOp:

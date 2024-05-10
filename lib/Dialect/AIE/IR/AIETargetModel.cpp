@@ -127,6 +127,8 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
+    case WireBundle::Ctrl:
+      return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
     }
@@ -153,6 +155,8 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
+  case WireBundle::Ctrl:
+    return 1;
   default:
     return 0;
   }
@@ -181,6 +185,8 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
+    case WireBundle::Ctrl:
+      return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
     }
@@ -209,6 +215,8 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   }
   case WireBundle::Trace:
     return 2;
+  case WireBundle::Ctrl:
+    return 1;
   default:
     return 0;
   }
@@ -343,6 +351,8 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 6;
     case WireBundle::South:
       return 4;
+    case WireBundle::Ctrl:
+      return 1;
     default:
       return 0;
     }
@@ -365,6 +375,8 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
+    case WireBundle::Ctrl:
+      return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
     }
@@ -393,6 +405,8 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
+  case WireBundle::Ctrl:
+    return 1;
   default:
     return 0;
   }
@@ -410,6 +424,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     case WireBundle::South:
       return 6;
     case WireBundle::Trace:
+    case WireBundle::Ctrl:
       return 1;
     default:
       return 0;
@@ -435,6 +450,8 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
+    case WireBundle::Ctrl:
+      return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
     }
@@ -467,6 +484,8 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   case WireBundle::Trace:
     // Port 0: core trace. Port 1: memory trace.
     return 2;
+  case WireBundle::Ctrl:
+    return 1;
   default:
     return 0;
   }
@@ -592,6 +611,28 @@ void AIETargetModel::validate() const {
     for (int j = 0; j < columns(); j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==
              getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
+}
+
+bool BaseNPUTargetModel::isValidTraceMaster(int col, int row,
+                                            WireBundle destBundle,
+                                            int destIndex) const {
+  if (isCoreTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
+    return true;
+  if (isMemTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+      destIndex == 0)
+    return true;
+  if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+      destIndex == 0)
+    return true;
+  return false;
 }
 
 } // namespace AIE

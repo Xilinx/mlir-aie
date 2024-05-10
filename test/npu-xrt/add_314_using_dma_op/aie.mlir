@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_1col) {
     memref.global "public" @objFifo_in0 : memref<16xi32>
     memref.global "public" @objFifo_out0 : memref<16xi32>
 

@@ -379,12 +379,12 @@ struct AIEAssignBufferAddressesPass
     });
 
     // Select allocation scheme
-    if (clBasicAlloc == "basic-sequential") {
+    if (clAllocScheme == "basic-sequential") {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = basicAllocation(tile); res.failed())
           return signalPassFailure();
       }
-    } else if (clBasicAlloc == "bank-aware") {
+    } else if (clAllocScheme == "bank-aware") {
       for (auto tile : device.getOps<TileOp>()) {
         if (auto res = simpleBankAwareAllocation(tile); res.failed())
           return signalPassFailure();

@@ -32,7 +32,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def color_detect():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def deviceBody():
             line_bytes_ty = MemRefType.get((lineWidthInBytes,), T.ui8())
             line_ty = MemRefType.get((lineWidth,), T.ui8())

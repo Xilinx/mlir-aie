@@ -31,7 +31,7 @@ Release = LockAction.Release
 # CHECK-LABEL: broadcast
 @construct_and_print_module
 def broadcast(module):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         df = TileArray()
         assert df[[0, 1], 0].shape == (2, 1)
@@ -125,7 +125,7 @@ def broadcast(module):
             print(f)
 
         # CHECK: module {
-        # CHECK:   aie.device(npu) {
+        # CHECK:   aie.device(npu1) {
         # CHECK:     %tile_0_0 = aie.tile(0, 0)
         # CHECK:     %tile_0_1 = aie.tile(0, 1)
         # CHECK:     %tile_0_2 = aie.tile(0, 2)
@@ -194,7 +194,7 @@ def broadcast(module):
 # CHECK-LABEL: lshift
 @construct_and_print_module
 def lshift(module):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -214,7 +214,7 @@ def lshift(module):
 # CHECK-LABEL: locks
 @construct_and_print_module
 def locks(module):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -249,7 +249,7 @@ def locks(module):
 # CHECK-LABEL: neighbors
 @construct_and_print_module
 def neighbors(module):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -279,7 +279,7 @@ def channels_basic(module):
     # CHECK-LABEL: test-basic
     print("test-basic")
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -300,7 +300,7 @@ def channels_basic(module):
     # CHECK-LABEL: test-context-manager
     print("test-context-manager")
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -340,7 +340,7 @@ def channels_basic(module):
 # CHECK-LABEL: nd_channels
 @construct_and_print_module
 def nd_channels(module):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 
@@ -377,7 +377,7 @@ def nd_channels(module):
 def buffer_test_this_needs_to_distinct_from_all_other_mentions_of_buffer_in_this_file(
     module,
 ):
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1)
     def npu():
         tiles = TileArray()
 

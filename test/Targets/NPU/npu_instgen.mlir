@@ -10,7 +10,7 @@
 
 // RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // look for the prolog.

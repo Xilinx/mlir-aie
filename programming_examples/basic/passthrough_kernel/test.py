@@ -19,6 +19,8 @@ import aie.utils.test as test_utils
 
 def main(opts):
 
+    print("Running...\n")
+
     # Load instruction sequence
     with open(opts.instr, "r") as f:
         instr_text = f.read().split("\n")

@@ -103,9 +103,16 @@ def VectorSetI512I256IntrOp :
 
 // ----- SRS ----- 
 
-def I512V32Acc32SrsIntrOp :
-    AIEVec2_IntrOp<"I512.v32.acc32.srs",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+def I256V16Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I256V16Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
@@ -117,9 +124,23 @@ def I256V32Acc32SrsIntrOp :
                    I32:$shift,
                    I32:$sign)>;
 
+def I256V8Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v8.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
 def I512V16Acc64SrsIntrOp :
     AIEVec2_IntrOp<"I512.v16.acc64.srs",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I512V32Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I512.v32.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
@@ -134,17 +155,27 @@ def Vector16AccFloatToV16BF16IntrOp :
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
+
+def VectorBroadcast16I512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast16.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast32I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast32.I512",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast16BF512IntrOp :
     AIEVec2_IntrOp<"vbroadcast16.bf512",
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-    Arguments<(ins BF16:$value)>;
+    Arguments<(ins BF16:$src)>;
+
+def VectorBroadcastfloatI512IntrOp :
+    AIEVec2_IntrOp<"vbroadcastfloat.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins F32:$src)>;
 
 // ----- EXT ----- 
 
@@ -161,6 +192,20 @@ def ConcatI512I256IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$lhs,
                    VectorOfLengthAndType<[8], [I32]>:$rhs)>;
+
+def ConcatI1024I256IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src0,
+                   VectorOfLengthAndType<[8], [I32]>:$src1,
+                   VectorOfLengthAndType<[8], [I32]>:$src2,
+                   VectorOfLengthAndType<[8], [I32]>:$src3)>;
+
+def ConcatI1024I512IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs)>;
 
 // ----- SHUFFLE ----- 
 
