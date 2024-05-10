@@ -182,7 +182,7 @@ module {
       aie.use_lock(%lock_2_2_10, Release, 1)
       aie.use_lock(%lock_2_2, Release, 1)
       cf.br ^bb1
-    } {elf_file = "segment_0_core_2_2.elf",link_with = "mm_cascade.o"}
+    } {elf_file = "segment_0_core_2_2.elf",link_with = "mm.o"}
     %mem_3_2 = aie.mem(%tile_3_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -233,7 +233,7 @@ module {
       aie.use_lock(%lock_3_2_13, Release, 1)
       aie.use_lock(%lock_3_2, Release, 1)
       cf.br ^bb1
-    } {elf_file = "segment_0_core_3_2.elf", link_with = "mm_cascade.o"}
+    } {elf_file = "segment_0_core_3_2.elf", link_with = "mm.o"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_0, DMA : 1, %tile_1_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
