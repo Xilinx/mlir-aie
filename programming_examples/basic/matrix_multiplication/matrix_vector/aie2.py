@@ -151,7 +151,7 @@ def my_matmul():
                                 ObjectFifoPort.Consume,
                                 1,
                             )
-                            call(matvec, [elem_in_a, elem_in_b, elem_out])
+                            call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume,
                                 1,
