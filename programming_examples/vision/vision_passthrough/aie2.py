@@ -29,7 +29,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 def passThroughAIE2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             # define types
             line_ty = T.memref(lineWidthInBytes, T.ui8())

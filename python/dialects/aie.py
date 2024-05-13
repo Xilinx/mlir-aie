@@ -209,6 +209,7 @@ class object_fifo(ObjectFifoCreateOp):
         datatype,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        via_DMA=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -227,6 +228,7 @@ class object_fifo(ObjectFifoCreateOp):
             elemType=of_Ty,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
+            via_DMA=via_DMA,
         )
 
     def acquire(self, port, num_elem):
@@ -617,7 +619,7 @@ def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
-    assert int(device.device) == int(AIEDevice.npu), "only npu supported"
+    assert int(device.device) == int(AIEDevice.npu1), "only npu supported"
 
     neighbors = {}
     col, row = map(int, (tile.col, tile.row))

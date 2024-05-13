@@ -60,8 +60,9 @@ int main(int argc, char *argv[]) {
   }
 
   for (int i = 0; i < 256; i++) {
-    mlir_aie_check("After release lock:", mlir_aie_read_buffer_b(_xaie, i),
-                   expf(mlir_aie_read_buffer_a(_xaie, i)), errors);
+    mlir_aie_check_float(
+        "After release lock:", mlir_aie_read_buffer_b(_xaie, i),
+        expf(mlir_aie_read_buffer_a(_xaie, i)), errors);
   }
 
   int res = 0;

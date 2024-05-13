@@ -395,7 +395,7 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
-    auto t = buffer.getType().cast<MemRefType>();
+    auto t = llvm::cast<MemRefType>(buffer.getType());
     int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
     int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();

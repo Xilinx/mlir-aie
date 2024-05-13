@@ -44,7 +44,7 @@ def test_one_global(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         # TODO(max): figure this annoying thing out...
         if column != 0:
@@ -168,7 +168,7 @@ def test_threesome(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         _dummy_tile = aie.tile(0, 2)
         tile_1_2 = aie.tile(1, 2)
@@ -307,7 +307,7 @@ def test_foursome(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         _dummy_tile = aie.tile(0, 2)
 

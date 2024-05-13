@@ -17,7 +17,7 @@ import sys
 
 
 def my_vector_mul():
-    N = 1024
+    N = 256
     n = 16
     N_div_n = N // n
 
@@ -27,7 +27,7 @@ def my_vector_mul():
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
 
     if sys.argv[1] == "npu":
-        dev = AIEDevice.npu
+        dev = AIEDevice.npu1_1col
     elif sys.argv[1] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:

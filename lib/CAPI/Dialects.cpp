@@ -25,12 +25,12 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(XLLVM, xllvm, xilinx::xllvm::XLLVMDialect)
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsObjectFifoType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoType>();
+  return llvm::isa<xilinx::AIE::AIEObjectFifoType>(unwrap(type));
 }
 
 MlirType aieObjectFifoTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoType::get(
-      unwrap(type).cast<mlir::MemRefType>()));
+      llvm::cast<mlir::MemRefType>(unwrap(type))));
 }
 
 //===---------------------------------------------------------------------===//
@@ -38,10 +38,10 @@ MlirType aieObjectFifoTypeGet(MlirType type) {
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsObjectFifoSubviewType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoSubviewType>();
+  return llvm::isa<xilinx::AIE::AIEObjectFifoSubviewType>(unwrap(type));
 }
 
 MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
-      unwrap(type).cast<mlir::MemRefType>()));
+      llvm::cast<mlir::MemRefType>(unwrap(type))));
 }

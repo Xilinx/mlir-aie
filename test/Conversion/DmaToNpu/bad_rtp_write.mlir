@@ -8,7 +8,7 @@
 
 // RUN: aie-opt --aie-dma-to-npu -verify-diagnostics %s
 
-aie.device(npu) {
+aie.device(npu1_4col) {
   func.func @sequence() {
     // expected-error@+2 {{'aiex.npu.rtp_write' op RTP buffer address cannot be found. Has an RTP buffer been allocated?}}
     // expected-error@+1 {{failed to legalize operation 'aiex.npu.rtp_write' that was explicitly marked illegal}}
