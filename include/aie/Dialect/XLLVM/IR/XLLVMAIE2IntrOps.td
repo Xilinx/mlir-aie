@@ -231,6 +231,55 @@ def UpdBF512BF256IntrOp :
                    VectorOfLengthAndType<[16], [BF16]>:$src,
                    I32:$idx)>;
 
+// ----- UPS ----- 
+
+def Acc32V16I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v16.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc32V32I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v32.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I8]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc32V32I512UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v32.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V16I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v16.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V16I512UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v16.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V8I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v8.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Vector16BF16ToV16AccFloatIntrOp :
+    AIEVec2_IntrOp<"v16bf16.to.v16accfloat",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
+
 // ----- SHIFT ----- 
 
 def VectorShiftI512I512IntrOp :
