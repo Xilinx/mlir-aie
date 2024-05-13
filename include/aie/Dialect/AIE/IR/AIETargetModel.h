@@ -165,6 +165,9 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the size (in bits) of the accumulator/cascade.
+  virtual uint32_t getAccumulatorCascadeSize() const = 0;
+
   /// Return the number of lock objects
   virtual uint32_t getNumLocks(int col, int row) const = 0;
 
@@ -204,6 +207,15 @@ public:
   // Return true if this is an NPU-based device
   // There are several special cases for handling the NPU at the moment.
   virtual bool isNPU() const { return false; }
+
+  // Return the bit offset of the column within a tile address.
+  // This is used to compute the control address of a tile from it's column location. 
+  virtual uint32_t getColumnShift() const = 0;
+
+  // Return the bit offset of the row within a tile address.
+  // This is used to compute the control address of a tile from it's row location. 
+  virtual uint32_t getRowShift() const = 0;
+
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -243,6 +255,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   uint32_t getNumMemTileRows() const override { return 0; }
@@ -268,6 +281,9 @@ public:
       return true;
     return false;
   }
+
+  uint32_t getColumnShift() const override { return 23; } 
+  uint32_t getRowShift() const override { return 18; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -300,7 +316,8 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
-
+  uint32_t getAccumulatorCascadeSize() const override { return 512; }
+  
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
   }
@@ -322,6 +339,9 @@ public:
   bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
                                 WireBundle dstBundle,
                                 int dstChan) const override;
+
+  uint32_t getColumnShift() const override { return 25; } 
+  uint32_t getRowShift() const override { return 20; }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {

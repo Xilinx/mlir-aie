@@ -966,15 +966,10 @@ LogicalResult PutCascadeOp::verify() {
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
-    if (bits != 384)
-      return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
-    if (bits != 512)
-      return emitOpError("must be a 512-bit type");
-  } else
-    return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+  auto archbits = targetModel.getAccumulatorCascadeSize();
+  if (bits != archbits)
+    return emitOpError("type must match architecture cascade width (") <<
+        archbits << " bits in " << stringifyAIEArch(targetModel.getTargetArch()) << ")";
   return success();
 }
 
