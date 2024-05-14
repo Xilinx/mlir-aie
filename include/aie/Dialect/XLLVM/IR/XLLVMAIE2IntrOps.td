@@ -185,6 +185,24 @@ def ExtI256I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
                    I32:$idx)>;
 
+def ExtI512I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I512.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI256I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I256.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI128I512IntrOp :
+    AIEVec2_IntrOp<"extract.I128.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
+                   I32:$idx)>;
+  
 // ----- CONCAT ----- 
 
 def ConcatI512I256IntrOp :
