@@ -242,7 +242,7 @@ llvm.func @ext_i256_i1024(%v : vector<32xi32>, %idx : i32) -> vector<8xi32> {
 
 // CHECK-LABEL: define <4 x i32> @ext_i128_i512
 llvm.func @ext_i128_i512(%v : vector<16xi32>, %idx : i32) -> vector<4xi32> {
-    // CHECK: call <4 x i32> @llvm.aie2.ext.I128.I512(
+    // CHECK: call <4 x i32> @llvm.aie2.extract.I128.I512(
     // CHECK-SAME: <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
     %1 = "xllvm.intr.aie2.extract.I128.I512"(%v, %idx) : 
                                         (vector<16xi32>, i32) -> vector<4xi32>

@@ -1300,7 +1300,8 @@ public:
               rewriter, loc, operands,
               {VectorType::get({32}, rewriter.getI32Type()),
                rewriter.getI32Type()}));
-    } else if (resultVectorSize == 128 && srcVectorSize == 512) {
+      // TODO: handle below case
+      // } else if (resultVectorSize == 128 && srcVectorSize == 512) {
       // Special case
     } else {
       op.emitWarning() << "aievec.ext with " << srcVectorSize
