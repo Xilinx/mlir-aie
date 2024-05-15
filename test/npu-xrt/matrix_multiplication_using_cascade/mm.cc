@@ -19,10 +19,10 @@
 template <bool put, bool get, int M_tile, int K_tile, int N_tile, int M, int K,
           int N>
 void matmul_scalar_cascade_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
-  event0();
   for (int m_t = 0; m_t < M_tile; m_t++) {
     for (int n_t = 0; n_t < N_tile; n_t++) {
       for (int k_t = 0; k_t < K_tile; k_t++) {
+        event0();
         int a_offset = (k_t * M_tile + m_t) * (M * K);
         int b_offset = (n_t * K_tile + k_t) * (K * N);
         int c_offset = (n_t * M_tile + m_t) * (M * N);
@@ -44,10 +44,10 @@ void matmul_scalar_cascade_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
             }
           }
         }
+        event1();
       }
     }
   }
-  event1();
 }
 
 extern "C" {
@@ -70,5 +70,14 @@ void matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(int32_t *a, int32_t *b,
 }
 void matmul_scalar_4x2x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
   matmul_scalar_cascade_i32_i32<false, false, 4, 2, 4, 4, 8, 4>(a, b, c);
+}
+
+void flush_trace() {
+  // event buffers only appear to be transferred to DDR in bursts of 256 bytes
+  // (64 events)
+  for (int i = 0; i < 32; i++) {
+    event0();
+    event1();
+  }
 }
 }

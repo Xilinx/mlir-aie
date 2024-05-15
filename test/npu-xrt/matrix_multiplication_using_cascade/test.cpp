@@ -55,6 +55,7 @@ int main(int argc, const char *argv[]) {
   matmul_common::add_default_options(desc);
   matmul_common::parse_options(argc, argv, desc, vm);
   int verbosity = vm["verbosity"].as<int>();
+  int trace_size = vm["trace_sz"].as<int>();
 
   srand(time(NULL));
 
@@ -111,8 +112,8 @@ int main(int argc, const char *argv[]) {
       xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
   auto bo_b =
       xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_c =
-      xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_c = xrt::bo(device, C_SIZE + trace_size, XRT_BO_FLAGS_HOST_ONLY,
+                      kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -131,7 +132,8 @@ int main(int argc, const char *argv[]) {
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
   std::vector<C_DATATYPE> CVec(C_VOLUME);
-  memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
+  // memcpy(bufC, CVec.data(), (CVec.size() * sizeof(C_DATATYPE)));
+  memset(bufC, 0, C_SIZE + trace_size);
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -158,7 +160,6 @@ int main(int argc, const char *argv[]) {
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
-
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     memcpy(CVec.data(), bufC, (CVec.size() * sizeof(C_DATATYPE)));
     // std::vector<C_DATATYPE> CVecRef(C_VOLUME);
@@ -184,6 +185,11 @@ int main(int argc, const char *argv[]) {
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
+
+    if (trace_size > 0) {
+      matmul_common::write_out_trace(((char *)bufC) + C_SIZE, trace_size,
+                                     vm["trace_file"].as<std::string>());
+    }
 
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;

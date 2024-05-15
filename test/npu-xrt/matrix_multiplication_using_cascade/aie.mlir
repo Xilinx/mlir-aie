@@ -10,6 +10,9 @@ module {
     func.func private @matmul_scalar_put_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
+    // <trace>
+    func.func private @flush_trace()
+    // </trace>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_1_1 = aie.tile(1, 1)
@@ -18,6 +21,11 @@ module {
     %tile_1_2 = aie.tile(1, 2)
     %tile_2_2 = aie.tile(2, 2)
     %tile_3_2 = aie.tile(3, 2)
+    // <trace>
+    %tile_1_0 = aie.tile(1, 0)
+    %tile_2_0 = aie.tile(2, 0)
+    %tile_3_0 = aie.tile(3, 0)
+    // </trace>
     %lock_1_1 = aie.lock(%tile_1_1, 1) {init = 4 : i32}
     %lock_1_1_0 = aie.lock(%tile_1_1, 0) {init = 0 : i32}
     %lock_0_1 = aie.lock(%tile_0_1, 1) {init = 4 : i32}
@@ -97,6 +105,9 @@ module {
       func.call @matmul_scalar_put_4x1x4_4x4x4_i32_i32(%buf2, %buf1, %buf0) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_0_2_4, Release, 1)
       aie.use_lock(%lock_0_2, Release, 1)
+      // <trace>
+      func.call @flush_trace() : () -> ()
+      // </trace>
       cf.br ^bb1
     } {elf_file = "segment_0_core_0_2.elf",link_with = "mm.o"}
     %mem_1_2 = aie.mem(%tile_1_2) {
@@ -139,6 +150,9 @@ module {
       func.call @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(%buf5, %buf4, %buf3) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_1_2_7, Release, 1)
       aie.use_lock(%lock_1_2, Release, 1)
+      // <trace>
+      func.call @flush_trace() : () -> ()
+      // </trace>
       cf.br ^bb1
     } {elf_file = "segment_0_core_1_2.elf",link_with = "mm.o"}
     %mem_2_2 = aie.mem(%tile_2_2) {
@@ -181,6 +195,9 @@ module {
       func.call @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(%buf8, %buf7, %buf6) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_2_2_10, Release, 1)
       aie.use_lock(%lock_2_2, Release, 1)
+      // <trace>
+      func.call @flush_trace() : () -> ()
+      // </trace>
       cf.br ^bb1
     } {elf_file = "segment_0_core_2_2.elf",link_with = "mm.o"}
     %mem_3_2 = aie.mem(%tile_3_2) {
@@ -232,6 +249,9 @@ module {
       aie.use_lock(%lock_3_2_16, Release, 1)
       aie.use_lock(%lock_3_2_13, Release, 1)
       aie.use_lock(%lock_3_2, Release, 1)
+      // <trace>
+      func.call @flush_trace() : () -> ()
+      // </trace>
       cf.br ^bb1
     } {elf_file = "segment_0_core_3_2.elf", link_with = "mm.o"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
@@ -249,6 +269,36 @@ module {
     aie.cascade_flow(%tile_0_2, %tile_1_2)
     aie.cascade_flow(%tile_1_2, %tile_2_2)
     aie.cascade_flow(%tile_2_2, %tile_3_2)
+    // <trace>
+    aie.packet_flow(0) { 
+      aie.packet_source<%tile_0_2, Trace : 0> 
+      aie.packet_dest<%tile_0_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(1) { 
+      aie.packet_source<%tile_1_2, Trace : 0> 
+      aie.packet_dest<%tile_1_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(2) { 
+      aie.packet_source<%tile_2_2, Trace : 0> 
+      aie.packet_dest<%tile_2_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(3) { 
+      aie.packet_source<%tile_3_2, Trace : 0> 
+      aie.packet_dest<%tile_3_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(4) { 
+      aie.packet_source<%tile_0_1, Trace : 0> 
+      aie.packet_dest<%tile_0_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(5) { 
+      aie.packet_source<%tile_1_1, Trace : 0> 
+      aie.packet_dest<%tile_1_0, DMA : 1>
+    } {keep_pkt_header = true}
+    aie.packet_flow(6) { 
+      aie.packet_source<%tile_2_1, Trace : 0> 
+      aie.packet_dest<%tile_2_0, DMA : 1>
+    } {keep_pkt_header = true}
+    // </trace>
     %memtile_dma_2_1 = aie.memtile_dma(%tile_2_1) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -349,6 +399,70 @@ module {
     aie.shim_dma_allocation @airMemcpyId5(MM2S, 1, 0)
     memref.global "public" @airMemcpyId5 : memref<16x16xi32, 1 : i32>
     func.func @matmul_16x16_16xi32__dispatch_0_matmul_16x16x16_i32(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {
+      // <trace>
+      aiex.npu.write32 {address = 213200 : ui32, column = 3 : i32, row = 2 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 213204 : ui32, column = 3 : i32, row = 2 : i32, value = 3 : ui32} // packet_type: 0(core), packet_id: 3
+      aiex.npu.write32 {address = 213216 : ui32, column = 3 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      aiex.npu.write32 {address = 213220 : ui32, column = 3 : i32, row = 2 : i32, value = 757865039 : ui32} // events: 0x2D(lock release) 2C(lock acquire) 1A(lock stall) 4F(port1 run)
+      aiex.npu.write32 {address = 261888 : ui32, column = 3 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      aiex.npu.write32 {address = 261892 : ui32, column = 3 : i32, row = 2 : i32, value = 0 : ui32}
+      aiex.npu.writebd_shimtile {bd_id = 15 : i32, buffer_length = 8192 : i32, buffer_offset = 25600 : i32, column = 3 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 3: i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 3 : i32, row = 0 : i32, value = 15 : ui32} 
+
+      aiex.npu.write32 {address = 213200 : ui32, column = 2 : i32, row = 2 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 213204 : ui32, column = 2 : i32, row = 2 : i32, value = 2 : ui32} // packet_type: 0(core), packet_id: 2
+      aiex.npu.write32 {address = 213216 : ui32, column = 2 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      aiex.npu.write32 {address = 213220 : ui32, column = 2 : i32, row = 2 : i32, value = 757865039 : ui32} // events: 0x2D(lock release) 2C(lock acquire) 1A(lock stall) 4F(port1 run)
+      aiex.npu.write32 {address = 261888 : ui32, column = 2 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      aiex.npu.write32 {address = 261892 : ui32, column = 2 : i32, row = 2 : i32, value = 0 : ui32}
+      aiex.npu.writebd_shimtile {bd_id = 14 : i32, buffer_length = 8192 : i32, buffer_offset = 17408 : i32, column = 2 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 2: i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 2 : i32, row = 0 : i32, value = 14 : ui32} 
+      
+      aiex.npu.write32 {address = 213200 : ui32, column = 1 : i32, row = 2 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 213204 : ui32, column = 1 : i32, row = 2 : i32, value = 1 : ui32} // packet_type: 0(core), packet_id: 1
+      aiex.npu.write32 {address = 213216 : ui32, column = 1 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      aiex.npu.write32 {address = 213220 : ui32, column = 1 : i32, row = 2 : i32, value = 757865039 : ui32} // events: 0x2D(lock release) 2C(lock acquire) 1A(lock stall) 4F(port1 run)
+      aiex.npu.write32 {address = 261888 : ui32, column = 1 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      aiex.npu.write32 {address = 261892 : ui32, column = 1 : i32, row = 2 : i32, value = 0 : ui32}
+      aiex.npu.writebd_shimtile {bd_id = 13 : i32, buffer_length = 8192 : i32, buffer_offset = 9216 : i32, column = 1 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 1: i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 1 : i32, row = 0 : i32, value = 13 : ui32} 
+      
+      aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32} // packet_type: 0(core), packet_id: 0
+      aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 757865039 : ui32} // events: 0x2D(lock release) 2C(lock acquire) 1A(lock stall) 4F(port1 run)
+      aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+      aiex.npu.writebd_shimtile {bd_id = 12 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0: i32, packet_type = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 12 : ui32} 
+      
+      aiex.npu.write32 {address = 606416 : ui32, column = 2 : i32, row = 1 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 606420 : ui32, column = 2 : i32, row = 1 : i32, value = 12294 : ui32} // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 6
+      aiex.npu.write32 {address = 606432 : ui32, column = 2 : i32, row = 1 : i32, value = 336 : ui32} // events: 0x00 00 01(true) 50(port0 run)
+      aiex.npu.write32 {address = 606436 : ui32, column = 2 : i32, row = 1 : i32, value = 1409286144 : ui32} // events: 0x54(port1 run) 00 00 00  
+      aiex.npu.write32 {address = 724736 : ui32, column = 2 : i32, row = 1 : i32, value = 32 : ui32} // [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
+      aiex.npu.write32 {address = 724740: ui32, column = 2 : i32, row = 1 : i32, value = 0 : ui32} 
+      aiex.npu.writebd_shimtile {bd_id = 11 : i32, buffer_length = 8192 : i32, buffer_offset = 17408 : i32, column = 2 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 6: i32, packet_type = 3 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 2 : i32, row = 0 : i32, value = 11 : ui32} 
+      
+      aiex.npu.write32 {address = 606416 : ui32, column = 1 : i32, row = 1 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 606420 : ui32, column = 1 : i32, row = 1 : i32, value = 12293 : ui32} // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 5
+      aiex.npu.write32 {address = 606432 : ui32, column = 1 : i32, row = 1 : i32, value = 336 : ui32} // events: 0x00 00 01(true) 50(port0 run)
+      aiex.npu.write32 {address = 606436 : ui32, column = 1 : i32, row = 1 : i32, value = 1415076960 : ui32} // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run) 
+      aiex.npu.write32 {address = 724736 : ui32, column = 1 : i32, row = 1 : i32, value = 33620000 : ui32} // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
+      aiex.npu.write32 {address = 724740: ui32, column = 1 : i32, row = 1 : i32, value = 3 : ui32} // [5:0] port4 MM2S-3
+      aiex.npu.writebd_shimtile {bd_id = 10 : i32, buffer_length = 8192 : i32, buffer_offset = 9216 : i32, column = 1 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 5: i32, packet_type = 3 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 1 : i32, row = 0 : i32, value = 10 : ui32} 
+      
+      aiex.npu.write32 {address = 606416 : ui32, column = 0 : i32, row = 1 : i32, value = 65536 : ui32} // [22:16] = 0000001, start event: True
+      aiex.npu.write32 {address = 606420 : ui32, column = 0 : i32, row = 1 : i32, value = 12292 : ui32} // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 4
+      aiex.npu.write32 {address = 606432 : ui32, column = 0 : i32, row = 1 : i32, value = 336 : ui32} // events: 0x00 00 01(true) 50(port0 run)
+      aiex.npu.write32 {address = 606436 : ui32, column = 0 : i32, row = 1 : i32, value = 1415076960 : ui32} // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run) 
+      aiex.npu.write32 {address = 724736 : ui32, column = 0 : i32, row = 1 : i32, value = 33620000 : ui32} // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
+      aiex.npu.write32 {address = 724740: ui32, column = 0 : i32, row = 1 : i32, value = 3 : ui32} // [5:0] port4 MM2S-3
+      aiex.npu.writebd_shimtile {bd_id = 9 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, column_num = 1 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 4: i32, packet_type = 3 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+      aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 9 : ui32} 
+      // </trace>
       memref.assume_alignment %arg0, 64 : memref<16x16xi32>
       memref.assume_alignment %arg1, 64 : memref<16x16xi32>
       memref.assume_alignment %arg2, 64 : memref<16x16xi32>

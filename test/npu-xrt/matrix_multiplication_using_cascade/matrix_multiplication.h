@@ -47,7 +47,14 @@ void add_default_options(po::options_description &desc) {
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
+      "path of file containing userspace instructions sent to the NPU")(
+      "verify", po::value<bool>()->default_value(true),
+      "whether to verify the AIE computed output")(
+      "iters", po::value<int>()->default_value(1))(
+      "warmup", po::value<int>()->default_value(0))(
+      "trace_sz,t", po::value<int>()->default_value(0))(
+      "trace_file", po::value<std::string>()->default_value("trace.txt"),
+      "where to store trace output");
 }
 
 void parse_options(int argc, const char *argv[], po::options_description &desc,
@@ -293,6 +300,15 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
   }
 
   return errors;
+}
+
+void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+  std::ofstream fout(path);
+  uint32_t *traceOut = (uint32_t *)traceOutPtr;
+  for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
+    fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
+    fout << std::endl;
+  }
 }
 
 } // namespace matmul_common
