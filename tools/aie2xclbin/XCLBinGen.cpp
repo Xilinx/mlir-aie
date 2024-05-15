@@ -527,8 +527,6 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                        << "\t{\n"
                        << "\t\tname=aie_image, id=0x1c000000\n"
                        << "\t\t{ type=cdo\n"
-                       << "\t\t  file=" << TK.TempDir
-                       << "/aie_cdo_error_handling.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_init.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
