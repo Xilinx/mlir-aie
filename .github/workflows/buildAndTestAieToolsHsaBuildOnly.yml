@@ -100,12 +100,12 @@ jobs:
             git submodule update --init --recursive
 
             # Buliding libxaie
-            pushd runtime_lib/xaiengine/aie-rt/driver/src
+            pushd third_party/aie-rt/driver/src
             make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
             popd
             mkdir -p /install/aie-rt/lib
-            cp -a runtime_lib/xaiengine/aie-rt/driver/src/*.so* /install/aie-rt/lib
-            cp -a runtime_lib/xaiengine/aie-rt/driver/include /install/aie-rt
+            cp -a third_party/aie-rt/driver/src/*.so* /install/aie-rt/lib
+            cp -a third_party/aie-rt/driver/include /install/aie-rt
 
             apt install python3.10-venv
             python -m venv aie-venv
