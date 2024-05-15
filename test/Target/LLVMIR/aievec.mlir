@@ -222,6 +222,33 @@ llvm.func @ext_i256_i512(%v : vector<16xi32>, %idx : i32) -> vector<8xi32> {
     llvm.return %1 : vector<8xi32>
 }
 
+// CHECK-LABEL: define <16 x i32> @ext_i512_i1024
+llvm.func @ext_i512_i1024(%v : vector<32xi32>, %idx : i32) -> vector<16xi32> {
+    // CHECK: call <16 x i32> @llvm.aie2.ext.I512.I1024(
+    // CHECK-SAME: <32 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.ext.I512.I1024"(%v, %idx) : 
+                                        (vector<32xi32>, i32) -> vector<16xi32>
+    llvm.return %1 : vector<16xi32>
+}
+
+// CHECK-LABEL: define <8 x i32> @ext_i256_i1024
+llvm.func @ext_i256_i1024(%v : vector<32xi32>, %idx : i32) -> vector<8xi32> {
+    // CHECK: call <8 x i32> @llvm.aie2.ext.I256.I1024(
+    // CHECK-SAME: <32 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.ext.I256.I1024"(%v, %idx) : 
+                                        (vector<32xi32>, i32) -> vector<8xi32>
+    llvm.return %1 : vector<8xi32>
+}
+
+// CHECK-LABEL: define <4 x i32> @ext_i128_i512
+llvm.func @ext_i128_i512(%v : vector<16xi32>, %idx : i32) -> vector<4xi32> {
+    // CHECK: call <4 x i32> @llvm.aie2.extract.I128.I512(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.extract.I128.I512"(%v, %idx) : 
+                                        (vector<16xi32>, i32) -> vector<4xi32>
+    llvm.return %1 : vector<4xi32>
+}
+
 // ----- CONCAT ----- 
 
 // CHECK-LABEL: define <16 x i32> @concat_i512_i256
