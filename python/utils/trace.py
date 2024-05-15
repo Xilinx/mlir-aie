@@ -6,8 +6,76 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
+import typing
 from aie.dialects.aiex import *
 from aie.dialects.aie import get_target_model
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent
+
+class GenericEvent:
+    def __init__(self, code: typing.Union[CoreEvent, MemEvent, PLEvent]):
+        # For backwards compatibility, allow integer as event
+        if isinstance(code, int):
+            code = CoreEvent(code)
+        self.code : typing.Union[CoreEvent, MemEvent, PLEvent] = code
+    def get_register_writes(self):
+        """
+        Sub-classes for specific events that require writing to a specific 
+        register should overwrite this method to return a dicitionary 
+        address -> register value.
+
+        Note that if multiple event(-types) request writing to the same
+        register, their writes will be ORed together. (This makes sense if
+        configuration requires only writing some bits of the whole register.)
+        """
+        return {}
+
+class PortEvent(GenericEvent):
+    def __init__(self, code, port_number, master=True):
+        assert code in {CoreEvent.PORT_IDLE_0, CoreEvent.PORT_IDLE_1,
+                        CoreEvent.PORT_IDLE_2, CoreEvent.PORT_IDLE_3,
+                        CoreEvent.PORT_IDLE_4, CoreEvent.PORT_IDLE_5,
+                        CoreEvent.PORT_IDLE_6, CoreEvent.PORT_IDLE_7,
+                        CoreEvent.PORT_RUNNING_0, CoreEvent.PORT_RUNNING_1,
+                        CoreEvent.PORT_RUNNING_2, CoreEvent.PORT_RUNNING_3,
+                        CoreEvent.PORT_RUNNING_4, CoreEvent.PORT_RUNNING_5,
+                        CoreEvent.PORT_RUNNING_6, CoreEvent.PORT_RUNNING_7,
+                        CoreEvent.PORT_STALLED_0, CoreEvent.PORT_STALLED_1,
+                        CoreEvent.PORT_STALLED_2, CoreEvent.PORT_STALLED_3,
+                        CoreEvent.PORT_STALLED_4, CoreEvent.PORT_STALLED_5,
+                        CoreEvent.PORT_STALLED_6, CoreEvent.PORT_STALLED_7,
+                        CoreEvent.PORT_TLAST_0, CoreEvent.PORT_TLAST_1,
+                        CoreEvent.PORT_TLAST_2, CoreEvent.PORT_TLAST_3,
+                        CoreEvent.PORT_TLAST_4, CoreEvent.PORT_TLAST_5,
+                        CoreEvent.PORT_TLAST_6, CoreEvent.PORT_TLAST_7}
+        self.event_number = (0 if code in {CoreEvent.PORT_IDLE_0, CoreEvent.PORT_RUNNING_0, CoreEvent.PORT_STALLED_0, CoreEvent.PORT_TLAST_0} else 
+                             1 if code in {CoreEvent.PORT_IDLE_1, CoreEvent.PORT_RUNNING_1, CoreEvent.PORT_STALLED_1, CoreEvent.PORT_TLAST_1} else 
+                             2 if code in {CoreEvent.PORT_IDLE_2, CoreEvent.PORT_RUNNING_2, CoreEvent.PORT_STALLED_2, CoreEvent.PORT_TLAST_2} else 
+                             3 if code in {CoreEvent.PORT_IDLE_3, CoreEvent.PORT_RUNNING_3, CoreEvent.PORT_STALLED_3, CoreEvent.PORT_TLAST_3} else 
+                             4 if code in {CoreEvent.PORT_IDLE_4, CoreEvent.PORT_RUNNING_4, CoreEvent.PORT_STALLED_4, CoreEvent.PORT_TLAST_4} else 
+                             5 if code in {CoreEvent.PORT_IDLE_5, CoreEvent.PORT_RUNNING_5, CoreEvent.PORT_STALLED_5, CoreEvent.PORT_TLAST_5} else 
+                             6 if code in {CoreEvent.PORT_IDLE_6, CoreEvent.PORT_RUNNING_6, CoreEvent.PORT_STALLED_6, CoreEvent.PORT_TLAST_6} else 
+                                          {CoreEvent.PORT_IDLE_7, CoreEvent.PORT_RUNNING_7, CoreEvent.PORT_STALLED_7, CoreEvent.PORT_TLAST_7})
+        self.port_number = port_number
+        self.master = master
+        super().__init__(code)
+    
+    def get_register_writes(self):
+        def master(port):
+            return port | (1 << 5)
+
+        def slave(port):
+            return port
+
+        # 0x3FF00: Stream switch event port selection 0
+        # 0x3FF04: Stream switch event port selection 1
+        address = (0x3FF00 if self.event_number < 4 else
+                   0x3FF04)
+        value = (master(self.port_number) if self.master else 
+                 slave(self.port_number))
+        
+        value =  (value & 0xFF) << 8*(self.event_number%4)
+
+        return {address: value}
 
 
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
@@ -77,9 +145,17 @@ def configure_simple_tracing_aie2(
     ddr_id=2,
     size=8192,
     offset=0,
-    start=0x1,
-    stop=0x0,
-    events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
+    start=CoreEvent.TRUE,
+    stop=CoreEvent.NONE,
+    events=[CoreEvent.INSTR_EVENT_1,
+            CoreEvent.INSTR_EVENT_0,
+            CoreEvent.INSTR_VECTOR,
+            CoreEvent.INSTR_LOCK_RELEASE_REQ,
+            CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+            CoreEvent.LOCK_STALL,
+            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+            PortEvent(CoreEvent.PORT_RUNNING_1, 1, False) # slave(1)
+            ]
 ):
     dev = shim.parent.attributes["device"]
     tm = get_target_model(dev)
@@ -87,8 +163,19 @@ def configure_simple_tracing_aie2(
     # Shim has to be a shim tile
     assert tm.is_shim_noc_tile(shim.col, shim.row)
 
+    # For backwards compatibility, allow integers for start/stop events
+    if isinstance(start, int):
+        start = CoreEvent(start)
+    if isinstance(stop, int):
+        stop = CoreEvent(stop)
+
     # Pad the input so we have exactly 8 events.
-    events = (events + [0] * 8)[:8]
+    events = (events + [CoreEvent.NONE] * 8)[:8]
+
+    # Assure all selected events are valid
+    events = [e if isinstance(e, GenericEvent)
+              else GenericEvent(e)
+              for e in events]
 
     # 0x340D0: Trace Control 0
     #          0xAABB---C
@@ -100,7 +187,7 @@ def configure_simple_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340D0,
-        value=pack4bytes(stop, start, 0, 0),
+        value=pack4bytes(stop.value, start.value, 0, 0),
     )
     # 0x340D4: Trace Control 1
     # This is used to control packet routing.  For the moment
@@ -117,7 +204,7 @@ def configure_simple_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E0,
-        value=pack4bytes(*events[0:4]),
+        value=pack4bytes(*(e.code.value for e in events[0:4])),
     )
     # 0x340E4: Trace Event Group 2  (Which events to trace)
     #          0xAABBCCDD    AA, BB, CC, DD <- four event slots
@@ -125,28 +212,25 @@ def configure_simple_tracing_aie2(
         column=int(tile.col),
         row=int(tile.row),
         address=0x340E4,
-        value=pack4bytes(*events[4:8]),
+        value=pack4bytes(*(e.code.value for e in events[4:8])),
     )
 
-    # 0x3FF00: Stream switch event port selection 0
-    def master(port):
-        return port | (1 << 5)
-
-    def slave(port):
-        return port
-
-    npu_write32(
-        column=int(tile.col),
-        row=int(tile.row),
-        address=0x3FF00,
-        value=pack4bytes(0, 0, slave(1), master(1)),  # port 1 is FIFO0?
-    )
-    npu_write32(
-        column=int(tile.col),
-        row=int(tile.row),
-        address=0x3FF04,
-        value=pack4bytes(0, 0, 0, 0),
-    )
+    # Event specific register writes
+    all_reg_writes = {}
+    for e in events:
+        reg_writes = e.get_register_writes()
+        for addr, value in reg_writes.items():
+            if addr in all_reg_writes:
+                all_reg_writes[addr] |= value
+            else:
+                all_reg_writes[addr] = value
+    for addr, value in all_reg_writes.items():
+        npu_write32(
+            column=int(tile.col),
+            row=int(tile.row),
+            address=addr,
+            value=value
+        )
 
     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
     # out to host DDR memory

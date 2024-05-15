@@ -6,6 +6,7 @@ import re
 import subprocess
 import shutil
 import os
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
@@ -728,76 +729,17 @@ def parse_mlir_trace_events(lines):
 def lookup_event_name_by_type(trace_type, code):
     # def lookup_event_name_by_type(trace_type, loc, event, pid_events):
     event = ""
-    # Core traces
     # code = pid_events[trace_type][loc][event]
-    if trace_type == 0:
-        if code == 0x1:
-            event = "True"
-        elif code == 23:  # 0x17:
-            event = "MemoryStall"
-        elif code == 24:  # 0x18:
-            event = "StreamStall"
-        elif code == 26:  # 0x1A:
-            event = "LockStall"
-        elif code == 32:  # 0x20, all events 33-45
-            event = "CoreProgramFlow"
-        elif code == 33:  # 0x21:
-            event = "Event0"
-        elif code == 34:  # 0x22:
-            event = "Event1"
-        elif code == 37:  # 0x25:
-            event = "VectorInstr"
-        elif code == 38:  # 0x26:
-            event = "InstrLoad"
-        elif code == 39:  # 0x27:
-            event = "InstrStore"
-        elif code == 44:  # 0x2C:
-            event = "LockAcquireInstr"
-        elif code == 45:  # 0x2D:
-            event = "LockReleaseInstr"
-        elif code == 75:  # 0x4B:
-            event = "PortRunning0"
-        elif code == 79:  # 0x4F:
-            event = "PortRunning1"
-        else:
-            event = "Unknown"
-    # Mem traces
-    elif trace_type == 1:
-        # TODO Need to define these
-        if code == 21:  # x15
-            event = "DMA s2mm 0 start bd"
-        elif code == 22:  # x16
-            event = "DMA s2mm 1 start bd"
-        elif code == 23:  # x17
-            event = "DMA mm2s 0 start bd"
-        elif code == 24:  # x18
-            event = "DMA mm2s 1 start bd"
-        elif code == 25:  # x19
-            event = "DMA s2mm 0 finish bd"
-        elif code == 26:  # x1a
-            event = "DMA s2mm 1 finish bd"
-        elif code == 27:  # x1b
-            event = "DMA mm2s 0 finish bd"
-        elif code == 28:  # x1c
-            event = "DMA mm2s 1 finish bd"
-        elif code == 29:  # x1d
-            event = "DMA s2mm 0 idle"
-        elif code == 30:  # x1e
-            event = "DMA s2mm 1 idle"
-        elif code == 31:  # x1f
-            event = "DMA mm2s 0 idle"
-        elif code == 32:  # x20
-            event = "DMA mm2s 1 idle"
-        elif code == 33:  # x21
-            event = "DMA s2mm 0 stalled lock acquire"
-        elif code == 34:  # x22
-            event = "DMA s2mm 1 stalled lock acquire"
-        else:
-            event = "Unknown"
+    events_enum = None
+    if trace_type == 0: # Core traces
+        events_enum = CoreEvent
+    elif trace_type == 1: # Mem traces
+        events_enum = MemEvent
+    if events_enum is not None and code in set(x.value for x in events_enum):
+        event = events_enum(code).name
     else:
         event = "Unknown"
     return event
-
 
 # def lookup_event_name_by_code(code, traceType):
 #     event = ""
