@@ -1,5 +1,5 @@
 //
-// Created by mlevental on 5/6/24.
+// Created by mlevental on 5/15/24.
 //
 
 #ifndef AIE_TRANSACTIONFWDUMP_H
@@ -33,75 +33,6 @@ constexpr uint32_t OFFSET_3K = 3 * 1024;
 static inline uint64_t getTileAddr(uint8_t c, uint8_t r) {
   return (((uint64_t)r & 0xFFU) << XAIE_ROW_SHIFT) |
          (((uint64_t)c & 0xFFU) << XAIE_COL_SHIFT);
-}
-
-void validate() {
-  std::string xclbinFile(
-      "/home/mlevental/dev_projects/mlir-aie/example/1x4.xclbin");
-
-  try {
-    unsigned int deviceIndex = 0;
-    auto device = xrt::device(deviceIndex);
-    auto xclbin = xrt::xclbin(xclbinFile);
-    auto xkernel = xclbin.get_kernel("DPU_PDI_0");
-    auto kernelName = xkernel.get_name();
-    device.register_xclbin(xclbin);
-
-    xrt::hw_context context(device, xclbin.get_uuid());
-    auto kernel = xrt::kernel(context, kernelName);
-    const int iteration = 100;
-    const int dummy_buffer_size = 4096;   /* in bytes */
-    const int noop_instrction_size = 128; /* in bytes */
-
-    auto bo_instr = xrt::bo(device, noop_instrction_size,
-                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(5));
-    auto bo_ifm = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(1));
-    auto bo_param = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                            kernel.group_id(2));
-    auto bo_ofm = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(3));
-    auto bo_inter = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                            kernel.group_id(4));
-    auto bo_mc = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                         kernel.group_id(7));
-
-    // Fill no-op instrctions
-    std::memset(bo_instr.map<char *>(), 0, noop_instrction_size);
-
-    // Sync Input BOs
-    bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    bo_ifm.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    bo_param.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    bo_mc.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-    uint64_t opcode = 1;
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Set kernel argument and trigger it to run. A run object will be returned.
-    auto run = kernel(opcode, bo_ifm, bo_param, bo_ofm, bo_inter, bo_instr,
-                      noop_instrction_size / sizeof(uint32_t), bo_mc);
-    // Wait on the run object
-    run.wait2();
-
-    for (int i = 1; i < iteration; i++) {
-      // Re-start the same run object with same arguments
-      run.start();
-      run.wait2();
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-
-    auto duration =
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    std::cout << "Host test microseconds: " << duration.count() << std::endl;
-    std::cout << "Host test average latency: " << duration.count() / iteration
-              << " us/iter" << std::endl;
-  } catch (const std::exception &ex) {
-    std::cout << "ERROR: Caught exception: " << ex.what() << '\n';
-    std::cout << "TEST FAILED!" << std::endl;
-  }
-
-  std::cout << "TEST PASSED!" << std::endl;
 }
 
 typedef struct {
@@ -167,7 +98,6 @@ public:
     if (cmdBuf_)
       delete[] cmdBuf_;
   }
-  std::string type() const { return "transaction_op"; }
 
   uint8_t *cmdBuf_;
   uint32_t TxnSize;
@@ -188,17 +118,17 @@ public:
   std::vector<uint8_t> ibuf_;
 };
 
+#define XAIE_PARTITION_BASE_ADDR 0x0
+
 void dumpRegistersTransaction() {
   unsigned int deviceIndex = 0;
   auto device = xrt::device(deviceIndex);
   std::string xclbinFile(
       "/home/mlevental/dev_projects/mlir-aie/example/1x4.xclbin");
   auto xclbin = xrt::xclbin(xclbinFile);
-  auto xkernel = xclbin.get_kernel("DPU_PDI_0");
+  auto xkernel = xclbin.get_kernel("XDP_KERNEL");
   auto kernelName = xkernel.get_name();
   device.register_xclbin(xclbin);
-  xrt::hw_context context(device, xclbin.get_uuid());
-  auto kernel = xrt::kernel(context, kernelName);
 
   XAie_Config configPtr =
       XAie_Config{/*AieGen*/ XAIE_DEV_GEN_AIEML,
@@ -214,107 +144,85 @@ void dumpRegistersTransaction() {
                   static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + 1),
                   /*AieTileNumRows*/
                   static_cast<uint8_t>(6 - 1 - 1),
-                  /*PartProp*/ {},
+                  /*PartProp*/ {0},
                   // without this you get a segfault in XAie_CfgInitialize
                   XAIE_IO_BACKEND_CDO};
   XAie_DevInst devInst;
   XAie_InstDeclare(_devInst, &configPtr);
   devInst = _devInst;
+  //  XAie_SetupPartitionConfig(&devInst, XAIE_PARTITION_BASE_ADDR,
+  //                            /*partitionStartCol*/ 0, /*partitionNumCols*/
+  //                            1);
   XAie_CfgInitialize(&devInst, &configPtr);
 
   uint8_t *txnPtr;
   read_register_op_t *op;
   std::size_t opSize;
-  std::vector<register_data_t> opProfileData;
+  std::vector<register_data_t> opRegisterData;
   int counterId = 0;
-  std::vector<unsigned long> regs{// corestatus
-                                  0x00032004,
-                                  // Stream_Switch_Master_Config_AIE_Core0
-                                  0x0003F000,
-                                  // module clock control
-                                  0x00060000,
-                                  // Event_Group_Stream_Switch_Enable
-                                  0x00034518,
-                                  // core le
-                                  0x00031150,
-                                  // Core_CR
-                                  0x00031170};
+  std::vector<unsigned long> regs{//            0x340D0,
+                                  //            0x340D4,
+                                  //            0x340D8,
+                                  0x00032004};
 
-  for (int row = 0; row < 6; ++row) {
-    for (int col = 0; col < 5; ++col) {
-      for (const auto &reg : regs) {
-        opProfileData.push_back(register_data_t{reg + getTileAddr(col, row)});
-        counterId++;
-      }
-    }
+  int col = 0, row = 2;
+  for (const auto &reg : regs) {
+    opRegisterData.push_back(register_data_t{reg + getTileAddr(col, row)});
+    counterId++;
   }
 
   opSize =
       sizeof(read_register_op_t) + sizeof(register_data_t) * (counterId - 1);
   op = (read_register_op_t *)malloc(opSize);
   op->count = counterId;
-  for (size_t i = 0; i < opProfileData.size(); i++)
-    op->data[i] = opProfileData[i];
+  for (size_t i = 0; i < opRegisterData.size(); i++)
+    op->data[i] = opRegisterData[i];
 
+  // record transaction
   XAie_StartTransaction(&devInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
-
-  auto readOpCode = XAIE_IO_CUSTOM_OP_BEGIN + 2;
-
+  XAie_RequestCustomTxnOp(&devInst);
+  XAie_RequestCustomTxnOp(&devInst);
+  auto readOpCode = XAie_RequestCustomTxnOp(&devInst);
   XAie_AddCustomTxnOp(&devInst, (uint8_t)readOpCode, (void *)op, opSize);
   txnPtr = XAie_ExportSerializedTransaction(&devInst, 1, 0);
   XAie_ClearTransaction(&devInst);
 
+  // initializeKernel
+  xrt::hw_context context(device, xclbin.get_uuid());
+  auto kernel = xrt::kernel(context, kernelName);
+
+  // submitTransaction
   op_buf instrBuf;
   instrBuf.addOP(transaction_op(txnPtr));
+  xrt::bo instrBo;
 
-  // start validate copy-paste
-  xrt::bo instrBo = xrt::bo(context.get_device(), instrBuf.ibuf_.size(),
-                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(5));
-
-  const int dummy_buffer_size = 4096; /* in bytes */
-  auto bo_ifm = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(1));
-  auto bo_param = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(2));
-  auto bo_ofm = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_inter = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(4));
-  auto bo_mc = xrt::bo(device, dummy_buffer_size, XRT_BO_FLAGS_HOST_ONLY,
-                       kernel.group_id(7));
-
+  // Configuration bo
+  instrBo = xrt::bo(context.get_device(), instrBuf.ibuf_.size(),
+                    XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   instrBo.write(instrBuf.ibuf_.data());
   instrBo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_ifm.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_param.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_mc.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-  auto run = kernel(CONFIGURE_OPCODE, bo_ifm, bo_param, bo_ofm, bo_inter,
-                    instrBo, instrBuf.ibuf_.size(), bo_mc);
+  auto run = kernel(CONFIGURE_OPCODE, instrBo, instrBo.size() / sizeof(int), 0,
+                    0, 0, 0, 0);
   run.wait2();
-  // end
 
-  xrt::bo resultBo = xrt::bo(context.get_device(), SIZE_4K,
-                             XCL_BO_FLAGS_CACHEABLE, kernel.group_id(5));
-  if (!resultBo)
-    throw std::runtime_error("couldn't get resultBo");
-
-  resultBo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  uint8_t *resultBoMap = resultBo.map<uint8_t *>();
-  uint32_t *output = reinterpret_cast<uint32_t *>(resultBoMap + OFFSET_3K);
-
-  for (uint32_t i = 0; i < op->count; i++) {
-    std::stringstream msg;
-    int col = (op->data[i].address >> XAIE_COL_SHIFT) & 0x1F;
-    int row = (op->data[i].address >> XAIE_ROW_SHIFT) & 0x1F;
-    int reg = (op->data[i].address) & 0xFFFFF;
-    uint32_t val = output[i];
-
-    msg << "Debug tile (" << col << ", " << row << ") "
-        << "hex address/values: " << std::hex << reg << " : " << val
-        << std::dec;
-    std::cout << msg.str() << "\n";
-  }
+  // syncResults
+  xrt::bo result_bo = xrt::bo(context.get_device(), SIZE_4K,
+                              XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  //  auto boflags = XRT_BO_FLAGS_CACHEABLE;
+  //  auto ext_boflags = XRT_BO_USE_DEBUG << 4;
+  //  auto size = static_cast<size_t>(4096);
+  //
+  //  {
+  //    hw_ctx hwctx(device.get_handle().get(), xclbinFile);
+  //    auto bo = hwctx.get()->alloc_bo(size, get_bo_flags(boflags,
+  //    ext_boflags)); auto dbg_p = static_cast<uint32_t *>(
+  //        bo->map(xrt_core::buffer_handle::map_type::read));
+  //    bo.get()->sync(buffer_handle::direction::device2host, 4096, 0);
+  //    for (int i = 0; i < 4096; ++i)
+  //      if (dbg_p[i] != 0)
+  //        std::cout << dbg_p[i] << ", ";
+  //    std::cout << "\n";
+  //  }
 }
 
 #endif // AIE_TRANSACTIONFWDUMP_H
