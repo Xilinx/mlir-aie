@@ -27,6 +27,7 @@ core_regex = r"^\s*#define\s+XAIE_EVENTS_CORE_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
 mem_regex = r"^\s*#define\s+XAIE_EVENTS_MEM_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
 pl_regex = r"^\s*#define\s+XAIE_EVENTS_PL_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
 
+
 def parse_event_declaration(regex, dict, line):
     match = re.match(regex, line)
     if not match:
@@ -37,13 +38,15 @@ def parse_event_declaration(regex, dict, line):
         return
     dict[num] = name
 
+
 def write_enum_items(dict):
     return "\n".join("    {} = {}".format(name, num) for num, name in dict.items())
 
+
 def main():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("-i", type=argparse.FileType('r'), default=sys.stdin)
-    argparser.add_argument("-o", type=argparse.FileType('w'), default=sys.stdout)
+    argparser.add_argument("-i", type=argparse.FileType("r"), default=sys.stdin)
+    argparser.add_argument("-o", type=argparse.FileType("w"), default=sys.stdout)
     args = argparser.parse_args()
 
     lines = args.i.readlines()
@@ -54,12 +57,15 @@ def main():
         parse_event_declaration(core_regex, core_events, line)
         parse_event_declaration(mem_regex, mem_events, line)
         parse_event_declaration(pl_regex, pl_events, line)
-    
+
     core_str = write_enum_items(core_events)
     mem_str = write_enum_items(mem_events)
     pl_str = write_enum_items(pl_events)
-    
-    args.o.write(template.format(core_items=core_str, mem_items=mem_str, pl_items=pl_str))
+
+    args.o.write(
+        template.format(core_items=core_str, mem_items=mem_str, pl_items=pl_str)
+    )
+
 
 if __name__ == "__main__":
     main()

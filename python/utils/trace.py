@@ -11,16 +11,18 @@ from aie.dialects.aiex import *
 from aie.dialects.aie import get_target_model
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent
 
+
 class GenericEvent:
     def __init__(self, code: typing.Union[CoreEvent, MemEvent, PLEvent]):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int):
             code = CoreEvent(code)
-        self.code : typing.Union[CoreEvent, MemEvent, PLEvent] = code
+        self.code: typing.Union[CoreEvent, MemEvent, PLEvent] = code
+
     def get_register_writes(self):
         """
-        Sub-classes for specific events that require writing to a specific 
-        register should overwrite this method to return a dicitionary 
+        Sub-classes for specific events that require writing to a specific
+        register should overwrite this method to return a dicitionary
         address -> register value.
 
         Note that if multiple event(-types) request writing to the same
@@ -29,8 +31,11 @@ class GenericEvent:
         """
         return {}
 
+
 class PortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
+        # fmt: off
+        # To keep the following compact and readable, do not format
         assert code in {CoreEvent.PORT_IDLE_0, CoreEvent.PORT_IDLE_1,
                         CoreEvent.PORT_IDLE_2, CoreEvent.PORT_IDLE_3,
                         CoreEvent.PORT_IDLE_4, CoreEvent.PORT_IDLE_5,
@@ -47,18 +52,28 @@ class PortEvent(GenericEvent):
                         CoreEvent.PORT_TLAST_2, CoreEvent.PORT_TLAST_3,
                         CoreEvent.PORT_TLAST_4, CoreEvent.PORT_TLAST_5,
                         CoreEvent.PORT_TLAST_6, CoreEvent.PORT_TLAST_7}
-        self.event_number = (0 if code in {CoreEvent.PORT_IDLE_0, CoreEvent.PORT_RUNNING_0, CoreEvent.PORT_STALLED_0, CoreEvent.PORT_TLAST_0} else 
-                             1 if code in {CoreEvent.PORT_IDLE_1, CoreEvent.PORT_RUNNING_1, CoreEvent.PORT_STALLED_1, CoreEvent.PORT_TLAST_1} else 
-                             2 if code in {CoreEvent.PORT_IDLE_2, CoreEvent.PORT_RUNNING_2, CoreEvent.PORT_STALLED_2, CoreEvent.PORT_TLAST_2} else 
-                             3 if code in {CoreEvent.PORT_IDLE_3, CoreEvent.PORT_RUNNING_3, CoreEvent.PORT_STALLED_3, CoreEvent.PORT_TLAST_3} else 
-                             4 if code in {CoreEvent.PORT_IDLE_4, CoreEvent.PORT_RUNNING_4, CoreEvent.PORT_STALLED_4, CoreEvent.PORT_TLAST_4} else 
-                             5 if code in {CoreEvent.PORT_IDLE_5, CoreEvent.PORT_RUNNING_5, CoreEvent.PORT_STALLED_5, CoreEvent.PORT_TLAST_5} else 
-                             6 if code in {CoreEvent.PORT_IDLE_6, CoreEvent.PORT_RUNNING_6, CoreEvent.PORT_STALLED_6, CoreEvent.PORT_TLAST_6} else 
-                                          {CoreEvent.PORT_IDLE_7, CoreEvent.PORT_RUNNING_7, CoreEvent.PORT_STALLED_7, CoreEvent.PORT_TLAST_7})
+        self.event_number = (
+            0 if code in {CoreEvent.PORT_IDLE_0, CoreEvent.PORT_RUNNING_0, 
+                          CoreEvent.PORT_STALLED_0, CoreEvent.PORT_TLAST_0} else 
+            1 if code in {CoreEvent.PORT_IDLE_1, CoreEvent.PORT_RUNNING_1, 
+                          CoreEvent.PORT_STALLED_1, CoreEvent.PORT_TLAST_1} else 
+            2 if code in {CoreEvent.PORT_IDLE_2, CoreEvent.PORT_RUNNING_2, 
+                          CoreEvent.PORT_STALLED_2, CoreEvent.PORT_TLAST_2} else 
+            3 if code in {CoreEvent.PORT_IDLE_3, CoreEvent.PORT_RUNNING_3, 
+                          CoreEvent.PORT_STALLED_3, CoreEvent.PORT_TLAST_3} else 
+            4 if code in {CoreEvent.PORT_IDLE_4, CoreEvent.PORT_RUNNING_4, 
+                          CoreEvent.PORT_STALLED_4, CoreEvent.PORT_TLAST_4} else 
+            5 if code in {CoreEvent.PORT_IDLE_5, CoreEvent.PORT_RUNNING_5, 
+                          CoreEvent.PORT_STALLED_5, CoreEvent.PORT_TLAST_5} else 
+            6 if code in {CoreEvent.PORT_IDLE_6, CoreEvent.PORT_RUNNING_6, 
+                          CoreEvent.PORT_STALLED_6, CoreEvent.PORT_TLAST_6} else 
+            7
+        )
+        # fmt: on
         self.port_number = port_number
         self.master = master
         super().__init__(code)
-    
+
     def get_register_writes(self):
         def master(port):
             return port | (1 << 5)
@@ -68,12 +83,10 @@ class PortEvent(GenericEvent):
 
         # 0x3FF00: Stream switch event port selection 0
         # 0x3FF04: Stream switch event port selection 1
-        address = (0x3FF00 if self.event_number < 4 else
-                   0x3FF04)
-        value = (master(self.port_number) if self.master else 
-                 slave(self.port_number))
-        
-        value =  (value & 0xFF) << 8*(self.event_number%4)
+        address = 0x3FF00 if self.event_number < 4 else 0x3FF04
+        value = master(self.port_number) if self.master else slave(self.port_number)
+
+        value = (value & 0xFF) << 8 * (self.event_number % 4)
 
         return {address: value}
 
@@ -147,15 +160,16 @@ def configure_simple_tracing_aie2(
     offset=0,
     start=CoreEvent.TRUE,
     stop=CoreEvent.NONE,
-    events=[CoreEvent.INSTR_EVENT_1,
-            CoreEvent.INSTR_EVENT_0,
-            CoreEvent.INSTR_VECTOR,
-            CoreEvent.INSTR_LOCK_RELEASE_REQ,
-            CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-            CoreEvent.LOCK_STALL,
-            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-            PortEvent(CoreEvent.PORT_RUNNING_1, 1, False) # slave(1)
-            ]
+    events=[
+        CoreEvent.INSTR_EVENT_1,
+        CoreEvent.INSTR_EVENT_0,
+        CoreEvent.INSTR_VECTOR,
+        CoreEvent.INSTR_LOCK_RELEASE_REQ,
+        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+        CoreEvent.LOCK_STALL,
+        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+        PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+    ],
 ):
     dev = shim.parent.attributes["device"]
     tm = get_target_model(dev)
@@ -173,9 +187,7 @@ def configure_simple_tracing_aie2(
     events = (events + [CoreEvent.NONE] * 8)[:8]
 
     # Assure all selected events are valid
-    events = [e if isinstance(e, GenericEvent)
-              else GenericEvent(e)
-              for e in events]
+    events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in events]
 
     # 0x340D0: Trace Control 0
     #          0xAABB---C
@@ -225,12 +237,7 @@ def configure_simple_tracing_aie2(
             else:
                 all_reg_writes[addr] = value
     for addr, value in all_reg_writes.items():
-        npu_write32(
-            column=int(tile.col),
-            row=int(tile.row),
-            address=addr,
-            value=value
-        )
+        npu_write32(column=int(tile.col), row=int(tile.row), address=addr, value=value)
 
     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
     # out to host DDR memory
