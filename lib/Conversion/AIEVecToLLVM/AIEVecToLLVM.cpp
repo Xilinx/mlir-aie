@@ -1300,9 +1300,30 @@ public:
               rewriter, loc, operands,
               {VectorType::get({32}, rewriter.getI32Type()),
                rewriter.getI32Type()}));
-      // TODO: handle below case
-      // } else if (resultVectorSize == 128 && srcVectorSize == 512) {
-      // Special case
+    } else if (resultVectorSize == 128 && srcVectorSize == 512) {
+      auto undefOp = rewriter.create<xllvm::UndefV16I32IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()));
+      auto stepCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+      auto shiftCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(op.getIndex() * 16));
+      SmallVector<Value> shiftOperands{adaptor.getSource(), undefOp, stepCst,
+                                       shiftCst};
+      // right shift the source in index * 16 bytes (i.e. index * 128 bits)
+      auto shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, shiftOperands,
+              {VectorType::get({16}, rewriter.getI32Type()),
+               VectorType::get({16}, rewriter.getI32Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+      // the intrinsic takes 1 source vector and extract the first 128-bit
+      extOp = rewriter.create<xllvm::ExtI128I512IntrOp>(
+          loc, VectorType::get({4}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, /*operands=*/{shiftOp},
+              {VectorType::get({16}, rewriter.getI32Type())}));
     } else {
       op.emitWarning() << "aievec.ext with " << srcVectorSize
                        << "-bit source, and " << resultVectorSize
