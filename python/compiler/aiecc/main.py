@@ -267,7 +267,6 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           {{
             name=aie_image, id=0x1c000000
             {{ type=cdo
-               file={root_path}/aie_cdo_error_handling.bin
                {elf_file}
                file={root_path}/aie_cdo_init.bin
                {enable_file}

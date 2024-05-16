@@ -1,6 +1,6 @@
 
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
-  message("${TARGET} ${SRCPATH} ${BUILDPATH}")
+  message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   file(GLOB libheaders ${SRCPATH}/*.h)
   file(GLOB libheadersSub ${SRCPATH}/*/*.h)
 
@@ -37,7 +37,8 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
 endfunction()
 
 function(add_aiert_library TARGET XAIE_SOURCE)
-  cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
+message("Building aie-rt library for ${TARGET} from ${SRCPATH}")
+cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
   if(ARG_STATIC)
     set(LIBTYPE STATIC)
   else()
