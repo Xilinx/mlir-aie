@@ -100,13 +100,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: arm64
-            ENABLE_RTTI: ON
+          # - OS: macos-12
+          #   ARCH: arm64
+          #   ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -120,13 +120,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+          # - OS: macos-12
+          #   ARCH: arm64
+          #   ENABLE_RTTI: OFF
 
     steps:
 
@@ -378,9 +378,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -390,9 +390,9 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: OFF
 
     steps:
       - uses: actions/download-artifact@v3
@@ -438,13 +438,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: ON
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: ON
 
-          - OS: macos-12
-            ARCH: arm64
-            ENABLE_RTTI: ON
+          # - OS: macos-12
+          #   ARCH: arm64
+          #   ENABLE_RTTI: ON
 
           - OS: ubuntu-20.04
             ARCH: x86_64
@@ -458,13 +458,13 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
+          # - OS: macos-12
+          #   ARCH: x86_64
+          #   ENABLE_RTTI: OFF
 
-          - OS: macos-12
-            ARCH: arm64
-            ENABLE_RTTI: OFF
+          # - OS: macos-12
+          #   ARCH: arm64
+          #   ENABLE_RTTI: OFF
 
     permissions:
       id-token: write
