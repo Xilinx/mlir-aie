@@ -27,11 +27,16 @@ class MemEvent(Enum):
 
 class PLEvent(Enum):
 {pl_items}
+
+
+class MemTileEvent(Enum):
+{mem_tile_items}
 """
 
-core_regex = r"^\s*#define\s+XAIE_EVENTS_CORE_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
-mem_regex = r"^\s*#define\s+XAIE_EVENTS_MEM_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
-pl_regex = r"^\s*#define\s+XAIE_EVENTS_PL_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
+core_regex = r"^\s*#define\s+XAIEML_EVENTS_CORE_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
+mem_regex = r"^\s*#define\s+XAIEML_EVENTS_MEM_(?!TILE)([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
+pl_regex = r"^\s*#define\s+XAIEML_EVENTS_PL_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
+mem_tile_regex = r"^\s*#define\s+XAIEML_EVENTS_MEM_TILE_([a-zA-Z0-9_]+)\s+(\d+)U\s*$"
 
 
 def parse_event_declaration(regex, dict, line):
@@ -58,18 +63,26 @@ def main():
     lines = args.i.readlines()
     core_events = collections.OrderedDict()
     mem_events = collections.OrderedDict()
+    mem_tile_events = collections.OrderedDict()
     pl_events = collections.OrderedDict()
     for line in lines:
         parse_event_declaration(core_regex, core_events, line)
         parse_event_declaration(mem_regex, mem_events, line)
         parse_event_declaration(pl_regex, pl_events, line)
+        parse_event_declaration(mem_tile_regex, mem_tile_events, line)
 
     core_str = write_enum_items(core_events)
     mem_str = write_enum_items(mem_events)
     pl_str = write_enum_items(pl_events)
+    mem_tile_str = write_enum_items(mem_tile_events)
 
     args.o.write(
-        template.format(core_items=core_str, mem_items=mem_str, pl_items=pl_str)
+        template.format(
+            core_items=core_str,
+            mem_items=mem_str,
+            pl_items=pl_str,
+            mem_tile_items=mem_tile_str,
+        )
     )
 
 

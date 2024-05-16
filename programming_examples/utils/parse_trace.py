@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 import re
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
@@ -753,9 +753,9 @@ def lookup_event_name_by_type(trace_type, code):
     event = ""
     # code = pid_events[trace_type][loc][event]
     events_enum = None
-    if trace_type == 0: # Core traces
+    if trace_type == 0:  # Core traces
         events_enum = CoreEvent
-    elif trace_type == 1: # Mem traces
+    elif trace_type == 1:  # Mem traces
         events_enum = MemEvent
     if events_enum is not None and code in set(x.value for x in events_enum):
         event = events_enum(code).name
