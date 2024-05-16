@@ -29,10 +29,24 @@ function(add_aie_runtime_libs arch)
   add_dependencies(aie-runtime-libs ${arch}_me_basic)
 
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
-
+  
+  # Precompile the intrinsic wrappers.  
+  if(DEFINED VITIS_ROOT)
+    add_custom_target(${arch}_chess_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
+            COMMAND xchesscc_wrapper ${arch} -p me
+            -I ${VITIS_${arch}_INCLUDE_DIR}/runtime/include/
+            -d -c ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp
+            -f +f
+            -o ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
+            COMMAND sed -i s/^target.*//
+            ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/chess_intrinsic_wrapper.cpp)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
+    add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
+  endif()
 
   set(INSTALLS
-      chess_intrinsic_wrapper.cpp
       lut_based_ops.cpp
       lut_based_ops.h
       vec_math.h)
