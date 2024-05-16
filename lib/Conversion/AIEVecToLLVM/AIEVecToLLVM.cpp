@@ -1310,7 +1310,8 @@ public:
           rewriter.getI32IntegerAttr(op.getIndex() * 16));
       SmallVector<Value> shiftOperands{adaptor.getSource(), undefOp, stepCst,
                                        shiftCst};
-      // right shift the source in index * 16 bytes (i.e. index * 128 bits)
+      // Right shift the source vector in index * 16 bytes (i.e. in index * 128
+      // bits). The integer index is expected to be 0 to 3.
       auto shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
           loc, VectorType::get({16}, rewriter.getI32Type()),
           forceCastOperandsToSignature(
@@ -1318,7 +1319,8 @@ public:
               {VectorType::get({16}, rewriter.getI32Type()),
                VectorType::get({16}, rewriter.getI32Type()),
                rewriter.getI32Type(), rewriter.getI32Type()}));
-      // the intrinsic takes 1 source vector and extract the first 128-bit
+      // The underlying intrinsic takes a source vector and extract the lowest
+      // 128-bit. i.e. it always extracts the input vector with index = 0.
       extOp = rewriter.create<xllvm::ExtI128I512IntrOp>(
           loc, VectorType::get({4}, rewriter.getI32Type()),
           forceCastOperandsToSignature(
