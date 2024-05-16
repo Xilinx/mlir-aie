@@ -102,7 +102,11 @@ def my_matmul():
                     cores[i],
                     2,
                     memRef_A_ty,
-                    [(k//2//2, 2), (m, k), (2, 1)], # transpose at 4-byte (2xbf16) granularity
+                    [
+                        (k // 2 // 2, 2),
+                        (m, k),
+                        (2, 1),
+                    ],  # transpose at 4-byte (2xbf16) granularity
                 )
                 object_fifo_link(
                     memA_fifos[memA_fifo_names[i]], inA_fifos[inA_fifo_names[i]]
