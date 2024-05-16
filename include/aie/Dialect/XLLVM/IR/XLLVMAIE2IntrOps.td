@@ -200,8 +200,7 @@ def ExtI256I1024IntrOp :
 def ExtI128I512IntrOp :
     AIEVec2_IntrOp<"extract.I128.I512",
         [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
-                   I32:$idx)>;
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
   
 // ----- CONCAT ----- 
 
