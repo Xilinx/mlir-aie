@@ -15,10 +15,16 @@ template = """# Enumeration of AIE2 trace events
 # Automatically generated from utils/generate_events_enum.py
 
 from enum import Enum
+
+
 class CoreEvent(Enum):
 {core_items}
+
+
 class MemEvent(Enum):
 {mem_items}
+
+
 class PLEvent(Enum):
 {pl_items}
 """
