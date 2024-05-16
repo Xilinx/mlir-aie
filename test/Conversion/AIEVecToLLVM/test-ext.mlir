@@ -77,20 +77,16 @@ func.func @v16i8_ext_v64i8(%arg0 : vector<64xi8>) -> (vector<16xi8>, vector<16xi
 
 // CHECK-LABEL: @v16i8_ext_v64i8
 // CHECK-SAME: %[[ARG0:.*]]: vector<64xi8>
-// CHECK: %[[UNDEF0:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
-// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<64xi8> to vector<16xi32>
-// CHECK-NEXT: %[[VSHIFT0:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF0]], %[[CST0]], %[[CST0]]) :
-// CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
-// CHECK-SAME: %[[VSHIFT0]]) : 
+// CHECK-SAME: %[[BITCAST0]]) : 
 // CHECK-SAME: (vector<16xi32>) -> vector<4xi32>
 // CHECK-NEXT: %[[RES0:.*]] = llvm.bitcast %[[EXT0]] : vector<4xi32> to vector<16xi8>
-// CHECK-NEXT: %[[UNDEF1:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[UNDEF:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[CST48:.*]] = llvm.mlir.constant(48 : i32) : i32
 // CHECK-NEXT: %[[VSHIFT1:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF1]], %[[CST0]], %[[CST48]]) :
+// CHECK-SAME: %[[BITCAST0]], %[[UNDEF]], %[[CST0]], %[[CST48]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
 // CHECK-SAME: %[[VSHIFT1]]) : 
@@ -177,20 +173,16 @@ func.func @v8i16_ext_v32i16(%arg0 : vector<32xi16>) -> (vector<8xi16>, vector<8x
 
 // CHECK-LABEL: @v8i16_ext_v32i16
 // CHECK-SAME: %[[ARG0:.*]]: vector<32xi16>
-// CHECK: %[[UNDEF0:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
-// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xi16> to vector<16xi32>
-// CHECK-NEXT: %[[VSHIFT0:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF0]], %[[CST0]], %[[CST0]]) :
-// CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
+// CHECK: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xi16> to vector<16xi32>
 // CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
-// CHECK-SAME: %[[VSHIFT0]]) : 
+// CHECK-SAME: %[[BITCAST0]]) : 
 // CHECK-SAME: (vector<16xi32>) -> vector<4xi32>
 // CHECK-NEXT: %[[RES0:.*]] = llvm.bitcast %[[EXT0]] : vector<4xi32> to vector<8xi16>
-// CHECK-NEXT: %[[UNDEF1:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[UNDEF:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[CST48:.*]] = llvm.mlir.constant(48 : i32) : i32
 // CHECK-NEXT: %[[VSHIFT1:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF1]], %[[CST0]], %[[CST48]]) :
+// CHECK-SAME: %[[BITCAST0]], %[[UNDEF]], %[[CST0]], %[[CST48]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
 // CHECK-SAME: %[[VSHIFT1]]) : 
@@ -268,18 +260,14 @@ func.func @v4i32_ext_v16i32(%arg0 : vector<16xi32>) -> (vector<4xi32>, vector<4x
 
 // CHECK-LABEL: @v4i32_ext_v16i32
 // CHECK-SAME: %[[ARG0:.*]]: vector<16xi32>
-// CHECK: %[[UNDEF0:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
-// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: %[[VSHIFT0:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[ARG0]], %[[UNDEF0]], %[[CST0]], %[[CST0]]) :
-// CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
-// CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
-// CHECK-SAME: %[[VSHIFT0]]) : 
+// CHECK: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
+// CHECK-SAME: %[[ARG0]]) : 
 // CHECK-SAME: (vector<16xi32>) -> vector<4xi32>
-// CHECK-NEXT: %[[UNDEF1:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[UNDEF:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[CST48:.*]] = llvm.mlir.constant(48 : i32) : i32
 // CHECK-NEXT: %[[VSHIFT1:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[ARG0]], %[[UNDEF1]], %[[CST0]], %[[CST48]]) :
+// CHECK-SAME: %[[ARG0]], %[[UNDEF]], %[[CST0]], %[[CST48]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
 // CHECK-SAME: %[[VSHIFT1]]) : 
@@ -365,20 +353,16 @@ func.func @v8bf16_ext_v32bf16(%arg0 : vector<32xbf16>) -> (vector<8xbf16>, vecto
 
 // CHECK-LABEL: @v8bf16_ext_v32bf16
 // CHECK-SAME: %[[ARG0:.*]]: vector<32xbf16>
-// CHECK: %[[UNDEF0:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
-// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xbf16> to vector<16xi32>
-// CHECK-NEXT: %[[VSHIFT0:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF0]], %[[CST0]], %[[CST0]]) :
-// CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
+// CHECK: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xbf16> to vector<16xi32>
 // CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
-// CHECK-SAME: %[[VSHIFT0]]) : 
+// CHECK-SAME: %[[BITCAST0]]) : 
 // CHECK-SAME: (vector<16xi32>) -> vector<4xi32>
 // CHECK-NEXT: %[[RES0:.*]] = llvm.bitcast %[[EXT0]] : vector<4xi32> to vector<8xbf16>
-// CHECK-NEXT: %[[UNDEF1:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[UNDEF:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[CST48:.*]] = llvm.mlir.constant(48 : i32) : i32
 // CHECK-NEXT: %[[VSHIFT1:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF1]], %[[CST0]], %[[CST48]]) :
+// CHECK-SAME: %[[BITCAST0]], %[[UNDEF]], %[[CST0]], %[[CST48]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
 // CHECK-SAME: %[[VSHIFT1]]) : 
@@ -465,20 +449,16 @@ func.func @v4f32_ext_v16f32(%arg0 : vector<16xf32>) -> (vector<4xf32>, vector<4x
 
 // CHECK-LABEL: @v4f32_ext_v16f32
 // CHECK-SAME: %[[ARG0:.*]]: vector<16xf32>
-// CHECK: %[[UNDEF0:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
-// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<16xf32> to vector<16xi32>
-// CHECK-NEXT: %[[VSHIFT0:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF0]], %[[CST0]], %[[CST0]]) :
-// CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
+// CHECK: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<16xf32> to vector<16xi32>
 // CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
-// CHECK-SAME: %[[VSHIFT0]]) : 
+// CHECK-SAME: %[[BITCAST0]]) : 
 // CHECK-SAME: (vector<16xi32>) -> vector<4xi32>
 // CHECK-NEXT: %[[RES0:.*]] = llvm.bitcast %[[EXT0]] : vector<4xi32> to vector<4xf32>
-// CHECK-NEXT: %[[UNDEF1:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[UNDEF:.*]] = "xllvm.intr.aie2.v16int32"() : () -> vector<16xi32>
+// CHECK-NEXT: %[[CST0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[CST48:.*]] = llvm.mlir.constant(48 : i32) : i32
 // CHECK-NEXT: %[[VSHIFT1:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
-// CHECK-SAME: %[[BITCAST0]], %[[UNDEF1]], %[[CST0]], %[[CST48]]) :
+// CHECK-SAME: %[[BITCAST0]], %[[UNDEF]], %[[CST0]], %[[CST48]]) :
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
 // CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.extract.I128.I512"(
 // CHECK-SAME: %[[VSHIFT1]]) : 

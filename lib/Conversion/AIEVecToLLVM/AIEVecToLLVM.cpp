@@ -1301,24 +1301,27 @@ public:
               {VectorType::get({32}, rewriter.getI32Type()),
                rewriter.getI32Type()}));
     } else if (resultVectorSize == 128 && srcVectorSize == 512) {
-      auto undefOp = rewriter.create<xllvm::UndefV16I32IntrOp>(
-          loc, VectorType::get({16}, rewriter.getI32Type()));
-      auto stepCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
-      auto shiftCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(),
-          rewriter.getI32IntegerAttr(op.getIndex() * 16));
-      SmallVector<Value> shiftOperands{adaptor.getSource(), undefOp, stepCst,
-                                       shiftCst};
-      // Right shift the source vector in index * 16 bytes (i.e. in index * 128
-      // bits). The integer index is expected to be 0 to 3.
-      auto shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
-          loc, VectorType::get({16}, rewriter.getI32Type()),
-          forceCastOperandsToSignature(
-              rewriter, loc, shiftOperands,
-              {VectorType::get({16}, rewriter.getI32Type()),
-               VectorType::get({16}, rewriter.getI32Type()),
-               rewriter.getI32Type(), rewriter.getI32Type()}));
+      auto shiftOp = adaptor.getSource();
+      if (op.getIndex() > 0) {
+        auto undefOp = rewriter.create<xllvm::UndefV16I32IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()));
+        auto stepCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto shiftCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(),
+            rewriter.getI32IntegerAttr(op.getIndex() * 16));
+        SmallVector<Value> shiftOperands{adaptor.getSource(), undefOp, stepCst,
+                                         shiftCst};
+        // Right shift the source vector in index * 16 bytes (i.e. in index *
+        // 128 bits). The integer index is expected to be 0 to 3.
+        shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, shiftOperands,
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type(), rewriter.getI32Type()}));
+      }
       // The underlying intrinsic takes a source vector and extract the lowest
       // 128-bit. i.e. it always extracts the input vector with index = 0.
       extOp = rewriter.create<xllvm::ExtI128I512IntrOp>(
