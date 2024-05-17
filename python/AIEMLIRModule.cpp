@@ -13,6 +13,9 @@
 #include "mlir-c/Support.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include <pybind11/cast.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
@@ -141,4 +144,74 @@ PYBIND11_MODULE(_aie, m) {
         return stealCStr(aieLLVMLink(modules.data(), modules.size()));
       },
       "modules"_a);
+
+  m.def(
+      "get_target_model",
+      [](uint32_t d) -> const xilinx::AIE::AIETargetModel & {
+        auto aiedev = static_cast<xilinx::AIE::AIEDevice>(d);
+        return xilinx::AIE::getTargetModel(aiedev);
+      },
+      py::return_value_policy::reference);
+
+  py::class_<xilinx::AIE::AIETargetModel>(m, "AIETargetModel")
+      .def("columns", &xilinx::AIE::AIETargetModel::columns,
+           py::return_value_policy::reference)
+      .def("rows", &xilinx::AIE::AIETargetModel::rows,
+           py::return_value_policy::reference)
+      .def("is_core_tile", &xilinx::AIE::AIETargetModel::isCoreTile,
+           py::return_value_policy::reference)
+      .def("is_mem_tile", &xilinx::AIE::AIETargetModel::isMemTile,
+           py::return_value_policy::reference)
+      .def("is_shim_noc_tile", &xilinx::AIE::AIETargetModel::isShimNOCTile,
+           py::return_value_policy::reference)
+      .def("is_shim_pl_tile", &xilinx::AIE::AIETargetModel::isShimPLTile,
+           py::return_value_policy::reference)
+      .def("is_shim_noc_or_pl_tile",
+           &xilinx::AIE::AIETargetModel::isShimNOCorPLTile,
+           py::return_value_policy::reference)
+      .def("is_valid_tile", &xilinx::AIE::AIETargetModel::isValidTile,
+           py::return_value_policy::reference)
+      .def("is_valid_trace_master",
+           &xilinx::AIE::AIETargetModel::isValidTraceMaster,
+           py::return_value_policy::reference)
+      .def("get_local_memory_size",
+           &xilinx::AIE::AIETargetModel::getLocalMemorySize,
+           py::return_value_policy::reference)
+      .def("get_num_mem_tile_rows",
+           &xilinx::AIE::AIETargetModel::getNumMemTileRows,
+           py::return_value_policy::reference)
+      .def("get_mem_tile_size", &xilinx::AIE::AIETargetModel::getMemTileSize,
+           py::return_value_policy::reference)
+      .def("get_num_source_switchbox_connections",
+           &xilinx::AIE::AIETargetModel::getNumSourceSwitchboxConnections,
+           py::return_value_policy::reference)
+      .def("get_num_dest_switchbox_connections",
+           &xilinx::AIE::AIETargetModel::getNumDestSwitchboxConnections,
+           py::return_value_policy::reference)
+      .def("is_npu", &xilinx::AIE::AIETargetModel::isNPU,
+           py::return_value_policy::reference);
+
+  py::class_<xilinx::AIE::AIE1TargetModel, xilinx::AIE::AIETargetModel>(
+      m, "AIE1TargetModel");
+  py::class_<xilinx::AIE::VC1902TargetModel, xilinx::AIE::AIE1TargetModel>(
+      m, "VC1902TargetModel")
+      .def(py::init());
+
+  py::class_<xilinx::AIE::AIE2TargetModel, xilinx::AIE::AIETargetModel>(
+      m, "AIE2TargetModel");
+  py::class_<xilinx::AIE::VE2302TargetModel, xilinx::AIE::AIE2TargetModel>(
+      m, "VE2302TargetModel")
+      .def(py::init());
+  py::class_<xilinx::AIE::VE2802TargetModel, xilinx::AIE::AIE2TargetModel>(
+      m, "VE2802TargetModel")
+      .def(py::init());
+
+  py::class_<xilinx::AIE::BaseNPUTargetModel, xilinx::AIE::AIE2TargetModel>(
+      m, "BaseNPUTargetModel");
+  py::class_<xilinx::AIE::NPUTargetModel, xilinx::AIE::BaseNPUTargetModel>(
+      m, "NPUTargetModel")
+      .def(py::init());
+  py::class_<xilinx::AIE::VirtualizedNPUTargetModel,
+             xilinx::AIE::BaseNPUTargetModel>(m, "VirtualizedNPUTargetModel")
+      .def(py::init<int>());
 }

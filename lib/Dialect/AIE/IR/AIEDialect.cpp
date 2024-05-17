@@ -121,6 +121,28 @@ const AIETargetModel &getTargetModel(Operation *op) {
   return VC1902model;
 }
 
+const AIETargetModel &getTargetModel(AIEDevice device) {
+  switch (device) {
+  case AIEDevice::xcvc1902:
+    return VC1902model;
+  case AIEDevice::xcve2302:
+    return VE2302model;
+  case AIEDevice::xcve2802:
+    return VE2802model;
+  case AIEDevice::npu1:
+    return NPUmodel;
+  case AIEDevice::npu1_1col:
+    return NPUmodel1col;
+  case AIEDevice::npu1_2col:
+    return NPUmodel2col;
+  case AIEDevice::npu1_3col:
+    return NPUmodel3col;
+  case AIEDevice::npu1_4col:
+    return NPUmodel4col;
+  }
+  return VC1902model;
+}
+
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
 static TileElement getParentTileElement(Operation *op) {
@@ -982,25 +1004,7 @@ LogicalResult GetCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 const AIETargetModel &DeviceOp::getTargetModel() {
-  switch (getDevice()) {
-  case AIEDevice::xcvc1902:
-    return VC1902model;
-  case AIEDevice::xcve2302:
-    return VE2302model;
-  case AIEDevice::xcve2802:
-    return VE2802model;
-  case AIEDevice::npu1:
-    return NPUmodel;
-  case AIEDevice::npu1_1col:
-    return NPUmodel1col;
-  case AIEDevice::npu1_2col:
-    return NPUmodel2col;
-  case AIEDevice::npu1_3col:
-    return NPUmodel3col;
-  case AIEDevice::npu1_4col:
-    return NPUmodel4col;
-  }
-  return VC1902model;
+  return xilinx::AIE::getTargetModel(getDevice());
 }
 
 LogicalResult DeviceOp::verify() { return success(); }
