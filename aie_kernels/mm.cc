@@ -24,14 +24,12 @@
 
 #include "zero.cc"
 
-// Perform matmul where the expected layouts for A and B are as follows.
-//
 // Suppose A is a 64x64 tensor and B is a 64x64 tensor, and r=4, s=8, t=4.
 //
 // Let A[i,j] be the element at row i and column j of A, and
 //     B[i,j] be the element at row i and column j of B.
 //
-// The expectations for this implementation are that:
+// The expectations that this implementation makes are:
 //
 // 1) all elements of A are contiguous in memory, starting from pA + offsetA
 // 2) all elements of B are contiguous in memory, starting from pB + offsetB
@@ -40,7 +38,7 @@
 // 5) element B[i,j] is at pB[offsetB + i*4 + (64*4)*(j/4) + j%4]
 //
 // 4) and 5) describe vertical stripes of A and B being stored contiguously,
-// with a row-major order with each stripe. i.e. for A it looks like
+// with a row-major order within each stripe. i.e. A looks like
 //
 // [A[0,0], ..., A[0,7], A[1,0], ..., A[1,7], A[2,0], ..., A[2,7], ... A[63,0],
 // ..., A[63,7], A[0,8], ..., A[0,15], ..., A[63, 64]]
