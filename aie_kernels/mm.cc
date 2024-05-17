@@ -47,10 +47,14 @@ void matmul_vectorized(const T_in *__restrict pA, unsigned offsetA,
           const T_in *__restrict pA3 = pA + offsetA + ((z + 2)) * MMUL::size_A;
           const T_in *__restrict pA4 = pA + offsetA + ((z + 3)) * MMUL::size_A;
 
-          const T_in *__restrict pB1 = pB + offsetB + (j)*MMUL::size_B;
-          const T_in *__restrict pB2 = pB + offsetB + ((j + 1)) * MMUL::size_B;
-          const T_in *__restrict pB3 = pB + offsetB + ((j + 2)) * MMUL::size_B;
-          const T_in *__restrict pB4 = pB + offsetB + ((j + 3)) * MMUL::size_B;
+          const T_in *__restrict pB1 =
+              pB + offsetB + ((j + 0)) * colA * MMUL::size_B;
+          const T_in *__restrict pB2 =
+              pB + offsetB + ((j + 1)) * colA * MMUL::size_B;
+          const T_in *__restrict pB3 =
+              pB + offsetB + ((j + 2)) * colA * MMUL::size_B;
+          const T_in *__restrict pB4 =
+              pB + offsetB + ((j + 3)) * colA * MMUL::size_B;
 
           aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
           pA1 += rowA * MMUL::size_A;
