@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <stdint.h>
-#include <stdio.h>
 
 extern "C" {
 void do_line(int32_t *a, float MinRe, float StepRe, float Im, int size);

@@ -1,6 +1,7 @@
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aieml" -lower-affine -canonicalize -cse | aie-translate --aieml -aievec-to-cpp -o gen_aie.cc
-// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc %S/kernel.cc
+// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c %S/kernel.cc -o kernel.cc.o
+// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc ./work/kernel.cc.o
 // RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" | FileCheck %s
 
 #map = affine_map<(d0, d1, d2) -> (d0, d2)>

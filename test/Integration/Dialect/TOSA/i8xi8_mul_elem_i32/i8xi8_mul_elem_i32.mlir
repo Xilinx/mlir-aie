@@ -6,7 +6,8 @@
 // RUN: aie-opt %s %tosa-to-linalg% -o %t/linalg.mlir
 // RUN: aie-opt %t/linalg.mlir %linalg-to-vector-v32% --convert-vector-to-aievec="aie-target=aieml" -lower-affine -o %t/aievec.mlir
 // RUN: aie-translate %t/aievec.mlir -aieml=true --aievec-to-cpp -o %t/dut.cc
-// RUN: cd %t; xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc dut.cc >& xchesscc_wrapper.stdout
+// RUN: cd %t; xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. -c dut.cc -o dut.cc.o
+// RUN: cd %t; xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc %t/work/dut.cc.o >& xchesscc_wrapper.stdout
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=%t/xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
