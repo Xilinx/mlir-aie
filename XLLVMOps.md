@@ -266,7 +266,6 @@ Types and operations for external LLVM dialect
 | Operand | Description |
 | :-----: | ----------- |
 | `src` | vector of 32-bit signless integer values of length 16
-| `idx` | 32-bit signless integer
 
 #### Results:
 

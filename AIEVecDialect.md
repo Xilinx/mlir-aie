@@ -404,7 +404,11 @@ _AIE ext_
 
 AMD-specific vector extract intrinsic. Selects contiguous lanes from 
 the source vector, and transfers the data from those lanes to the 
-result. The lane selection is controlled by index.
+result. The lane selection is controlled by index. There are two cases:
+1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
+2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
+In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
+In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
 `$result = ext($source, $index)`
 
 Traits: `AlwaysSpeculatableImplTrait`
@@ -969,8 +973,9 @@ _AIE2 concat and shift_
 
 AMD-specific shift intrinsic. Concatenates two
 vectors into a bigger vector, interprets them as a vector of 128 bytes
-and returns v1::v2[shift: shift+64]. The verifier confirms that all the
-input vectors have the same number of lanes.
+and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to 
+be shifted. The verifier confirms that all the input and result vectors 
+have the same number of lanes and element types.
 `$result = shift($lhs, $rhs, $shift)`
 
 Traits: `AlwaysSpeculatableImplTrait`
