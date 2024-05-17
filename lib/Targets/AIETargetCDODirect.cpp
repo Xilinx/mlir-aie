@@ -705,6 +705,9 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
+  // Never generate a completely empty CDO file.  If the file only contains a header,
+  // then bootgen flags it as invalid.
+  insertNoOpCommand(4);
   if (failed(cb()))
     return failure();
   configureHeader();
@@ -717,8 +720,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             DeviceOp &targetOp, bool aieSim,
                                             bool enableCores) {
 
-  if (!targetOp.getOps<CoreOp>().empty() &&
-      failed(generateCDOBinary(
+  if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
@@ -732,7 +734,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
-  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
+  if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
