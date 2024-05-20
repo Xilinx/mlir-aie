@@ -527,8 +527,6 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                        << "\t{\n"
                        << "\t\tname=aie_image, id=0x1c000000\n"
                        << "\t\t{ type=cdo\n"
-                       << "\t\t  file=" << TK.TempDir
-                       << "/aie_cdo_error_handling.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_init.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
@@ -717,41 +715,9 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     SmallString<64> chessworkDir(TK.TempDir);
     sys::path::append(chessworkDir, "chesswork");
 
-    SmallString<64> chessIntrinsicsCpp(TK.InstallDir);
-    sys::path::append(chessIntrinsicsCpp, "aie_runtime_lib", TK.TargetArch,
-                      "chess_intrinsic_wrapper.cpp");
-
-    SmallString<64> chessIntrinsicsLL(TK.TempDir);
-    sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
-
-    if (runTool(chessWrapperBin,
-                {StringRef(TK.TargetArch).lower(), "+w",
-                 std::string(chessworkDir), "-c", "-d", "-f", "+f", "+P", "4",
-                 std::string(chessIntrinsicsCpp), "-o",
-                 std::string(chessIntrinsicsLL)},
-                TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to compile chess intrinsics");
-
-    std::string newIntrinsicsLL;
-    {
-      auto chessIntrinsicIn = openInputFile(chessIntrinsicsLL, &errorMessage);
-      if (!chessIntrinsicIn)
-        moduleOp.emitOpError(errorMessage);
-
-      newIntrinsicsLL =
-          std::regex_replace(std::string(chessIntrinsicIn->getBuffer()),
-                             std::regex("target datalayout.*"), "");
-      newIntrinsicsLL = std::regex_replace(newIntrinsicsLL,
-                                           std::regex("target triple.*"), "");
-    }
-    {
-      auto chessIntrinsicOut = openOutputFile(chessIntrinsicsLL);
-      if (!chessIntrinsicOut)
-        moduleOp.emitOpError(errorMessage);
-
-      chessIntrinsicOut->os() << newIntrinsicsLL;
-      chessIntrinsicOut->keep();
-    }
+    SmallString<64> chessIntrinsicsLL(TK.InstallDir);
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib", TK.TargetArch,
+                      "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;
     {

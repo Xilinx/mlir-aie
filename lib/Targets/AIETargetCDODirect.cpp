@@ -437,11 +437,6 @@ struct AIEControl {
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
   }
 
-  LogicalResult addErrorHandlingToCDO() {
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_ErrorHandlingInit, &devInst);
-    return success();
-  }
-
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
                                const StringRef elfPath, bool aieSim) {
     // loadSym: Load symbols from .map file. This argument is not used when
@@ -721,12 +716,6 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
                                             DeviceOp &targetOp, bool aieSim,
                                             bool enableCores) {
-  if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) +
-           "aie_cdo_error_handling.bin")
-              .str(),
-          std::bind(&AIEControl::addErrorHandlingToCDO, ctl))))
-    return failure();
 
   if (!targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
@@ -759,8 +748,6 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
-        if (failed(ctl.addErrorHandlingToCDO()))
-          return failure();
         if (!targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
           return failure();

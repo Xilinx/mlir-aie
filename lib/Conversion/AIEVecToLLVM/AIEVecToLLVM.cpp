@@ -1257,26 +1257,92 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
+    Value src = adaptor.getSource();
+    VectorType srcType = cast<VectorType>(src.getType());
+    Type srcScalarType = srcType.getElementType();
+    unsigned srcBitWidth = srcScalarType.getIntOrFloatBitWidth();
+    int srcLanes = getVectorLaneSize(srcType);
+    int srcVectorSize = srcBitWidth * srcLanes;
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
     // create constant for index
     auto indexCst = rewriter.create<LLVM::ConstantOp>(
-        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
-    if (op.getIndex() == 1) {
-      indexCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
-    }
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(op.getIndex()));
 
     // create xllvm intrinsic
     SmallVector<Value> operands({adaptor.getSource(), indexCst});
-    auto extOp = rewriter.create<xllvm::ExtI256I512IntrOp>(
-        loc, VectorType::get({8}, rewriter.getI32Type()),
-        forceCastOperandsToSignature(
-            rewriter, loc, operands,
-            {VectorType::get({16}, rewriter.getI32Type()),
-             rewriter.getI32Type()}));
+    Value extOp = nullptr;
+    // Integer types
+    if (resultVectorSize == 256 && srcVectorSize == 512) {
+      extOp = rewriter.create<xllvm::ExtI256I512IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({16}, rewriter.getI32Type()),
+               rewriter.getI32Type()}));
+    } else if (resultVectorSize == 512 && srcVectorSize == 1024) {
+      extOp = rewriter.create<xllvm::ExtI512I1024IntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getI32Type()),
+               rewriter.getI32Type()}));
+    } else if (resultVectorSize == 256 && srcVectorSize == 1024) {
+      extOp = rewriter.create<xllvm::ExtI256I1024IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getI32Type()),
+               rewriter.getI32Type()}));
+    } else if (resultVectorSize == 128 && srcVectorSize == 512) {
+      auto shiftOp = adaptor.getSource();
+      if (op.getIndex() > 0) {
+        auto undefOp = rewriter.create<xllvm::UndefV16I32IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()));
+        auto stepCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto shiftCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(),
+            rewriter.getI32IntegerAttr(op.getIndex() * 16));
+        SmallVector<Value> shiftOperands{adaptor.getSource(), undefOp, stepCst,
+                                         shiftCst};
+        // Right shift the source vector in index * 16 bytes (i.e. in index *
+        // 128 bits). The integer index is expected to be 0 to 3.
+        shiftOp = rewriter.create<xllvm::VectorShiftI512I512IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, shiftOperands,
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type(), rewriter.getI32Type()}));
+      }
+      // The underlying intrinsic takes a source vector and extract the lowest
+      // 128-bit. i.e. it always extracts the input vector with index = 0.
+      extOp = rewriter.create<xllvm::ExtI128I512IntrOp>(
+          loc, VectorType::get({4}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, /*operands=*/{shiftOp},
+              {VectorType::get({16}, rewriter.getI32Type())}));
+    } else {
+      op.emitWarning() << "aievec.ext with " << srcVectorSize
+                       << "-bit source, and " << resultVectorSize
+                       << "-bit result is not supported.\n";
+      return failure();
+    }
 
     // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 extOp);
+    if (op.getResult().getType() != extOp.getType()) {
+      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                   extOp);
+    } else {
+      rewriter.replaceOp(op, extOp);
+    }
 
     return success();
   }
