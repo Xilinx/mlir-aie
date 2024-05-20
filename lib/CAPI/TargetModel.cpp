@@ -36,6 +36,6 @@ int aieTargetModelRows(AieTargetModel targetModel) {
   return unwrap(targetModel).rows();
 }
 
-int aieTargetModelisNPU(AieTargetModel targetModel) {
+bool aieTargetModelIsNPU(AieTargetModel targetModel) {
   return unwrap(targetModel).isNPU();
 }
