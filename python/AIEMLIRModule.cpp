@@ -153,9 +153,8 @@ PYBIND11_MODULE(_aie, m) {
       },
       "modules"_a);
 
-  m.def("get_target_model", [](uint32_t d) -> PyAieTargetModel {
-    return aieGetTargetModel(d);
-  });
+  m.def("get_target_model",
+        [](uint32_t d) -> PyAieTargetModel { return aieGetTargetModel(d); });
 
   py::class_<PyAieTargetModel>(m, "AIETargetModel", py::module_local())
       .def(
@@ -167,6 +166,8 @@ PYBIND11_MODULE(_aie, m) {
       .def(
           "rows",
           [](PyAieTargetModel &self) { return aieTargetModelRows(self.get()); },
-          "Get the number of rows in the device.");
-
+          "Get the number of rows in the device.")
+      .def("is_npu", [](PyAieTargetModel &self) {
+        return aieTargetModelIsNPU(self.get());
+      });
 }

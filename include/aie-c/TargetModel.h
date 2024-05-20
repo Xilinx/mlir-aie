@@ -48,6 +48,9 @@ MLIR_CAPI_EXPORTED int aieTargetModelColumns(AieTargetModel targetModel);
 /// Returns the number of rows in the target model.
 MLIR_CAPI_EXPORTED int aieTargetModelRows(AieTargetModel targetModel);
 
+/// Returns true if this is an NPU target model.
+MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
+
 #ifdef __cplusplus
 }
 #endif

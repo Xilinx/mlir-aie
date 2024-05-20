@@ -35,3 +35,7 @@ int aieTargetModelColumns(AieTargetModel targetModel) {
 int aieTargetModelRows(AieTargetModel targetModel) {
   return unwrap(targetModel).rows();
 }
+
+int aieTargetModelisNPU(AieTargetModel targetModel) {
+  return unwrap(targetModel).isNPU();
+}
