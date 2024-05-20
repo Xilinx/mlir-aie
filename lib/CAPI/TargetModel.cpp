@@ -19,13 +19,13 @@ static inline AieTargetModel wrap(const xilinx::AIE::AIETargetModel &tm) {
   return AieTargetModel{static_cast<uint32_t>(tm.getDevice())};
 }
 
-static inline const xilinx::AIE::AIETargetModel& unwrap(AieTargetModel tm) {
+static inline const xilinx::AIE::AIETargetModel &unwrap(AieTargetModel tm) {
   return xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(tm.d));
 }
 
 AieTargetModel aieGetTargetModel(uint32_t device) {
-  return wrap(xilinx::AIE::getTargetModel(
-    static_cast<xilinx::AIE::AIEDevice>(device)));
+  return wrap(
+      xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(device)));
 }
 
 int aieTargetModelColumns(AieTargetModel targetModel) {

@@ -210,7 +210,6 @@ public:
 
 private:
   AIEDevice device;
-
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -516,7 +515,8 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(AIEDevice device, int _cols) : BaseNPUTargetModel(device), cols(_cols) {}
+  VirtualizedNPUTargetModel(AIEDevice device, int _cols)
+      : BaseNPUTargetModel(device), cols(_cols) {}
 
   int columns() const override { return cols; }
 
