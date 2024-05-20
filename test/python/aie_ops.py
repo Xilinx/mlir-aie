@@ -24,7 +24,7 @@ from aie.dialects.aie import (
     cascade_flow,
     WireBundle,
     packetflow,
-    get_target_model
+    get_target_model,
 )
 from aie.ir import InsertionPoint, Block, TypeAttr
 from aie.extras.context import mlir_mod_ctx
@@ -270,6 +270,7 @@ def test_module_context():
 
 test_module_context()
 
+
 # CHECK-LABEL: test_target_model
 # CHECK: xcvc1902 rows 9
 # CHECK: xcvc1902 cols 50
@@ -287,4 +288,6 @@ def test_target_model():
         print(f"{d} rows {tm.rows()}")
         print(f"{d} cols {tm.columns()}")
         print(f"{d} npu {tm.is_npu()}")
+
+
 test_target_model()
