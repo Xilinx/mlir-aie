@@ -910,14 +910,39 @@ public:
                 {VectorType::get({16}, rewriter.getBF16Type())}));
       } else if (resultVectorSize == 1024) {
         // v32bfloat16 -> v32accfloat
-        // Implement this scenario in emulation. The CPP example is below:
+        // The CPP example of the implementation is below:
         //   INTRINSIC(v32accfloat) ups_to_v32accfloat(v32bfloat16 a) {
         //     v16accfloat x0 = ups_to_v16accfloat(extract_v16bfloat16(a, 0));
         //     v16accfloat x1 = ups_to_v16accfloat(extract_v16bfloat16(a, 1));
         //     return concat(x0, x1);
         //   }
-        // TODO: implement this after adding 512->256 vector extraction
-        // intrinsic
+        auto indexZeroCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto indexOneCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+        auto extractUps = [&](Value source, Value index) -> Value {
+          auto extOp = rewriter.create<xllvm::ExtI256I512IntrOp>(
+              loc, VectorType::get({8}, rewriter.getI32Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {source, index},
+                  {VectorType::get({16}, rewriter.getI32Type()),
+                   rewriter.getI32Type()}));
+          return rewriter.create<xllvm::Vector16BF16ToV16AccFloatIntrOp>(
+              loc, VectorType::get({8}, rewriter.getI64Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {extOp},
+                  {VectorType::get({16}, rewriter.getBF16Type())}));
+        };
+        auto resLo = extractUps(adaptor.getSource(), indexZeroCst);
+        auto resHi = extractUps(adaptor.getSource(), indexOneCst);
+        // Concat the two 512-bit vector to a 1024-bit vector.
+        // Note that given sources a0 and a1, the result is [a1; a0].
+        upsIntrOp = rewriter.create<xllvm::ConcatI1024I512IntrOp>(
+            loc, VectorType::get({32}, rewriter.getI32Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, {resLo, resHi},
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type())}));
       }
     }
 
@@ -926,9 +951,14 @@ public:
       return failure();
     }
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 upsIntrOp);
+    // create bitcast for result if needed
+    if (op.getResult().getType() != upsIntrOp.getType()) {
+      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                   upsIntrOp);
+    } else {
+      rewriter.replaceOp(op, upsIntrOp);
+    }
+
     return success();
   }
 };
@@ -950,7 +980,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // Integer types
-    Operation *srsIntrOp = nullptr;
+    Value srsIntrOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
       // create constant for sign
       auto signCst = rewriter.create<LLVM::ConstantOp>(
@@ -1028,14 +1058,39 @@ public:
                 {VectorType::get({8}, rewriter.getI64Type())}));
       } else if (resultVectorSize == 512) {
         // v32accfloat -> v32bfloat16
-        // Implement this scenario in emulation. The CPP example is below:
+        // The CPP example of the implementation is below:
         //   v32bfloat16 to_v32bfloat16(v32accfloat acc) {
         //     v16bfloat16 x0 = to_v16bfloat16(extract_v16accfloat(acc, 0));
         //     v16bfloat16 x1 = to_v16bfloat16(extract_v16accfloat(acc, 1));
         //     return concat(x0, x1);
         //   }
-        // TODO: implement this after adding 1024->512 vector extraction
-        // intrinsic
+        auto indexZeroCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto indexOneCst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+        auto extractSrs = [&](Value source, Value index) -> Value {
+          auto extOp = rewriter.create<xllvm::ExtI512I1024IntrOp>(
+              loc, VectorType::get({16}, rewriter.getI32Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {source, index},
+                  {VectorType::get({32}, rewriter.getI32Type()),
+                   rewriter.getI32Type()}));
+          return rewriter.create<xllvm::Vector16AccFloatToV16BF16IntrOp>(
+              loc, VectorType::get({16}, rewriter.getBF16Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {extOp},
+                  {VectorType::get({8}, rewriter.getI64Type())}));
+        };
+        auto resLo = extractSrs(adaptor.getSource(), indexZeroCst);
+        auto resHi = extractSrs(adaptor.getSource(), indexOneCst);
+        // Concat the two 256-bit vector to a 512-bit vector.
+        // Note that given sources a0 and a1, the result is [a1; a0].
+        srsIntrOp = rewriter.create<xllvm::ConcatI512I256IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, {resLo, resHi},
+                {VectorType::get({8}, rewriter.getI32Type()),
+                 VectorType::get({8}, rewriter.getI32Type())}));
       }
     }
 
@@ -1044,7 +1099,13 @@ public:
       return failure();
     }
 
-    rewriter.replaceOp(op, srsIntrOp);
+    // create bitcast for result if needed
+    if (op.getResult().getType() != srsIntrOp.getType()) {
+      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                   srsIntrOp);
+    } else {
+      rewriter.replaceOp(op, srsIntrOp);
+    }
 
     return success();
   }

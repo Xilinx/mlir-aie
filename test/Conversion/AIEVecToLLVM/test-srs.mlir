@@ -164,3 +164,39 @@ func.func @v16bf16_srs_v16f32(%arg0 : vector<16xf32>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
 // CHECK-SAME: [[BITCAST1]]) : 
 // CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+
+// -----
+
+func.func @v32bf16_srs_v32f32(%arg0 : vector<32xf32>) {
+  %c0 = arith.constant 0 : i32
+  %0 = aievec.srs %arg0, %c0 : vector<32xf32>, i32, vector<32xbf16>
+  return
+}
+
+// CHECK-LABEL: @v32bf16_srs_v32f32
+// CHECK-SAME: %[[ARG0:.*]]: vector<32xf32>
+// CHECK: %[[SHIFT0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT: %[[INDEX0:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: %[[INDEX1:.*]] = llvm.mlir.constant(1 : i32) : i32
+// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[ARG0]] : vector<32xf32> to vector<32xi32>
+// CHECK-NEXT: %[[EXT0:.*]] = "xllvm.intr.aie2.ext.I512.I1024"(
+// CHECK-SAME: %[[BITCAST0]], %[[INDEX0]]) :
+// CHECK-SAME: (vector<32xi32>, i32) -> vector<16xi32>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[EXT0]] : vector<16xi32> to vector<8xi64>
+// CHECK-NEXT: %[[SRS0:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
+// CHECK-SAME: %[[BITCAST1]]) :
+// CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+// CHECK-NEXT: %[[BITCAST2:.*]] = llvm.bitcast %[[ARG0]] : vector<32xf32> to vector<32xi32>
+// CHECK-NEXT: %[[EXT1:.*]] = "xllvm.intr.aie2.ext.I512.I1024"(
+// CHECK-SAME: %[[BITCAST2]], %[[INDEX1]]) :
+// CHECK-SAME: (vector<32xi32>, i32) -> vector<16xi32>
+// CHECK-NEXT: %[[BITCAST3:.*]] = llvm.bitcast %[[EXT1]] : vector<16xi32> to vector<8xi64>
+// CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
+// CHECK-SAME: %[[BITCAST3]]) :
+// CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+// CHECK-NEXT: %[[BITCAST4:.*]] = llvm.bitcast %[[SRS0]] : vector<16xbf16> to vector<8xi32>
+// CHECK-NEXT: %[[BITCAST5:.*]] = llvm.bitcast %[[SRS1]] : vector<16xbf16> to vector<8xi32>
+// CHECK-NEXT: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I512.I256"(
+// CHECK-SAME: %[[BITCAST4]], %[[BITCAST5]]) :
+// CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
+// CHECK-NEXT: %[[BITCAST6:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<32xbf16>
