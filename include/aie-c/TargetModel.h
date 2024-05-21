@@ -51,6 +51,91 @@ MLIR_CAPI_EXPORTED int aieTargetModelRows(AieTargetModel targetModel);
 /// Returns true if this is an NPU target model.
 MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
 
+MLIR_CAPI_EXPORTED bool aieTargetModelIsCoreTile(AieTargetModel targetModel,
+                                                 int col, int row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsMemTile(AieTargetModel targetModel,
+                                                int col, int row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsShimNOCTile(AieTargetModel targetModel,
+                                                    int col, int row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsShimPLTile(AieTargetModel targetModel,
+                                                   int col, int row);
+
+MLIR_CAPI_EXPORTED bool
+aieTargetModelIsShimNOCorPLTile(AieTargetModel targetModel, int col, int row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsInternal(AieTargetModel targetModel,
+                                                 int src_col, int src_row,
+                                                 int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsWest(AieTargetModel targetModel,
+                                             int src_col, int src_row,
+                                             int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsEast(AieTargetModel targetModel,
+                                             int src_col, int src_row,
+                                             int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsNorth(AieTargetModel targetModel,
+                                              int src_col, int src_row,
+                                              int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsSouth(AieTargetModel targetModel,
+                                              int src_col, int src_row,
+                                              int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsMemWest(AieTargetModel targetModel,
+                                                int src_col, int src_row,
+                                                int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsMemEast(AieTargetModel targetModel,
+                                                int src_col, int src_row,
+                                                int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsMemNorth(AieTargetModel targetModel,
+                                                 int src_col, int src_row,
+                                                 int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool aieTargetModelIsMemSouth(AieTargetModel targetModel,
+                                                 int src_col, int src_row,
+                                                 int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED bool
+aieTargetModelIsLegalMemAffinity(AieTargetModel targetModel, int src_col,
+                                 int src_row, int dst_col, int dst_row);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMemSouthBaseAddress(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMemNorthBaseAddress(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMemEastBaseAddress(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMemWestBaseAddress(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetLocalMemorySize(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
+
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,
+                                                    int col, int row);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetNumMemTileRows(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetMemTileSize(AieTargetModel targetModel);
+
+/// Returns true if this is an NPU target model.
+MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
+
 #ifdef __cplusplus
 }
 #endif
