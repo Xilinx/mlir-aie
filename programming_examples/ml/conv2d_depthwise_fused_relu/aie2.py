@@ -15,16 +15,10 @@ from aie.extras.context import mlir_mod_ctx
 
 tensorInW = 7
 tensorInH = 7
-tensorInC = 32
-
-tensorL1InC = tensorInC
-tensorL1OutC = tensorL1InC // 4
+tensorInC = 16
 
 tensorL2InC = tensorInC
 tensorL2OutC = tensorInC
-
-tensorL3InC = tensorL2OutC
-tensorL3OutC = tensorL3InC * 4
 
 if len(sys.argv) == 3:
     width = int(sys.argv[1])
@@ -44,7 +38,6 @@ def conv2dk1():
             # define types
             uint8_ty = IntegerType.get_unsigned(8)
             int8_ty = IntegerType.get_signless(8)
-            int16_ty = IntegerType.get_signless(16)
             int32_ty = IntegerType.get_signless(32)
 
             tensorLayer2In_ty = MemRefType.get(
@@ -68,7 +61,7 @@ def conv2dk1():
             )
 
             # AIE Core Function declarations
-            conv2dk3 = external_func(
+            conv2dk3_dw = external_func(
                 "conv2dk3_ui8",
                 inputs=[
                     tensorLayer2In_ty,
@@ -116,7 +109,7 @@ def conv2dk1():
             rtp2 = Buffer(ComputeTile2, [16], T.i32(), "rtp2")
 
             # # Compute tile 2
-            @core(ComputeTile2, "conv2dk3.o")
+            @core(ComputeTile2, "conv2dk3_dw.o")
             def core_body():
                 scale = 8
                 for _ in for_(sys.maxsize):
@@ -131,7 +124,7 @@ def conv2dk1():
                     )
                     element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
                     res = call(
-                        conv2dk3,
+                        conv2dk3_dw,
                         [
                             elementActivactionsIn[0],
                             elementActivactionsIn[0],
@@ -159,7 +152,7 @@ def conv2dk1():
                             ObjectFifoPort.Produce, 1
                         )
                         res = call(
-                            conv2dk3,
+                            conv2dk3_dw,
                             [
                                 elementActivactionsIn[0],
                                 elementActivactionsIn[1],
@@ -187,7 +180,7 @@ def conv2dk1():
                     )
                     element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
                     res = call(
-                        conv2dk3,
+                        conv2dk3_dw,
                         [
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],

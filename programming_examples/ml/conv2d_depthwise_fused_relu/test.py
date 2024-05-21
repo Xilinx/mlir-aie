@@ -48,19 +48,19 @@ def main(opts):
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("uint8")
 
-    shape_total_wts = (576, 1)
-    shape_in_act = (7, 4, 7, 8)  #'YCXC8' , 'CYX'
-    shape_in_wts1 = (1, 4, 3, 3, 8, 1)  # out,in,ky,kx,in8,out8
-    shape_out = (7, 4, 7, 8)
+    shape_total_wts = (144, 1)
+    shape_in_act = (7, 2, 7, 8)  #'YCXC8' , 'CYX'
+    shape_in_wts1 = (1, 2, 3, 3, 8, 1)  # out,in,ky,kx,in8,out8
+    shape_out = (7, 2, 7, 8)
     quant_conv1 = QuantConv2d(
-        32,
-        32,
+        16,
+        16,
         kernel_size=3,
         padding=1,
         padding_mode="zeros",
         bit_width=8,
         weight_bit_width=8,
-        groups=32,
+        groups=16,
         bias=False,
         weight_quant=Int8WeightPerTensorFixedPoint,
         return_quant_tensor=True,
@@ -77,9 +77,8 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
-    input = torch.randn(1, 32, 7, 7)
-    q_inp = quant_id_1(input)
-    int_inp = q_inp.int(float_datatype=True)
+    input = torch.randn(1, 16, 7, 7)
+
 
     # int_inp = torch.randint(1, 100, (1, 64, 7, 7)).type(torch.FloatTensor)
     
@@ -105,7 +104,7 @@ def main(opts):
         trace_size=trace_size,
     )
     class QuantConv2d3x3(nn.Module):
-        def __init__(self, in_planes=32, planes=32):
+        def __init__(self, in_planes=16, planes=16):
             super(QuantConv2d3x3, self).__init__()
             self.quant_id_1 = QuantIdentity(
                 act_quant=Uint8ActPerTensorFixedPoint,
@@ -142,45 +141,22 @@ def main(opts):
     int_weight = quant_bottleneck_model.conv1.quant_weight().int(float_datatype=True)
     q_bottleneck_out = quant_bottleneck_model(input)
     golden_output = q_bottleneck_out.int(float_datatype=True).data.numpy().astype(dtype_out)
-    print("Golden::Brevitas::", golden_output)
-    print(input.shape)
-    print(int_weight.shape)
-    print(q_bottleneck_out.shape)
+
+    q_inp = quant_bottleneck_model.quant_id_1(input)
+    int_inp = q_inp.int(float_datatype=True)
+   
     inp_scale1 = quant_bottleneck_model.quant_id_1.quant_act_scale()
     inp_scale2 = quant_bottleneck_model.relu1.quant_act_scale()
     weight_scale1 = quant_bottleneck_model.conv1.quant_weight_scale()
     combined_scale1 = -torch.log2(inp_scale1 * weight_scale1 / inp_scale2)
     
-    print("combined_scale after first conv3x3:", combined_scale1.item())
-    # ------------------------------------------------------
-    # Define your golden reference
-    # ------------------------------------------------------
-    # class conv2d_relu_int_model(nn.Module):
-    #     def __init__(self, in_planes=64, planes=64):
-    #         super(conv2d_relu_int_model, self).__init__()
-    #         self.conv = nn.Conv2d(64, 64, kernel_size=1, bias=False)
-    #         self.relu = nn.ReLU()
-
-    #     def forward(self, x):
-    #         out_int = self.conv(x)
-    #         out_float = out_int * conv_scale
-    #         out_int = self.relu(out_float)
-    #         out_float = relu_scale * torch.clamp(
-    #             torch.round(out_int / relu_scale), min, max
-    #         )  # converting to int to do proper clipping
-    #         return out_float
-
-    # # ------------------------------------------------------
-    # # Pytorch baseline
-    # # ------------------------------------------------------
-    # model = conv2d_relu_int_model()
-    # model.eval()
-    # model.conv.weight.data.copy_(int_weight)
-    # golden_output = model(int_inp)
-
+    # print("combined_scale after first conv3x3:", combined_scale1.item())
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
+    golden_output.tofile(
+        log_folder + "/golden_output.txt", sep=",", format="%d"
+    )
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
     before_input.tofile(
@@ -188,12 +164,11 @@ def main(opts):
     )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
-    print(int_weight.shape)
+
     int_weight.data.numpy().astype(dtype_wts).tofile(log_folder + "/before_weights_mem_fmt_final.txt", sep=",", format="%d")
     wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI1O8", "OIYX")
     total_wts = np.concatenate((wts1), axis=None)
-    print(total_wts.shape)
-    print(int_weight)
+  
     total_wts.tofile(log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
 
     # ------------------------------------------------------
@@ -209,30 +184,29 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = aie_output.reshape(7, 4, 7, 8)
+    temp_out = aie_output.reshape(7, 2, 7, 8)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(32, 7, 7)
+    ofm_mem_fmt = temp_out.reshape(16, 7, 7)
     ofm_mem_fmt.tofile(
         log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
     )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
-    print(ofm_mem_fmt)
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
-    # if np.allclose(
-    #     ofm_mem_fmt_out.detach().numpy(),
-    #     golden_output.detach().numpy(),
-    #     rtol=0,
-    #     atol=2 * relu_scale,
-    # ):
-    #     print("\nPASS!\n")
-    #     exit(0)
-    # else:
-    #     print("\nFailed.\n")
-    #     exit(-1)
+    if np.allclose(
+        ofm_mem_fmt_out,
+        golden_output,
+        rtol=0,
+        atol=1,
+    ):
+        print("\nPASS!\n")
+        exit(0)
+    else:
+        print("\nFailed.\n")
+        exit(-1)
 
 
 if __name__ == "__main__":

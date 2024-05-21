@@ -13,7 +13,7 @@ mlirFileName = aie
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-all: build/conv2dk3.o build/final.xclbin
+all: build/conv2dk3_dw.o build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 	mkdir -p ${@D}
@@ -22,10 +22,10 @@ build/${mlirFileName}.mlir: ${srcdir}/aie2.py
 insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
-build/conv2dk3.o: conv2dk3_depth.cc
+build/conv2dk3_dw.o: conv2dk3_dw.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -c $< -o $@
 
-build/final.xclbin: build/${mlirFileName}.mlir  build/conv2dk3.o 
+build/final.xclbin: build/${mlirFileName}.mlir  build/conv2dk3_dw.o 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
