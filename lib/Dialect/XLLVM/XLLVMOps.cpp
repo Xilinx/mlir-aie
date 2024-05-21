@@ -46,12 +46,16 @@ getNamedIntrinsicDeclaration(llvm::Module *M, llvm::StringRef fullName,
 llvm::CallInst *createExternalLLVMIntrinsicCall(
     llvm::IRBuilderBase &builder, LLVM::ModuleTranslation &moduleTranslation,
     Operation *intrOp, llvm::StringRef intrinsicName) {
-  // We support 0 or 1 results
-  assert(intrOp->getNumResults() <= 1 &&
-         "external multi-result intrinsics not supported");
   llvm::Type *resTy = nullptr;
-  if (intrOp->getNumResults())
+  unsigned numResults = intrOp->getNumResults();
+  if (numResults == 1)
     resTy = moduleTranslation.convertType(*(intrOp->getResultTypes().begin()));
+  else if (numResults > 1) {
+    SmallVector<llvm::Type *> resTys;
+    for (auto ty : intrOp->getResultTypes())
+      resTys.push_back(moduleTranslation.convertType(ty));
+    resTy = llvm::StructType::get(builder.getContext(), resTys);
+  }
   auto operands = moduleTranslation.lookupValues(intrOp->getOperands());
   SmallVector<llvm::Type *> types;
   for (auto op : operands)

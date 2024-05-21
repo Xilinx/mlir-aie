@@ -101,14 +101,14 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   return success();
 }
 
-static VC1902TargetModel VC1902model;
-static VE2302TargetModel VE2302model;
-static VE2802TargetModel VE2802model;
-static NPUTargetModel NPUmodel;
-static VirtualizedNPUTargetModel NPUmodel1col(1);
-static VirtualizedNPUTargetModel NPUmodel2col(2);
-static VirtualizedNPUTargetModel NPUmodel3col(3);
-static VirtualizedNPUTargetModel NPUmodel4col(4);
+static VC1902TargetModel VC1902model(AIEDevice::xcvc1902);
+static VE2302TargetModel VE2302model(AIEDevice::xcve2302);
+static VE2802TargetModel VE2802model(AIEDevice::xcve2802);
+static NPUTargetModel NPUmodel(AIEDevice::npu1);
+static VirtualizedNPUTargetModel NPUmodel1col(AIEDevice::npu1_1col, 1);
+static VirtualizedNPUTargetModel NPUmodel2col(AIEDevice::npu1_2col, 2);
+static VirtualizedNPUTargetModel NPUmodel3col(AIEDevice::npu1_3col, 3);
+static VirtualizedNPUTargetModel NPUmodel4col(AIEDevice::npu1_4col, 4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -118,6 +118,28 @@ const AIETargetModel &getTargetModel(Operation *op) {
 
   // For backward compatibility, return a basic device model compatible with
   // the VCK190
+  return VC1902model;
+}
+
+const AIETargetModel &getTargetModel(AIEDevice device) {
+  switch (device) {
+  case AIEDevice::xcvc1902:
+    return VC1902model;
+  case AIEDevice::xcve2302:
+    return VE2302model;
+  case AIEDevice::xcve2802:
+    return VE2802model;
+  case AIEDevice::npu1:
+    return NPUmodel;
+  case AIEDevice::npu1_1col:
+    return NPUmodel1col;
+  case AIEDevice::npu1_2col:
+    return NPUmodel2col;
+  case AIEDevice::npu1_3col:
+    return NPUmodel3col;
+  case AIEDevice::npu1_4col:
+    return NPUmodel4col;
+  }
   return VC1902model;
 }
 
@@ -982,25 +1004,7 @@ LogicalResult GetCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 const AIETargetModel &DeviceOp::getTargetModel() {
-  switch (getDevice()) {
-  case AIEDevice::xcvc1902:
-    return VC1902model;
-  case AIEDevice::xcve2302:
-    return VE2302model;
-  case AIEDevice::xcve2802:
-    return VE2802model;
-  case AIEDevice::npu1:
-    return NPUmodel;
-  case AIEDevice::npu1_1col:
-    return NPUmodel1col;
-  case AIEDevice::npu1_2col:
-    return NPUmodel2col;
-  case AIEDevice::npu1_3col:
-    return NPUmodel3col;
-  case AIEDevice::npu1_4col:
-    return NPUmodel4col;
-  }
-  return VC1902model;
+  return xilinx::AIE::getTargetModel(getDevice());
 }
 
 LogicalResult DeviceOp::verify() { return success(); }
