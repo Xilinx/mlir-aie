@@ -17,6 +17,7 @@ from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import (
     ObjectFifoSubviewType,
     ObjectFifoType,
+    get_target_model,
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
