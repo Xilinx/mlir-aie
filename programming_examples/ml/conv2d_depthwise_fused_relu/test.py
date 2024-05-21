@@ -23,7 +23,20 @@ from brevitas.quant.fixed_point import (
 )
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
+vectorSize=8
 
+tensorInW = 8
+tensorInH = 8
+tensorInC = 16
+kdim=3
+stride=2
+padding=1
+
+tensorOutW = math.floor((tensorInW-kdim+2*padding)/stride)+1
+tensorOutH = math.floor((tensorInH-kdim+2*padding)/stride)+1
+
+tensorL2InC = tensorInC
+tensorL2OutC = tensorInC
 
 def main(opts):
     design = "conv2d_depthwise_with_relu"
@@ -49,45 +62,14 @@ def main(opts):
     dtype_out = np.dtype("uint8")
 
     shape_total_wts = (144, 1)
-    shape_in_act = (7, 2, 7, 8)  #'YCXC8' , 'CYX'
-    shape_in_wts1 = (1, 2, 3, 3, 8, 1)  # out,in,ky,kx,in8,out8
-    shape_out = (7, 2, 7, 8)
-    quant_conv1 = QuantConv2d(
-        16,
-        16,
-        kernel_size=3,
-        padding=1,
-        padding_mode="zeros",
-        bit_width=8,
-        weight_bit_width=8,
-        groups=16,
-        bias=False,
-        weight_quant=Int8WeightPerTensorFixedPoint,
-        return_quant_tensor=True,
-    )
-    quant_conv1.eval()
-    quant_id_1 = QuantIdentity(
-        act_quant=Uint8ActPerTensorFixedPoint, bit_width=8, return_quant_tensor=True
-    )
-    quant_relu1 = QuantReLU(
-        act_quant=Uint8ActPerTensorFixedPoint, bit_width=8, return_quant_tensor=True
-    )
-    
+    shape_in_act = (tensorInH, 2, tensorInW, vectorSize)  #'YCXC8' , 'CYX'
+    shape_out = (tensorOutH, 2, tensorOutW, vectorSize)
+  
     
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
-    input = torch.randn(1, 16, 7, 7)
-
-
-    # int_inp = torch.randint(1, 100, (1, 64, 7, 7)).type(torch.FloatTensor)
-    
-    # int_weight = torch.randint(50, 100, (64, 64, 1, 1)).type(torch.FloatTensor)
-    conv_scale = 0.0039  # scale to convert int8 output to floating point
-    relu_scale = 0.0078  # scale to convert int8 output to floating point
-    min = 0
-    max = 255
-
+    input = torch.randn(1, tensorInC, tensorInH, tensorInW)
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
@@ -115,6 +97,7 @@ def main(opts):
                 in_planes,
                 planes,
                 kernel_size=3,
+                stride=2,
                 padding=1,
                 padding_mode="zeros",
                 bit_width=8,
@@ -141,10 +124,12 @@ def main(opts):
     int_weight = quant_bottleneck_model.conv1.quant_weight().int(float_datatype=True)
     q_bottleneck_out = quant_bottleneck_model(input)
     golden_output = q_bottleneck_out.int(float_datatype=True).data.numpy().astype(dtype_out)
-
+    # print("Golden::Brevitas::", golden_output)
     q_inp = quant_bottleneck_model.quant_id_1(input)
     int_inp = q_inp.int(float_datatype=True)
-   
+    # print(input.shape)
+    # print(int_weight.shape)
+    # print(q_bottleneck_out.shape)
     inp_scale1 = quant_bottleneck_model.quant_id_1.quant_act_scale()
     inp_scale2 = quant_bottleneck_model.relu1.quant_act_scale()
     weight_scale1 = quant_bottleneck_model.conv1.quant_weight_scale()
@@ -164,10 +149,11 @@ def main(opts):
     )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
-
+    # print(int_weight.shape)
     int_weight.data.numpy().astype(dtype_wts).tofile(log_folder + "/before_weights_mem_fmt_final.txt", sep=",", format="%d")
     wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI1O8", "OIYX")
     total_wts = np.concatenate((wts1), axis=None)
+    # print(total_wts.shape)
   
     total_wts.tofile(log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
 
@@ -184,13 +170,14 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = aie_output.reshape(7, 2, 7, 8)
+    temp_out = aie_output.reshape(tensorOutH, 2, tensorOutW, vectorSize)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(16, 7, 7)
+    ofm_mem_fmt = temp_out.reshape(tensorInC, tensorOutH, tensorOutW)
     ofm_mem_fmt.tofile(
         log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
     )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
+    # print(ofm_mem_fmt_out)
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
