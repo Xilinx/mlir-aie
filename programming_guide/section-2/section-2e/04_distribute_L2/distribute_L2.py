@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def distribute_L2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             memRef_24_ty = T.memref(24, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
@@ -73,7 +73,7 @@ def distribute_L2():
                     for i in for_(8):
                         v0 = memref.load(elem, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
-                        memref.store(v1, elem_out, [i])
+                        memref.store(v1, elem, [i])
                         yield_([])
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     yield_([])
