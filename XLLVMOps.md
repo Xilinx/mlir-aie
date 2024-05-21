@@ -659,6 +659,22 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.vmax.ltbf16` (::xilinx::xllvm::VectorMaxLtBf16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32
+| `rhs` | vector of bfloat16 type values of length 32
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.vshift.bf512.bf512` (::xilinx::xllvm::VectorShiftBF512BF512IntrOp)
 
 #### Operands:
