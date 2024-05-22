@@ -4,7 +4,18 @@
 // REQUIRES: ryzen_ai, chess
 //
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/mm.cc -o ./mm.o
-// RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2.xclbin --npu-insts-name=insts2.txt %S/aie.mlir
 // RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
-// RUN: %run_on_npu ./test.exe -x aie2.xclbin -k MLIR_AIE -i insts2.txt --trace_sz 32768 | FileCheck %s
+//
+// RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2_plain.xclbin --npu-insts-name=insts2_plain.txt %S/aie_plain.mlir
+// RUN: %run_on_npu ./test.exe -x aie2_plain.xclbin -k MLIR_AIE -i insts2_plain.txt --trace_sz 32768 | FileCheck %s
+// CHECK: PASS!
+//
+// RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2_buffer.xclbin --npu-insts-name=insts2_buffer.txt %S/aie_buffer.mlir
+// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: %run_on_npu ./test.exe -x aie2_buffer.xclbin -k MLIR_AIE -i insts2_buffer.txt --trace_sz 32768 | FileCheck %s
+// CHECK: PASS!
+//
+// RUN: %python aiecc.py --xchesscc --xbridge --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=aie2_cascade.xclbin --npu-insts-name=insts2_cascade.txt %S/aie_cascade.mlir
+// RUN: g++-13 %S/test.cpp -o test.exe -std=c++23 -Wall %xrt_flags -lrt -lstdc++ -lboost_program_options -lboost_filesystem
+// RUN: %run_on_npu ./test.exe -x aie2_cascade.xclbin -k MLIR_AIE -i insts2_cascade.txt --trace_sz 32768 | FileCheck %s
 // CHECK: PASS!

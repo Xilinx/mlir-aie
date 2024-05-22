@@ -80,4 +80,7 @@ void flush_trace() {
     event1();
   }
 }
+
+void event_0() { event0(); }
+void event_1() { event1(); }
 }

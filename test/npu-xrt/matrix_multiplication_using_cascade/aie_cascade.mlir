@@ -6,11 +6,13 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func private @matmul_scalar_put_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     func.func private @matmul_scalar_get_4x1x4_4x4x4_i32_i32(memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     // <trace>
+    func.func private @event_0()
+    func.func private @event_1()
     func.func private @flush_trace()
     // </trace>
     %tile_0_0 = aie.tile(0, 0)
@@ -92,6 +94,9 @@ module {
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%lock_0_2_6, AcquireGreaterEqual, 1)
       aie.use_lock(%lock_0_2_4, AcquireGreaterEqual, 1)
+      // <trace>
+      func.call @event_0() : () -> ()
+      // </trace>
       scf.for %arg0 = %c0 to %c4 step %c1 {
         scf.for %arg1 = %c0 to %c4 step %c1 {
           scf.for %arg2 = %c0 to %c4 step %c1 {
@@ -101,6 +106,9 @@ module {
           }
         }
       }
+      // <trace>
+      func.call @event_1() : () -> ()
+      // </trace>
       func.call @matmul_scalar_put_4x1x4_4x4x4_i32_i32(%buf2, %buf1, %buf0) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_0_2_5, Release, 1)
       aie.use_lock(%lock_0_2, Release, 1)
@@ -137,6 +145,9 @@ module {
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%lock_1_2_9, AcquireGreaterEqual, 1)
       aie.use_lock(%lock_1_2_7, AcquireGreaterEqual, 1)
+      // <trace>
+      func.call @event_0() : () -> ()
+      // </trace>
       scf.for %arg0 = %c0 to %c4 step %c1 {
         scf.for %arg1 = %c0 to %c4 step %c1 {
           scf.for %arg2 = %c0 to %c4 step %c1 {
@@ -146,6 +157,9 @@ module {
           }
         }
       }
+      // <trace>
+      func.call @event_1() : () -> ()
+      // </trace>
       func.call @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(%buf5, %buf4, %buf3) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_1_2_8, Release, 1)
       aie.use_lock(%lock_1_2, Release, 1)
@@ -182,6 +196,9 @@ module {
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%lock_2_2_12, AcquireGreaterEqual, 1)
       aie.use_lock(%lock_2_2_10, AcquireGreaterEqual, 1)
+      // <trace>
+      func.call @event_0() : () -> ()
+      // </trace>
       scf.for %arg0 = %c0 to %c4 step %c1 {
         scf.for %arg1 = %c0 to %c4 step %c1 {
           scf.for %arg2 = %c0 to %c4 step %c1 {
@@ -191,6 +208,9 @@ module {
           }
         }
       }
+      // <trace>
+      func.call @event_1() : () -> ()
+      // </trace>
       func.call @matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(%buf8, %buf7, %buf6) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_2_2_11, Release, 1)
       aie.use_lock(%lock_2_2, Release, 1)
@@ -235,6 +255,9 @@ module {
       aie.use_lock(%lock_3_2_16, AcquireGreaterEqual, 1)
       aie.use_lock(%lock_3_2_15, AcquireGreaterEqual, 1)
       aie.use_lock(%lock_3_2_13, AcquireGreaterEqual, 1)
+      // <trace>
+      func.call @event_0() : () -> ()
+      // </trace>
       scf.for %arg0 = %c0 to %c4 step %c1 {
         scf.for %arg1 = %c0 to %c4 step %c1 {
           scf.for %arg2 = %c0 to %c4 step %c1 {
@@ -244,6 +267,9 @@ module {
           }
         }
       }
+      // <trace>
+      func.call @event_1() : () -> ()
+      // </trace>
       func.call @matmul_scalar_get_4x1x4_4x4x4_i32_i32(%buf11, %buf10, %buf9) : (memref<1x4x4x4xi32, 2 : i32>, memref<4x1x4x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) -> ()
       aie.use_lock(%lock_3_2_17, Release, 1)
       aie.use_lock(%lock_3_2_14, Release, 1)
