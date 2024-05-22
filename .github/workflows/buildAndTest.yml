@@ -130,6 +130,7 @@ jobs:
           ninja check-aie
           ninja check-tutorials
           ninja check-reference-designs
+          ninja check-programming-guide
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test (Release)
@@ -165,3 +166,4 @@ jobs:
           ninja check-aie
           ninja check-tutorials
           ninja check-reference-designs
+          ninja check-programming-guide
