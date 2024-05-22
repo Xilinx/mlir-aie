@@ -392,7 +392,7 @@ def mobilenetBottleneckB():
             def sequence(inputFromL3, weightsFromL3, outputToL3):
                 NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=9)
                 NpuWriteRTPOp("rtp3", col=0, row=3, index=0, value=8)
-                NpuWriteRTPOp("rtp4", col=0, row=4, index=0, value=19)
+                NpuWriteRTPOp("rtp4", col=0, row=4, index=0, value=12)
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
                     bd_id=0,

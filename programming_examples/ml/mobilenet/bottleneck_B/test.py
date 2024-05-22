@@ -15,6 +15,7 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+from dolphin import print_dolphin
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (
     Int8ActPerTensorFixedPoint,
@@ -147,6 +148,11 @@ def main(opts):
                 bit_width=8,
                 return_quant_tensor=True,
             )
+            self.quant_id_2 = QuantIdentity(
+                act_quant=Int8ActPerTensorFixedPoint,
+                bit_width=8,
+                return_quant_tensor=True,
+            )
 
         def forward(self, x):
             out_q = self.quant_id_1(x)
@@ -155,6 +161,7 @@ def main(opts):
             out = self.quant_conv2(out)
             out = self.quant_relu2(out)
             out = self.quant_conv3(out)
+            out = self.quant_id_2(out)
             return out
 
     quant_bottleneck_model = QuantBottleneck(in_planes=80, expand=480,project=112)
@@ -162,7 +169,7 @@ def main(opts):
     
     q_bottleneck_out = quant_bottleneck_model(input)
     golden_output = q_bottleneck_out.int(float_datatype=True).data.numpy().astype(dtype_out)
-    print("Golden::Brevitas::", golden_output)
+    # print("Golden::Brevitas::", golden_output)
     q_inp = quant_bottleneck_model.quant_id_1(input)
     int_inp = q_inp.int(float_datatype=True)
     # print(input.shape)
@@ -172,6 +179,7 @@ def main(opts):
     init_scale = quant_bottleneck_model.quant_id_1.quant_act_scale()
     block_0_relu_1 = quant_bottleneck_model.quant_relu1.quant_act_scale()
     block_0_relu_2 = quant_bottleneck_model.quant_relu2.quant_act_scale()
+    final_scale = quant_bottleneck_model.quant_id_2.quant_act_scale()
 
     block_0_weight_scale1 = quant_bottleneck_model.quant_conv1.quant_weight_scale()
     block_0_weight_scale2 = quant_bottleneck_model.quant_conv2.quant_weight_scale()
@@ -183,11 +191,12 @@ def main(opts):
         block_0_relu_1 * block_0_weight_scale2 / block_0_relu_2
     )  
     block_0_combined_scale3 = -torch.log2(
-        block_0_relu_2 * block_0_weight_scale3
+        block_0_relu_2 * block_0_weight_scale3/final_scale
     )   
-    print("combined_scale after conv1x1:", block_0_combined_scale1.item())
-    print("combined_scale after conv3x3:", block_0_combined_scale2.item())
-    print("combined_scale after conv1x1:", block_0_combined_scale3.item())
+    # print("combined_scale after conv1x1:", block_0_combined_scale1.item())
+    # print("combined_scale after conv3x3:", block_0_combined_scale2.item())
+    # print("combined_scale after conv1x1:", block_0_combined_scale3.item())
+    # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
@@ -244,7 +253,7 @@ def main(opts):
         log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
     )
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
-    print(ofm_mem_fmt_out)
+    # print(ofm_mem_fmt_out)
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
@@ -257,6 +266,7 @@ def main(opts):
         atol=1,
     ):
         print("\nPASS!\n")
+        print_dolphin()
         exit(0)
     else:
         print("\nFailed.\n")

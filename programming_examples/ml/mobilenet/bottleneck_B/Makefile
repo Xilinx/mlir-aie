@@ -30,7 +30,7 @@ build/conv2dk3_dw.o: conv2dk3_dw.cc
 
 build/conv2dk1_ui8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR  -c $< -o ${@F}
 
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_fused_relu.o  build/conv2dk3_dw.o build/conv2dk1_ui8.o 
