@@ -7,4 +7,5 @@
 // RUN: make -f %S/Makefile 
 // RUN: %run_on_npu make -f %S/Makefile run | FileCheck %s
 // RUN: %run_on_npu make -f %S/Makefile run_py | FileCheck %s
+// CHECK: Running...
 // CHECK: PASS!

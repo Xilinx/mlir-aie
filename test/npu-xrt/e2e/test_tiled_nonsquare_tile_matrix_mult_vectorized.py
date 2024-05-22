@@ -1,8 +1,10 @@
+# npu-xrt/e2e/test_tiled_nonsquare_tile_matrix_mult_vectorized.py -*- Python -*-
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 
 from __future__ import annotations
@@ -105,7 +107,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -470,7 +472,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -832,7 +834,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar_already_vectorized(
 
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         matmul_i32_i32_already_vectorized.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)

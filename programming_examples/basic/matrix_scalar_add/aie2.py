@@ -1,9 +1,10 @@
+# matrix_scalar_add/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -34,7 +35,7 @@ def my_matrix_add_one():
     if len(sys.argv) != 3:
         raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
     if sys.argv[1] == "npu":
-        dev = AIEDevice.npu
+        dev = AIEDevice.npu1_1col
     elif sys.argv[1] == "xcvc1902":
         dev = AIEDevice.xcvc1902
     else:

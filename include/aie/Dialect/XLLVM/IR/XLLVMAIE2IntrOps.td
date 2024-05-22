@@ -15,6 +15,7 @@
 #define AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
 
 include "aie/Dialect/XLLVM/IR/XLLVM.td"
+include "aie/Dialect/XLLVM/IR/XLLVMTypeConstraints.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -103,9 +104,16 @@ def VectorSetI512I256IntrOp :
 
 // ----- SRS ----- 
 
-def I512V32Acc32SrsIntrOp :
-    AIEVec2_IntrOp<"I512.v32.acc32.srs",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+def I256V16Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I256V16Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v16.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
@@ -117,9 +125,23 @@ def I256V32Acc32SrsIntrOp :
                    I32:$shift,
                    I32:$sign)>;
 
+def I256V8Acc64SrsIntrOp :
+    AIEVec2_IntrOp<"I256.v8.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
 def I512V16Acc64SrsIntrOp :
     AIEVec2_IntrOp<"I512.v16.acc64.srs",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I512V32Acc32SrsIntrOp :
+    AIEVec2_IntrOp<"I512.v32.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I64]>:$src,
                    I32:$shift,
                    I32:$sign)>;
@@ -134,17 +156,27 @@ def Vector16AccFloatToV16BF16IntrOp :
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
+
+def VectorBroadcast16I512IntrOp :
+    AIEVec2_IntrOp<"vbroadcast16.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast32I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast32.I512",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins I32:$value)>;
+    Arguments<(ins I32:$src)>;
 
 def VectorBroadcast16BF512IntrOp :
     AIEVec2_IntrOp<"vbroadcast16.bf512",
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-    Arguments<(ins BF16:$value)>;
+    Arguments<(ins BF16:$src)>;
+
+def VectorBroadcastfloatI512IntrOp :
+    AIEVec2_IntrOp<"vbroadcastfloat.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins F32:$src)>;
 
 // ----- EXT ----- 
 
@@ -154,6 +186,23 @@ def ExtI256I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
                    I32:$idx)>;
 
+def ExtI512I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I512.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI256I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I256.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI128I512IntrOp :
+    AIEVec2_IntrOp<"extract.I128.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
+  
 // ----- CONCAT ----- 
 
 def ConcatI512I256IntrOp :
@@ -161,6 +210,20 @@ def ConcatI512I256IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$lhs,
                    VectorOfLengthAndType<[8], [I32]>:$rhs)>;
+
+def ConcatI1024I256IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src0,
+                   VectorOfLengthAndType<[8], [I32]>:$src1,
+                   VectorOfLengthAndType<[8], [I32]>:$src2,
+                   VectorOfLengthAndType<[8], [I32]>:$src3)>;
+
+def ConcatI1024I512IntrOp :
+    AIEVec2_IntrOp<"concat.I1024.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs)>;
 
 // ----- SHUFFLE ----- 
 
@@ -185,6 +248,55 @@ def UpdBF512BF256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$dst,
                    VectorOfLengthAndType<[16], [BF16]>:$src,
                    I32:$idx)>;
+
+// ----- UPS ----- 
+
+def Acc32V16I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v16.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc32V32I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v32.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I8]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc32V32I512UpsIntrOp :
+    AIEVec2_IntrOp<"acc32.v32.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V16I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v16.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I16]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V16I512UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v16.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V8I256UpsIntrOp :
+    AIEVec2_IntrOp<"acc64.v8.I256.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Vector16BF16ToV16AccFloatIntrOp :
+    AIEVec2_IntrOp<"v16bf16.to.v16accfloat",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
 
 // ----- SHIFT ----- 
 
@@ -226,5 +338,17 @@ def VectorExtractElem32I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
                    I32:$idx,
                    I32:$sign)>;
+
+// ----- MAX ELEMENT -----
+
+def VectorMaxLtBf16IntrOp :
+    AIEVec2_IntrOp<"vmax.ltbf16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [BF16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs)>;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

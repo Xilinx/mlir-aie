@@ -1,8 +1,10 @@
+# npu-xrt/e2e/test_tiled_vec_add_vectorized.py -*- Python -*-
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 
 from __future__ import annotations
@@ -69,7 +71,7 @@ def test_vec_add_vectorized(ctx: MLIRContext, workdir: Path):
     npu_insts = aiex.npu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)
@@ -362,7 +364,7 @@ def test_vec_add_vectorized_sugar(ctx: MLIRContext, workdir: Path):
     npu_insts = aiex.npu.get_prolog()
     mod_aie = ExplicitlyManagedModule()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         vec_add_i32_i32.emit(decl=True)
         tile_0_0 = aie.tile(0, 0)

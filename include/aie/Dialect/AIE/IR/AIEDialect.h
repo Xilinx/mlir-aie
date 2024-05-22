@@ -234,6 +234,7 @@ typedef struct DMAChannel {
 } DMAChannel;
 
 const AIETargetModel &getTargetModel(mlir::Operation *op);
+const AIETargetModel &getTargetModel(AIEDevice device);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,

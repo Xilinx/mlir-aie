@@ -26,15 +26,18 @@ You will...
 
 1. Install a driver for the Ryzen™ AI. As part of this, you will need to...
 
+   1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232)
+
    1. [...compile and install a more recent Linux kernel.](#update-linux)
 
    1. [...compile and install the XDNA driver from source.](#install-the-xdna-driver)
 
 1. Install the compiler toolchain, allowing you to compile your own NPU designs from source. As part of this, you will need to...
 
-   1. [...install Xilinx Vitis and obtain a license.](#install-xilinx-vitis-20232-and-other-mlir-aie-prerequisites)
 
-   1. ...install mlir-aie [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
+   1. [...install prerequisites.](#install-mlir-aie-prerequisites)
+   
+   1. ...install MLIR-AIE [from precompiled binaries (fast)](#option-a---quick-setup-for-ryzen-ai-application-development) or [from source (slow)](#option-b---build-mlir-aie-tools-from-source-for-development).
 
 1. Build and execute one of the example designs. This consists of...
 
@@ -47,6 +50,43 @@ You will...
 > Be advised that two of the steps (Linux compilation and Vitis install) may take hours. If you decide to build mlir-aie from source, this will also take a long time as it contains an LLVM build. Allocate enough time and patience. Once done, you will have an amazing toolchain allowing you to harness this great hardware at your hands.
 
 ## Prerequisites
+
+### Install Xilinx Vitis 2023.2 
+
+1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+
+   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
+
+1. Set up a AI Engine license.
+
+    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
+
+    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
+       
+    1. Setup your environment using the following script for Vitis and aietools:
+
+       ```
+       #!/bin/bash
+        #################################################################################
+        # Setup Vitis (which includes Vitis and aietools)
+        #################################################################################
+        export MYXILINX_VER=2023.2
+        export MYXILINX_BASE=/tools/Xilinx
+        export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
+        export AIETOOLS_ROOT=$XILINX_LOC/aietools
+        export PATH=$PATH:${AIETOOLS_ROOT}/bin:$XILINX_LOC/bin
+        export LM_LICENSE_FILE=/opt/Xilinx.lic
+        export VITIS=${XILINX_LOC}
+        export XILINX_VITIS=${XILINX_LOC}
+        export VITIS_ROOT=${XILINX_LOC}
+       ```
+   1. Vitis requires some python3.8 libraries:
+  
+      ```
+      sudo add-apt-repository ppa:deadsnakes/ppa
+      sudo apt-get update
+      sudo apt install libpython3.8-dev
+      ```
 
 ### Update Linux
 
@@ -66,7 +106,7 @@ You will...
 1. Pull the source for the correct kernel version, which is available in the AMDESE linux repository.
 
     ```
-    git clone --branch iommu_sva_v4_v6.7-rc8 https://github.com/AMDESE/linux.git
+    git clone --depth=1 --branch v6.8-iommu-sva-part4-v7 git@github.com:AMD-SW/linux
     export LINUX_SRC_DIR=$(realpath linux)
     ```
 
@@ -84,6 +124,8 @@ You will...
     cd $LINUX_SRC_DIR
     make olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
+    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
+    ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --enable DRM_ACCEL
     ```
 
@@ -101,9 +143,9 @@ You will...
 
     ```
     cd $LINUX_BUILD_DIR/..
-    sudo dpkg -i linux-headers-6.7.0-rc8+_6.7.0-rc8-gf7c539200359-20_amd64.deb
-    sudo dpkg -i linux-image-6.7.0-rc8+_6.7.0-rc8-gf7c539200359-20_amd64.deb 
-    sudo dpkg -i linux-libc-dev_6.7.0-rc8-gf7c539200359-20_amd64.deb
+    sudo dpkg -i linux-headers-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb
+    sudo dpkg -i linux-image-6.8.8+_6.8.8-g7575202b6461-1_amd64.deb 
+    sudo dpkg -i linux-libc-dev_6.8.8-g7575202b6461-1_amd64.deb
     sudo shutdown --reboot 0
     ```
 
@@ -150,7 +192,7 @@ You will...
     git clone https://github.com/amd/xdna-driver.git
     export XDNA_SRC_DIR=$(realpath xdna-driver)
     cd xdna-driver
-    git reset --hard 317e0c67747cbf88e5b5a3a81ba4bdf7bf5b3fc3
+    git reset --hard cc2767aba2f10e377ddf054ae0583dbc2e3e6127
     git submodule update --init --recursive
     ```
 
@@ -161,11 +203,11 @@ You will...
     1. Install XRT prerequisites.
     
        ```
-       cd $XDNA_SRC_DIR/xrt
-       sudo ./runtime_src/tools/scripts/xrtdeps.sh
+       cd $XDNA_SRC_DIR
+       sudo ./tools/amdxdna_deps.sh
        ```
 
-    2. Build XRT.
+    2. Build XRT. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
 
        ```
        cd $XDNA_SRC_DIR/xrt/build
@@ -177,22 +219,16 @@ You will...
     3. Install XRT.
 
        ```
-       cd $XDNA_SRC_DIR/xrt/build
+       cd $XDNA_SRC_DIR/xrt/build/Release
        sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xrt.deb
+       sudo dpkg -i xrt_202410.2.17.0_22.04-amd64-xbflash2.deb
        ```
 
        > **An error is expected in this step.** Ignore it.
 
-1. Install the XDNA prerequisites. (Below steps are adapted from [here](https://github.com/amd/xdna-driver).)
 
-    ```
-    cd $XDNA_SRC_DIR
-    sudo su
-    ./tools/amdxdna_deps.sh
-    exit
-    ```
 
-1. Build XDNA.
+1. Build XDNA-Driver. Below steps are adapted from [here](https://github.com/amd/xdna-driver).
 
     ```
     cd $XDNA_SRC_DIR/build
@@ -203,7 +239,7 @@ You will...
 1. Install XDNA.
 
     ```
-    cd $XDNA_SRC_DIR/build
+    cd $XDNA_SRC_DIR/build/Release
     sudo dpkg -i xrt_plugin.2.17.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
@@ -219,38 +255,30 @@ You will...
    >  Devices present
    >  BDF             :  Name             
    > ------------------------------------
-   >  [0000:66:00.1]  :  RyzenAI-Phoenix 
+   >  [0000:66:00.1]  :  RyzenAI-npu1
    >  ```
 
-### Install Xilinx Vitis 2023.2 and Other mlir-aie Prerequisites
+### Install MLIR-AIE Prerequisites
 
-1. Install Vitis under from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html). You will need to run the installer as root. We will assume you use the default installation directory, `/tools/Xilinx`.
+1. Install the following packages needed for MLIR-AIE:
 
-   > This is a large download. A wired connection will speed things up. Be prepared to spend multiple hours on this step.
-
-1. Set up a AI Engine license.
-    
-    1. Setup your environment in the following order for aietools and Vitis:
-
-       ```
-       source /tools/Xilinx/Vitis/2023.2/settings64.sh
-       ```
-
-    1. Get a local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
-
-    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`, and set the `LM_LICENSE_FILE` environment variable:
-
-       ```
-       export LM_LICENSE_FILE=/opt/Xilinx.lic
-       ```
-
-1. Install the following packages needed for building mlir-aie:
     ``` 
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6
+    build-essential clang clang-14 lld lld-14 cmake python3-venv python3-pip libxrender1 libxtst6 libxi6 virtualenv
       ```
 
-1. Choose *one* of the two options (A or B) below for installing mlir-aie.
+1. Install g++13 and opencv needed for some programming examples:
+
+   ```
+   sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+   sudo apt update
+   sudo apt install gcc-13 g++-13 -y
+   sudo apt install libopencv-dev python3-opencv
+   ```
+
+1. Remember to source the aietools/Vitis setup script from [above](#install-xilinx-vitis-20232).
+
+1. Choose *one* of the two options (A or B) below for installing MLIR-AIE.
 
 ### Option A - Quick Setup for Ryzen™ AI Application Development
 
@@ -285,7 +313,6 @@ We suggest you add all of the following to a `setup.sh` script in your home dire
 
 ```
 export LM_LICENSE_FILE=/opt/Xilinx.lic
-source /tools/Xilinx/Vitis/2023.2/settings64.sh
 source /opt/xilinx/xrt/setup.sh
 export PATH="${NEW_CMAKE_DIR}/bin":"${PATH}"
 
@@ -303,7 +330,6 @@ source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/my_install
 ```
 cd ${MLIR_AIE_BUILD_DIR}
 source ${MLIR_AIE_BUILD_DIR}/sandbox/bin/activate
-source /tools/Xilinx/Vitis/2023.2/settings64.sh
 source /opt/xilinx/xrt/setup.sh
 source ${MLIR_AIE_BUILD_DIR}/utils/env_setup.sh ${MLIR_AIE_BUILD_DIR}/install ${MLIR_AIE_BUILD_DIR}/llvm/install
 ```
@@ -319,18 +345,6 @@ For your design of interest, for instance from [programming_examples](../program
 1. Prepare your enviroment with the mlir-aie tools (built during prerequisites part of this guide) - see **"Setting Up Your Environment"** avove.
 
 2. Goto the design of interest and run `make`
-
-3. Signing your array configuration binary aka. XCLBIN
-    ```
-    sudo bash
-    source /opt/xilinx/xrt/setup.sh
-    # Assume adding an unsigned xclbin on Phoenix, run
-    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
-
-    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
-    # When xrt_plugin package is removed, it will automatically cleanup.
-    ```
-    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdnpu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
 
 ### Build and Run Host Part
 
@@ -350,6 +364,20 @@ Note that your design of interest might need an adapted `CMakeLists.txt` file. A
     ```
 
 # Troubleshooting
+
+## Signing your XCLBIN (older xdna Linux drivers)
+
+1. Signing your array configuration binary aka. XCLBIN
+    ```
+    sudo bash
+    source /opt/xilinx/xrt/setup.sh
+    # Assume adding an unsigned xclbin on Phoenix, run
+    /opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin <your test>.xclbin
+
+    # <your test>_unsigned.xclbin will be added into /lib/firmware/amdxdna/<version>/ and symbolic link will create.
+    # When xrt_plugin package is removed, it will automatically cleanup.
+    ```
+    1. Alternatively, you can `sudo chown -R $USER /lib/firmware/amdnpu/1502/` and remove the check for root in `/opt/xilinx/xrt/amdxdna/setup_xclbin_firmware.sh` (look for `!!! Please run as root !!!`).
 
 ## Resetting the NPU
 
@@ -377,7 +405,7 @@ terminate called after throwing an instance of 'xrt_core::system_error'
 Aborted (core dumped)
 ```
 
-This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
+This may be because you did not sign your `final.xclbin`. The device only allows executing signed xclbins for some versions of the driver. Follow step 3 under section [Build Device AIE Part](#build-device-aie-part) above.
 
 ## Signing the `xclbin` hangs
 

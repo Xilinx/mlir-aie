@@ -1,7 +1,10 @@
 # test.py -*- Python -*-
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
-# SPDX-License-Identifier: MIT
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 import numpy as np
 import pyxrt as xrt
@@ -18,6 +21,8 @@ import aie.utils.test as test_utils
 
 
 def main(opts):
+
+    print("Running...\n")
 
     # Load instruction sequence
     with open(opts.instr, "r") as f:

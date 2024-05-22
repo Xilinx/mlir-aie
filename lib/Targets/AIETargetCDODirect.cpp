@@ -96,7 +96,7 @@ static const std::map<WireBundle, StrmSwPortType>
     WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
         {WireBundle::Core, StrmSwPortType::CORE},
         {WireBundle::DMA, StrmSwPortType::DMA},
-        // missing control from StrmSwPortType
+        {WireBundle::Ctrl, StrmSwPortType::CTRL},
         {WireBundle::FIFO, StrmSwPortType::FIFO},
         {WireBundle::South, StrmSwPortType::SOUTH},
         {WireBundle::West, StrmSwPortType::WEST},
@@ -390,15 +390,21 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(size_t partitionStartCol, size_t partitionNumCols, bool aieSim,
-             bool xaieDebug, const AIETargetModel &tm) {
+  AIEControl(bool aieSim, bool xaieDebug, const BaseNPUTargetModel &tm) {
+    // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
+    // the internals about how this is modeled in a somewhat awkward way.
+    size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+    size_t partitionNumCols = tm.columns();
+    size_t deviceRows = tm.rows();
+    size_t deviceCols = tm.columns() + partitionStartCol;
+
     configPtr = XAie_Config{
         /*AieGen*/ XAIE_DEV_GEN_AIEML,
         /*BaseAddr*/ XAIE_BASE_ADDR,
         /*ColShift*/ XAIE_COL_SHIFT,
         /*RowShift*/ XAIE_ROW_SHIFT,
-        /*NumRows*/ static_cast<uint8_t>(tm.rows()),
-        /*NumCols*/ static_cast<uint8_t>(tm.columns()),
+        /*NumRows*/ static_cast<uint8_t>(deviceRows),
+        /*NumCols*/ static_cast<uint8_t>(deviceCols),
         /*ShimRowNum*/ XAIE_SHIM_ROW,
         /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
         /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
@@ -414,7 +420,6 @@ struct AIEControl {
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
     devInst = _devInst;
-    // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                              XAIE_PARTITION_BASE_ADDR, partitionStartCol,
                              partitionNumCols);
@@ -430,11 +435,6 @@ struct AIEControl {
                                XAIE_IO_BACKEND_CDO);
 
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
-  }
-
-  LogicalResult addErrorHandlingToCDO() {
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_ErrorHandlingInit, &devInst);
-    return success();
   }
 
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
@@ -559,8 +559,7 @@ struct AIEControl {
       int32_t col = switchboxOp.colIndex();
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
-      assert(targetOp.getDevice() == AIEDevice::npu &&
-             "Only NPU currently supported");
+      assert(targetModel.isNPU() && "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
@@ -706,6 +705,9 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
+  // Never generate a completely empty CDO file.  If the file only contains a
+  // header, then bootgen flags it as invalid.
+  insertNoOpCommand(4);
   if (failed(cb()))
     return failure();
   configureHeader();
@@ -717,15 +719,8 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
                                             const StringRef workDirPath,
                                             DeviceOp &targetOp, bool aieSim,
                                             bool enableCores) {
-  if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) +
-           "aie_cdo_error_handling.bin")
-              .str(),
-          std::bind(&AIEControl::addErrorHandlingToCDO, ctl))))
-    return failure();
 
-  if (!targetOp.getOps<CoreOp>().empty() &&
-      failed(generateCDOBinary(
+  if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
           [&ctl, &targetOp, &workDirPath, &aieSim] {
@@ -739,7 +734,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
-  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
+  if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
@@ -755,8 +750,6 @@ LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
-        if (failed(ctl.addErrorHandlingToCDO()))
-          return failure();
         if (!targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
           return failure();
@@ -773,24 +766,19 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
-                                      size_t partitionStartCol,
                                       bool enableCores) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
+  const BaseNPUTargetModel &targetModel =
+      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+
   // things like XAIE_MEM_TILE_ROW_START and the missing
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetOp.getDevice() == AIEDevice::npu &&
-         "Only NPU currently supported");
-  int maxCol = 0, minCol = 0;
-  for (auto tileOp : targetOp.getOps<TileOp>()) {
-    minCol = std::min(tileOp.getCol(), minCol);
-    maxCol = std::max(tileOp.getCol(), maxCol);
-  }
-  size_t partitionNumCols = maxCol - minCol + 1;
-  AIEControl ctl(partitionStartCol, partitionNumCols, aieSim, xaieDebug,
-                 targetOp.getTargetModel());
+  assert(targetModel.isNPU() && "Only NPU currently supported");
+
+  AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
@@ -803,12 +791,10 @@ namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
                                       bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, size_t partitionStartCol,
-                                      bool enableCores) {
+                                      bool xaieDebug, bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, partitionStartCol,
-                                 enableCores);
+                                 cdoDebug, aieSim, xaieDebug, enableCores);
 }
 } // namespace xilinx::AIE

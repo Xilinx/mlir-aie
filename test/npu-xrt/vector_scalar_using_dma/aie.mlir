@@ -1,13 +1,16 @@
 //===- aie.mlir ------------------------------------------------*- MLIR -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2022-2024 Advanced Micro Devices, Inc. or its affiliates
 // Copyright (C) 2020-2022, Xilinx Inc.
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu) {
+  aie.device(npu1_1col) {
     memref.global "public" @in : memref<1024xi32>
     memref.global "public" @in_cons : memref<1024xi32>
     memref.global "public" @out : memref<1024xi32>

@@ -1,8 +1,10 @@
+# npu-xrt/e2e/test_tiled_nonsquare_tile_matrix_mult.py -*- Python -*-
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 
 from pathlib import Path
@@ -81,7 +83,7 @@ def test_tiled_nonsquare_tile_matrix_mult(ctx: MLIRContext, workdir: Path):
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -380,7 +382,7 @@ def test_tiled_nonsquare_tile_matrix_mult_sugar(ctx: MLIRContext, workdir: Path)
 
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)

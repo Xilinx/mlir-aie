@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
 module {
-  aie.device(npu) {
+  aie.device(npu1_4col) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // look for the prolog.

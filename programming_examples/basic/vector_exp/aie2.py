@@ -1,9 +1,10 @@
+# vector_exp/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
@@ -32,7 +33,7 @@ def my_eltwise_exp():
     buffer_depth = 2
 
     # Device declaration - aie2 device NPU (aka Ryzen AI)
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
 
         memRef_ty = T.memref(n, T.bf16())

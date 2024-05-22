@@ -1,8 +1,10 @@
+# npu-xrt/e2e/test_repeat_count.py -*- Python -*-
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import random
 import sys
 
@@ -55,7 +57,7 @@ def test_repeat_count(ctx: MLIRContext, workdir: Path):
     RANDOM_WEIGHT = np.random.randint(0, 10, (K,), dtype=np.int32)
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         tile_0_0 = aie.tile(0, 0)
         tile_0_1 = aie.tile(0, 1)
@@ -167,7 +169,7 @@ def test_no_loop(ctx: MLIRContext, workdir: Path):
     iters = 10
     npu_insts = aiex.npu.get_prolog()
 
-    @aie.device(AIEDevice.npu)
+    @aie.device(AIEDevice.npu1_1col)
     def npu():
         nonlocal col
 

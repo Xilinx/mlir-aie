@@ -54,7 +54,7 @@ using TileID = struct TileID {
 
 class AIETargetModel {
 public:
-  AIETargetModel() = default;
+  AIETargetModel(AIEDevice device) : device(device) {}
 
   virtual ~AIETargetModel();
 
@@ -200,11 +200,21 @@ public:
 
   // Run consistency checks on the target model.
   void validate() const;
+
+  // Return true if this is an NPU-based device
+  // There are several special cases for handling the NPU at the moment.
+  virtual bool isNPU() const { return false; }
+
+  // Return the AIEDevice for this target model
+  AIEDevice getDevice() const { return device; }
+
+private:
+  AIEDevice device;
 };
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel() = default;
+  AIE1TargetModel(AIEDevice device) : AIETargetModel(device) {}
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -268,7 +278,7 @@ public:
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel() = default;
+  AIE2TargetModel(AIEDevice device) : AIETargetModel(device) {}
 
   AIEArch getTargetArch() const override;
 
@@ -325,7 +335,7 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel() = default;
+  VC1902TargetModel(AIEDevice device) : AIE1TargetModel(device) {}
 
   int columns() const override { return 50; }
 
@@ -348,7 +358,7 @@ class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel() = default;
+  VE2302TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
 
   int columns() const override { return 17; }
 
@@ -400,7 +410,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel() = default;
+  VE2802TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
 
   int columns() const override { return 38; }
 
@@ -450,13 +460,9 @@ public:
   }
 };
 
-class NPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
-
+class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  NPUTargetModel() = default;
-
-  int columns() const override { return 5; }
+  BaseNPUTargetModel(AIEDevice device) : AIE2TargetModel(device) {}
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -465,12 +471,8 @@ public:
   bool isCoreTile(int col, int row) const override { return row > 1; }
   bool isMemTile(int col, int row) const override { return row == 1; }
 
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
-  }
-
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
+    return false; // No PL
   }
 
   bool isShimNOCorPLTile(int col, int row) const override {
@@ -480,25 +482,47 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override {
-    if (isCoreTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-        destIndex == 0)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-        destIndex == 0)
-      return true;
-    return false;
+                          int destIndex) const override;
+
+  // Return true if the device model is virtualized.  This is used
+  // during CDO code generation to configure aie-rt properly.
+  virtual bool isVirtualized() const = 0;
+
+  virtual bool isNPU() const override { return true; }
+};
+
+// The full Phoenix NPU
+class NPUTargetModel : public BaseNPUTargetModel {
+public:
+  NPUTargetModel(AIEDevice device) : BaseNPUTargetModel(device) {}
+
+  int columns() const override { return 5; }
+
+  bool isShimNOCTile(int col, int row) const override {
+    return row == 0 && col > 0;
   }
+
+  bool isShimPLTile(int col, int row) const override {
+    // This isn't useful because it's not connected to anything.
+    return row == 0 && col == 0;
+  }
+
+  bool isVirtualized() const override { return false; }
+};
+
+// A sub-portion of the NPU
+class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
+  int cols;
+
+public:
+  VirtualizedNPUTargetModel(AIEDevice device, int _cols)
+      : BaseNPUTargetModel(device), cols(_cols) {}
+
+  int columns() const override { return cols; }
+
+  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+
+  bool isVirtualized() const override { return true; }
 };
 
 } // namespace xilinx::AIE

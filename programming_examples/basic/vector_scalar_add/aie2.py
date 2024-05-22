@@ -1,9 +1,10 @@
+# vector_scalar_add/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -20,7 +21,7 @@ AIE_TILE_WIDTH = 32
 
 def my_vector_bias_add():
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         memRef_mem_tile_ty = T.memref(MEM_TILE_WIDTH, T.i32())
         memRef_aie_tile_ty = T.memref(AIE_TILE_WIDTH, T.i32())

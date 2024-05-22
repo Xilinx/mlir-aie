@@ -1,9 +1,10 @@
+# passthrough_kernel/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 import sys
 
@@ -20,7 +21,7 @@ def passthroughKernel(vector_size, trace_size):
     lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
     lineWidthInInt32s = lineWidthInBytes // 4
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         # define types
         memRef_ty = T.memref(lineWidthInBytes, T.ui8())
