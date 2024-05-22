@@ -13,7 +13,7 @@ mlirFileName = aie
 stride = 1
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
-all: build/conv2dk1.o build/conv2dk3_dw.o build/final.xclbin
+all: build/conv2dk1_fused_relu.o build/conv2dk3_dw.o build/conv2dk1_ui8.o  build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/aie2_stride${stride}.py
 	mkdir -p ${@D}
@@ -22,13 +22,18 @@ build/${mlirFileName}.mlir: ${srcdir}/aie2_stride${stride}.py
 insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
-build/conv2dk1.o: conv2dk1.cc
+build/conv2dk1_fused_relu.o: conv2dk1.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
 
 build/conv2dk3_dw.o: conv2dk3_dw.cc
 	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR  -DUINT8_ACT -c $< -o $@
 
-build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  build/conv2dk3_dw.o 
+build/conv2dk1_ui8.o: conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
+
+
+build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_fused_relu.o  build/conv2dk3_dw.o build/conv2dk1_ui8.o 
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}

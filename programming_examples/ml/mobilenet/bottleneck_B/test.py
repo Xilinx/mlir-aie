@@ -69,11 +69,11 @@ def main(opts):
     # ------------------------------------------------------
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
-    dtype_out = np.dtype("uint8")
+    dtype_out = np.dtype("int8")
 
     shape_total_wts = (96480, 1)
     shape_in_act = (bneck_10_InH1, 10, bneck_10_InW1, vectorSize)  #'YCXC8' , 'CYX'
-    shape_out = (bneck_10_InH2, 60, bneck_10_InW2, vectorSize)
+    shape_out = (bneck_10_InH3, 14, bneck_10_InW3, vectorSize)
   
     
     # ------------------------------------------------------
@@ -154,6 +154,7 @@ def main(opts):
             out = self.quant_relu1(out)
             out = self.quant_conv2(out)
             out = self.quant_relu2(out)
+            out = self.quant_conv3(out)
             return out
 
     quant_bottleneck_model = QuantBottleneck(in_planes=80, expand=480,project=112)
@@ -174,15 +175,19 @@ def main(opts):
 
     block_0_weight_scale1 = quant_bottleneck_model.quant_conv1.quant_weight_scale()
     block_0_weight_scale2 = quant_bottleneck_model.quant_conv2.quant_weight_scale()
-
+    block_0_weight_scale3 = quant_bottleneck_model.quant_conv3.quant_weight_scale()
     block_0_combined_scale1 = -torch.log2(
         init_scale * block_0_weight_scale1 / block_0_relu_1
     )
     block_0_combined_scale2 = -torch.log2(
         block_0_relu_1 * block_0_weight_scale2 / block_0_relu_2
-    )    
-    print("combined_scale after first conv1x1:", block_0_combined_scale1.item())
-    print("combined_scale after second conv3x3:", block_0_combined_scale2.item())
+    )  
+    block_0_combined_scale3 = -torch.log2(
+        block_0_relu_2 * block_0_weight_scale3
+    )   
+    print("combined_scale after conv1x1:", block_0_combined_scale1.item())
+    print("combined_scale after conv3x3:", block_0_combined_scale2.item())
+    print("combined_scale after conv1x1:", block_0_combined_scale3.item())
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
@@ -232,9 +237,9 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = aie_output.reshape(bneck_10_InH2, 60, bneck_10_InW2, vectorSize)
+    temp_out = aie_output.reshape(bneck_10_InH3, 14, bneck_10_InW3, vectorSize)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(bneck_10_OutC2, bneck_10_InH3, bneck_10_InW3)
+    ofm_mem_fmt = temp_out.reshape(bneck_10_OutC3, bneck_10_InH3, bneck_10_InW3)
     ofm_mem_fmt.tofile(
         log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
     )
