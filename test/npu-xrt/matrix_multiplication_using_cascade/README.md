@@ -23,10 +23,11 @@ Still having four cores but the intermediate accumulations are communicated thro
 ### Results<br>
 From the trace files, 
 
-| Plain   | 26us |
-|---------|------|
-| Buffer  | 32us |
-| Cascade | 14us |
+|         | Total | Init | Compute |
+|---------|-------|------|---------|
+| Plain   | 26us  | 7us  | 19us    |
+| Buffer  | 32us  | 7us  | 25us    |
+| Cascade | 14us  | 7us  | 7us     |
 
 The Buffer version is slow because of frequent lock-related operations.
 
