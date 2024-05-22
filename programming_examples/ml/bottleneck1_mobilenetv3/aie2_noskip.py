@@ -70,7 +70,7 @@ def conv2dk1():
 
             # AIE Core Function declarations
             conv2dk1_relu_i8_ui8 = external_func("conv2dk1_i8",inputs=[tensorLayer1In_ty, weightsLayer1_ty, tensorLayer1Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
-            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_ui8",inputs=[tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
             conv2dk1_ui8_i8 = external_func("conv2dk1_i8",inputs=[tensorLayer3In_ty, weightsLayer3_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
 
             # Tile declarations
@@ -95,7 +95,7 @@ def conv2dk1():
             #object_fifo_link(act_3, of_outOFL2L3)
 
             # Intermediate
-            of_act_1_2 = object_fifo("act_1_2", ComputeTile, ComputeTile, 1, tensorLayer1Out_ty)
+            of_act_1_2 = object_fifo("act_1_2", ComputeTile, ComputeTile, 3, tensorLayer1Out_ty)
             of_act_2_3 = object_fifo("act_2_3", ComputeTile, ComputeTile, 1, tensorLayer2Out_ty)
 
 
@@ -113,31 +113,16 @@ def conv2dk1():
                     element0Weights = wts_buf_01.acquire(ObjectFifoPort.Consume, 1)
                     # scale = memref.load(rtpComputeTile3, 0)
 
-                    # pre-amble: top row
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            1,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            0,
-                            scale,
-                            0,
-                        ],
-                    )
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
+                    # pre-amble: top 2 rows
+                    for _ in for_(2):
+                        actInRow0 = act_in.acquire(ObjectFifoPort.Consume, 1)
+                        actOutRow0 = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
+                        call(conv2dk1_relu_i8_ui8, [actInRow0, element0Weights, actOutRow0, tensorInW, 1, tensorL1OutC, 1, scale])
+                        objectfifo_release(ObjectFifoPort.Consume, "act_in", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "actOutRow", 1)
 
+                    HIER BEZIG
+                    
                     # middle
                     for _ in for_(tensorInH - 2):
                         elementActivactionsIn = of_act_2_3_5.acquire(
