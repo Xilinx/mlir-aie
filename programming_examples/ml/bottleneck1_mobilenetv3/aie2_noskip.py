@@ -70,7 +70,10 @@ def conv2dk1():
 
             # AIE Core Function declarations
             conv2dk1_relu_i8_ui8 = external_func("conv2dk1_i8",inputs=[tensorLayer1In_ty, weightsLayer1_ty, tensorLayer1Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
-            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            if depthWiseStride == 2:
+                conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_stride2_dw_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            else:
+                conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
             conv2dk1_ui8_i8 = external_func("conv2dk1_i8",inputs=[tensorLayer3In_ty, weightsLayer3_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
 
             # Tile declarations
@@ -90,7 +93,7 @@ def conv2dk1():
             wts_buf_03 = object_fifo("wts_buf_03", ShimTile, [ComputeTile], 1, weightsLayer3_ty)
 
             # Output
-            act_3 = object_fifo("act_3_4", ComputeTile, [ShimTile], 2, tensorLayer3Out_ty)
+            act_out = object_fifo("act_out", ComputeTile, [ShimTile], 2, tensorLayer3Out_ty)
             #of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, tensorLayer3Out_ty)
             #object_fifo_link(act_3, of_outOFL2L3)
 
@@ -101,103 +104,102 @@ def conv2dk1():
 
             # Set up compute tiles
 
-            rtp2 = Buffer(ComputeTile, [16], T.i32(), "rtp2")
+            rtpComputeTile = Buffer(ComputeTile, [16], T.i32(), "rtp")
 
             # # Compute tile 2
             @core(ComputeTile, "conv2dk1_conv2dk3_dw.a")
             def core_body():
-                scale = 8
                 for _ in for_(sys.maxsize):
 
                     # acquire weights and rtps once
-                    element0Weights = wts_buf_01.acquire(ObjectFifoPort.Consume, 1)
-                    # scale = memref.load(rtpComputeTile3, 0)
+                    weightsLayer1 = wts_buf_01.acquire(ObjectFifoPort.Consume, 1)
+                    weightsLayer2 = wts_buf_02.acquire(ObjectFifoPort.Consume, 1)
+                    weightsLayer3 = wts_buf_03.acquire(ObjectFifoPort.Consume, 1)
 
-                    # pre-amble: top 2 rows
+                    scaleLayer1 = memref.load(rtpComputeTile, 0)
+                    scaleLayer2 = memref.load(rtpComputeTile, 1)
+                    scaleLayer3 = memref.load(rtpComputeTile, 2)
+
+                    # pre-amble 0: rows 0, 1 in layer 1 1x1 conv; row 0 in layer 2 3x3 dw; row 0 in layer 3 1x1 conv
                     for _ in for_(2):
-                        actInRow0 = act_in.acquire(ObjectFifoPort.Consume, 1)
-                        actOutRow0 = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
-                        call(conv2dk1_relu_i8_ui8, [actInRow0, element0Weights, actOutRow0, tensorInW, 1, tensorL1OutC, 1, scale])
-                        objectfifo_release(ObjectFifoPort.Consume, "act_in", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "actOutRow", 1)
+                        actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                        actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
+                        call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, 1, tensorL1OutC, 1, scaleLayer1])
+                        act_in.release(ObjectFifoPort.Consume, 1)
+                        of_act_1_2.release(ObjectFifoPort.Produce, 1)
+                        yield_([])
 
-                    HIER BEZIG
+                    actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 2)
+                    actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
+                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                    of_act_1_2.release(ObjectFifoPort.Consume, (lambda depthWiseStride: 1 if (depthWiseStride == 2) else 0)) # if (depthWiseStride == 2) : 1 else 0 
+                    of_act_2_3.release(ObjectFifoPort.Produce, 1)
+
+                    actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
+                    actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
+                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, 1, tensorL3OutC, 1, scaleLayer3])
+                    of_act_2_3.release(ObjectFifoPort.Consume, 1)
+                    act_out.release(ObjectFifoPort.Produce, 1)
                     
-                    # middle
-                    for _ in for_(tensorInH - 2):
-                        elementActivactionsIn = of_act_2_3_5.acquire(
-                            ObjectFifoPort.Consume, 3
-                        )
-                        element0ActivactionsOut = act_3_4.acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        res = call(
-                            conv2dk3,
-                            [
-                                elementActivactionsIn[0],
-                                elementActivactionsIn[1],
-                                elementActivactionsIn[2],
-                                element0Weights,
-                                element0ActivactionsOut,
-                                tensorInW,
-                                1,
-                                tensorL2OutC,
-                                3,
-                                3,
-                                1,
-                                scale,
-                                0,
-                            ],
-                        )
+                    # middle: layer 3 1x1 conv and layer 2 3x3 dw and layer 1 1x1 conv
+                    for _ in for_(tensorOutH - 2):
+                        for _ in for_(depthWiseStride):
+                            actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                            actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
+                            call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, 1, tensorL1OutC, 1, scaleLayer1])
+                            act_in.release(ObjectFifoPort.Consume, 1)
+                            of_act_1_2.release(ObjectFifoPort.Produce, 1)
+                            yield_([])
+                        
+                        actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 3)
+                        actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
+                        call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                        of_act_1_2.release(ObjectFifoPort.Consume, (lambda depthWiseStride: 2 if (depthWiseStride == 2) else 1)) #if (depthWiseStride == 2) : 2 else 1
+                        of_act_2_3.release(ObjectFifoPort.Produce, 1)
 
-                        objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 1)
-                        objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
+                        actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
+                        actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
+                        call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, 1, tensorL3OutC, 1, scaleLayer3])
+                        of_act_2_3.release(ObjectFifoPort.Consume, 1)
+                        act_out.release(ObjectFifoPort.Produce, 1)
+
                         yield_([])
 
                     # last part
-                    elementActivactionsIn = of_act_2_3_5.acquire(
-                        ObjectFifoPort.Consume, 2
-                    )
-                    element0ActivactionsOut = act_3_4.acquire(ObjectFifoPort.Produce, 1)
-                    res = call(
-                        conv2dk3,
-                        [
-                            elementActivactionsIn[0],
-                            elementActivactionsIn[1],
-                            elementActivactionsIn[1],
-                            element0Weights,
-                            element0ActivactionsOut,
-                            tensorInW,
-                            1,
-                            tensorL2OutC,
-                            3,
-                            3,
-                            2,
-                            scale,
-                            0,
-                        ],
-                    )
+                    for _ in for_(depthWiseStride):
+                        actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                        actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
+                        call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, 1, tensorL1OutC, 1, scaleLayer1])
+                        act_in.release(ObjectFifoPort.Consume, 1)
+                        of_act_1_2.release(ObjectFifoPort.Produce, 1)
+                        yield_([])
+                    
+                    actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, (lambda depthWiseStride: 3 if (depthWiseStride == 2) else 2))
+                    actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
+                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                    of_act_1_2.release(ObjectFifoPort.Consume, (lambda depthWiseStride: 3 if (depthWiseStride == 2) else 2)) #if (depthWiseStride == 2) : 2 else 1
+                    of_act_2_3.release(ObjectFifoPort.Produce, 1)
 
-                    objectfifo_release(ObjectFifoPort.Consume, "act_2_3_5", 2)
-                    objectfifo_release(ObjectFifoPort.Produce, "act_3_4", 1)
-
-                    objectfifo_release(ObjectFifoPort.Consume, "wts_buf_01", 1)
+                    actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
+                    actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
+                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, 1, tensorL3OutC, 1, scaleLayer3])
+                    of_act_2_3.release(ObjectFifoPort.Consume, 1)
+                    act_out.release(ObjectFifoPort.Produce, 1)
+                    
                     yield_([])
-
 
             # # instruction stream generation
             activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
-            acitivationsOutSize32b = activationsInSize32b
-            totalWeightsSize32b = (
-               3 * 3 * tensorL2OutC * 1
-            ) // 4
+            activationsOutSize32b = (tensorOutW * tensorOutH * tensorOutC) // 4
+            totalWeightsSize32b = (1*1*tensorL1InC*tensorL1OutC + 3*3*tensorL2OutC*1 + 1*1*tensorL3InC*tensorL3OutC) // 4
 
             activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
             weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
+            activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
+            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
-                NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=8)
+                NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=8)
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
@@ -209,7 +211,7 @@ def conv2dk1():
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOutSize32b],
+                    sizes=[1, 1, 1, activationsOutSize32b],
                 )
                 npu_dma_memcpy_nd(
                     metadata="wts_buf_01",
