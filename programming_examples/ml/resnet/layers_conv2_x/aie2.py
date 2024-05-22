@@ -580,7 +580,7 @@ def resnet_conv_x():
 
                 @core(cores[i][1], "conv2dk3.o")
                 def core_body():
-                    scale = 11
+                    scale = 1
                     for _ in for_(sys.maxsize):
 
                         # acquire weights and rtps once
@@ -697,7 +697,7 @@ def resnet_conv_x():
 
                 @core(cores[i][3], "conv2dk3.o")
                 def core_body():
-                    scale = 11
+                    scale = 1
                     for _ in for_(sys.maxsize):
 
                         # acquire weights and rtps once
@@ -927,33 +927,24 @@ def resnet_conv_x():
             )
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-                # for c, col in enumerate(rtp_name):
-                #     for r, row in enumerate(col):
-                #         NpuWriteRTPOp(row, col=c, row=r + 2, index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile02", col=0, row=2, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile03", col=0, row=3, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile04", col=0, row=5, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=1, value=0)
+                NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=2, value=1)
 
-                # NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=1, value=0)
-                # NpuWriteRTPOp("rtpComputeTile05", col=0, row=4, index=2, value=1)
+                NpuWriteRTPOp("rtpComputeTile15", col=1, row=5, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile14", col=1, row=4, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile12", col=1, row=2, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=1, value=0)
 
-                # NpuWriteRTPOp("rtpComputeTile13", col=1, row=3, index=1, value=0)
-
-                # NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=1, value=0)
-
-                # #     # write RTP parameters
-                # npuWriteRTPOp(
-                #     "rtpComputeTile02", col=0, row=2, index=0, value=1
-                # )  # scale
-                # npuWriteRTPOp(
-                #     "rtpComputeTile03", col=0, row=3, index=0, value=1
-                # )  # scale
-                # npuWriteRTPOp(
-                #     "rtpComputeTile05", col=0, row=5, index=0, value=1
-                # )  # scale
-                # npuWriteRTPOp(
-                #     "rtpComputeTile04", col=0, row=4, index=0, value=1
-                # )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                # npuWriteRTPOp(
-                #     "rtpComputeTile04", col=0, row=4, index=1, value=0
-                # )  # skip_scale
+                NpuWriteRTPOp("rtpComputeTile22", col=2, row=2, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile23", col=2, row=3, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile25", col=2, row=5, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=0, value=1)
+                NpuWriteRTPOp("rtpComputeTile24", col=2, row=4, index=1, value=0)
 
                 npu_dma_memcpy_nd(
                     metadata="act1_00_02_01",
