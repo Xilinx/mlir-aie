@@ -1498,6 +1498,98 @@ public:
   }
 };
 
+class MaxOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::MaxOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MaxOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MaxOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    VectorType resultType = cast<VectorType>(op.getResult().getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    if (resultVectorSize != 512) {
+      op.emitWarning() << "aievec.max conversion with " << resultVectorSize
+                       << "-bit result is not supported.\n";
+      return failure();
+    }
+
+    // create xllvm intrinsic
+    Value maxOp = nullptr;
+    if (llvm::isa<IntegerType>(resultType)) {
+      // create constant for cmp
+      auto cmpCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+      SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs(), cmpCst};
+      if (resultBitWidth == 8) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt8IntrOp>(
+            loc, VectorType::get({64}, rewriter.getI8Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({64}, rewriter.getI8Type()),
+                 VectorType::get({64}, rewriter.getI8Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 16) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt16IntrOp>(
+            loc, VectorType::get({32}, rewriter.getI16Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({32}, rewriter.getI16Type()),
+                 VectorType::get({32}, rewriter.getI16Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 32) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt32IntrOp>(
+            loc, VectorType::get({16}, rewriter.getI32Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type()}));
+      }
+    } else {
+      if (resultBitWidth == 16) {
+        SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs()};
+        SmallVector<Value> castedOperands = forceCastOperandsToSignature(
+            rewriter, loc, operands,
+            {VectorType::get({32}, rewriter.getBF16Type()),
+             VectorType::get({32}, rewriter.getBF16Type())});
+        SmallVector<Type> resTypes{
+            VectorType::get({32}, rewriter.getBF16Type()),
+            rewriter.getI32Type()};
+        // maxOp = rewriter.create<xllvm::VectorMaxLtBf16IntrOp>(
+        //     loc, resTypes,
+        //     forceCastOperandsToSignature(
+        //         rewriter, loc, operands,
+        //         {VectorType::get({32}, rewriter.getBF16Type()),
+        //          VectorType::get({32}, rewriter.getBF16Type())}));
+        // maxOp = rewriter.create<xllvm::VectorMaxLtBf16IntrOp>(
+        //     loc, resTypes, castedOperands[0], castedOperands[1]);
+        maxOp = rewriter.create<xllvm::VectorMaxLtBf16IntrOp>(
+            loc, VectorType::get({32}, rewriter.getBF16Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({32}, rewriter.getBF16Type()),
+                 VectorType::get({32}, rewriter.getBF16Type())}));
+      }
+    }
+
+    if (!maxOp) {
+      op.emitWarning() << "aievec.max conversion is not supported.\n";
+      return failure();
+    }
+
+    // create truncation op (and bitcast op)
+    rewriter.replaceOp(op, maxOp);
+
+    return success();
+  }
+};
+
 class BroadcastScalarOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastScalarOp> {
 public:
@@ -1939,6 +2031,7 @@ void populateAIEVecToLLVMConversionPatterns(
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
                MatMulOpConversion,
+               MaxOpConversion,
                ShiftOpConversion,
                ExtractElemOpConversion,
                FoldAIECastOps>(converter);
