@@ -801,7 +801,6 @@ class FlowRunner:
             "test_lib",
             "include",
         )
-        sim_makefile = os.path.join(runtime_simlib_path, "Makefile")
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
         file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
@@ -893,8 +892,6 @@ class FlowRunner:
                 ],
             )
         )
-        processes.append(self.do_call(task, ["cp", sim_makefile, sim_dir]))
-        processes.append(self.do_call(task, ["cp", sim_genwrapper, sim_ps_dir]))
         processes.append(
             self.do_call(
                 task,
@@ -905,7 +902,7 @@ class FlowRunner:
                     "-shared",
                     "-o",
                     os.path.join(sim_ps_dir, "ps.so"),
-                    os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp"),
+                    sim_genwrapper,
                     *aie_target_defines(aie_target),
                     *host_opts,
                     *sim_cc_args,

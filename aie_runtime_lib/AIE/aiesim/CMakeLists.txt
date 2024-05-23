@@ -7,7 +7,6 @@
 
 
 set(INSTALLS
-    Makefile
     genwrapper_for_ps.cpp)
 
 
