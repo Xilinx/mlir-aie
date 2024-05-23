@@ -334,8 +334,8 @@ def mobilenetBottleneckB():
 
             # ************************ bneck11 ************************
             OF_bneck_10_layer3_bn_11_layer1 = object_fifo("OF_bneck_10_layer3_bn_11_layer1", ComputeTile04, [ComputeTile05], 2, ty_bneck_11_layer1_in)
-            OF_bneck_11_act_layer1_layer2 = object_fifo("OF_bneck_11_act_layer1_layer2", ComputeTile05, [MemTile11], 4,ty_bneck_11_layer2_in,via_DMA=True)
-            # OF_bneck_11_act_layer2_layer3 = object_fifo("OF_bneck_11_act_layer2_layer3", ComputeTile15, [ComputeTile14], 2,ty_bneck_11_layer3_in)
+            OF_bneck_11_act_layer1_layer2 = object_fifo("OF_bneck_11_act_layer1_layer2", ComputeTile05, [ComputeTile15], 4,ty_bneck_11_layer2_in,via_DMA=True)
+            OF_bneck_11_act_layer2_layer3 = object_fifo("OF_bneck_11_act_layer2_layer3", ComputeTile15, [ComputeTile14], 2,ty_bneck_11_layer3_in)
 
             # # wts
             OF_bneck_11_wts_L3L2 = object_fifo(
@@ -362,9 +362,9 @@ def mobilenetBottleneckB():
             object_fifo_link(OF_bneck_11_wts_L3L2, [OF_bneck_11_wts_memtile_layer1, OF_bneck_11_wts_memtile_layer2, OF_bneck_11_wts_memtile_layer3])
 
             
-            # OF_bneck_11_layer3_final = object_fifo("OF_bneck_11_layer3_final", ComputeTile14, [MemTile11], 2, ty_bneck_11_layer3_out)
+            OF_bneck_11_layer3_final = object_fifo("OF_bneck_11_layer3_final", ComputeTile14, [MemTile11], 2, ty_bneck_11_layer3_out)
             OF_outOFL2L3 = object_fifo("outOFL2L3", MemTile11, [ShimTile10], 2, ty_bneck_11_layer3_out)
-            object_fifo_link(OF_bneck_11_act_layer1_layer2, OF_outOFL2L3)
+            object_fifo_link(OF_bneck_11_layer3_final, OF_outOFL2L3)
 
             # Set up compute tiles
 
@@ -576,138 +576,138 @@ def mobilenetBottleneckB():
                     objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_wts_memtile_layer1", 1)
                     yield_([])
 
-            # # # # # # # Compute tile 3
-            # @core(ComputeTile15, "bn11_conv2dk3_dw.o")
-            # def core_body():
-            #     scale = 8
-            #     for _ in for_(sys.maxsize):
+            # # # # # # Compute tile 3
+            @core(ComputeTile15, "bn11_conv2dk3_dw.o")
+            def core_body():
+                scale = 8
+                for _ in for_(sys.maxsize):
 
-            #         # acquire weights and rtps once
-            #         element0Weights = OF_bneck_11_wts_memtile_layer2.acquire(ObjectFifoPort.Consume, 1)
-            #         # scale = memref.load(rtpComputeTile03, 0)
+                    # acquire weights and rtps once
+                    element0Weights = OF_bneck_11_wts_memtile_layer2.acquire(ObjectFifoPort.Consume, 1)
+                    # scale = memref.load(rtpComputeTile03, 0)
 
-            #         # pre-amble: top row
-            #         elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
-            #             ObjectFifoPort.Consume, 2
-            #         )
-            #         element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Produce, 1)
-            #         res = call(
-            #             bn11_conv2dk3_dw,
-            #             [
-            #                 elementActivactionsIn[0],
-            #                 elementActivactionsIn[0],
-            #                 elementActivactionsIn[1],
-            #                 element0Weights,
-            #                 element0ActivactionsOut,
-            #                 bneck_10_InW2,
-            #                 1,
-            #                 bneck_11_OutC2,
-            #                 3,
-            #                 3,
-            #                 0,
-            #                 scale,
-            #                 0,
-            #             ],
-            #         )
-            #         objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
+                    # pre-amble: top row
+                    elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
+                        ObjectFifoPort.Consume, 2
+                    )
+                    element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Produce, 1)
+                    res = call(
+                        bn11_conv2dk3_dw,
+                        [
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            bneck_10_InW2,
+                            1,
+                            bneck_11_OutC2,
+                            3,
+                            3,
+                            0,
+                            scale,
+                            0,
+                        ],
+                    )
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
 
-            #         # middle
-            #         for _ in for_(bneck_10_InH2 - 2):
-            #             elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
-            #                 ObjectFifoPort.Consume, 3
-            #             )
-            #             element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(
-            #                 ObjectFifoPort.Produce, 1
-            #             )
-            #             res = call(
-            #                 bn11_conv2dk3_dw,
-            #                 [
-            #                     elementActivactionsIn[0],
-            #                     elementActivactionsIn[1],
-            #                     elementActivactionsIn[2],
-            #                     element0Weights,
-            #                     element0ActivactionsOut,
-            #                     bneck_10_InW2,
-            #                     1,
-            #                     bneck_11_OutC2,
-            #                     3,
-            #                     3,
-            #                     1,
-            #                     scale,
-            #                     0,
-            #                 ],
-            #             )
+                    # middle
+                    for _ in for_(bneck_10_InH2 - 2):
+                        elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
+                            ObjectFifoPort.Consume, 3
+                        )
+                        element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(
+                            ObjectFifoPort.Produce, 1
+                        )
+                        res = call(
+                            bn11_conv2dk3_dw,
+                            [
+                                elementActivactionsIn[0],
+                                elementActivactionsIn[1],
+                                elementActivactionsIn[2],
+                                element0Weights,
+                                element0ActivactionsOut,
+                                bneck_10_InW2,
+                                1,
+                                bneck_11_OutC2,
+                                3,
+                                3,
+                                1,
+                                scale,
+                                0,
+                            ],
+                        )
 
-            #             objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer1_layer2", 1)
-            #             objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
-            #             yield_([])
+                        objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer1_layer2", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
+                        yield_([])
 
-            #         # last part
-            #         elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
-            #             ObjectFifoPort.Consume, 2
-            #         )
-            #         element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Produce, 1)
-            #         res = call(
-            #             bn11_conv2dk3_dw,
-            #             [
-            #                 elementActivactionsIn[0],
-            #                 elementActivactionsIn[1],
-            #                 elementActivactionsIn[1],
-            #                 element0Weights,
-            #                 element0ActivactionsOut,
-            #                 bneck_10_InW2,
-            #                 1,
-            #                 bneck_11_OutC2,
-            #                 3,
-            #                 3,
-            #                 2,
-            #                 scale,
-            #                 0,
-            #             ],
-            #         )
+                    # last part
+                    elementActivactionsIn = OF_bneck_11_act_layer1_layer2.acquire(
+                        ObjectFifoPort.Consume, 2
+                    )
+                    element0ActivactionsOut = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Produce, 1)
+                    res = call(
+                        bn11_conv2dk3_dw,
+                        [
+                            elementActivactionsIn[0],
+                            elementActivactionsIn[1],
+                            elementActivactionsIn[1],
+                            element0Weights,
+                            element0ActivactionsOut,
+                            bneck_10_InW2,
+                            1,
+                            bneck_11_OutC2,
+                            3,
+                            3,
+                            2,
+                            scale,
+                            0,
+                        ],
+                    )
 
-            #         objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer1_layer2", 2)
-            #         objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer1_layer2", 2)
+                    objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_act_layer2_layer3", 1)
 
-            #         objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_wts_memtile_layer2", 1)
-            #         yield_([])
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_wts_memtile_layer2", 1)
+                    yield_([])
 
-            # # # Compute tile 4
-            # @core(ComputeTile14, "bn11_conv2dk1_ui8.o")
-            # def core_body():
+            # # Compute tile 4
+            @core(ComputeTile14, "bn11_conv2dk1_ui8.o")
+            def core_body():
 
-            #     for _ in for_(0xFFFFFFFF):
-            #         elemWts = OF_bneck_11_wts_memtile_layer3.acquire(ObjectFifoPort.Consume, 1)
+                for _ in for_(0xFFFFFFFF):
+                    elemWts = OF_bneck_11_wts_memtile_layer3.acquire(ObjectFifoPort.Consume, 1)
 
-            #         scale = memref.load(rtp15, [0])
-            #         # scale = memref.load(rtpComputeTile02, [0])
+                    scale = memref.load(rtp14, [0])
+                    # scale = memref.load(rtpComputeTile02, [0])
 
-            #         for _ in for_(bneck_10_InH3):
-            #             elemIn = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Consume, 1)
-            #             elemOut0 = OF_bneck_11_layer3_final.acquire(ObjectFifoPort.Produce, 1)
+                    for _ in for_(bneck_10_InH3):
+                        elemIn = OF_bneck_11_act_layer2_layer3.acquire(ObjectFifoPort.Consume, 1)
+                        elemOut0 = OF_bneck_11_layer3_final.acquire(ObjectFifoPort.Produce, 1)
 
-            #             call(
-            #                 bn11_conv2dk1_ui8,
-            #                 [
-            #                     elemIn,
-            #                     elemWts,
-            #                     elemOut0,
-            #                     bneck_10_InW3,
-            #                     bneck_11_OutC2,
-            #                     bneck_11_OutC3,
-            #                     scale,
-            #                 ],
-            #             )
+                        call(
+                            bn11_conv2dk1_ui8,
+                            [
+                                elemIn,
+                                elemWts,
+                                elemOut0,
+                                bneck_10_InW3,
+                                bneck_11_OutC2,
+                                bneck_11_OutC3,
+                                scale,
+                            ],
+                        )
 
-            #             objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer2_layer3", 1)
-            #             objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_layer3_final", 1)
-            #             yield_([])
-            #         objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_wts_memtile_layer3", 1)
-            #         yield_([])
+                        objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_act_layer2_layer3", 1)
+                        objectfifo_release(ObjectFifoPort.Produce, "OF_bneck_11_layer3_final", 1)
+                        yield_([])
+                    objectfifo_release(ObjectFifoPort.Consume, "OF_bneck_11_wts_memtile_layer3", 1)
+                    yield_([])
 
             # # instruction stream generation
             activationsInSize32b = (bneck_10_InW1 * bneck_10_InH1 * bneck_10_InC1) // 4
-            acitivationsOutSize32b = (bneck_10_InW3 * bneck_10_InH3 * bneck_11_OutC1) // 4
+            acitivationsOutSize32b = (bneck_10_InW3 * bneck_10_InH3 * bneck_11_OutC3) // 4
             
             bn10_totalWeightsSize32b = (
             bneck_10_InC1*bneck_10_OutC1+
