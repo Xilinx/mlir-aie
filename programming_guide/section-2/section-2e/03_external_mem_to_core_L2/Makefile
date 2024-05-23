@@ -6,7 +6,9 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../../../programming_examples/makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../../../programming_examples/makefile-common
 
 targetname = ext_to_core_L2
 devicename = npu
@@ -14,7 +16,7 @@ col = 0
 
 all: build/final.xclbin build/insts.txt
 
-build/aie.mlir: ext_to_core_L2.py
+build/aie.mlir: ${srcdir}/ext_to_core_L2.py
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${col} > $@
 
