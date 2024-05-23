@@ -240,6 +240,12 @@ def parse_args(args=None):
         help="Generate xclbin",
     )
     parser.add_argument(
+        "--xclbin-input-name",
+        dest="xclbin_input_name",
+        default=None,
+        help="Generate kernel into existing xclbin file",
+    )
+    parser.add_argument(
         "--link_against_hsa",
         dest="link_against_hsa",
         default=False,

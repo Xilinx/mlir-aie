@@ -589,7 +589,25 @@ class FlowRunner:
 
         # fmt: off
         await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
-        await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
+        if opts.xclbin_input_name:
+            await self.do_call(task, ["xclbinutil",
+                                      "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
+                                      "--force", "--input", opts.xclbin_input_name])
+            with open(self.prepend_tmp("aie_input_partition.json")) as f:
+                input_partition = json.load(f)
+            with open(self.prepend_tmp("aie_partition.json")) as f:
+                new_partition = json.load(f)
+            input_partition["aie_partition"]["PDIs"].append(new_partition["aie_partition"]["PDIs"][0])
+            with open(self.prepend_tmp("aie_partition.json"), "w") as f:
+                json.dump(input_partition, f, indent=2)
+            flag = ['--input', opts.xclbin_input_name]
+        else:
+            flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
+
+        await self.do_call(task, ["xclbinutil"] + flag +
+                                 ["--add-kernel", self.prepend_tmp("kernels.json"),
+                                  "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
+                                  "--force", "--output", opts.xclbin_name])
         # fmt: on
 
     async def process_host_cgen(self, aie_target, file_with_addresses):
