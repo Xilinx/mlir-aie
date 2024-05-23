@@ -368,7 +368,7 @@ extern "C" {
 
 #ifdef INT8_ACT
 
-void conv2dk1_i8(int8_t *input, int8_t *kernels, uint8_t *output,
+void conv2dk1_relu_i8_ui8(int8_t *input, int8_t *kernels, uint8_t *output,
                  const int32_t input_width, const int32_t input_channels,
                  const int32_t output_channels, const int scale) {
   conv2dk1_i8_scalar(input, kernels, output, input_width, input_channels,
