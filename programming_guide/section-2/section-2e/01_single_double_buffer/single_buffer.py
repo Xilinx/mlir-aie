@@ -52,7 +52,10 @@ def single_buffer():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
-    print(ctx.module)
-
+    res = ctx.module.operation.verify()
+    if (res == True):
+        print(ctx.module)
+    else:
+        print(res)
 
 single_buffer()
