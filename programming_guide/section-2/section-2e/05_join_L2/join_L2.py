@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def join_L2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             memRef_24_ty = T.memref(24, T.i32())
             memRef_8_ty = T.memref(8, T.i32())

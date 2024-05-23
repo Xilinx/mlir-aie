@@ -34,7 +34,7 @@ The [aie2.py](../../programming_examples/basic/vector_scalar_mul/aie2.py) AIE-ar
 
 ```python
 # Device declaration - here using aie2 device NPU
-@device(AIEDevice.npu)
+@device(AIEDevice.npu1_1col)
 def device_body():
 
     # Tile declarations

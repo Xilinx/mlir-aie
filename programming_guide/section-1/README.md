@@ -25,7 +25,7 @@ Then we declare a structural design function that will expand into MLIR code whe
 def mlir_aie_design():
     <... AI Engine device, blocks, and connections ...>
 ```
-Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example. 
+Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu1_1col)` or `@device(AIEDevice.xcvc1902)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example.
 
 The arguments for the tile declaration are the tile coordinates (column, row). We assign each declared tile to a variable in our Python program.
 
@@ -33,7 +33,7 @@ The arguments for the tile declaration are the tile coordinates (column, row). W
 
 ```
     # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
 
         # Tile declarations
@@ -54,7 +54,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 
 ```
     # Device declaration - here using aie2 device NPU
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
 
         # Tile declarations
