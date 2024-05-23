@@ -118,6 +118,11 @@ and llvm.
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
     ```
 
+Note that when coming back to this install with a fresh environment, it is necessary to rerun the `utils/env_setup.sh` script to setup your environment as well as activate the Python virtual environment using the following command.
+```
+source sandbox/bin/activate
+```
+
 ## Building on X86 targetting the VCK5000
 
 In order to build and run on PCIe cards, you first have to build and install the aie-rt library. We chose to install the library in /opt/xaiengine but it is not required for the tools to be installed there. Just ensure that when building mlir-aie and mlir-air, that you point to the directory in which the aie-rt library was installed.
@@ -146,6 +151,8 @@ Then, set `${ROCM_ROOT}` to the ROCm install from the previous path. Then, run t
 ```
 
 The PCIe AIR runtime requires the use of the [AIR PCIe kernel driver](https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver). The driver directory in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to compile and load the AIR PCIe kernel driver.
+
+After this is complete, refer back to Step 5 of `Building on X86 for mlir-aie development` to setup the rest of your environment.
 
 ### Sysroot
 Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
