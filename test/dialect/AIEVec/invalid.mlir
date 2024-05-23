@@ -37,3 +37,30 @@ func.func @invalidAccumulatorType(%A : vector<2x4xi16>, %B : vector<4x8xi16>,
                                   into vector<2x8xi32>
   return %0 : vector<2x8xi32>
 }
+
+// -----
+
+func.func @invalidShuffleModeElementType(%v : vector<32xi16>)
+            -> vector<32xi16> {
+  // expected-error @+1 {{shuffle mode 't32_4x4' requires vectors of 32-bit elements}}
+  %r = aievec.shuffle %v [t32_4x4] : vector<32xi16>
+  return %r : vector<32xi16>
+}
+
+// -----
+
+func.func @invalidShuffleModeExtraOperand(%v : vector<32xi16>)
+            -> vector<32xi16> {
+  // expected-error @+1 {{shuffle mode 't16_4x8' does not admit a second operand}}
+  %r = aievec.shuffle %v, %v [t16_4x8] : vector<32xi16>
+  return %r : vector<32xi16>
+}
+
+// -----
+
+func.func @invalidShuffleModeMissingOperand(%v : vector<32xi16>)
+            -> vector<32xi16> {
+  // expected-error @+1 {{shuffle mode 't16_16x4_lo' requires a second operand}}
+  %r = aievec.shuffle %v [t16_16x4_lo] : vector<32xi16>
+  return %r : vector<32xi16>
+}

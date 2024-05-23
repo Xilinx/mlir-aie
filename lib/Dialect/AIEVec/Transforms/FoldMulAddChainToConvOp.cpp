@@ -447,10 +447,11 @@ struct FoldMulAddChainToConvOpPattern
                 .getResult();
       // If the filter has duplicate elements, pack them.
       if (group.bcastDist == 2)
-        grpRhs =
-            rewriter
-                .create<aievec::ShuffleOp>(loc, signalVecTy, grpRhs, /*mode=*/0)
-                .getResult();
+        // NOTE: This shuffle mode works for `vector<64xi8>`
+        grpRhs = rewriter
+                     .create<aievec::ShuffleOp>(loc, signalVecTy, grpRhs,
+                                                grpRhs, ShuffleMode::T8_64X2_LO)
+                     .getResult();
       // If the first element of the filter to be used is not 0, shift the
       // filter to align the first element to the beginning.
       if (group.bcastShift) {
