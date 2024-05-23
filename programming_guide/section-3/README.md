@@ -22,7 +22,7 @@ The host code can be written in either C++ (as shown in the figure) or in Python
 
 <img align="right" width="410" height="84" src="../assets/vectorScalarMul.svg">
 
-Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (c = a * factor) will be used as an example. Vector scalar multiplication takes an input vector `a` and computes the output vector `c` by multiplying each element of a with a factor. In this example, the total vector size is set to 4096 (16b) that will processed in chunks of 1024.
+Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (`c = a * factor`) will be used as an example. Vector scalar multiplication takes an input vector `a` and computes the output vector `c` by multiplying each element of `a` with a `factor`. In this example, the total vector size is set to 4096 (16b) that will processed in chunks of 1024.
 
 This design is also available in the [programming_examples](../../programming_examples) of this repository. We will first introduce the AIE-array structural description, review the kernel code and then introduce the host code. Finally we will show how to run the design on Ryzen™ AI enabled hardware.
 
@@ -58,7 +58,7 @@ Since the compute core can only access L1 memory, input data needs to be explici
 
 <img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: "of_in" to bring in the vector `a`, "of_factor" to bring in the scalar factor, and "of_out" to move the output vector `c`, all using shimDMA. Note that the objects for "of_in" and "of_out" are declared to have the `memRef_ty` type: 1024 int32 elements, while the factor is an object containing a single integer. All objectFIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 objectFIFOs: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `memRef_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All objectFIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
 
 ```python
         # AIE-array data movement with object fifos
@@ -82,9 +82,9 @@ We also need to set up the data movement to/from the AIE-array: configure n-dime
             npu_sync(column=0, row=0, direction=0, channel=0)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of "of_in", "of_factor" and "of_out". Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from "of_in" and one similar sized object from "of_out". Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective "of_in" and "of_out" objectFIFO. And finally after the 4 sub-vector iterations, we release the "of_factor" objectFIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in objectFIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` objectFIFO. Finally, after the 4 sub-vector iterations, we release the `of_factor` objectFIFO.
 
-This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function `"scale.o"`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
+This access and execute pattern runs on the AIE compute core `ComputeTile2` and needs to get linked against the precompiled external function `scale.o`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
 
 ```python
         @core(ComputeTile2, "scale.o")
@@ -123,7 +123,7 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ## Host Code
 
-The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4c](../section-4/section-4c/). Both a C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
+The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4c](../section-4/section-4c/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
 
 For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
