@@ -188,9 +188,8 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
             module.operation,
             lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
         )
-        min_col = min([t.col.value for t in tiles])
-        max_col = max([t.col.value for t in tiles])
-
+        min_col = min([t.col.value for t in tiles], default=0)
+        max_col = max([t.col.value for t in tiles], default=0)
     num_cols = max_col - min_col + 1
     device = find_ops(
         module.operation,
@@ -255,8 +254,9 @@ def generate_cores_list(mlir_module_str):
 
 
 def emit_design_bif(root_path, has_cores=True, enable_cores=True):
-    elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
-    enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+    cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
+    cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
+    cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
     return dedent(
         f"""\
         all:
@@ -267,9 +267,9 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           {{
             name=aie_image, id=0x1c000000
             {{ type=cdo
-               {elf_file}
-               file={root_path}/aie_cdo_init.bin
-               {enable_file}
+               {cdo_elfs_file}
+               {cdo_init_file}
+               {cdo_enable_file}
             }}
           }}
         }}
@@ -550,7 +550,7 @@ class FlowRunner:
             )
             generate_cdo(input_physical.operation, self.tmpdirname)
 
-    async def process_xclbin_gen(self, has_cores):
+    async def process_xclbin_gen(self):
         if opts.progress:
             task = self.progress_bar.add_task(
                 "[yellow] XCLBIN generation ", total=10, command="starting"
@@ -583,7 +583,7 @@ class FlowRunner:
         )
 
         await write_file_async(
-            emit_design_bif(self.tmpdirname, has_cores),
+            emit_design_bif(self.tmpdirname),
             self.prepend_tmp("design.bif"),
         )
 
@@ -801,7 +801,6 @@ class FlowRunner:
             "test_lib",
             "include",
         )
-        sim_makefile = os.path.join(runtime_simlib_path, "Makefile")
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
         file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
@@ -893,8 +892,6 @@ class FlowRunner:
                 ],
             )
         )
-        processes.append(self.do_call(task, ["cp", sim_makefile, sim_dir]))
-        processes.append(self.do_call(task, ["cp", sim_genwrapper, sim_ps_dir]))
         processes.append(
             self.do_call(
                 task,
@@ -905,7 +902,7 @@ class FlowRunner:
                     "-shared",
                     "-o",
                     os.path.join(sim_ps_dir, "ps.so"),
-                    os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp"),
+                    sim_genwrapper,
                     *aie_target_defines(aie_target),
                     *host_opts,
                     *sim_cc_args,
@@ -1075,7 +1072,7 @@ class FlowRunner:
             if opts.cdo and opts.execute:
                 await self.process_cdo()
             if opts.cdo or opts.xcl:
-                await self.process_xclbin_gen(bool(len(cores)))
+                await self.process_xclbin_gen()
 
     def dumpprofile(self):
         sortedruntimes = sorted(
