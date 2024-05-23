@@ -59,9 +59,9 @@ int main(int argc, const char *argv[]) {
   po::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce help message")(
       "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
+      "the input xclbin path")("verbosity,v",
+                               po::value<int>()->default_value(0),
+                               "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
@@ -103,18 +103,18 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel0 = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
-                                 return name == "ADDONE";
-                               });
+                                [](xrt::xclbin::kernel &k) {
+                                  auto name = k.get_name();
+                                  std::cout << "Name: " << name << std::endl;
+                                  return name == "ADDONE";
+                                });
   auto kernelName0 = xkernel0.get_name();
   auto xkernel1 = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
-                                 return name == "ADDTWO";
-                               });
+                                [](xrt::xclbin::kernel &k) {
+                                  auto name = k.get_name();
+                                  std::cout << "Name: " << name << std::endl;
+                                  return name == "ADDTWO";
+                                });
   auto kernelName1 = xkernel1.get_name();
 
   if (verbosity >= 1)
@@ -130,29 +130,30 @@ int main(int argc, const char *argv[]) {
 
   // get a kernel handle
   if (verbosity >= 1)
-    std::cout << "Getting handle to kernels: " << kernelName0 << " and " << kernelName1 << "\n";
+    std::cout << "Getting handle to kernels: " << kernelName0 << " and "
+              << kernelName1 << "\n";
 
   auto kernel0 = xrt::kernel(context, kernelName0);
 
   auto bo0_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(0));
+                           XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(0));
   auto bo0_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(2));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(2));
   auto bo0_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3));
   auto bo0_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
 
   auto kernel1 = xrt::kernel(context, kernelName1);
 
   auto bo1_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(0));
+                           XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(0));
   auto bo1_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(2));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(2));
   auto bo1_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(3));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(3));
   auto bo1_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(4));
+                         XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
