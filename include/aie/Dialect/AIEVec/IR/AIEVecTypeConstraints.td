@@ -144,4 +144,17 @@ class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
                                    rhs, VectorOfShapeAndType<[8, 4], BF16>,
                                    acc, VectorOfShapeAndType<[4, 4], F32>>]>>;
 
+class hasAnyTypeOf<string name, list<Type> vaildTypes> :
+  SubstLeaves<"$_self", ElementType<name>.result, AnyTypeOf<vaildTypes>.predicate>;
+
+class IsValidAccTypeForAIE2MulElem<string lhs, string rhs, string acc> :
+  PredOpTrait<lhs # " x " # rhs # " = " # acc # " is a valid AIE2 " #
+    "element-wise multiply and accumulate op",
+    Or<[  
+      And <[hasAnyTypeOf<lhs, [I8 ]>, hasAnyTypeOf<acc, [I8, I32]>]>,
+      And <[hasAnyTypeOf<lhs, [I16]>, hasAnyTypeOf<acc, [I16, I32, I64]>]>, 
+      And <[hasAnyTypeOf<lhs, [I32]>, hasAnyTypeOf<acc, [I32, I64]>]>, 
+      And <[hasAnyTypeOf<lhs, [BF16]>, hasAnyTypeOf<acc, [BF16, F32]>]>, 
+      And <[hasAnyTypeOf<lhs, [F32]>,  hasAnyTypeOf<acc, [F32]>]>
+    ]>>;
 #endif

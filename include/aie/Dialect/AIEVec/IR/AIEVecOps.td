@@ -312,20 +312,40 @@ def AIEVec_MulOp:
 }
 
 def AIEVec_MulElemOp:
-  AIEVec_Op<"mul_elem", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  AIEVec_Op<"mul_elem", [	 
+    Pure,
+    SameTypeOperands,
+    SameOperandsShape,
+    IsValidAccTypeForAIE2MulElem<"lhs", "rhs", "result">
+  ]>,	  
+  Arguments<(ins
+    VectorOfLengthAndType<[16, 32, 64], [I8, I16, I32, BF16, F32]>:$lhs, 
+    VectorOfLengthAndType<[16, 32, 64], [I8, I16, I32, BF16, F32]>:$rhs)>,
+  Results<(outs
+    VectorOfLengthAndType<[16, 32], [I8, I16, I32, I64, BF16, F32]>:$result)> {
   let summary = "AIE-ML vector element-wise multiply";
   let description = [{
     AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
     The vector sizes are at least 512 bits.
     `$result = `$lhs * $rhs`.
+    Currently, the following are the supported type combinations:
+        lhs                | rhs                | Accumulator
+      :------------------:|:------------------:|:-----------------:
+        `vector<32xi8>`    | `vector<32xi8>`    | `vector<32xi8>`
+        `vector<32xi8>`    | `vector<32xi8>`    | `vector<32xi32>`
+        `vector<64xi8>`    | `vector<64xi8>`    | `vector<32xi32>`
+        `vector<32xi16>`   | `vector<32xi16>`   | `vector<32xi16>`
+        `vector<32xi16>`   | `vector<32xi16>`   | `vector<32xi32>`
+        `vector<32xi16>`   | `vector<32xi16>`   | `vector<16xi64>`
+        `vector<16xi32>`   | `vector<16xi32>`   | `vector<16xi32>`
+        `vector<16xi32>`   | `vector<16xi32>`   | `vector<16xi64>`
+        `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xbf16>`
+        `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
+        `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
   }];
   let builders = [
     OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Type":$accType),
-    [{build($_builder, $_state, accType, lhs, rhs);}]>
+      [{build($_builder, $_state, accType, lhs, rhs);}]>
   ];
 }
 
