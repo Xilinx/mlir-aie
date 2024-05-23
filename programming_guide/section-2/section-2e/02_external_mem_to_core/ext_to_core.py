@@ -62,7 +62,11 @@ def external_mem_to_core():
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if (res == True):
+        print(ctx.module)
+    else:
+        print(res)
 
 
 external_mem_to_core()

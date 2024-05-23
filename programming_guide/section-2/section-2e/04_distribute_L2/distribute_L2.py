@@ -78,7 +78,12 @@ def distribute_L2():
                     of_in2.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if (res == True):
+        print(ctx.module)
+    else:
+        print(res)
+
 
 
 distribute_L2()

@@ -78,7 +78,11 @@ def join_L2():
                     of_out2.release(ObjectFifoPort.Produce, 1)
                     yield_([])
 
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if (res == True):
+        print(ctx.module)
+    else:
+        print(res)
 
 
 join_L2()
