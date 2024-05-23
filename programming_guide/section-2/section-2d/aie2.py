@@ -67,8 +67,11 @@ def mlir_aie_design():
                     yield_([])
 
     # Print the mlir conversion
-    print(ctx.module)
-
+    res = ctx.module.operation.verify()
+    if(res == True):
+        print(ctx.module)
+    else:
+        print(res)
 
 # Call design function to generate mlir code to stdout
 mlir_aie_design()
