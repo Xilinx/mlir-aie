@@ -79,7 +79,7 @@ def join_L2():
                     yield_([])
 
     res = ctx.module.operation.verify()
-    if (res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)

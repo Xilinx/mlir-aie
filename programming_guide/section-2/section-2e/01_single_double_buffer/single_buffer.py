@@ -53,9 +53,10 @@ def single_buffer():
                     yield_([])
 
     res = ctx.module.operation.verify()
-    if (res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)
+
 
 single_buffer()

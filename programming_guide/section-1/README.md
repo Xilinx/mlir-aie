@@ -78,7 +78,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
     Qualify the `print(ctx.module)` call with a check on `ctx.module.operation.verify()` using a code block like the following:
     ```
     res = ctx.module.operation.verify()
-    if(res == True):
+    if res == True:
         print(ctx.module)
     else:
         print(res)
