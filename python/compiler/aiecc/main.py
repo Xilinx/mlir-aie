@@ -589,10 +589,10 @@ class FlowRunner:
 
         # fmt: off
         await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
-        if opts.xclbin_input_name:
+        if opts.xclbin_input:
             await self.do_call(task, ["xclbinutil",
                                       "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
-                                      "--force", "--input", opts.xclbin_input_name])
+                                      "--force", "--input", opts.xclbin_input])
             with open(self.prepend_tmp("aie_input_partition.json")) as f:
                 input_partition = json.load(f)
             with open(self.prepend_tmp("aie_partition.json")) as f:
@@ -600,7 +600,7 @@ class FlowRunner:
             input_partition["aie_partition"]["PDIs"].append(new_partition["aie_partition"]["PDIs"][0])
             with open(self.prepend_tmp("aie_partition.json"), "w") as f:
                 json.dump(input_partition, f, indent=2)
-            flag = ['--input', opts.xclbin_input_name]
+            flag = ['--input', opts.xclbin_input]
         else:
             flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
 
