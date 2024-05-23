@@ -13,8 +13,10 @@
 ##===----------------------------------------------------------------------===##
 
 # The LLVM commit to use.
-LLVM_PROJECT_COMMIT=8a71284cb9463a90fab0d9e8edbeb5d879531e32
-DATETIME=2024051512
+mlir-19.0.0.2024052220+25b65be4-py3-none-linux_aarch64.whl
+
+LLVM_PROJECT_COMMIT=25b65be43df56c1b7bea3fe2596fb36c2788d7af
+DATETIME=2024052220
 WHEEL_VERSION=19.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
 
 ############################################################################################
