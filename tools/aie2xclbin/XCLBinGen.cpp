@@ -40,6 +40,8 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
 
+#include <uuid/uuid.h>
+
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -453,6 +455,11 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
 
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    char uuid[37];
+    uuid_unparse_lower(binuuid, uuid);
+
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -468,7 +475,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           },
           "PDIs": [
             {
-              "uuid": "00000000-0000-0000-0000-000000008025",
+              "uuid": ")" + std::string(uuid) + R"(",
               "file_name": "./design.pdi",
               "cdo_groups": [
                 {
