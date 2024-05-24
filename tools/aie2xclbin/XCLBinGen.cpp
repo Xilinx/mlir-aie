@@ -134,24 +134,27 @@ void xilinx::findVitis(XCLBinGenConfig &TK) {
 
 static std::string getUUIDString() {
   std::string val;
-  #ifdef _WIN32
-    UUID *uuid;
-    RPC_STATUS status;
-    status = UuidCreate(uuid);
-    if(status != RPC_S_OK) errs() << "Failed to create UUID\n";
-    RPC_CSTR *uuidstring;
-    status = UuidToStringA(uuid, uuidstring);
-    if(status != RPC_S_OK) errs() << "Failed to convert UUID to string\n";
-    val = std::string((char *)uuidstring);
-    status = RpcStringFreeA(uuidstring);
-    if(status != RPC_S_OK) errs() << "Failed to free UUID string\n";
- #else
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    char uuid[37];
-    uuid_unparse_lower(binuuid, uuid);
-    val = std::string(uuid);
-  #endif
+#ifdef _WIN32
+  UUID *uuid;
+  RPC_STATUS status;
+  status = UuidCreate(uuid);
+  if (status != RPC_S_OK)
+    errs() << "Failed to create UUID\n";
+  RPC_CSTR *uuidstring;
+  status = UuidToStringA(uuid, uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to convert UUID to string\n";
+  val = std::string((char *)uuidstring);
+  status = RpcStringFreeA(uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to free UUID string\n";
+#else
+  uuid_t binuuid;
+  uuid_generate_random(binuuid);
+  char uuid[37];
+  uuid_unparse_lower(binuuid, uuid);
+  val = std::string(uuid);
+#endif
   return val;
 }
 static void addAIELoweringPasses(OpPassManager &pm) {
