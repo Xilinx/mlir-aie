@@ -142,7 +142,7 @@ static std::string getUUIDString() {
     RPC_CSTR *uuidstring;
     status = UuidToStringA(uuid, uuidstring);
     if(status != RPC_S_OK) errs() << "Failed to convert UUID to string\n";
-    val = std::string(uuidstring);
+    val = std::string((char *)uuidstring);
     status = RpcStringFreeA(uuidstring);
     if(status != RPC_S_OK) errs() << "Failed to free UUID string\n";
  #else
