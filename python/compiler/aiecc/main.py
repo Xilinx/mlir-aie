@@ -21,6 +21,7 @@ import sys
 import tempfile
 from textwrap import dedent
 import time
+import uuid
 
 from aie.extras.runtime.passes import Pipeline
 
@@ -207,7 +208,8 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
         else:
             start_columns = list(range(1, 6 - num_cols))
 
-    uuid = random.randint(2222, 9999)
+    # Generate a uuid
+    pdi_uuid = uuid.uuid4()
     return {
         "aie_partition": {
             "name": "QoS",
@@ -220,7 +222,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
             },
             "PDIs": [
                 {
-                    "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
+                    "uuid": str(pdi_uuid),
                     "file_name": "./design.pdi",
                     "cdo_groups": [
                         {

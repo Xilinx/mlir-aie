@@ -180,6 +180,8 @@ find_library(ELF_LIB elf)
 cmake_dependent_option(AIE_ENABLE_AIRBIN
   "Enables emitting AIRBIN ELF binaries." OFF "ELF_LIB" OFF)
 
+# If we need runtime libs, then statically link them.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
 add_flag_if_supported("-Werror=unused" WERROR_USED)
