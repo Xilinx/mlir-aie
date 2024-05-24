@@ -22,7 +22,7 @@ configure_file(configure.h.in configure.h)
 target_include_directories(aie2xclbin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
 if(MSVC)
-  set(UUID "Rpcrt4.lib")
+  find_library (UUID Rpcrt4.lib REQUIRED)
 else()
   find_library (UUID uuid REQUIRED)
 endif()
