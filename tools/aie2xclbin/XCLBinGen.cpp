@@ -40,14 +40,18 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
 
-#include <uuid/uuid.h>
-
 #include <regex>
 #include <sstream>
 #include <unordered_map>
 
 #ifdef _WIN32
+#include "windows.h"
+// For UUID stuff
+#include "rpcdce.h"
+
 #define setenv(name, var, ignore) _putenv_s(name, var)
+#else
+#include <uuid/uuid.h>
 #endif
 
 using namespace llvm;
@@ -128,6 +132,28 @@ void xilinx::findVitis(XCLBinGenConfig &TK) {
   }
 }
 
+static std::string getUUIDString() {
+  std::string val;
+  #ifdef _WIN32
+    UUID *uuid;
+    RPC_STATUS status;
+    status = UuidCreate(uuid);
+    if(status != RPC_S_OK) errs() << "Failed to create UUID\n";
+    RPC_CSTR *uuidstring;
+    status = UuidToStringA(uuid, uuidstring);
+    if(status != RPC_S_OK) errs() << "Failed to convert UUID to string\n";
+    val = std::string(uuidstring);
+    status = RpcStringFreeA(uuidstring);
+    if(status != RPC_S_OK) errs() << "Failed to free UUID string\n";
+ #else
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    char uuid[37];
+    uuid_unparse_lower(binuuid, uuid);
+    val = std::string(uuid);
+  #endif
+  return val;
+}
 static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
@@ -455,11 +481,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
 
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    char uuid[37];
-    uuid_unparse_lower(binuuid, uuid);
-
+    std::string uuid_str = getUUIDString();
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -475,7 +497,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           },
           "PDIs": [
             {
-              "uuid": ")" + std::string(uuid) + R"(",
+              "uuid": ")" + uuid_str + R"(",
               "file_name": "./design.pdi",
               "cdo_groups": [
                 {

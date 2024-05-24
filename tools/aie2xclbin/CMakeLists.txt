@@ -21,8 +21,6 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 configure_file(configure.h.in configure.h)
 target_include_directories(aie2xclbin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
-find_library (UUID uuid)
-
 target_link_libraries(aie2xclbin
   ${dialect_libs}
   MLIRParser
