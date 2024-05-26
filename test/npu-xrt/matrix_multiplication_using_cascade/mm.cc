@@ -71,6 +71,9 @@ void matmul_scalar_put_get_4x1x4_4x4x4_i32_i32(int32_t *a, int32_t *b,
 void matmul_scalar_4x2x4_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
   matmul_scalar_cascade_i32_i32<false, false, 4, 2, 4, 4, 8, 4>(a, b, c);
 }
+void matmul_scalar_2x2x2_4x8x4_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
+  matmul_scalar_cascade_i32_i32<false, false, 2, 2, 2, 4, 8, 4>(a, b, c);
+}
 
 void flush_trace() {
   // event buffers only appear to be transferred to DDR in bursts of 256 bytes

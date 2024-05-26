@@ -9,25 +9,29 @@
 //===----------------------------------------------------------------------===//-->
 
 ## MM Cascade Design Example
-This is a matrix multiply example with the sizes of (16 * 16) * (16 * 16) and i32 data type, where three different versions are compared to examine the possibility of distributing K dim accross multiple cores.
+This is a matrix multiply example with the sizes of (16 * 16) * (16 * 16) and i32 data type, where four different versions are compared to examine the possibility of distributing K dim accross multiple cores.
 
-### Plain Version<br>
+### Plainx1 Version<br>
 Generated from IREE end-to-end flow, using one core only.
 
-### Buffer Version<br>
+### Plainx4 Version<br>
+Using four cores, as output stationary 
+
+### Bufferx4 Version<br>
 With four cores chained horizontally, the intermediate accumulations are passed through shared buffers implemented as ObjectFIFO.
 
-### Cascade Version<br>
+### Cascadex4 Version<br>
 Still having four cores but the intermediate accumulations are communicated through the cascade port.
 
 ### Results<br>
 From the trace files, 
 
-|         | Total | Init | Compute |
-|---------|-------|------|---------|
-| Plain   | 26us  | 7us  | 19us    |
-| Buffer  | 32us  | 7us  | 25us    |
-| Cascade | 14us  | 7us  | 7us     |
+|           | Total  | Init  | Compute |
+|-----------|--------|-------|---------|
+| Plainx1   | 25.6us | 7.6us | 18.0us  |
+| Plainx4   | 6.7us  | 2.0us | 4.7us   |
+| Bufferx4  | 32.0us | 7.6us | 24.4us  |
+| Cascadex4 | 13.9us | 7.6us | 6.3us   |
 
 The Buffer version is slow because of frequent lock-related operations.
 
