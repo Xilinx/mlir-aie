@@ -12,7 +12,9 @@
 
 Quantization involves reducing the precision of the weights and activations of a neural network from floating-point (e.g., 32-bit float) to lower bit-width formats (e.g., 8-bit integer). Quantization reduces model size and speeds up inference, making a model more suitable for deployment on resource-constrained devices. In AI Engine (AIE), we use a power-of-two scale factor for the SRS (Shift-Round-Saturate) Unit to shift and scale the values to an integer range. A power of two is a number of the form 2^n, where n is an integer. Power-of-two scale factors can lead to more efficient hardware implementations, as multiplication by a power of two can be performed using bit shifts rather than more complex multiplication operations.
 
-[Brevitas](https://github.com/Xilinx/brevitas) is a PyTorch-based library designed for quantization of neural networks. It enables users to train models with reduced numerical precision, typically using lower bit widths for weights and activations, which can lead to significant improvements in computational efficiency and memory usage. Brevitas supports various quantization schemes, including uniform and non-uniform quantization, and can be used to target a wide range of hardware platforms, including FPGAs, ASICs, and AIEs. We use Brevitas to:
+[Brevitas](https://github.com/Xilinx/brevitas) is a PyTorch-based library designed for quantization of neural networks. It enables users to train models with reduced numerical precision, typically using lower bit widths for weights and activations, which can lead to significant improvements in computational efficiency and memory usage. Brevitas supports various quantization schemes, including uniform and non-uniform quantization, and can be used to target a wide range of hardware platforms, including FPGAs, ASICs, and AIEs. 
+
+We use Brevitas to:
 1. Quantize weights and activations of a model to lower bit format for AIE deployment, and
 2. Extract proper power-of-two scale factors to set up the SRS unit.
 
@@ -20,7 +22,7 @@ Quantization involves reducing the precision of the weights and activations of a
 
 ```
 .
-+-- ptq_conv2x                      # Implementation of ResNet conv2_x layers on NPU with PTQ
++-- ptq_conv2x                      # Implementation of ResNet conv2_x layers on NPU with PTQ.
 +-- +--  data                       # Labels for CIFAR dataset.
 |   +-- aie2.py                     # A Python script that defines the AIE array structural design using MLIR-AIE operations.
 |   +-- Makefile                    # Contains instructions for building and compiling software projects.
@@ -35,11 +37,11 @@ Quantization involves reducing the precision of the weights and activations of a
 ```
 
 # Post-Training Quantization Using Brevitas
-To enhance the efficiency of our implementation, we perform post-training quantization on the model using the Brevitas library. This step converts the model to use 8-bit weights and power-of-two scale factors, optimizing it for deployment on hardware with limited precision requirements.
+To enhance the efficiency of our implementation, we perform post-training quantization on the model using the Brevitas library. This step converts the model to use 8-bit weights and activations and power-of-two scale factors, optimizing it for deployment on hardware with limited precision requirements.
 
 
 ##  Step-by-Step Process
-We use test.py to:
+We use test.py to perform the following key tasks:
 
 **1. Loading the Pre-trained ResNet Model**: The script begins by loading a pre-trained ResNet model, which serves as the baseline for quantization and inference.
 
