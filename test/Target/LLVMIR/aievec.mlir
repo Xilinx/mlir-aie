@@ -432,4 +432,51 @@ llvm.func @vmax_ltbf16(%lhs: vector<32xbf16>, %rhs: vector<32xbf16>) -> vector<3
     llvm.return %1 : vector<32xbf16>
 }
 
+// -- MIN ELEMENT -- 
+
+// CHECK-LABEL: <64 x i8> @vmin_ge8
+llvm.func @vmin_ge8(%lhs: vector<64xi8>, %rhs: vector<64xi8>, %pred: i32) -> vector<64xi8> {
+    // CHECK: call { <64 x i8>, i32 } @llvm.aie2.vmin.ge8(
+    // CHECK-SAME: <64 x i8> %{{[0-9]+}}, <64 x i8> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vmin.ge8"(%lhs, %rhs, %pred) :
+        (vector<64xi8>, vector<64xi8>, i32) -> !llvm.struct<(vector<64xi8>, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<64xi8>, i32)>
+    llvm.return %1 : vector<64xi8>
+}
+
+// CHECK-LABEL: <32 x i16> @vmin_ge16
+llvm.func @vmin_ge16(%lhs: vector<32xi16>, %rhs: vector<32xi16>, %pred: i32) -> vector<32xi16> {
+    // CHECK: call { <32 x i16>, i32 } @llvm.aie2.vmin.ge16(
+    // CHECK-SAME: <32 x i16> %{{[0-9]+}}, <32 x i16> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vmin.ge16"(%lhs, %rhs, %pred) :
+        (vector<32xi16>, vector<32xi16>, i32) -> !llvm.struct<(vector<32xi16>, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<32xi16>, i32)>
+    llvm.return %1 : vector<32xi16>
+}
+
+// CHECK-LABEL: <16 x i32> @vmin_ge32
+llvm.func @vmin_ge32(%lhs: vector<16xi32>, %rhs: vector<16xi32>, %pred: i32) -> vector<16xi32> {
+    // CHECK: call { <16 x i32>, i32 } @llvm.aie2.vmin.ge32(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}}, <16 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vmin.ge32"(%lhs, %rhs, %pred) :
+        (vector<16xi32>, vector<16xi32>, i32) -> !llvm.struct<(vector<16xi32>, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<16xi32>, i32)>
+    llvm.return %1 : vector<16xi32>
+}
+
+// CHECK-LABEL: <32 x bfloat> @vmin_gebf16
+llvm.func @vmin_gebf16(%lhs: vector<32xbf16>, %rhs: vector<32xbf16>) -> vector<32xbf16> {
+    // CHECK: call { <32 x bfloat>, i32 } @llvm.aie2.vmin.gebf16(
+    // CHECK-SAME: <32 x bfloat> %{{[0-9]+}}, <32 x bfloat> %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vmin.gebf16"(%lhs, %rhs) :
+        (vector<32xbf16>, vector<32xbf16>) -> !llvm.struct<(vector<32xbf16>, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<32xbf16>, i32)>
+    llvm.return %1 : vector<32xbf16>
+}
+
 // CHECK-LABEL: declare { <32 x bfloat>, i32 } @llvm.aie2.vmax.ltbf16(<32 x bfloat>, <32 x bfloat>)
+
+// CHECK-LABEL: declare { <64 x i8>, i32 } @llvm.aie2.vmin.ge8(<64 x i8>, <64 x i8>, i32)
+// CHECK-LABEL: declare { <32 x i16>, i32 } @llvm.aie2.vmin.ge16(<32 x i16>, <32 x i16>, i32)
+// CHECK-LABEL: declare { <16 x i32>, i32 } @llvm.aie2.vmin.ge32(<16 x i32>, <16 x i32>, i32)
+// CHECK-LABEL: declare { <32 x bfloat>, i32 } @llvm.aie2.vmin.gebf16(<32 x bfloat>, <32 x bfloat>)
