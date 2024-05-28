@@ -134,7 +134,7 @@ def main(opts):
     quant_model = quantize_model(
         model_aie,
         backend="flexml",
-        scale_factor_type="po2_scale", # Ensuring scale factors are powers of two
+        scale_factor_type="po2_scale",  # Ensuring scale factors are powers of two
         bias_bit_width=32,
         weight_bit_width=8,
         weight_narrow_range=False,
@@ -238,7 +238,7 @@ def main(opts):
         if name.endswith(".bias"):
             param.data.fill_(0)
 
-     # Calculate combined scales
+    # Calculate combined scales
     block_0_combined_scale1 = -math.log(
         init_scale * block_0_weight_scale_1 / block_0_relu_1, 2
     )  # after conv1x1
