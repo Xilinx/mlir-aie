@@ -43,7 +43,7 @@ build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1_i8.o build/conv2dk
 clean:
 	rm -rf  build/*.elf* build/*.lst build/*.bif log* build/${mlirFileName}.mlir.prj build/*.xclbin sim \
 		build/chess* build/insts.txt \
-		build/*.log build/aie_partition.json build/*.bin build/BOOT.BIN _x test.exe
+		build/*.log build/aie_partition.json build/*.bin build/BOOT.BIN _x
 
 run_py: 
 	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE

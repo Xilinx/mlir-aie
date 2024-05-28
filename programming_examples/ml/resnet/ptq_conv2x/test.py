@@ -70,6 +70,7 @@ def main(opts):
     # ------------------------------------------------------
     # Post training quantization to get int8 weights and activation for AIE
     # ------------------------------------------------------
+    # Step 1: Load the pre-trained ResNet model
     num_classes = 10
     model = res.Resnet50_conv2x_offload(num_classes)
     weights = "trained_resnet50/weight.tar"  # trained FP model
@@ -109,7 +110,7 @@ def main(opts):
         root=data_dir, train=False, transform=transform_test, download=True
     )
 
-    # Data loader
+    # Data loader for calibration
     indices = torch.arange(256)
     tr_sub = data_utils.Subset(train_dataset, indices)
     val_sub = data_utils.Subset(test_dataset, indices)
@@ -119,6 +120,8 @@ def main(opts):
     val_loader = torch.utils.data.DataLoader(
         dataset=val_sub, batch_size=64, shuffle=False
     )
+
+    # Step 2: Apply quantization to the conv2_x layers to convert weights to 8-bit precision
     img_shape = 32
     model_aie = preprocess_for_flexml_quantize(
         model.aie,
@@ -131,7 +134,7 @@ def main(opts):
     quant_model = quantize_model(
         model_aie,
         backend="flexml",
-        scale_factor_type="po2_scale",
+        scale_factor_type="po2_scale", # Ensuring scale factors are powers of two
         bias_bit_width=32,
         weight_bit_width=8,
         weight_narrow_range=False,
@@ -165,29 +168,25 @@ def main(opts):
 
     from numpy import load
 
+    # Extracting quantized weights and scale factors
     params = {}
     weights = {}
     for name, module in model.named_modules():
         if isinstance(module, QuantConv2d):
-            # print(name)
-            # print(module.quant_weight().scale)
             weights[name + ".int_weight"] = module.quant_weight().int(
                 float_datatype=False
             )
             params[name + "_scale"] = module.quant_weight().scale.detach().numpy()
         if isinstance(module, QuantIdentity):
-            # print(name)
-            # print(module.quant_act_scale())
             params[name + "_scale"] = module.quant_act_scale()
         if isinstance(module, QuantReLU):
-            # print(name)
-            # print(module.quant_act_scale())
             params[name + "_scale"] = module.quant_act_scale()
     np.savez(os.path.join(os.getcwd(), "int_weights.npz"), **weights)
     np.savez(os.path.join(os.getcwd(), "int_conv_scale.npz"), **params)
     int_wts_data = load("int_weights.npz", allow_pickle=True)
     int_scale_data = load("int_conv_scale.npz", allow_pickle=True)
 
+    # Loading weights and scales
     int_wts_data_lst = int_wts_data.files
     block_0_int_weight_1 = torch.from_numpy(int_wts_data["aie.layer1.conv1.int_weight"])
     block_0_int_weight_2 = torch.from_numpy(int_wts_data["aie.layer1.conv2.int_weight"])
@@ -239,6 +238,7 @@ def main(opts):
         if name.endswith(".bias"):
             param.data.fill_(0)
 
+     # Calculate combined scales
     block_0_combined_scale1 = -math.log(
         init_scale * block_0_weight_scale_1 / block_0_relu_1, 2
     )  # after conv1x1
