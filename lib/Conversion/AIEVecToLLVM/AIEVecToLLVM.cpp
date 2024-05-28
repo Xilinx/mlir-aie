@@ -1579,7 +1579,7 @@ public:
     }
 
     if (!maxOp) {
-      op.emitWarning() << "aievec.max conversion is not supported.\n";
+      op.emitError() << "aievec.max conversion is not supported.\n";
       return failure();
     }
 
