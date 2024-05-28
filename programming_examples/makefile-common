@@ -5,11 +5,11 @@ VITIS_AIE_INCLUDE_DIR ?= ${VITIS_ROOT}/aietools/data/versal_prod/lib
 VITIS_AIE2_INCLUDE_DIR ?= ${VITIS_ROOT}/aietools/data/aie_ml/lib
 
 CHESSCC1_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
-CHESSCC2_FLAGS = -f -p me -P ${VITIS_AIE2_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20
+CHESSCC2_FLAGS = -f -p me -P ${VITIS_AIE2_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20 -O3
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
 CHESSCCWRAP1_FLAGS = aie -I ${VITIS_AIETOOLS_DIR}/include 
-CHESSCCWRAP2_FLAGS = aie2 -I ${VITIS_AIETOOLS_DIR}/include 
+CHESSCCWRAP2_FLAGS = aie2 -I ${VITIS_AIETOOLS_DIR}/include -O3
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)

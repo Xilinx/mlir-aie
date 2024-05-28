@@ -23,14 +23,18 @@ insts.txt: build/${mlirFileName}.mlir
 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 build/conv2dk1_fused_relu.o: conv2dk1.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
+#	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
 
 build/conv2dk3_dw.o: conv2dk3_dw.cc
-	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR  -DUINT8_ACT -DSTRIDE2 -c $< -o $@
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -DSTRIDE2 -c $< -o ${@F}
+#	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -DSTRIDE2 -c $< -o $@
 
 build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR  -c $< -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS}  -DSCALAR -c $< -o ${@F}
 
 build/combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a: build/conv2dk1_i8.o build/conv2dk3_dw.o build/conv2dk1_fused_relu.o
 	mkdir -p ${@D}

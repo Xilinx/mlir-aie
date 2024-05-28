@@ -17,7 +17,7 @@ void conv2dk1_relu_i8_ui8(int8_t *input, int8_t *kernels, uint8_t *output,
                  const int32_t input_width, const int32_t input_channels,
                  const int32_t output_channels, const int scale);
 
-void conv2dk1_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
+void conv2dk1_relu_ui8_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
                   const int32_t input_width, const int32_t input_channels,
                   const int32_t output_channels, const int scale);
 } // extern "C"

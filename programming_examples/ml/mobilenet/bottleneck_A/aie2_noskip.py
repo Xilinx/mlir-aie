@@ -17,15 +17,15 @@ from aie.extras.dialects.ext.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 tensorInW = 112
-tensorInH = 112
+tensorInH = 112 // 8
 tensorInC = 16
 
 depthWiseStride = 2
 depthWiseChannels = 64 
 tensorOutC = 24
 
-tensorOutW = 112 // depthWiseStride
-tensorOutH = 112 // depthWiseStride
+tensorOutW = tensorInW // depthWiseStride
+tensorOutH = tensorInH // depthWiseStride
 
 tensorL1InC = tensorInC
 tensorL1OutC = depthWiseChannels
@@ -71,7 +71,7 @@ def bottleneck1_mobilenetv3():
             conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride2_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         else:
             conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride1_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
-        conv2dk1_ui8_i8 = external_func("conv2dk1_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+        conv2dk1_ui8_i8 = external_func("conv2dk1_ui8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         
         # Tile declarations
         ShimTile = tile(tileColIndex, 0)

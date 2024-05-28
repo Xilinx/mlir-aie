@@ -302,6 +302,8 @@ extern "C" {
                         input_channels, output_channels, kernel_width,
                         kernel_height, check, scale, channel_offset);
   }
-  #endif 
+  #endif
+#else // Vector
+
 #endif 
 }
