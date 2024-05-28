@@ -1,6 +1,6 @@
-// RUN: aie-translate %s -mlir-to-llvmir | FileCheck %s
+// RUN: aie-translate %s -mlir-to-llvmir -split-input-file | FileCheck %s
 
-// ----- MAC ----- 
+// -- MAC -- 
 
 // CHECK-LABEL: define <16 x i64> @mac_conf_acc32
 llvm.func @mac_conf_acc32(%A : vector<64xi8>,
@@ -30,7 +30,7 @@ llvm.func @mac_conf_bf16(%A : vector<32xbf16>,
     llvm.return %0 : vector<8xi64>
 }
 
-// ----- MSC ----- 
+// -- MSC -- 
 
 // CHECK-LABEL: define <8 x i64> @msc_conf_bf16
 llvm.func @msc_conf_bf16(%A : vector<32xbf16>,
@@ -46,7 +46,7 @@ llvm.func @msc_conf_bf16(%A : vector<32xbf16>,
     llvm.return %0 : vector<8xi64>
 }
 
-// ----- MUL ----- 
+// -- MUL -- 
 
 // CHECK-LABEL: define <16 x i64> @mul_conf_acc32
 llvm.func @mul_conf_acc32(%A : vector<64xi8>,
@@ -87,7 +87,7 @@ llvm.func @mul_conf_bf16(%A : vector<32xbf16>,
     llvm.return %0 : vector<8xi64>
 }
 
-// ----- SET ----- 
+// -- SET -- 
 
 // CHECK-LABEL: define <16 x i32> @vector_set_128b_into_512b
 llvm.func @vector_set_128b_into_512b(%v : vector<4xi32>) -> vector<16xi32> {
@@ -105,7 +105,7 @@ llvm.func @vector_set_256b_into_512b(%v : vector<8xi32>) -> vector<16xi32> {
     llvm.return %1 : vector<16xi32>
 }
 
-// ----- SRS ----- 
+// -- SRS -- 
 
 // CHECK-LABEL: define <16 x i16> @srs_256b_v16_acc32
 llvm.func @srs_256b_v16_acc32(%v : vector<8xi64>, %shft : i32, %sign : i32) -> vector<16xi16> {
@@ -169,7 +169,7 @@ llvm.func @srs_256b_v16_accfloat(%v : vector<8xi64>) -> vector<16xbf16> {
     llvm.return %0 : vector<16xbf16>
 }
 
-// ----- BROADCAST ----- 
+// -- BROADCAST -- 
 
 // CHECK-LABEL: define <64 x i8> @vbroadcast8_i512
 llvm.func @vbroadcast8_i512(%val : i32) -> vector<64xi8> {
@@ -211,7 +211,7 @@ llvm.func @vbroadcastfloat_i512(%val : f32) -> vector<16xf32> {
     llvm.return %0 : vector<16xf32>
 }
 
-// ----- EXT ----- 
+// -- EXT -- 
 
 // CHECK-LABEL: define <8 x i32> @ext_i256_i512
 llvm.func @ext_i256_i512(%v : vector<16xi32>, %idx : i32) -> vector<8xi32> {
@@ -222,7 +222,34 @@ llvm.func @ext_i256_i512(%v : vector<16xi32>, %idx : i32) -> vector<8xi32> {
     llvm.return %1 : vector<8xi32>
 }
 
-// ----- CONCAT ----- 
+// CHECK-LABEL: define <16 x i32> @ext_i512_i1024
+llvm.func @ext_i512_i1024(%v : vector<32xi32>, %idx : i32) -> vector<16xi32> {
+    // CHECK: call <16 x i32> @llvm.aie2.ext.I512.I1024(
+    // CHECK-SAME: <32 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.ext.I512.I1024"(%v, %idx) : 
+                                        (vector<32xi32>, i32) -> vector<16xi32>
+    llvm.return %1 : vector<16xi32>
+}
+
+// CHECK-LABEL: define <8 x i32> @ext_i256_i1024
+llvm.func @ext_i256_i1024(%v : vector<32xi32>, %idx : i32) -> vector<8xi32> {
+    // CHECK: call <8 x i32> @llvm.aie2.ext.I256.I1024(
+    // CHECK-SAME: <32 x i32> %{{[0-9]+}}, i32 %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.ext.I256.I1024"(%v, %idx) : 
+                                        (vector<32xi32>, i32) -> vector<8xi32>
+    llvm.return %1 : vector<8xi32>
+}
+
+// CHECK-LABEL: define <4 x i32> @ext_i128_i512
+llvm.func @ext_i128_i512(%v : vector<16xi32>) -> vector<4xi32> {
+    // CHECK: call <4 x i32> @llvm.aie2.extract.I128.I512(
+    // CHECK-SAME: <16 x i32> %{{[0-9]+}})
+    %1 = "xllvm.intr.aie2.extract.I128.I512"(%v) : 
+                                        (vector<16xi32>) -> vector<4xi32>
+    llvm.return %1 : vector<4xi32>
+}
+
+// -- CONCAT -- 
 
 // CHECK-LABEL: define <16 x i32> @concat_i512_i256
 llvm.func @concat_i512_i256(%a : vector<8xi32>, %b : vector<8xi32>) -> vector<16xi32> {
@@ -253,7 +280,7 @@ llvm.func @concat_i1024_i512(%a : vector<16xi32>, %b : vector<16xi32>) -> vector
     llvm.return %0 : vector<32xi32>
 }
 
-// ----- SHUFFLE ----- 
+// -- SHUFFLE -- 
 
 // CHECK-LABEL: define <16 x i32> @shuffle_i512
 llvm.func @shuffle_i512(%a : vector<16xi32>, %b : vector<16xi32>, %mode : i32) -> vector<16xi32> {
@@ -264,7 +291,7 @@ llvm.func @shuffle_i512(%a : vector<16xi32>, %b : vector<16xi32>, %mode : i32) -
     llvm.return %0 : vector<16xi32>
 }
 
-// ----- UNDEF ----- 
+// -- UNDEF -- 
 
 // CHECK-LABEL: define <16 x i32> @undef_v16i32
 llvm.func @undef_v16i32() -> vector<16xi32> {
@@ -273,7 +300,7 @@ llvm.func @undef_v16i32() -> vector<16xi32> {
     llvm.return %0 : vector<16xi32>
 }
 
-// ----- UPD ----- 
+// -- UPD -- 
 
 // CHECK-LABEL: define <32 x bfloat> @upd_bf512_bf256
 llvm.func @upd_bf512_bf256(%a : vector<32xbf16>, %b : vector<16xbf16>, %idx : i32) -> vector<32xbf16> {
@@ -283,7 +310,7 @@ llvm.func @upd_bf512_bf256(%a : vector<32xbf16>, %b : vector<16xbf16>, %idx : i3
     llvm.return %0 : vector<32xbf16>
 }
 
-// ----- SHIFT ----- 
+// -- SHIFT -- 
 
 // CHECK-LABEL: define <16 x i32> @vshift_i512_i512
 llvm.func @vshift_i512_i512(%a : vector<16xi32>, %b : vector<16xi32>, %step : i32, %shift : i32) -> vector<16xi32> {
@@ -303,7 +330,7 @@ llvm.func @vshift_bf512_bf512(%a : vector<32xbf16>, %b : vector<32xbf16>, %step 
     llvm.return %0 : vector<32xbf16>
 }
 
-// ----- EXTRACT ELEMENT ----- 
+// -- EXTRACT ELEMENT -- 
 
 // CHECK-LABEL: define i32 @vextract_elem8_i512
 llvm.func @vextract_elem8_i512(%a : vector<64xi8>, %idx : i32, %sign : i32) -> i32 {
@@ -329,7 +356,7 @@ llvm.func @vextract_elem32_i512(%a : vector<16xi32>, %idx : i32, %sign : i32) ->
     llvm.return %0 : i32
 }
 
-// ----- UPS ----- 
+// -- UPS -- 
 
 // CHECK-LABEL: define <8 x i64> @acc32_v16_i256_ups
 llvm.func @acc32_v16_i256_ups(%v : vector<16xi16>, %shift : i32, %sign : i32) -> vector<8xi64> {
@@ -392,3 +419,17 @@ llvm.func @accfloat_v16_256b_ups(%v : vector<16xbf16>) -> vector<8xi64> {
     %0 = "xllvm.intr.aie2.v16bf16.to.v16accfloat"(%v) : (vector<16xbf16>) -> vector<8xi64>
     llvm.return %0 : vector<8xi64>
 }
+
+// -----
+
+// CHECK-LABEL: <32 x bfloat> @vmax_ltbf16
+llvm.func @vmax_ltbf16(%lhs: vector<32xbf16>, %rhs: vector<32xbf16>) -> vector<32xbf16> {
+    // CHECK: call { <32 x bfloat>, i32 } @llvm.aie2.vmax.ltbf16(
+    // CHECK-SAME: <32 x bfloat> %{{[0-9]+}}, <32 x bfloat> %{{[0-9]+}})
+    %0 = "xllvm.intr.aie2.vmax.ltbf16"(%lhs, %rhs) :
+        (vector<32xbf16>, vector<32xbf16>) -> !llvm.struct<(vector<32xbf16>, i32)>
+    %1 = llvm.extractvalue %0[0] : !llvm.struct<(vector<32xbf16>, i32)>
+    llvm.return %1 : vector<32xbf16>
+}
+
+// CHECK-LABEL: declare { <32 x bfloat>, i32 } @llvm.aie2.vmax.ltbf16(<32 x bfloat>, <32 x bfloat>)

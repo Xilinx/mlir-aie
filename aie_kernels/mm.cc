@@ -22,6 +22,29 @@
 
 #include <aie_api/aie.hpp>
 
+#include "zero.cc"
+
+// Suppose A is a 64x64 tensor and B is a 64x64 tensor, and r=4, s=8, t=4.
+//
+// Let A[i,j] be the element at row i and column j of A, and
+//     B[i,j] be the element at row i and column j of B.
+//
+// The expectations of this function on the points pA, pB, and pC are:
+//
+// 1) all elements of A are contiguous in memory, starting from pA + offsetA
+// 2) all elements of B are contiguous in memory, starting from pB + offsetB
+// 3) all elements of C are contiguous in memory, starting from pC + offsetC
+// 4) element A[i,j] is at pA[offsetA + i*8 + (64*8)*(j/8) + j%8]
+// 5) element B[i,j] is at pB[offsetB + i*4 + (64*4)*(j/4) + j%4]
+//
+// 4) and 5) describe vertical stripes of A and B that are stored contiguously,
+// with a row-major order within each stripe. i.e. elements starting at ptrA +
+// offsetA are:
+//
+// [A[0,0], ..., A[0,7], A[1,0], ..., A[1,7], A[2,0], ..., A[2,7], ... A[63,0],
+// ..., A[63,7], A[0,8], ..., A[0,15], ..., A[63, 64]]
+//
+
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
 void matmul_vectorized(const T_in *__restrict pA, unsigned offsetA,
@@ -45,10 +68,14 @@ void matmul_vectorized(const T_in *__restrict pA, unsigned offsetA,
           const T_in *__restrict pA3 = pA + offsetA + ((z + 2)) * MMUL::size_A;
           const T_in *__restrict pA4 = pA + offsetA + ((z + 3)) * MMUL::size_A;
 
-          const T_in *__restrict pB1 = pB + offsetB + (j)*MMUL::size_B;
-          const T_in *__restrict pB2 = pB + offsetB + ((j + 1)) * MMUL::size_B;
-          const T_in *__restrict pB3 = pB + offsetB + ((j + 2)) * MMUL::size_B;
-          const T_in *__restrict pB4 = pB + offsetB + ((j + 3)) * MMUL::size_B;
+          const T_in *__restrict pB1 =
+              pB + offsetB + ((j + 0)) * colA * MMUL::size_B;
+          const T_in *__restrict pB2 =
+              pB + offsetB + ((j + 1)) * colA * MMUL::size_B;
+          const T_in *__restrict pB3 =
+              pB + offsetB + ((j + 2)) * colA * MMUL::size_B;
+          const T_in *__restrict pB4 =
+              pB + offsetB + ((j + 3)) * colA * MMUL::size_B;
 
           aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
           pA1 += rowA * MMUL::size_A;
@@ -273,6 +300,12 @@ extern "C" {
         64, 64, 64>(a_in, offsetA, b_in, offsetB, c_out, offsetC);             \
   }
 
-combos(matmul_vectorized_c_func)
+#define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
+                               mlir_type_out, r, s, t)                         \
+  void zero_##mlir_type_out(ctype_out *c_out, unsigned offsetC) {              \
+    zero_vectorized<ctype_out, 64, 64, 32>(c_out, offsetC);                    \
+  }
+
+combos(matmul_vectorized_c_func) combos(zero_vectorized_c_func)
 
 } // extern "C"

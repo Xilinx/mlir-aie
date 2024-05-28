@@ -10,26 +10,10 @@ project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 include("aiert.cmake")
 
 if (${CMAKE_CROSSCOMPILING})
-
-    #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
-    if(${Vitis_VERSION_MAJOR} EQUAL "2022")
-        set(aieRTIncludePath "${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src" CACHE STRING "AIE-RT include path")
-    elseif(${Vitis_VERSION_MAJOR} EQUAL "2023")
-        set(aieRTIncludePath "${VITIS_AIETOOLS_DIR}/include/drivers/aiengine" CACHE STRING "AIE-RT include path")
-    else()
-        message(FATAL_ERROR "Unsupported Vitis version: ${Vitis_VERSION_MAJOR}")
-    endif()
-
     message("Building xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.")
-    add_aiert_headers(xaiengine
-                        ${aieRTIncludePath}
-                        ${CMAKE_CURRENT_BINARY_DIR}/include
-                        ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
-
     add_subdirectory(lib)
 
 else()
-
     message("Copying xaiengine for ${AIE_RUNTIME_TARGET} from ${AIERT_LIBS}.") 
     add_aiert_headers(xaiengine
                         ${AIERT_INCLUDE_DIR}
@@ -47,7 +31,6 @@ else()
 
     # install library and headers
     install(FILES ${libs} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
-
 endif()
 
 add_subdirectory(cdo)

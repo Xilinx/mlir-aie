@@ -15,6 +15,7 @@
 #define AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
 
 include "aie/Dialect/XLLVM/IR/XLLVM.td"
+include "aie/Dialect/XLLVM/IR/XLLVMTypeConstraints.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -185,6 +186,23 @@ def ExtI256I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
                    I32:$idx)>;
 
+def ExtI512I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I512.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI256I1024IntrOp :
+    AIEVec2_IntrOp<"ext.I256.I1024",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
+                   I32:$idx)>;
+
+def ExtI128I512IntrOp :
+    AIEVec2_IntrOp<"extract.I128.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
+  
 // ----- CONCAT ----- 
 
 def ConcatI512I256IntrOp :
@@ -320,5 +338,17 @@ def VectorExtractElem32I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
                    I32:$idx,
                    I32:$sign)>;
+
+// ----- MAX ELEMENT -----
+
+def VectorMaxLtBf16IntrOp :
+    AIEVec2_IntrOp<"vmax.ltbf16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [BF16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs)>;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

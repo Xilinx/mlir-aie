@@ -48,4 +48,4 @@ export UNWRAPPED_XCHESSCC=$AIETOOLS/bin/unwrapped/lnx64.o/xchesscc
 export LD_LIBRARY_PATH=$AIETOOLS/lib/lnx64.o:$AIETOOLS/lnx64/tools/dot/lib:$LD_LIBRARY_PATH
 # Carefully crafted path so that we can inject other scripts into the chess path, namely chess-clang
 export PATH=$DIR:$AIETOOLS/bin/unwrapped/lnx64.o:$AIETOOLS/tps/lnx64/target/bin/LNa64bin
-$UNWRAPPED_XCHESSCC +P 4 -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -Y clang=$DIR/chess-clang -P $LIBDIR -d -f $@
+$UNWRAPPED_XCHESSCC -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -Y clang=$DIR/chess-clang -P $LIBDIR -d -f $@

@@ -128,7 +128,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
 endforeach()
 
 include("xaiengine/aiert.cmake")
-set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
+set(XAIE_SOURCE_DIR "../third_party/aie-rt/driver/src")
 set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/bootgen)
 
 add_aiert_headers(xaienginecdo_static

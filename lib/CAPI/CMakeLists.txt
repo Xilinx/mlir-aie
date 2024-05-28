@@ -4,6 +4,7 @@
 add_mlir_public_c_api_library(AIECAPI
   Dialects.cpp
   Registration.cpp
+  TargetModel.cpp
   Translation.cpp
 
   LINK_LIBS PUBLIC

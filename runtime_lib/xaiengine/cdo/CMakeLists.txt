@@ -8,7 +8,7 @@ include("../aiert.cmake")
 
 message("Building xaiengine for ${AIE_RUNTIME_TARGET} for CDO backend.")
 
-set(XAIE_SOURCE ../aie-rt/driver/src)
+set(XAIE_SOURCE ../../../third_party/aie-rt/driver/src)
 
 add_aiert_headers(xaienginecdo
                     ${XAIE_SOURCE}
