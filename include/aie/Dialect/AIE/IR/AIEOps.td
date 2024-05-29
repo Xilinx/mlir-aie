@@ -1610,7 +1610,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+        OptionalAttr<Index>:$via_shared_mem
   );
 
   let assemblyFormat = [{

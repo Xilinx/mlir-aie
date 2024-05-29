@@ -1300,10 +1300,32 @@ struct AIEObjectFifoStatefulTransformPass
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
-      if (shared)
+      if (shared) {
+        if (createOp.getViaSharedMem().has_value()) {
+          Value desiredSharedTile = createOp.getViaSharedMem().value();
+          int desiredSharedModule = 1;
+          if (desiredSharedTile == createOp.getProducerTile())
+            desiredSharedModule = -1;
+          ///   * -1 if the shared memory module is that of the first input tile,
+          ///   * 1 if it is that of the second input tile
+          if (share_direction != desiredSharedModule) {
+            bool desiredSharedModuleIsShared = false;
+            if (share_direction == -1) {
+              desiredSharedModuleIsShared = isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
+            } else {
+              desiredSharedModuleIsShared = isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
+            }
+          }
+        }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-      else {
+      } else {
+          if (createOp.getViaSharedMem().has_value())
+            createOp->emitWarning("No access to shared memory module; ignoring "
+                                  "`via_shared_mem`");
+
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
