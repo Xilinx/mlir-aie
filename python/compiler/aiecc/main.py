@@ -144,8 +144,9 @@ def emit_design_kernel_json(
     for buf in buffer_args:
         arg = {
             "name": buf,
-            "address-qualifier": "SCALAR",
-            "type": "uint64_t",
+            "memory-connection": "HOST",
+            "address-qualifier": "GLOBAL",
+            "type": "void*",
             "offset": str(hex(offset)),
         }
         arguments.append(arg)
