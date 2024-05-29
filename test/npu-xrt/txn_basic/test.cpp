@@ -143,24 +143,11 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
   auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
-
-  int32_t *bufInA = bo_inA.map<int32_t *>();
-  int32_t *bufInB = bo_inB.map<int32_t *>();
-  std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < N; i++)
-    srcVecA.push_back(i + 1);
-
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-  memcpy(bufInB, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   std::vector<uint32_t> outVec;
   int32_t *bufOut = bo_out.map<int32_t *>();
@@ -170,36 +157,14 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "DDR AIE Address Offset: " << std::hex << DDR_AIE_ADDR_OFFSET
             << std::endl;
-  std::cout << "bo_inA.address() + DDR_AIE_ADDR_OFFSET: " << std::hex
-            << bo_inA.address() + DDR_AIE_ADDR_OFFSET << std::endl;
-  std::cout << "bo_inB.address() + DDR_AIE_ADDR_OFFSET: " << std::hex
-            << bo_inB.address() + DDR_AIE_ADDR_OFFSET << std::endl;
   std::cout << "bo_out.address() + DDR_AIE_ADDR_OFFSET: " << std::hex
             << bo_out.address() + DDR_AIE_ADDR_OFFSET << std::endl;
 
-  std::vector<uint64_t> patches = {bo_out.address() + DDR_AIE_ADDR_OFFSET,
-                                   bo_inA.address() + DDR_AIE_ADDR_OFFSET};
-  auto p = patches.begin();
-  for (auto i = instr_v.begin(); i != instr_v.end(); i++) {
-    if (*i == 0xfeedbeef) {
-      uint64_t d = *p++;
-      *i = (d & 0xfffffffc);
-      *(i + 1) = (*(i + 1) & 0xFFFF0000) | ((d >> 32) & 0xffff);
-    }
-    std::cout << "Instruction: " << std::hex << std::setw(8)
-              << std::setfill('0') << *i << std::endl;
-  }
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
-  // write instruction binary to file (for debugging purposes)
-  std::ofstream instr_bin("instr.bin", std::ios::binary);
-  instr_bin.write((char *)bufInstr, instr_v.size() * sizeof(int));
-
   std::cout << std::dec;
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
@@ -210,11 +175,7 @@ int main(int argc, const char *argv[]) {
   aie_run.set_arg(0, opcode);
   aie_run.set_arg(1, bo_instr);
   aie_run.set_arg(2, uint32_t(bo_instr.size() / sizeof(int)));
-  aie_run.set_arg(3, 0);
-  aie_run.set_arg(4, 0);
-  aie_run.set_arg(5, 0);
-  aie_run.set_arg(6, 0);
-  aie_run.set_arg(7, 0);
+  aie_run.set_arg(3, bo_out);
   aie_run.start();
   std::cv_status wait_ret = aie_run.wait2(2000 * std::chrono::milliseconds{1});
   if (wait_ret == std::cv_status::timeout) {

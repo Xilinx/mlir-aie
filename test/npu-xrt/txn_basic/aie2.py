@@ -27,20 +27,6 @@ N = 4096
 dev = AIEDevice.npu1_1col
 col = 0
 
-if len(sys.argv) > 1:
-    N = int(sys.argv[1])
-
-if len(sys.argv) > 2:
-    if sys.argv[2] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[2] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-if len(sys.argv) > 3:
-    col = int(sys.argv[3])
-
 TILE_SIZE = 1024
 
 
@@ -70,9 +56,9 @@ def txn_basic():
 
             tensor_ty = T.memref(N, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
-            def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            @FuncOp.from_py_func(tensor_ty)
+            def sequence(A):
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=A, sizes=[1, 1, 1, N])
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)

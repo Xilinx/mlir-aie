@@ -82,6 +82,26 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   words[5] = 6 * 4;         // Operation Size
 }
 
+void appendAddressPatch(std::vector<uint32_t> &instructions,
+                        NpuAddressPatchOp op) {
+
+  auto words = reserveAndGetTail(instructions, 12);
+
+  // XAIE_IO_CUSTOM_OP_BEGIN + 1
+  uint32_t opCode = 0x81;
+  words[0] = (opCode & 0xff);
+  words[1] = 12 * 4;
+
+  words[6] = op.getAddr();
+  words[7] = 0;
+
+  words[8] = op.getArgIdx();
+  words[9] = 0;
+
+  words[10] = op.getArgPlus();
+  words[11] = 0;
+}
+
 void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
                            NpuWriteBdExShimTileOp op) {
 
@@ -95,14 +115,14 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
   // RegOff
   auto bd_id = op.getBdId();
   uint32_t bd_addr = 0x1D000 + bd_id * 0x20;
-  words[2] = XAIE_BASE_ADDR + bd_addr; // ADDR
-  words[3] = 12 * 4;                   // Operation Size;
+  words[2] = bd_addr; // ADDR
+  words[3] = 12 * 4;  // Operation Size
 
   // DMA_BDX_0
   words[4] = op.getBufferLength();
 
   // DMA_BDX_1
-  words[5] = 0xfeedbeef; // op.getBufferOffset();
+  words[5] = op.getBufferOffset();
 
   // DMA_BDX_2
   // En Packet , OoO BD ID , Packet ID , Packet Type
@@ -170,6 +190,10 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
           .Case<NpuWrite32Op>([&](auto op) {
             count++;
             appendWrite32(instructions, op);
+          })
+          .Case<NpuAddressPatchOp>([&](auto op) {
+            count++;
+            appendAddressPatch(instructions, op);
           })
           .Case<NpuWriteBdExShimTileOp>([&](auto op) {
             count++;
