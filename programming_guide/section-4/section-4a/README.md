@@ -34,7 +34,7 @@ Adding the application timer is as simple as noting a start and stop time surrou
 This provides us with a good baseline for how long our accelerated kernel function takes.
 
 ## <ins>Multiple iterations</ins>
-A timer for a single kernel function call is a useful starting point for understanding performance but there can be a lot of variability and overhead for a single call that is smoothed out when run multiple times. In order to benchmark the steady-state kernel run time, we can add code around our kernel call to execute multiple times and capture the minimium, maximize and average time that our kernel takes.
+A timer for a single kernel function call is a useful starting point for understanding performance but there can be a lot of variability and overhead for a single call that is smoothed out when run multiple times. In order to benchmark the steady-state kernel run time, we can add code around our kernel call to execute multiple times and capture the minimium, maximum, and average time that our kernel takes.
 
 In our example [test.cpp](./test.cpp), we wrap our calls within a for loop (based on `num_iter` or number of iterations).
 

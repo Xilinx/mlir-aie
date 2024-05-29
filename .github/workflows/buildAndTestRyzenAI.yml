@@ -164,5 +164,6 @@ jobs:
 
           ninja install
           ninja check-reference-designs
+          ninja check-programming-guide
 
           popd
