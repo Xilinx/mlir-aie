@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def external_mem_to_core_L2():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             memRef_24_ty = T.memref(24, T.i32())
             memRef_8_ty = T.memref(8, T.i32())
@@ -66,7 +66,11 @@ def external_mem_to_core_L2():
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
 
 
 external_mem_to_core_L2()

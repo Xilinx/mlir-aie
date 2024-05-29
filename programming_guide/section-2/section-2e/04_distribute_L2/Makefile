@@ -8,21 +8,19 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-include ${srcdir}/../../../programming_examples/makefile-common
+include ${srcdir}/../../../../programming_examples/makefile-common
 
-all: build/final.xclbin
+targetname = ext_to_core_L2
+devicename = npu
+col = 0
 
-targetname = myFirstProgram
+all: build/final.xclbin build/insts.txt
 
-build/aie.mlir: ${srcdir}/aie2.py
+build/aie.mlir: ${srcdir}/distribute_L2.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< ${devicename} ${col} > $@
 
-build/scale.o: ${srcdir}/vector_scalar_mul.cc
-	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
-
-build/final.xclbin: build/aie.mlir build/scale.o
+build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
@@ -40,15 +38,6 @@ endif
 
 run: ${targetname}.exe build/final.xclbin build/insts.txt 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
-
-run-10: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --iters 10 
-
-run-10-warmup: ${targetname}.exe build/final.xclbin build/insts.txt 
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE --iters 10 --warmup 4
-
-run_py: build/final.xclbin build/insts.txt
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}.exe

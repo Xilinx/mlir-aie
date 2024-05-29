@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie2xclbin -v --use-chess --host-target=aarch64-linux-gnu %s --xclbin-name=test.xclbin | FileCheck %s
-// REQUIRES: valid_xchess_license
+// REQUIRES: valid_xchess_license, xrt
 
 // Note that llc determines the architecture from the llvm IR.
 // CHECK-NOT: llc
