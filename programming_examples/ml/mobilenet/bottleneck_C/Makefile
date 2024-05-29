@@ -18,7 +18,7 @@ all: build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2d
 	build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o \
 	build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/aie2_bn10_bn11_bn12.py
+build/${mlirFileName}.mlir: ${srcdir}/aie2_bn13.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
