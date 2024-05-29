@@ -136,24 +136,24 @@ int main(int argc, const char *argv[]) {
   auto kernel0 = xrt::kernel(context, kernelName0);
 
   auto bo0_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                           XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(0));
+                           XCL_BO_FLAGS_CACHEABLE, kernel0.group_id(1));
   auto bo0_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                         XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(2));
-  auto bo0_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                          XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3));
-  auto bo0_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+  auto bo0_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                          XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4));
+  auto bo0_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+                         XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(5));
 
   auto kernel1 = xrt::kernel(context, kernelName1);
 
   auto bo1_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                           XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(0));
+                           XCL_BO_FLAGS_CACHEABLE, kernel1.group_id(1));
   auto bo1_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                         XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(2));
-  auto bo1_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                          XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(3));
-  auto bo1_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+  auto bo1_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                          XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(4));
+  auto bo1_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+                         XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -173,7 +173,9 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel 0.\n";
 
-  auto run0 = kernel0(bo0_instr, instr_v.size(), bo0_inA, bo0_inB, bo0_out);
+  unsigned int opcode = 3;
+  auto run0 =
+      kernel0(opcode, bo0_instr, instr_v.size(), bo0_inA, bo0_inB, bo0_out);
   run0.wait();
 
   bo0_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -191,7 +193,8 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Running Kernel 1.\n";
-  auto run1 = kernel1(bo1_instr, instr_v.size(), bo1_inA, bo1_inB, bo1_out);
+  auto run1 =
+      kernel1(opcode, bo1_instr, instr_v.size(), bo1_inA, bo1_inB, bo1_out);
   run1.wait();
 
   bo1_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
