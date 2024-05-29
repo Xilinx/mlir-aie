@@ -1610,7 +1610,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+        // memtile_repeat==0 means "do it once" and don't repeat
+        OptionalAttr<AIEI32Attr>:$memtile_repeat
   );
 
   let assemblyFormat = [{

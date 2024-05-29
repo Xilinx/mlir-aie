@@ -478,6 +478,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                      "on shim tile producers");
   }
 
+  if (getMemtileRepeat().has_value())
+    if (!getProducerTileOp().isMemTile())
+      return emitError("`memtile_repeat` can only be used with a mem tile "
+                       "producer");
+
   return success();
 }
 

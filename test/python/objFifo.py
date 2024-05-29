@@ -12,9 +12,10 @@ from aie.dialects.aie import (
     Device,
     Core,
     end,
+    buffer,
 )
 from aie.extras.dialects.ext import memref, arith
-from aie.ir import InsertionPoint, TypeAttr, Block
+from aie.ir import InsertionPoint, TypeAttr, Block, IntegerAttr, IntegerType
 
 from util import construct_and_print_module
 
@@ -44,6 +45,7 @@ def objFifo_example():
         T_ = tile(1, 2)
 
         of0 = object_fifo("of0", S, T_, 2, T.memref(256, T.i32()))
+        of0.set_memtile_repeat(4)
 
         C = Core(T_)
         bb = Block.create_at_start(C.body)
