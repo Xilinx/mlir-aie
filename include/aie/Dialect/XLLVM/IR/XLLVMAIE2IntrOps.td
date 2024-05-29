@@ -346,7 +346,7 @@ def VectorMaxLt8IntrOp :
         [TypeIs<"res",
             LLVM_StructOf<[
                 VectorOfLengthAndType<[64], [I8]>,
-                I32]>
+                VectorOfLengthAndType<[2], [I32]>]>
         >], /*numResults=*/2>,
     Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
                    VectorOfLengthAndType<[64], [I8]>:$rhs,
