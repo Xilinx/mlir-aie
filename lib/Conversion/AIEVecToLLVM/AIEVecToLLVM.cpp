@@ -1513,6 +1513,7 @@ public:
     int resultLanes = getVectorLaneSize(resultType);
     int resultVectorSize = resultBitWidth * resultLanes;
 
+    // aievec.min op has the AllTypesMatch constraint on lhs/rhs/res
     if (resultVectorSize != 512) {
       op.emitWarning() << "aievec.min conversion with " << resultVectorSize
                        << "-bit result is not supported.\n";
@@ -1532,7 +1533,7 @@ public:
             mlir::LLVM::LLVMStructType::getLiteral(
                 rewriter.getContext(),
                 {VectorType::get({64}, rewriter.getI8Type()),
-                 rewriter.getI32Type()}),
+                 VectorType::get({2}, rewriter.getI32Type())}),
             forceCastOperandsToSignature(
                 rewriter, loc, operands,
                 {VectorType::get({64}, rewriter.getI8Type()),
@@ -1579,7 +1580,10 @@ public:
     }
 
     if (!minOp) {
-      op.emitError() << "aievec.min conversion is not supported.\n";
+      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
+      // possible failure here is due to unsupported element datatype.
+      op.emitWarning() << "aievec.min conversion fails due to unsupported "
+                          "element data type.\n";
       return failure();
     }
 
