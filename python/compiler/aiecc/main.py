@@ -114,10 +114,10 @@ def emit_design_kernel_json(
 
     arguments = [
         {
-            "name" : "opcode",
-            "address-qualifier" : "SCALAR",
-            "type" : "uint64_t",
-            "offset" : "0x00"
+            "name": "opcode",
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": "0x00",
         },
     ]
     offset = 0x08
