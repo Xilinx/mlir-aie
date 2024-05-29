@@ -14,7 +14,7 @@ As was explained in the Introduction [section](../../section-2a/README.md#initia
 
 <img src="./../../../assets/Broadcast.png" height="200">
 
-For more low-level details regarding how the objects in the Object FIFO are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the mlir-aie [tutorials](/mlir-aie/tutorials/tutorial-7/). They are, however, not required to understand or use the Object FIFO API.
+For more low-level details regarding how the objects in the Object FIFO are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the mlir-aie [tutorials](/mlir_tutorials/tutorial-7/). They are, however, not required to understand or use the Object FIFO API.
 
 Below is an example of the Object FIFO `of0` shown in the previous figure. It has a depth of `3` with one producer tile A and three consumer tiles B, C and D:
 ```python
