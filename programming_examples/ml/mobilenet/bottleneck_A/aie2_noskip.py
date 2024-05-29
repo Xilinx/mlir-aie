@@ -16,34 +16,37 @@ from aie.extras.dialects.ext.memref import view as memref_view
 
 import aie.utils.trace as trace_utils
 
-tensorInW = 112
-tensorInH = 112 // 8
-tensorInC = 16
+# tensorInW = 112
+# tensorInH = 112
+# tensorInC = 16
 
-depthWiseStride = 2
-depthWiseChannels = 64 
-tensorOutC = 24
+# depthWiseStride = 2
+# depthWiseChannels = 64 
+# tensorOutC = 24
 
-tensorOutW = tensorInW // depthWiseStride
-tensorOutH = tensorInH // depthWiseStride
 
-tensorL1InC = tensorInC
-tensorL1OutC = depthWiseChannels
 
-tensorL2InC = tensorL1OutC
-tensorL2OutC = tensorL2InC
 
-tensorL3InC = tensorL2InC
-tensorL3OutC = tensorOutC
+# enableTrace = False
+# trace_size = 16384
+# traceSizeInInt32s = trace_size // 4
 
-enableTrace = False
-trace_size = 16384
-traceSizeInInt32s = trace_size // 4
+# tileRowIndex = 2
+# tileColIndex = 0
 
-tileRowIndex = 2
-tileColIndex = 0
+def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, tensorInH = 112, tensorInC = 16, depthWiseStride = 2, depthWiseChannels = 64, tensorOutC = 24, withSkip = False, enableTrace = False, trace_size = 16384, traceSizeInInt32s = 4096):
 
-def bottleneck1_mobilenetv3():
+    tensorOutW = tensorInW // depthWiseStride
+    tensorOutH = tensorInH // depthWiseStride
+
+    tensorL1InC = tensorInC
+    tensorL1OutC = depthWiseChannels
+
+    tensorL2InC = tensorL1OutC
+    tensorL2OutC = tensorL2InC
+
+    tensorL3InC = tensorL2InC
+    tensorL3OutC = tensorOutC
 
     @device(AIEDevice.npu1_1col)
     def device_body():
@@ -81,8 +84,11 @@ def bottleneck1_mobilenetv3():
         # AIE-array data movement with object fifos
         
         # Input
+        if (withSkip):
+            act_in = object_fifo("act_in", ShimTile, [MemTile, ComputeTile], 2, tensorLayer1In_ty)
+        else:
+            act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
         #of_inOF_act_L3L2 = object_fifo("inOF_act_L3L2", ShimTile, MemTile, 2, tensorLayer1In_ty)
-        act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
         #object_fifo_link(of_inOF_act_L3L2, act_in)
         
         # wts
@@ -189,7 +195,7 @@ def bottleneck1_mobilenetv3():
                 
                 yield_([])
         
-        # # instruction stream generation
+        # instruction stream generation
         activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
         activationsOutSize32b = (tensorOutW * tensorOutH * tensorOutC) // 4
         totalWeightsSize32b = (1*1*tensorL1InC*tensorL1OutC + 3*3*tensorL2OutC*1 + 1*1*tensorL3InC*tensorL3OutC) // 4
@@ -222,7 +228,7 @@ def bottleneck1_mobilenetv3():
 
 
 with mlir_mod_ctx() as ctx:
-    bottleneck1_mobilenetv3()
+    mobilenetV3BottleneckA(tileRowIndex=3)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
