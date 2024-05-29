@@ -1980,6 +1980,44 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   }
 };
 
+class ShuffleOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
+  using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = shuffleOp.getLoc();
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto i32ty = rewriter.getI32Type();
+    auto v16xi32ty = VectorType::get({16}, i32ty);
+    if (!rhs)
+      rhs = rewriter.create<xllvm::UndefV16I32IntrOp>(loc, v16xi32ty);
+
+    auto modeAttrVal =
+        rewriter
+            .create<LLVM::ConstantOp>(loc, i32ty,
+                                      static_cast<int32_t>(shuffleOp.getMode()))
+            .getResult();
+    auto vShuffleVal = rewriter
+                           .create<xllvm::VectorShuffleIntrOp>(
+                               loc, v16xi32ty,
+                               forceCastOperandsToSignature(
+                                   rewriter, loc,
+                                   /*operands=*/{lhs, rhs, modeAttrVal},
+                                   /*signature=*/{v16xi32ty, v16xi32ty, i32ty}))
+                           .getResult();
+
+    vShuffleVal = forceCastValueToType(rewriter, loc, vShuffleVal,
+                                       shuffleOp.getResult().getType());
+
+    rewriter.replaceOp(shuffleOp, vShuffleVal);
+
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
@@ -2002,7 +2040,8 @@ void populateAIEVecToLLVMConversionPatterns(
                MatMulOpConversion,
                ShiftOpConversion,
                ExtractElemOpConversion,
-               FoldAIECastOps>(converter);
+               FoldAIECastOps,
+               ShuffleOpConversion>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   // clang-format on
 }
