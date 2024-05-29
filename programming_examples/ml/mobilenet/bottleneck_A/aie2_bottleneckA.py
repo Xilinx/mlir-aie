@@ -74,7 +74,11 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
             conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride2_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         else:
             conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride1_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
-        conv2dk1_ui8_i8 = external_func("conv2dk1_ui8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+        
+        if (withSkip):
+            conv2dk1_skip_ui8_i8_i8 = external_func("conv2dk1_skip_ui8_i8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+        else:
+            conv2dk1_ui8_i8 = external_func("conv2dk1_ui8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         
         # Tile declarations
         ShimTile = tile(tileColIndex, 0)
@@ -84,12 +88,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         # AIE-array data movement with object fifos
         
         # Input
-        if (withSkip):
-            act_in = object_fifo("act_in", ShimTile, [MemTile, ComputeTile], 2, tensorLayer1In_ty)
-        else:
-            act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
-        #of_inOF_act_L3L2 = object_fifo("inOF_act_L3L2", ShimTile, MemTile, 2, tensorLayer1In_ty)
-        #object_fifo_link(of_inOF_act_L3L2, act_in)
+        act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
         
         # wts
         wts_OF_L3L2 = object_fifo("wts_OF_L3L2", ShimTile, ComputeTile, 3, weightsAllLayers_ty)
@@ -99,9 +98,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         # object_fifo_link(wts_OF_L3L2, [wts_buf_01, wts_buf_02, wts_buf_03])
         
         # Output
-        act_out = object_fifo("act_out", ComputeTile, [ShimTile], 2, tensorLayer3Out_ty)
-        #of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, tensorLayer3Out_ty)
-        #object_fifo_link(act_3, of_outOFL2L3)
+        act_out = object_fifo("act_out", ComputeTile, [ShimTile], 1, tensorLayer3Out_ty)
         
         # Intermediate
         of_act_1_2 = object_fifo("act_1_2", ComputeTile, ComputeTile, 3, tensorLayer1Out_ty)
@@ -111,7 +108,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         rtpComputeTile = Buffer(ComputeTile, [16], T.i32(), "rtp")
         
         # Compute tile
-        @core(ComputeTile, "combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a")
+        @core(ComputeTile, "combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1skip.a" if (withSkip) else "combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a")
         def core_body():
 
             # acquire weights and rtps once
@@ -125,71 +122,101 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
             scaleLayer1 = memref.load(rtpComputeTile, [0])
             scaleLayer2 = memref.load(rtpComputeTile, [1])
             scaleLayer3 = memref.load(rtpComputeTile, [2])
+            if (withSkip):
+                skipScaleLayer3 = memref.load(rtpComputeTile, [3])
 
             for _ in for_(sys.maxsize):
                 
                 # pre-amble 0: rows 0, 1 in layer 1 1x1 conv; row 0 in layer 2 3x3 dw; row 0 in layer 3 1x1 conv
-                for _ in for_(2):
-                    actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
-                    actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
-                    call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
-                    act_in.release(ObjectFifoPort.Consume, 1)
-                    of_act_1_2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
+                actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, 2)
+                actOutLayer1Rows = of_act_1_2.acquire(ObjectFifoPort.Produce, 2)
+                call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[0], weightsLayer1, actOutLayer1Rows[0], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[1], weightsLayer1, actOutLayer1Rows[1], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                of_act_1_2.release(ObjectFifoPort.Produce, 2)
+                if not (withSkip):
+                    act_in.release(ObjectFifoPort.Consume, 2)
 
                 actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 2)
                 actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
                 call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
-                of_act_1_2.release(ObjectFifoPort.Consume, 1 if (depthWiseStride == 2) else 0) # if (depthWiseStride == 2) : 1 else 0 
+                if (depthWiseStride == 2):
+                    of_act_1_2.release(ObjectFifoPort.Consume, 1) # if (depthWiseStride == 2) : 1 else 0 
                 of_act_2_3.release(ObjectFifoPort.Produce, 1)
 
                 actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
                 actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
+                if (withSkip):
+                    call(conv2dk1_skip_ui8_i8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, actInLayer1Rows[0], tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3, skipScaleLayer3])
+                    act_in.release(ObjectFifoPort.Consume, depthWiseStride)
+                else:
+                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
                 of_act_2_3.release(ObjectFifoPort.Consume, 1)
                 act_out.release(ObjectFifoPort.Produce, 1)
                 
                 # middle: layer 3 1x1 conv and layer 2 3x3 dw and layer 1 1x1 conv
                 for _ in for_(tensorOutH - 2):
-                    for _ in for_(depthWiseStride):
-                        actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                    if (withSkip):
+                        actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, 2)
                         actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
-                        call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
-                        act_in.release(ObjectFifoPort.Consume, 1)
+                        call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[1], weightsLayer1, actOutLayer1Row, tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
                         of_act_1_2.release(ObjectFifoPort.Produce, 1)
-                        yield_([])
+                    else:
+                        actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, depthWiseStride)
+                        actOutLayer1Rows = of_act_1_2.acquire(ObjectFifoPort.Produce, depthWiseStride)
+                        call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[0], weightsLayer1, actOutLayer1Rows[0], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                        if (depthWiseStride==2):
+                            call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[1], weightsLayer1, actOutLayer1Rows[1], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                        of_act_1_2.release(ObjectFifoPort.Produce, depthWiseStride)
+                        act_in.release(ObjectFifoPort.Consume, depthWiseStride)
                     
                     actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 3)
                     actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[2], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
                     of_act_1_2.release(ObjectFifoPort.Consume, 2 if (depthWiseStride == 2) else 1) #if (depthWiseStride == 2) : 2 else 1
                     of_act_2_3.release(ObjectFifoPort.Produce, 1)
                 
                     actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
                     actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
+                    if (withSkip):
+                        call(conv2dk1_skip_ui8_i8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, actInLayer1Rows[0], tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3, skipScaleLayer3])
+                        act_in.release(ObjectFifoPort.Consume, depthWiseStride)
+                    else:
+                        call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
                     of_act_2_3.release(ObjectFifoPort.Consume, 1)
                     act_out.release(ObjectFifoPort.Produce, 1)
                     yield_([])
                 
                 # last part
-                for _ in for_(depthWiseStride):
-                    actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                if (withSkip):
+                    actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, 2)
                     actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
-                    call(conv2dk1_relu_i8_ui8, [actInLayer1Row, weightsLayer1, actOutLayer1Row, tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
-                    act_in.release(ObjectFifoPort.Consume, 1)
+                    call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[1], weightsLayer1, actOutLayer1Row, tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
                     of_act_1_2.release(ObjectFifoPort.Produce, 1)
-                    yield_([])
+                else:
+                    actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, depthWiseStride)
+                    actOutLayer1Rows = of_act_1_2.acquire(ObjectFifoPort.Produce, depthWiseStride)
+                    call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[0], weightsLayer1, actOutLayer1Rows[0], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                    if (depthWiseStride==2):
+                        call(conv2dk1_relu_i8_ui8, [actInLayer1Rows[1], weightsLayer1, actOutLayer1Rows[1], tensorInW, tensorL1InC, tensorL1OutC, scaleLayer1])
+                    of_act_1_2.release(ObjectFifoPort.Produce, depthWiseStride)
+                    act_in.release(ObjectFifoPort.Consume, depthWiseStride)
                 
                 actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 3 if (depthWiseStride == 2) else 2)
                 actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                if (depthWiseStride == 2):
+                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[2], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
+                else:
+                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
                 of_act_1_2.release(ObjectFifoPort.Consume, 3 if (depthWiseStride == 2) else 2) #if (depthWiseStride == 2) : 2 else 1
                 of_act_2_3.release(ObjectFifoPort.Produce, 1)
                 
                 actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
                 actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
+                if (withSkip):
+                    call(conv2dk1_skip_ui8_i8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, actInLayer1Rows[0], tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3, skipScaleLayer3])
+                    act_in.release(ObjectFifoPort.Consume, depthWiseStride)
+                else:
+                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
                 of_act_2_3.release(ObjectFifoPort.Consume, 1)
                 act_out.release(ObjectFifoPort.Produce, 1)
                 
@@ -228,7 +255,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
 
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3BottleneckA(tileRowIndex=3)
+    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInC=24,tensorOutC=24,depthWiseChannels=72)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
