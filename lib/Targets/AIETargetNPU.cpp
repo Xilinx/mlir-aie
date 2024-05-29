@@ -27,6 +27,9 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
+#define XAIE_COL_SHIFT 25
+#define XAIE_ROW_SHIFT 20
+
 namespace {
 
 // Example:
@@ -47,20 +50,17 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
   auto words = reserveAndGetTail(instructions, 4);
 
-  uint32_t opCode = 0x80;
   // XAIE_IO_CUSTOM_OP_BEGIN
+  uint32_t opCode = 0x80;
   // Wait until the number of BDs in the same channel of all tiles equal to 0
-  words[0] |= (opCode & 0xff);
-  words[0] |= (op.getColumn() & 0xff) << 8;
-  words[0] |= (op.getRow() & 0xff) << 16;
-  words[0] |= 0 << 24; // Padding
+  words[0] = (opCode & 0xff);
 
-  words[1] = 4; // Operation Size
-
+  words[1] = 4 * 4; // Operation Size
   words[2] |= op.getDirection() & 0xff;
   words[2] |= (op.getRow() & 0xff) << 8;
   words[2] |= (op.getColumn() & 0xff) << 16;
-  
+
+  words[3] = op.getDirection() & 0xff;
   words[3] |= (op.getRowNum() & 0xff) << 8;
   words[3] |= (op.getColumnNum() & 0xff) << 16;
   words[3] |= (op.getChannel() & 0xff) << 24;
@@ -70,21 +70,16 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 6);
 
-  uint32_t opCode = 0;
   // XAIE_IO_WRITE
-  words[0] |= (opCode & 0xff);
-  words[0] |= (op.getColumn() & 0xff) << 8;
-  words[0] |= (op.getRow() & 0xff) << 16;
-  words[0] |= 0 << 24; // Padding
-
-  words[1] = op.getAddress(); // ADDR_LOW
-  words[2] = 0; // ADDR_HIGH
-
-  words[3] = op.getValue(); // Value
-
-  words[4] = 6; // Operation Size
-
-  words[5] = 0; // Padding
+  uint32_t opCode = 0;
+  words[0] = (opCode & 0xff);
+  words[1] = 0;
+  words[2] = ((op.getColumn() & 0xff) << XAIE_COL_SHIFT) |
+             ((op.getRow() & 0xff) << XAIE_ROW_SHIFT) |
+             (op.getAddress() & 0xFFFFF); // ADDR_LOW
+  words[3] = 0;
+  words[4] = op.getValue(); // Value
+  words[5] = 6 * 4;         // Operation Size
 }
 
 void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
@@ -92,28 +87,22 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
 
   auto words = reserveAndGetTail(instructions, 12);
 
+  // XAIE_IO_BLOCKWRITE
   uint32_t opCode = 1;
-  words[0] |= (opCode & 0xff);
-  words[0] |= (op.getColumn() & 0xff) << 8;
-  words[0] |= (0 & 0xff) << 16;
-  words[0] |= (op.getColumn() & 0xff) << 24;
+  words[0] = (opCode & 0xff);
+  words[1] = 0;
 
-  words[1] |= (0 & 0xff);
-  words[1] |= (0 & 0xff) << 8;
-  words[1] |= (op.getColumn() & 0xff) << 16;
-  words[1] |= 0 << 24; // Padding
-  
+  // RegOff
   auto bd_id = op.getBdId();
   uint32_t bd_addr = 0x1D000 + bd_id * 0x20;
-  words[2] = bd_addr; // ADDR
-
-  words[3] = 12; // Operation Size;
+  words[2] = XAIE_BASE_ADDR + bd_addr; // ADDR
+  words[3] = 12 * 4;                   // Operation Size;
 
   // DMA_BDX_0
   words[4] = op.getBufferLength();
 
   // DMA_BDX_1
-  words[5] = op.getBufferOffset();
+  words[5] = 0xfeedbeef; // op.getBufferOffset();
 
   // DMA_BDX_2
   // En Packet , OoO BD ID , Packet ID , Packet Type
@@ -159,21 +148,39 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
 
   std::vector<uint32_t> instructions;
 
+  auto words = reserveAndGetTail(instructions, 4);
+
+  // setup txn header
+  words[0] = 0x06030100;
+  words[1] = 0x00000105;
+
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   auto funcOps = deviceOp.getOps<func::FuncOp>();
+  int count = 0;
   for (auto f : funcOps) {
     if (f.isDeclaration())
       continue;
     Block &entry = f.getRegion().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
-          .Case<NpuSyncOp>([&](auto op) { appendSync(instructions, op); })
-          .Case<NpuWrite32Op>([&](auto op) { appendWrite32(instructions, op); })
-          .Case<NpuWriteBdExShimTileOp>(
-              [&](auto op) { appendWriteBdShimTile(instructions, op); });
+          .Case<NpuSyncOp>([&](auto op) {
+            count++;
+            appendSync(instructions, op);
+          })
+          .Case<NpuWrite32Op>([&](auto op) {
+            count++;
+            appendWrite32(instructions, op);
+          })
+          .Case<NpuWriteBdExShimTileOp>([&](auto op) {
+            count++;
+            appendWriteBdShimTile(instructions, op);
+          });
     }
   }
 
+  // write size fields of the txn header
+  instructions[2] = count;
+  instructions[3] = instructions.size() * sizeof(uint32_t);
   return instructions;
 }
 
