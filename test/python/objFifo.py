@@ -22,9 +22,10 @@ from util import construct_and_print_module
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2302) {
-# CHECK:      %tile_0_2 = aie.tile(0, 2)
+# CHECK:      %tile_0_0 = aie.tile(0, 0)
+# CHECK:      %tile_0_1 = aie.tile(0, 1)
 # CHECK:      %tile_1_2 = aie.tile(1, 2)
-# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of0(%tile_0_0, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 # CHECK:      aie.objectfifo @of1(%tile_0_1, {%tile_1_2}, 2 : i32) {memtile_repeat = 4 : i32} : !aie.objectfifo<memref<256xi32>>
 # CHECK:      %core_1_2 = aie.core(%tile_1_2) {
 # CHECK:        %0 = aie.objectfifo.acquire @of0(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
@@ -42,7 +43,7 @@ def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
-        S = tile(0, 2)
+        S = tile(0, 0)
         M = tile(0, 1)
         T_ = tile(1, 2)
 
