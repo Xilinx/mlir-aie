@@ -623,6 +623,23 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   }];
 }
 
+// XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
+def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+  let summary = "address patch operator";
+  let arguments = (
+    ins UI32Attr:$addr,
+        I32Attr:$arg_idx,
+        I32Attr:$arg_plus
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    address patch operator
+  }];
+}
+
 // WRITEBD_EXTEND_SHIMTILE
 def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
   let summary = "dma operator";
