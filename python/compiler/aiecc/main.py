@@ -134,7 +134,7 @@ def emit_design_kernel_json(
             "name": "ninstr",
             "address-qualifier": "SCALAR",
             "type": "uint32_t",
-            "offset": str(hex(offset+8)),
+            "offset": str(hex(offset + 8)),
         },
     ]
     arguments.append(inst_arguments[0])
