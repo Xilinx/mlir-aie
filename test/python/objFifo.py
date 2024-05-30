@@ -40,10 +40,13 @@ def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.body_region)
     with InsertionPoint(dev_block):
-        S = tile(0, 2)
+        S = tile(0, 0)
         T_ = tile(1, 2)
+        C_ = tile(1, 3)
 
         of0 = object_fifo("of0", S, T_, 2, T.memref(256, T.i32()))
+        of1 = object_fifo("of1", T_, C_, 2, T.memref(256, T.i32()))
+        of1.set_via_shared_mem(ObjectFifoPort.Consume)
 
         C = Core(T_)
         bb = Block.create_at_start(C.body)

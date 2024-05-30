@@ -1611,7 +1611,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        OptionalAttr<Index>:$via_shared_mem
+        // via_shared_mem==0 means use producer tile's memory module
+        // via_shared_mem==1 means use consumer tile's memory module
+        OptionalAttr<AIEI32Attr>:$via_shared_mem
   );
 
   let assemblyFormat = [{
