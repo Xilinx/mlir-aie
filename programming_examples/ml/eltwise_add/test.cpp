@@ -210,8 +210,8 @@ int main(int argc, const char *argv[]) {
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
-    auto run =
-        kernel(opcode, bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inout0, bo_inout1,
+                      bo_inout2);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);

@@ -219,7 +219,7 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
     run.wait();
 
     // Sync device to host memories
@@ -308,7 +308,8 @@ int main(int argc, const char *argv[]) {
         if (verbosity >= 1)
           std::cout << "Running Kernel.\n";
         unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+        auto run =
+            kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
         run.wait();
 
         // Sync device to host memories
