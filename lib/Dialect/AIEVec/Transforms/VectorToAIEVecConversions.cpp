@@ -2801,6 +2801,85 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
   bool matMoveToAcc;
 };
 
+// Convert a `vector.transpose` op to an `aievec.shuffle` op for AIEml.
+struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
+    : OpConversionPattern<vector::TransposeOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(vector::TransposeOp transpOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resTy = transpOp.getResultVectorType();
+    auto resShape = resTy.getShape();
+    auto elemTyBitWidth = resTy.getElementTypeBitWidth();
+    auto vBitWidth = std::accumulate(resShape.begin(), resShape.end(),
+                                     elemTyBitWidth, std::multiplies<>());
+    if (vBitWidth != 512)
+      return failure();
+
+    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32)
+      return failure();
+
+    // Verify leading dimensions are all 1.
+    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size() - 2); ++i)
+      if (resShape[i] != 1)
+        return failure();
+
+    // Only permutation of the 2 innermost dimensions are supported.
+    ArrayRef<int64_t> perm = transpOp.getPermutation();
+    for (int64_t i = 0; i < static_cast<int64_t>(perm.size() - 2); ++i)
+      if (perm[i] != i)
+        return failure();
+    if (perm.back() != static_cast<int64_t>(perm.size() - 2))
+      return failure();
+
+    auto shuffleMode = aievec::ShuffleMode::T32_4X4;
+    if (elemTyBitWidth == 8) {
+      switch (resShape.back()) {
+      case 4:
+        shuffleMode = aievec::ShuffleMode::T8_4X16;
+        break;
+      case 8:
+        shuffleMode = aievec::ShuffleMode::T8_8X8;
+        break;
+      case 16:
+        shuffleMode = aievec::ShuffleMode::T8_16X4;
+        break;
+      default:
+        return failure();
+      }
+    } else if (elemTyBitWidth == 16) {
+      switch (resShape.back()) {
+      case 2:
+        shuffleMode = aievec::ShuffleMode::T16_2X16;
+        break;
+      case 4:
+        shuffleMode = aievec::ShuffleMode::T16_4X8;
+        break;
+      case 8:
+        shuffleMode = aievec::ShuffleMode::T16_8X4;
+        break;
+      case 16:
+        shuffleMode = aievec::ShuffleMode::T16_16X2;
+        break;
+      default:
+        return failure();
+      }
+    } else if (resShape.back() != 4)
+      return failure();
+
+    auto flatVecTy =
+        VectorType::get({512 / elemTyBitWidth}, resTy.getElementType());
+    auto loc = transpOp.getLoc();
+    auto flatInput = rewriter.create<vector::ShapeCastOp>(loc, flatVecTy,
+                                                          adaptor.getVector());
+    auto shuffOp = rewriter.create<aievec::ShuffleOp>(loc, flatVecTy, flatInput,
+                                                      nullptr, shuffleMode);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(transpOp, resTy, shuffOp);
+
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2881,7 +2960,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
-      LowerVectorExtractStridedSliceOpAIEMLPattern
+      LowerVectorExtractStridedSliceOpAIEMLPattern,
+      LowerVectorTransposeOpToAIEVecShuffleOpPattern
       >(patterns.getContext());
   patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern
       >(patterns.getContext(), backend == TargetBackend::CPP);
@@ -3561,7 +3641,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
         return false;
       });
 
-  target.addIllegalOp<vector::ContractionOp>();
+  target.addIllegalOp<vector::ContractionOp, vector::TransposeOp>();
 }
 
 //===----------------------------------------------------------------------===//
