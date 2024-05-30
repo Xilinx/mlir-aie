@@ -12,6 +12,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 #from aie.dialects.memref import *
+from aie.extras.dialects.ext import *
 from aie.extras.dialects.ext.memref import view as memref_view
 
 import aie.utils.trace as trace_utils
@@ -69,16 +70,16 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         weightsAllLayers_ty = MemRefType.get((1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1 + 1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty)
         
         # AIE Core Function declarations
-        conv2dk1_relu_i8_ui8 = external_func("conv2dk1_relu_i8_ui8",inputs=[tensorLayer1In_ty, weightsAllLayers_ty, tensorLayer1Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+        conv2dk1_relu_i8_ui8 = external_func("conv2dk1_relu_i8_ui8",inputs=[tensorLayer1In_ty, weightsLayer1_ty, tensorLayer1Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         if depthWiseStride == 2:
-            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride2_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride2_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         else:
-            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride1_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsAllLayers_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            conv2dk3_dw_relu_ui8_ui8 = external_func("conv2dk3_dw_stride1_relu_ui8_ui8",inputs=[tensorLayer2In_ty,tensorLayer2In_ty,tensorLayer2In_ty, weightsLayer2_ty, tensorLayer2Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         
         if (withSkip):
-            conv2dk1_skip_ui8_i8_i8 = external_func("conv2dk1_skip_ui8_i8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            conv2dk1_skip_ui8_i8_i8 = external_func("conv2dk1_skip_ui8_i8_i8",inputs=[tensorLayer3In_ty, weightsLayer3_ty, tensorLayer3Out_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         else:
-            conv2dk1_ui8_i8 = external_func("conv2dk1_ui8_i8",inputs=[tensorLayer3In_ty, weightsAllLayers_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
+            conv2dk1_ui8_i8 = external_func("conv2dk1_ui8_i8",inputs=[tensorLayer3In_ty, weightsLayer3_ty, tensorLayer3Out_ty, int32_ty, int32_ty, int32_ty, int32_ty])
         
         # Tile declarations
         ShimTile = tile(tileColIndex, 0)
@@ -91,7 +92,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
         
         # wts
-        wts_OF_L3L2 = object_fifo("wts_OF_L3L2", ShimTile, ComputeTile, 3, weightsAllLayers_ty)
+        wts_OF_L3L1 = object_fifo("wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty)
         # wts_buf_01 = object_fifo("wts_buf_01", ComputeTile, [ComputeTile], 1, weightsLayer1_ty)
         # wts_buf_02 = object_fifo("wts_buf_02", ComputeTile, [ComputeTile], 1, weightsLayer2_ty)
         # wts_buf_03 = object_fifo("wts_buf_03", ComputeTile, [ComputeTile], 1, weightsLayer3_ty)
@@ -108,17 +109,22 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         rtpComputeTile = Buffer(ComputeTile, [16], T.i32(), "rtp")
         
         # Compute tile
-        @core(ComputeTile, "combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1skip.a" if (withSkip) else "combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a")
+        objectArchiveName = "combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a" % (depthWiseStride, "skip" if (withSkip) else "")
+        @core(ComputeTile, objectArchiveName)
         def core_body():
 
             # acquire weights and rtps once
-            weightsAllLayers = wts_OF_L3L2.acquire(ObjectFifoPort.Consume, 3)
-            #weightsLayer1 = memref_view(weightsAllLayers.subview, [1 * 1 * tensorL1OutC * tensorL1InC], None, 0)
+            weightsAllLayers = wts_OF_L3L1.acquire(ObjectFifoPort.Consume, 1)
+            
+            weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL1OutC * tensorL1InC], dtype=int8_ty, shift=0)
+            weightsLayer2 = memref_view(weightsAllLayers.output, [3 * 3 * tensorL2OutC * 1], dtype=int8_ty, shift=1 * 1 * tensorL1OutC * tensorL1InC)
+            weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL3OutC * tensorL3InC], dtype=int8_ty, shift=(1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1))
+            #weightsLayer1 = memref_view(weightsAllLayers, [1 * 1 * tensorL1OutC * tensorL1InC], None, 0)
             #memref.view(weightsLayer2, weightsAllLayers,1 * 1 * tensorL1OutC * tensorL1InC, 3*3*tensorL2OutC*1)
             #memref.view(weightsLayer2, weightsAllLayers,1 * 1 * tensorL1OutC * tensorL1InC + 3*3*tensorL2OutC*1, 1*1*tensorL3OutC*tensorL3InC)
-            weightsLayer1 = weightsAllLayers[0]
-            weightsLayer2 = weightsAllLayers[1]
-            weightsLayer3 = weightsAllLayers[2]
+            #weightsLayer1 = weightsAllLayers[0]
+            #weightsLayer2 = weightsAllLayers[1]
+            #weightsLayer3 = weightsAllLayers[2]
             scaleLayer1 = memref.load(rtpComputeTile, [0])
             scaleLayer2 = memref.load(rtpComputeTile, [1])
             scaleLayer3 = memref.load(rtpComputeTile, [2])
@@ -255,7 +261,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
 
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInC=24,tensorOutC=24,depthWiseChannels=72)
+    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
