@@ -20,64 +20,63 @@
 // CHECK:         "type": "dpu",
 // CHECK:         "extended-data": {
 // CHECK:           "subtype": "DPU",
-// CHECK:           "functional": "1",
+// CHECK:           "functional": "0",
 // CHECK:           "dpu_kernel_id": "0x901"
 // CHECK:         },
 // CHECK:         "arguments": [
+// CHECK:           {
+// CHECK:             "name": "opcode",
+// CHECK:             "address-qualifier": "SCALAR",
+// CHECK:             "type": "uint64_t",
+// CHECK:             "offset": "0x00"
+// CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "instr",
 // CHECK:             "memory-connection": "SRAM",
 // CHECK:             "address-qualifier": "GLOBAL",
 // CHECK:             "type": "char *",
-// CHECK:             "offset": "0x00"
+// CHECK:             "offset": "0x8"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "ninstr",
 // CHECK:             "address-qualifier": "SCALAR",
-// CHECK:             "type": "uint64_t",
-// CHECK:             "offset": "0x08"
+// CHECK:             "type": "uint32_t",
+// CHECK:             "offset": "0x10"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "bo0",
 // CHECK:             "memory-connection": "HOST",
 // CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x10"
+// CHECK:             "type": "void*",
+// CHECK:             "offset": "0x14"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "bo1",
 // CHECK:             "memory-connection": "HOST",
 // CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x18"
+// CHECK:             "type": "void*",
+// CHECK:             "offset": "0x1c"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "bo2",
 // CHECK:             "memory-connection": "HOST",
 // CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x20"
+// CHECK:             "type": "void*",
+// CHECK:             "offset": "0x24"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "bo3",
 // CHECK:             "memory-connection": "HOST",
 // CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x28"
+// CHECK:             "type": "void*",
+// CHECK:             "offset": "0x2c"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "bo4",
 // CHECK:             "memory-connection": "HOST",
 // CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x30"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo5",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x38"
+// CHECK:             "type": "void*",
+// CHECK:             "offset": "0x34"
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "instances": [
