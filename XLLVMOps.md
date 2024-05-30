@@ -659,6 +659,57 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.vmax.lt16` (::xilinx::xllvm::VectorMaxLt16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 16-bit signless integer values of length 32
+| `rhs` | vector of 16-bit signless integer values of length 32
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vmax.lt32` (::xilinx::xllvm::VectorMaxLt32IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16
+| `rhs` | vector of 32-bit signless integer values of length 16
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vmax.lt8` (::xilinx::xllvm::VectorMaxLt8IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 8-bit signless integer values of length 64
+| `rhs` | vector of 8-bit signless integer values of length 64
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.vmax.ltbf16` (::xilinx::xllvm::VectorMaxLtBf16IntrOp)
 
 #### Operands:
