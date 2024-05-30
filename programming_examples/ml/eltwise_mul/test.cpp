@@ -143,14 +143,14 @@ int main(int argc, const char *argv[]) {
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inout0 =
-      xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+      xrt::bo(device, INOUT0_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_inout1 =
-      xrt::bo(device, INOUT1_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+      xrt::bo(device, INOUT1_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   // Assumes trace will only be added to inout2
   auto bo_inout2 =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -209,8 +209,9 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
+    unsigned int opcode = 3;
     auto run =
-        kernel(bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
+        kernel(opcode, bo_instr, instr_v.size(), bo_inout0, bo_inout1, bo_inout2);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout2.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
