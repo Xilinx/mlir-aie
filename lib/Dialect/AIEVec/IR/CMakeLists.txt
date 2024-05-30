@@ -14,6 +14,7 @@ add_mlir_dialect_library(MLIRAIEVecDialect
 
   DEPENDS
   MLIRAIEVecOpsIncGen
+  MLIRAIEVecAttributesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
