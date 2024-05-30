@@ -92,11 +92,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
         
         # wts
-        wts_OF_L3L1 = object_fifo("wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty)
-        # wts_buf_01 = object_fifo("wts_buf_01", ComputeTile, [ComputeTile], 1, weightsLayer1_ty)
-        # wts_buf_02 = object_fifo("wts_buf_02", ComputeTile, [ComputeTile], 1, weightsLayer2_ty)
-        # wts_buf_03 = object_fifo("wts_buf_03", ComputeTile, [ComputeTile], 1, weightsLayer3_ty)
-        # object_fifo_link(wts_OF_L3L2, [wts_buf_01, wts_buf_02, wts_buf_03])
+        wts_OF_L3L1 = object_fifo("wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty)
         
         # Output
         act_out = object_fifo("act_out", ComputeTile, [ShimTile], 1, tensorLayer3Out_ty)
@@ -116,7 +112,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
             # acquire weights and rtps once
             weightsAllLayers = wts_OF_L3L1.acquire(ObjectFifoPort.Consume, 1)
             
-            weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL1OutC * tensorL1InC], dtype=int8_ty, shift=0)
+            weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL1OutC * tensorL1InC], shift=0)
             weightsLayer2 = memref_view(weightsAllLayers.output, [3 * 3 * tensorL2OutC * 1], dtype=int8_ty, shift=1 * 1 * tensorL1OutC * tensorL1InC)
             weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL3OutC * tensorL3InC], dtype=int8_ty, shift=(1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1))
             #weightsLayer1 = memref_view(weightsAllLayers, [1 * 1 * tensorL1OutC * tensorL1InC], None, 0)
@@ -252,7 +248,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
                 sizes=[1, 1, 1, activationsOutSize32b],
             )
             npu_dma_memcpy_nd(
-                metadata="wts_OF_L3L2",
+                metadata="wts_OF_L3L1",
                 bd_id=1,
                 mem=weightsFromL3,
                 sizes=[1, 1, 1, totalWeightsSize32b],

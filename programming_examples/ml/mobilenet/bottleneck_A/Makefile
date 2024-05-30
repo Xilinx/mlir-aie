@@ -13,7 +13,7 @@ mlirFileName = aie2_bottleneckA
 stride = 2
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
-all: build/conv2dk1_fused_relu.o build/conv2dk3_dw.o build/conv2dk1_i8.o  build/final.xclbin
+all: build/final.xclbin
 
 build/${mlirFileName}.mlir: ${srcdir}/${mlirFileName}.py
 	mkdir -p ${@D}
@@ -27,10 +27,14 @@ build/conv2dk1_fused_relu.o: conv2dk1.cc
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o ${@F}
 #	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DINT8_ACT -c $< -o $@
 
-build/conv2dk3_dw.o: conv2dk3_dw.cc
+build/conv2dk3_dw_stride2.o: conv2dk3_dw.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -DSTRIDE2 -c $< -o ${@F}
 #	xchesscc -d ${CHESSCC2_FLAGS} -DSCALAR -DUINT8_ACT -DSTRIDE2 -c $< -o $@
+
+build/conv2dk3_dw_stride1.o: conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DSCALAR -c $< -o ${@F}
 
 build/conv2dk1_skip.o: bn_conv2dk1_skip.cc
 	mkdir -p ${@D}
@@ -40,15 +44,19 @@ build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS}  -DSCALAR -c $< -o ${@F}
 
-build/combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw.o build/conv2dk1_i8.o  
+build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1i8.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o  
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1skip.a:  build/conv2dk1_fused_relu.o build/conv2dk3_dw.o build/conv2dk1_skip.o
+build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1i8.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_i8.o  
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/final.xclbin: build/${mlirFileName}.mlir build/combined_con2dk1fusedrelu_conv2dk3dw_conv2dk1i8.a 
+build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a:  build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_skip.o
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+build/final.xclbin: build/${mlirFileName}.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1i8.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1i8.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
