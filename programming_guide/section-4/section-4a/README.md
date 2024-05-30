@@ -24,7 +24,8 @@ Adding the application timer is as simple as noting a start and stop time surrou
 
 ```c++
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    unsigned int opcode = 3;
+    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
 
