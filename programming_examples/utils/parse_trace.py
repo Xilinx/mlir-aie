@@ -702,8 +702,42 @@ def parse_mlir_trace_events(lines):
                 pid_events[1][key][5] = (value >> 8) & 0xFF
                 pid_events[1][key][6] = (value >> 16) & 0xFF
                 pid_events[1][key][7] = (value >> 24) & 0xFF
-
-            # TODO intfc and memtile event 0, 1 needs to also be defined
+            # memtile event 0
+            elif address == 0x940E0:  # 606432
+                if pid_events[3].get(key) == None:
+                    pid_events[3][key] = [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ]  # TODO no better way to init this?
+                # print("Trace event 0 configured to be ",hex(value))
+                pid_events[3][key][0] = value & 0xFF
+                pid_events[3][key][1] = (value >> 8) & 0xFF
+                pid_events[3][key][2] = (value >> 16) & 0xFF
+                pid_events[3][key][3] = (value >> 24) & 0xFF
+            # memtile event 1
+            elif address == 0x940E4:  # 606436
+                if pid_events[3].get(key) == None:
+                    pid_events[3][key] = [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ]  # TODO no better way to init this?
+                pid_events[3][key][4] = value & 0xFF
+                pid_events[3][key][5] = (value >> 8) & 0xFF
+                pid_events[3][key][6] = (value >> 16) & 0xFF
+                pid_events[3][key][7] = (value >> 24) & 0xFF
+            # TODO intfc event 0, 1 needs to also be defined
 
     # print("Found labels:\n")
     # for j in pid_events:
@@ -750,7 +784,9 @@ def lookup_event_name_by_type(trace_type, code):
     # Mem traces
     elif trace_type == 1:
         # TODO Need to define these
-        if code == 21:  # x15
+        if code == 0x1:
+            event = "True"
+        elif code == 21:  # x15
             event = "DMA s2mm 0 start bd"
         elif code == 22:  # x16
             event = "DMA s2mm 1 start bd"
@@ -778,6 +814,28 @@ def lookup_event_name_by_type(trace_type, code):
             event = "DMA s2mm 0 stalled lock acquire"
         elif code == 34:  # x22
             event = "DMA s2mm 1 stalled lock acquire"
+        else:
+            event = "Unknown"
+    # memtile traces
+    elif trace_type == 3:
+        if code == 0x1:
+            event = "True"
+        elif code == 80:  # 0x50
+            event = "PortRunning0"
+        elif code == 84:  # 0x54
+            event = "PortRunning1"
+        elif code == 88:  # 0x58
+            event = "PortRunning2"
+        elif code == 92:  # 0x5C
+            event = "PortRunning3"
+        elif code == 96:  # 0x60
+            event = "PortRunning4"
+        elif code == 100:  # 0x64
+            event = "PortRunning5"
+        elif code == 104:  # 0x68
+            event = "PortRunning6"
+        elif code == 108:  # 0x6C
+            event = "PortRunning7"
         else:
             event = "Unknown"
     else:
