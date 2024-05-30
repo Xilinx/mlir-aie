@@ -341,6 +341,39 @@ def VectorExtractElem32I512IntrOp :
 
 // ----- MAX ELEMENT -----
 
+def VectorMaxLt8IntrOp :
+    AIEVec2_IntrOp<"vmax.lt8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[2], [I32]>]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[64], [I8]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMaxLt16IntrOp :
+    AIEVec2_IntrOp<"vmax.lt16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [I16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMaxLt32IntrOp :
+    AIEVec2_IntrOp<"vmax.lt32",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[16], [I32]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$cmp)> ;
+
 def VectorMaxLtBf16IntrOp :
     AIEVec2_IntrOp<"vmax.ltbf16",
         [TypeIs<"res",

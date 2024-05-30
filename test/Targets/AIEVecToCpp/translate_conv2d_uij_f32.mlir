@@ -1,3 +1,12 @@
+//===- translate_conv2d_uij_f32.mlir ---------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+//
+//===----------------------------------------------------------------------===//
 // RUN: aie-translate --aievec-to-cpp %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: void conv2d_0(float * restrict v6, size_t m1, size_t m2, float * restrict v7, size_t m3, float * restrict v8, size_t m4, size_t m5) {

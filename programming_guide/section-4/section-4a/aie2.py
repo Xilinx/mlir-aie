@@ -1,9 +1,10 @@
+# section-4/section-4a/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 import sys
 
@@ -17,7 +18,7 @@ import aie.utils.trace as trace_utils
 
 def my_vector_scalar():
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         memRef_ty = T.memref(1024, T.i32())
 

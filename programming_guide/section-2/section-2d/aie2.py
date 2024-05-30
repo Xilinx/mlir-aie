@@ -1,9 +1,10 @@
+# section-2/section-2d/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
@@ -66,7 +67,11 @@ def mlir_aie_design():
                     yield_([])
 
     # Print the mlir conversion
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
 
 
 # Call design function to generate mlir code to stdout

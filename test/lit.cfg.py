@@ -127,6 +127,7 @@ if config.xrt_lib_dir:
     xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
         config.xrt_include_dir, config.xrt_lib_dir
     )
+    config.available_features.add("xrt")
     try:
         xbutil = os.path.join(config.xrt_bin_dir, "xbutil")
         result = subprocess.run(
