@@ -726,6 +726,73 @@ Types and operations for external LLVM dialect
 | `res` | LLVM dialect-compatible type
 
 
+### `xllvm.intr.aie2.vmin.ge16` (::xilinx::xllvm::VectorMinGe16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 16-bit signless integer values of length 32
+| `rhs` | vector of 16-bit signless integer values of length 32
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vmin.ge32` (::xilinx::xllvm::VectorMinGe32IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16
+| `rhs` | vector of 32-bit signless integer values of length 16
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vmin.ge8` (::xilinx::xllvm::VectorMinGe8IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 8-bit signless integer values of length 64
+| `rhs` | vector of 8-bit signless integer values of length 64
+| `cmp` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
+### `xllvm.intr.aie2.vmin.gebf16` (::xilinx::xllvm::VectorMinGeBf16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32
+| `rhs` | vector of bfloat16 type values of length 32
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type
+
+
 ### `xllvm.intr.aie2.vshift.bf512.bf512` (::xilinx::xllvm::VectorShiftBF512BF512IntrOp)
 
 #### Operands:
