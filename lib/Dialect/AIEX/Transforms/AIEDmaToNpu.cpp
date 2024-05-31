@@ -372,7 +372,7 @@ public:
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
     uint32_t addr = (col << 25) | (0x1D004 + op.getId() * 0x20);
-    rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, 0);
+    rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
     rewriter.create<NpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
                                             issue_token, repeat_count, bd_id);
