@@ -46,7 +46,9 @@ class AIE_Application:
     def run(self):
         self.insts_buffer.sync_to_device()
         h = self.call()
-        h.wait()
+        r = h.wait()
+        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise Exception(f"Kernel returned {r}")
 
     def call(self):
         opcode = 3

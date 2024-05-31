@@ -177,7 +177,11 @@ int main(int argc, const char *argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
-    run.wait();
+    ert_cmd_state r = run.wait();
+    if (r != ERT_CMD_STATE_COMPLETED) {
+      std::cout << "kernel did not complete. returned status: " << r << "\n";
+      return 1;
+    }
     auto stop = std::chrono::high_resolution_clock::now();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
