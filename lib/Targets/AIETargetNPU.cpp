@@ -56,11 +56,11 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   words[0] = (opCode & 0xff);
 
   words[1] = 4 * 4; // Operation Size
+
   words[2] |= op.getDirection() & 0xff;
   words[2] |= (op.getRow() & 0xff) << 8;
   words[2] |= (op.getColumn() & 0xff) << 16;
 
-  words[3] = op.getDirection() & 0xff;
   words[3] |= (op.getRowNum() & 0xff) << 8;
   words[3] |= (op.getColumnNum() & 0xff) << 16;
   words[3] |= (op.getChannel() & 0xff) << 24;
@@ -114,7 +114,7 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
 
   // RegOff
   auto bd_id = op.getBdId();
-  uint32_t bd_addr = 0x1D000 + bd_id * 0x20;
+  uint32_t bd_addr = (op.getColumn() << 25) | (0x1D000 + bd_id * 0x20);
   words[2] = bd_addr; // ADDR
   words[3] = 12 * 4;  // Operation Size
 
