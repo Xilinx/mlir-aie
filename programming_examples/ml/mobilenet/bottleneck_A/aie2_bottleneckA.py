@@ -102,7 +102,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
                 weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL3OutC * tensorL3InC], shift=(1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1))
                 scaleLayer1 = 8 #memref.load(rtpComputeTile, [0])
                 scaleLayer2 = 8 #memref.load(rtpComputeTile, [1])
-                scaleLayer3 = 10 # memref.load(rtpComputeTile, [2])
+                scaleLayer3 = 11 # memref.load(rtpComputeTile, [2])
                 if (withSkip):
                     skipScaleLayer3 = 0 # memref.load(rtpComputeTile, [3])
 
@@ -228,7 +228,8 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
 
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=24)
+    # mobilenetV3BottleneckA(withSkip=False, depthWiseStride=2, tensorInW=112, tensorInH=112 ,tensorInC=16,tensorOutC=24,depthWiseChannels=64)
+    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72)
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

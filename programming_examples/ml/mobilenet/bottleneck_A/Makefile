@@ -44,11 +44,11 @@ build/conv2dk1_i8.o: conv2dk1_i8.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS}  -DSCALAR -c $< -o ${@F}
 
-build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1i8.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o  
+build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o  
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1i8.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_i8.o  
+build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_i8.o  
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
@@ -56,7 +56,7 @@ build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a:  build/conv2dk
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/final.xclbin: build/${mlirFileName}.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1i8.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1i8.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
+build/final.xclbin: build/${mlirFileName}.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
