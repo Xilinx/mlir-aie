@@ -27,7 +27,7 @@ module {
       %c1_i32 = arith.constant 1 : i32
       // CHECK: 00000001
       // CHECK: 00000000
-      // CHECK: 0001D0C0
+      // CHECK: 0601D0C0
       // CHECK: 00000030
       // CHECK: 00000001
       // CHECK: 00000002
@@ -71,7 +71,7 @@ module {
       aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
 
       // CHECK: 00030401
-      // CHECK: 05010201
+      // CHECK: 05010200
       aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
       return
     }
