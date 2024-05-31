@@ -27,9 +27,6 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
-
 namespace {
 
 // Example:
@@ -55,7 +52,7 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   // Wait until the number of BDs in the same channel of all tiles equal to 0
   words[0] = (opCode & 0xff);
 
-  words[1] = 4 * 4; // Operation Size
+  words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
   words[2] |= op.getDirection() & 0xff;
   words[2] |= (op.getRow() & 0xff) << 8;
@@ -69,17 +66,18 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 6);
+  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
 
   // XAIE_IO_WRITE
   uint32_t opCode = 0;
   words[0] = (opCode & 0xff);
   words[1] = 0;
-  words[2] = ((op.getColumn() & 0xff) << XAIE_COL_SHIFT) |
-             ((op.getRow() & 0xff) << XAIE_ROW_SHIFT) |
+  words[2] = ((op.getColumn() & 0xff) << tm.getColumnShift()) |
+             ((op.getRow() & 0xff) << tm.getRowShift()) |
              (op.getAddress() & 0xFFFFF); // ADDR_LOW
   words[3] = 0;
-  words[4] = op.getValue(); // Value
-  words[5] = 6 * 4;         // Operation Size
+  words[4] = op.getValue();                   // Value
+  words[5] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
@@ -90,7 +88,7 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
   // XAIE_IO_CUSTOM_OP_BEGIN + 1
   uint32_t opCode = 0x81;
   words[0] = (opCode & 0xff);
-  words[1] = 12 * 4;
+  words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
   words[6] = op.getAddr();
   words[7] = 0;
@@ -106,6 +104,7 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
                            NpuWriteBdExShimTileOp op) {
 
   auto words = reserveAndGetTail(instructions, 12);
+  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
 
   // XAIE_IO_BLOCKWRITE
   uint32_t opCode = 1;
@@ -114,9 +113,10 @@ void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
 
   // RegOff
   auto bd_id = op.getBdId();
-  uint32_t bd_addr = (op.getColumn() << 25) | (0x1D000 + bd_id * 0x20);
-  words[2] = bd_addr; // ADDR
-  words[3] = 12 * 4;  // Operation Size
+  uint32_t bd_addr =
+      (op.getColumn() << tm.getColumnShift()) | (0x1D000 + bd_id * 0x20);
+  words[2] = bd_addr;                         // ADDR
+  words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   // DMA_BDX_0
   words[4] = op.getBufferLength();
