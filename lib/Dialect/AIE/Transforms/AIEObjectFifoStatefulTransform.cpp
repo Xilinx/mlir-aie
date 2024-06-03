@@ -246,7 +246,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (auto consumerTileOp =
                   dyn_cast<TileOp>(consumerTile.getDefiningOp()))
             if (share_direction == -1)
-              ///   * -1 if the shared memory module is that of the first input tile,
+              ///   * -1 if the shared memory module is that of the first input
+              ///   tile,
               ///   * 1 if it is that of the second input tile
               desiredSharedModuleIsShared =
                   isSharedMemory(consumerTileOp, createOp.getProducerTileOp(),
