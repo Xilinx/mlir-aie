@@ -248,8 +248,9 @@ struct AIEObjectFifoStatefulTransformPass
             if (share_direction == -1)
               ///   * -1 if the shared memory module is that of the first input tile,
               ///   * 1 if it is that of the second input tile
-              desiredSharedModuleIsShared = isSharedMemory(consumerTileOp,
-                              createOp.getProducerTileOp(), &newShareDirection);
+              desiredSharedModuleIsShared =
+                  isSharedMemory(consumerTileOp, createOp.getProducerTileOp(),
+                                 &newShareDirection);
         }
         if (desiredSharedModuleIsShared) {
           if (share_direction == newShareDirection)
