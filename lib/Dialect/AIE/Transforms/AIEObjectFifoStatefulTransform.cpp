@@ -652,6 +652,13 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
+    if (!dims.getValue().empty()) {
+      lenOut = 1;
+      for (auto dim = dims.begin(); dim != dims.end(); ++dim) {
+        lenOut *= dim->getSize();
+      }
+    }
+
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
@@ -696,11 +703,13 @@ struct AIEObjectFifoStatefulTransformPass
           }
         } else {
           if (target != op) {
-            auto targetFifo =
-                llvm::cast<AIEObjectFifoType>(target.getElemType());
-            auto targetElemType =
-                llvm::cast<MemRefType>(targetFifo.getElementType());
-            lenOut = targetElemType.getNumElements();
+            if (dims.getValue().empty()) {
+              auto targetFifo =
+                  llvm::cast<AIEObjectFifoType>(target.getElemType());
+              auto targetElemType =
+                  llvm::cast<MemRefType>(targetFifo.getElementType());
+              lenOut = targetElemType.getNumElements();
+            }
           }
         }
 
@@ -741,10 +750,20 @@ struct AIEObjectFifoStatefulTransformPass
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
 
+    // check for repeat count in objfifo dims
+    int repeatCount = 1;
+    if (!dims.getValue().empty()) {
+      auto highestStride = dims.getValue().begin()->getStride();
+      if (highestStride == 0) {
+        repeatCount = dims.getValue().begin()->getSize();
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(), dims.getValue().drop_front(1));
+      }
+    }
+
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
+                               channelIndex, repeatCount, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
