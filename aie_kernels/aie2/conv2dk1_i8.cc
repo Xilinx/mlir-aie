@@ -23,6 +23,10 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+//*****************************************************************************
+// conv2d 1x1 - scalar
+// act: uint8, wts: int8, out: uint8
+//*****************************************************************************
 void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
                         const int32_t input_width, const int32_t input_channels,
                         const int32_t output_channels, const int scale) {
@@ -33,14 +37,14 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
   for (oc = 0; oc < output_channels / 8; oc++) {
     for (x = 0; x < input_width; x++) { // col of output image
       for (oc8 = 0; oc8 < 8; oc8++) {
-        int64_t sum = 0;
-        int64_t sum_srs = 0;
+        int sum = 0;
+        int sum_srs = 0;
 
         for (ic = 0; ic < input_channels / 8; ic++) {
           for (ic8 = 0; ic8 < 8; ic8++) {
-            unsigned val = input[(ic * input_width * 8) + (x * 8) + ic8];
-            int k = kernels[(oc * (input_channels / 8) * 64) + (ic * 64) +
-                            (ic8 * 8) + oc8];
+            uint8_t val = input[(ic * input_width * 8) + (x * 8) + ic8];
+            int8_t k = kernels[(oc * (input_channels / 8) * 64) + (ic * 64) +
+                               (ic8 * 8) + oc8];
             sum += val * k;
           }
         }

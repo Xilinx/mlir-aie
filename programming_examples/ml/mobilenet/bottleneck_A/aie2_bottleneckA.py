@@ -45,10 +45,10 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         tensorLayer1Out_ty = MemRefType.get((tensorInW, 1, tensorL1OutC),uint8_ty)
         tensorLayer2In_ty = MemRefType.get((tensorInW, 1, tensorL2InC), uint8_ty)
         weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL2OutC * 1,), int8_ty)
-        tensorLayer2Out_ty = MemRefType.get((tensorInW//depthWiseStride, 1, tensorL2OutC),uint8_ty)
-        tensorLayer3In_ty = MemRefType.get((tensorInW//depthWiseStride, 1, tensorL3InC), uint8_ty)
+        tensorLayer2Out_ty = MemRefType.get((tensorOutW, 1, tensorL2OutC),uint8_ty)
+        tensorLayer3In_ty = MemRefType.get((tensorOutW, 1, tensorL3InC), uint8_ty)
         weightsLayer3_ty = MemRefType.get((1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty)
-        tensorLayer3Out_ty = MemRefType.get((tensorInW//depthWiseStride, 1, tensorL3OutC),int8_ty)
+        tensorLayer3Out_ty = tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC),int8_ty)
 
         weightsAllLayers_ty = MemRefType.get((1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1 + 1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty)
         
@@ -93,16 +93,16 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         def core_body():
 
             for _ in for_(1): #for _ in for_(sys.maxsize):
-
+                
                 # acquire weights and rtps NOTE: needs to become once so outside for loop
                 weightsAllLayers = wts_OF_L3L1.acquire(ObjectFifoPort.Consume, 1)
             
                 weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL1OutC * tensorL1InC], shift=0)
                 weightsLayer2 = memref_view(weightsAllLayers.output, [3 * 3 * tensorL2OutC * 1], shift=1 * 1 * tensorL1OutC * tensorL1InC)
                 weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL3OutC * tensorL3InC], shift=(1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1))
-                scaleLayer1 = 8 #memref.load(rtpComputeTile, [0])
+                scaleLayer1 = 7 #memref.load(rtpComputeTile, [0])
                 scaleLayer2 = 8 #memref.load(rtpComputeTile, [1])
-                scaleLayer3 = 11 # memref.load(rtpComputeTile, [2])
+                scaleLayer3 = 9 # memref.load(rtpComputeTile, [2])
                 if (withSkip):
                     skipScaleLayer3 = 0 # memref.load(rtpComputeTile, [3])
 
@@ -133,7 +133,8 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
                 act_out.release(ObjectFifoPort.Produce, 1)
                 
                 # middle: layer 3 1x1 conv and layer 2 3x3 dw and layer 1 1x1 conv
-                for _ in for_(tensorOutH - 2):
+                
+                for _ in for_(tensorOutH - (2 if (depthWiseStride == 1) else 1)):    
                     if (withSkip):
                         actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, 2)
                         actOutLayer1Row = of_act_1_2.acquire(ObjectFifoPort.Produce, 1)
@@ -167,25 +168,23 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
                     yield_([])
                 
                 # last part
-                actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 3 if (depthWiseStride == 2) else 2)
-                actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                if (depthWiseStride == 2):
-                    call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[2], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 2, scaleLayer2, 0]) # where do we plug in stride
-                else:
+                if (depthWiseStride == 1):
+                    actInLayer2Rows = of_act_1_2.acquire(ObjectFifoPort.Consume, 2)
+                    actOutLayer2Row = of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
                     call(conv2dk3_dw_relu_ui8_ui8, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[1], weightsLayer2, actOutLayer2Row, tensorInW, 1, tensorL2OutC, 3, 3, 2, scaleLayer2, 0]) # where do we plug in stride
-                of_act_1_2.release(ObjectFifoPort.Consume, 3 if (depthWiseStride == 2) else 2) #if (depthWiseStride == 2) : 2 else 1
-                of_act_2_3.release(ObjectFifoPort.Produce, 1)
+                    of_act_1_2.release(ObjectFifoPort.Consume, 3 if (depthWiseStride == 2) else 2) #if (depthWiseStride == 2) : 2 else 1
+                    of_act_2_3.release(ObjectFifoPort.Produce, 1)
                 
-                actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
-                actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                if (withSkip):
-                    actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
-                    call(conv2dk1_skip_ui8_i8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, actInLayer1Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3, skipScaleLayer3])
-                    act_in.release(ObjectFifoPort.Consume, 1)
-                else:
-                    call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
-                of_act_2_3.release(ObjectFifoPort.Consume, 1)
-                act_out.release(ObjectFifoPort.Produce, 1)
+                    actInLayer3Row = of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
+                    actOutLayer3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
+                    if (withSkip):
+                        actInLayer1Row = act_in.acquire(ObjectFifoPort.Consume, 1)
+                        call(conv2dk1_skip_ui8_i8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, actInLayer1Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3, skipScaleLayer3])
+                        act_in.release(ObjectFifoPort.Consume, 1)
+                    else:
+                        call(conv2dk1_ui8_i8, [actInLayer3Row, weightsLayer3, actOutLayer3Row, tensorOutW, tensorL3InC, tensorL3OutC, scaleLayer3])
+                    of_act_2_3.release(ObjectFifoPort.Consume, 1)
+                    act_out.release(ObjectFifoPort.Produce, 1)
                 
                 wts_OF_L3L1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
@@ -228,8 +227,8 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
 
 
 with mlir_mod_ctx() as ctx:
-    # mobilenetV3BottleneckA(withSkip=False, depthWiseStride=2, tensorInW=112, tensorInH=112 ,tensorInC=16,tensorOutC=24,depthWiseChannels=64)
-    mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72)
+    mobilenetV3BottleneckA(withSkip=False, depthWiseStride=2, tensorInW=8, tensorInH=8, tensorInC=8,tensorOutC=8,depthWiseChannels=8) # bottleneck 1
+    # mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72) # bottleneck 2
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

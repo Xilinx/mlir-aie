@@ -66,5 +66,8 @@ clean:
 		chess* *.o insts.txt \
 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
 
-run_py: build/final.xclbin
+run_py_1: build/final.xclbin
+	${powershell} python3 ${srcdir}/test_noskip_stride2.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+
+run_py_2: build/final.xclbin
 	${powershell} python3 ${srcdir}/test_skip.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
