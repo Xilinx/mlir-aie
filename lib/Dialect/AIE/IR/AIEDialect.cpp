@@ -293,7 +293,7 @@ MemRefType AIEObjectFifoSubviewType::getElementType() {
 ///         ::= `objectfifosubview` `<` type `>`
 static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
                                          StringRef name, Type &result) {
-  if (name.equals("objectfifo")) {
+  if (name == "objectfifo") {
     MemRefType elementType;
     SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
@@ -311,7 +311,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
     return result = AIEObjectFifoType::get(elementType), success();
   }
 
-  if (name.equals("objectfifosubview")) {
+  if (name == "objectfifosubview") {
     if (parser.parseLess())
       return failure();
 

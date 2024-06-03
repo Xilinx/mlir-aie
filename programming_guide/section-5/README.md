@@ -31,7 +31,8 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector | 
 | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor | 
 | [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector | 
-| [Vector Vector Multiply](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a vector |
+| [Vector Vector Modulo](../../programming_examples/basic/vector_vector_modulo/) | i32 | Returns vector % vector |
+| [Vector Vector Multiply](../../programming_examples/basic/vector_vector_mul/) | i32 | Returns a vector multiplied by a vector |
 | [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector | 
 | [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector | 
 | [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 

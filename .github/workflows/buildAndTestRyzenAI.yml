@@ -55,7 +55,7 @@ env:
 jobs:
   build-tests:
     name: Run Tests on Ryzen AI
-    runs-on: amd8700g
+    runs-on: amd7940hs
     steps:
       - uses: actions/checkout@v3
         with:
@@ -164,5 +164,6 @@ jobs:
 
           ninja install
           ninja check-reference-designs
+          ninja check-programming-guide
 
           popd

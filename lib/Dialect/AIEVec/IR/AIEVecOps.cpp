@@ -4,25 +4,28 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2022 Xilinx Inc.
+// (c) Copyright 2022-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 // This file implements AIE vector op printing, pasing, and verification.
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
-#include "aie/Dialect/AIEVec/AIEVecUtils.h"
-
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "llvm/ADT/TypeSwitch.h"
+
+#include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aievec;
 
+#include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
 #include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
@@ -31,6 +34,10 @@ using namespace xilinx::aievec;
 
 void AIEVecDialect::initialize() {
   registerTypes();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc"
+      >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"
@@ -1620,8 +1627,105 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 
+// This verification function makes sure that the shuffle mode supports the
+// number and type of operands provided.
+LogicalResult ShuffleOp::verify() {
+  unsigned modeBitWidth;
+  bool requireRhs = true;
+  auto mode = getMode();
+  switch (mode) {
+  case ShuffleMode::T8_8X8:  // 35
+  case ShuffleMode::T8_16X4: // 36
+  case ShuffleMode::T8_4X16: // 37
+  case ShuffleMode::T8_8X4:  // 46
+  case ShuffleMode::T8_4X8:  // 47
+    requireRhs = false;
+    LLVM_FALLTHROUGH;
+  case ShuffleMode::T8_64X2_LO: //  0
+  case ShuffleMode::T8_64X2_HI: //  1
+  case ShuffleMode::T8_2X64_LO: // 20
+  case ShuffleMode::T8_2X64_HI: // 21
+    modeBitWidth = 8u;
+    break;
+  case ShuffleMode::T16_8X4:      // 28
+  case ShuffleMode::T16_4X8:      // 29
+  case ShuffleMode::T16_1X2_flip: // 38
+  case ShuffleMode::T16_4X4:      // 39
+  case ShuffleMode::T16_4X2:      // 40
+  case ShuffleMode::T16_2X4:      // 41
+  case ShuffleMode::T16_8X2:      // 42
+  case ShuffleMode::T16_2X8:      // 43
+  case ShuffleMode::T16_16X2:     // 44
+  case ShuffleMode::T16_2X16:     // 45
+    requireRhs = false;
+    LLVM_FALLTHROUGH;
+  case ShuffleMode::T16_32X2_LO: //  2
+  case ShuffleMode::T16_32X2_HI: //  3
+  case ShuffleMode::T16_2X32_LO: // 18
+  case ShuffleMode::T16_2X32_HI: // 19
+  case ShuffleMode::T16_16X4_LO: // 24
+  case ShuffleMode::T16_16X4_HI: // 25
+  case ShuffleMode::T16_4X16_LO: // 26
+  case ShuffleMode::T16_4X16_HI: // 27
+    modeBitWidth = 16u;
+    break;
+  case ShuffleMode::T32_4X4: // 34
+    requireRhs = false;
+    LLVM_FALLTHROUGH;
+  case ShuffleMode::T32_16X2_LO: //  4
+  case ShuffleMode::T32_16X2_HI: //  5
+  case ShuffleMode::T32_2X16_LO: // 16
+  case ShuffleMode::T32_2X16_HI: // 17
+  case ShuffleMode::T32_8X4_LO:  // 30
+  case ShuffleMode::T32_8X4_HI:  // 31
+  case ShuffleMode::T32_4X8_LO:  // 32
+  case ShuffleMode::T32_4X8_HI:  // 33
+    modeBitWidth = 32u;
+    break;
+  case ShuffleMode::T64_8X2_LO: //  6
+  case ShuffleMode::T64_8X2_HI: //  7
+  case ShuffleMode::T64_2X8_LO: // 14
+  case ShuffleMode::T64_2X8_HI: // 15
+    modeBitWidth = 64u;
+    break;
+  case ShuffleMode::T128_4X2_LO: //  8
+  case ShuffleMode::T128_4X2_HI: //  9
+  case ShuffleMode::T128_2X4_LO: // 12
+  case ShuffleMode::T128_2X4_HI: // 13
+    modeBitWidth = 128u;
+    break;
+  case ShuffleMode::T256_2X2_LO: // 10
+  case ShuffleMode::T256_2X2_HI: // 11
+    modeBitWidth = 256u;
+    break;
+  case ShuffleMode::T512_1X2_LO: // 22
+  case ShuffleMode::T512_1X2_HI: // 23
+    modeBitWidth = 512u;
+    break;
+  }
+
+  // Verify number of operands
+  if (requireRhs && !getRhs())
+    return emitError() << "shuffle mode '" << stringifyEnum(mode)
+                       << "' requires a second operand";
+
+  if (!requireRhs && getRhs())
+    return emitError() << "shuffle mode '" << stringifyEnum(mode)
+                       << "' does not admit a second operand";
+
+  // Verify vector element type
+  auto elemBitWidth =
+      cast<VectorType>(getLhs().getType()).getElementTypeBitWidth();
+  if (modeBitWidth != elemBitWidth)
+    return emitError() << "shuffle mode '" << stringifyEnum(mode)
+                       << "' requires vectors of " << modeBitWidth
+                       << "-bit elements";
+
+  return success();
+}
+
 // Print out Shuffle op.
-void ShuffleOp::print(OpAsmPrinter &p) {
+void LegacyShuffleOp::print(OpAsmPrinter &p) {
   // Print the source vector
   p << " " << getSource();
 
@@ -1633,7 +1737,7 @@ void ShuffleOp::print(OpAsmPrinter &p) {
 }
 
 // Verify Shuffle op.
-LogicalResult ShuffleOp::verify() {
+LogicalResult LegacyShuffleOp::verify() {
   // Verify the types
   VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
   VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
@@ -1660,7 +1764,8 @@ LogicalResult ShuffleOp::verify() {
 }
 
 // Parse Shuffle op.
-ParseResult ShuffleOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult LegacyShuffleOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::UnresolvedOperand source;
@@ -1885,6 +1990,9 @@ ParseResult MulConvOp::parse(OpAsmParser &parser, OperationState &result) {
 ParseResult FMAConvOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAConvOp(parser, result, true);
 }
+
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"

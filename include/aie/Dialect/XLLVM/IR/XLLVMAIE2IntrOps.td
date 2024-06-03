@@ -341,6 +341,39 @@ def VectorExtractElem32I512IntrOp :
 
 // ----- MAX ELEMENT -----
 
+def VectorMaxLt8IntrOp :
+    AIEVec2_IntrOp<"vmax.lt8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[2], [I32]>]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[64], [I8]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMaxLt16IntrOp :
+    AIEVec2_IntrOp<"vmax.lt16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [I16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMaxLt32IntrOp :
+    AIEVec2_IntrOp<"vmax.lt32",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[16], [I32]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$cmp)> ;
+
 def VectorMaxLtBf16IntrOp :
     AIEVec2_IntrOp<"vmax.ltbf16",
         [TypeIs<"res",
@@ -350,5 +383,50 @@ def VectorMaxLtBf16IntrOp :
         >], /*numResults=*/2>,
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
                    VectorOfLengthAndType<[32], [BF16]>:$rhs)>;
+
+// ----- MIN ELEMENT -----
+
+def VectorMinGe8IntrOp :
+    AIEVec2_IntrOp<"vmin.ge8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[2], [I32]>]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[64], [I8]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMinGe16IntrOp :
+    AIEVec2_IntrOp<"vmin.ge16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [I16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMinGe32IntrOp :
+    AIEVec2_IntrOp<"vmin.ge32",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[16], [I32]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$cmp)> ;
+
+def VectorMinGeBf16IntrOp :
+    AIEVec2_IntrOp<"vmin.gebf16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [BF16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs)> ;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

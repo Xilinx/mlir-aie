@@ -460,8 +460,9 @@ struct FlattenMultDimTransferWritePattern
   }
 };
 
-// This pattern takes out an implicit transposition of the `rhs` operand in a
-// gemm-like contraction op, making it an explicit `vector.transpose` op.
+// This pattern extracts an implicit transposition of the 2 innermost
+// dimensions of `rhs` in a gemm-like contraction op, making it an explicit
+// `vector.transpose` op.
 // If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
 // transposition will be hoisted above the widening op.
 struct ExtractTransposeFromContractionOp
