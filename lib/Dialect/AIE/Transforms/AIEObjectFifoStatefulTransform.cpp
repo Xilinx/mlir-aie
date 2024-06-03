@@ -747,8 +747,7 @@ struct AIEObjectFifoStatefulTransformPass
     if (op.getMemtileRepeat().has_value())
       repeat_count = op.getMemtileRepeat().value();
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeat_count, bdBlock,
-                               endBlock);
+                               channelIndex, repeat_count, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
