@@ -157,10 +157,17 @@ void updateCoordinates(int &xCur, int &yCur, WireBundle move) {
 // Build a packet-switched route from the sourse to the destination with the
 // given ID. The route is recorded in the given map of switchboxes.
 void buildPSRoute(
-    int xSrc, int ySrc, Port sourcePort, int xDest, int yDest, Port destPort,
-    int flowID,
+    TileOp srcTile, Port sourcePort, TileOp destTile, Port destPort, int flowID,
     DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> &switchboxes,
     bool reverseOrder = false) {
+
+  int xSrc = srcTile.colIndex();
+  int ySrc = srcTile.rowIndex();
+  int xDest = destTile.colIndex();
+  int yDest = destTile.rowIndex();
+
+  const auto &targetModel = getTargetModel(srcTile);
+
   int xCur = xSrc;
   int yCur = ySrc;
   WireBundle curBundle = {};
@@ -212,6 +219,13 @@ void buildPSRoute(
 
       if (move == lastBundle)
         continue;
+
+      // If the source port is a trace port, we need to validate the destination
+      if (xCur == xSrc && yCur == ySrc &&
+          sourcePort.bundle == WireBundle::Trace &&
+          !targetModel.isValidTraceMaster(xSrc, ySrc, move, curChannel)) {
+        continue;
+      }
 
       updateCoordinates(xCur, yCur, move);
 
@@ -320,22 +334,18 @@ struct AIERoutePacketFlowsPass
       Region &r = pktflow.getPorts();
       Block &b = r.front();
       int flowID = pktflow.IDInt();
-      int xSrc = 0, ySrc = 0;
-      Port sourcePort;
+      Port sourcePort, destPort;
+      TileOp srcTile, destTile;
 
       for (Operation &Op : b.getOperations()) {
         if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-          auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-          xSrc = srcTile.colIndex();
-          ySrc = srcTile.rowIndex();
+          srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
           sourcePort = pktSource.port();
         } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-          auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
-          int xDest = destTile.colIndex();
-          int yDest = destTile.rowIndex();
-          Port destPort = pktDest.port();
+          destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+          destPort = pktDest.port();
 
-          buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
+          buildPSRoute(srcTile, sourcePort, destTile, destPort, flowID,
                        switchboxes, true);
 
           // Assign "keep_pkt_header flag"

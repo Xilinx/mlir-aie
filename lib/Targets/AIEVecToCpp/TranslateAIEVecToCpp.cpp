@@ -1041,6 +1041,37 @@ static LogicalResult printOperation(CppEmitter &emitter,
 // Generate the shuffle intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ShuffleOp shuffleOp) {
+  Value lhs = shuffleOp.getLhs();
+  Value rhs = shuffleOp.getRhs();
+  aievec::ShuffleMode mode = shuffleOp.getMode();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*shuffleOp)))
+    return failure();
+
+  os << "shuffle";
+  os << "(";
+  if (!emitter.hasValueInScope(lhs))
+    return failure();
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  if (rhs) {
+    if (!emitter.hasValueInScope(rhs))
+      return failure();
+    os << emitter.getOrCreateName(rhs);
+    os << ", ";
+  }
+  os << "eShuffleMode::shuffle_T" << stringifyEnum(mode).substr(1);
+  os << ")";
+
+  return success();
+}
+
+// Generate the shuffle intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::LegacyShuffleOp shuffleOp) {
   Value source = shuffleOp.getSource();
   unsigned mode = shuffleOp.getMode();
 
@@ -3233,7 +3264,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 SelectOp, SRSOp, SubOp, SubElemOp, UPDOp, UPSOp, FMAElemOp,
                 MulElemOp, BroadcastOp, BroadcastScalarOp, MulConvOp, FMAConvOp,
                 ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp, NegOp, CmpOp, SelOp,
-                ExtElemOp, BxorOp, BnegOp, BandOp, BorOp, UnpackOp, MatMulOp>(
+                ExtElemOp, BxorOp, BnegOp, BandOp, BorOp, UnpackOp, MatMulOp,
+                LegacyShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
