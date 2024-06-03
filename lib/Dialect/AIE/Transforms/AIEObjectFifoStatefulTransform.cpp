@@ -1340,9 +1340,9 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-          if (createOp.getViaSharedMem().has_value())
-            createOp->emitWarning("No access to shared memory module; ignoring "
-                                  "`via_shared_mem`");
+        if (createOp.getViaSharedMem().has_value())
+          createOp->emitWarning("No access to shared memory module; ignoring "
+                                "`via_shared_mem`");
 
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
