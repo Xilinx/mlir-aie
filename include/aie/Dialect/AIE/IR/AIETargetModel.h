@@ -509,8 +509,7 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(int _cols)
-      : cols(_cols) {}
+  VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
 
   int columns() const override { return cols; }
 
