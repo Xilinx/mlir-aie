@@ -36,7 +36,7 @@ extern "C" {
   };                                                                           \
   typedef struct name name
 
-DEFINE_C_API_STRUCT(AieTargetModel, uint32_t);
+DEFINE_C_API_STRUCT(AieTargetModel, uint64_t);
 
 #undef DEFINE_C_API_STRUCT
 
