@@ -232,7 +232,7 @@ struct AIEObjectFifoStatefulTransformPass
   // tries to apply it. If the desired shared memory module is available to
   // both producer and consumer then it will be used, otherwise a warning is
   // emitted and the original shared memory module is used instead.
-  void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp, 
+  void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
                                           int &share_direction) {
     if (createOp.getViaSharedMem().has_value()) {
       int desiredSharedTile = createOp.getViaSharedMem().value();
