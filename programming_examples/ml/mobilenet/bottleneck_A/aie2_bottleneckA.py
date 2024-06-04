@@ -18,7 +18,7 @@ from aie.extras.dialects.ext.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 
-def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, tensorInH = 112, tensorInC = 16, depthWiseStride = 2, depthWiseChannels = 64, tensorOutC = 24, withSkip = False, enableTrace = False, trace_size = 16384, traceSizeInInt32s = 4096):
+def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, tensorInH = 112, tensorInC = 16, depthWiseStride = 2, depthWiseChannels = 64, tensorOutC = 24, withSkip = False, scaleFactor1 = 8, scaleFactor2 = 9, scaleFactor3 = 11, scaleFactorAdd = 0, enableTrace = False, trace_size = 16384, traceSizeInInt32s = 4096):
 
     tensorOutW = tensorInW // depthWiseStride
     tensorOutH = tensorInH // depthWiseStride
@@ -100,11 +100,11 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
                 weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL1OutC * tensorL1InC], shift=0)
                 weightsLayer2 = memref_view(weightsAllLayers.output, [3 * 3 * tensorL2OutC * 1], shift=1 * 1 * tensorL1OutC * tensorL1InC)
                 weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * tensorL3OutC * tensorL3InC], shift=(1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1))
-                scaleLayer1 = 7 #memref.load(rtpComputeTile, [0])
-                scaleLayer2 = 8 #memref.load(rtpComputeTile, [1])
-                scaleLayer3 = 9 # memref.load(rtpComputeTile, [2])
+                scaleLayer1 = memref.load(rtpComputeTile, [0]) # scaleFactor1
+                scaleLayer2 = memref.load(rtpComputeTile, [1]) # scaleFactor2
+                scaleLayer3 = memref.load(rtpComputeTile, [2]) # scaleFactor3
                 if (withSkip):
-                    skipScaleLayer3 = 0 # memref.load(rtpComputeTile, [3])
+                    skipScaleLayer3 = memref.load(rtpComputeTile, [3]) # scaleFactorAdd
 
                 # pre-amble 0: rows 0, 1 in layer 1 1x1 conv; row 0 in layer 2 3x3 dw; row 0 in layer 3 1x1 conv
                 actInLayer1Rows = act_in.acquire(ObjectFifoPort.Consume, 2)
@@ -200,10 +200,10 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
 
         @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=8)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=8)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=11)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=0)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=scaleFactor1)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=1, value=scaleFactor2)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=2, value=scaleFactor3)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=3, value=scaleFactorAdd)
             
             npu_dma_memcpy_nd(
                 metadata="act_in",
@@ -226,12 +226,12 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 
-with mlir_mod_ctx() as ctx:
-    mobilenetV3BottleneckA(withSkip=False, depthWiseStride=2, tensorInW=8, tensorInH=8, tensorInC=8,tensorOutC=8,depthWiseChannels=8) # bottleneck 1
-    # mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72) # bottleneck 2
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+# with mlir_mod_ctx() as ctx:
+#     mobilenetV3BottleneckA(withSkip=False, depthWiseStride=2, tensorInW=8, tensorInH=8, tensorInC=8,tensorOutC=8,depthWiseChannels=8) # bottleneck 1
+#     # mobilenetV3BottleneckA(withSkip=True, depthWiseStride=1, tensorInW=56, tensorInH=56 ,tensorInC=24,tensorOutC=24,depthWiseChannels=72) # bottleneck 2
+#     res = ctx.module.operation.verify()
+#     if res == True:
+#         print(ctx.module)
+#     else:
+#         print(res)
 
