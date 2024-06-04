@@ -986,7 +986,6 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeightsSize32b_rest],
                 )
 
-                npu_sync(column=1, row=0, direction=0, channel=0)
 
     res = ctx.module.operation.verify()
     if res == True:

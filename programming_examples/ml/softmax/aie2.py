@@ -128,7 +128,6 @@ def vector_softmax(trace_size):
             npu_dma_memcpy_nd(
                 metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:

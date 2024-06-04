@@ -168,7 +168,6 @@ def conv2dk1():
                     mem=W,
                     sizes=[1, 1, 1, weightsInInt32s],
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

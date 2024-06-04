@@ -227,7 +227,6 @@ def my_matmul():
                             strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                         )
 
-
     print(ctx.module)
 
 

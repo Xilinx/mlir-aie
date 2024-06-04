@@ -153,7 +153,6 @@ def my_eltwise_mul(trace_size):
             npu_dma_memcpy_nd(
                 metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, B_sz_in_i32s]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:
