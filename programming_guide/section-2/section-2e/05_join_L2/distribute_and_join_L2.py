@@ -101,7 +101,6 @@ def distribute_join_L2():
                 npu_dma_memcpy_nd(
                     metadata="in", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 

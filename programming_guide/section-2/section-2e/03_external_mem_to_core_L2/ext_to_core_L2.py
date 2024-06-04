@@ -64,10 +64,6 @@ def external_mem_to_core_L2():
                 npu_dma_memcpy_nd(
                     metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
                 )
-<<<<<<< HEAD:reference_designs/ipu-xrt/add_one_objFifo/aie2.py
-=======
-                npu_sync(column=0, row=0, direction=0, channel=0)
->>>>>>> 9be8d710b4b376c65d48e14fc7056c3c709afcd0:programming_guide/section-2/section-2e/03_external_mem_to_core_L2/ext_to_core_L2.py
 
     res = ctx.module.operation.verify()
     if res == True:
