@@ -54,7 +54,7 @@ using TileID = struct TileID {
 
 class AIETargetModel {
 public:
-  AIETargetModel(AIEDevice device) : device(device) {}
+  AIETargetModel() = default;
 
   virtual ~AIETargetModel();
 
@@ -204,17 +204,11 @@ public:
   // Return true if this is an NPU-based device
   // There are several special cases for handling the NPU at the moment.
   virtual bool isNPU() const { return false; }
-
-  // Return the AIEDevice for this target model
-  AIEDevice getDevice() const { return device; }
-
-private:
-  AIEDevice device;
 };
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel(AIEDevice device) : AIETargetModel(device) {}
+  AIE1TargetModel() = default;
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -278,7 +272,7 @@ public:
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel(AIEDevice device) : AIETargetModel(device) {}
+  AIE2TargetModel() = default;
 
   AIEArch getTargetArch() const override;
 
@@ -335,7 +329,7 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel(AIEDevice device) : AIE1TargetModel(device) {}
+  VC1902TargetModel() = default;
 
   int columns() const override { return 50; }
 
@@ -358,7 +352,7 @@ class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  VE2302TargetModel() = default;
 
   int columns() const override { return 17; }
 
@@ -410,7 +404,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  VE2802TargetModel() = default;
 
   int columns() const override { return 38; }
 
@@ -462,7 +456,7 @@ public:
 
 class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  BaseNPUTargetModel() = default;
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -494,7 +488,7 @@ public:
 // The full Phoenix NPU
 class NPUTargetModel : public BaseNPUTargetModel {
 public:
-  NPUTargetModel(AIEDevice device) : BaseNPUTargetModel(device) {}
+  NPUTargetModel() = default;
 
   int columns() const override { return 5; }
 
@@ -515,8 +509,7 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(AIEDevice device, int _cols)
-      : BaseNPUTargetModel(device), cols(_cols) {}
+  VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
 
   int columns() const override { return cols; }
 
