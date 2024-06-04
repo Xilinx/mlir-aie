@@ -48,7 +48,7 @@ def mobilenetV3BottleneckA(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         tensorLayer2Out_ty = MemRefType.get((tensorOutW, 1, tensorL2OutC),uint8_ty)
         tensorLayer3In_ty = MemRefType.get((tensorOutW, 1, tensorL3InC), uint8_ty)
         weightsLayer3_ty = MemRefType.get((1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty)
-        tensorLayer3Out_ty = tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC),int8_ty)
+        tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC),int8_ty)
 
         weightsAllLayers_ty = MemRefType.get((1 * 1 * tensorL1OutC * tensorL1InC + 3 * 3 * tensorL2OutC * 1 + 1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty)
         
