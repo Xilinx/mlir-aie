@@ -17,6 +17,7 @@
 
 #include "llvm/Support/Debug.h"
 
+using namespace llvm;
 using namespace mlir;
 using namespace xilinx::aievec;
 
@@ -25,8 +26,8 @@ using namespace xilinx::aievec;
 // Return true if the read operation is enclosed with the same loop nests as
 // the other read operations belonging to this IntervalReuse object.
 bool IntervalReuse::sameEnclosingLoops(
-    Operation *op,
-    DenseMap<Block *, SmallVector<Operation *, 8>> &blockToEnclosingLoops) {
+    Operation *op, mlir::DenseMap<Block *, SmallVector<Operation *, 8>>
+                       &blockToEnclosingLoops) {
   // Assert that there are some existing read operations in the interval
   assert(!extentMap.empty() &&
          "interval must have at least one read operation");
@@ -122,7 +123,8 @@ int32_t IntervalReuse::getIntervalWidth(Operation *op) {
 // If all these conditions are met, there is a potential data reuse.
 bool IntervalReuse::potentialReuse(
     vector::TransferReadOp readOp, AffineExpr invariantBase,
-    DenseMap<Block *, SmallVector<Operation *, 8>> &blockToEnclosingLoops) {
+    mlir::DenseMap<Block *, SmallVector<Operation *, 8>>
+        &blockToEnclosingLoops) {
   return sameMemRef(readOp.getSource()) &&
          sameInvariantIndices(invariantBase) &&
          sameEnclosingLoops(readOp, blockToEnclosingLoops);
@@ -136,7 +138,7 @@ bool IntervalReuse::potentialReuse(
 static std::pair<int32_t, int32_t>
 computeAccessExtent(vector::TransferReadOp readOp, int32_t offset,
                     int32_t loopStepSize, bool isSplat, unsigned minVecSize) {
-  VectorType vType = readOp.getResult().getType().cast<VectorType>();
+  VectorType vType = cast<VectorType>(readOp.getResult().getType());
   unsigned vecSize = getVectorLaneSize(vType);
   int32_t elementSizeInBits = getElementSizeInBits(vType);
   // Create chunks greater in size than minVecSize
@@ -163,8 +165,8 @@ computeAccessExtent(vector::TransferReadOp readOp, int32_t offset,
 // so align the access extents to at least 128-bit boundary.
 void IntervalReuse::insertInterval(
     vector::TransferReadOp readOp,
-    DenseMap<Operation *, IntervalReuse *> &opToIntervalMap, int32_t offset,
-    int32_t loopStepSize, bool isSplat, unsigned minVecSize) {
+    mlir::DenseMap<Operation *, IntervalReuse *> &opToIntervalMap,
+    int32_t offset, int32_t loopStepSize, bool isSplat, unsigned minVecSize) {
   // Get the vector-size-aligned lower and upper bounds for the vector read
   std::pair<int32_t, int32_t> bound =
       computeAccessExtent(readOp, offset, loopStepSize, isSplat, minVecSize);

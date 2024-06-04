@@ -21,6 +21,12 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 configure_file(configure.h.in configure.h)
 target_include_directories(aie2xclbin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
+if(MSVC)
+  set(UUID "Rpcrt4.lib")
+else()
+  find_library (UUID uuid REQUIRED)
+endif()
+
 target_link_libraries(aie2xclbin
   ${dialect_libs}
   MLIRParser
@@ -37,7 +43,8 @@ target_link_libraries(aie2xclbin
   AIEX
   AIEXTransforms
   MLIRAIEVecDialect
-  MLIRXLLVMDialect)
+  MLIRXLLVMDialect
+  ${UUID})
 
 install(TARGETS aie2xclbin
   EXPORT AIE2XCLBIN

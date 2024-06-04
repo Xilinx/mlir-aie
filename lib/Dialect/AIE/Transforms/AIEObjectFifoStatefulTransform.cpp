@@ -13,7 +13,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -129,6 +129,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
   // have been created and should be used
+  std::vector<ObjectFifoCreateOp>
+      splitBecauseLink; // objfifos which have been split because they are
+  // part of a Link, not because they didn't have a shared memory module
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -168,12 +171,17 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
-  // the objectFifo broadcasts to multiple tiles, or if one of the consumers
-  // or the producer wants to use the multi-dimensional address generation
-  // features of the DMA.
+  // the objectFifo broadcasts to multiple tiles, if one of the consumers or
+  // the producer wants to use the multi-dimensional address generation
+  // features of the DMA, if the objectFifo is part of a LinkOp, or if the
+  // via_DMA attribute of the objectFifo is set.
   bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
     bool hasSharedMemory = false;
     bool atLeastOneConsumerWantsTransform = false;
+    bool isUsedInLinkOp = false;
+
+    if (createOp.getVia_DMA())
+      return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
@@ -181,10 +189,16 @@ struct AIEObjectFifoStatefulTransformPass
       // Test for shared memory
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
-                dyn_cast<TileOp>(consumerTile.getDefiningOp());
-            isSharedMemory(createOp.getProducerTileOp(), consumerTileOp,
-                           &share_direction))
-          hasSharedMemory = true;
+                dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                         createOp))
+            hasSharedMemory =
+                isSharedMemory(createOp.getProducerTileOp(),
+                               createOp.getProducerTileOp(), &share_direction);
+          else
+            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
+                                             consumerTileOp, &share_direction);
+        }
       }
     }
 
@@ -201,15 +215,17 @@ struct AIEObjectFifoStatefulTransformPass
         }
     }
 
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform;
-  }
+    // Only test for this objfifo belonging to a LinkOp if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
+    if (hasSharedMemory) {
+      if (auto linkOp = getOptionalLinkOp(createOp)) {
+        splitBecauseLink.push_back(createOp);
+        isUsedInLinkOp = true;
+      }
+    }
 
-  /// Function to multiply all dimensions of a memref.
-  int64_t getMemrefTypeSize(MemRefType memref) {
-    int64_t size = 1;
-    for (auto dim : memref.getShape())
-      size *= dim;
-    return size;
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
+           isUsedInLinkOp;
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
@@ -296,8 +312,8 @@ struct AIEObjectFifoStatefulTransformPass
       return;
 
     std::vector<BufferOp> buffers;
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
@@ -321,18 +337,16 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        auto fifoInType = linkOp->getInputObjectFifos()[0]
-                              .getElemType()
-                              .cast<AIEObjectFifoType>();
-        auto elemInType = fifoInType.getElementType().cast<MemRefType>();
-        int inSize = getMemrefTypeSize(elemInType);
+        auto fifoInType = llvm::cast<AIEObjectFifoType>(
+            linkOp->getInputObjectFifos()[0].getElemType());
+        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+        int inSize = elemInType.getNumElements();
 
-        auto fifoOutType = linkOp->getOutputObjectFifos()[0]
-                               .getElemType()
-                               .cast<AIEObjectFifoType>();
-        auto elemOutType = fifoOutType.getElementType().cast<MemRefType>();
+        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+            linkOp->getOutputObjectFifos()[0].getElemType());
+        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
 
-        if (int outSize = getMemrefTypeSize(elemOutType); inSize >= outSize) {
+        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
           if (op.name() != fifoIn.name())
             return;
         } else {
@@ -366,7 +380,8 @@ struct AIEObjectFifoStatefulTransformPass
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            /*address*/ nullptr, /*initial_value*/ nullptr);
+            /*address*/ nullptr, /*initial_value*/ nullptr,
+            /*mem_bank*/ nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;
@@ -474,11 +489,10 @@ struct AIEObjectFifoStatefulTransformPass
 
     int acqNum = 1;
     int relNum = 1;
-    int offset = 0;
 
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
-    int len = getMemrefTypeSize(elemType);
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+    int len = elemType.getNumElements();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -539,8 +553,8 @@ struct AIEObjectFifoStatefulTransformPass
 
       builder.setInsertionPointToStart(curr);
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], offset, len,
-                              channelDir, blockIndex, succ, dims);
+                              buffersPerFifo[target][blockIndex], /*offset*/ 0,
+                              len, channelDir, blockIndex, succ, dims);
       curr = succ;
       blockIndex++;
     }
@@ -558,7 +572,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     int acqNum = 1;
     int relNum = 1;
-    int offset = 0;
 
     // search for ShimDMAOp
     Operation *producerDMA = nullptr;
@@ -612,12 +625,12 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
 
       MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
-      int len = getMemrefTypeSize(buffer);
+      int len = buffer.getNumElements();
       builder.setInsertionPointToStart(curr);
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
                                       externalBuffersPerFifo[op][blockIndex],
-                                      offset, len, channelDir, blockIndex, succ,
-                                      dims);
+                                      /*offset*/ 0, len, channelDir, blockIndex,
+                                      succ, dims);
       curr = succ;
       blockIndex++;
     }
@@ -633,11 +646,9 @@ struct AIEObjectFifoStatefulTransformPass
     if (numBlocks == 0)
       return;
 
-    int offset = 0;
-    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
-    auto elemType = fifo.getElementType().cast<MemRefType>();
-    int lenOut = getMemrefTypeSize(elemType);
-    int bytes = elemType.getElementTypeBitWidth() / 8;
+    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+    int lenOut = elemType.getNumElements();
     int acqNum = 1;
     int relNum = 1;
 
@@ -659,11 +670,12 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoIns().size();
           } else {
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              auto fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
-              auto elemType = fifoType.getElementType().cast<MemRefType>();
+              auto fifoType =
+                  llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoIn.name() == op.name())
                 break;
-              extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += elemType.getNumElements();
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -674,19 +686,21 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoOuts().size();
           } else {
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              auto fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
-              auto elemType = fifoType.getElementType().cast<MemRefType>();
+              auto fifoType =
+                  llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoOut.name() == op.name())
                 break;
-              extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += elemType.getNumElements();
             }
           }
         } else {
           if (target != op) {
-            auto targetFifo = target.getElemType().cast<AIEObjectFifoType>();
+            auto targetFifo =
+                llvm::cast<AIEObjectFifoType>(target.getElemType());
             auto targetElemType =
-                targetFifo.getElementType().cast<MemRefType>();
-            lenOut = getMemrefTypeSize(targetElemType);
+                llvm::cast<MemRefType>(targetFifo.getElementType());
+            lenOut = targetElemType.getNumElements();
           }
         }
 
@@ -748,8 +762,9 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
 
       builder.setInsertionPointToStart(curr);
+      int offset = 0;
       if (isDistribute || isJoin)
-        offset = extraOffset * bytes;
+        offset = extraOffset;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], offset,
                               lenOut, channelDir, blockIndex, succ, dims);
@@ -859,6 +874,34 @@ struct AIEObjectFifoStatefulTransformPass
                       std::vector<std::vector<int>> &dependencies, Value base,
                       int64_t step, bool inLoop) {
     std::vector<Operation *> duplicatedOperations; // operations in current
+    // Recursive function to replace operands, uses recursion to handle nested
+    // loop structures.
+    std::function<void(Operation *, unsigned &, unsigned)> replaceOpsNested =
+        [&](Operation *op, unsigned &opIndex,
+            unsigned numDuplications) -> void {
+      if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
+        Block *body = loopOp.getBody();
+        auto withoutTerminator = --body->end();
+        // NOTE(jornt): This only handles the cases where the nested scf::for is
+        // located at the start of the body. This should be the most common
+        // case, but is not fully generic.
+        if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
+          opIndex++;
+          replaceOperands(builder, nestedLoop, opIndex, base, step, inLoop,
+                          numDuplications, dependencies, duplicatedOperations);
+          replaceOpsNested(nestedLoop, opIndex, numDuplications);
+        } else {
+          for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
+               ++loopBodyOp) {
+            opIndex++;
+            replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop,
+                            numDuplications, dependencies,
+                            duplicatedOperations);
+          }
+        }
+      }
+    };
+
     // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       duplicatedOperations.clear();
@@ -869,17 +912,7 @@ struct AIEObjectFifoStatefulTransformPass
         replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
                         dependencies, duplicatedOperations);
         builder.insert(clone);
-
-        if (auto nestedLoop = dyn_cast<scf::ForOp>(clone)) {
-          Block *body = nestedLoop.getBody();
-          auto withoutTerminator = --body->end();
-          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
-               ++loopOp) {
-            opIndex++;
-            replaceOperands(builder, &*loopOp, opIndex, base, step, inLoop, i,
-                            dependencies, duplicatedOperations);
-          }
-        }
+        replaceOpsNested(clone, opIndex, i);
       }
     }
   }
@@ -1193,7 +1226,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         builder.setInsertionPointAfter(createOp);
-        auto datatype = createOp.getElemType().cast<AIEObjectFifoType>();
+        auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
@@ -1564,8 +1597,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto sym_name = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType =
-          createOp.getElemType().cast<AIEObjectFifoType>().getElementType();
+      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
+                            .getElementType();
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);

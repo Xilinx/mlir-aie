@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,11 +15,11 @@
 // CHECK: if(NULL == dma_tile_2_1_bd_0_tensor.Dim){
 // CHECK:   return 1;
 // CHECK: }
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[3].AieMlDimDesc = { /* StepSize */ 1, /* Size */ 2};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[2].AieMlDimDesc = { /* StepSize */ 2, /* Size */ 3};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[1].AieMlDimDesc = { /* StepSize */ 4, /* Size */ 2};
-// CHECK: dma_tile_2_1_bd_0_tensor.Dim[0].AieMlDimDesc = { /* StepSize */ 1, /* Size */ 1};
-// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 128 * 4));
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[3].AieMlDimDesc = { /* Stride */ 1, /* Size */ 2};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[2].AieMlDimDesc = { /* Stride */ 2, /* Size */ 3};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[1].AieMlDimDesc = { /* Stride */ 4, /* Size */ 2};
+// CHECK: dma_tile_2_1_bd_0_tensor.Dim[0].AieMlDimDesc = { /* Stride */ 1, /* Size */ 1};
+// CHECK: __mlir_aie_try(XAie_DmaSetMultiDimAddr(&(dma_tile21_bd0), &dma_tile_2_1_bd_0_tensor, 0x82000,  /* len */ 512));
 
 module @aie_module  {
  aie.device(xcve2302) {

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,7 +13,7 @@
 // CHECK: XAie_DmaDesc [[bd0:.*]];
 // CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(3,-1),XAie_LockInit(4,1)));
-// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 256 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 1024));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 0,  /* enableNextBd */ 0));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
 // CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,3),  /* bd */ 0));

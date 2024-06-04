@@ -11,5 +11,3 @@ pybind11>=2.9.0, <=2.10.3
 rich
 setuptools
 wheel
-
--r aie-python-extras-req.txt

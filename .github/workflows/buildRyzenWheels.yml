@@ -3,6 +3,7 @@ name: Build wheels on/for Ryzen AI
 on:
   pull_request:
   workflow_dispatch:
+  merge_group:
 
   schedule:
     # At 04:00. (see https://crontab.guru)
@@ -105,6 +106,8 @@ jobs:
 
     runs-on: amd7940hs
 
+    needs: build-repo
+
     permissions:
       id-token: write
       contents: write
@@ -167,7 +170,6 @@ jobs:
           export DATETIME=$(date +"%Y%m%d%H")
           
           cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-          cp python/aie-python-extras-req.txt utils/mlir_aie_wheels/python_bindings
           
           pushd utils/mlir_aie_wheels/python_bindings
           

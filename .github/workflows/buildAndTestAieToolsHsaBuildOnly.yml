@@ -1,0 +1,163 @@
+name: Build and Test with AIE tools with HSA backend and build only tests
+
+on:
+  push:
+    branches:
+      - main
+      - hsa-lit-testing-build
+#  pull_request:
+  workflow_dispatch:
+    inputs:
+      AIE_COMMIT:
+        description: 'which aie commit to build'
+        type: string
+        required: false
+        default: ''
+      LIT_FILTER:
+        description: 'LIT_FILTER for tests (regex of paths in test/)'
+        type: string
+        required: false
+        default: ''
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-aie-tools-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-repo:
+    name: Build and Test HSA build only tests
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Docker prune
+        shell: bash
+        run: |
+          docker system prune -a -f
+
+      - uses: uraimo/run-on-arch-action@v2.5.0
+        name: Run commands
+        id: runcmd
+        with:
+          distro: none
+          base_image: ghcr.io/xilinx/mlir-aie/xilinx:latest
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --mac-address ${{ secrets.XILINX_MAC }}
+          run: |
+            ls -l /opt/Xilinx/Vitis/2023.2/
+
+            # this is the inverse of `base64 -w 1000000 Xilinx.lic`
+            # the -w ("wrap after 1000000 cols") is so that there are no spaces in the XILINX_LIC env var
+            echo -n "${{ secrets.XILINX_LIC }}" | base64 --decode > ~/.Xilinx/Xilinx.lic
+
+            # add the ROCm repos
+            mkdir --parents --mode=0755 /etc/apt/keyrings
+            wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
+              gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null
+            for ver in 5.3.3 5.4.3 5.5.1 5.6; do
+              echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ver focal main" \
+                | tee --append /etc/apt/sources.list.d/rocm.list
+              done
+              echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
+                | tee /etc/apt/preferences.d/rocm-pin-600
+            apt update
+            apt install -y rocm-hip-runtime-dev5.6.0 python3.10-venv \
+                           libboost-all-dev pkg-config libelf-dev elfutils \
+                           libdwarf-dev libsysfs-dev clang libssl-dev uuid-dev
+            apt-get clean
+
+            cd /
+            git clone https://github.com/Xilinx/mlir-aie.git
+            cd /mlir-aie
+
+            git checkout ${{ github.head_ref }}
+            if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
+              git reset --hard ${{ inputs.AIE_COMMIT }}
+            fi
+
+            git submodule update --init --recursive
+
+            # Buliding libxaie
+            pushd third_party/aie-rt/driver/src
+            make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
+            popd
+            mkdir -p /install/aie-rt/lib
+            cp -a third_party/aie-rt/driver/src/*.so* /install/aie-rt/lib
+            cp -a third_party/aie-rt/driver/include /install/aie-rt
+
+            apt install python3.10-venv
+            python -m venv aie-venv
+            source aie-venv/bin/activate
+            pip install -r python/requirements.txt
+
+            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+            pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            unzip -q mlir-*.whl
+            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+
+            # Runnign scrips to build necessary libraries
+            utils/clone-rocm-air-platforms.sh
+            ROCm-air-platforms/utils/clone-build-roct.sh
+            ROCm-air-platforms/utils/clone-build-rocr.sh
+
+            # don't delete the space in the sed
+            pushd cmake/modulesXilinx && sed -i.bak 's/		VITIS_VPP//g' FindVitis.cmake && popd
+
+            mkdir build && cd build
+            export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:`pwd`/../install/bin/:$PATH
+            cmake .. -G Ninja \
+              -DLibXAIE_x86_64-hsa_DIR=/install/aie-rt \
+              -Dhsakmt_DIR=`pwd`/../rocm/lib/cmake/hsakmt/ \
+              -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+              -DMLIR_DIR=`pwd`/../mlir/lib/cmake/mlir/ \
+              -Dhsa-runtime64_DIR=`pwd`/../rocm/lib/cmake/hsa-runtime64/ \
+              -DAIE_RUNTIME_TARGETS=x86_64-hsa \
+              -DAIE_RUNTIME_TEST_TARGET=x86_64-hsa \
+              -DVITIS_ROOT=/opt/Xilinx/Vitis/2023.2/ \
+              -DVitis_VERSION_MAJOR=2023 \
+              -DVitis_VERSION_MINOR=2 \
+              -DLLVM_EXTERNAL_LIT=$(which lit) \
+              -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
+              -DAIE_ENABLE_PYTHON_PASSES=OFF \
+              -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_INSTALL_PREFIX=`pwd`/../install
+
+            ninja
+            ninja install
+
+            if [ x"${{ inputs.LIT_FILTER }}" == x"" ]; then
+              export LIT_FILTER="${{ inputs.LIT_FILTER }}"
+            fi
+
+            # filter out CODirect until I put bootgen into the image
+            export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
+            ninja check-aie
+            ninja check-reference-designs
+            

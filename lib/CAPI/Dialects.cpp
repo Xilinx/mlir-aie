@@ -1,7 +1,10 @@
 //===- Dialects.cpp ---------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2022-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,12 +28,12 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(XLLVM, xllvm, xilinx::xllvm::XLLVMDialect)
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsObjectFifoType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoType>();
+  return llvm::isa<xilinx::AIE::AIEObjectFifoType>(unwrap(type));
 }
 
 MlirType aieObjectFifoTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoType::get(
-      unwrap(type).cast<mlir::MemRefType>()));
+      llvm::cast<mlir::MemRefType>(unwrap(type))));
 }
 
 //===---------------------------------------------------------------------===//
@@ -38,10 +41,10 @@ MlirType aieObjectFifoTypeGet(MlirType type) {
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsObjectFifoSubviewType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoSubviewType>();
+  return llvm::isa<xilinx::AIE::AIEObjectFifoSubviewType>(unwrap(type));
 }
 
 MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
-      unwrap(type).cast<mlir::MemRefType>()));
+      llvm::cast<mlir::MemRefType>(unwrap(type))));
 }

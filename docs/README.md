@@ -8,13 +8,15 @@ This project is primarily intended to support the open-source community, particu
 
 ![](dialects.png)
 
-[Getting Started](Building.md)
+[Getting Started on a Versal™ board](Building.md)
 
 [Running on a Versal™ board](Platform.md)
 
 [Getting Started and Running on Windows Ryzen™ AI](buildHostWin.md)
 
 [Getting Started and Running on Linux Ryzen™ AI](buildHostLin.md)
+
+[Device Descriptions](Devices.md)
 
 [Github sources](https://github.com/Xilinx/mlir-aie)
 
@@ -25,7 +27,7 @@ Generated code documentation
 - [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
 
 Tutorials
-- [Step-by-step Tutorial](../tutorials/README.md)
+- [Step-by-step Tutorial](../mlir_tutorials/README.md)
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
 - [AIE Vectorization of Scalar Code](AIEVectorization)

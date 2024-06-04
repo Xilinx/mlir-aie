@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 AMD Inc.
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 // Defines AIE vector operations.
@@ -14,6 +14,7 @@
 #define AIEVEC_OPS
 
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
+include "aie/Dialect/AIEVec/IR/AIEVecAttributes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 
@@ -352,7 +353,7 @@ def AIEVec_BroadcastScalarOp:
   AIEVec_Op<"broadcast_scalar", [
     Pure
   ]>,
-  Arguments<(ins AnyType:$source)>,
+  Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast scalar";
   let description = [{
@@ -401,6 +402,7 @@ def AIEVec_CastOp:
     OpBuilder<(ins "mlir::Value":$source, "bool":$isResAcc),
     [{build($_builder, $_state, source.getType(), source, isResAcc);}]>
   ];
+  let hasFolder = 1;
 }
 
 def AIEVec_SRSOp:
@@ -474,7 +476,11 @@ def AIEVec_ExtOp:
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from 
     the source vector, and transfers the data from those lanes to the 
-    result. The lane selection is controlled by index.
+    result. The lane selection is controlled by index. There are two cases:
+    1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
+    2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
+    In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
+    In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
     `$result = ext($source, $index)`
   }];
 }
@@ -575,14 +581,15 @@ def AIEVec_ShiftOp:
   let description = [{
     AMD-specific shift intrinsic. Concatenates two
     vectors into a bigger vector, interprets them as a vector of 128 bytes
-    and returns v1::v2[shift: shift+64]. The verifier confirms that all the
-    input vectors have the same number of lanes.
+    and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to 
+    be shifted. The verifier confirms that all the input and result vectors 
+    have the same number of lanes and element types.
     `$result = shift($lhs, $rhs, $shift)`
   }];
 }
 
-def AIEVec_ShuffleOp:
-  AIEVec_Op<"shuffle", [
+def AIEVec_LegacyShuffleOp:
+  AIEVec_Op<"legacyshuffle", [
     Pure
   ]>,
   Arguments<(ins AnyVector:$source,
@@ -728,7 +735,7 @@ def AIEVec_ExtElemOp:
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.}];
   let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def AIEVec_NegOp:
@@ -864,6 +871,155 @@ def AIEVec_MatMulOp:
   let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
                          type($rhs) `into` type($acc)}];
   let hasVerifier = 0;
+}
+
+def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
+    [Pure, AllTypesMatch<["lhs", "result"]>,
+     OptionalTypesMatchWith<"result and rhs have the same type", "result", "rhs",
+                            "::llvm::cast<Type>($_self)">]>,
+  Arguments<(ins VectorOfBitWidthAndElementTypes<
+                      512, [I8, I16, I32, I64, I128, I256,
+                            I512, BF16, F32]>:$lhs,
+                 Optional<VectorOfBitWidthAndElementTypes<
+                      512, [I8, I16, I32, I64, I128, I256,
+                            I512, BF16, F32]>>:$rhs,
+                 AIEVec_ShuffleModeAttr:$mode)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 shuffle";
+  let description = [{
+    AMD AIEv2-specific vector shuffle. It performs a shuffle of the elements of
+    1 or 2 input vectors using the specified shuffle mode. The shuffle mode is
+    specified as:
+
+      `t<width>_<r>x<c>(_(hi|lo))?`
+
+    where `<width>` is the bitwidth of the vector element type, `<r>` and `<c>`
+    are the number of rows and columns that will be transposed to perform the
+    shuffle, and, for modes that require two 512-bit vectors, `hi` and `lo`
+    indicate which part of the resulting extended 1024-bit vector will be
+    assembled and returned.
+
+    E.g.: `t32_4x8` would take two 512-bit vectors, `lhs` and `rhs`, with 16
+    elements of 32 bits each. The resulting vector would contain either the
+    least (`lo`) or most (`hi`) significant 16 elements of the 32 element vector
+    that would result from selecting, out of the concatenated vectors `lhs:rhs`,
+    8 blocks of 4 elements, each block taking one of every 8 elements starting
+    from the block index.
+
+    That is, for two `vector<16xi32>` operands containing:
+    ```
+    lhs = [0,   1,  2,  3, ..., 15]
+    rhs = [17, 18, 19, 20, ..., 31]
+    ```
+
+    The first 8 blocks would be:
+    ```
+    b0 = [0,  8, 16, 24]
+    b1 = [1,  9, 17, 25]
+    b2 = [2, 10, 18, 26]
+    b3 = [3, 11, 19, 27]
+       ...
+    b7 = [7, 15, 23, 31]
+    ```
+
+    `t32_4x8_lo` would return first four blocks:
+    ```
+    result = [0, 8, 16, 24, 1, 9, 17, 25, ..., 3, 11, 19, 27]
+    ```
+
+    And `t32_4x8_hi` would return the last four blocks:
+    ```
+    result = [4, 12, 20, 28, 5, 13, 21, 29, ..., 7, 15, 24, 31]
+    ```
+
+    It can be seen as flattened 4x8 matrix, split in two 16-element halfs, being
+    tranposed to a 8x4 arrangement. In the example above:
+
+    ```
+    lhs = [ 0,  1,  2,  3,  4,  5,  6,  7]
+          [ 8,  9, 10, 11, 12, 13, 14, 15]
+    rhs = [16, 17, 18, 19, 20, 21, 22, 23]
+          [24, 25, 26, 27, 28, 29, 30, 31]
+    ```
+
+    Would result in:
+    ```
+    t32_4x8_lo = [0,  8, 16, 24]
+                 [1,  9, 17, 25]
+                 [2, 10, 18, 26]
+                 [3, 11, 19, 27]
+    t32_4x8_hi = [4, 12, 20, 28]
+                 [5, 13, 21, 29]
+                 [6, 14, 22, 30]
+                 [7, 15, 23, 31]
+    ```
+
+    A special mode, `t16_1x2_flip`, swaps each pair of elements in a vector with
+    32 16-bit elements. E.g.:
+    ```
+    lhs = [0, 1, 2, 3, ..., 28, 29, 30, 31]
+    ```
+    Would result in:
+    ```
+    t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
+    ```
+
+    The list of supported shuffle modes, required operands, and associated
+    vector types are the following:
+
+         Shuffle Mode       | Operands           | Types Supported
+        :------------------:|:------------------:|:------------------:
+         t8_8x4             | `lhs`              | `vector<64xi8>`
+         t8_4x8             | ^                  | ^
+         t8_8x8             | ^                  | ^
+         t8_16x4            | ^                  | ^
+         t8_4x16            | ^                  | ^
+         t8_64x2_lo         | `lhs` & `rhs`      | ^
+         t8_64x2_hi         | ^                  | ^
+         t8_2x64_lo         | ^                  | ^
+         t8_2x64_hi         | ^                  | ^
+         t16_4x2            | `lhs`              | `vector<32xi16>` or `vector<32xbf16>`
+         t16_2x4            | ^                  | ^
+         t16_4x4            | ^                  | ^
+         t16_8x2            | ^                  | ^
+         t16_2x8            | ^                  | ^
+         t16_8x4            | ^                  | ^
+         t16_4x8            | ^                  | ^
+         t16_16x2           | ^                  | ^
+         t16_2x16           | ^                  | ^
+         t16_1x2_flip       | ^                  | ^
+         t16_32x2_lo        | `lhs` & `rhs`      | ^
+         t16_32x2_hi        | ^                  | ^
+         t16_2x32_lo        | ^                  | ^
+         t16_2x32_hi        | ^                  | ^
+         t16_16x4_lo        | ^                  | ^
+         t16_16x4_hi        | ^                  | ^
+         t16_4x16_lo        | ^                  | ^
+         t16_4x16_hi        | ^                  | ^
+         t32_4x4            | `lhs`              | `vector<16xi32>` or `vector<16xf32>`
+         t32_16x2_lo        | `lhs` & `rhs`      | ^
+         t32_16x2_hi        | ^                  | ^
+         t32_2x16_lo        | ^                  | ^
+         t32_2x16_hi        | ^                  | ^
+         t32_8x4_lo         | ^                  | ^
+         t32_8x4_hi         | ^                  | ^
+         t32_4x8_lo         | ^                  | ^
+         t32_4x8_hi         | ^                  | ^
+         t64_8x2_lo         | ^                  | `vector<8xi64>`
+         t64_8x2_hi         | ^                  | ^
+         t64_2x8_lo         | ^                  | ^
+         t64_2x8_hi         | ^                  | ^
+         t128_4x2_lo        | ^                  | `vector<4xi128>`
+         t128_4x2_hi        | ^                  | ^
+         t128_2x4_lo        | ^                  | ^
+         t128_2x4_hi        | ^                  | ^
+         t256_2x2_lo        | ^                  | `vector<2xi256>`
+         t256_2x2_hi        | ^                  | ^
+         t512_1x2_lo        | ^                  | `vector<1xi512>`
+         t512_1x2_hi        | ^                  | ^
+  }];
+  let assemblyFormat = [{$lhs (`,` $rhs^)? $mode attr-dict `:` type($result)}];
+  let hasVerifier = 1;
 }
 
 #endif // AIEVEC_OPS

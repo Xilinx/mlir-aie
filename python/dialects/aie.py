@@ -17,11 +17,12 @@ from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import (
     ObjectFifoSubviewType,
     ObjectFifoType,
+    get_target_model,
     aie_llvm_link,
     generate_bcf,
     generate_cdo,
     generate_xaie,
-    ipu_instgen,
+    npu_instgen,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
@@ -209,6 +210,7 @@ class object_fifo(ObjectFifoCreateOp):
         datatype,
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        via_DMA=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -227,6 +229,7 @@ class object_fifo(ObjectFifoCreateOp):
             elemType=of_Ty,
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
+            via_DMA=via_DMA,
         )
 
     def acquire(self, port, num_elem):
@@ -276,9 +279,17 @@ class packetflow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
 
     def __init__(
-        self, pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel
+        self,
+        pkt_id,
+        source,
+        source_port,
+        source_channel,
+        dest,
+        dest_port,
+        dest_channel,
+        keep_pkt_header: Optional[bool] = None,
     ):
-        super().__init__(ID=pkt_id)
+        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
             src = PacketSourceOp(source, source_port, source_channel)
@@ -609,7 +620,7 @@ def find_neighbors(tile, device=None, logical=True):
     if device is None:
         device = find_parent_of_type(lambda op: isinstance(op, DeviceOp))
 
-    assert int(device.device) == int(AIEDevice.ipu), "only ipu supported"
+    assert int(device.device) == int(AIEDevice.npu1), "only npu supported"
 
     neighbors = {}
     col, row = map(int, (tile.col, tile.row))

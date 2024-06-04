@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +15,7 @@
 // CHECK: XAie_DmaDesc dma_tile70_bd0;
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0))
 // CHECK: XAie_DmaSetLock(&(dma_tile70_bd0), XAie_LockInit(0,1),XAie_LockInit(0,0))
-// CHECK: XAie_DmaSetAddrLen(&(dma_tile70_bd0), /* addrA */ mlir_aie_external_get_addr_myBuffer_70_0(),  /* len */ 1024 * 4)
+// CHECK: XAie_DmaSetAddrLen(&(dma_tile70_bd0), /* addrA */ mlir_aie_external_get_addr_myBuffer_70_0(),  /* len */ 4096)
 // CHECK: XAie_DmaSetAxi(&(dma_tile70_bd0), /* smid */ 0, /* burstlen */ 4, /* QoS */ 0, /* Cache */ 0, /* Secure */ XAIE_ENABLE)
 // CHECK: XAie_DmaSetNextBd(&(dma_tile70_bd0),  /* nextbd */ 0,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaSetPkt(&(dma_tile70_bd0), XAie_PacketInit(2,0))

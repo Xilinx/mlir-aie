@@ -1,7 +1,11 @@
 //===- AIEVecTransformOps.cpp -----------------------------------*- C++ -*-===//
 //
-// Copyright (c) 2023, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
+//
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/TransformOps/AIEVecTransformOps.h"
@@ -10,8 +14,8 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
-#include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
+#include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/Utils/Utils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 

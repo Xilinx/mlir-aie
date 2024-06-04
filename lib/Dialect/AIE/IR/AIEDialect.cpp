@@ -104,7 +104,11 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static IPUTargetModel IPUmodel;
+static NPUTargetModel NPUmodel;
+static VirtualizedNPUTargetModel NPUmodel1col(1);
+static VirtualizedNPUTargetModel NPUmodel2col(2);
+static VirtualizedNPUTargetModel NPUmodel3col(3);
+static VirtualizedNPUTargetModel NPUmodel4col(4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -114,6 +118,28 @@ const AIETargetModel &getTargetModel(Operation *op) {
 
   // For backward compatibility, return a basic device model compatible with
   // the VCK190
+  return VC1902model;
+}
+
+const AIETargetModel &getTargetModel(AIEDevice device) {
+  switch (device) {
+  case AIEDevice::xcvc1902:
+    return VC1902model;
+  case AIEDevice::xcve2302:
+    return VE2302model;
+  case AIEDevice::xcve2802:
+    return VE2802model;
+  case AIEDevice::npu1:
+    return NPUmodel;
+  case AIEDevice::npu1_1col:
+    return NPUmodel1col;
+  case AIEDevice::npu1_2col:
+    return NPUmodel2col;
+  case AIEDevice::npu1_3col:
+    return NPUmodel3col;
+  case AIEDevice::npu1_4col:
+    return NPUmodel4col;
+  }
   return VC1902model;
 }
 
@@ -267,7 +293,7 @@ MemRefType AIEObjectFifoSubviewType::getElementType() {
 ///         ::= `objectfifosubview` `<` type `>`
 static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
                                          StringRef name, Type &result) {
-  if (name.equals("objectfifo")) {
+  if (name == "objectfifo") {
     MemRefType elementType;
     SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
@@ -275,7 +301,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
       return failure();
 
     // Check that the type is a MemRef type.
-    if (!elementType.isa<MemRefType>()) {
+    if (!llvm::isa<MemRefType>(elementType)) {
       parser.emitError(typeLoc, "element type for an objectFifo must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -285,7 +311,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
     return result = AIEObjectFifoType::get(elementType), success();
   }
 
-  if (name.equals("objectfifosubview")) {
+  if (name == "objectfifosubview") {
     if (parser.parseLess())
       return failure();
 
@@ -297,7 +323,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
       return failure();
 
     // Check that the type is a MemRefType.
-    if (!elementType.isa<MemRefType>()) {
+    if (!llvm::isa<MemRefType>(elementType)) {
       parser.emitError(typeLoc, "element type for a subview must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -340,14 +366,14 @@ Type AIEDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print an instance of a type registered to the AIE dialect.
 void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
-  if (type.isa<AIEObjectFifoType>()) {
-    auto objectFifoType = type.cast<AIEObjectFifoType>();
+  if (llvm::isa<AIEObjectFifoType>(type)) {
+    auto objectFifoType = llvm::cast<AIEObjectFifoType>(type);
     printer << "objectfifo<";
     printer << objectFifoType.getElementType();
     printer << '>';
 
-  } else if (type.isa<AIEObjectFifoSubviewType>()) {
-    auto subviewType = type.cast<AIEObjectFifoSubviewType>();
+  } else if (llvm::isa<AIEObjectFifoSubviewType>(type)) {
+    auto subviewType = llvm::cast<AIEObjectFifoSubviewType>(type);
     printer << "objectfifosubview<";
     printer << subviewType.getElementType();
     printer << '>';
@@ -531,7 +557,7 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     printer << tile;
-    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
+    if (dimsPerTileAttr && tileIdx < dimsPerTileAttr.size() &&
         dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
       printer << " fromStream ";
       printer.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
@@ -561,7 +587,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     auto elemType =
-        fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
+        llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
     int64_t outputSize = 1;
     for (auto dim : elemType.getShape())
       outputSize *= dim;
@@ -569,7 +595,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
       auto elemType =
-          fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
+          llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
       int64_t nextInputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextInputSize *= dim;
@@ -592,7 +618,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     }
 
     auto elemType =
-        fifoIn.getElemType().cast<AIEObjectFifoType>().getElementType();
+        llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
     int64_t inputSize = 1;
     for (auto dim : elemType.getShape())
       inputSize *= dim;
@@ -611,7 +637,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
       }
 
       auto elemType =
-          fifoOut.getElemType().cast<AIEObjectFifoType>().getElementType();
+          llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
       int64_t nextOutputSize = 1;
       for (int64_t dim : elemType.getShape())
         nextOutputSize *= dim;
@@ -744,9 +770,11 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   }
 
   auto objFifoElem =
-      getObjectFifo().getElemType().cast<AIEObjectFifoType>().getElementType();
+      llvm::cast<AIEObjectFifoType>(getObjectFifo().getElemType())
+          .getElementType();
   auto objFifoSubviewElem =
-      getResult().getType().cast<AIEObjectFifoSubviewType>().getElementType();
+      llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
+          .getElementType();
   if (objFifoElem != objFifoSubviewElem)
     return emitOpError(
         "ObjectFifo element and ObjectFifoSubview element must match.\n");
@@ -976,17 +1004,7 @@ LogicalResult GetCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 const AIETargetModel &DeviceOp::getTargetModel() {
-  switch (getDevice()) {
-  case AIEDevice::xcvc1902:
-    return VC1902model;
-  case AIEDevice::xcve2302:
-    return VE2302model;
-  case AIEDevice::xcve2802:
-    return VE2802model;
-  case AIEDevice::ipu:
-    return IPUmodel;
-  }
-  return VC1902model;
+  return xilinx::AIE::getTargetModel(getDevice());
 }
 
 LogicalResult DeviceOp::verify() { return success(); }
@@ -1275,7 +1293,7 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 //===----------------------------------------------------------------------===//
 
 int64_t BufferOp::getAllocationSize() {
-  auto type = getType().cast<MemRefType>();
+  auto type = llvm::cast<MemRefType>(getType());
   return type.getNumElements() * type.getElementTypeBitWidth() / 8;
 }
 
@@ -1545,60 +1563,79 @@ LogicalResult DMABDOp::verify() {
   if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
-  if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
-    if (auto bufferOp = getBufferOp();
-        bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
-        bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
-      return emitOpError("can only access a buffer in the same tile.");
-  }
 
-  // The following checks only apply if non-default strides/wraps are defined.
-  if (getDimensions()) {
-    MemRefType buffer = getBuffer().getType();
-    // We are not restrictive about the type of the memref used as the input
-    // to the DMABD when used with multi-dimensional strides/wraps. Since the
-    // BD will use the memref as a base address and copy from it in 32 bit
-    // chunks, while assuming the layout of the memref is contiguous. We
-    // assume the user/compiler understands and accounts for this.
-    uint64_t memrefSize = 1; // in bytes
-    uint64_t maxIdx = 0;
-    for (int64_t memrefDim : buffer.getShape())
-      memrefSize *= 4 * memrefDim;
+  if (getLenInBytes() % 4)
+    return emitOpError("transfer length must be multiple of 4 (i.e., represent "
+                       "4 byte aligned address)");
 
-    ArrayRef<BDDimLayoutAttr> dims = *getDimensions();
+  TileID parentTileId = getParentTileElement(getOperation()).getTileID();
+
+  if (getOperation()->getParentOfType<MemOp>() &&
+      (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
+       getBufferOp().getTileOp().rowIndex() != parentTileId.row))
+    return emitOpError(
+        "Core tile DMAs can only access a buffer in the same tile.");
+
+  const AIETargetModel &targetModel = getTargetModel(getOperation());
+
+  uint32_t maxBds = targetModel.getNumBDs(parentTileId.col, parentTileId.row);
+  if (std::optional<int32_t> bdId = getBdId();
+      bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds)
+    return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
+  if (std::optional<int32_t> nextBdId = getNextBdId();
+      nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
+    return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+  if (auto dims = getDimensions(); dims.has_value()) {
     size_t maxNDims = 3;
     if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp()))
       maxNDims = 4;
-
-    if (dims.size() > maxNDims)
+    if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
                            << " dimensions for step sizes and wraps in this "
                               " tile (got "
-                           << std::to_string(dims.size()) << " dimensions).";
+                           << std::to_string(dims->size()) << " dimensions).";
 
-    for (BDDimLayoutAttr dim : dims) {
+    MemRefType buffer = getBuffer().getType();
+    int64_t maxIdx = 0;
+    for (BDDimLayoutAttr dim : *dims) {
       maxIdx += dim.getStride() * (dim.getSize() - 1);
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
-      if (dim.getStride() > memrefSize)
+      if (dim.getStride() > buffer.getNumElements())
         return emitOpError()
-               << "Step size " << std::to_string(dim.getStride() * 4) << " "
-               << "bytes exceeds memref size " << std::to_string(memrefSize);
+               << "Step size " << std::to_string(dim.getStride()) << " "
+               << "exceeds memref size "
+               << std::to_string(buffer.getNumElements());
       if (dim.getSize() >= (1UL << 9) + 1)
         return emitOpError() << "Size may not exceed 1023.";
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
 
-    if (memrefSize <= 4 * maxIdx)
+    if (buffer.getNumElements() <= maxIdx)
       return emitOpError() << "Specified stride(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << ", accessing at "
-                           << std::to_string(4 * maxIdx)
-                           << " byte offset in memref of length "
-                           << std::to_string(memrefSize) << ".";
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(buffer.getNumElements()) << ".";
+
+    // Since streams read 32b words, there's no way to read eg 16b with stride
+    // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
+    // CDODirect/XAIEV2 scale the size by 4/getBufferElementTypeWidthInBytes).
+    if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
+      return emitOpError(
+          "For <32b width datatypes, inner-most dim stride must be 1");
+  }
+  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
+      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+    if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
+      int offsetInBytes = *baseAddr + getOffsetInBytes();
+      if (offsetInBytes % 4)
+        return emitOpError(
+                   "bd address must be 4 byte (32b) aligned; got base+offset: ")
+               << offsetInBytes << " (bytes)";
+    }
   }
 
   if (!getLen() && !getBuffer().getType().hasStaticShape())

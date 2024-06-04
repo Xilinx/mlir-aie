@@ -128,7 +128,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
 endforeach()
 
 include("xaiengine/aiert.cmake")
-set(XAIE_SOURCE_DIR "xaiengine/aie-rt/driver/src")
+set(XAIE_SOURCE_DIR "../third_party/aie-rt/driver/src")
 set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/bootgen)
 
 add_aiert_headers(xaienginecdo_static
@@ -147,3 +147,4 @@ target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_D
 # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
 install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
 install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
+

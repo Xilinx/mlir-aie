@@ -45,7 +45,13 @@
 #include <unordered_map>
 
 #ifdef _WIN32
+#include "windows.h"
+// For UUID stuff
+#include "rpcdce.h"
+
 #define setenv(name, var, ignore) _putenv_s(name, var)
+#else
+#include <uuid/uuid.h>
 #endif
 
 using namespace llvm;
@@ -73,6 +79,10 @@ void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
 
   pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass,
                       TK.PrintIRModuleScope);
+
+  bool timing = TK.Timing;
+  if (timing)
+    pm.enableTiming();
 }
 } // namespace
 
@@ -122,6 +132,31 @@ void xilinx::findVitis(XCLBinGenConfig &TK) {
   }
 }
 
+static std::string getUUIDString() {
+  std::string val;
+#ifdef _WIN32
+  UUID *uuid;
+  RPC_STATUS status;
+  status = UuidCreate(uuid);
+  if (status != RPC_S_OK)
+    errs() << "Failed to create UUID\n";
+  RPC_CSTR *uuidstring;
+  status = UuidToStringA(uuid, uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to convert UUID to string\n";
+  val = std::string((char *)uuidstring);
+  status = RpcStringFreeA(uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to free UUID string\n";
+#else
+  uuid_t binuuid;
+  uuid_generate_random(binuuid);
+  char uuid[37];
+  uuid_unparse_lower(binuuid, uuid);
+  val = std::string(uuid);
+#endif
+  return val;
+}
 static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
@@ -369,21 +404,36 @@ static json::Object makeKernelJSON(std::string name, std::string id,
                                              {"address-qualifier", "SCALAR"},
                                              {"type", "uint64_t"},
                                              {"offset", "0x08"}},
-                                json::Object{{"name", "in"},
+                                json::Object{{"name", "bo0"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "char *"},
                                              {"offset", "0x10"}},
-                                json::Object{{"name", "tmp"},
+                                json::Object{{"name", "bo1"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "char *"},
                                              {"offset", "0x18"}},
-                                json::Object{{"name", "out"},
+                                json::Object{{"name", "bo2"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "char *"},
-                                             {"offset", "0x20"}}}},
+                                             {"offset", "0x20"}},
+                                json::Object{{"name", "bo3"},
+                                             {"memory-connection", "HOST"},
+                                             {"address-qualifier", "GLOBAL"},
+                                             {"type", "char *"},
+                                             {"offset", "0x28"}},
+                                json::Object{{"name", "bo4"},
+                                             {"memory-connection", "HOST"},
+                                             {"address-qualifier", "GLOBAL"},
+                                             {"type", "char *"},
+                                             {"offset", "0x30"}},
+                                json::Object{{"name", "bo5"},
+                                             {"memory-connection", "HOST"},
+                                             {"address-qualifier", "GLOBAL"},
+                                             {"type", "char *"},
+                                             {"offset", "0x38"}}}},
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
@@ -434,6 +484,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
 
+    std::string uuid_str = getUUIDString();
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -442,17 +493,14 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           "inference_fingerprint": "23423",
           "pre_post_fingerprint": "12345",
           "partition": {
-            "column_width": 1,
+            "column_width": 4,
             "start_columns": [
-              1,
-              2,
-              3,
-              4
+              1
             ]
           },
           "PDIs": [
             {
-              "uuid": "00000000-0000-0000-0000-000000008025",
+              "uuid": ")" + uuid_str + R"(",
               "file_name": "./design.pdi",
               "cdo_groups": [
                 {
@@ -511,8 +559,6 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                        << "\t{\n"
                        << "\t\tname=aie_image, id=0x1c000000\n"
                        << "\t\t{ type=cdo\n"
-                       << "\t\t  file=" << TK.TempDir
-                       << "/aie_cdo_error_handling.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_init.bin\n"
                        << "\t\t  file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
@@ -588,7 +634,7 @@ static std::string chesshack(const std::string &input) {
 }
 
 // A pass which removes the alignment attribute from llvm load operations, if
-// the alignment is 2.
+// the alignment is less than 4 (2 or 1).
 //
 // Example replaces:
 //
@@ -614,11 +660,19 @@ struct RemoveAlignment2FromLLVMLoadPass
     getOperation().walk([](Operation *op) {
       if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
         auto alignmentAttr = loadOp.getAlignmentAttr();
-        if (alignmentAttr && alignmentAttr.getValue() == 2)
-          loadOp.setAlignment(std::optional<uint64_t>());
+        if (alignmentAttr) {
+          int alignmentVal = alignmentAttr.getValue().getSExtValue();
+          if (alignmentVal == 2 || alignmentVal == 1) {
+            loadOp.setAlignment(std::optional<uint64_t>());
+          }
+        }
       }
     });
   }
+
+public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      RemoveAlignment2FromLLVMLoadPass);
 };
 } // namespace
 
@@ -693,41 +747,9 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     SmallString<64> chessworkDir(TK.TempDir);
     sys::path::append(chessworkDir, "chesswork");
 
-    SmallString<64> chessIntrinsicsCpp(TK.InstallDir);
-    sys::path::append(chessIntrinsicsCpp, "aie_runtime_lib", TK.TargetArch,
-                      "chess_intrinsic_wrapper.cpp");
-
-    SmallString<64> chessIntrinsicsLL(TK.TempDir);
-    sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
-
-    if (runTool(chessWrapperBin,
-                {StringRef(TK.TargetArch).lower(), "+w",
-                 std::string(chessworkDir), "-c", "-d", "-f", "+f", "+P", "4",
-                 std::string(chessIntrinsicsCpp), "-o",
-                 std::string(chessIntrinsicsLL)},
-                TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to compile chess intrinsics");
-
-    std::string newIntrinsicsLL;
-    {
-      auto chessIntrinsicIn = openInputFile(chessIntrinsicsLL, &errorMessage);
-      if (!chessIntrinsicIn)
-        moduleOp.emitOpError(errorMessage);
-
-      newIntrinsicsLL =
-          std::regex_replace(std::string(chessIntrinsicIn->getBuffer()),
-                             std::regex("target datalayout.*"), "");
-      newIntrinsicsLL = std::regex_replace(newIntrinsicsLL,
-                                           std::regex("target triple.*"), "");
-    }
-    {
-      auto chessIntrinsicOut = openOutputFile(chessIntrinsicsLL);
-      if (!chessIntrinsicOut)
-        moduleOp.emitOpError(errorMessage);
-
-      chessIntrinsicOut->os() << newIntrinsicsLL;
-      chessIntrinsicOut->keep();
-    }
+    SmallString<64> chessIntrinsicsLL(TK.InstallDir);
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib", TK.TargetArch,
+                      "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;
     {
@@ -785,7 +807,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(OptLLVMIRFile, "input.opt.ll");
     if (runTool(peanoOptBin,
                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
-                 "-o", std::string(OptLLVMIRFile)},
+                 "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
                 TK.Verbose) != 0)
       return moduleOp.emitOpError("Failed to optimize");
 
@@ -802,7 +824,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
 }
 
 LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
-                                 XCLBinGenConfig &TK, StringRef OutputIPU,
+                                 XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin) {
   PassManager pm(ctx, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
@@ -829,25 +851,25 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     return moduleOp.emitOpError()
            << "Unexpected target architecture: " << TK.TargetArch;
 
-  // generateIPUInstructions
+  // generateNPUInstructions
   {
     PassManager pm(ctx, moduleOp.getOperationName());
     applyConfigToPassManager(TK, pm);
 
-    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToIpuPass());
+    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
-      return moduleOp.emitOpError("IPU Instruction pipeline failed");
+      return moduleOp.emitOpError("NPU Instruction pipeline failed");
 
     std::string errorMessage;
-    auto output = openOutputFile(OutputIPU, &errorMessage);
+    auto output = openOutputFile(OutputNPU, &errorMessage);
     if (!output) {
       llvm::errs() << errorMessage << "\n";
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToIPU(copy, output->os())))
-      return moduleOp.emitOpError("IPU Instruction translation failed");
+    if (failed(AIE::AIETranslateToNPU(copy, output->os())))
+      return moduleOp.emitOpError("NPU Instruction translation failed");
 
     output->keep();
     copy->erase();

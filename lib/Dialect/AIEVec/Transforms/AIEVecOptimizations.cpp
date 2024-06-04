@@ -30,6 +30,7 @@
 
 #define DEBUG_TYPE "aievec-optimize"
 
+using namespace llvm;
 using namespace mlir;
 using namespace arith;
 using namespace vector;
@@ -60,7 +61,7 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   if (!shiftOp)
     return false;
 
-  VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
+  VectorType vType = cast<VectorType>(shiftOp->getResult(0).getType());
   int32_t elemSize = getElementSizeInBits(vType);
   auto constOp = cast<arith::ConstantOp>(shiftOp.getShift().getDefiningOp());
   int32_t shiftBytes = cast<IntegerAttr>(constOp.getValue()).getInt();
@@ -184,7 +185,7 @@ struct FoldAIEShiftAndBroadcast
       return failure();
     }
 
-    VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
+    VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
 
     rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType,
                                                      shiftOp.getLhs(), idx);
@@ -193,18 +194,6 @@ struct FoldAIEShiftAndBroadcast
   }
 };
 
-struct FoldAIECastOps : public OpConversionPattern<aievec::CastOp> {
-  using OpConversionPattern<aievec::CastOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto defOp = cast<aievec::CastOp>(castOp.getSource().getDefiningOp());
-    rewriter.replaceOp(castOp, defOp.getSource());
-
-    return success();
-  }
-};
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -215,7 +204,7 @@ static void populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns,
 
 static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns,
                                                    TargetBackend backend) {
-  patterns.add<FoldAIEShiftAndBroadcast, FoldAIECastOps>(patterns.getContext());
+  patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -241,24 +230,6 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target,
         aievec::ShiftOp shiftOp = nullptr;
         int32_t idx = 0;
         return !canFoldAIEShiftAndBroadcast(op, shiftOp, idx);
-      });
-
-  target.addDynamicallyLegalOp<xilinx::aievec::CastOp>(
-      [](xilinx::aievec::CastOp op) {
-        if (!op.getIsResAcc()) {
-          return true;
-        }
-
-        if (!op.getSource().getDefiningOp()) {
-          return true;
-        }
-
-        auto defOp = dyn_cast<aievec::CastOp>(op.getSource().getDefiningOp());
-
-        if (!defOp || defOp.getIsResAcc()) {
-          return true;
-        }
-        return false;
       });
 }
 

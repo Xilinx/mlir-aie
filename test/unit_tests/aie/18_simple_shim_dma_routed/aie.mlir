@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --basic-alloc-scheme --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: %run_on_vck5000 ./test.elf
 
 module @test18_simple_shim_dma_routed {
   %t70 = aie.tile(7, 0)

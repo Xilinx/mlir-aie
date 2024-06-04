@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'aie.dma_bd' op can only access a buffer in the same tile.
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
+// CHECK: error{{.*}}'aie.dma_bd' op Core tile DMAs can only access a buffer in the same tile.
 
 module @test {
     %t63 = aie.tile(6, 3)

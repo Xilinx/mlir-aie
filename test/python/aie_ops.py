@@ -22,6 +22,9 @@ from aie.dialects.aie import (
     objectfifo_subview_access,
     tile,
     cascade_flow,
+    WireBundle,
+    packetflow,
+    get_target_model,
 )
 from aie.ir import InsertionPoint, Block, TypeAttr
 from aie.extras.context import mlir_mod_ctx
@@ -102,7 +105,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<size = 1, stride = 2>], {%[[VAL1]] fromStream [<size = 1, stride = 2>]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
+# CHECK: aie.objectfifo @of0(%[[VAL0]] toStream [<size = 1, stride = 2>], {%[[VAL1]] fromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<12xf16>>
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -118,25 +121,26 @@ def objFifo():
             T.memref(12, T.f16()),
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
+            via_DMA=True,
         )
         end()
 
 
 # CHECK-LABEL: objFifoLink
-# CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
-# CHECK: %[[VAL_2:.*]] = aie.tile(7, 7)
+# CHECK: %[[VAL_0:.*]] = aie.tile(6, 3)
+# CHECK: %[[VAL_1:.*]] = aie.tile(6, 1)
+# CHECK: %[[VAL_2:.*]] = aie.tile(7, 3)
 # CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @construct_and_print_module
 def objFifoLink():
-    dev = Device(AIEDevice.xcvc1902)
+    dev = Device(AIEDevice.xcve2302)
     bb = Block.create_at_start(dev.body_region)
     with InsertionPoint(bb):
-        tile0 = tile(col=6, row=6)
-        tile1 = tile(col=2, row=2)
-        tile2 = tile(col=7, row=7)
+        tile0 = tile(col=6, row=3)
+        tile1 = tile(col=6, row=1)
+        tile2 = tile(col=7, row=3)
         of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
         object_fifo_link(of0, of1)
@@ -223,6 +227,27 @@ def cascadeFlowOp():
     cascade_flow(t0, t1)
 
 
+# CHECK-LABEL: packetFlowOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: aie.packet_flow(16) {
+# CHECK:   aie.packet_source<%[[VAL_0]], Core : 0>
+# CHECK:   aie.packet_dest<%[[VAL_0]], Core : 0>
+# CHECK: } {keep_pkt_header = true}
+@construct_and_print_module
+def packetFlowOp():
+    t0 = tile(col=1, row=3)
+    packetflow(
+        pkt_id=0x10,
+        source=t0,
+        source_port=WireBundle.Core,
+        source_channel=0,
+        dest=t0,
+        dest_port=WireBundle.Core,
+        dest_channel=0,
+        keep_pkt_header=True,
+    )
+
+
 # CHECK-LABEL: test_module_context
 # CHECK: module {
 # CHECK:   %tile_1_1 = aie.tile(1, 1)
@@ -244,3 +269,25 @@ def test_module_context():
 
 
 test_module_context()
+
+
+# CHECK-LABEL: test_target_model
+# CHECK: xcvc1902 rows 9
+# CHECK: xcvc1902 cols 50
+# CHECK: xcvc1902 npu False
+# CHECK: npu1 rows 6
+# CHECK: npu1 cols 5
+# CHECK: npu1 npu True
+# CHECK: npu1_1col rows 6
+# CHECK: npu1_1col cols 1
+# CHECK: npu1_1col npu True
+def test_target_model():
+    print("test_target_model")
+    for d in AIEDevice:
+        tm = get_target_model(d)
+        print(f"{d} rows {tm.rows()}")
+        print(f"{d} cols {tm.columns()}")
+        print(f"{d} npu {tm.is_npu()}")
+
+
+test_target_model()

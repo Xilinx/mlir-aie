@@ -1,0 +1,84 @@
+# ./lit.site.cfg.py.in -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2022, Advanced Micro Devices, Inc.
+
+@LIT_SITE_CFG_IN_HEADER@
+
+import sys
+import lit.util
+
+config.host_triple = "@LLVM_HOST_TRIPLE@"
+config.target_triple = "@TARGET_TRIPLE@"
+config.llvm_src_root = "@LLVM_SOURCE_DIR@"
+config.llvm_obj_root = "@LLVM_BINARY_DIR@"
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+config.llvm_lib_dir = "@LLVM_LIBRARY_DIR@"
+config.llvm_shlib_dir = "@SHLIBDIR@"
+config.llvm_shlib_ext = "@SHLIBEXT@"
+config.llvm_exe_ext = "@EXEEXT@"
+config.peano_tools_dir = "@PEANO_INSTALL_DIR@/bin"
+config.lit_tools_dir = "@LLVM_LIT_TOOLS_DIR@"
+config.python_executable = "@Python3_EXECUTABLE@"
+config.gold_executable = "@GOLD_EXECUTABLE@"
+config.ld64_executable = "@LD64_EXECUTABLE@"
+config.enable_shared = @ENABLE_SHARED@
+config.enable_assertions = @ENABLE_ASSERTIONS@
+config.targets_to_build = "@TARGETS_TO_BUILD@"
+config.native_target = "@LLVM_NATIVE_ARCH@"
+config.llvm_bindings = "@LLVM_BINDINGS@".split(' ')
+config.host_os = "@HOST_OS@"
+config.host_cc = "@HOST_CC@"
+config.host_cxx = "@HOST_CXX@"
+# Note: ldflags can contain double-quoted paths, so must use single quotes here.
+config.host_ldflags = '@HOST_LDFLAGS@'
+config.llvm_use_sanitizer = "@LLVM_USE_SANITIZER@"
+config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
+config.host_arch = "@HOST_ARCH@"
+config.xrt_dir = "@XRT_DIR@"
+config.xrt_bin_dir = "@XRT_BIN_DIR@"
+config.xrt_lib_dir = "@XRT_LIB_DIR@"
+config.xrt_include_dir = "@XRT_INCLUDE_DIR@"
+config.opencv_libs = "@OpenCV_LIBS@"
+config.opencv_lib_dir = "@OpenCV_LIB_PATH@"
+config.opencv_include_dir = "@OpenCV_INCLUDE_DIRS@"
+
+config.aie_src_root = "@AIE_SOURCE_DIR@"
+config.aie_obj_root = "@AIE_BINARY_DIR@"
+# test_exec_root: The root path where tests should be run.
+config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
+
+config.hsa_dir = "@hsa-runtime64_DIR@"
+config.hsa_found = lit.util.pythonize_bool("@hsa-runtime64_FOUND@")
+
+# pass on vitis settings
+config.enable_chess_tests = @CONFIG_ENABLE_CHESS_TESTS@
+config.enable_board_tests = @CONFIG_ENABLE_BOARD_TESTS@
+config.vitis_root = "@VITIS_ROOT@"
+config.vitis_aietools_dir = "@VITIS_AIETOOLS_DIR@"
+config.vitis_sysroot = "@Sysroot@"
+config.has_libxaie = @CONFIG_HAS_LIBXAIE@
+config.extraAieCcFlags = "@extraAieCcFlags@"
+config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
+config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
+
+# Support substitution of the tools_dir with user parameters. This is
+# used when we can't determine the tool dir at configuration time.
+try:
+    config.llvm_tools_dir = config.llvm_tools_dir % lit_config.params
+    config.llvm_shlib_dir = config.llvm_shlib_dir % lit_config.params
+except KeyError:
+    e = sys.exc_info()[1]
+    key, = e.args
+    lit_config.fatal("unable to find %r parameter, use '--param=%s=VALUE'" % (key,key))
+
+config.aie_include_integration_tests = "@AIE_INCLUDE_INTEGRATION_TESTS@"
+
+import lit.llvm
+lit.llvm.initialize(lit_config, config)
+
+# Let the main config do the real work.
+lit_config.load_config(config, "@PROJECT_SOURCE_DIR@/lit.cfg.py")

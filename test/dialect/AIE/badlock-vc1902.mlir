@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'aie.lock' op lock assigned invalid id (maximum is 15)
 module @test {
   %t1 = aie.tile(1, 1)

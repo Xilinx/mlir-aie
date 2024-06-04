@@ -12,8 +12,12 @@
 #define AIE_CONVERSION_PASSES_H
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
+#include "aie/Conversion/PassesEnums.h.inc"
 
 namespace xilinx {
+
+#define GEN_PASS_DECL
+#include "aie/Conversion/Passes.h.inc"
 
 #define GEN_PASS_REGISTRATION
 #include "aie/Conversion/Passes.h.inc"

@@ -21,6 +21,7 @@ import sys
 import tempfile
 from textwrap import dedent
 import time
+import uuid
 
 from aie.extras.runtime.passes import Pipeline
 
@@ -35,7 +36,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -48,9 +49,8 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-create-packet-flows")
         .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses"),
+        .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
     )
     .convert_scf_to_cf()
 )
@@ -89,7 +89,7 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_IPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-ipu"))
+DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
 
 
 async def read_file_async(file_path: str) -> str:
@@ -189,14 +189,27 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
             module.operation,
             lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
         )
-        min_col = min([t.col.value for t in tiles])
-        max_col = max([t.col.value for t in tiles])
-
+        min_col = min([t.col.value for t in tiles], default=0)
+        max_col = max([t.col.value for t in tiles], default=0)
     num_cols = max_col - min_col + 1
-    if start_columns is None:
-        start_columns = list(range(1, 6 - num_cols))
+    device = find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+    )
 
-    uuid = random.randint(2222, 9999)
+    if start_columns is None:
+        # It's arguable that this should should come from the device model
+        # somehow.  Or perhaps that it shouldn't be needed in the
+        # XCLbin at all, since it is basically describing information
+        # which is already inherent in the CDO.
+        # For the time being, we just leave it here.
+        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
+            start_columns = [0]
+        else:
+            start_columns = list(range(1, 6 - num_cols))
+
+    # Generate a uuid
+    pdi_uuid = uuid.uuid4()
     return {
         "aie_partition": {
             "name": "QoS",
@@ -209,7 +222,7 @@ def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
             },
             "PDIs": [
                 {
-                    "uuid": "00000000-0000-0000-0000-00000000" + str(uuid),
+                    "uuid": str(pdi_uuid),
                     "file_name": "./design.pdi",
                     "cdo_groups": [
                         {
@@ -243,8 +256,9 @@ def generate_cores_list(mlir_module_str):
 
 
 def emit_design_bif(root_path, has_cores=True, enable_cores=True):
-    elf_file = f"file={root_path}/aie_cdo_elfs.bin" if has_cores else ""
-    enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
+    cdo_elfs_file = f"file={root_path}/aie_cdo_elfs.bin"
+    cdo_init_file = f"file={root_path}/aie_cdo_init.bin"
+    cdo_enable_file = f"file={root_path}/aie_cdo_enable.bin" if enable_cores else ""
     return dedent(
         f"""\
         all:
@@ -255,10 +269,9 @@ def emit_design_bif(root_path, has_cores=True, enable_cores=True):
           {{
             name=aie_image, id=0x1c000000
             {{ type=cdo
-               file={root_path}/aie_cdo_error_handling.bin
-               {elf_file}
-               file={root_path}/aie_cdo_init.bin
-               {enable_file}
+               {cdo_elfs_file}
+               {cdo_init_file}
+               {cdo_enable_file}
             }}
           }}
         }}
@@ -306,7 +319,7 @@ def aie_target_defines(aie_target):
     return ["-D__AIEARCH__=10"]
 
 
-def chesshack(llvmir_chesslinked):
+def downgrade_ir_for_chess(llvmir_chesslinked):
     llvmir_chesslinked = (
         llvmir_chesslinked.replace("memory(none)", "readnone")
         .replace("memory(read)", "readonly")
@@ -381,12 +394,18 @@ class FlowRunner:
             sys.exit(ret)
 
     # In order to run xchesscc on modern ll code, we need a bunch of hacks.
-    async def chesshack(self, task, llvmir, chess_intrinsic_wrapper_ll_path):
+    async def chesshack(self, task, llvmir, aie_target):
         llvmir_chesshack = llvmir + "chesshack.ll"
         llvmir_chesslinked_path = llvmir + "chesslinked.ll"
         if not self.opts.execute:
             return llvmir_chesslinked_path
         llvmir = await read_file_async(llvmir)
+
+        install_path = aie.compiler.aiecc.configure.install_path()
+        runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
+        chess_intrinsic_wrapper_ll_path = os.path.join(
+            runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.ll"
+        )
 
         await write_file_async(llvmir, llvmir_chesshack)
         assert os.path.exists(llvmir_chesshack)
@@ -403,47 +422,16 @@ class FlowRunner:
         )
 
         llvmir_chesslinked_ir = await read_file_async(llvmir_chesslinked_path)
-        llvmir_chesslinked_ir = chesshack(llvmir_chesslinked_ir)
+        llvmir_chesslinked_ir = downgrade_ir_for_chess(llvmir_chesslinked_ir)
         await write_file_async(llvmir_chesslinked_ir, llvmir_chesslinked_path)
 
         return llvmir_chesslinked_path
-
-    async def prepare_for_chesshack(self, task, aie_target):
-        if opts.compile and opts.xchesscc:
-            install_path = aie.compiler.aiecc.configure.install_path()
-            runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
-            chess_intrinsic_wrapper_cpp = os.path.join(
-                runtime_lib_path, aie_target.upper(), "chess_intrinsic_wrapper.cpp"
-            )
-
-            chess_intrinsic_wrapper_ll_path = self.prepend_tmp(
-                "chess_intrinsic_wrapper.ll"
-            )
-
-            # fmt: off
-            await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+f", "+P", "4", chess_intrinsic_wrapper_cpp, "-o", chess_intrinsic_wrapper_ll_path])
-            # fmt: on
-
-            # this has to be here and not higher because there are tests that check for the command string for the above do_call
-            if not self.opts.execute:
-                return
-            chess_intrinsic_wrapper = await read_file_async(
-                chess_intrinsic_wrapper_ll_path
-            )
-            chess_intrinsic_wrapper = re.sub(
-                r"^target.*", "", chess_intrinsic_wrapper, flags=re.MULTILINE
-            )
-            await write_file_async(
-                chess_intrinsic_wrapper, chess_intrinsic_wrapper_ll_path
-            )
-            return chess_intrinsic_wrapper_ll_path
 
     async def process_core(
         self,
         core,
         aie_target,
         aie_peano_target,
-        chess_intrinsic_wrapper_ll_path,
         file_with_addresses,
     ):
         async with self.limit:
@@ -511,7 +499,7 @@ class FlowRunner:
 
             if opts.compile and opts.xchesscc:
                 if not opts.unified:
-                    file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, chess_intrinsic_wrapper_ll_path)
+                    file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, aie_target)
                     if self.opts.link and self.opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", "+P", "4", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
@@ -564,7 +552,7 @@ class FlowRunner:
             )
             generate_cdo(input_physical.operation, self.tmpdirname)
 
-    async def process_xclbin_gen(self, has_cores):
+    async def process_xclbin_gen(self):
         if opts.progress:
             task = self.progress_bar.add_task(
                 "[yellow] XCLBIN generation ", total=10, command="starting"
@@ -582,7 +570,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = ["in", "tmp", "out"]
+        buffer_arg_names = [f"bo{i}" for i in range(6)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -597,13 +585,31 @@ class FlowRunner:
         )
 
         await write_file_async(
-            emit_design_bif(self.tmpdirname, has_cores),
+            emit_design_bif(self.tmpdirname),
             self.prepend_tmp("design.bif"),
         )
 
         # fmt: off
         await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
-        await self.do_call(task, ["xclbinutil", "--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json"), "--add-kernel", self.prepend_tmp("kernels.json"), "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"), "--force", "--output", opts.xclbin_name])
+        if opts.xclbin_input:
+            await self.do_call(task, ["xclbinutil",
+                                      "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
+                                      "--force", "--input", opts.xclbin_input])
+            with open(self.prepend_tmp("aie_input_partition.json")) as f:
+                input_partition = json.load(f)
+            with open(self.prepend_tmp("aie_partition.json")) as f:
+                new_partition = json.load(f)
+            input_partition["aie_partition"]["PDIs"].append(new_partition["aie_partition"]["PDIs"][0])
+            with open(self.prepend_tmp("aie_partition.json"), "w") as f:
+                json.dump(input_partition, f, indent=2)
+            flag = ['--input', opts.xclbin_input]
+        else:
+            flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
+
+        await self.do_call(task, ["xclbinutil"] + flag +
+                                 ["--add-kernel", self.prepend_tmp("kernels.json"),
+                                  "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
+                                  "--force", "--output", opts.xclbin_name])
         # fmt: on
 
     async def process_host_cgen(self, aie_target, file_with_addresses):
@@ -625,9 +631,7 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-lower-broadcast-packet",
                     "--aie-create-packet-flows",
-                    "--aie-lower-multicast",
                     file_with_addresses,
                     "-o",
                     file_physical,
@@ -659,7 +663,20 @@ class FlowRunner:
                     ],
                 )
 
-            cmd = ["clang++", "-std=c++11"]
+            if opts.link_against_hsa:
+                file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
+                await self.do_call(
+                    task,
+                    [
+                        "aie-translate",
+                        "--aie-generate-hsa",
+                        file_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+
+            cmd = ["clang++", "-std=c++17"]
             if opts.host_target:
                 cmd += ["--target=" + opts.host_target]
                 if (
@@ -685,7 +702,14 @@ class FlowRunner:
                 # force using '/usr/lib,include/gcc'
                 if opts.host_target == "aarch64-linux-gnu":
                     cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
-
+                    # It looks like the G++ distribution is non standard, so add
+                    # an explicit handling of C++ library.
+                    # Perhaps related to https://discourse.llvm.org/t/add-gcc-install-dir-deprecate-gcc-toolchain-and-remove-gcc-install-prefix/65091/23
+                    cxx_include = glob.glob(f"{opts.sysroot}/usr/include/c++/*.*.*")[0]
+                    triple = os.path.basename(opts.sysroot)
+                    cmd += [f"-I{cxx_include}", f"-I{cxx_include}/{triple}"]
+                    gcc_lib = glob.glob(f"{opts.sysroot}/usr/lib/{triple}/*.*.*")[0]
+                    cmd += [f"-B{gcc_lib}", f"-L{gcc_lib}"]
             install_path = aie.compiler.aiecc.configure.install_path()
 
             # Setting everything up if linking against HSA
@@ -774,24 +798,29 @@ class FlowRunner:
 
         install_path = aie.compiler.aiecc.configure.install_path()
 
+        # Setting everything up if linking against HSA
+        if opts.link_against_hsa:
+            arch_name = opts.host_target.split("-")[0] + "-hsa"
+        else:
+            arch_name = opts.host_target.split("-")[0]
+
         runtime_simlib_path = os.path.join(
             install_path, "aie_runtime_lib", aie_target.upper(), "aiesim"
         )
         runtime_testlib_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "lib",
         )
         runtime_testlib_include_path = os.path.join(
             install_path,
             "runtime_lib",
-            opts.host_target.split("-")[0],
+            arch_name,
             "test_lib",
             "include",
         )
-        sim_makefile = os.path.join(runtime_simlib_path, "Makefile")
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
         file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
@@ -833,6 +862,7 @@ class FlowRunner:
             "-lxtlm",
             "-flto",
         ]
+
         processes = []
         processes.append(
             self.do_call(
@@ -882,8 +912,6 @@ class FlowRunner:
                 ],
             )
         )
-        processes.append(self.do_call(task, ["cp", sim_makefile, sim_dir]))
-        processes.append(self.do_call(task, ["cp", sim_genwrapper, sim_ps_dir]))
         processes.append(
             self.do_call(
                 task,
@@ -894,7 +922,7 @@ class FlowRunner:
                     "-shared",
                     "-o",
                     os.path.join(sim_ps_dir, "ps.so"),
-                    os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp"),
+                    sim_genwrapper,
                     *aie_target_defines(aie_target),
                     *host_opts,
                     *sim_cc_args,
@@ -960,7 +988,12 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE.materialize(module=True)
+            if opts.basic_alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(True).materialize(
+                    module=True
+                )
+            else:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
@@ -986,14 +1019,14 @@ class FlowRunner:
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-elf"
 
-            # Optionally generate insts.txt for IPU instruction stream
-            if opts.ipu or opts.only_ipu:
-                generated_insts_mlir = self.prepend_tmp("generated_ipu_insts.mlir")
+            # Optionally generate insts.txt for NPU instruction stream
+            if opts.npu or opts.only_npu:
+                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
                 await self.do_call(
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-dma-to-ipu",
+                        "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
@@ -1003,18 +1036,14 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-translate",
-                        "--aie-ipu-instgen",
+                        "--aie-npu-instgen",
                         generated_insts_mlir,
                         "-o",
                         opts.insts_name,
                     ],
                 )
-                if opts.only_ipu:
+                if opts.only_npu:
                     return
-
-            chess_intrinsic_wrapper_ll_path = await self.prepare_for_chesshack(
-                progress_bar.task, aie_target
-            )
 
             # fmt: off
             if opts.unified:
@@ -1026,7 +1055,7 @@ class FlowRunner:
 
                 self.unified_file_core_obj = self.prepend_tmp("input.o")
                 if opts.compile and opts.xchesscc:
-                    file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, chess_intrinsic_wrapper_ll_path)
+                    file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "-f", "+P", "4", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
@@ -1054,7 +1083,6 @@ class FlowRunner:
                         core,
                         aie_target,
                         aie_peano_target,
-                        chess_intrinsic_wrapper_ll_path,
                         file_with_addresses,
                     )
                 )
@@ -1064,7 +1092,7 @@ class FlowRunner:
             if opts.cdo and opts.execute:
                 await self.process_cdo()
             if opts.cdo or opts.xcl:
-                await self.process_xclbin_gen(bool(len(cores)))
+                await self.process_xclbin_gen()
 
     def dumpprofile(self):
         sortedruntimes = sorted(

@@ -28,6 +28,7 @@ def parse_args(args=None):
         help="directory used for temporary file storage",
     )
     parser.add_argument(
+        "--verbose",
         "-v",
         dest="verbose",
         default=False,
@@ -138,6 +139,13 @@ def parse_args(args=None):
         help="Disable linking of AIE code",
     )
     parser.add_argument(
+        "--basic-alloc-scheme",
+        dest="basic_alloc_scheme",
+        default=False,
+        action="store_true",
+        help="Use basic memory allocation scheme for AIE buffer address assignment",
+    )
+    parser.add_argument(
         "--aie-generate-airbin",
         dest="airbin",
         default=False,
@@ -194,26 +202,26 @@ def parse_args(args=None):
         help="Show progress visualization",
     )
     parser.add_argument(
-        "--aie-generate-ipu",
-        dest="ipu",
+        "--aie-generate-npu",
+        dest="npu",
         default=False,
         action="store_const",
         const=True,
-        help="Generate ipu instruction stream",
+        help="Generate npu instruction stream",
     )
     parser.add_argument(
-        "--aie-only-generate-ipu",
-        dest="only_ipu",
+        "--aie-only-generate-npu",
+        dest="only_npu",
         default=False,
         action="store_const",
         const=True,
-        help="Generate ipu instruction stream only",
+        help="Generate npu instruction stream only",
     )
     parser.add_argument(
-        "--ipu-insts-name",
+        "--npu-insts-name",
         dest="insts_name",
-        default="ipu_insts.txt",
-        help="Output instructions filename for IPU target",
+        default="npu_insts.txt",
+        help="Output instructions filename for NPU target",
     )
     parser.add_argument(
         "--aie-generate-cdo",
@@ -230,6 +238,12 @@ def parse_args(args=None):
         action="store_const",
         const=True,
         help="Generate xclbin",
+    )
+    parser.add_argument(
+        "--xclbin-input",
+        dest="xclbin_input",
+        default=None,
+        help="Generate kernel into existing xclbin file",
     )
     parser.add_argument(
         "--link_against_hsa",

@@ -70,15 +70,21 @@ cl::opt<std::string>
              cl::init(HOST_ARCHITECTURE), cl::cat(AIE2XCLBinCat));
 
 cl::opt<std::string>
-    IPUInstsName("ipu-insts-name",
-                 cl::desc("Output instructions filename for IPU target"),
-                 cl::init("ipu_insts.txt"), cl::cat(AIE2XCLBinCat));
+    NPUInstsName("npu-insts-name",
+                 cl::desc("Output instructions filename for NPU target"),
+                 cl::init("npu_insts.txt"), cl::cat(AIE2XCLBinCat));
 
 cl::opt<bool>
     PrintIRAfterAll("print-ir-after-all",
                     cl::desc("Configure all pass managers in lowering from aie "
                              "to xclbin to print IR after all passes"),
                     cl::init(false), cl::cat(AIE2XCLBinCat));
+
+cl::opt<bool>
+    Timing("timing",
+           cl::desc("Configure all pass managers in lowering from aie to "
+                    "xclbin to print timing information for each pass"),
+           cl::init(false), cl::cat(AIE2XCLBinCat));
 
 cl::opt<bool>
     PrintIRBeforeAll("print-ir-before-all",
@@ -142,8 +148,10 @@ int main(int argc, char *argv[]) {
   TK.PrintIRAfterAll = PrintIRAfterAll;
   TK.PrintIRBeforeAll = PrintIRBeforeAll;
   TK.PrintIRModuleScope = PrintIRModuleScope;
+  TK.Timing = Timing;
 
-  findVitis(TK);
+  if (TK.UseChess)
+    findVitis(TK);
 
   if (Verbose)
     llvm::dbgs() << "\nCompiling " << FileName << "\n";
@@ -206,7 +214,7 @@ int main(int argc, char *argv[]) {
   if (!owning)
     return 1;
 
-  if (failed(aie2xclbin(&ctx, *owning, TK, IPUInstsName.getValue(),
+  if (failed(aie2xclbin(&ctx, *owning, TK, NPUInstsName.getValue(),
                         XCLBinName.getValue())))
     return 1;
 

@@ -7,6 +7,7 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
+  merge_group:
 
 defaults:
   run:
@@ -38,7 +39,7 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
 
-        OS: [ ubuntu-20.04, ubuntu-22.04, macos-12 ]
+        OS: [ ubuntu-20.04, ubuntu-22.04 ]
         COMPILER: [ llvm, gcc ]
         ENABLE_ASSERTIONS: [ ON, OFF ]
         ENABLE_RTTI: [ ON, OFF ]
@@ -60,9 +61,6 @@ jobs:
             COMPILER: msvc
             ENABLE_ASSERTIONS: OFF
             ENABLE_RTTI: OFF
-        exclude:
-          - OS: macos-12
-            COMPILER: gcc
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
@@ -152,4 +150,5 @@ jobs:
             ninja check-aie
             ninja check-tutorials
             ninja check-reference-designs
+            ninja check-programming-guide
           fi

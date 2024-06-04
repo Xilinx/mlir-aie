@@ -7,6 +7,7 @@
 
 #include "aie-c/Dialects.h"
 #include "aie-c/Registration.h"
+#include "aie-c/TargetModel.h"
 #include "aie-c/Translation.h"
 
 #include "mlir-c/IR.h"
@@ -26,6 +27,16 @@
 using namespace mlir::python::adaptors;
 namespace py = pybind11;
 using namespace py::literals;
+
+class PyAieTargetModel {
+public:
+  PyAieTargetModel(AieTargetModel model) : model(model) {}
+  operator AieTargetModel() const { return model; }
+  AieTargetModel get() const { return model; }
+
+private:
+  AieTargetModel model;
+};
 
 PYBIND11_MODULE(_aie, m) {
 
@@ -91,27 +102,25 @@ PYBIND11_MODULE(_aie, m) {
       "generate_cdo",
       [](MlirOperation op, const std::string &workDirPath, bool bigendian,
          bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
-         size_t partitionStartCol, bool enableCores) {
+         bool enableCores) {
         mlir::python::CollectDiagnosticsToStringScope scope(
             mlirOperationGetContext(op));
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
                 op, {workDirPath.data(), workDirPath.size()}, bigendian,
-                emitUnified, cdoDebug, aieSim, xaieDebug, partitionStartCol,
-                enableCores)))
+                emitUnified, cdoDebug, aieSim, xaieDebug, enableCores)))
           throw py::value_error("Failed to generate cdo because: " +
                                 scope.takeMessage());
       },
       "module"_a, "work_dir_path"_a, "bigendian"_a = false,
       "emit_unified"_a = false, "cdo_debug"_a = false, "aiesim"_a = false,
-      "xaie_debug"_a = false, "partition_start_col"_a = 1,
-      "enable_cores"_a = true);
+      "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
-      "ipu_instgen",
+      "npu_instgen",
       [&stealCStr](MlirOperation op) {
-        py::str ipuInstructions = stealCStr(aieTranslateToIPU(op));
+        py::str npuInstructions = stealCStr(aieTranslateToNPU(op));
         auto individualInstructions =
-            ipuInstructions.attr("split")().cast<py::list>();
+            npuInstructions.attr("split")().cast<py::list>();
         for (size_t i = 0; i < individualInstructions.size(); ++i)
           individualInstructions[i] = individualInstructions[i].attr("strip")();
         return individualInstructions;
@@ -143,4 +152,150 @@ PYBIND11_MODULE(_aie, m) {
         return stealCStr(aieLLVMLink(modules.data(), modules.size()));
       },
       "modules"_a);
+
+  m.def("get_target_model",
+        [](uint32_t d) -> PyAieTargetModel { return aieGetTargetModel(d); });
+
+  py::class_<PyAieTargetModel>(m, "AIETargetModel", py::module_local())
+      .def(
+          "columns",
+          [](PyAieTargetModel &self) {
+            return aieTargetModelColumns(self.get());
+          },
+          "Get the number of columns in the device.")
+      .def(
+          "rows",
+          [](PyAieTargetModel &self) { return aieTargetModelRows(self.get()); },
+          "Get the number of rows in the device.")
+      .def("is_core_tile",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelIsCoreTile(self.get(), col, row);
+           })
+      .def("is_mem_tile",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelIsMemTile(self.get(), col, row);
+           })
+      .def("is_shim_noc_tile",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelIsShimNOCTile(self.get(), col, row);
+           })
+      .def("is_shim_pl_tile",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelIsShimPLTile(self.get(), col, row);
+           })
+      .def("is_shim_noc_or_pl_tile",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelIsShimNOCorPLTile(self.get(), col, row);
+           })
+      // .def("is_valid_tile")
+      // .def("is_valid_trace_master")
+      // .def("get_mem_west")
+      // .def("get_mem_east")
+      // .def("get_mem_north")
+      // .def("get_mem_south")
+      .def("is_internal",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsInternal(self.get(), src_col, src_row,
+                                             dst_col, dst_row);
+           })
+      .def("is_west",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsWest(self.get(), src_col, src_row, dst_col,
+                                         dst_row);
+           })
+      .def("is_east",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsEast(self.get(), src_col, src_row, dst_col,
+                                         dst_row);
+           })
+      .def("is_north",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsNorth(self.get(), src_col, src_row, dst_col,
+                                          dst_row);
+           })
+      .def("is_south",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsSouth(self.get(), src_col, src_row, dst_col,
+                                          dst_row);
+           })
+      .def("is_mem_west",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsMemWest(self.get(), src_col, src_row,
+                                            dst_col, dst_row);
+           })
+      .def("is_mem_east",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsMemEast(self.get(), src_col, src_row,
+                                            dst_col, dst_row);
+           })
+      .def("is_mem_north",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsMemNorth(self.get(), src_col, src_row,
+                                             dst_col, dst_row);
+           })
+      .def("is_mem_south",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsMemSouth(self.get(), src_col, src_row,
+                                             dst_col, dst_row);
+           })
+      .def("is_legal_mem_affinity",
+           [](PyAieTargetModel &self, int src_col, int src_row, int dst_col,
+              int dst_row) {
+             return aieTargetModelIsLegalMemAffinity(self.get(), src_col,
+                                                     src_row, dst_col, dst_row);
+           })
+      //.def("get_mem_internal_base_address")
+      .def("get_mem_west_base_address",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMemWestBaseAddress(self.get());
+           })
+      .def("get_mem_east_base_address",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMemEastBaseAddress(self.get());
+           })
+      .def("get_mem_north_base_address",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMemNorthBaseAddress(self.get());
+           })
+      .def("get_mem_south_base_address",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMemSouthBaseAddress(self.get());
+           })
+      .def("get_local_memory_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetLocalMemorySize(self.get());
+           })
+      .def("get_num_locks",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumLocks(self.get(), col, row);
+           })
+      .def("get_num_bds",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetNumBDs(self.get(), col, row);
+           })
+      .def("get_num_mem_tile_rows",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetNumMemTileRows(self.get());
+           })
+      .def("get_mem_tile_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetMemTileSize(self.get());
+           })
+      // .def("get_num_dest_switchbox_connections", int col, int row)
+      // .def("get_num_source_switchbox_connections", int col, int row)
+      // .def("get_num_dest_shim_mux_connections", int col, int row)
+      // .def("get_num_source_shim_mux_connections", int col, int row)
+      // .def("is_legal_memtile_connection")
+      .def("is_npu", [](PyAieTargetModel &self) {
+        return aieTargetModelIsNPU(self.get());
+      });
 }
