@@ -439,7 +439,8 @@ void insertNpuSyncOpForResults(AIE::DeviceOp device) {
     f.walk([&](mlir::func::ReturnOp op) { returnOp = op.getOperation(); });
     f.walk([&](AIEX::NpuDmaMemcpyNdOp dma) { dmas.push_back(dma); });
     for (auto dma : dmas) {
-      if (auto infoOp = getAllocOpForSymbol(shimDmaAllocOps, dma.getMetadata())) {
+      if (auto infoOp =
+              getAllocOpForSymbol(shimDmaAllocOps, dma.getMetadata())) {
         if (infoOp->getChannelDir() == AIE::DMAChannelDir::S2MM) {
           // Found dma op copying results to host
           OpBuilder builder(dma);
