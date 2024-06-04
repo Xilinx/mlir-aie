@@ -165,10 +165,6 @@ def passThroughAIE2():
                     mem=outTensor,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-<<<<<<< HEAD:reference_designs/ipu-xrt/vision_pipelines/passthrough/aie2.py
-=======
-                npu_sync(column=0, row=0, direction=0, channel=0)
->>>>>>> 9be8d710b4b376c65d48e14fc7056c3c709afcd0:programming_examples/vision/vision_passthrough/aie2.py
 
     print(ctx.module)
 

@@ -312,10 +312,6 @@ def edge_detect():
                     mem=I,
                     sizes=[1, 1, 1, tensorSizeInInt32s],
                 )
-<<<<<<< HEAD:reference_designs/ipu-xrt/vision_pipelines/edge_detect/aie2_edgeDetect.py
-=======
-                npu_sync(column=0, row=0, direction=0, channel=0)
->>>>>>> 9be8d710b4b376c65d48e14fc7056c3c709afcd0:programming_examples/vision/edge_detect/aie2_edgeDetect.py
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

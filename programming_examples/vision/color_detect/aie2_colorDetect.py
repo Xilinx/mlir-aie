@@ -266,10 +266,6 @@ def color_detect():
                     mem=O,
                     sizes=[1, 1, 1, height * lineWidthInInt32s],
                 )
-<<<<<<< HEAD:reference_designs/ipu-xrt/vision_pipelines/color_detect/aie2_colorDetect.py
-=======
-                npu_sync(column=0, row=0, direction=0, channel=0)
->>>>>>> 9be8d710b4b376c65d48e14fc7056c3c709afcd0:programming_examples/vision/color_detect/aie2_colorDetect.py
 
     print(ctx.module)
 
