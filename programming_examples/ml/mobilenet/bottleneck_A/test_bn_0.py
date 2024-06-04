@@ -37,7 +37,7 @@ tensorOutC = tensorInC
 bneck_0_InW2 = tensorInW
 bneck_0_InH2 = tensorInH
 bneck_0_InC2 = tensorInC
-bneck_0_OutC2 = bneck_0_OutC1
+bneck_0_OutC2 = bneck_0_InC2
 
 bneck_0_InW3 = bneck_0_InW2
 bneck_0_InH3 = bneck_0_InH2
@@ -48,7 +48,7 @@ bneck_0_OutC3_vec =  math.floor(bneck_0_OutC3/vectorSize)
 
 
 def main(opts):
-    design = "mobilenet_bottleneck_A_bn2"
+    design = "mobilenet_bottleneck_A_bn0"
     xclbin_path = opts.xclbin
     insts_path = opts.instr
 
@@ -149,7 +149,7 @@ def main(opts):
             out = self.bn0_add(out)
             return out
 
-    quant_bottleneck_model = QuantBottleneck0(in_planes=bneck_0_InC2, bn2_expand=bneck_0_InC2,bn2_project=bneck_0_OutC3)
+    quant_bottleneck_model = QuantBottleneck0(in_planes=bneck_0_InC2, bn0_expand=bneck_0_InC2,bn0_project=bneck_0_OutC3)
     quant_bottleneck_model.eval()
     
     q_bottleneck_out = quant_bottleneck_model(input)
@@ -178,11 +178,11 @@ def main(opts):
 
 
 
-    print("********************BN2*******************************")
+    print("********************BN0*******************************")
     print("combined_scale after conv3x3:", block_0_combined_scale2.item())
     print("combined_scale after conv1x1:", block_0_combined_scale3.item())
     print("combined_scale after skip add:", block_0_combined_scale_skip.item())
-    print("********************BN2*******************************")
+    print("********************BN0*******************************")
 
     
     # ------------------------------------------------------
@@ -210,15 +210,15 @@ def main(opts):
 
     # **************************** bn0 ****************************
 
-    bn2_wts2 = ds.reorder_mat(
+    bn0_wts2 = ds.reorder_mat(
         block_0_int_weight_2.data.numpy().astype(dtype_wts), "OIYXI1O8", "OIYX"
     )
-    bn2_wts3 = ds.reorder_mat(
+    bn0_wts3 = ds.reorder_mat(
         block_0_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
 
 
-    total_wts = np.concatenate((bn2_wts2, bn2_wts3), axis=None)
+    total_wts = np.concatenate((bn0_wts2, bn0_wts3), axis=None)
 
     total_wts.tofile(log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
