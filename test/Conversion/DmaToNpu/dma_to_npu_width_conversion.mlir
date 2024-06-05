@@ -19,8 +19,8 @@
 // CHECK:       aiex.npu.write32 {address = 119300 : ui32, column = 0 : i32, row = 0 : i32, value = 2147680256 : ui32}
 // CHECK:       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
 // CHECK:       return
-// CHECK:     }
-// CHECK:     aie.shim_dma_allocation @toMem(S2MM, 0, 0)
+// CHECK:       }
+// CHECK:       aie.shim_dma_allocation @toMem(S2MM, 0, 0)
 // CHECK:     }
 
 
