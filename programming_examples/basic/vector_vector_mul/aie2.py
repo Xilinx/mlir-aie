@@ -81,7 +81,6 @@ def my_vector_mul():
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="in1", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="in2", bd_id=2, mem=B, sizes=[1, 1, 1, N])
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 with mlir_mod_ctx() as ctx:

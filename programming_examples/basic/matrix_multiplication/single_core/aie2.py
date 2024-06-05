@@ -227,8 +227,6 @@ def my_matmul():
                             strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
                         )
 
-                    npu_sync(column=0, row=0, direction=0, channel=0)
-
     print(ctx.module)
 
 

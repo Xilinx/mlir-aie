@@ -204,9 +204,6 @@ def my_matmul():
                         strides=[0, 0, 0],
                     )
 
-                for i in range(n_cores):
-                    npu_sync(column=i, row=0, direction=0, channel=0)
-
     print(ctx.module)
 
 

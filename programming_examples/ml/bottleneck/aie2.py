@@ -631,8 +631,6 @@ def bottleneck4AIEs():
                     sizes=[1, 1, 1, totalWeightsSize32b],
                 )
 
-                npu_sync(column=0, row=0, direction=0, channel=0)
-
     print(ctx.module)
 
 

@@ -101,7 +101,6 @@ def my_vector_scalar(vector_size, trace_size):
             )
             npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N_in_i32s])
             npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:

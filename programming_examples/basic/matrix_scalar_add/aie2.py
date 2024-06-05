@@ -94,7 +94,6 @@ def my_matrix_add_one():
                 sizes=[1, 1, TILE_HEIGHT, TILE_WIDTH],
                 strides=[1, 1, IMAGE_WIDTH],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 with mlir_mod_ctx() as ctx:

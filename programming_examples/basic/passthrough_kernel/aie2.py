@@ -85,7 +85,6 @@ def passthroughKernel(vector_size, trace_size):
                 mem=outTensor,
                 sizes=[1, 1, 1, tensorSizeInInt32s],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 try:

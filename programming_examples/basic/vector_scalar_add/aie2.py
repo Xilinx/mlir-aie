@@ -71,7 +71,6 @@ def my_vector_bias_add():
             npu_dma_memcpy_nd(
                 metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # Declares that subsequent code is in mlir-aie context

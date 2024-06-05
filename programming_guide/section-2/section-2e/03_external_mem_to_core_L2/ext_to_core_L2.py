@@ -64,7 +64,6 @@ def external_mem_to_core_L2():
                 npu_dma_memcpy_nd(
                     metadata="in0", bd_id=1, mem=inTensor, sizes=[1, 1, 1, 48]
                 )
-                npu_sync(column=0, row=0, direction=0, channel=0)
 
     res = ctx.module.operation.verify()
     if res == True:
