@@ -87,7 +87,7 @@ Test/ Host code utilities.
         To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
 
 ### <u>Configure tile trace settings</u>
-Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd_shimtile`) to configure the shimDMA. 
+Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA. 
 
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
@@ -262,7 +262,7 @@ An example ddr_id to inout buffer mapping is below:
 
 in C/C++
 ```c++
-aiex.npu.writebd_shimtile { bd_id = 3 : i32,
+aiex.npu.writebd { bd_id = 3 : i32,
                             buffer_length = 16384 : i32,
                             buffer_offset = 262144 : i32,
                             enable_packet = 0 : i32,
@@ -301,7 +301,7 @@ aiex.npu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, va
 ```
 in Python
 ```python
-npu_writebd_shimtile(
+npu_writebd(
     bd_id=3,
     buffer_length=16384,
     buffer_offset=262144,
