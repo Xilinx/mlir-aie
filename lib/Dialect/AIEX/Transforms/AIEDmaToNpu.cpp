@@ -256,15 +256,16 @@ public:
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
     MemRefType buffer = op.getMemref().getType();
+   const auto &targetModel = AIE::getTargetModel(*this);
     auto elemWidth = buffer.getElementTypeBitWidth();
-      if(elemWidth < 32){
+      if(elemWidth < targetModel.getdataBusWidth()){
         if(!strides.empty()){
           for (int i=0; i < 3; i++){
-            strides[i] = (strides[i]*elemWidth)/32;
+            strides[i] = (strides[i]*elemWidth)/targetModel.getdataBusWidth();
           }
        }
-       if(!sizes.empty()) sizes[0] = (sizes[0]*elemWidth)/32;
-       if(!offsets.empty())offsets[0] = (offsets[0]*elemWidth)/32;
+       if(!sizes.empty()) sizes[0] = (sizes[0]*elemWidth)/targetModel.getdataBusWidth();
+       if(!offsets.empty())offsets[0] = (offsets[0]*elemWidth)/targetModel.getdataBusWidth();
      }
 
     // column

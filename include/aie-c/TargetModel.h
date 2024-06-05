@@ -42,6 +42,9 @@ DEFINE_C_API_STRUCT(AieTargetModel, uint64_t);
 
 MLIR_CAPI_EXPORTED AieTargetModel aieGetTargetModel(uint32_t device);
 
+/// Returns the data bus width for the target model.
+MLIR_CAPI_EXPORTED uint32_t aieGetTargetModelDataBusWidth(AieTargetModel targetModel);
+
 /// Returns the number of columns in the target model.
 MLIR_CAPI_EXPORTED int aieTargetModelColumns(AieTargetModel targetModel);
 

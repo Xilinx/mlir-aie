@@ -28,6 +28,10 @@ AieTargetModel aieGetTargetModel(uint32_t device) {
       xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(device)));
 }
 
+uint32_t aieGetTargetModelDataBusWidth(AieTargetModel targetModel){
+  return unwrap(targetModel).getdataBusWidth();
+}
+
 int aieTargetModelColumns(AieTargetModel targetModel) {
   return unwrap(targetModel).columns();
 }
