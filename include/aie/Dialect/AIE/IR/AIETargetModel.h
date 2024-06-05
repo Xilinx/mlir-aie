@@ -209,13 +209,14 @@ public:
   virtual bool isNPU() const { return false; }
 
   // Return the bit offset of the column within a tile address.
-  // This is used to compute the control address of a tile from it's column location. 
+  // This is used to compute the control address of a tile from it's column
+  // location.
   virtual uint32_t getColumnShift() const = 0;
 
   // Return the bit offset of the row within a tile address.
-  // This is used to compute the control address of a tile from it's row location. 
+  // This is used to compute the control address of a tile from it's row
+  // location.
   virtual uint32_t getRowShift() const = 0;
-
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -282,7 +283,7 @@ public:
     return false;
   }
 
-  uint32_t getColumnShift() const override { return 23; } 
+  uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
 };
 
@@ -317,7 +318,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
-  
+
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
   }
@@ -340,7 +341,7 @@ public:
                                 WireBundle dstBundle,
                                 int dstChan) const override;
 
-  uint32_t getColumnShift() const override { return 25; } 
+  uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
 };
 

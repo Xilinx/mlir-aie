@@ -968,8 +968,9 @@ LogicalResult PutCascadeOp::verify() {
   auto bits = dataLayout.getTypeSizeInBits(type);
   auto archbits = targetModel.getAccumulatorCascadeSize();
   if (bits != archbits)
-    return emitOpError("type must match architecture cascade width (") <<
-        archbits << " bits in " << stringifyAIEArch(targetModel.getTargetArch()) << ")";
+    return emitOpError("type must match architecture cascade width (")
+           << archbits << " bits in "
+           << stringifyAIEArch(targetModel.getTargetArch()) << ")";
   return success();
 }
 

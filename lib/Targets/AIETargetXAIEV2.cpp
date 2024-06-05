@@ -327,8 +327,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   }
   output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";
   output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
-  output << "  ctx->AieConfigPtr.ColShift = " << targetModel.getColumnShift() << ";\n";
-  output << "  ctx->AieConfigPtr.RowShift = " << targetModel.getRowShift() << ";\n";
+  output << "  ctx->AieConfigPtr.ColShift = " << targetModel.getColumnShift()
+         << ";\n";
+  output << "  ctx->AieConfigPtr.RowShift = " << targetModel.getRowShift()
+         << ";\n";
   output << "  ctx->AieConfigPtr.NumRows = " << targetModel.rows() << ";\n";
   output << "  ctx->AieConfigPtr.NumCols = " << targetModel.columns() << ";\n";
   output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";

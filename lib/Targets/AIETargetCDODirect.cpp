@@ -398,15 +398,15 @@ struct AIEControl {
 
     // Don't put this in the target model, because it's XAIE specific.
     unsigned char devGen;
-    switch(tm.getTargetArch()) {
-      case AIEArch::AIE1: // probably unreachable.
-        devGen = XAIE_DEV_GEN_AIE;
-        break;
-      case AIEArch::AIE2:
-        devGen = XAIE_DEV_GEN_AIEML;
-        break;
+    switch (tm.getTargetArch()) {
+    case AIEArch::AIE1: // probably unreachable.
+      devGen = XAIE_DEV_GEN_AIE;
+      break;
+    case AIEArch::AIE2:
+      devGen = XAIE_DEV_GEN_AIEML;
+      break;
     }
-    configPtr = XAie_Config {
+    configPtr = XAie_Config{
         /*AieGen*/ devGen,
         /*BaseAddr*/ XAIE_BASE_ADDR,
         /*ColShift*/ (uint8_t)tm.getColumnShift(),
