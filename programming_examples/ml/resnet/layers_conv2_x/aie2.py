@@ -894,32 +894,32 @@ def resnet_conv_x():
                         yield_([])
 
             # instruction stream generation
-            activationsInSize32b = (tensorInW * tensorInH * tensorInCInit) // 4
-            acitivationsOutSize32b = (tensorInW * tensorInH * tensorInCRest) // 4
+            activationsIn = (tensorInW * tensorInH * tensorInCInit)
+            acitivationsOut = (tensorInW * tensorInH * tensorInCRest)
 
-            totalWeightsSize32b_init = (
+            totalWeights_init = (
                 tensorInCInit * tensorInCInit
                 + 3 * 3 * tensorInCInit * tensorInCInit
                 + 2 * tensorInCInit * tensorInCRest
-            ) // 4
+            )
 
-            totalWeightsSize32b_rest = (
+            totalWeights_rest = (
                 tensorInCInit * tensorInCRest
                 + 3 * 3 * tensorInCInit * tensorInCInit
                 + tensorInCInit * tensorInCRest
-            ) // 4
-
-            totalWeightsSize32b_complete = (
-                totalWeightsSize32b_init + repeat * totalWeightsSize32b_rest
             )
 
-            activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
-            activationsOutL3_ty = MemRefType.get((acitivationsOutSize32b,), int32_ty)
-            weightsInL3_ty_init = MemRefType.get((totalWeightsSize32b_init,), int32_ty)
-            weightsInL3_ty_rest = MemRefType.get((totalWeightsSize32b_rest,), int32_ty)
+            totalWeights_complete = (
+                totalWeights_init + repeat * totalWeights_rest
+            )
+
+            activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
+            activationsOutL3_ty = MemRefType.get((acitivationsOut,), int8_ty)
+            weightsInL3_ty_init = MemRefType.get((totalWeights_init,), int8_ty)
+            weightsInL3_ty_rest = MemRefType.get((totalWeights_rest,), int8_ty)
 
             weightsInL3_ty_complete = MemRefType.get(
-                (totalWeightsSize32b_complete,), int32_ty
+                (totalWeights_complete,), int8_ty
             )
 
             @FuncOp.from_py_func(
@@ -950,27 +950,27 @@ def resnet_conv_x():
                     metadata="act1_00_02_01",
                     bd_id=0,
                     mem=inputFromL3,
-                    sizes=[1, 1, 1, activationsInSize32b],
+                    sizes=[1, 1, 1, activationsIn],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=outputToL3,
-                    sizes=[1, 1, 1, acitivationsOutSize32b],
+                    sizes=[1, 1, 1, acitivationsOut],
                 )
                 npu_dma_memcpy_nd(
                     metadata="wts_0_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
-                    sizes=[1, 1, 1, totalWeightsSize32b_init],
+                    sizes=[1, 1, 1, totalWeights_init],
                 )
 
                 npu_dma_memcpy_nd(
                     metadata="wts_1_L3L2",
                     bd_id=1,
                     mem=weightsFromL3,
-                    offsets=[0, 0, 0, totalWeightsSize32b_init],
-                    sizes=[1, 1, 1, totalWeightsSize32b_rest],
+                    offsets=[0, 0, 0, totalWeights_init],
+                    sizes=[1, 1, 1, totalWeights_rest],
                 )
 
                 npu_dma_memcpy_nd(
@@ -981,9 +981,9 @@ def resnet_conv_x():
                         0,
                         0,
                         0,
-                        totalWeightsSize32b_init + totalWeightsSize32b_rest,
+                        totalWeights_init + totalWeights_rest,
                     ],
-                    sizes=[1, 1, 1, totalWeightsSize32b_rest],
+                    sizes=[1, 1, 1, totalWeights_rest],
                 )
 
                 npu_sync(column=1, row=0, direction=0, channel=0)

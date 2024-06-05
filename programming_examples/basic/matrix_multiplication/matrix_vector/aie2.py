@@ -17,26 +17,20 @@ def my_matmul():
     K = 288
     m = 32
     k = 32
-    word_size_in = 2
-    word_size_out = 4
 
     n_cores = 1
 
-    A_sz_in_i32s = M * K * word_size_in // 4
-    B_sz_in_i32s = K * word_size_in // 4
-    C_sz_in_bytes = M * word_size_out
-    C_sz_in_i32s = C_sz_in_bytes // 4
-    C_sz_div_n_cores_in_i32s = C_sz_in_i32s // n_cores
+    A_sz  = M * K 
+    B_sz  = K 
+    C_sz  = M
+    C_sz_div_n_cores  = C_sz  // n_cores
 
     M_div_m = M // m
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
-    K_in_i32s = K * word_size_in // 4
-    k_in_i32s = k * word_size_in // 4
-    m_in_i32s = m * word_size_in // 4
-    m_x_k_in_i32s = m * k * word_size_in // 4
-    m_x_K_in_i32s = m * K * word_size_in // 4
+    m_x_k  = m * k 
+    m_x_K  = m * K 
 
     vectorized = True
 
@@ -172,35 +166,35 @@ def my_matmul():
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz_in_i32s, T.i32()),
-                T.memref(B_sz_in_i32s, T.i32()),
-                T.memref(C_sz_in_i32s, T.i32()),
+                T.memref(A_sz , T.bf16()),
+                T.memref(B_sz , T.bf16()),
+                T.memref(C_sz , T.f32()),
             )
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
                     metadata=inB_fifo_names[0],
                     bd_id=2,
                     mem=B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K_in_i32s],
+                    sizes=[M_div_m_div_n_cores, 1, 1, K ],
                     strides=[0, 0, 0],
                 )
                 for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K * word_size_in // 4
-                    C_offset = i * M_div_m_div_n_cores * m * word_size_out // 4
+                    A_offset = i * M_div_m_div_n_cores * m * K 
+                    C_offset = i * M_div_m_div_n_cores * m
                     npu_dma_memcpy_nd(
                         metadata=memA_fifo_names[i],
                         bd_id=1,
                         mem=A,
                         offsets=[0, 0, 0, A_offset],
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k_in_i32s],
-                        strides=[m_x_K_in_i32s, k_in_i32s, K_in_i32s],
+                        sizes=[M_div_m_div_n_cores, K_div_k, m, k ],
+                        strides=[m_x_K , k , K ],
                     )
                     npu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz_div_n_cores_in_i32s],
+                        sizes=[1, 1, 1, C_sz_div_n_cores ],
                         strides=[0, 0, 0],
                     )
 
