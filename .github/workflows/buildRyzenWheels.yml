@@ -179,7 +179,7 @@ jobs:
           
           popd
           
-          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings-*whl --plat manylinux_2_35_x86_64
+          auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
 
       - uses: geekyeggo/delete-artifact@v4
         if: github.event_name == 'pull_request'
@@ -190,14 +190,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v3
         with:
-          path: wheelhouse/repaired_wheel/aie_python_bindings-*.whl
+          path: wheelhouse/repaired_wheel/aie_python_bindings*.whl
           name: ryzen_ai_wheel
 
       - name: Release current commit
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: wheelhouse/repaired_wheel/aie_python_bindings-*.whl
+          artifacts: wheelhouse/repaired_wheel/aie_python_bindings*.whl
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: 'latest-wheels'
           name: 'latest-wheels'
