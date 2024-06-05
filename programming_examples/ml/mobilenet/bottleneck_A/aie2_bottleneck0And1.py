@@ -47,10 +47,10 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
         int32_ty = IntegerType.get_signless(32)
         tensorLayer0_2In_ty = MemRefType.get((tensorInW, 1, tensorL0_2InC), uint8_ty)
         weightsLayer0_2_ty = MemRefType.get((3 * 3 * tensorL0_2OutC * 1,), int8_ty)
-        tensorLayer0_2Out_ty = MemRefType.get((tensorOutW, 1, tensorL0_2OutC),uint8_ty)
-        tensorLayer0_3In_ty = MemRefType.get((tensorOutW, 1, tensorL0_3InC), uint8_ty)
+        tensorLayer0_2Out_ty = MemRefType.get((tensorInW, 1, tensorL0_2OutC),uint8_ty)
+        tensorLayer0_3In_ty = MemRefType.get((tensorInW, 1, tensorL0_3InC), uint8_ty)
         weightsLayer0_3_ty = MemRefType.get((1 * 1 * tensorL0_3OutC * tensorL0_3InC,), int8_ty)
-        tensorLayer0_3Out_ty = MemRefType.get((tensorOutW, 1, tensorL0_3OutC),int8_ty)
+        tensorLayer0_3Out_ty = MemRefType.get((tensorInW, 1, tensorL0_3OutC),int8_ty)
 
         tensorLayer1_1In_ty = MemRefType.get((tensorInW, 1, tensorL1_1InC), int8_ty)
         weightsLayer1_1_ty = MemRefType.get((1 * 1 * tensorL1_1OutC * tensorL1_1InC,), int8_ty)
@@ -164,7 +164,7 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
 
                 actInLayer1_3Row = of_act_bn1_2_3.acquire(ObjectFifoPort.Consume, 1)
                 actOutLayer1_3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
+                call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer1_3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
                 of_act_bn1_2_3.release(ObjectFifoPort.Consume, 1)
                 act_out.release(ObjectFifoPort.Produce, 1)
                 
@@ -199,7 +199,7 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
 
                     actInLayer1_3Row = of_act_bn1_2_3.acquire(ObjectFifoPort.Consume, 1)
                     actOutLayer1_3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                    call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
+                    call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer1_3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
                     of_act_bn1_2_3.release(ObjectFifoPort.Consume, 1)
                     act_out.release(ObjectFifoPort.Produce, 1)
                     
@@ -251,7 +251,7 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
 
                 actInLayer1_3Row = of_act_bn1_2_3.acquire(ObjectFifoPort.Consume, 1)
                 actOutLayer1_3Row = act_out.acquire(ObjectFifoPort.Produce, 1)
-                call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
+                call(conv2dk1_ui8_i8, [actInLayer1_3Row, weightsLayer1_3, actOutLayer1_3Row, tensorOutW, tensorL1_3InC, tensorL1_3OutC, scaleLayer1_3])
                 of_act_bn1_2_3.release(ObjectFifoPort.Consume, 1)
                 act_out.release(ObjectFifoPort.Produce, 1)
                 
@@ -262,16 +262,19 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
         # instruction stream generation
         activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
         activationsOutSize32b = (tensorOutW * tensorOutH * tensorOutC) // 4
-        totalWeightsSize32b = (3*3*tensorL2OutC*1 + 1*1*tensorL3InC*tensorL3OutC) // 4
+        totalWeightsSize32b = (3*3*tensorL0_2OutC*1 + 1*1*tensorL0_3InC*tensorL0_3OutC + 1*1*tensorL1_1InC*tensorL1_1OutC + 3*3*tensorL1_2OutC + 1*1*tensorL1_3InC*tensorL1_3OutC) // 4
         activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
         weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
         activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
 
         @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=scaleFactor2)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=1, value=scaleFactor3)
-            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=2, value=scaleFactorAdd)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=scaleFactor0_2)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=1, value=scaleFactor0_3)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=2, value=scaleFactorAdd0)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=3, value=scaleFactor1_1)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=4, value=scaleFactor1_2)
+            NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=5, value=scaleFactor1_3)
             
             npu_dma_memcpy_nd(
                 metadata="act_in",
