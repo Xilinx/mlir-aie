@@ -18,7 +18,7 @@ from aie.extras.dialects.ext.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 
-def mobilenetV3Bottleneck0(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, tensorInH = 112, tensorInC = 16, tensorOutC = 16, scaleFactor2 = 8, scaleFactor3 = 9, scaleFactorAdd = 0, enableTrace = False, trace_size = 16384, traceSizeInInt32s = 4096):
+def mobilenetV3Bottleneck0(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, tensorInH = 112, tensorInC = 16, tensorOutC = 16, scaleFactor2 = 7, scaleFactor3 = 10, scaleFactorAdd = 0, enableTrace = False, trace_size = 16384, traceSizeInInt32s = 4096):
 
     tensorOutW = tensorInW
     tensorOutH = tensorInH

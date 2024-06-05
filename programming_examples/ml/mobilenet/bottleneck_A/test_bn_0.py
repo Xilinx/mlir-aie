@@ -98,7 +98,7 @@ def main(opts):
         def __init__(self, in_planes=16, bn0_expand=16,bn0_project=16):
             super(QuantBottleneck0, self).__init__()
             self.quant_id_1 = QuantIdentity(
-                act_quant=Int8ActPerTensorFixedPoint,
+                act_quant=Uint8ActPerTensorFixedPoint,
                 bit_width=8,
                 return_quant_tensor=True,
             )
@@ -133,18 +133,29 @@ def main(opts):
                 bit_width=8,
                 return_quant_tensor=True,
             )
+
+            self.bn0_quant_id_2 = QuantIdentity(
+                act_quant=Int8ActPerTensorFixedPoint,
+                bit_width=8,
+                return_quant_tensor=True,
+            )
+
             self.bn0_add = QuantIdentity(
                 act_quant=Int8ActPerTensorFixedPoint,
                 bit_width=8,
                 return_quant_tensor=True,
             )
 
+            # force alignment between scales going into add
+            self.bn0_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl = self.quant_id_1.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            self.bn0_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl = self.quant_id_1.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+
         def forward(self, x):
             out_q = self.quant_id_1(x)
             out = self.bn0_quant_conv2(out_q)
             out = self.bn0_quant_relu2(out)
             out = self.bn0_quant_conv3(out)
-            out = self.quant_id_1(out)
+            out = self.bn0_quant_id_2(out)
             out = out+out_q
             out = self.bn0_add(out)
             return out
