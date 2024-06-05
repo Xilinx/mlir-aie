@@ -62,7 +62,7 @@ public:
   virtual AIEArch getTargetArch() const = 0;
 
   /// Return the data bus width of the device.
-  virtual uint32_t getdataBusWidth() const = 0;
+  virtual uint32_t getDataBusWidth() const = 0;
 
   /// Return the number of columns in the device.
   virtual int columns() const = 0;
@@ -279,7 +279,7 @@ public:
 
   AIEArch getTargetArch() const override;
 
-  uint32_t getdataBusWidth() const override { return 32; }
+  uint32_t getDataBusWidth() const override { return 32; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -336,7 +336,7 @@ class VC1902TargetModel : public AIE1TargetModel {
 public:
   VC1902TargetModel() = default;
 
-  uint32_t getdataBusWidth() const override { return 32; }
+  uint32_t getDataBusWidth() const override { return 32; }
 
   int columns() const override { return 50; }
 
@@ -518,7 +518,7 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
 public:
   VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
 
-  uint32_t getdataBusWidth() const override { return 32; }
+  uint32_t getDataBusWidth() const override { return 32; }
 
   int columns() const override { return cols; }
 

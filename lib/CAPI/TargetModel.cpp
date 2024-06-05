@@ -29,7 +29,7 @@ AieTargetModel aieGetTargetModel(uint32_t device) {
 }
 
 uint32_t aieGetTargetModelDataBusWidth(AieTargetModel targetModel){
-  return unwrap(targetModel).getdataBusWidth();
+  return unwrap(targetModel).getDataBusWidth();
 }
 
 int aieTargetModelColumns(AieTargetModel targetModel) {
