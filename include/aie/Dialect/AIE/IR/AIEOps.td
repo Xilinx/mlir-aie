@@ -1663,7 +1663,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   ];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">, AttrSizedOperandSegments]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
@@ -1690,13 +1690,15 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts
+        SymbolRefArrayAttr:$fifoOuts,
+        Variadic<Index>:$src_offsets,
+        Variadic<Index>:$dst_offsets
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` `[` ($src_offsets^)? `]` `[` ($dst_offsets^)? `]` `)` attr-dict
   }];
 
   let hasVerifier = 1;

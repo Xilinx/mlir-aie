@@ -264,8 +264,11 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
-    if (creation_tile.isShimTile())
-      numElem = externalBuffersPerFifo[op].size();
+    if (creation_tile.isShimTile()) {
+      numElem = 1;
+      if (!externalBuffersPerFifo[op].empty())
+        numElem = externalBuffersPerFifo[op].size();
+    }
     if (target.getTargetArch() == AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
@@ -652,13 +655,6 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
-    if (!dims.getValue().empty()) {
-      lenOut = 1;
-      for (auto dim = dims.begin(); dim != dims.end(); ++dim) {
-        lenOut *= dim->getSize();
-      }
-    }
-
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
@@ -668,38 +664,54 @@ struct AIEObjectFifoStatefulTransformPass
     if (auto linkOp = getOptionalLinkOp(op)) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
+        auto srcOffsets = linkOp->getSrcOffsets();
+        auto dstOffsets = linkOp->getDstOffsets();
 
         if (linkOp->isJoin()) {
-          // find offset based on order of this op in join list
+          // compute offset and length
           isJoin = true;
           if (target == op) {
             acqNum = linkOp->getFifoIns().size();
             relNum = linkOp->getFifoIns().size();
           } else {
+            int i = 0;
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoIn.name() == op.name())
                 break;
-              extraOffset += elemType.getNumElements();
+              i++;
             }
+            extraOffset = *getConstantIntValue(srcOffsets[i]);
+
+            auto fifoOut = llvm::cast<AIEObjectFifoType>(linkOp->getOutputObjectFifos()[0].getElemType());
+            auto elemTypeOut = llvm::cast<MemRefType>(fifoOut.getElementType());
+            int bigLenOut = elemTypeOut.getNumElements();
+            if ((unsigned)i == linkOp->getFifoIns().size() - 1)
+              lenOut = bigLenOut - *getConstantIntValue(srcOffsets[i]);
+            else
+              lenOut = *getConstantIntValue(srcOffsets[i + 1]) - extraOffset;
           }
         } else if (linkOp->isDistribute()) {
-          // find offset based on order of this op in distribute list
+          // compute offset and length
           isDistribute = true;
           if (target == op) {
             acqNum = linkOp->getFifoOuts().size();
             relNum = linkOp->getFifoOuts().size();
           } else {
+            int i = 0;
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoOut.name() == op.name())
                 break;
-              extraOffset += elemType.getNumElements();
+              i++;
             }
+            extraOffset = *getConstantIntValue(dstOffsets[i]);
+
+            auto fifoIn = llvm::cast<AIEObjectFifoType>(linkOp->getInputObjectFifos()[0].getElemType());
+            auto elemTypeIn = llvm::cast<MemRefType>(fifoIn.getElementType());
+            int bigLenIn = elemTypeIn.getNumElements();
+            if ((unsigned)i == linkOp->getFifoOuts().size() - 1)
+              lenOut = bigLenIn - *getConstantIntValue(dstOffsets[i]);
+            else
+              lenOut = *getConstantIntValue(dstOffsets[i + 1]) - extraOffset;
           }
         } else {
           if (target != op) {

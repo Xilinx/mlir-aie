@@ -592,19 +592,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
     for (auto dim : elemType.getShape())
       outputSize *= dim;
 
-    int inputSize = 0;
-    for (auto fifoIn : getInputObjectFifos()) {
-      auto elemType =
-          llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
-      int64_t nextInputSize = 1;
-      for (int64_t dim : elemType.getShape())
-        nextInputSize *= dim;
-      inputSize += nextInputSize;
-    }
-    if (inputSize != outputSize)
-      return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of output objFifo");
-
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsToStream().empty()) {
@@ -623,7 +610,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
     for (auto dim : elemType.getShape())
       inputSize *= dim;
 
-    int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
       if (!fifoOut.getDimensionsToStream().empty() &&
           fifoOut.getConsumerTiles().size() > 1) {
@@ -635,17 +621,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
           return emitOpError("currently does not support objectFifos with "
                              "dimensionsFromStreamPerConsumer.");
       }
-
-      auto elemType =
-          llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
-      int64_t nextOutputSize = 1;
-      for (int64_t dim : elemType.getShape())
-        nextOutputSize *= dim;
-      outputSize += nextOutputSize;
     }
-    if (outputSize != inputSize)
-      return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of input objFifo");
   }
 
   return success();
