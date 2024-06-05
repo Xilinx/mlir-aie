@@ -1194,6 +1194,27 @@ struct AIEObjectFifoStatefulTransformPass
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
+    //===------------------------------------------------------------------------===//
+    // Check whether the same data type is used in I/O FIFOs of the objectFifoLink
+    //===------------------------------------------------------------------------===//
+    // We compare the data type of the input and the output FIFOs of the 
+    // objectFifoLink and emits a warning if there is a mismatch
+
+    for(auto linkOp : device.getOps<ObjectFifoLinkOp>()){
+      auto fifoIn = linkOp.getInputObjectFifos()[0];
+      auto fifoOut = linkOp.getOutputObjectFifos()[0];
+      auto fifoInType = llvm::cast<AIEObjectFifoType>(
+            fifoIn.getElemType());
+      auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+
+      auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+            fifoOut.getElemType());
+      auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
+
+      if(elemInType != elemOutType)
+        device->emitWarning("Data type mismatch in objectFifoLink");
+    }
+
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
