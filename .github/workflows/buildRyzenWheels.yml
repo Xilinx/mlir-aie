@@ -175,6 +175,7 @@ jobs:
           
           pip install wheel auditwheel patchelf
           CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          DEBUG=1 CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
           
           popd
           
