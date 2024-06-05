@@ -58,7 +58,7 @@ def mobilenetV3Bottleneck0(tileRowIndex = 2, tileColIndex = 0, tensorInW = 112, 
         # AIE-array data movement with object fifos
         
         # Input
-        act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer2In_ty)
+        act_in = object_fifo("act_in", ShimTile, ComputeTile, 4, tensorLayer2In_ty)
         
         # wts
         wts_OF_L3L1 = object_fifo("wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty)
