@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-dma-to-npu %s | FileCheck %s
+// RUN: not aie-opt --aie-dma-to-npu %s 2>&1 | FileCheck %s
 
-// CHECK:    error: 'aiex.npu.dma_memcpy_nd' op Maximum element bit width allowed is 32 bits.
+// CHECK:    error: 'aiex.npu.dma_memcpy_nd' op Maximum element bit width allowed is 32bits.
 
 
 module @shimDmaMemcpy{

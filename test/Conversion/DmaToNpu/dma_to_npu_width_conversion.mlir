@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
+// RUN: aie-opt --aie-dma-to-npu %s 2>&1 | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:     memref.global "public" @toMem : memref<65536xbf16>

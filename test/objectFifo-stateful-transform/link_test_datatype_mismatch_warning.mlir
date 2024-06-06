@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
 
 //CHECK:           warning: Data type mismatch in objectFifoLink
 
