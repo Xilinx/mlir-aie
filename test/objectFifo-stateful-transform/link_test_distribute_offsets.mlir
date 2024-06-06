@@ -165,10 +165,6 @@ module @link_distribute_offsets {
         aie.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !aie.objectfifo<memref<20xi32>>
         aie.objectfifo @link4 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
 
-        %c0 = arith.constant 0 : index
-        %c16 = arith.constant 16 : index
-        %c36 = arith.constant 36 : index
-
-        aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ([][%c0, %c16, %c36])
+        aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ([][0, 16, 36])
     }
 }

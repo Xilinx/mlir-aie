@@ -111,9 +111,6 @@ module @link_distribute_output_sizes {
         aie.objectfifo @link2 (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-        %c0 = arith.constant 0 : index
-        %c32 = arith.constant 32 : index
-
-        aie.objectfifo.link [@link1] -> [@link2, @link3] ([][%c0, %c32])
+        aie.objectfifo.link [@link1] -> [@link2, @link3] ([][0, 32])
     }
 }
