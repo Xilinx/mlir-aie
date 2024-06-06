@@ -21,7 +21,7 @@ def my_vector_scalar():
     enableTrace = True
     trace_size = 8192
 
-    @device(AIEDevice.npu)
+    @device(AIEDevice.npu1_1col)
     def device_body():
         memRef_ty = T.memref(1024, T.i32())
 

@@ -18,6 +18,7 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Vector Scalar Add](./vector_scalar_add) - Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
 * [Vector Scalar Mul](./vector_scalar_mul) - Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full `vector * scalar` compute.
 * [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `1024`.
+* [Vector Vector Modulo](./vector_vector_modulo) - Single tile performs `vector % vector` of size `1024`.
 * [Vector Vector Multiply](./vector_vector_mul) - Single tile performs `vector * vector` of size `1024`.
 * [Vector Reduce Add](./vector_reduce_add) - Single tile performs a reduction of a vector to return the `sum` of the elements.
 * [Vector Reduce Max](./vector_reduce_max) - Single tile performs a reduction of a vector to return the `max` of the elements.
