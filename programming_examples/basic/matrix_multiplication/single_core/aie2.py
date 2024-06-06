@@ -22,8 +22,6 @@ def my_matmul():
     r = 4
     s = 8
     t = 4
-    #word_size_in = 2
-    #word_size_out = 2
 
     vectorized = True
     enable_tracing = False
