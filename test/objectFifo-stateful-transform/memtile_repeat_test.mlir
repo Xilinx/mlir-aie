@@ -41,7 +41,7 @@
 // CHECK:     aie.flow(%tile_1_1, DMA : 1, %tile_3_3, DMA : 0)
 // CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 1)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%tile_1_1) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%of0_cons_prod_lock, AcquireGreaterEqual, 2)
 // CHECK:       aie.dma_bd(%of0_cons_buff_0 : memref<32xi32>, 0, 32)

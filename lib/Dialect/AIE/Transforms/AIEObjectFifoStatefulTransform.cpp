@@ -741,13 +741,22 @@ struct AIEObjectFifoStatefulTransformPass
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
 
+    // check for repeat count in objfifo dims
+    int repeatCount = 1;
+    if (!dims.getValue().empty()) {
+      auto highestStride = dims.getValue().begin()->getStride();
+      if (highestStride == 0) {
+        repeatCount = dims.getValue().begin()->getSize();
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(), dims.getValue().drop_front(1));
+      }
+    }
+
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    int repeat_count = 0;
     if (op.getMemtileRepeat().has_value())
-      repeat_count = op.getMemtileRepeat().value();
+      repeatCount = op.getMemtileRepeat().value();
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeat_count, bdBlock, endBlock);
+                               channelIndex, repeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
