@@ -338,8 +338,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.InstallDir);
-        sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
-                          "me_basic.o");
+        sys::path::append(meBasicPath, "aie_runtime_lib",
+                          StringRef(TK.TargetArch).upper(), "me_basic.o");
         flags.emplace_back(meBasicPath);
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
@@ -748,7 +748,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(chessworkDir, "chesswork");
 
     SmallString<64> chessIntrinsicsLL(TK.InstallDir);
-    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib", TK.TargetArch,
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
+                      StringRef(TK.TargetArch).upper(),
                       "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;
