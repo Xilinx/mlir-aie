@@ -69,7 +69,7 @@
 // BCF44-NEXT: _extern y
 // BCF44-NEXT: _reserved DMb 0x38000 32
 // BCF44:      // end mapping neighbors tile memory
-// BCF44:      _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+// BCF44:      _reserved DMb 0x40000 0xC0000 // And everything else the core can't see
 // BCF44-NEXT: _resolve _main core_4_4
 
 
