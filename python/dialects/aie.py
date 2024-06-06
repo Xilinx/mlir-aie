@@ -257,6 +257,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         self,
         fifoIns,
         fifoOuts,
+        srcOffsets=[],
+        dstOffsets=[]
     ):
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
@@ -271,6 +273,8 @@ class object_fifo_link(ObjectFifoLinkOp):
         super().__init__(
             fifoIns=fifoInRefs,
             fifoOuts=fifoOutRefs,
+            src_offsets=srcOffsets,
+            dst_offsets=dstOffsets,
         )
 
 

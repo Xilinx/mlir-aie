@@ -53,3 +53,8 @@ def link_example():
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)], [bd_dim_layout(size=1, stride=2)]],
         )
+
+        of3 = object_fifo("of3", S, M, 1, T.memref(256, T.i32()))
+        of4 = object_fifo("of4", M, T0, 2, T.memref(64, T.i32()))
+        of5 = object_fifo("of5", M, T1, 2, T.memref(64, T.i32()))
+        object_fifo_link(of3, [of4, of5], [], [0, 128])

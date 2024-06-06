@@ -585,6 +585,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
                      "shared tile between objectFifos");
 
   if (isJoin()) {
+    if (getFifoIns().size() != getSrcOffsets().size())
+      return emitOpError("number of provided src offsets must be equal "
+                         "to the number of input objectFifos");
+
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     auto elemType =
         llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
@@ -593,6 +597,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
       outputSize *= dim;
 
   } else if (isDistribute()) {
+    if (getFifoOuts().size() != getDstOffsets().size())
+      return emitOpError("number of provided dst offsets must be equal "
+                         "to the number of output objectFifos");
+
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsToStream().empty()) {
       return emitOpError("currently does not support objectFifos with "
