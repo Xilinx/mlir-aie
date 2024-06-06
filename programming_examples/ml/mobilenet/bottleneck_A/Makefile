@@ -83,7 +83,7 @@ run_py_1: build/final_bn_1.xclbin build/insts_bn_1.txt build/aie2_bn_1.mlir
 	${powershell} python3 ${srcdir}/test_bn_1.py -x build/final_bn_1.xclbin -i build/insts_bn_1.txt -k MLIR_AIE
 
 run_py_0_1: build/final_bn_0_1.xclbin build/insts_bn_0_1.txt build/aie2_bn_0_1.mlir
-	${powershell} python3 ${srcdir}/test_bn_0_1.py -x build/final_bn_0.xclbin -i build/insts_bn_0_1.txt -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_0_1.py -x build/final_bn_0_1.xclbin -i build/insts_bn_0_1.txt -k MLIR_AIE
 
 run_py_2: build/final_bn_2.xclbin build/insts_bn_2.txt build/insts_bn_2.txt
 	${powershell} python3 ${srcdir}/test_bn_2.py -x build/final_bn_2.xclbin -i build/insts_bn_2.txt -k MLIR_AIE

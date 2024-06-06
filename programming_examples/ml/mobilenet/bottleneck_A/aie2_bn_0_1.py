@@ -11,7 +11,7 @@ from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3Bottleneck0And1(tensorInW=112, tensorInH=112, tensorInC=16,tensorOutC=24, depthWiseStride=2, depthWiseChannels=64,scaleFactor0_2=7,scaleFactor0_3=9,scaleFactorAdd0=1,scaleFactor1_1=8,scaleFactor1_2=8,scaleFactor1_3=9)
+    mobilenetV3Bottleneck0And1(tensorInW=112, tensorInH=112, tensorInC=16,tensorOutC=24, depthWiseStride=2, depthWiseChannels=64,scaleFactor0_2=8,scaleFactor0_3=9,scaleFactorAdd0=1,scaleFactor1_1=8,scaleFactor1_2=8,scaleFactor1_3=11)
     
     res = ctx.module.operation.verify()
     if res == True:
