@@ -91,7 +91,7 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
         # Intermediate
         of_act_bn0_2_3 = object_fifo("act_bn0_2_3", ComputeTile, ComputeTile, 1, tensorLayer0_2Out_ty)
         of_act_bn0_bn1 = object_fifo("act_bn0_bn1", ComputeTile, ComputeTile, 1, tensorLayer0_3Out_ty)
-        of_act_bn1_1_2 = object_fifo("act_bn1_1_2", ComputeTile, ComputeTile, 3, tensorLayer1_1Out_ty)
+        of_act_bn1_1_2 = object_fifo("act_bn1_1_2", ComputeTile, ComputeTile, 4, tensorLayer1_1Out_ty)
         of_act_bn1_2_3 = object_fifo("act_bn1_2_3", ComputeTile, ComputeTile, 1, tensorLayer1_2Out_ty)
         
         # Set up compute tiles
@@ -183,12 +183,12 @@ def mobilenetV3Bottleneck0And1(tileRowIndex = 2, tileColIndex = 0, tensorInW = 1
                         act_in.release(ObjectFifoPort.Consume, 1)
                         of_act_bn0_2_3.release(ObjectFifoPort.Consume, 1)
                         of_act_bn0_bn1.release(ObjectFifoPort.Produce, 1)
-
                         actInLayer1_1Row = of_act_bn0_bn1.acquire(ObjectFifoPort.Consume, 1)
                         actOutLayer1_1Row = of_act_bn1_1_2.acquire(ObjectFifoPort.Produce, 1)
                         call(conv2dk1_relu_i8_ui8, [actInLayer1_1Row, weightsLayer1_1, actOutLayer1_1Row, tensorInW, tensorL1_1InC, tensorL1_1OutC, scaleLayer1_1])
                         of_act_bn1_1_2.release(ObjectFifoPort.Produce, 1)
                         of_act_bn0_bn1.release(ObjectFifoPort.Consume, 1)
+
                         yield_([])
 
                     actInLayer1_2Rows = of_act_bn1_1_2.acquire(ObjectFifoPort.Consume, 3)

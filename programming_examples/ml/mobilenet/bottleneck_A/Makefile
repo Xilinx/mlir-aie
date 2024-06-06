@@ -13,7 +13,7 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 all: build/final_bn_1.xclbin
 
-build/aie2_%.mlir: ${srcdir}/aie2_%.py ${srcdir}/aie2_bottleneckA.py
+build/aie2_%.mlir: ${srcdir}/aie2_%.py ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0.py ${srcdir}/aie2_bottleneck0And1.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
@@ -58,11 +58,15 @@ build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a:  build/conv2dk
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_conv2dk3dwstride1_conv2dk1skip.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o
+build/combined_conv2dk3dwstride1_conv2dk1skip.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o 
 	mkdir -p ${@D}
 	ar rvs $@ $^
 
-build/final_%.xclbin build/inst_%.txt &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a
+build/combined_bn0_bn1.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o 
+	mkdir -p ${@D}
+	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
+
+build/final_%.xclbin build/inst_%.txt &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn0_bn1.a
 	cd build && aiecc.py -v --aie-generate-cdo --aie-generate-npu --no-compile-host \
 		--basic-alloc-scheme \
 		--xclbin-name=${@F} --npu-insts-name=insts_$*.txt ${<F}
@@ -77,6 +81,9 @@ run_py_0: build/final_bn_0.xclbin build/insts_bn_0.txt build/aie2_bn_0.mlir
 
 run_py_1: build/final_bn_1.xclbin build/insts_bn_1.txt build/aie2_bn_1.mlir
 	${powershell} python3 ${srcdir}/test_bn_1.py -x build/final_bn_1.xclbin -i build/insts_bn_1.txt -k MLIR_AIE
+
+run_py_0_1: build/final_bn_0_1.xclbin build/insts_bn_0_1.txt build/aie2_bn_0_1.mlir
+	${powershell} python3 ${srcdir}/test_bn_0_1.py -x build/final_bn_0.xclbin -i build/insts_bn_0_1.txt -k MLIR_AIE
 
 run_py_2: build/final_bn_2.xclbin build/insts_bn_2.txt build/insts_bn_2.txt
 	${powershell} python3 ${srcdir}/test_bn_2.py -x build/final_bn_2.xclbin -i build/insts_bn_2.txt -k MLIR_AIE
