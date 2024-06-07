@@ -157,7 +157,7 @@ jobs:
 
           pip -q download llvm-aie \
             -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-          unzip -q llvm-aie*.whl
+          unzip -q llvm_aie*.whl
 
           mkdir build
           pushd build
