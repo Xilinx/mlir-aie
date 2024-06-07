@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform -verify-diagnostics %s
 
-//CHECK:     warning: Data type mismatch in objectFifoLink
+//CHECK:     error: unexpected warning: Data type mismatch in objectFifoLink
 
 //CHECK-LABEL: aie.device(xcvc1902) {
 //CHECK:     memref.global "public" @of2_cons : memref<16xi32>
