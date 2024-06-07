@@ -184,7 +184,7 @@ def mobilenetV3BottleneckA(bottleneckName, tileRowIndex = 2, tileColIndex = 0, t
     @device(AIEDevice.npu1_1col)
     def device_body():
         
-        # # define types
+        # define types
         uint8_ty = IntegerType.get_unsigned(8)
         int8_ty = IntegerType.get_signless(8)
         int16_ty = IntegerType.get_signless(16)
