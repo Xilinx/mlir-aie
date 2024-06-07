@@ -681,14 +681,7 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(srcOffsets[i]);
-
-            auto fifoOut = llvm::cast<AIEObjectFifoType>(linkOp->getOutputObjectFifos()[0].getElemType());
-            auto elemTypeOut = llvm::cast<MemRefType>(fifoOut.getElementType());
-            int bigLenOut = elemTypeOut.getNumElements();
-            if ((unsigned)i == linkOp->getFifoIns().size() - 1)
-              lenOut = bigLenOut - *getConstantIntValue(srcOffsets[i]);
-            else
-              lenOut = *getConstantIntValue(srcOffsets[i + 1]) - extraOffset;
+            lenOut = linkOp->getJoinTranferLengths()[i];
           }
         } else if (linkOp->isDistribute()) {
           // compute offset and length
@@ -704,14 +697,7 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(dstOffsets[i]);
-
-            auto fifoIn = llvm::cast<AIEObjectFifoType>(linkOp->getInputObjectFifos()[0].getElemType());
-            auto elemTypeIn = llvm::cast<MemRefType>(fifoIn.getElementType());
-            int bigLenIn = elemTypeIn.getNumElements();
-            if ((unsigned)i == linkOp->getFifoOuts().size() - 1)
-              lenOut = bigLenIn - *getConstantIntValue(dstOffsets[i]);
-            else
-              lenOut = *getConstantIntValue(dstOffsets[i + 1]) - extraOffset;
+            lenOut = linkOp->getDistributeTranferLengths()[i];
           }
         } else {
           if (target != op) {

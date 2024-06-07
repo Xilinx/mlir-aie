@@ -49,9 +49,6 @@
 // CHECK:     aie.flow(%tile_2_3, DMA : 0, %tile_2_1, DMA : 1)
 // CHECK:     aie.flow(%tile_3_3, DMA : 0, %tile_2_1, DMA : 2)
 // CHECK:     aie.flow(%tile_2_1, DMA : 0, %tile_2_0, DMA : 0)
-// CHECK:     %c0 = arith.constant 0 : index
-// CHECK:     %c16 = arith.constant 16 : index
-// CHECK:     %c36 = arith.constant 36 : index
 // CHECK:     %mem_2_2 = aie.mem(%tile_2_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

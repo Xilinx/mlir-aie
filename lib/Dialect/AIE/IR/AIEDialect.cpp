@@ -589,17 +589,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("number of provided src offsets must be equal "
                          "to the number of input objectFifos");
 
-    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    auto elemType =
-        llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
-    int64_t outputSize = 1;
-    for (auto dim : elemType.getShape())
-      outputSize *= dim;
+    if (!getDstOffsets().empty())
+      return emitOpError("dst offsets should be empty for join");
 
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
                          "to the number of output objectFifos");
+
+    if (!getSrcOffsets().empty())
+      return emitOpError("src offsets should be empty for distribute");
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsToStream().empty()) {
@@ -611,12 +610,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsFromStreamPerConsumer.");
     }
-
-    auto elemType =
-        llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
-    int64_t inputSize = 1;
-    for (auto dim : elemType.getShape())
-      inputSize *= dim;
 
     for (auto fifoOut : getOutputObjectFifos()) {
       if (!fifoOut.getDimensionsToStream().empty() &&
@@ -630,6 +623,10 @@ LogicalResult ObjectFifoLinkOp::verify() {
                              "dimensionsFromStreamPerConsumer.");
       }
     }
+  } else {
+    if (!getSrcOffsets().empty() && !getDstOffsets().empty())
+      return emitOpError("all offsets should be empty if there is no "
+                         "join or distribute");
   }
 
   return success();
@@ -691,6 +688,46 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     }
   }
   return outputObjFifos;
+}
+
+std::vector<int> ObjectFifoLinkOp::getJoinTranferLengths() {
+  std::vector<int> lengths;
+  if (isJoin()) {
+    auto fifoOut =
+        llvm::cast<AIEObjectFifoType>(getOutputObjectFifos()[0].getElemType());
+    auto elemTypeOut = llvm::cast<MemRefType>(fifoOut.getElementType());
+    int lenOut = elemTypeOut.getNumElements();
+    for (size_t i = 0; i < getFifoIns().size(); i++) {
+      int len = 0;
+      int offset = *getConstantIntValue(getSrcOffsets()[i]);
+      if (i == getFifoIns().size() - 1)
+        len = lenOut - *getConstantIntValue(getSrcOffsets()[i]);
+      else
+        len = *getConstantIntValue(getSrcOffsets()[i + 1]) - offset;
+      lengths.push_back(len);
+    }
+  }
+  return lengths;
+}
+
+std::vector<int> ObjectFifoLinkOp::getDistributeTranferLengths() {
+  std::vector<int> lengths;
+  if (isDistribute()) {
+    auto fifoIn =
+        llvm::cast<AIEObjectFifoType>(getInputObjectFifos()[0].getElemType());
+    auto elemTypeIn = llvm::cast<MemRefType>(fifoIn.getElementType());
+    int lenIn = elemTypeIn.getNumElements();
+    for (size_t i = 0; i < getFifoOuts().size(); i++) {
+      int offset = *getConstantIntValue(getDstOffsets()[i]);
+      int len = 0;
+      if (i == getFifoOuts().size() - 1)
+        len = lenIn - *getConstantIntValue(getDstOffsets()[i]);
+      else
+        len = *getConstantIntValue(getDstOffsets()[i + 1]) - offset;
+      lengths.push_back(len);
+    }
+  }
+  return lengths;
 }
 
 //===----------------------------------------------------------------------===//
