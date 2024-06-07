@@ -1195,10 +1195,11 @@ struct AIEObjectFifoStatefulTransformPass
         objectFifoTiles; // track cores to check for loops during unrolling
 
     //===------------------------------------------------------------------------===//
-    // Check whether the same data type is used in I/O FIFOs of the objectFifoLink
+    // Check whether the same data type is used in I/O FIFOs of the
+    // objectFifoLink
     //===------------------------------------------------------------------------===//
-    // We compare the data type of the input and the output FIFOs of the 
-    // objectFifoLink and emits a warning if there is a mismatch
+    // We compare the data type of the input and the output FIFOs of the
+    // objectFifoLink and emit a warning if there is a mismatch
 
     for(auto linkOp : device.getOps<ObjectFifoLinkOp>()){
       auto fifoIn = linkOp.getInputObjectFifos()[0];
