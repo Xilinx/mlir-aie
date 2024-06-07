@@ -113,7 +113,7 @@ int main(int argc, const char *argv[]) {
   auto bo_b =
       xrt::bo(device, B_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_c = xrt::bo(device, C_SIZE + trace_size, XRT_BO_FLAGS_HOST_ONLY,
-                      kernel.group_id(4));
+                      kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";

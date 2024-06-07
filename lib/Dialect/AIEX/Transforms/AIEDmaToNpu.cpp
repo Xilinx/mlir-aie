@@ -110,73 +110,48 @@ struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
     IntegerAttr row = IntegerAttr::get(i32ty, r);
     IntegerAttr address = IntegerAttr::get(ui32ty, rtp_buffer_addr);
     IntegerAttr value = IntegerAttr::get(i32ty, v);
-    rewriter.create<NpuWrite32Op>(op->getLoc(), column.getInt(), row.getInt(),
-                                  address.getUInt(), value.getInt());
+    rewriter.create<NpuWrite32Op>(op->getLoc(), address.getUInt(),
+                                  value.getInt(), column, row);
 
     rewriter.eraseOp(op);
     return success();
   }
 };
 
-struct PushToNpuPattern : OpConversionPattern<NpuShimTilePushQueueOp> {
-
-private:
-  ShimDMAllocationGetter &allocGetter;
+struct PushToNpuPattern : OpConversionPattern<NpuPushQueueOp> {
 
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  PushToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
-                   PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), allocGetter(getter) {}
+  PushToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
-  matchAndRewrite(NpuShimTilePushQueueOp op, OpAdaptor adaptor,
+  matchAndRewrite(NpuPushQueueOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto *ctx = op->getContext();
-    auto i32ty = IntegerType::get(ctx, 32);
-    auto zero = IntegerAttr::get(i32ty, 0);
-    auto ui32ty =
-        IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
-    bool send_tct = op.getIssueToken();
-    uint32_t channel_num = 0;
 
-    // initialize fields to zero
-    auto dev = op->getParentOfType<AIE::DeviceOp>();
-    if (!dev)
-      return op->emitOpError("couldn't find parent of type DeviceOp");
-
-    auto infoOp = allocGetter.get(dev, op.getMetadata());
-    if (!infoOp)
-      return op->emitOpError("couldn't find shim_dma_allocation op.");
-
-    auto channelDir = infoOp->getChannelDir();
-    bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    channel_num += infoOp->getChannelIndex();
-
-    IntegerAttr column = IntegerAttr::get(i32ty, infoOp->getCol());
-
+    // the offset of the task queue register in the tile
     uint32_t queue_offset;
-    if (isMM2S)
+    if (op.getDirection() == AIE::DMAChannelDir::MM2S)
       queue_offset = 0x1D214;
     else
       queue_offset = 0x1D204;
-    if (channel_num == 1)
+    if (op.getChannel() == 1)
       queue_offset += 0x8;
-    IntegerAttr address = IntegerAttr::get(ui32ty, queue_offset);
 
-    // value
+    // the value to write
     uint32_t bd_id = op.getBdId();
     uint32_t repeat_cnt = op.getRepeatCount();
     uint32_t cmd = 0;
     cmd |= bd_id & 0xF;
     cmd |= (repeat_cnt & 0xFF) << 16;
-    if (send_tct)
+    if (op.getIssueToken())
       cmd |= 0x80000000;
-    IntegerAttr value = IntegerAttr::get(ui32ty, cmd);
 
-    rewriter.create<NpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
-                                  address.getUInt(), value.getUInt());
+    auto i32ty = IntegerType::get(op->getContext(), 32);
+    auto column = IntegerAttr::get(i32ty, op.getColumn());
+    auto row = IntegerAttr::get(i32ty, 0);
+    rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, column, row);
     rewriter.eraseOp(op);
     return success();
   }
@@ -216,7 +191,6 @@ public:
 
     // initialize fields to zero
     auto column = zero;
-    auto column_num = zero;
     auto ddr_id = zero;
     auto bd_id = zero;
     auto buffer_length = zero;
@@ -234,6 +208,7 @@ public:
     auto iteration_size = zero;
     auto iteration_stride = zero;
     auto next_bd = zero;
+    auto row = zero;
     auto use_next_bd = zero;
     auto valid_bd = zero;
     auto lock_rel_val = zero;
@@ -257,9 +232,6 @@ public:
 
     // column
     column = IntegerAttr::get(i32ty, col);
-
-    // column_num
-    column_num = IntegerAttr::get(i32ty, 1);
 
     // ddr_id
     Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
@@ -364,18 +336,23 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    rewriter.create<NpuWriteBdExShimTileOp>(
-        op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
-        buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
-        d0_size, d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
-        iteration_size, iteration_stride, next_bd, use_next_bd, valid_bd,
+    rewriter.create<NpuWriteBdOp>(
+        op->getLoc(), column, ddr_id, bd_id, buffer_length, buffer_offset,
+        enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
+        d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    uint32_t addr = (col << 25) | (0x1D004 + op.getId() * 0x20);
+    const AIE::AIETargetModel &tm =
+        op->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
+    uint32_t addr =
+        (col << tm.getColumnShift()) | (0x1D004 + op.getId() * 0x20);
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
-    rewriter.create<NpuShimTilePushQueueOp>(op->getLoc(), op.getMetadataAttr(),
-                                            issue_token, repeat_count, bd_id);
+    rewriter.create<NpuPushQueueOp>(
+        op->getLoc(), column, row, infoOp->getChannelDirAttr(),
+        infoOp->getChannelIndexAttr(), issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);
     return success();
@@ -409,15 +386,13 @@ public:
     if (!shimDmaAllocOp) {
       return op->emitError("couldn't find shim_dma_allocation op");
     }
-    AIE::DMAChannelDir channelDir = shimDmaAllocOp->getChannelDir();
-    int channel = shimDmaAllocOp->getChannelIndex();
-    int direction = (int)(channelDir == AIE::DMAChannelDir::MM2S);
-    int column = shimDmaAllocOp->getCol();
 
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row. Row is always 0 for shim tiles.
-    (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(op, column, 0, direction,
-                                                 channel, 1, 1);
+    (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
+        op, shimDmaAllocOp->getCol(), /* row */ 0,
+        static_cast<uint32_t>(shimDmaAllocOp->getChannelDir()),
+        shimDmaAllocOp->getChannelIndex(), 1, 1);
     return success();
   }
 };
@@ -436,12 +411,12 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addIllegalOp<NpuWriteRTPOp>();
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
-    target.addIllegalOp<NpuShimTilePushQueueOp>();
+    target.addIllegalOp<NpuPushQueueOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
     patterns.insert<DmaWaitToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<PushToNpuPattern>(&getContext(), cachingGetter);
+    patterns.insert<PushToNpuPattern>(&getContext());
     patterns.insert<RtpToNpuPattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))

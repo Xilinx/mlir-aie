@@ -567,17 +567,20 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
 }
 
 // Push BD to Queue
-def AIE_NpuShimTilePushQueueOp: AIEX_Op<"npu.shimtile_push_queue", []> {
+def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (
-    ins FlatSymbolRefAttr:$metadata,
+    ins I32Attr:$column,
+        I32Attr:$row,
+        DMAChannelDir:$direction,
+        I32Attr:$channel,
         BoolAttr:$issue_token,
         I32Attr:$repeat_count,
         I32Attr:$bd_id
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
   }];
   let hasVerifier = 1;
   let description = [{
@@ -589,10 +592,10 @@ def AIE_NpuShimTilePushQueueOp: AIEX_Op<"npu.shimtile_push_queue", []> {
 def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
-        UI32Attr:$address,
-        UI32Attr:$value
+    ins UI32Attr:$address,
+        UI32Attr:$value,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
@@ -640,12 +643,11 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
-// WRITEBD_EXTEND_SHIMTILE
-def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
+// NPU Bd Write operation
+def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,
-        I32Attr:$column_num,
         I32Attr:$ddr_id,
         I32Attr:$bd_id,
         I32Attr:$buffer_length,
@@ -663,6 +665,7 @@ def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
         I32Attr:$iteration_size,
         I32Attr:$iteration_stride,
         I32Attr:$next_bd,
+        I32Attr:$row,
         I32Attr:$use_next_bd,
         I32Attr:$valid_bd,
         I32Attr:$lock_rel_val,
@@ -675,7 +678,7 @@ def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
   let description = [{
-    writebd_shimtile operator
+    writebd operator
   }];
 }
 

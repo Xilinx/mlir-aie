@@ -565,7 +565,7 @@ def bottleneck4AIEs():
                     npu_write32(0, 4, 0x340D0, 0x10000)
 
                     # Start trace copy out.
-                    npu_writebd_shimtile(
+                    npu_writebd(
                         bd_id=3,
                         buffer_length=trace_sz_in_i32s,
                         buffer_offset=acitivationsOutSize32b,
@@ -574,7 +574,7 @@ def bottleneck4AIEs():
                         packet_id=0,
                         packet_type=0,
                         column=0,
-                        column_num=1,
+                        row=0,
                         d0_stepsize=0,
                         d0_wrap=0,
                         d1_stepsize=0,
