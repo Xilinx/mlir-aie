@@ -93,16 +93,21 @@ jobs:
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
 
+          pip -q download llvm-aie \
+            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          unzip -q llvm-aie*.whl
+
           mkdir build
           pushd build
 
-          export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:$PATH
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           cmake .. -G Ninja \
             -DPython3_EXECUTABLE=$(which python) \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DPEANO_INSTALL_DIR=$PWD/../llvm-aie \
             $CMAKE_ARGS
 
           ninja install
@@ -150,6 +155,10 @@ jobs:
           # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
           find mlir -exec touch -a -m -t 201108231405.14 {} \;
 
+          pip -q download llvm-aie \
+            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          unzip -q llvm-aie*.whl
+
           mkdir build
           pushd build
 
@@ -160,6 +169,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DPEANO_INSTALL_DIR=$PWD/../llvm-aie \
             $CMAKE_ARGS
 
           ninja install
