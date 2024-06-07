@@ -119,12 +119,8 @@ def vector_softmax(trace_size):
                     offset=N_in_bytes,
                 )
 
-            npu_dma_memcpy_nd(
-                metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N]
-            )
-            npu_dma_memcpy_nd(
-                metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N]
-            )
+            npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 

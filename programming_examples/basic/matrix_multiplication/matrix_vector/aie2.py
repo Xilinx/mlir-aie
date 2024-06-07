@@ -20,17 +20,17 @@ def my_matmul():
 
     n_cores = 1
 
-    A_sz  = M * K 
-    B_sz  = K 
-    C_sz  = M
-    C_sz_div_n_cores  = C_sz  // n_cores
+    A_sz = M * K
+    B_sz = K
+    C_sz = M
+    C_sz_div_n_cores = C_sz // n_cores
 
     M_div_m = M // m
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
-    m_x_k  = m * k 
-    m_x_K  = m * K 
+    m_x_k = m * k
+    m_x_K = m * K
 
     vectorized = True
 
@@ -166,35 +166,35 @@ def my_matmul():
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz , T.bf16()),
-                T.memref(B_sz , T.bf16()),
-                T.memref(C_sz , T.f32()),
+                T.memref(A_sz, T.bf16()),
+                T.memref(B_sz, T.bf16()),
+                T.memref(C_sz, T.f32()),
             )
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
                     metadata=inB_fifo_names[0],
                     bd_id=2,
                     mem=B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K ],
+                    sizes=[M_div_m_div_n_cores, 1, 1, K],
                     strides=[0, 0, 0],
                 )
                 for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K 
+                    A_offset = i * M_div_m_div_n_cores * m * K
                     C_offset = i * M_div_m_div_n_cores * m
                     npu_dma_memcpy_nd(
                         metadata=memA_fifo_names[i],
                         bd_id=1,
                         mem=A,
                         offsets=[0, 0, 0, A_offset],
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k ],
-                        strides=[m_x_K , k , K ],
+                        sizes=[M_div_m_div_n_cores, K_div_k, m, k],
+                        strides=[m_x_K, k, K],
                     )
                     npu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz_div_n_cores ],
+                        sizes=[1, 1, 1, C_sz_div_n_cores],
                         strides=[0, 0, 0],
                     )
 

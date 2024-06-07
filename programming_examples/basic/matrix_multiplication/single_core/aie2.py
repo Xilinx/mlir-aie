@@ -30,7 +30,7 @@ def my_matmul():
     A_sz = M * K
     B_sz = K * N
     C_sz = M * N
-    C_sz_in_bytes =  C_sz * 2
+    C_sz_in_bytes = C_sz * 2
 
     M_div_m = M // m
     K_div_k = K // k
@@ -179,9 +179,7 @@ def my_matmul():
                 for tile_row_block in range(
                     (M_div_m + rows_per_block - 1) // rows_per_block
                 ):
-                    C_row_offset = (
-                        tile_row_block * rows_per_block * m * N
-                    )
+                    C_row_offset = tile_row_block * rows_per_block * m * N
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
@@ -195,9 +193,7 @@ def my_matmul():
                     )
                     for tile_row in range(num_tile_rows):
                         A_row_offset = (
-                            ((tile_row_block * rows_per_block) + tile_row)
-                            * m
-                            * K
+                            ((tile_row_block * rows_per_block) + tile_row) * m * K
                         )
                         npu_dma_memcpy_nd(
                             metadata="inA",

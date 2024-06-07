@@ -501,7 +501,7 @@ def bottleneck4AIEs():
                     yield_([])
 
             # instruction stream generation
-            activationsIn = (tensorInW * tensorInH * tensorInC)
+            activationsIn = tensorInW * tensorInH * tensorInC
             acitivationsOut = activationsIn
             totalWeights = (
                 tensorL1InC * tensorL1OutC

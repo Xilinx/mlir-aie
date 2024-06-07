@@ -20,7 +20,7 @@ def my_eltwise_add(trace_size):
     word_size_in = 2
     N = 65536
     N_in_bytes = N * word_size_in
-    
+
     # Tile sizes
     n = 1024
     N_div_n = N // n
@@ -139,15 +139,9 @@ def my_eltwise_add(trace_size):
                     offset=N_in_bytes,
                 )
 
-            npu_dma_memcpy_nd(
-                metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N]
-            )
-            npu_dma_memcpy_nd(
-                metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N]
-            )
-            npu_dma_memcpy_nd(
-                metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, N]
-            )
+            npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="inB", bd_id=2, mem=B, sizes=[1, 1, 1, N])
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 

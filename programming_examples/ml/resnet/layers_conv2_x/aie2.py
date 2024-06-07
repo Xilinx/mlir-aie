@@ -894,8 +894,8 @@ def resnet_conv_x():
                         yield_([])
 
             # instruction stream generation
-            activationsIn = (tensorInW * tensorInH * tensorInCInit)
-            acitivationsOut = (tensorInW * tensorInH * tensorInCRest)
+            activationsIn = tensorInW * tensorInH * tensorInCInit
+            acitivationsOut = tensorInW * tensorInH * tensorInCRest
 
             totalWeights_init = (
                 tensorInCInit * tensorInCInit
@@ -909,18 +909,14 @@ def resnet_conv_x():
                 + tensorInCInit * tensorInCRest
             )
 
-            totalWeights_complete = (
-                totalWeights_init + repeat * totalWeights_rest
-            )
+            totalWeights_complete = totalWeights_init + repeat * totalWeights_rest
 
             activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
             activationsOutL3_ty = MemRefType.get((acitivationsOut,), int8_ty)
             weightsInL3_ty_init = MemRefType.get((totalWeights_init,), int8_ty)
             weightsInL3_ty_rest = MemRefType.get((totalWeights_rest,), int8_ty)
 
-            weightsInL3_ty_complete = MemRefType.get(
-                (totalWeights_complete,), int8_ty
-            )
+            weightsInL3_ty_complete = MemRefType.get((totalWeights_complete,), int8_ty)
 
             @FuncOp.from_py_func(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
