@@ -189,7 +189,7 @@ module @link_AIE2 {
 
         aie.objectfifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo @mem_out (%tile01, {%tile03}, 7 : i32) : !aie.objectfifo<memref<3000xi32>>
-        aie.objectfifo.link [@mem_in] -> [@mem_out] ()
+        aie.objectfifo.link [@mem_in] -> [@mem_out] ([] [])
 
         %core02 = aie.core(%tile02) {
             %v11 = arith.constant 11 : i32
