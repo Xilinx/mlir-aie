@@ -21,11 +21,11 @@ module {
   
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t03}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
-    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ()
+    aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
 
     aie.objectfifo @objFifo_out1(%t12, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @objFifo_out0(%t01, {%t00}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
-    aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ()
+    aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
 
     func.func private @extern_kernel1() -> ()
     func.func private @extern_kernel2() -> ()
