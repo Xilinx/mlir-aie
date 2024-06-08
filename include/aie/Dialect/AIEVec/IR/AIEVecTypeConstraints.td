@@ -17,6 +17,8 @@ include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/OpBase.td"
 
 def I4  : I<4>;
+def I256 : I<256>;
+def I512 : I<512>;
 
 class TypeShape<string name> :
   StrFunc<"cast<::mlir::ShapedType>($" # name # ").getShape()">;

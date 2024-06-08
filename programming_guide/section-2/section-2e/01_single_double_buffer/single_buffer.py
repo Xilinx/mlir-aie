@@ -15,7 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 def single_buffer():
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu)
+        @device(AIEDevice.npu1_1col)
         def device_body():
             memRef_16_ty = T.memref(16, T.i32())
 
@@ -52,7 +52,11 @@ def single_buffer():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     yield_([])
 
-    print(ctx.module)
+    res = ctx.module.operation.verify()
+    if res == True:
+        print(ctx.module)
+    else:
+        print(res)
 
 
 single_buffer()

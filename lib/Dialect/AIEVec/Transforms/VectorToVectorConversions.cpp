@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023, Advanced Micro Devices, Inc.
+// (c) Copyright 2023-2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // This file contains conversions and rewrites to the Vector dialect to make
@@ -38,6 +38,55 @@ using namespace xilinx::aievec;
 //============================================================================//
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
+
+static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
+  if (op.getKind() != vector::CombiningKind::ADD)
+    return false;
+
+  // Get and check shape of operands
+  auto lhsShape = op.getLhsType().getShape();
+  auto rhsShape = op.getRhsType().getShape();
+  auto accShape = cast<ShapedType>(op.getAccType()).getShape();
+  if (lhsShape.size() < 2 || rhsShape.size() < 2 || accShape.size() < 2)
+    return false;
+
+  // Check that the innermost iterators match gemm-like iterators
+  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
+  if (iterators.size() < 3)
+    return false;
+  auto innerMostIterators =
+      SmallVector<vector::IteratorType>(iterators.end() - 3, iterators.end());
+  if (vector::IteratorType::parallel != innerMostIterators[0] ||
+      vector::IteratorType::parallel != innerMostIterators[1] ||
+      vector::IteratorType::reduction != innerMostIterators[2])
+    return false;
+
+  // Get indexing maps of iterators for operands
+  SmallVector<AffineMap, 4> indexingMaps(op.getIndexingMapsArray());
+  SmallVector<int64_t> outerMostResults;
+  for (int64_t i = 0; i < indexingMaps[0].getNumResults() - 2; i++)
+    outerMostResults.push_back(i);
+
+  auto innerLhsMap = indexingMaps[0].dropResults(outerMostResults);
+  auto innerRhsMap = indexingMaps[1].dropResults(outerMostResults);
+  auto innerAccMap = indexingMaps[2].dropResults(outerMostResults);
+
+  // Check whether they conform to a "transposed B" gemm
+  auto ctx = op.getContext();
+  auto mmAidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
+          .dropResults(0);
+  auto mmBidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 1, 2}, ctx)
+          .dropResults(0);
+  auto mmCidxMap =
+      AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
+          .dropResults(0);
+  int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
+  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
+         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
+         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
+}
 
 //============================================================================//
 //============ Common AIE canonicalization conversion patterns ===============//
@@ -411,6 +460,108 @@ struct FlattenMultDimTransferWritePattern
   }
 };
 
+// This pattern extracts an implicit transposition of the 2 innermost
+// dimensions of `rhs` in a gemm-like contraction op, making it an explicit
+// `vector.transpose` op.
+// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
+// transposition will be hoisted above the widening op.
+struct ExtractTransposeFromContractionOp
+    : public OpConversionPattern<vector::ContractionOp> {
+  using OpConversionPattern<vector::ContractionOp>::OpConversionPattern;
+
+  static VectorType getTransposedVectorType(VectorType vecTy) {
+    SmallVector<int64_t> shape{vecTy.getShape()};
+    auto nDim = shape.size();
+    int64_t dimNm1 = shape[nDim - 1];
+    shape[nDim - 1] = shape[nDim - 2];
+    shape[nDim - 2] = dimNm1;
+    auto elemTy = vecTy.getElementType();
+    return VectorType::get(shape, elemTy);
+  }
+
+  LogicalResult
+  matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isGemmBTransposedContractionOp(contractOp))
+      return failure();
+
+    Location loc = contractOp.getLoc();
+    auto ctx = rewriter.getContext();
+
+    Value rhsVal = adaptor.getRhs();
+    VectorType rhsVecTy = contractOp.getRhsType();
+    Type rhsElemTy = rhsVecTy.getElementType();
+
+    bool doExtF = false, doExtSI = false, doExtUI = false;
+    if (auto extfRhsOp = rhsVal.getDefiningOp<arith::ExtFOp>()) {
+      rhsVal = extfRhsOp.getIn();
+      rhsVecTy = cast<VectorType>(rhsVal.getType());
+      doExtF = true;
+    } else if (auto extsiRhsOp = rhsVal.getDefiningOp<arith::ExtSIOp>()) {
+      rhsVal = extsiRhsOp.getIn();
+      rhsVecTy = cast<VectorType>(rhsVal.getType());
+      doExtSI = true;
+    } else if (auto extuiRhsOp = rhsVal.getDefiningOp<arith::ExtUIOp>()) {
+      rhsVal = extuiRhsOp.getIn();
+      rhsVecTy = cast<VectorType>(rhsVal.getType());
+      doExtUI = true;
+    }
+
+    int64_t nDim = rhsVecTy.getShape().size();
+    SmallVector<int64_t> rhsPermutation;
+    for (int64_t i = 0; i < nDim - 2; i++)
+      rhsPermutation.push_back(i);
+    rhsPermutation.push_back(nDim - 1);
+    rhsPermutation.push_back(nDim - 2);
+    auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
+    rhsVal = rewriter
+                 .create<vector::TransposeOp>(loc, transpRhsVecTy, rhsVal,
+                                              rhsPermutation)
+                 .getResult();
+
+    if (doExtF)
+      rhsVal =
+          rewriter
+              .create<arith::ExtFOp>(
+                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
+                  rhsVal)
+              .getOut();
+    if (doExtSI)
+      rhsVal =
+          rewriter
+              .create<arith::ExtSIOp>(
+                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
+                  rhsVal)
+              .getOut();
+    if (doExtUI)
+      rhsVal =
+          rewriter
+              .create<arith::ExtUIOp>(
+                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
+                  rhsVal)
+              .getOut();
+
+    SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
+
+    nDim = oldIdxMaps[1].getNumDims();
+    SmallVector<int64_t> innerDimPerm;
+    for (int64_t i = 0; i < nDim - 2; i++)
+      innerDimPerm.push_back(i);
+    innerDimPerm.push_back(nDim - 1);
+    innerDimPerm.push_back(nDim - 2);
+    auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
+
+    auto newIdxMaps = rewriter.getAffineMapArrayAttr(
+        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});
+
+    rewriter.replaceOpWithNewOp<vector::ContractionOp>(
+        contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,
+        adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());
+
+    return success();
+  }
+};
+
 //============================================================================//
 //============ AIEML canonicalization conversion patterns ===============//
 //============================================================================//
@@ -470,6 +621,10 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
       [](vector::TransferWriteOp op) {
         return cast<VectorType>(op.getVector().getType()).getRank() < 2;
       });
+  target.addDynamicallyLegalOp<vector::ContractionOp>(
+      [](vector::ContractionOp op) {
+        return !isGemmBTransposedContractionOp(op);
+      });
 }
 
 static void
@@ -477,8 +632,9 @@ populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns,
                                             TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
-  patterns.add<FlattenMultDimTransferReadPattern,
-               FlattenMultDimTransferWritePattern>(patterns.getContext());
+  patterns
+      .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
+           FlattenMultDimTransferWritePattern>(patterns.getContext());
 }
 
 //============================================================================//

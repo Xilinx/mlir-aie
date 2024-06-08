@@ -739,9 +739,9 @@ static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
   return shiftOp;
 }
 
-static aievec::ShuffleOp generateShuffleOp(Value source, VectState *state,
-                                           Location loc, unsigned mode,
-                                           VectorType resType = nullptr) {
+static aievec::LegacyShuffleOp generateShuffleOp(Value source, VectState *state,
+                                                 Location loc, unsigned mode,
+                                                 VectorType resType = nullptr) {
   auto vecType = cast<VectorType>(source.getType());
 
   if (!resType) {
@@ -750,8 +750,8 @@ static aievec::ShuffleOp generateShuffleOp(Value source, VectState *state,
     resType = createVectorType(lanes, scalarType);
   }
 
-  auto shuffleOp =
-      state->builder.create<aievec::ShuffleOp>(loc, resType, source, mode);
+  auto shuffleOp = state->builder.create<aievec::LegacyShuffleOp>(loc, resType,
+                                                                  source, mode);
 
   return shuffleOp;
 }

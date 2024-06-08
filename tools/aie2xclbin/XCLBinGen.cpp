@@ -45,7 +45,13 @@
 #include <unordered_map>
 
 #ifdef _WIN32
+#include "windows.h"
+// For UUID stuff
+#include "rpcdce.h"
+
 #define setenv(name, var, ignore) _putenv_s(name, var)
+#else
+#include <uuid/uuid.h>
 #endif
 
 using namespace llvm;
@@ -126,6 +132,31 @@ void xilinx::findVitis(XCLBinGenConfig &TK) {
   }
 }
 
+static std::string getUUIDString() {
+  std::string val;
+#ifdef _WIN32
+  UUID *uuid;
+  RPC_STATUS status;
+  status = UuidCreate(uuid);
+  if (status != RPC_S_OK)
+    errs() << "Failed to create UUID\n";
+  RPC_CSTR *uuidstring;
+  status = UuidToStringA(uuid, uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to convert UUID to string\n";
+  val = std::string((char *)uuidstring);
+  status = RpcStringFreeA(uuidstring);
+  if (status != RPC_S_OK)
+    errs() << "Failed to free UUID string\n";
+#else
+  uuid_t binuuid;
+  uuid_generate_random(binuuid);
+  char uuid[37];
+  uuid_unparse_lower(binuuid, uuid);
+  val = std::string(uuid);
+#endif
+  return val;
+}
 static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
@@ -307,8 +338,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.InstallDir);
-        sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
-                          "me_basic.o");
+        sys::path::append(meBasicPath, "aie_runtime_lib",
+                          StringRef(TK.TargetArch).upper(), "me_basic.o");
         flags.emplace_back(meBasicPath);
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
@@ -453,6 +484,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     if (!aiePartitionJsonOut)
       return moduleOp.emitOpError(errorMessage);
 
+    std::string uuid_str = getUUIDString();
     std::string aie_partition_json_data = R"(
       {
         "aie_partition": {
@@ -468,7 +500,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
           },
           "PDIs": [
             {
-              "uuid": "00000000-0000-0000-0000-000000008025",
+              "uuid": ")" + uuid_str + R"(",
               "file_name": "./design.pdi",
               "cdo_groups": [
                 {
@@ -716,7 +748,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(chessworkDir, "chesswork");
 
     SmallString<64> chessIntrinsicsLL(TK.InstallDir);
-    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib", TK.TargetArch,
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
+                      StringRef(TK.TargetArch).upper(),
                       "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;

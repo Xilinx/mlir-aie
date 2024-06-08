@@ -101,14 +101,14 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   return success();
 }
 
-static VC1902TargetModel VC1902model(AIEDevice::xcvc1902);
-static VE2302TargetModel VE2302model(AIEDevice::xcve2302);
-static VE2802TargetModel VE2802model(AIEDevice::xcve2802);
-static NPUTargetModel NPUmodel(AIEDevice::npu1);
-static VirtualizedNPUTargetModel NPUmodel1col(AIEDevice::npu1_1col, 1);
-static VirtualizedNPUTargetModel NPUmodel2col(AIEDevice::npu1_2col, 2);
-static VirtualizedNPUTargetModel NPUmodel3col(AIEDevice::npu1_3col, 3);
-static VirtualizedNPUTargetModel NPUmodel4col(AIEDevice::npu1_4col, 4);
+static VC1902TargetModel VC1902model;
+static VE2302TargetModel VE2302model;
+static VE2802TargetModel VE2802model;
+static NPUTargetModel NPUmodel;
+static VirtualizedNPUTargetModel NPUmodel1col(1);
+static VirtualizedNPUTargetModel NPUmodel2col(2);
+static VirtualizedNPUTargetModel NPUmodel3col(3);
+static VirtualizedNPUTargetModel NPUmodel4col(4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -293,7 +293,7 @@ MemRefType AIEObjectFifoSubviewType::getElementType() {
 ///         ::= `objectfifosubview` `<` type `>`
 static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
                                          StringRef name, Type &result) {
-  if (name.equals("objectfifo")) {
+  if (name == "objectfifo") {
     MemRefType elementType;
     SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
@@ -311,7 +311,7 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
     return result = AIEObjectFifoType::get(elementType), success();
   }
 
-  if (name.equals("objectfifosubview")) {
+  if (name == "objectfifosubview") {
     if (parser.parseLess())
       return failure();
 
@@ -966,15 +966,11 @@ LogicalResult PutCascadeOp::verify() {
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
-    if (bits != 384)
-      return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
-    if (bits != 512)
-      return emitOpError("must be a 512-bit type");
-  } else
-    return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+  auto archbits = targetModel.getAccumulatorCascadeSize();
+  if (bits != archbits)
+    return emitOpError("type must match architecture cascade width (")
+           << archbits << " bits in "
+           << stringifyAIEArch(targetModel.getTargetArch()) << ")";
   return success();
 }
 
