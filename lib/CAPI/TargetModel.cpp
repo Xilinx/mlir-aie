@@ -28,7 +28,7 @@ AieTargetModel aieGetTargetModel(uint32_t device) {
       xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(device)));
 }
 
-uint32_t aieGetTargetModelAddressGenGranularity(AieTargetModel targetModel){
+uint32_t aieGetTargetModelAddressGenGranularity(AieTargetModel targetModel) {
   return unwrap(targetModel).getAddressGenGranularity();
 }
 
