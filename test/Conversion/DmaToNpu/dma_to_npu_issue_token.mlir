@@ -12,12 +12,12 @@
 
 // TODO - more
 // CHECK-LABEL: test1
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 2147483649
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 1 : i32
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 0
