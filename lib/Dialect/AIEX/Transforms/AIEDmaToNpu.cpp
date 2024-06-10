@@ -266,7 +266,7 @@ public:
        }
        if(!sizes.empty()) sizes[0] = (sizes[0]*elemWidth)/targetModel.getAddressGenGranularity();
        if(!offsets.empty())offsets[0] = (offsets[0]*elemWidth)/targetModel.getAddressGenGranularity();
-     }
+      }
 
     // column
     column = IntegerAttr::get(i32ty, col);
