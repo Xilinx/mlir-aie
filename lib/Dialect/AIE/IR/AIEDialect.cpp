@@ -610,19 +610,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsFromStreamPerConsumer.");
     }
-
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (!fifoOut.getDimensionsToStream().empty() &&
-          fifoOut.getConsumerTiles().size() > 1) {
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsToStream and multiple consumers.");
-      }
-      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
-      }
-    }
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "

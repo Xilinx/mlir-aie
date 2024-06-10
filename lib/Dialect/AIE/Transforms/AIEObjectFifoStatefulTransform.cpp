@@ -655,6 +655,13 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
+    if (!dims.getValue().empty()) {
+      lenOut = 1;
+      for (auto dim = dims.begin(); dim != dims.end(); ++dim) {
+        lenOut *= dim->getSize();
+      }
+    }
+
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
@@ -681,7 +688,8 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(srcOffsets[i]);
-            lenOut = linkOp->getJoinTranferLengths()[i];
+            if (dims.getValue().empty())
+              lenOut = linkOp->getJoinTranferLengths()[i];
           }
         } else if (linkOp->isDistribute()) {
           // compute offset and length
@@ -697,7 +705,8 @@ struct AIEObjectFifoStatefulTransformPass
               i++;
             }
             extraOffset = *getConstantIntValue(dstOffsets[i]);
-            lenOut = linkOp->getDistributeTranferLengths()[i];
+            if (dims.getValue().empty())
+              lenOut = linkOp->getDistributeTranferLengths()[i];
           }
         } else {
           if (target != op) {
@@ -749,7 +758,7 @@ struct AIEObjectFifoStatefulTransformPass
     Block *bdBlock = builder.createBlock(endBlock);
 
     // check for repeat count in objfifo dims
-    int repeatCount = 1;
+    int repeatCount = 0;
     if (!dims.getValue().empty()) {
       auto highestStride = dims.getValue().begin()->getStride();
       if (highestStride == 0) {

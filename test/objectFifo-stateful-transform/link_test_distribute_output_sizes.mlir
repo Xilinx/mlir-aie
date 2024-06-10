@@ -42,21 +42,21 @@
 // CHECK:     aie.flow(%tile_2_1, DMA : 1, %tile_2_3, DMA : 0)
 // CHECK:     aie.shim_dma_allocation @link1(MM2S, 0, 2)
 // CHECK:     %memtile_dma_2_1 = aie.memtile_dma(%tile_2_1) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2, repeat_count = 1)
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       aie.use_lock(%link1_cons_prod_lock, AcquireGreaterEqual, 2)
 // CHECK:       aie.dma_bd(%link1_cons_buff_0 : memref<64xi32>, 0, 64)
 // CHECK:       aie.use_lock(%link1_cons_cons_lock, Release, 2)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb4, repeat_count = 1)
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
 // CHECK:     ^bb3:  // 2 preds: ^bb2, ^bb3
 // CHECK:       aie.use_lock(%link1_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%link1_cons_buff_0 : memref<64xi32>, 0, 32)
 // CHECK:       aie.use_lock(%link1_cons_prod_lock, Release, 1)
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb4:  // pred: ^bb2
-// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb5, ^bb6, repeat_count = 1)
+// CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb5, ^bb6)
 // CHECK:     ^bb5:  // 2 preds: ^bb4, ^bb5
 // CHECK:       aie.use_lock(%link1_cons_cons_lock, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%link1_cons_buff_0 : memref<64xi32>, 32, 32)
