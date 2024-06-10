@@ -456,6 +456,29 @@ Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 | `tile` | index
 
 
+### `aiex.npu.address_patch` (::xilinx::AIEX::NpuAddressPatchOp)
+
+_Address patch operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.address_patch` attr-dict
+```
+
+address patch operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>addr</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>arg_idx</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>arg_plus</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
 ### `aiex.npu.dma_memcpy_nd` (::xilinx::AIEX::NpuDmaMemcpyNdOp)
 
 _Half dma operator_
@@ -546,6 +569,35 @@ has executed all of its tasks.
 </table>
 
 
+### `aiex.npu.push_queue` (::xilinx::AIEX::NpuPushQueueOp)
+
+_Bd queue push operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.push_queue` `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
+```
+
+bd queue push operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>direction</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td><details><summary>DMA Channel direction</summary>{{% markdown %}}Enum cases:
+* S2MM (`S2MM`)
+* MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
 ### `aiex.npu.rtp_write` (::xilinx::AIEX::NpuWriteRTPOp)
 
 _Rtp write operator_
@@ -568,30 +620,6 @@ rtp write operator
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-
-### `aiex.npu.shimtile_push_queue` (::xilinx::AIEX::NpuShimTilePushQueueOp)
-
-_Bd queue push operator_
-
-
-Syntax:
-
-```
-operation ::= `aiex.npu.shimtile_push_queue` attr-dict
-```
-
-bd queue push operator
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 
@@ -638,14 +666,14 @@ write32 operator
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 
-### `aiex.npu.writebd_shimtile` (::xilinx::AIEX::NpuWriteBdExShimTileOp)
+### `aiex.npu.writebd` (::xilinx::AIEX::NpuWriteBdOp)
 
 _Dma operator_
 
@@ -653,17 +681,16 @@ _Dma operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.writebd_shimtile` attr-dict
+operation ::= `aiex.npu.writebd` attr-dict
 ```
 
-writebd_shimtile operator
+writebd operator
 
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>ddr_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>buffer_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
@@ -681,6 +708,7 @@ writebd_shimtile operator
 <tr><td><code>iteration_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>iteration_stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>use_next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>valid_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>lock_rel_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
