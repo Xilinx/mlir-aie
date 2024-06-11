@@ -28,3 +28,12 @@ func.func @npu_dma_wait_no_device() {
   aiex.npu.dma_wait {symbol = @out0}
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @npu_addr_patch
+// CHECK: aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+func.func @npu_addr_patch() {
+  aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+  return
+}

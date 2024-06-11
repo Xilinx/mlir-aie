@@ -247,12 +247,11 @@ def color_threshold():
             # To/from AIE-array data movement
 
             tensorSize = width * height
-            tensorSizeInInt32s = tensorSize // 4
 
             @FuncOp.from_py_func(
-                T.memref(tensorSizeInInt32s, T.i32()),
+                T.memref(tensorSize, T.i8()),
                 T.memref(32, T.i32()),  # not used
-                T.memref(tensorSizeInInt32s, T.i32()),
+                T.memref(tensorSize, T.i8()),
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
@@ -276,13 +275,13 @@ def color_threshold():
                     metadata="inOOB_L3L2",
                     bd_id=1,
                     mem=inTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOOB_L2L3",
                     bd_id=0,
                     mem=outTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

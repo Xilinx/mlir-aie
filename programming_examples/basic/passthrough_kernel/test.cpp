@@ -56,9 +56,9 @@ int main(int argc, const char *argv[]) {
 
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out =
       xrt::bo(device, PASSTHROUGH_SIZE * sizeof(DATATYPE) + trace_size,
               XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
@@ -87,7 +87,8 @@ int main(int argc, const char *argv[]) {
   // Execute the kernel and wait to finish
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_out);
+  unsigned int opcode = 3;
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
   // Sync device to host memories

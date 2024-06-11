@@ -931,7 +931,7 @@ aie.device(npu1_3col) {
       aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
 
       // Start trace copy out.
-      aiex.npu.writebd_shimtile { bd_id = 3 : i32,
+      aiex.npu.writebd { bd_id = 3 : i32,
                                   buffer_length = 16384 : i32,
                                   buffer_offset = 262144 : i32,
                                   enable_packet = 0 : i32,

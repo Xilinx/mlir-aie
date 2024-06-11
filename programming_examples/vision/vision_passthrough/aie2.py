@@ -19,7 +19,6 @@ if len(sys.argv) == 3:
     height = int(sys.argv[2])
 
 lineWidthInBytes = width
-lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
 traceSizeInBytes = 8192
@@ -68,8 +67,7 @@ def passThroughAIE2():
             #    print(ctx.module.operation.verify())
 
             tensorSize = width * height
-            tensorSizeInInt32s = tensorSize // 4
-            tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
+            tensor_ty = T.memref(tensorSize, T.i8())
 
             @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, notUsed, outTensor):
@@ -157,13 +155,13 @@ def passThroughAIE2():
                     metadata="in",
                     bd_id=1,
                     mem=inTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="out",
                     bd_id=0,
                     mem=outTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

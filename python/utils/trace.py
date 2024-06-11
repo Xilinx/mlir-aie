@@ -147,7 +147,7 @@ def configure_simple_tracing_aie2(
 
     # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
     # out to host DDR memory
-    npu_writebd_shimtile(
+    npu_writebd(
         bd_id=bd_id,
         buffer_length=size,
         buffer_offset=offset,
@@ -156,7 +156,6 @@ def configure_simple_tracing_aie2(
         packet_id=0,
         packet_type=0,
         column=int(shim.col),
-        column_num=1,
         d0_size=0,
         d0_stride=0,
         d1_size=0,
@@ -172,6 +171,7 @@ def configure_simple_tracing_aie2(
         lock_rel_id=0,
         lock_rel_val=0,
         next_bd=0,
+        row=0,
         use_next_bd=0,
         valid_bd=1,
     )

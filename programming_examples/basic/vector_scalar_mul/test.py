@@ -54,10 +54,10 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize input/ output buffer sizes and sync them
     # ------------------------------------------------------
-    bo_instr = xrt.bo(device, len(instr_v) * 4, xrt.bo.cacheable, kernel.group_id(0))
-    bo_inout0 = xrt.bo(device, INOUT0_SIZE, xrt.bo.host_only, kernel.group_id(2))
-    bo_inout1 = xrt.bo(device, INOUT1_SIZE, xrt.bo.host_only, kernel.group_id(3))
-    bo_inout2 = xrt.bo(device, OUT_SIZE, xrt.bo.host_only, kernel.group_id(4))
+    bo_instr = xrt.bo(device, len(instr_v) * 4, xrt.bo.cacheable, kernel.group_id(1))
+    bo_inout0 = xrt.bo(device, INOUT0_SIZE, xrt.bo.host_only, kernel.group_id(3))
+    bo_inout1 = xrt.bo(device, INOUT1_SIZE, xrt.bo.host_only, kernel.group_id(4))
+    bo_inout2 = xrt.bo(device, OUT_SIZE, xrt.bo.host_only, kernel.group_id(5))
 
     # Initialize instruction buffer
     bo_instr.write(instr_v, 0)
@@ -88,7 +88,8 @@ def main(opts):
     # Run kernel
     if opts.verbosity >= 1:
         print("Running Kernel.")
-    h = kernel(bo_instr, len(instr_v), bo_inout0, bo_inout1, bo_inout2)
+    opcode = 3
+    h = kernel(opcode, bo_instr, len(instr_v), bo_inout0, bo_inout1, bo_inout2)
     h.wait()
     bo_inout2.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 

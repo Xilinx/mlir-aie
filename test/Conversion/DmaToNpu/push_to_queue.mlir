@@ -12,14 +12,10 @@
 
 module {
   aie.device(npu1_4col) {
-    memref.global "public" @toMem : memref<32xi32>
-    memref.global "public" @fromMem : memref<32xi32>
     func.func @sequence() {
-      aiex.npu.shimtile_push_queue {metadata = @toMem, issue_token = true, repeat_count = 0 : i32, bd_id = 3 : i32 }
-      aiex.npu.shimtile_push_queue {metadata = @fromMem, issue_token = false, repeat_count = 3 : i32, bd_id = 2 : i32 }
+      aiex.npu.push_queue (0, 0, S2MM:1) {issue_token = true, repeat_count = 0 : i32, bd_id = 3 : i32 }
+      aiex.npu.push_queue (2, 0, MM2S:0) {issue_token = false, repeat_count = 3 : i32, bd_id = 2 : i32 }
       return
     }
-    aie.shim_dma_allocation @fromMem (MM2S, 0, 2)
-    aie.shim_dma_allocation @toMem (S2MM, 1, 0)
   }
 }

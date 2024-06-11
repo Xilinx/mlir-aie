@@ -25,14 +25,11 @@ if len(sys.argv) == 3:
 
 actIn = width * in_channels  # 32*64 = 2048
 bufIn = actIn * 2  # double buffer
-actInInt32s = actIn // 4
 
 weights = in_channels * out_channels
-weightsInInt32s = weights // 4
 
 actOut = width * out_channels  # 32*64 = 2048
 bufOut = actOut * 2  # double buffer
-actOutInt32s = actOut // 4
 
 enableTrace = False
 trace_size = 16384
@@ -148,9 +145,8 @@ def conv2dk1():
             # To/from AIE-array data movement
 
             tensorSize = width * height * in_channels
-            tensorSizeInInt32s = tensorSize // 4
-            tensor_ty = T.memref(tensorSizeInInt32s, T.i32())
-            memRef_wts_ty = T.memref(weightsInInt32s, T.i32())
+            tensor_ty = T.memref(tensorSize, T.i8())
+            memRef_wts_ty = T.memref(weights, T.i8())
             # memRef_16x16_ty = T.memref(16, 16, T.i32())
 
             @FuncOp.from_py_func(tensor_ty, memRef_wts_ty, tensor_ty)
@@ -203,7 +199,7 @@ def conv2dk1():
                     # out to host DDR memory
                     trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
                     output_size = bufOut
-                    npu_writebd_shimtile(
+                    npu_writebd(
                         bd_id=trace_bd_id,
                         buffer_length=trace_size,
                         buffer_offset=output_size,
@@ -240,19 +236,19 @@ def conv2dk1():
                     metadata="inOF_act_L3L2",
                     bd_id=0,
                     mem=I,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOFL2L3",
                     bd_id=2,
                     mem=O,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, 1, tensorSize],
                 )
                 npu_dma_memcpy_nd(
                     metadata="inOF_wts_0_L3L2",
                     bd_id=2,
                     mem=W,
-                    sizes=[1, 1, 1, weightsInInt32s],
+                    sizes=[1, 1, 1, weights],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

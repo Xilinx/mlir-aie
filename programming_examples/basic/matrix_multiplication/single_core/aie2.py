@@ -22,36 +22,26 @@ def my_matmul():
     r = 4
     s = 8
     t = 4
-    word_size_in = 2
-    word_size_out = 2
 
     vectorized = True
     enable_tracing = False
     trace_size = 65536
 
-    A_sz_in_i32s = M * K * word_size_in // 4
-    B_sz_in_i32s = K * N * word_size_in // 4
-    C_sz_in_bytes = M * N * word_size_out
-    C_sz_in_i32s = C_sz_in_bytes // 4
+    A_sz = M * K
+    B_sz = K * N
+    C_sz = M * N
+    C_sz_in_bytes = C_sz * 2
 
     M_div_m = M // m
     K_div_k = K // k
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
-    # Matrix A: MxK, submatrices a: mxk
-    k_in_i32s = k * word_size_in // 4
-    K_in_i32s = K * word_size_in // 4
-
     # Matrix B: KxN, submatrices b: kxn
-    n_in_i32s = n * word_size_in // 4
-    N_in_i32s = N * word_size_in // 4
-    k_x_N_in_i32s = k * N * word_size_in // 4
+    k_x_N = k * N
 
     # Output Matrix C: MxN
-    n_in_i32s_out = n * word_size_out // 4
-    N_in_i32s_out = N * word_size_out // 4
-    m_x_N_in_i32s_out = m * N * word_size_out // 4
+    m_x_N = m * N
 
     with mlir_mod_ctx() as ctx:
 
@@ -169,9 +159,9 @@ def my_matmul():
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz_in_i32s, T.i32()),
-                T.memref(B_sz_in_i32s, T.i32()),
-                T.memref(C_sz_in_i32s, T.i32()),
+                T.memref(A_sz, T.bf16()),
+                T.memref(B_sz, T.bf16()),
+                T.memref(C_sz, T.bf16()),
             )
             def sequence(A, B, C):
 
@@ -189,9 +179,7 @@ def my_matmul():
                 for tile_row_block in range(
                     (M_div_m + rows_per_block - 1) // rows_per_block
                 ):
-                    C_row_offset_in_i32s = (
-                        tile_row_block * rows_per_block * m * N * word_size_out // 4
-                    )
+                    C_row_offset = tile_row_block * rows_per_block * m * N
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
@@ -199,32 +187,28 @@ def my_matmul():
                         metadata="outC",
                         bd_id=0,
                         mem=C,
-                        offsets=[0, 0, 0, C_row_offset_in_i32s],
-                        sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                        strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                        offsets=[0, 0, 0, C_row_offset],
+                        sizes=[num_tile_rows, N_div_n, m, n],
+                        strides=[m_x_N, n, N],
                     )
                     for tile_row in range(num_tile_rows):
-                        A_row_offset_in_i32s = (
-                            ((tile_row_block * rows_per_block) + tile_row)
-                            * m
-                            * K
-                            * word_size_in
-                            // 4
+                        A_row_offset = (
+                            ((tile_row_block * rows_per_block) + tile_row) * m * K
                         )
                         npu_dma_memcpy_nd(
                             metadata="inA",
                             bd_id=2 * tile_row + 1,
                             mem=A,
-                            offsets=[0, 0, 0, A_row_offset_in_i32s],
-                            sizes=[N_div_n, K_div_k, m, k_in_i32s],
-                            strides=[0, k_in_i32s, K_in_i32s],
+                            offsets=[0, 0, 0, A_row_offset],
+                            sizes=[N_div_n, K_div_k, m, k],
+                            strides=[0, k, K],
                         )
                         npu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
-                            sizes=[N_div_n, K_div_k, k, n_in_i32s],
-                            strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                            sizes=[N_div_n, K_div_k, k, n],
+                            strides=[n, k_x_N, N],
                         )
 
                     npu_sync(column=0, row=0, direction=0, channel=0)
