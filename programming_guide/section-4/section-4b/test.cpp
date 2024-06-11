@@ -62,13 +62,13 @@ int main(int argc, const char *argv[]) {
 
   // set up the buffer objects
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA =
-      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_inFactor = xrt::bo(device, 1 * sizeof(DATATYPE),
-                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_outC =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -115,7 +115,9 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1)
       std::cout << "Running Kernel.\n";
     auto start = std::chrono::high_resolution_clock::now();
-    auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
+    unsigned int opcode = 3;
+    auto run =
+        kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
     run.wait();
     auto stop = std::chrono::high_resolution_clock::now();
 

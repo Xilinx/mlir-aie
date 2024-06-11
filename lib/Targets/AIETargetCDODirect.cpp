@@ -179,8 +179,6 @@ static_assert(XAIE_OK == 0);
 auto ps = std::filesystem::path::preferred_separator;
 
 #define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
 #define XAIE_SHIM_ROW 0
 #define XAIE_MEM_TILE_ROW_START 1
 #define XAIE_PARTITION_BASE_ADDR 0x0
@@ -398,11 +396,21 @@ struct AIEControl {
     size_t deviceRows = tm.rows();
     size_t deviceCols = tm.columns() + partitionStartCol;
 
+    // Don't put this in the target model, because it's XAIE specific.
+    unsigned char devGen;
+    switch (tm.getTargetArch()) {
+    case AIEArch::AIE1: // probably unreachable.
+      devGen = XAIE_DEV_GEN_AIE;
+      break;
+    case AIEArch::AIE2:
+      devGen = XAIE_DEV_GEN_AIEML;
+      break;
+    }
     configPtr = XAie_Config{
-        /*AieGen*/ XAIE_DEV_GEN_AIEML,
+        /*AieGen*/ devGen,
         /*BaseAddr*/ XAIE_BASE_ADDR,
-        /*ColShift*/ XAIE_COL_SHIFT,
-        /*RowShift*/ XAIE_ROW_SHIFT,
+        /*ColShift*/ (uint8_t)tm.getColumnShift(),
+        /*RowShift*/ (uint8_t)tm.getRowShift(),
         /*NumRows*/ static_cast<uint8_t>(deviceRows),
         /*NumCols*/ static_cast<uint8_t>(deviceCols),
         /*ShimRowNum*/ XAIE_SHIM_ROW,
