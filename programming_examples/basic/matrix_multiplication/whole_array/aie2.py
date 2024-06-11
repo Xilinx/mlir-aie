@@ -34,12 +34,43 @@ def my_matmul(M=512, K=512, N=512):
     r = 4
     s = 8
     t = 4
-    word_size_in = 2
-    word_size_out = 2
 
     n_rows = 4
     n_cols = 4
     n_cores = n_rows * n_cols
+
+    # Input matrix A:
+    # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
+    # blocks are _broadcast_ across AIE core columns, then _distributed_ across
+    # rows, s.t. each of the n_rows compute cores in a column receives a
+    # contiguous (m, k)-sized block of A.
+    assert (
+        M % (m * n_rows) == 0
+    ), """A must be tileable into (m * n_rows, k)-sized blocks"""
+
+    # Both A and B are tiled in the K dimension into size k.
+    assert K % k == 0
+
+    # Input matrix B:
+    # Conceptually, we do the same as with A, but instead of broadcasting
+    # across columns we broadcast across rows and distribute across columns.
+    assert (
+        N % (n * n_cols) == 0
+    ), """B must be tileable into (k, n * n_cols)-sized blocks"""
+
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    assert m % r == 0
+    assert k % s == 0
+    assert n % t == 0
+
+    word_size_in = 2
+    word_size_out = 2
+
+    # If you get errors during CDO generation due to running out of program
+    # memory, it may be because too much code is generated due to ObjectFIFO
+    # loop unrollings. Reducing the depth to 1 here will work around that at
+    # a big performance cost.
+    fifo_depth = 2
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -187,14 +218,14 @@ def my_matmul(M=512, K=512, N=512):
                     inA_fifo_names[i],
                     shims[i],
                     mems[i],
-                    2,
+                    fifo_depth,
                     memRef_inA_ty,
                 )
                 memA_fifos[memA_fifo_names[i]] = object_fifo(
                     memA_fifo_names[i],
                     mems[i],
                     t_cores[i][0:n_cols],
-                    2,
+                    fifo_depth,
                     memRef_A_ty,
                     [
                         (m // r, r * k),
@@ -211,14 +242,14 @@ def my_matmul(M=512, K=512, N=512):
                     inB_fifo_names[i],
                     shims[i],
                     mems[i],
-                    2,
+                    fifo_depth,
                     memRef_inB_ty,
                 )
                 memB_fifos[memB_fifo_names[i]] = object_fifo(
                     memB_fifo_names[i],
                     mems[i],
                     cores[i][0:n_rows],
-                    2,
+                    fifo_depth,
                     memRef_B_ty,
                     [
                         (k // s, s * n),
@@ -236,14 +267,14 @@ def my_matmul(M=512, K=512, N=512):
                         memC_fifo_names[i][j],
                         cores[i][j],
                         mems[i],
-                        2,
+                        fifo_depth,
                         memRef_C_ty,
                     )
                 outC_fifos[outC_fifo_names[i]] = object_fifo(
                     outC_fifo_names[i],
                     mems[i],
                     shims[i],
-                    2,
+                    fifo_depth,
                     memRef_outC_ty,
                     [
                         (m // r, r * n),
@@ -261,7 +292,9 @@ def my_matmul(M=512, K=512, N=512):
                     @core(cores[j][i], "mm.o")
                     def core_body():
                         for _ in for_(0xFFFFFFFF):
-                            for _ in for_(tiles):
+                            for _ in (
+                                for_(tiles) if tiles > 1 else range(1)
+                            ):  # Workaround for issue #1547
                                 elem_out = memC_fifos[j][memC_fifo_names[j][i]].acquire(
                                     ObjectFifoPort.Produce,
                                     1,
@@ -290,7 +323,9 @@ def my_matmul(M=512, K=512, N=512):
                                     ObjectFifoPort.Produce, 1
                                 )
                                 yield_([])
-                            yield_([])
+
+                            if tiles > 1:  # workaround for issue #1547
+                                yield_([])
 
             # To/from AIE-array data movement
 

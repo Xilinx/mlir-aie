@@ -130,7 +130,7 @@ void matmul_naive(int M, int N, int K, const std::vector<Tin> A,
   }
 }
 
-template <typename Tin, typename Tout>
+template <typename Tin, typename Tout, typename Tacc>
 void matmul(int M, int N, int K, const std::vector<Tin> A,
             const std::vector<Tin> B, std::vector<Tout> &C) {
   // A is an  MxK matrix
@@ -159,10 +159,10 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
     for (int col = 0; col < N; col++) {
       A_ptr = A_base;
       B_ptr = B_base;
-      Tout running_sum = 0;
+      Tacc running_sum = 0;
       for (int k = 0; k < n_K_blocks; k++) {
         for (int i = 0; i < K_block_size; i++) {
-          running_sum += Tout(*A_ptr) * Tout(*B_ptr);
+          running_sum += Tacc(*A_ptr * *B_ptr);
           A_ptr += 1; // Advance to right neighbor; next value in this row
           B_ptr += N; // Advance to bottom neighbor; next value in this column
         }
@@ -178,14 +178,14 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
   }
 }
 
-template <typename Tin, typename Tout>
+template <typename Tin, typename Tout, typename Tacc>
 Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
              const std::vector<Tin> B) {
-  Tout running_sum = 0;
+  Tacc running_sum = 0;
   for (int k = 0; k < K; k++) {
-    running_sum += Tout(A[row * K + k] * B[k * N + col]);
+    running_sum += Tacc(A[row * K + k] * B[k * N + col]);
   }
-  return running_sum;
+  return (Tout)running_sum;
 }
 
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
@@ -291,7 +291,8 @@ verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual) {
 
 template <typename Tout>
 void print_error_summary(std::ostream &os, int n_errors,
-                         std::vector<struct error<Tout>> &errors) {
+                         std::vector<struct error<Tout>> &errors,
+                         Tout max_rel_error) {
   for (struct error<Tout> &err : errors) {
     os << "[" << std::setw(5) << err.row << ", " << std::setw(5) << err.col
        << "] " << std::setw(4) << std::setprecision(2) << std::fixed
@@ -302,6 +303,10 @@ void print_error_summary(std::ostream &os, int n_errors,
     os << "...and " << std::setw(0) << n_errors - max_printable_errors
        << " further errors." << std::endl;
   }
+  if (n_errors > 0) {
+    os << "Maximum relative error: " << std::setw(3) << std::setprecision(0)
+       << max_rel_error * 100 << "%" << std::endl;
+  }
 }
 
 void print_progress_bar(std::ostream &os, double progress, int len = 75) {
@@ -311,14 +316,15 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
      << "\r";
 }
 
-template <typename Tin, typename Tout>
+template <typename Tin, typename Tout, typename Tacc>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
            std::vector<Tout> C, int verbosity = 0) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
+  Tout max_rel_error = (Tout)0.0f;
 
   std::vector<Tout> CRef(M * N);
-  matmul(M, N, K, A, B, CRef);
+  matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef);
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
@@ -328,11 +334,17 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
         if (n_errors < max_printable_errors) {
           errors.push_back(*error);
         }
+        Tout rel_error =
+            std::abs(error->actual - error->expected) /
+            std::max(std::abs(error->actual), std::abs(error->expected));
+        if (rel_error > max_rel_error) {
+          max_rel_error = rel_error;
+        }
         n_errors++;
       }
     }
   }
-  print_error_summary(std::cout, n_errors, errors);
+  print_error_summary(std::cout, n_errors, errors, max_rel_error);
 
   if (n_errors > 0) {
     std::cout << std::endl << "Reference:" << std::endl;
@@ -344,7 +356,7 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
   return n_errors;
 }
 
-template <typename Tin, typename Tout>
+template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
                       int verbosity = 0) {
@@ -359,6 +371,7 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
 
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
+  Tout max_rel_error = (Tout)0.0f;
   double progress = 0;
   for (std::tuple<size_t, std::tuple<int &, int &>> cell :
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
@@ -371,19 +384,25 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       progress = (double)i / n_samples;
       print_progress_bar(std::cerr, progress);
     }
-    Tout ref = mul_acc<Tin, Tout>(M, N, K, row, col, A, B);
+    Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B);
     std::optional<struct error<Tout>> error =
         verify_single(std::cout, row, col, ref, C[row * N + col]);
     if (error.has_value()) {
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);
       }
+      Tout rel_error =
+          std::abs(error->actual - error->expected) /
+          std::max(std::abs(error->actual), std::abs(error->expected));
+      if (rel_error > max_rel_error) {
+        max_rel_error = rel_error;
+      }
       n_errors++;
     }
   }
   std::cout << std::endl;
 
-  print_error_summary(std::cout, n_errors, errors);
+  print_error_summary(std::cout, n_errors, errors, max_rel_error);
   return n_errors;
 }
 
