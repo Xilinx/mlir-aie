@@ -1584,9 +1584,10 @@ public:
     // create xllvm intrinsic
     Value maxOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
-      // create constant for cmp
+      // create constant for third operand `cmp`
+      // Note: `cmp` is implicitly treated as `sign` to the vmax intrinsic
       auto cmpCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
       SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs(), cmpCst};
       if (resultBitWidth == 8) {
         maxOp = rewriter.create<xllvm::VectorMaxLt8IntrOp>(
@@ -1681,9 +1682,10 @@ public:
     // create xllvm intrinsic
     Value minOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
-      // create constant for cmp
+      // create constant for third operand `cmp`
+      // Note: `cmp` is implicitly treated as `sign` to the vmin intrinsic
       auto cmpCst = rewriter.create<LLVM::ConstantOp>(
-          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
       SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs(), cmpCst};
       if (resultBitWidth == 8) {
         minOp = rewriter.create<xllvm::VectorMinGe8IntrOp>(

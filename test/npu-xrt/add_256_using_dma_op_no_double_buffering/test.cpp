@@ -69,13 +69,13 @@ int main(int argc, const char *argv[]) {
   auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
@@ -89,7 +89,8 @@ int main(int argc, const char *argv[]) {
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  unsigned int opcode = 3;
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
