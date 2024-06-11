@@ -17,10 +17,8 @@ import aie.utils.trace as trace_utils
 
 
 def my_vector_scalar(vector_size, trace_size):
-    word_size_in = 2
     N = vector_size
-    N_in_i32s = N * word_size_in // 4
-    N_in_bytes = N_in_i32s * 4
+    N_in_bytes = N * 2
     N_div_n = 4  # chop input vector into 4 sub-vectors
     n = N // N_div_n
 
@@ -82,7 +80,7 @@ def my_vector_scalar(vector_size, trace_size):
                 yield_([])
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N_in_i32s, T.i32())
+        tensor_ty = T.memref(N, T.i16())
         scalar_ty = T.memref(1, T.i32())
 
         @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
@@ -96,10 +94,8 @@ def my_vector_scalar(vector_size, trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            npu_dma_memcpy_nd(
-                metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N_in_i32s]
-            )
-            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N_in_i32s])
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_dma_memcpy_nd(metadata="infactor", bd_id=2, mem=F, sizes=[1, 1, 1, 1])
             npu_sync(column=0, row=0, direction=0, channel=0)
 
