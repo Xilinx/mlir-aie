@@ -162,9 +162,9 @@ static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
   OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
   devicePM.addPass(AIE::createAIEAssignLockIDsPass());
-  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIE::createAIEObjectFifoRegisterProcessPass());
   devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIEX::createAIEBroadcastPacketPass());
   devicePM.addPass(AIE::createAIERoutePacketFlowsPass());
   devicePM.addPass(AIEX::createAIELowerMulticastPass());
