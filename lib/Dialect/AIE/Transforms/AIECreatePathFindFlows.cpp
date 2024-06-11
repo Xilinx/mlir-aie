@@ -33,9 +33,12 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   using OpConversionPattern::OpConversionPattern;
   DeviceOp &device;
   DynamicTileAnalysis &analyzer;
+  bool keepFlowOp;
   ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
-                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
+                             DynamicTileAnalysis &a, bool keepFlowOp,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), device(d), analyzer(a),
+        keepFlowOp(keepFlowOp) {}
 
   LogicalResult match(FlowOp op) const override { return success(); }
 
@@ -182,7 +185,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     } else
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
 
-    rewriter.eraseOp(Op);
+    if (!keepFlowOp)
+      rewriter.eraseOp(Op);
   }
 };
 
@@ -210,7 +214,8 @@ void AIEPathfinderPass::runOnOperation() {
   target.addLegalOp<EndOp>();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
+  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer,
+                                              clKeepFlowOp);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
     return signalPassFailure();
 
