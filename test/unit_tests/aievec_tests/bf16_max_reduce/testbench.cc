@@ -4,8 +4,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-void dut(bfloat16 *restrict in0, bfloat16 *restrict out0);
-void dut_ref(bfloat16 *in0, bfloat16 *out0);
 
 #ifdef TO_CPP
 void dut(bfloat16 *restrict in0, bfloat16 *restrict out0);
@@ -17,6 +15,8 @@ void dut(bfloat16 *in0_allocated, bfloat16 *in0_aligned, int64_t in0_offset,
          int64_t out0_strides_0);
 }
 #endif
+
+void dut_ref(bfloat16 *in0, bfloat16 *out0);
 
 alignas(32) bfloat16 g_in0[IN0_SIZE];
 alignas(32) bfloat16 g_out0[OUT0_SIZE];
