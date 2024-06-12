@@ -236,7 +236,7 @@ template <typename Tout>
 std::optional<struct error<Tout>>
 verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual) {
   const float absTol = 0.5;
-  const float relTol = 0.15;
+  const float relTol = 0.05;
   if (!nearly_equal(expected, actual, relTol, absTol)) {
     return (struct error<Tout>){row, col, expected, actual};
   }
