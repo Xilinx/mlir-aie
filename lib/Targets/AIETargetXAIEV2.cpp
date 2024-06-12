@@ -317,26 +317,20 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
   std::string device;
-  int col_shift = 0;
-  int row_shift = 0;
   switch (arch) {
   case AIEArch::AIE1:
     device = AIE1_device;
-    col_shift = 23;
-    row_shift = 18;
     break;
   case AIEArch::AIE2:
     device = AIE2_device;
-    col_shift = 25;
-    row_shift = 20;
     break;
   }
-  assert(col_shift);
-  assert(row_shift);
   output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";
   output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
-  output << "  ctx->AieConfigPtr.ColShift = " << col_shift << ";\n";
-  output << "  ctx->AieConfigPtr.RowShift = " << row_shift << ";\n";
+  output << "  ctx->AieConfigPtr.ColShift = " << targetModel.getColumnShift()
+         << ";\n";
+  output << "  ctx->AieConfigPtr.RowShift = " << targetModel.getRowShift()
+         << ";\n";
   output << "  ctx->AieConfigPtr.NumRows = " << targetModel.rows() << ";\n";
   output << "  ctx->AieConfigPtr.NumCols = " << targetModel.columns() << ";\n";
   output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";

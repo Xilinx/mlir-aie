@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'aie.put_cascade' op must be a 384-bit type
+// CHECK: error{{.*}}'aie.put_cascade' op type must match architecture cascade width (384 bits in AIE1)
 
 module @test {
   aie.device(xcvc1902) {

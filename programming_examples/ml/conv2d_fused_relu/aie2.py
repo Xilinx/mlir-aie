@@ -203,7 +203,7 @@ def conv2dk1():
                     # out to host DDR memory
                     trace_bd_id = 13  # use BD 13 for writing trace output from compute tile to DDR host memory
                     output_size = bufOut
-                    npu_writebd_shimtile(
+                    npu_writebd(
                         bd_id=trace_bd_id,
                         buffer_length=trace_size,
                         buffer_offset=output_size,

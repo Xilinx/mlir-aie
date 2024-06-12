@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < DMA_COUNT; i++) {
     in_a[i] = i + 1;
-    in_b[i] = i + 1;
+    in_b[i] = 7;
     out[i] = 0xdeface;
   }
 
@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
     printf("s0[%d] = 0x%x\n", i, s0);
     printf("s1[%d] = 0x%x\n", i, s1);
     printf("d[%d] = 0x%x\n", i, d);
-    if (d != (s0 + s1)) {
+    if (d != (s0 % s1)) {
       errors++;
       printf("mismatch 0x%x != 0x%x + 0x%x\n", d, s0, s1);
     }
