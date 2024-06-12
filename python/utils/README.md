@@ -87,7 +87,7 @@ Test/ Host code utilities.
         To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
 
 ### <u>Configure tile trace settings</u>
-Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd_shimtile`) to configure the shimDMA. 
+Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA. 
 
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
@@ -262,46 +262,46 @@ An example ddr_id to inout buffer mapping is below:
 
 in C/C++
 ```c++
-aiex.npu.writebd_shimtile { bd_id = 3 : i32,
-                            buffer_length = 16384 : i32,
-                            buffer_offset = 262144 : i32,
-                            enable_packet = 0 : i32,
-                            out_of_order_id = 0 : i32,
-                            packet_id = 0 : i32,
-                            packet_type = 0 : i32,
-                            column = 0 : i32,
-                            column_num = 1 : i32,
-                            d0_stepsize = 0 : i32,
-                            d0_size = 0 : i32,
-                            d0_stride = 0 : i32, 
-                            d0_wrap = 0 : i32,
-                            d1_stepsize = 0 : i32,
-                            d1_wrap = 0 : i32,
-                            d1_size = 0 : i32,
-                            d1_stride = 0 : i32, 
-                            d2_stepsize = 0 : i32,
-                            d2_size = 0 : i32,
-                            d2_stride = 0 : i32, 
-                            ddr_id = 2 : i32,
-                            iteration_current = 0 : i32,
-                            iteration_stepsize = 0 : i32,
-                            iteration_wrap = 0 : i32,
-                            iteration_size = 0 : i32,
-                            iteration_stride = 0 : i32,
-                            lock_acq_enable = 0 : i32,
-                            lock_acq_id = 0 : i32,
-                            lock_acq_val = 0 : i32,
-                            lock_rel_id = 0 : i32,
-                            lock_rel_val = 0 : i32,
-                            next_bd = 0 : i32,
-                            use_next_bd = 0 : i32,
-                            valid_bd = 1 : i32}
+aiex.npu.writebd { bd_id = 3 : i32,
+                   buffer_length = 16384 : i32,
+                   buffer_offset = 262144 : i32,
+                   enable_packet = 0 : i32,
+                   out_of_order_id = 0 : i32,
+                   packet_id = 0 : i32,
+                   packet_type = 0 : i32,
+                   column = 0 : i32,
+                   d0_stepsize = 0 : i32,
+                   d0_size = 0 : i32,
+                   d0_stride = 0 : i32, 
+                   d0_wrap = 0 : i32,
+                   d1_stepsize = 0 : i32,
+                   d1_wrap = 0 : i32,
+                   d1_size = 0 : i32,
+                   d1_stride = 0 : i32, 
+                   d2_stepsize = 0 : i32,
+                   d2_size = 0 : i32,
+                   d2_stride = 0 : i32, 
+                   ddr_id = 2 : i32,
+                   iteration_current = 0 : i32,
+                   iteration_stepsize = 0 : i32,
+                   iteration_wrap = 0 : i32,
+                   iteration_size = 0 : i32,
+                   iteration_stride = 0 : i32,
+                   lock_acq_enable = 0 : i32,
+                   lock_acq_id = 0 : i32,
+                   lock_acq_val = 0 : i32,
+                   lock_rel_id = 0 : i32,
+                   lock_rel_val = 0 : i32,
+                   next_bd = 0 : i32,
+                   row = 0 : i32,
+                   use_next_bd = 0 : i32,
+                   valid_bd = 1 : i32}
 // Set start BD to our shim bd_Id (3)
 aiex.npu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
 ```
 in Python
 ```python
-npu_writebd_shimtile(
+npu_writebd(
     bd_id=3,
     buffer_length=16384,
     buffer_offset=262144,

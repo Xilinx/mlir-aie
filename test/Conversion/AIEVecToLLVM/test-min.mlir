@@ -7,7 +7,7 @@ func.func @i8_min(%arg0 : vector<64xi8>) -> vector<64xi8> {
 
 // CHECK-LABEL: @i8_min
 // CHECK-SAME: %[[ARG0:.*]]: vector<64xi8>
-// CHECK: %[[CST:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[CST:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[VMIN:.*]] = "xllvm.intr.aie2.vmin.ge8"(
 // CHECK-SAME: %[[ARG0]], %[[ARG0]], %[[CST]]) : 
 // CHECK-SAME: (vector<64xi8>, vector<64xi8>, i32) -> !llvm.struct<(vector<64xi8>, vector<2xi32>)>
@@ -23,7 +23,7 @@ func.func @i16_min(%arg0 : vector<32xi16>) -> vector<32xi16> {
 
 // CHECK-LABEL: @i16_min
 // CHECK-SAME: %[[ARG0:.*]]: vector<32xi16>
-// CHECK: %[[CST:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[CST:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[VMIN:.*]] = "xllvm.intr.aie2.vmin.ge16"(
 // CHECK-SAME: %[[ARG0]], %[[ARG0]], %[[CST]]) : 
 // CHECK-SAME: (vector<32xi16>, vector<32xi16>, i32) -> !llvm.struct<(vector<32xi16>, i32)>
@@ -39,7 +39,7 @@ func.func @i32_min(%arg0 : vector<16xi32>) -> vector<16xi32> {
 
 // CHECK-LABEL: @i32_min
 // CHECK-SAME: %[[ARG0:.*]]: vector<16xi32>
-// CHECK: %[[CST:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[CST:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[VMIN:.*]] = "xllvm.intr.aie2.vmin.ge32"(
 // CHECK-SAME: %[[ARG0]], %[[ARG0]], %[[CST]]) : 
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32) -> !llvm.struct<(vector<16xi32>, i32)>
