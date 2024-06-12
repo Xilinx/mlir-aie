@@ -67,7 +67,7 @@ def my_matmul(M, K, N, m, k, n):
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
     # a big performance cost.
-    fifo_depth = 1
+    fifo_depth = 2
 
     n_tiles = (M // m) * (N // n) // n_cores
 
