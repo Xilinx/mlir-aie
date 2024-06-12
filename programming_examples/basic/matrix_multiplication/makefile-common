@@ -38,12 +38,12 @@ N?=512
 
 trace_size?=65536
 
-target_suffix?=${M}x${K}x${n}
+target_suffix?=${M}x${K}x${N}
 mlir_target?=build/aie_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 
-runargs?=-v 1 --warmup 1 --iters 1
+runargs?=-v 2 --warmup 1 --iters 1
 aieargs+=-M $M -K $K -N $N
 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
