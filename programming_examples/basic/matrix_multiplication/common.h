@@ -116,67 +116,20 @@ static inline std::bfloat16_t random_bfloat16_t() {
   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
 }
 
-template <typename Tin, typename Tout>
-void matmul_naive(int M, int N, int K, const std::vector<Tin> A,
-                  const std::vector<Tin> B, std::vector<Tout> &C) {
+template <typename Tin, typename Tout, typename Tacc>
+void matmul(int M, int N, int K, const std::vector<Tin> A,
+            const std::vector<Tin> B, std::vector<Tout> &C) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      Tout running_sum = 0;
+      Tacc running_sum = 0;
       for (int k = 0; k < K; k++) {
-        running_sum += Tout(A[row * K + k] * B[k * N + col]);
+        running_sum += Tacc(A[row * K + k] * B[k * N + col]);
       }
       C[row * N + col] = Tout(running_sum);
     }
   }
 }
 
-template <typename Tin, typename Tout, typename Tacc>
-void matmul(int M, int N, int K, const std::vector<Tin> A,
-            const std::vector<Tin> B, std::vector<Tout> &C) {
-  // A is an  MxK matrix
-  // B is a   KxN matrix
-  // C is the MxN output matrix, assumed to be zeroed out
-
-  constexpr int K_block_size = 64;
-  const int n_K_blocks = K / K_block_size;
-
-  const Tin *B_origin = B.data(); /* Avoid a calls to B.data() within the loop
-                                     with this const variable. B does not get
-                                     resized, so the pointer remains valid. */
-
-  const Tin *A_base = A.data(); /* Points to start of current row of A,
-                                   monotonically increasing by K. */
-  const Tin *B_base = B_origin; /* Points to start of current column of B;
-                                   increases by 1 in each inner loop, resets
-                                   to B_origin (0) at the start of a new row
-                                   (outer loop). */
-
-  const Tin *A_ptr = A_base;
-  const Tin *B_ptr = B_base;
-  Tout *C_ptr = C.data(); /* Monotonically increasing by 1. */
-
-  for (int row = 0; row < M; row++) {
-    for (int col = 0; col < N; col++) {
-      A_ptr = A_base;
-      B_ptr = B_base;
-      Tacc running_sum = 0;
-      for (int k = 0; k < n_K_blocks; k++) {
-        for (int i = 0; i < K_block_size; i++) {
-          running_sum += Tacc(*A_ptr * *B_ptr);
-          A_ptr += 1; // Advance to right neighbor; next value in this row
-          B_ptr += N; // Advance to bottom neighbor; next value in this column
-        }
-      }
-      *C_ptr = Tout(running_sum);
-      C_ptr += 1;
-      B_base += 1; /* Next iteration: same row of A (A_base unchanged),
-                      next column of B (B_base increases by 1) */
-    }
-    A_base += K;       // Advance to next row of A
-    B_base = B_origin; /* Next row of A means we need to restart at the first
-                          column of B. */
-  }
-}
 
 template <typename Tin, typename Tout, typename Tacc>
 Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
