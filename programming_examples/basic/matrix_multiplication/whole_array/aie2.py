@@ -63,45 +63,13 @@ def my_matmul(M, K, N, m, k, n):
     assert k % s == 0
     assert n % t == 0
 
-    word_size_in = 2
-    word_size_out = 2
-
     # If you get errors during CDO generation due to running out of program
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
     # a big performance cost.
     fifo_depth = 1
 
-    A_sz_in_i32s = M * K * word_size_in // 4
-    B_sz_in_i32s = K * N * word_size_in // 4
-    C_sz_in_bytes = M * N * word_size_out
-    C_sz_in_i32s = C_sz_in_bytes // 4
-
-    M_div_m = M // m
-    M_div_m_div_n_rows = M // (m * n_rows)
-    K_div_k = K // k
-    N_div_n = N // n
-    tiles = M_div_m * N_div_n // n_cores
-    N_div_n_div_n_cols = N_div_n // n_cols
-
-    # Matrix A: MxK, submatrices a: mxk
-    k_in_i32s = k * word_size_in // 4
-    K_in_i32s = K * word_size_in // 4
-    m_x_n_rows = m * n_rows
-
-    # Matrix B: KxN, submatrices b: kxn
-    n_in_i32s = n * word_size_in // 4
-    N_in_i32s = N * word_size_in // 4
-    k_x_N_in_i32s = k * N * word_size_in // 4
-    n_x_n_cols_in_i32s = n_in_i32s * n_cols
-
-    # Output Matrix C: MxN
-    n_in_i32s_out = n * word_size_out // 4
-    N_in_i32s_out = N * word_size_out // 4
-    m_x_n_rows_x_N_in_i32s_out = m * n_rows * N_in_i32s_out
-    n_x_n_cols_in_i32s_out = n_in_i32s_out * n_cols
-
-    vectorized = True
+    n_tiles = (M // m) * (N // n) // n_cores
 
     with mlir_mod_ctx() as ctx:
 
@@ -293,7 +261,7 @@ def my_matmul(M, K, N, m, k, n):
                     def core_body():
                         for _ in for_(0xFFFFFFFF):
                             for _ in (
-                                for_(tiles) if tiles > 1 else range(1)
+                                for_(n_tiles) if n_tiles > 1 else range(1)
                             ):  # Workaround for issue #1547
                                 elem_out = memC_fifos[j][memC_fifo_names[j][i]].acquire(
                                     ObjectFifoPort.Produce,
@@ -301,7 +269,7 @@ def my_matmul(M, K, N, m, k, n):
                                 )
                                 call(zero, [elem_out])
 
-                                for _ in for_(K_div_k):
+                                for _ in for_(K // k):
                                     elem_in_a = memA_fifos[memA_fifo_names[i]].acquire(
                                         ObjectFifoPort.Consume,
                                         1,
@@ -324,82 +292,68 @@ def my_matmul(M, K, N, m, k, n):
                                 )
                                 yield_([])
 
-                            if tiles > 1:  # workaround for issue #1547
+                            if n_tiles > 1:  # workaround for issue #1547
                                 yield_([])
 
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz_in_i32s, T.i32()),
-                T.memref(B_sz_in_i32s, T.i32()),
-                T.memref(C_sz_in_i32s, T.i32()),
+                T.memref(M * K, T.bf16()),
+                T.memref(K * N, T.bf16()),
+                T.memref(M *N , T.bf16()),
             )
             def sequence(A, B, C):
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
                 for tile_row_block in range(
-                    (M_div_m_div_n_rows + rows_per_block - 1) // rows_per_block
+                    (M // m // n_rows + rows_per_block - 1) // rows_per_block
                 ):
                     num_tile_rows = min(
                         [
                             rows_per_block,
-                            M_div_m_div_n_rows - tile_row_block * rows_per_block,
+                            M // m // n_rows - tile_row_block * rows_per_block,
                         ]
                     )
                     C_row_offset = (
-                        tile_row_block * rows_per_block * m * n_rows * N * word_size_out
+                        tile_row_block * rows_per_block * m * n_rows * N
                     )
                     for i in range(n_cols):
-                        C_col_offset = i * n * word_size_out
-                        C_offset_in_i32s = (C_col_offset + C_row_offset) // 4
+                        C_col_offset = i * n
+                        C_offset = (C_col_offset + C_row_offset) * 2
                         npu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
                             bd_id=0,
                             mem=C,
-                            offsets=[0, 0, 0, C_offset_in_i32s],
-                            sizes=[
-                                num_tile_rows,
-                                N_div_n_div_n_cols,
-                                m_x_n_rows,
-                                n_in_i32s_out,
-                            ],
-                            strides=[
-                                m_x_n_rows_x_N_in_i32s_out,
-                                n_x_n_cols_in_i32s_out,
-                                N_in_i32s_out,
+                            offsets=[0, 0, 0, C_offset],
+                            sizes=[num_tile_rows, N // n // n_cols, m * n_rows, n],
+                            strides=[m * n_rows * N, n * n_cols, N
                             ],
                         )
                         for tile_row in range(num_tile_rows):
-                            A_row_offset_in_i32s = (
+                            A_row_offset = (
                                 ((tile_row_block * rows_per_block) + tile_row)
                                 * n_rows
                                 * m
                                 * K
-                                * word_size_in
-                                // 4
                             )
-                            A_col_offset_in_i32s = i * m * K * word_size_in // 4
-                            B_col_offset_in_i32s = i * n * word_size_in // 4
+                            A_col_offset = i * m * K
+                            A_offset = A_row_offset + A_col_offset
+                            B_col_offset = i * n
                             npu_dma_memcpy_nd(
                                 metadata=inA_fifo_names[i],
                                 bd_id=2 * tile_row + 1,
                                 mem=A,
-                                offsets=[
-                                    0,
-                                    0,
-                                    0,
-                                    A_col_offset_in_i32s + A_row_offset_in_i32s,
-                                ],
-                                sizes=[N_div_n_div_n_cols, K_div_k, m, k_in_i32s],
-                                strides=[0, k_in_i32s, K_in_i32s],
+                                offsets=[0, 0, 0, A_offset ],
+                                sizes=[N // n // n_cols, K // k, m, k],
+                                strides=[0, k, K],
                             )
                             npu_dma_memcpy_nd(
                                 metadata=inB_fifo_names[i],
                                 bd_id=2 * tile_row + 2,
                                 mem=B,
-                                offsets=[0, 0, 0, B_col_offset_in_i32s],
-                                sizes=[N_div_n_div_n_cols, K_div_k, k, n_in_i32s],
-                                strides=[n_x_n_cols_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                                offsets=[0, 0, 0, B_col_offset],
+                                sizes=[N // n // n_cols, K // k, k, n],
+                                strides=[n * n_cols, k * N, N],
                             )
                     for i in range(n_cols):
                         npu_sync(column=i, row=0, direction=0, channel=0)
