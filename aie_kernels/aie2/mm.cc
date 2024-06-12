@@ -24,16 +24,16 @@
 
 #include "zero.cc"
 
-template <typename T_in, typename T_out, int M, int K, int N>
+template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
-  for (int row = 0; row < M; row++) {
-    for (int col = 0; col < N; col++) {
+  for (int row = 0; row < rowA; row++) {
+    for (int col = 0; col < colB; col++) {
       T_out running_sum = 0;
-      for (int i = 0; i < K; i++) {
-        running_sum += a[row * K + i] * b[i * N + col];
+      for (int i = 0; i < colA; i++) {
+        running_sum += a[row * colA + i] * b[i * colB + col];
       }
-      c[row * N + col] += running_sum;
+      c[row * colB + col] += running_sum;
     }
   }
   event1();
@@ -397,6 +397,23 @@ void matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
 
 extern "C" {
 
+// If you want to compile microkernels with different inner tile sizes,
+// define DIM_M, DIM_K and DIM_N at compile time using -DDIM_M 32 etc.
+// These dimensions must be divisible by the r, s, t dimensions used in
+// the kernels.
+
+#ifndef DIM_M
+#define DIM_M 64
+#endif
+
+#ifndef DIM_K
+#define DIM_K 64
+#endif
+
+#ifndef DIM_N
+#define DIM_N 64
+#endif
+
 #define combos(X)                                                              \
   X(int16, i16, int16, i16, 4, 4, 4)                                           \
   X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
@@ -407,26 +424,26 @@ extern "C" {
   void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
                                                ctype_out *c_out) {             \
     matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
-        64, 64, 64>(a_in, b_in, c_out);                                        \
+        DIM_M, DIM_K, DIM_N>(a_in, b_in, c_out);                               \
   }
 
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matmul_scalar<ctype_in, ctype_out, 64, 32, 64>(a_in, b_in, c_out);         \
+    matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N>(a_in, b_in, c_out);\
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, r, s, t)                         \
   void zero_##mlir_type_out(ctype_out *c_out) {                                \
-    zero_vectorized<ctype_out, 64, 64, 32>(c_out);                             \
+    zero_vectorized<ctype_out, DIM_M, DIM_N, 32>(c_out);                       \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            r, s, t)                                            \
   void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zero_scalar<ctype_out, 64, 64>(c_out);                                     \
+    zero_scalar<ctype_out, DIM_M, DIM_N>(c_out);                               \
   }
 
 combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)

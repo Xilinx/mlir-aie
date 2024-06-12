@@ -23,14 +23,14 @@ def main():
     argparser.add_argument("-M", type=int, default=512)
     argparser.add_argument("-K", type=int, default=512)
     argparser.add_argument("-N", type=int, default=512)
+    argparser.add_argument("-m", type=int, default=64)
+    argparser.add_argument("-k", type=int, default=64)
+    argparser.add_argument("-n", type=int, default=64)
     args = argparser.parse_args()
-    my_matmul(args.M, args.K, args.N)
+    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n)
 
 
-def my_matmul(M=512, K=512, N=512):
-    m = 64
-    k = 64
-    n = 64
+def my_matmul(M, K, N, m, k, n):
     r = 4
     s = 8
     t = 4
@@ -70,7 +70,7 @@ def my_matmul(M=512, K=512, N=512):
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
     # a big performance cost.
-    fifo_depth = 2
+    fifo_depth = 1
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * N * word_size_in // 4
@@ -289,7 +289,7 @@ def my_matmul(M=512, K=512, N=512):
             for j in range(n_cols):
                 for i in range(n_rows):
                     # Compute tile i
-                    @core(cores[j][i], "mm.o")
+                    @core(cores[j][i], f"mm_{m}x{k}x{n}.o")
                     def core_body():
                         for _ in for_(0xFFFFFFFF):
                             for _ in (
