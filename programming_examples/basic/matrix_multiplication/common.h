@@ -130,7 +130,6 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
   }
 }
 
-
 template <typename Tin, typename Tout, typename Tacc>
 Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
              const std::vector<Tin> B) {
@@ -200,7 +199,8 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   if (elide_cols) {                                                            \
     ostream << std::setw(0) << elide_sym;                                      \
   }                                                                            \
-  for (int col = n_printable_cols / 2 + 1; col < n_printable_cols; col++) {    \
+  for (int i = 0; i < (n_printable_cols - 1) / 2; i++) {                       \
+    int col = n_cols - (n_printable_cols - 1) / 2 + i;                         \
     ostream << std::right << std::setw(w) << (what);                           \
     ostream << std::setw(0) << col_sep;                                        \
   }
@@ -213,7 +213,8 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
     print_row(elide_sym);
     ostream << std::endl;
   }
-  for (int row = n_printable_rows / 2 + 1; row < n_printable_rows; row++) {
+  for (int i = 0; i < (n_printable_rows - 1) / 2; i++) {
+    int row = n_rows - (n_printable_rows - 1) / 2 + i;
     print_row(matrix[row * n_cols + col]);
     ostream << std::endl;
   }
