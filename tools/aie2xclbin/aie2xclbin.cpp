@@ -109,6 +109,11 @@ cl::opt<std::string>
                cl::desc("Output xclbin filename for CDO/XCLBIN target"),
                cl::init("final.xclbin"), cl::cat(AIE2XCLBinCat));
 
+cl::opt<std::string> inputXCLBinName(
+    "input-xclbin-name",
+    cl::desc("input xclbin filename on which new xclbin is merged into"),
+    cl::init(""), cl::cat(AIE2XCLBinCat));
+
 cl::opt<std::string> XCLBinKernelName("xclbin-kernel-name",
                                       cl::desc("Kernel name in xclbin file"),
                                       cl::init("MLIR_AIE"),
@@ -215,7 +220,7 @@ int main(int argc, char *argv[]) {
     return 1;
 
   if (failed(aie2xclbin(&ctx, *owning, TK, NPUInstsName.getValue(),
-                        XCLBinName.getValue())))
+                        XCLBinName.getValue(), inputXCLBinName.getValue())))
     return 1;
 
   return 0;
