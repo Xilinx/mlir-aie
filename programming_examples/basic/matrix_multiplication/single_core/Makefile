@@ -6,6 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
 targetname=matrixMultiplication
 kernels=mm
@@ -21,7 +22,7 @@ kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
 
-include ${SELF_DIR}../makefile-common
+include ${srcdir}/../makefile-common
 
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}

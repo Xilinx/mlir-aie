@@ -14,5 +14,6 @@
 using A_DATATYPE = std::bfloat16_t;
 using B_DATATYPE = std::bfloat16_t;
 using C_DATATYPE = float;
+using ACC_DATATYPE = float;
 
 #include "../test.cpp"
