@@ -171,7 +171,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   assert(matrix.size() % n_cols == 0);
 
   auto maxima = std::minmax_element(matrix.begin(), matrix.end());
-  T max_val = std::max(*maxima.first, std::abs(*maxima.second));
+  T max_val = std::max(*maxima.first, (T)std::abs(*maxima.second));
   size_t n_digits = log10(max_val);
   if (w == -1) {
     w = n_digits;
@@ -199,8 +199,8 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   if (elide_cols) {                                                            \
     ostream << std::setw(0) << elide_sym;                                      \
   }                                                                            \
-  for (int i = 0; i < (n_printable_cols - 1) / 2; i++) {                       \
-    int col = n_cols - (n_printable_cols - 1) / 2 + i;                         \
+  for (int i = 0; i < n_printable_cols / 2; i++) {                             \
+    int col = n_cols - n_printable_cols / 2 + i;                               \
     ostream << std::right << std::setw(w) << (what);                           \
     ostream << std::setw(0) << col_sep;                                        \
   }
@@ -213,8 +213,8 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
     print_row(elide_sym);
     ostream << std::endl;
   }
-  for (int i = 0; i < (n_printable_rows - 1) / 2; i++) {
-    int row = n_rows - (n_printable_rows - 1) / 2 + i;
+  for (int i = 0; i < n_printable_rows / 2; i++) {
+    int row = n_rows - n_printable_rows / 2 + i;
     print_row(matrix[row * n_cols + col]);
     ostream << std::endl;
   }
