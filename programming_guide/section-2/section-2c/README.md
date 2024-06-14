@@ -46,7 +46,7 @@ A data layout transformation is presented as a tuple of pairs, where each pair r
 ```c
 [<size_2, stride_2>, <size_1, stride_1>, <size_0, stride_0>]
 ```
-Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first pair of this array gives the outer-most dimension's stride and size `<size_2, stride_2>`, while the last pair of the array gives the inner-most dimension's stride and size `<size_0,stride_0>`. All strides are expressed in **multiples of the element width**.
+Transformations can be expressed in up to three dimensions on each compute and Shim tile, and in up to four dimensions on Mem tiles. The first pair of this array gives the outer-most dimension's stride and size `<size_2, stride_2>`, while the last pair of the array gives the inner-most dimension's stride and size `<size_0, stride_0>`. All strides are expressed in **multiples of the element width**.
 
 > **NOTE:**  Only for 4B data types the inner-most dimension's stride must be 1 by design.
 
@@ -56,9 +56,9 @@ int *buffer;
 for(int i = 0; i < size_2; i++)
     for(int j = 0; j < size_1; j++)
         for(int k = 0; k < size_0; k++)
-            # access/store element at/to buffer[  i * stride_2
-            #                                   + j * stride_1
-            #                                   + k * stride_0]
+            // access/store element at/to buffer[  i * stride_2
+            //                                   + j * stride_1
+            //                                   + k * stride_0]
 ```
 
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
@@ -67,14 +67,14 @@ aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
 ```
 which translates to:
 ```c
-for(int i = 0; i < 8; i++)          # size_2
-    for(int j = 0; j < 2; j++)      # size_1
-        for(int k = 0; k < 8; k++)  # size_0
-            # access/store element at/to index:
+for(int i = 0; i < 8; i++)          // size_2
+    for(int j = 0; j < 2; j++)      // size_1
+        for(int k = 0; k < 8; k++)  // size_0
+            // access/store element at/to index:
             (
-                i * 16  # stride_2 
-                + j * 1 # stride_1 
-                + k * 2 # stride_0
+                i * 16  // stride_2 
+                + j * 1 // stride_1 
+                + k * 2 // stride_0
             )
 ```
 
@@ -116,12 +116,12 @@ of0 = object_fifo
 ```
 The access pattern of the transformation can be written as:
 ```c
-for(int i = 0; i < 2; i++)      # size_1
-    for(int j = 0; j < 3; j++)  # size_0
-        # access/store element at/to index:
+for(int i = 0; i < 2; i++)      // size_1
+    for(int j = 0; j < 3; j++)  // size_0
+        // access/store element at/to index:
         (
-            i * 16  # stride_1 
-            + j * 2 # stride_0
+            i * 16  // stride_1 
+            + j * 2 // stride_0
         )
 ```
 and further represented as in the image below:
