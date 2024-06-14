@@ -162,9 +162,9 @@ static void addAIELoweringPasses(OpPassManager &pm) {
   pm.addPass(AIE::createAIECanonicalizeDevicePass());
   OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
   devicePM.addPass(AIE::createAIEAssignLockIDsPass());
-  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIE::createAIEObjectFifoRegisterProcessPass());
   devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIEX::createAIEBroadcastPacketPass());
   devicePM.addPass(AIE::createAIERoutePacketFlowsPass());
   devicePM.addPass(AIEX::createAIELowerMulticastPass());
@@ -338,8 +338,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.InstallDir);
-        sys::path::append(meBasicPath, "aie_runtime_lib", TK.TargetArch,
-                          "me_basic.o");
+        sys::path::append(meBasicPath, "aie_runtime_lib",
+                          StringRef(TK.TargetArch).upper(), "me_basic.o");
         flags.emplace_back(meBasicPath);
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
@@ -393,47 +393,46 @@ static json::Object makeKernelJSON(std::string name, std::string id,
       {"name", name},
       {"type", "dpu"},
       {"extended-data", json::Object{{"subtype", "DPU"},
-                                     {"functional", "1"},
+                                     {"functional", "0"},
                                      {"dpu_kernel_id", id}}},
-      {"arguments", json::Array{json::Object{{"name", "instr"},
+      {"arguments", json::Array{json::Object{{"name", "opcode"},
+                                             {"address-qualifier", "SCALAR"},
+                                             {"type", "uint64_t"},
+                                             {"offset", "0x00"}},
+                                json::Object{{"name", "instr"},
                                              {"memory-connection", "SRAM"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "char *"},
-                                             {"offset", "0x00"}},
+                                             {"offset", "0x08"}},
                                 json::Object{{"name", "ninstr"},
                                              {"address-qualifier", "SCALAR"},
-                                             {"type", "uint64_t"},
-                                             {"offset", "0x08"}},
+                                             {"type", "uint32_t"},
+                                             {"offset", "0x10"}},
                                 json::Object{{"name", "bo0"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x10"}},
+                                             {"type", "void*"},
+                                             {"offset", "0x14"}},
                                 json::Object{{"name", "bo1"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x18"}},
+                                             {"type", "void*"},
+                                             {"offset", "0x1c"}},
                                 json::Object{{"name", "bo2"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x20"}},
+                                             {"type", "void*"},
+                                             {"offset", "0x24"}},
                                 json::Object{{"name", "bo3"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x28"}},
+                                             {"type", "void*"},
+                                             {"offset", "0x2c"}},
                                 json::Object{{"name", "bo4"},
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x30"}},
-                                json::Object{{"name", "bo5"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x38"}}}},
+                                             {"type", "void*"},
+                                             {"offset", "0x34"}}}},
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
@@ -794,7 +793,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     sys::path::append(chessworkDir, "chesswork");
 
     SmallString<64> chessIntrinsicsLL(TK.InstallDir);
-    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib", TK.TargetArch,
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
+                      StringRef(TK.TargetArch).upper(),
                       "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;

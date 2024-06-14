@@ -66,8 +66,16 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
-  if (buffer.getElementTypeBitWidth() != 32)
-    return emitOpError("must be used with memref type with element width 32.");
+  const auto &targetModel = AIE::getTargetModel(*this);
+  auto addressGranularity = targetModel.getAddressGenGranularity();
+  if (buffer.getElementTypeBitWidth() > addressGranularity) {
+    return emitOpError("Maximum element bit width allowed is ")
+           << addressGranularity << "bits. ";
+  } else if ((buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
+             addressGranularity) {
+    return emitOpError("Minimum data transfer size required is ")
+           << addressGranularity << "bits. ";
+  }
   if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
@@ -114,9 +122,9 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
   return success();
 }
 
-LogicalResult AIEX::NpuShimTilePushQueueOp::verify() {
+LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
-  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getRepeatCount() > 255)
@@ -124,9 +132,9 @@ LogicalResult AIEX::NpuShimTilePushQueueOp::verify() {
   return success();
 }
 
-LogicalResult AIEX::NpuWriteBdExShimTileOp::verify() {
+LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
-  auto numBds = targetModel.getNumBDs(0, 0); // assume shim
+  auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getD0Size() > 0x3FF)

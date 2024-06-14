@@ -36,11 +36,15 @@ extern "C" {
   };                                                                           \
   typedef struct name name
 
-DEFINE_C_API_STRUCT(AieTargetModel, uint32_t);
+DEFINE_C_API_STRUCT(AieTargetModel, uint64_t);
 
 #undef DEFINE_C_API_STRUCT
 
 MLIR_CAPI_EXPORTED AieTargetModel aieGetTargetModel(uint32_t device);
+
+/// Returns the data bus width for the target model.
+MLIR_CAPI_EXPORTED uint32_t
+aieGetTargetModelAddressGenGranularity(AieTargetModel targetModel);
 
 /// Returns the number of columns in the target model.
 MLIR_CAPI_EXPORTED int aieTargetModelColumns(AieTargetModel targetModel);

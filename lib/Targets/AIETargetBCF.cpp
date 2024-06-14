@@ -60,10 +60,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       output << "_entry_point _main_init\n";
       output << "_symbol " << corefunc << " _after _main_init\n";
       output << "_symbol _main_init 0\n";
-      std::string initReserved = (targetModel.getTargetArch() == AIEArch::AIE2)
-                                     ? "0x40000"
-                                     : "0x20000";
-      output << "_reserved DMb 0x00000 " << initReserved
+      int dataMemoryStart = targetModel.getMemSouthBaseAddress();
+      output << "_reserved DMb 0x00000 " << utohexstr(dataMemoryStart)
              << " // Don't put data in code memory\n";
 
       int stacksize = 0;
@@ -77,6 +75,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                           const std::string &dir) {
         if (tile) {
           output << "// " + dir +
+
                         " -------------------------------------------------\n";
           uint32_t localMemSize = targetModel.getLocalMemorySize();
           if (tile != srcCoord)
@@ -125,13 +124,13 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                targetModel.getMemEastBaseAddress(), std::string("east"));
       output << "// end mapping neighbors tile memory\n\n";
 
-      if (targetModel.getTargetArch() == AIEArch::AIE2) {
-        output << "_reserved DMb 0x80000 0x80000 // And everything else "
-                  "the core can't see\n";
-      } else {
-        output << "_reserved DMb 0x40000 0xc0000 // And everything else "
-                  "the core can't see\n";
-      }
+      int addressSpaceSize = 0x100000;
+      int dataMemoryEnd = targetModel.getMemEastBaseAddress() +
+                          targetModel.getLocalMemorySize();
+      output << "_reserved DMb " << utohexstr(dataMemoryEnd) << " "
+             << utohexstr(addressSpaceSize - dataMemoryEnd)
+             << " // And everything else the core can't see\n";
+
       if (tile.getCoreOp() && tile.getCoreOp().getLinkWith())
         output << "_include _file "
                << tile.getCoreOp().getLinkWith().value().str() << "\n";

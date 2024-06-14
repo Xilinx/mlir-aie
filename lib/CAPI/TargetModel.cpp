@@ -16,16 +16,20 @@
 using namespace mlir;
 
 static inline AieTargetModel wrap(const xilinx::AIE::AIETargetModel &tm) {
-  return AieTargetModel{static_cast<uint32_t>(tm.getDevice())};
+  return AieTargetModel{reinterpret_cast<std::uintptr_t>(&tm)};
 }
 
 static inline const xilinx::AIE::AIETargetModel &unwrap(AieTargetModel tm) {
-  return xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(tm.d));
+  return *reinterpret_cast<const xilinx::AIE::AIETargetModel *>(tm.d);
 }
 
 AieTargetModel aieGetTargetModel(uint32_t device) {
   return wrap(
       xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(device)));
+}
+
+uint32_t aieGetTargetModelAddressGenGranularity(AieTargetModel targetModel) {
+  return unwrap(targetModel).getAddressGenGranularity();
 }
 
 int aieTargetModelColumns(AieTargetModel targetModel) {
