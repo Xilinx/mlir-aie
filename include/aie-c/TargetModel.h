@@ -140,9 +140,11 @@ aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 /// Returns true if this is an NPU target model.
 MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
 
-MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel);
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetColumnShift(AieTargetModel targetModel);
 
-MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetRowShift(AieTargetModel targetModel);
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetRowShift(AieTargetModel targetModel);
 
 #ifdef __cplusplus
 }
