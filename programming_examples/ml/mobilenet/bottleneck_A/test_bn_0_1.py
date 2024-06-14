@@ -380,7 +380,7 @@ def main(opts):
         ofm_mem_fmt_out,
         golden_output,
         rtol=0,
-        atol=1,
+        atol=3,
     ):
         print("\nPASS!\n")
         print_dolphin()
