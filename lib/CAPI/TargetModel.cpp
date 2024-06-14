@@ -152,3 +152,11 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
   return unwrap(targetModel).isNPU();
 }
+
+uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel) {
+  return unwrap(targetModel).getColumnShift();
+}
+
+uint32_t aieTargetModelGetRowShift(AieTargetModel targetModel) {
+  return unwrap(targetModel).getRowShift();
+}
