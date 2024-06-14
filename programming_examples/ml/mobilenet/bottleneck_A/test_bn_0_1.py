@@ -90,10 +90,8 @@ def main(opts):
 
     shape_total_wts = (3*3*bneck_0_OutC2 + bneck_0_OutC2*bneck_0_OutC3 + bneck_1_InC1*bneck_1_OutC1 + 3*3*bneck_1_OutC2 + bneck_1_OutC2*bneck_1_OutC3, 1)
     shape_in_act = (bneck_0_InH2, bneck_0_InC2_vec, bneck_0_InW2, vectorSize)  #'YCXC8' , 'CYX'
-    shape_out = (bneck_1_InH3, tmp_outC_vec, bneck_1_InW3, vectorSize) # HCWC8
-    shape_out_final = (tmp_outC_vec*vectorSize, bneck_1_InH3, bneck_1_InW3) # CHW
-    # shape_out = (bneck_1_InH3, bneck_1_OutC3_vec, bneck_1_InW3, vectorSize) # HCWC8
-    # shape_out_final = (bneck_1_OutC3_vec*vectorSize, bneck_1_InH3, bneck_1_InW3) # CHW
+    shape_out = (bneck_1_InH3, bneck_1_OutC3_vec, bneck_1_InW3, vectorSize) # HCWC8
+    shape_out_final = (bneck_1_OutC3_vec*vectorSize, bneck_1_InH3, bneck_1_InW3) # CHW
 
 
     # ------------------------------------------------------
@@ -234,8 +232,8 @@ def main(opts):
             out = self.bn1_quant_relu1(out)
             out = self.bn1_quant_conv2(out)
             out = self.bn1_quant_relu2(out)
-            # out = self.bn1_quant_conv3(out)
-            # out = self.bn1_quant_id_2(out)
+            out = self.bn1_quant_conv3(out)
+            out = self.bn1_quant_id_2(out)
             return out
 
     quant_bottleneck_model = QuantBottleneck0(in_planes=bneck_0_InC2, bn0_expand=bneck_0_InC2,bn0_project=bneck_0_OutC3, bn1_expand=bneck_1_OutC1,bn1_project=bneck_1_OutC3)
