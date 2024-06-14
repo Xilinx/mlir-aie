@@ -230,6 +230,22 @@ public:
         llvm::reverse(op.getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
+    MemRefType buffer = op.getMemref().getType();
+    const auto &targetModel = AIE::getTargetModel(op);
+    auto elemWidth = buffer.getElementTypeBitWidth();
+    auto addressGranularity = targetModel.getAddressGenGranularity();
+    if (elemWidth < addressGranularity) {
+      if (!strides.empty()) {
+        for (int i = 0; i < 3; i++) {
+          strides[i] = (strides[i] * elemWidth) / addressGranularity;
+        }
+      }
+      if (!sizes.empty())
+        sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
+      if (!offsets.empty())
+        offsets[0] = (offsets[0] * elemWidth) / addressGranularity;
+    }
+
     // column
     column = IntegerAttr::get(i32ty, col);
 
