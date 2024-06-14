@@ -69,7 +69,7 @@ Similarly, the order in `fifoIns` specifies which input object will make up whic
 
 <img src="./../../../assets/Join.png" height="200">
 
-The following code snippet describes the figure above. There are three Object FIFOs: `of2` has a producer tile B and a consumer tile A, while `of0` and `of1` have C and D respectively as their producer tiles and B as their consumer tile. The link specifies that data from `of0` and `of1` is joined into `of2`. In this link, B is the shared tile where the implicit data copy will take place via B's DMAs. We can also note how `of0` and `of1`'s datatypes are half of `of2`'s, which means that objects from `of0` will become the first half of objects in `of2` while objects in `of1` will become the second half, based on their order in the link.
+The following code snippet describes the figure above. There are three Object FIFOs: `of0` has a producer tile B and a consumer tile A, while `of1` and `of2` have C and D respectively as their producer tiles and B as their consumer tile. The link specifies that data from `of1` and `of2` is joined into `of0`. In this link, B is the shared tile where the implicit data copy will take place via B's DMAs. We can also note how `of1` and `of2`'s datatypes are half of `of0`'s, which means that objects from `of1` will become the first half of objects in `of0` while objects in `of2` will become the second half, based on their order in the link.
 ```python
 A = tile(1, 0)
 B = tile(1, 1)
