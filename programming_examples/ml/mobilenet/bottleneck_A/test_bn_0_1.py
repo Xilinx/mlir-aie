@@ -86,7 +86,7 @@ def main(opts):
     # ------------------------------------------------------
     dtype_in = np.dtype("uint8")
     dtype_wts = np.dtype("int8")
-    dtype_out = np.dtype("uint8")
+    dtype_out = np.dtype("int8")
 
     shape_total_wts = (3*3*bneck_0_OutC2 + bneck_0_OutC2*bneck_0_OutC3 + bneck_1_InC1*bneck_1_OutC1 + 3*3*bneck_1_OutC2 + bneck_1_OutC2*bneck_1_OutC3, 1)
     shape_in_act = (bneck_0_InH2, bneck_0_InC2_vec, bneck_0_InW2, vectorSize)  #'YCXC8' , 'CYX'
@@ -378,7 +378,7 @@ def main(opts):
         ofm_mem_fmt_out,
         golden_output,
         rtol=0,
-        atol=3,
+        atol=1,
     ):
         print("\nPASS!\n")
         print_dolphin()
