@@ -816,7 +816,6 @@ struct AIEObjectFifoStatefulTransformPass
                             .value_or(0);
           if (loopIters < unrollFactor)
             unrollFactor = loopIters;
-            
           if (found) {
             if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
               forLoop.emitOpError()
