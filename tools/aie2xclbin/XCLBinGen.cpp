@@ -432,7 +432,12 @@ static json::Object makeKernelJSON(std::string name, std::string id,
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "void*"},
-                                             {"offset", "0x34"}}}},
+                                             {"offset", "0x34"}},
+                                json::Object{{"name", "bo5"},
+                                             {"memory-connection", "HOST"},
+                                             {"address-qualifier", "GLOBAL"},
+                                             {"type", "void*"},
+                                             {"offset", "0x3c"}}}},
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
