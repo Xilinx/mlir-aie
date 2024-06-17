@@ -14,7 +14,6 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
-N = 4096
 dev = AIEDevice.npu1_1col
 col = 0
 
@@ -38,9 +37,9 @@ def distribute_repeat():
 
         @device(dev)
         def device_body():
-            memRef_ty = T.memref(1024, T.i32())
-            memRef_512_ty = T.memref(512, T.i32())
-            memRef_3072_ty = T.memref(3072, T.i32())
+            memRef_in_ty = T.memref(36, T.i32())
+            memRef_out_ty = T.memref(72, T.i32())
+            memRef_18_ty = T.memref(18, T.i32())
 
             # Tile declarations
             ShimTile = tile(col, 0)
@@ -49,14 +48,16 @@ def distribute_repeat():
             ComputeTile3 = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
-            of_in2 = object_fifo("in2", MemTile, ComputeTile2, [1, 1], memRef_512_ty)
-            of_in3 = object_fifo("in3", MemTile, ComputeTile3, [1, 1], memRef_512_ty)
+            of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_in_ty)
+            of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, memRef_18_ty)
+            of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_18_ty)
+            of_in2.set_memtile_repeat(1)
+            of_in3.set_memtile_repeat(1)
             object_fifo_link(of_in, [of_in2, of_in3])
 
-            of_out2 = object_fifo("out2", ComputeTile2, MemTile, [1, 1], memRef_512_ty)
-            of_out3 = object_fifo("out3", ComputeTile3, MemTile, [1, 1], memRef_512_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty)
+            of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_18_ty)
+            of_out3 = object_fifo("out3", ComputeTile3, MemTile, 2, memRef_18_ty)
+            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_out_ty)
             object_fifo_link([of_out2, of_out3], of_out)
 
             # Set up compute tiles
@@ -67,7 +68,7 @@ def distribute_repeat():
                 for _ in for_(sys.maxsize):
                     elemOut = of_out2.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in2.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(512):
+                    for i in for_(18):
                         v0 = memref.load(elemIn, [i])
                         v1 = arith.addi(v0, arith.constant(1, T.i32()))
                         memref.store(v1, elemOut, [i])
@@ -82,7 +83,7 @@ def distribute_repeat():
                 for _ in for_(sys.maxsize):
                     elemOut = of_out3.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in3.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(512):
+                    for i in for_(18):
                         v0 = memref.load(elemIn, [i])
                         v1 = arith.addi(v0, arith.constant(2, T.i32()))
                         memref.store(v1, elemOut, [i])
@@ -92,13 +93,13 @@ def distribute_repeat():
                     yield_([])
 
             # To/from AIE-array data movement
-            tensor_ty = T.memref(N, T.i32())
-            tensor_in_ty = T.memref(N // 4, T.i32())
+            tensor_out_ty = T.memref(72, T.i32())
+            tensor_in_ty = T.memref(36, T.i32())
 
-            @FuncOp.from_py_func(tensor_in_ty, tensor_ty, tensor_ty)
+            @FuncOp.from_py_func(tensor_in_ty, tensor_in_ty, tensor_out_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, N // 4])
+                npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 72])
+                npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 36])
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)

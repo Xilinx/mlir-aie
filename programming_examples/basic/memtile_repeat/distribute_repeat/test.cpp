@@ -92,10 +92,6 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
-  if ((N % 1024)) {
-    std::cerr << "Length must be a multiple of 1024." << std::endl;
-    return 1;
-  }
 
   // Start the XRT test code
   // Get a device handle
@@ -141,9 +137,9 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, (N / 4) * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inA = xrt::bo(device, 36 * sizeof(int32_t),XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(2));
+  auto bo_inB = xrt::bo(device, 36 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
   auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
@@ -153,8 +149,8 @@ int main(int argc, const char *argv[]) {
 
   int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < (N / 4); i++)
-    srcVecA.push_back(i);
+  for (int i = 0; i < 36; i++)
+    srcVecA.push_back(1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -173,15 +169,14 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  int repeat_pattern_limit_1 = N / 4;
-  int repeat_pattern_size = N / 8;
+  int repeat_pattern_limit_1 = 36;
 
   for (uint32_t i = 0; i < N; i++) {
     uint32_t ref = i;
     if (i < repeat_pattern_limit_1)
-      ref = (i % repeat_pattern_size) + 1;
+      ref = 2;
     else
-      //ref = ((i % repeat_pattern_size) + 2) % (repeat_pattern_limit_1 + 1);
+      ref = 3;
     if (*(bufOut + i) != ref) {
       std::cout << "error at index[" << i << "]: expected " << ref << " got " << *(bufOut + i) << std::endl;
       errors++;

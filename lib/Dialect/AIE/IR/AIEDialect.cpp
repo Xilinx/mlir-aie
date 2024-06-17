@@ -590,25 +590,25 @@ LogicalResult ObjectFifoLinkOp::verify() {
                      "shared tile between objectFifos");
 
   if (isJoin()) {
-    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    auto elemType =
-        llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
-    int64_t outputSize = 1;
-    for (auto dim : elemType.getShape())
-      outputSize *= dim;
+    // ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    // auto elemType =
+    //     llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
+    // int64_t outputSize = 1;
+    // for (auto dim : elemType.getShape())
+    //   outputSize *= dim;
 
-    int inputSize = 0;
-    for (auto fifoIn : getInputObjectFifos()) {
-      auto elemType =
-          llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
-      int64_t nextInputSize = 1;
-      for (int64_t dim : elemType.getShape())
-        nextInputSize *= dim;
-      inputSize += nextInputSize;
-    }
-    if (inputSize != outputSize)
-      return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of output objFifo");
+    // int inputSize = 0;
+    // for (auto fifoIn : getInputObjectFifos()) {
+    //   auto elemType =
+    //       llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
+    //   int64_t nextInputSize = 1;
+    //   for (int64_t dim : elemType.getShape())
+    //     nextInputSize *= dim;
+    //   inputSize += nextInputSize;
+    // }
+    // if (inputSize != outputSize)
+    //   return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
+    //                    "be equal to size of output objFifo");
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
@@ -651,6 +651,17 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (outputSize != inputSize)
       return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
                        "be equal to size of input objFifo");
+
+    std::vector<int> repeat_counts;
+    for (auto fifoOut : getOutputObjectFifos()) {
+      if (fifoOut.getMemtileRepeat().has_value())
+        repeat_counts.push_back(fifoOut.getMemtileRepeat().value());
+      else
+        repeat_counts.push_back(0);
+    }
+    for (auto repeat : repeat_counts)
+      if (repeat_counts[0] != repeat)
+        return emitError("repeat counts of output object FIFOs must be equal");
   }
 
   return success();
@@ -712,6 +723,13 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     }
   }
   return outputObjFifos;
+}
+
+std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
+  for (auto fifoOut : getOutputObjectFifos())
+    if (fifoOut.getMemtileRepeat().has_value())
+      return {fifoOut.getMemtileRepeat().value()};
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

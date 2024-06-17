@@ -14,7 +14,7 @@ all: build/final.xclbin build/insts.txt
 
 devicename ?= npu
 targetname = distribute_repeat
-LENGTH ?= 4096
+LENGTH ?= 72
 
 # build/aie.mlir: ${srcdir}/aie2.py
 # 	mkdir -p ${@D}

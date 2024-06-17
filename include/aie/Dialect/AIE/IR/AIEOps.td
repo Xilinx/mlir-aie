@@ -1706,16 +1706,10 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
-
-    bool isJoin() {
-      return getFifoIns().size() > 1;
-    }
-
-    bool isDistribute() {
-      return getFifoOuts().size() > 1;
-    }
-
+    bool isJoin() { return getFifoIns().size() > 1; }
+    bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    std::optional<int> getRepeatCount();
   }];
 }
 

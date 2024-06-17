@@ -1,4 +1,4 @@
-# memtile_repeat/ping_pong/aie2.py -*- Python -*-
+# memtile_repeat/simple_repeat/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -33,7 +33,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 
-def ping_pong():
+def simple_repeat():
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -46,8 +46,8 @@ def ping_pong():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, MemTile, 1, memRef_ty)
-            of_out = object_fifo("out", MemTile, ShimTile, [2, 1], memRef_ty)
-            of_out.set_memtile_repeat(4)
+            of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_ty)
+            of_out.set_memtile_repeat(3)
             object_fifo_link(of_in, of_out)
 
             # To/from AIE-array data movement
@@ -63,4 +63,4 @@ def ping_pong():
     print(ctx.module)
 
 
-ping_pong()
+simple_repeat()
