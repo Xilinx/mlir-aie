@@ -806,17 +806,16 @@ struct AIEObjectFifoStatefulTransformPass
 
           int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
-          
           // if loop iterations < unrollFactor, unroll the loop fully
           int loopIters = 0;
-          if (forLoop.getSingleLowerBound() ||
-              forLoop.getSingleUpperBound() || forLoop.getSingleStep())
+          if (forLoop.getSingleLowerBound() || forLoop.getSingleUpperBound() ||
+              forLoop.getSingleStep())
             loopIters = constantTripCount(*(forLoop.getSingleLowerBound()),
                                           *(forLoop.getSingleUpperBound()),
-                                          *(forLoop.getSingleStep())).value_or(0);
+                                          *(forLoop.getSingleStep()))
+                            .value_or(0);
           if (loopIters < unrollFactor)
             unrollFactor = loopIters;
-            
           if (found) {
             if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
               forLoop.emitOpError()
