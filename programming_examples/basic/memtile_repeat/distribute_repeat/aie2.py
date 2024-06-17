@@ -53,12 +53,12 @@ def distribute_repeat():
             of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, memRef_18_ty)
             of_in2.set_memtile_repeat(1)
             of_in3.set_memtile_repeat(1)
-            object_fifo_link(of_in, [of_in2, of_in3])
+            object_fifo_link(of_in, [of_in2, of_in3], [], [0, 18])
 
             of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, memRef_18_ty)
             of_out3 = object_fifo("out3", ComputeTile3, MemTile, 2, memRef_18_ty)
             of_out = object_fifo("out", MemTile, ShimTile, 1, memRef_out_ty)
-            object_fifo_link([of_out2, of_out3], of_out)
+            object_fifo_link([of_out2, of_out3], of_out, [0, 36], [])
 
             # Set up compute tiles
 

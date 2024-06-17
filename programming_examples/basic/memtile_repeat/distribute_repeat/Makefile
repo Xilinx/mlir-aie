@@ -16,18 +16,19 @@ devicename ?= npu
 targetname = distribute_repeat
 LENGTH ?= 72
 
-# build/aie.mlir: ${srcdir}/aie2.py
-# 	mkdir -p ${@D}
-# 	python3 $< ${LENGTH} ${devicename} ${col} > $@
+build/aie.mlir: ${srcdir}/aie2.py
+	mkdir -p ${@D}
+	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
 .PHONY: inst/insts.txt
 inst/insts.txt: ${srcdir}/aie2.py
 	rm -rf inst
-	mkdir -p inst 
+	mkdir -p inst
+	python3 $< ${LENGTH} > inst/aie.mlir
 	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.txt aie.mlir && popd
 	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
 
-build/final.xclbin: aie.mlir
+build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
