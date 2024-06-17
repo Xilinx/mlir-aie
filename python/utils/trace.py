@@ -7,6 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from aie.dialects.aiex import *
+from aie.dialects.aie import get_target_model
 
 
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
@@ -80,9 +81,11 @@ def configure_simple_tracing_aie2(
     stop=0x0,
     events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
 ):
-    # Shim has to be a... shim.  Also needs to be a NOC tile, but we don't have
-    # an easy way of checking that through python.
-    assert int(shim.row) == 0
+    dev = shim.parent.attributes["device"]
+    tm = get_target_model(dev)
+
+    # Shim has to be a shim tile
+    assert tm.is_shim_noc_tile(shim.col, shim.row)
 
     # Pad the input so we have exactly 8 events.
     events = (events + [0] * 8)[:8]
@@ -174,6 +177,8 @@ def configure_simple_tracing_aie2(
         use_next_bd=0,
         valid_bd=1,
     )
+    addr = (int(shim.col) << tm.get_column_shift()) | (0x1D004 + bd_id * 0x20)
+    npu_address_patch(addr=addr, arg_idx=ddr_id, arg_plus=offset)
     # configure S2MM channel
     npu_write32(
         column=int(shim.col),
