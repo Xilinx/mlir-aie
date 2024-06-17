@@ -161,7 +161,6 @@ def configure_simple_tracing_aie2(
         d1_size=0,
         d1_stride=0,
         d2_stride=0,
-        ddr_id=ddr_id,
         iteration_current=0,
         iteration_size=0,
         iteration_stride=0,

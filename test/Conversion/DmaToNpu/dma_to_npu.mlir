@@ -13,10 +13,12 @@
 // TODO - more
 // CHECK-LABEL: dma_memcpy_nd_0
 // CHECK: aiex.npu.writebd
-// CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
+// CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.writebd
-// CHECK-SAME: ddr_id = 1 : i32
+// CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 1 : i32
 module  {
   aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
@@ -35,9 +37,9 @@ module  {
 
 // CHECK-LABEL: dma_wait_s2mm
 // CHECK: aiex.npu.writebd
-// CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
 // CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
 // CHECK: aiex.npu.sync 
 // CHECK-SAME: channel = 0 : i32
@@ -62,8 +64,9 @@ module  {
 
 // CHECK-LABEL: dma_wait_mm2s
 // CHECK: aiex.npu.writebd
-// CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
+// CHECK: aiex.npu.address_patch
+// CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
 // CHECK: aiex.npu.sync 
 // CHECK-SAME: channel = 1 : i32

@@ -136,7 +136,6 @@ def passThroughAIE2():
                         d1_stride=0,
                         d1_wrap=0,
                         d2_stride=0,
-                        ddr_id=2,
                         iteration_current=0,
                         iteration_stride=0,
                         iteration_wrap=0,
