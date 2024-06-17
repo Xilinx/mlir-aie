@@ -809,8 +809,8 @@ struct AIEObjectFifoStatefulTransformPass
           
           // if loop iterations < unrollFactor, unroll the loop fully
           int loopIters = 0;
-          if (forLoop.getSingleLowerBound() ||
-              forLoop.getSingleUpperBound() || forLoop.getSingleStep())
+          if (forLoop.getSingleLowerBound() || forLoop.getSingleUpperBound() ||
+              forLoop.getSingleStep())
             loopIters = constantTripCount(*(forLoop.getSingleLowerBound()),
                                           *(forLoop.getSingleUpperBound()),
                                           *(forLoop.getSingleStep())).value_or(0);
