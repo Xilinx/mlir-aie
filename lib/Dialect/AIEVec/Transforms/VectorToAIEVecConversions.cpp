@@ -2979,6 +2979,67 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
   }
 };
 
+// Convert a `vector.flat_transpose` op to an `aievec.shuffle` op for AIEml.
+struct LowerVectorFlatTransposeOpToAIEVecShuffleOpPattern
+    : OpConversionPattern<vector::FlatTransposeOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(vector::FlatTransposeOp transpOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto rows = transpOp.getRows();
+    auto cols = transpOp.getColumns();
+    auto resVecTy = cast<VectorType>(transpOp.getResult().getType());
+    auto elemTyBitWidth = resVecTy.getElementTypeBitWidth();
+    auto vBitWidth = elemTyBitWidth * rows * cols;
+
+    if (vBitWidth != 512)
+      return failure();
+
+    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32)
+      return failure();
+
+    auto shuffleMode = aievec::ShuffleMode::T32_4X4;
+    if (elemTyBitWidth == 8) {
+      switch (rows) {
+      case 4:
+        shuffleMode = aievec::ShuffleMode::T8_4X16;
+        break;
+      case 8:
+        shuffleMode = aievec::ShuffleMode::T8_8X8;
+        break;
+      case 16:
+        shuffleMode = aievec::ShuffleMode::T8_16X4;
+        break;
+      default:
+        return failure();
+      }
+    } else if (elemTyBitWidth == 16) {
+      switch (rows) {
+      case 2:
+        shuffleMode = aievec::ShuffleMode::T16_2X16;
+        break;
+      case 4:
+        shuffleMode = aievec::ShuffleMode::T16_4X8;
+        break;
+      case 8:
+        shuffleMode = aievec::ShuffleMode::T16_8X4;
+        break;
+      case 16:
+        shuffleMode = aievec::ShuffleMode::T16_16X2;
+        break;
+      default:
+        return failure();
+      }
+    } else if (cols != 4)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::ShuffleOp>(
+        transpOp, resVecTy, adaptor.getMatrix(), nullptr, shuffleMode);
+
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -3061,7 +3122,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertVectorFMAOpToAIEVecFMAElemOpPattern,
       LowerVectorExtractStridedSliceOpAIE2Pattern,
-      LowerVectorTransposeOpToAIEVecShuffleOpPattern
+      LowerVectorTransposeOpToAIEVecShuffleOpPattern,
+      LowerVectorFlatTransposeOpToAIEVecShuffleOpPattern
       >(patterns.getContext());
   patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern
       >(patterns.getContext(), backend == TargetBackend::CPP);
