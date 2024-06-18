@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses="basic-alloc" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-alloc" %s | FileCheck %s
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3104 : i32, sym_name = "a"} : memref<16xi8>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "b"} : memref<512xi32>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3072 : i32, sym_name = "c"} : memref<16xi16>

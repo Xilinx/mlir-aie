@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses="basic-alloc" %s 2>&1 | FileCheck %s
-// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 0 : i32, sym_name = "a"} : memref<65536xi32>
+// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-alloc" %s 2>&1 | FileCheck %s
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "a"} : memref<65536xi32>
 
 module @test {
  aie.device(xcve2302) {
