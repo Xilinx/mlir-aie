@@ -104,8 +104,13 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
                                       %B : vector<1x1x4x8xbf16>,
                                       %C : vector<1x1x4x4xf32>)
                                     -> vector<1x1x4x4xf32> {
-  // CHECK: %[[TRB:.*]] = vector.transpose %[[VB]], [0, 1, 3, 2] :
-  // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x8x4xbf16>
+  // CHECK: %[[FVB:.*]] = vector.shape_cast %[[VB]]
+  // CHECK-SAME:                       : vector<1x1x4x8xbf16> to vector<32xbf16>
+  // CHECK: %[[FVBT:.*]] = vector.flat_transpose %[[FVB]]
+  // CHECK-SAME:                         {columns = 8 : i32, rows = 4 : i32}
+  // CHECK-SAME:                       : vector<32xbf16> -> vector<32xbf16>
+  // CHECK: %[[TRB:.*]] = vector.shape_cast %[[FVBT]]
+  // CHECK-SAME:                       : vector<32xbf16> to vector<1x1x8x4xbf16>
   // CHECK: %[[RES:.*]] = vector.contract {
   // CHECK-SAME:    indexing_maps = [#[[IDXMAPA]], #[[IDXMAPB]], #[[IDXMAPC]]],
   // CHECK-SAME:    iterator_types = ["parallel", "parallel", "reduction",
@@ -144,8 +149,13 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
                                     -> vector<1x1x4x4xf32> {
   // CHECK: %[[LHS:.*]] = arith.extf %[[VA]] :
   // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x4x8xf32>
-  // CHECK: %[[TRB:.*]] = vector.transpose %[[VB]], [0, 1, 3, 2] :
-  // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x8x4xbf16>
+  // CHECK: %[[FVB:.*]] = vector.shape_cast %[[VB]]
+  // CHECK-SAME:                       : vector<1x1x4x8xbf16> to vector<32xbf16>
+  // CHECK: %[[FVBT:.*]] = vector.flat_transpose %[[FVB]]
+  // CHECK-SAME:                         {columns = 8 : i32, rows = 4 : i32}
+  // CHECK-SAME:                       : vector<32xbf16> -> vector<32xbf16>
+  // CHECK: %[[TRB:.*]] = vector.shape_cast %[[FVBT]]
+  // CHECK-SAME:                       : vector<32xbf16> to vector<1x1x8x4xbf16>
   // CHECK: %[[RHS:.*]] = arith.extf %[[TRB]] :
   // CHECK-SAME:                 vector<1x1x8x4xbf16> to vector<1x1x8x4xf32>
   // CHECK: %[[RES:.*]] = vector.contract {
@@ -165,4 +175,34 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
               kind = #vector.kind<add>} %lhs, %rhs, %C :
               vector<1x1x4x8xf32>, vector<1x1x4x8xf32> into vector<1x1x4x4xf32>
   return %res : vector<1x1x4x4xf32>
+}
+
+//
+// -----
+//
+
+// CHECK-LABEL: func.func @vector_transpose(
+// CHECK-SAME: %[[VA:[a-zA-Z0-9]+]]: vector<4x8xbf16>,
+// CHECK-SAME: %[[VB:[a-zA-Z0-9]+]]: vector<8x4xbf16>)
+func.func @vector_transpose(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>)
+                            -> (vector<4x8xbf16>, vector<8x4xbf16>) {
+  // CHECK: %[[FVA:.*]] = vector.shape_cast %[[VA]]
+  // CHECK-SAME:                           : vector<4x8xbf16> to vector<32xbf16>
+  // CHECK: %[[FVAT:.*]] = vector.flat_transpose %[[FVA]]
+  // CHECK-SAME:                            {columns = 8 : i32, rows = 4 : i32}
+  // CHECK-SAME:                           : vector<32xbf16> -> vector<32xbf16>
+  // CHECK: %[[VAT:.*]] = vector.shape_cast %[[FVAT]]
+  // CHECK-SAME:                           : vector<32xbf16> to vector<8x4xbf16>
+  %tA = vector.transpose %A, [1, 0] : vector<4x8xbf16> to vector<8x4xbf16>
+  // CHECK: %[[FVB:.*]] = vector.shape_cast %[[VB]]
+  // CHECK-SAME:                           : vector<8x4xbf16> to vector<32xbf16>
+  // CHECK: %[[FVBT:.*]] = vector.flat_transpose %[[FVB]]
+  // CHECK-SAME:                            {columns = 4 : i32, rows = 8 : i32}
+  // CHECK-SAME:                           : vector<32xbf16> -> vector<32xbf16>
+  // CHECK: %[[VBT:.*]] = vector.shape_cast %[[FVBT]]
+  // CHECK-SAME:                           : vector<32xbf16> to vector<4x8xbf16>
+  %tB = vector.transpose %B, [1, 0] : vector<8x4xbf16> to vector<4x8xbf16>
+  %AtB = arith.addf %A, %tB : vector<4x8xbf16>
+  %tAB = arith.addf %tA, %B : vector<8x4xbf16>
+  return %AtB, %tAB : vector<4x8xbf16>, vector<8x4xbf16>
 }
