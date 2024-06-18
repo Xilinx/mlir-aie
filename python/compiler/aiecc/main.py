@@ -36,7 +36,7 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme="": (
     Pipeline()
     .lower_affine()
     .add_pass("aie-canonicalize-device")
@@ -50,7 +50,7 @@ INPUT_WITH_ADDRESSES_PIPELINE = lambda basic_alloc_scheme=False: (
         .add_pass("aie-lower-cascade-flows")
         .add_pass("aie-lower-broadcast-packet")
         .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
     )
     .convert_scf_to_cf()
 )
@@ -1000,8 +1000,8 @@ class FlowRunner:
             )
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            if opts.basic_alloc_scheme:
-                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(True).materialize(
+            if opts.alloc_scheme:
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(opts.alloc_scheme).materialize(
                     module=True
                 )
             else:
