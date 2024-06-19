@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-alloc" %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK:   (stack) : 0x0-0x3FF     (1024 bytes)
 // CHECK:   b       : 0x400-0x83FF         (32768 bytes)
