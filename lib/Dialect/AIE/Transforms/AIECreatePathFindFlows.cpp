@@ -321,7 +321,7 @@ struct AIEOpRemoval : OpConversionPattern<MyOp> {
   }
 };
 
-void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
+void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
   ConversionTarget target(getContext());
 
@@ -331,10 +331,16 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
   // Map from a port to
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
+
+  for (auto tileOp : device.getOps<TileOp>()) {
+    int col = tileOp.colIndex();
+    int row = tileOp.rowIndex();
+    tiles[{col, row}] = tileOp;
+  }
+
   // The logical model of all the switchboxes.
   DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
-
-  for (PacketFlowOp pktFlowOp : d.getOps<PacketFlowOp>()) {
+  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
@@ -713,7 +719,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
   // From BLI to shimDMA: 1) North   2 --> shimDMA 0
   //                      2) North   3 --> shimDMA 1
 
-  for (auto switchbox : make_early_inc_range(d.getOps<SwitchboxOp>())) {
+  for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
 
@@ -731,7 +737,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
     // Find if the corresponding shimmux exsists or not
     int shimExist = 0;
     ShimMuxOp shimOp;
-    for (auto shimmux : d.getOps<ShimMuxOp>()) {
+    for (auto shimmux : device.getOps<ShimMuxOp>()) {
       if (shimmux.getTile() == tileOp) {
         shimExist = 1;
         shimOp = shimmux;
@@ -815,9 +821,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
   RewritePatternSet patterns(&getContext());
 
   if (!clKeepFlowOp)
-    patterns.add<AIEOpRemoval<PacketFlowOp>>(d.getContext());
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
-  if (failed(applyPartialConversion(d, target, std::move(patterns))))
+  if (failed(applyPartialConversion(device, target, std::move(patterns))))
     signalPassFailure();
 }
 
@@ -831,8 +837,10 @@ void AIEPathfinderPass::runOnOperation() {
     return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
 
-  runOnFlow(d, builder);
-  runOnPacketFlow(d, builder);
+  if (clRouteCircuit)
+    runOnFlow(d, builder);
+  if (clRoutePacket)
+    runOnPacketFlow(d, builder);
 
   // If the routing violates architecture-specific routing constraints, then
   // attempt to partially reroute.

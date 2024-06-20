@@ -128,10 +128,12 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
 }
 
 def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
-  let summary = "Route aie.flow operations through switchboxes with Pathfinder algorithm";
-  let description = [{
-    Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
-    operations. Uses Pathfinder congestion-aware algorithm. 
+  let summary = "Route aie.flow and aie.packetflow operations through switchboxes";
+  let description = [{    
+    Uses Pathfinder congestion-aware algorithm. 
+    Each aie.flow is replaced with aie.connect operation.
+    Each aie.packetflow is replace with the set of aie.amsel, aie.masterset 
+    and aie.packet_rules operations.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
@@ -140,8 +142,13 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   ];
 
   let options = [
+    Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
+            "Flag to enable aie.flow lowering.">,      
+    Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
+            "Flag to enable aie.packetflow lowering.">,
     Option<"clKeepFlowOp", "keep-flow-op", "bool", /*default=*/"false",
-            "Flag to keep aie.flow to enable routing visualization.">
+            "Flag to not erase aie.flow/packetflow after its lowering,"
+            "used for routing visualization.">,       
   ];
 }
 
