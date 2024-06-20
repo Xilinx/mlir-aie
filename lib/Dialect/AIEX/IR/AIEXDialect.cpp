@@ -66,8 +66,16 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
-  if (buffer.getElementTypeBitWidth() != 32)
-    return emitOpError("must be used with memref type with element width 32.");
+  const auto &targetModel = AIE::getTargetModel(*this);
+  auto addressGranularity = targetModel.getAddressGenGranularity();
+  if (buffer.getElementTypeBitWidth() > addressGranularity) {
+    return emitOpError("Maximum element bit width allowed is ")
+           << addressGranularity << "bits. ";
+  } else if ((buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
+             addressGranularity) {
+    return emitOpError("Minimum data transfer size required is ")
+           << addressGranularity << "bits. ";
+  }
   if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))

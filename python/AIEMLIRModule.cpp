@@ -295,7 +295,15 @@ PYBIND11_MODULE(_aie, m) {
       // .def("get_num_dest_shim_mux_connections", int col, int row)
       // .def("get_num_source_shim_mux_connections", int col, int row)
       // .def("is_legal_memtile_connection")
-      .def("is_npu", [](PyAieTargetModel &self) {
-        return aieTargetModelIsNPU(self.get());
+      .def("is_npu",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelIsNPU(self.get());
+           })
+      .def("get_column_shift",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetColumnShift(self.get());
+           })
+      .def("get_row_shift", [](PyAieTargetModel &self) {
+        return aieTargetModelGetRowShift(self.get());
       });
 }

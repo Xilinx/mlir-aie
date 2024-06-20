@@ -4,8 +4,16 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
+#ifdef TO_LLVM
+extern "C" {
+#endif
 void dut(bfloat16 *restrict in0, bfloat16 *restrict in1,
          bfloat16 *restrict out0);
+#ifdef TO_LLVM
+}
+#endif
+
 void dut_ref(bfloat16 *in0, bfloat16 *in1, bfloat16 *out0);
 
 alignas(32) bfloat16 g_in0[IN0_SIZE];

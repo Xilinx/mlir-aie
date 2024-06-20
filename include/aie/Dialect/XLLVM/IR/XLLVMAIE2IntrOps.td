@@ -30,11 +30,30 @@ class AIEVec2_IntrOp<string mnemonic,
 
 // TODO: Find better names for these
 
-class AIE2bf16MACConf : 
+class AIE2BF16MACConf : 
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
                    VectorOfLengthAndType<[32], [BF16]>:$rhs,
                    VectorOfLengthAndType<[8], [I64]>:$acc,
                    I32:$conf)>;
+
+class AIE2I8MinMaxElem : 
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
+                   VectorOfLengthAndType<[64], [I8]>:$rhs,
+                   I32:$cmp)> ;
+
+class AIE2I16MinMaxElem : 
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   I32:$cmp)> ;
+
+class AIE2I32MinMaxElem : 
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$cmp)> ;
+
+class AIE2BF16MinMaxElem : 
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs)> ;
 
 // ----- MAC ----- 
 
@@ -57,14 +76,14 @@ def MacConfAcc64IntrOp :
 def MacConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.mac16.conf",
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
-        AIE2bf16MACConf;
+        AIE2BF16MACConf;
 
 // ----- MSC ----- 
 
 def MscConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.msc16.conf",
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
-        AIE2bf16MACConf;
+        AIE2BF16MACConf;
 
 // ----- MUL ----- 
 
@@ -348,9 +367,7 @@ def VectorMaxLt8IntrOp :
                 VectorOfLengthAndType<[64], [I8]>,
                 VectorOfLengthAndType<[2], [I32]>]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
-                   VectorOfLengthAndType<[64], [I8]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I8MinMaxElem;
 
 def VectorMaxLt16IntrOp :
     AIEVec2_IntrOp<"vmax.lt16",
@@ -359,9 +376,7 @@ def VectorMaxLt16IntrOp :
                 VectorOfLengthAndType<[32], [I16]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
-                   VectorOfLengthAndType<[32], [I16]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I16MinMaxElem;
 
 def VectorMaxLt32IntrOp :
     AIEVec2_IntrOp<"vmax.lt32",
@@ -370,9 +385,7 @@ def VectorMaxLt32IntrOp :
                 VectorOfLengthAndType<[16], [I32]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
-                   VectorOfLengthAndType<[16], [I32]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I32MinMaxElem;
 
 def VectorMaxLtBf16IntrOp :
     AIEVec2_IntrOp<"vmax.ltbf16",
@@ -381,8 +394,7 @@ def VectorMaxLtBf16IntrOp :
                 VectorOfLengthAndType<[32], [BF16]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
-                   VectorOfLengthAndType<[32], [BF16]>:$rhs)>;
+    AIE2BF16MinMaxElem;
 
 // ----- MIN ELEMENT -----
 
@@ -393,9 +405,7 @@ def VectorMinGe8IntrOp :
                 VectorOfLengthAndType<[64], [I8]>,
                 VectorOfLengthAndType<[2], [I32]>]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs,
-                   VectorOfLengthAndType<[64], [I8]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I8MinMaxElem;
 
 def VectorMinGe16IntrOp :
     AIEVec2_IntrOp<"vmin.ge16",
@@ -404,9 +414,7 @@ def VectorMinGe16IntrOp :
                 VectorOfLengthAndType<[32], [I16]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
-                   VectorOfLengthAndType<[32], [I16]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I16MinMaxElem;
 
 def VectorMinGe32IntrOp :
     AIEVec2_IntrOp<"vmin.ge32",
@@ -415,9 +423,7 @@ def VectorMinGe32IntrOp :
                 VectorOfLengthAndType<[16], [I32]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
-                   VectorOfLengthAndType<[16], [I32]>:$rhs,
-                   I32:$cmp)> ;
+    AIE2I32MinMaxElem;
 
 def VectorMinGeBf16IntrOp :
     AIEVec2_IntrOp<"vmin.gebf16",
@@ -426,7 +432,6 @@ def VectorMinGeBf16IntrOp :
                 VectorOfLengthAndType<[32], [BF16]>,
                 I32]>
         >], /*numResults=*/2>,
-    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
-                   VectorOfLengthAndType<[32], [BF16]>:$rhs)> ;
+    AIE2BF16MinMaxElem;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

@@ -49,7 +49,7 @@ memRef_48_ty = T.memref(48, T.i32())
 # Input data movement
 
 of_in = object_fifo("in", ShimTile, MemTile, buffer_depth, memRef_data_ty)
-of_in1 = object_fifo("in0", MemTile, ComputeTile, buffer_depth, memRef_data_ty)
+of_in0 = object_fifo("in0", MemTile, ComputeTile, buffer_depth, memRef_data_ty)
 object_fifo_link(of_in, of_in0)
 
 
