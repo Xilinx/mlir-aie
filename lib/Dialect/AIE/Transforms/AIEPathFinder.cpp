@@ -53,6 +53,34 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
   }
 
+  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+    Region &r = pktFlowOp.getPorts();
+    Block &b = r.front();
+    Port srcPort, dstPort;
+    TileOp srcTile, dstTile;
+    TileID srcCoords, dstCoords;
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
+        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        srcPort = pktSource.port();
+        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+        dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        dstPort = pktDest.port();
+        dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        LLVM_DEBUG(llvm::dbgs()
+                   << "\tAdding Packet Flow: (" << srcCoords.col << ", "
+                   << srcCoords.row << ")"
+                   << stringifyWireBundle(srcPort.bundle) << srcPort.channel
+                   << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
+                   << stringifyWireBundle(dstPort.bundle) << dstPort.channel
+                   << "\n");
+        // todo: support many-to-one & many-to-many?
+        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
+      }
+    }
+  }
+
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
@@ -61,6 +89,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
         return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
     }
   }
+  // todo: add existing with PacketRulesOp?
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm

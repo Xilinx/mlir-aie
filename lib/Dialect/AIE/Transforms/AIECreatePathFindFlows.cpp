@@ -27,6 +27,8 @@ using namespace xilinx::AIE;
 
 namespace {
 
+typedef std::pair<Operation *, Port> PhysPort;
+
 // allocates channels between switchboxes ( but does not assign them)
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
@@ -194,16 +196,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 namespace xilinx::AIE {
 
-void AIEPathfinderPass::runOnOperation() {
-
-  // create analysis pass with routing graph for entire device
-  LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
-
-  DeviceOp d = getOperation();
-  if (failed(analyzer.runAnalysis(d)))
-    return signalPassFailure();
-  OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
-
+void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
   ConversionTarget target(getContext());
@@ -286,6 +279,560 @@ void AIEPathfinderPass::runOnOperation() {
       }
     }
   }
+}
+
+Operation *AIEPathfinderPass::getOrCreateTile(OpBuilder &builder, int col,
+                                              int row) {
+  TileID index = {col, row};
+  Operation *tileOp = tiles[index];
+  if (!tileOp) {
+    auto tile = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+    tileOp = tile.getOperation();
+    tiles[index] = tileOp;
+  }
+  return tileOp;
+}
+
+SwitchboxOp AIEPathfinderPass::getOrCreateSwitchbox(OpBuilder &builder,
+                                                    TileOp tile) {
+  for (auto i : tile.getResult().getUsers()) {
+    if (llvm::isa<SwitchboxOp>(*i)) {
+      return llvm::cast<SwitchboxOp>(*i);
+    }
+  }
+  return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
+}
+
+template <typename MyOp>
+struct AIEOpRemoval : OpConversionPattern<MyOp> {
+  using OpConversionPattern<MyOp>::OpConversionPattern;
+  using OpAdaptor = typename MyOp::Adaptor;
+
+  explicit AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
+
+  LogicalResult
+  matchAndRewrite(MyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Operation *Op = op.getOperation();
+
+    rewriter.eraseOp(Op);
+    return success();
+  }
+};
+
+void AIEPathfinderPass::runOnPacketFlow(DeviceOp d, OpBuilder &builder) {
+
+  ConversionTarget target(getContext());
+
+  // Map from a port and flowID to
+  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
+  SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
+  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+  // Map from a port to
+  DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
+  // The logical model of all the switchboxes.
+  DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
+
+  for (PacketFlowOp pktFlowOp : d.getOps<PacketFlowOp>()) {
+    Region &r = pktFlowOp.getPorts();
+    Block &b = r.front();
+    int flowID = pktFlowOp.IDInt();
+    Port srcPort, destPort;
+    TileOp srcTile, destTile;
+    TileID srcCoords;
+
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
+        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        srcPort = pktSource.port();
+        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+        destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        destPort = pktDest.port();
+        // Assign "keep_pkt_header flag"
+        if (pktFlowOp->hasAttr("keep_pkt_header"))
+          keepPktHeaderAttr[{destTile, destPort}] =
+              StringAttr::get(Op.getContext(), "true");
+      }
+    }
+    Switchbox srcSB = {srcCoords.col, srcCoords.row};
+    if (PathEndPoint srcPoint = {srcSB, srcPort};
+        !analyzer.processedFlows[srcPoint]) {
+      SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+      // add connections for all the Switchboxes in SwitchSettings
+      for (const auto &[curr, setting] : settings) {
+        for (const auto &[bundle, channel] : setting.dsts) {
+          Connect connect = {{setting.src.bundle, setting.src.channel},
+                             {bundle, channel}};
+          switchboxes[curr].push_back({connect, flowID});
+        }
+      }
+    }
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
+
+  for (const auto &[tileId, connects] : switchboxes) {
+    int col = tileId.col;
+    int row = tileId.row;
+    Operation *tileOp = getOrCreateTile(builder, col, row);
+
+    LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n');
+    for (const auto &[conn, flowID] : connects) {
+      Port sourcePort = conn.src;
+      Port destPort = conn.dst;
+      auto sourceFlow =
+          std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
+      packetFlows[sourceFlow].push_back({tileOp, destPort});
+      slavePorts.push_back(sourceFlow);
+    }
+  }
+
+  // amsel()
+  // masterset()
+  // packetrules()
+  // rule()
+
+  // Compute arbiter assignments. Each arbiter has four msels.
+  // Therefore, the number of "logical" arbiters is 6 x 4 = 24
+  // A master port can only be associated with one arbiter
+
+  // A map from Tile and master selectValue to the ports targetted by that
+  // master select.
+  DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>> masterAMSels;
+
+  // Count of currently used logical arbiters for each tile.
+  DenseMap<Operation *, int> amselValues;
+  int numMsels = 4;
+  int numArbiters = 6;
+
+  // Check all multi-cast flows (same source, same ID). They should be
+  // assigned the same arbiter and msel so that the flow can reach all the
+  // destination ports at the same time For destination ports that appear in
+  // different (multicast) flows, it should have a different <arbiterID, msel>
+  // value pair for each flow
+  for (const auto &packetFlow : packetFlows) {
+    // The Source Tile of the flow
+    Operation *tileOp = packetFlow.first.first.first;
+    if (amselValues.count(tileOp) == 0)
+      amselValues[tileOp] = 0;
+
+    // arb0: 6*0,   6*1,   6*2,   6*3
+    // arb1: 6*0+1, 6*1+1, 6*2+1, 6*3+1
+    // arb2: 6*0+2, 6*1+2, 6*2+2, 6*3+2
+    // arb3: 6*0+3, 6*1+3, 6*2+3, 6*3+3
+    // arb4: 6*0+4, 6*1+4, 6*2+4, 6*3+4
+    // arb5: 6*0+5, 6*1+5, 6*2+5, 6*3+5
+
+    int amselValue = amselValues[tileOp];
+    assert(amselValue < numArbiters && "Could not allocate new arbiter!");
+
+    // Find existing arbiter assignment
+    // If there is an assignment of an arbiter to a master port before, we
+    // assign all the master ports here with the same arbiter but different
+    // msel
+    bool foundMatchedDest = false;
+    for (const auto &map : masterAMSels) {
+      if (map.first.first != tileOp)
+        continue;
+      amselValue = map.first.second;
+
+      // check if same destinations
+      SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
+      if (ports.size() != packetFlow.second.size())
+        continue;
+
+      bool matched = true;
+      for (auto dest : packetFlow.second) {
+        if (Port port = dest.second;
+            std::find(ports.begin(), ports.end(), port) == ports.end()) {
+          matched = false;
+          break;
+        }
+      }
+
+      if (matched) {
+        foundMatchedDest = true;
+        break;
+      }
+    }
+
+    if (!foundMatchedDest) {
+      bool foundAMSelValue = false;
+      for (int a = 0; a < numArbiters; a++) {
+        for (int i = 0; i < numMsels; i++) {
+          amselValue = a + i * numArbiters;
+          if (masterAMSels.count({tileOp, amselValue}) == 0) {
+            foundAMSelValue = true;
+            break;
+          }
+        }
+
+        if (foundAMSelValue)
+          break;
+      }
+
+      for (auto dest : packetFlow.second) {
+        Port port = dest.second;
+        masterAMSels[{tileOp, amselValue}].push_back(port);
+      }
+    }
+
+    slaveAMSels[packetFlow.first] = amselValue;
+    amselValues[tileOp] = amselValue % numArbiters;
+  }
+
+  // Compute the master set IDs
+  // A map from a switchbox output port to the number of that port.
+  DenseMap<PhysPort, SmallVector<int, 4>> mastersets;
+  for (const auto &[physPort, ports] : masterAMSels) {
+    Operation *tileOp = physPort.first;
+    assert(tileOp);
+    int amselValue = physPort.second;
+    for (auto port : ports) {
+      PhysPort physPort = {tileOp, port};
+      mastersets[physPort].push_back(amselValue);
+    }
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
+#ifndef NDEBUG
+  for (const auto &[physPort, values] : mastersets) {
+    Operation *tileOp = physPort.first;
+    WireBundle bundle = physPort.second.bundle;
+    int channel = physPort.second.channel;
+    assert(tileOp);
+    auto tile = dyn_cast<TileOp>(tileOp);
+    LLVM_DEBUG(llvm::dbgs()
+               << "master " << tile << " " << stringifyWireBundle(bundle)
+               << " : " << channel << '\n');
+    for (auto value : values)
+      LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
+  }
+#endif
+
+  // Compute mask values
+  // Merging as many stream flows as possible
+  // The flows must originate from the same source port and have different IDs
+  // Two flows can be merged if they share the same destinations
+  SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
+  SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+  while (!workList.empty()) {
+    auto slave1 = workList.pop_back_val();
+    Port slavePort1 = slave1.first.second;
+
+    bool foundgroup = false;
+    for (auto &group : slaveGroups) {
+      auto slave2 = group.front();
+      if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
+        continue;
+
+      bool matched = true;
+      auto dests1 = packetFlows[slave1];
+      auto dests2 = packetFlows[slave2];
+      if (dests1.size() != dests2.size())
+        continue;
+
+      for (auto dest1 : dests1) {
+        if (std::find(dests2.begin(), dests2.end(), dest1) == dests2.end()) {
+          matched = false;
+          break;
+        }
+      }
+
+      if (matched) {
+        group.push_back(slave1);
+        foundgroup = true;
+        break;
+      }
+    }
+
+    if (!foundgroup) {
+      SmallVector<std::pair<PhysPort, int>, 4> group({slave1});
+      slaveGroups.push_back(group);
+    }
+  }
+
+  DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
+  for (const auto &group : slaveGroups) {
+    // Iterate over all the ID values in a group
+    // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
+    // value, the bit position should be "don't care", and we will set the
+    // mask bit of that position to 0
+    int mask[5] = {-1, -1, -1, -1, -1};
+    for (auto port : group) {
+      int ID = port.second;
+      for (int i = 0; i < 5; i++) {
+        if (mask[i] == -1)
+          mask[i] = ID >> i & 0x1;
+        else if (mask[i] != (ID >> i & 0x1))
+          mask[i] = 2; // found bit difference --> mark as "don't care"
+      }
+    }
+
+    int maskValue = 0;
+    for (int i = 4; i >= 0; i--) {
+      if (mask[i] == 2) // don't care
+        mask[i] = 0;
+      else
+        mask[i] = 1;
+      maskValue = (maskValue << 1) + mask[i];
+    }
+    for (auto port : group)
+      slaveMasks[port] = maskValue;
+  }
+
+#ifndef NDEBUG
+  LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
+  for (auto map : slaveMasks) {
+    auto port = map.first.first;
+    auto tile = dyn_cast<TileOp>(port.first);
+    WireBundle bundle = port.second.bundle;
+    int channel = port.second.channel;
+    int ID = map.first.second;
+    int mask = map.second;
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
+               << channel << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "Mask "
+                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "ID "
+                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    for (int i = 0; i < 31; i++) {
+      if ((i & mask) == (ID & mask))
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
+                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+    }
+  }
+#endif
+
+  // Realize the routes in MLIR
+  for (auto map : tiles) {
+    Operation *tileOp = map.second;
+    auto tile = dyn_cast<TileOp>(tileOp);
+
+    // Create a switchbox for the routes and insert inside it.
+    builder.setInsertionPointAfter(tileOp);
+    SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
+    SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
+                                  builder.getUnknownLoc());
+    Block &b = swbox.getConnections().front();
+    builder.setInsertionPoint(b.getTerminator());
+
+    std::vector<bool> amselOpNeededVector(32);
+    for (const auto &map : mastersets) {
+      if (tileOp != map.first.first)
+        continue;
+
+      for (auto value : map.second) {
+        amselOpNeededVector[value] = true;
+      }
+    }
+    // Create all the amsel Ops
+    DenseMap<int, AMSelOp> amselOps;
+    for (int i = 0; i < 32; i++) {
+      if (amselOpNeededVector[i]) {
+        int arbiterID = i % numArbiters;
+        int msel = i / numArbiters;
+        auto amsel =
+            builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+        amselOps[i] = amsel;
+      }
+    }
+    // Create all the master set Ops
+    // First collect the master sets for this tile.
+    SmallVector<Port, 4> tileMasters;
+    for (const auto &map : mastersets) {
+      if (tileOp != map.first.first)
+        continue;
+      tileMasters.push_back(map.first.second);
+    }
+    // Sort them so we get a reasonable order
+    std::sort(tileMasters.begin(), tileMasters.end());
+    for (auto tileMaster : tileMasters) {
+      WireBundle bundle = tileMaster.bundle;
+      int channel = tileMaster.channel;
+      SmallVector<int, 4> msels = mastersets[{tileOp, tileMaster}];
+      SmallVector<Value, 4> amsels;
+      for (auto msel : msels) {
+        assert(amselOps.count(msel) == 1);
+        amsels.push_back(amselOps[msel]);
+      }
+
+      auto msOp = builder.create<MasterSetOp>(builder.getUnknownLoc(),
+                                              builder.getIndexType(), bundle,
+                                              channel, amsels);
+      if (auto pktFlowAttrs = keepPktHeaderAttr[{tileOp, tileMaster}])
+        msOp->setAttr("keep_pkt_header", pktFlowAttrs);
+    }
+
+    // Generate the packet rules
+    DenseMap<Port, PacketRulesOp> slaveRules;
+    for (auto group : slaveGroups) {
+      builder.setInsertionPoint(b.getTerminator());
+
+      auto port = group.front().first;
+      if (tileOp != port.first)
+        continue;
+
+      WireBundle bundle = port.second.bundle;
+      int channel = port.second.channel;
+      auto slave = port.second;
+
+      int mask = slaveMasks[group.front()];
+      int ID = group.front().second & mask;
+
+      // Verify that we actually map all the ID's correctly.
+#ifndef NDEBUG
+      for (auto slave : group)
+        assert((slave.second & mask) == ID);
+#endif
+      Value amsel = amselOps[slaveAMSels[group.front()]];
+
+      PacketRulesOp packetrules;
+      if (slaveRules.count(slave) == 0) {
+        packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
+                                                    bundle, channel);
+        PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
+                                        builder.getUnknownLoc());
+        slaveRules[slave] = packetrules;
+      } else
+        packetrules = slaveRules[slave];
+
+      Block &rules = packetrules.getRules().front();
+      builder.setInsertionPoint(rules.getTerminator());
+      builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
+    }
+  }
+
+  // Add support for shimDMA
+  // From shimDMA to BLI: 1) shimDMA 0 --> North 3
+  //                      2) shimDMA 1 --> North 7
+  // From BLI to shimDMA: 1) North   2 --> shimDMA 0
+  //                      2) North   3 --> shimDMA 1
+
+  for (auto switchbox : make_early_inc_range(d.getOps<SwitchboxOp>())) {
+    auto retVal = switchbox->getOperand(0);
+    auto tileOp = retVal.getDefiningOp<TileOp>();
+
+    // Check if it is a shim Tile
+    if (!tileOp.isShimNOCTile())
+      continue;
+
+    // Check if the switchbox is empty
+    if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
+      continue;
+
+    Region &r = switchbox.getConnections();
+    Block &b = r.front();
+
+    // Find if the corresponding shimmux exsists or not
+    int shimExist = 0;
+    ShimMuxOp shimOp;
+    for (auto shimmux : d.getOps<ShimMuxOp>()) {
+      if (shimmux.getTile() == tileOp) {
+        shimExist = 1;
+        shimOp = shimmux;
+        break;
+      }
+    }
+
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktrules = dyn_cast<PacketRulesOp>(Op)) {
+
+        // check if there is MM2S DMA in the switchbox of the 0th row
+        if (pktrules.getSourceBundle() == WireBundle::DMA) {
+
+          // If there is, then it should be put into the corresponding shimmux
+          // If shimmux not defined then create shimmux
+          if (!shimExist) {
+            builder.setInsertionPointAfter(tileOp);
+            shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+            Region &r1 = shimOp.getConnections();
+            Block *b1 = builder.createBlock(&r1);
+            builder.setInsertionPointToEnd(b1);
+            builder.create<EndOp>(builder.getUnknownLoc());
+            shimExist = 1;
+          }
+
+          Region &r0 = shimOp.getConnections();
+          Block &b0 = r0.front();
+          builder.setInsertionPointToStart(&b0);
+
+          pktrules.setSourceBundle(WireBundle::South);
+          if (pktrules.getSourceChannel() == 0) {
+            pktrules.setSourceChannel(3);
+            builder.create<ConnectOp>(builder.getUnknownLoc(), WireBundle::DMA,
+                                      0, WireBundle::North, 3);
+          }
+          if (pktrules.getSourceChannel() == 1) {
+            pktrules.setSourceChannel(7);
+            builder.create<ConnectOp>(builder.getUnknownLoc(), WireBundle::DMA,
+                                      1, WireBundle::North, 7);
+          }
+        }
+      }
+
+      if (auto mtset = dyn_cast<MasterSetOp>(Op)) {
+
+        // check if there is S2MM DMA in the switchbox of the 0th row
+        if (mtset.getDestBundle() == WireBundle::DMA) {
+
+          // If there is, then it should be put into the corresponding shimmux
+          // If shimmux not defined then create shimmux
+          if (!shimExist) {
+            builder.setInsertionPointAfter(tileOp);
+            shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+            Region &r1 = shimOp.getConnections();
+            Block *b1 = builder.createBlock(&r1);
+            builder.setInsertionPointToEnd(b1);
+            builder.create<EndOp>(builder.getUnknownLoc());
+            shimExist = 1;
+          }
+
+          Region &r0 = shimOp.getConnections();
+          Block &b0 = r0.front();
+          builder.setInsertionPointToStart(&b0);
+
+          mtset.setDestBundle(WireBundle::South);
+          if (mtset.getDestChannel() == 0) {
+            mtset.setDestChannel(2);
+            builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                      WireBundle::North, 2, WireBundle::DMA, 0);
+          }
+          if (mtset.getDestChannel() == 1) {
+            mtset.setDestChannel(3);
+            builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                      WireBundle::North, 3, WireBundle::DMA, 1);
+          }
+        }
+      }
+    }
+  }
+
+  RewritePatternSet patterns(&getContext());
+
+  if (!clKeepFlowOp)
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(d.getContext());
+
+  if (failed(applyPartialConversion(d, target, std::move(patterns))))
+    signalPassFailure();
+}
+
+void AIEPathfinderPass::runOnOperation() {
+
+  // create analysis pass with routing graph for entire device
+  LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
+
+  DeviceOp d = getOperation();
+  if (failed(analyzer.runAnalysis(d)))
+    return signalPassFailure();
+  OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
+
+  runOnFlow(d, builder);
+  runOnPacketFlow(d, builder);
 
   // If the routing violates architecture-specific routing constraints, then
   // attempt to partially reroute.

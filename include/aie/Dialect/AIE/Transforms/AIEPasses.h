@@ -61,12 +61,15 @@ createAIEAssignBufferDescriptorIDsPass();
 struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   DynamicTileAnalysis analyzer;
+  mlir::DenseMap<TileID, mlir::Operation *> tiles;
 
   AIEPathfinderPass() = default;
   AIEPathfinderPass(DynamicTileAnalysis analyzer)
       : analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
+  void runOnFlow(DeviceOp d, mlir::OpBuilder &builder);
+  void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
 
   bool attemptFixupMemTileRouting(const mlir::OpBuilder &builder,
                                   SwitchboxOp northSwOp, SwitchboxOp southSwOp,
@@ -85,6 +88,9 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
                                           WireBundle newBundle, int newChannel);
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
+
+  mlir::Operation *getOrCreateTile(mlir::OpBuilder &builder, int col, int row);
+  SwitchboxOp getOrCreateSwitchbox(mlir::OpBuilder &builder, TileOp tile);
 };
 
 } // namespace xilinx::AIE
