@@ -92,6 +92,8 @@ int main(int argc, const char *argv[]) {
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
+  int R = 6;
+  int O = N * (R + 1);
 
   // Start the XRT test code
   // Get a device handle
@@ -137,11 +139,11 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, 36 * sizeof(int32_t),XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inA = xrt::bo(device, N * sizeof(int32_t),XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, 36 * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_out = xrt::bo(device, O * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
 
   if (verbosity >= 1)
@@ -149,7 +151,7 @@ int main(int argc, const char *argv[]) {
 
   int32_t *bufInA = bo_inA.map<int32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < 36; i++)
+  for (int i = 0; i < N; i++)
     srcVecA.push_back(1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
@@ -169,9 +171,9 @@ int main(int argc, const char *argv[]) {
   uint32_t *bufOut = bo_out.map<uint32_t *>();
 
   int errors = 0;
-  int repeat_pattern_limit_1 = 36;
+  int repeat_pattern_limit_1 = O / 2;
 
-  for (uint32_t i = 0; i < N; i++) {
+  for (uint32_t i = 0; i < O; i++) {
     uint32_t ref = i;
     if (i < repeat_pattern_limit_1)
       ref = 2;
