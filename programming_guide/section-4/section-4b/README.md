@@ -62,10 +62,10 @@ flow(ComputeTile, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
 flow(source, source_bundle, source_channel, dest, dest_bundle, dest_channel)	
 ```
 * *source* - source tile of the flow
-* *source_bundle* - type of source WireBundle (see full list in AIEAttrs.td)
+* *source_bundle* - type of source WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *source_channel* - source channel index
 * *dest* - destination tile of the flow
-* *dest_bundle* - type of destination WireBundle (see full list in AIEAttrs.td)
+* *dest_bundle* - type of destination WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *dest_channel* - destination channel index
 
 It is important to consider the path this routing might take and how many other streams might be using that same path. This points to whether our design may experience stream routing congestion or not. While capturing trace events are non-intrusive (does not affect the performance of the AIE cores), the routing of these trace packets need to be balanced in your design to prevent congestion.
@@ -73,16 +73,16 @@ It is important to consider the path this routing might take and how many other 
 #### <u>Packet switched flows</u>
 The alternative to circuit switched routes is packet switched routes. The benefit of this is the ability to share a single stream switch routing channel between multiple routes. The drawback is the slight overhead of data packet headers as well as needing to gauge how much congestion might be present on a shared route given the data movement requirement of the AIE array design. This means that if multiple flows are sharing the same channel, any particular flow might experience backpressure while another flow is serviced. Depending on the performance requirement of the design, this may or may not have a performance impact.
 
-In IRON python bindings, we declare packet flows with the following syntax:
+In IRON Python bindings, we declare packet flows with the following syntax:
 ```python
 packetflow(pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel, keep_pkt_header)
 ```
 * *pkt_id* - unique packet ID
 * *source* - source tile of the packet flow
-* *source_port* - type of source WireBundle (see full list in AIEAttrs.td). Some examples include `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`
+* *source_port* - type of source WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td)). Some examples include `WireBundle.Trace`, `WireBundle.DMA`, `WireBundle.North`
 * *source_channel* - source channel index. For a given port, we often use multiple channels such as DMA channel 0 and DMA channel 1. In AIE2 core tiles, trace ports use channel 0 for the tile core and 1 for the tile memory.
 * *dest* - destination tile of the packet flow
-* *dest_port* - type of destination WireBundle (see full list in AIEAttrs.td)
+* *dest_port* - type of destination WireBundle (see full list in [AIEAttrs.td](../../../include/aie/Dialect/AIE/IR/AIEAttrs.td))
 * *dest_channel* - destination channel index
 * *keep_pkt_header* - boolean flag to keep header
 
@@ -104,7 +104,7 @@ To support packet switched flows, we need to declare packet flows and attach bot
 | ShimTile        | 2           |
 | MemTile         | 3           |
 
-**NOTE**: Quick reminder that most source flow channels from `WireBundle.Trace` will use channel 0, but the `Tile memory` actually uses channel 1.
+> **NOTE**: Quick reminder that most source flow channels from `WireBundle.Trace` will use channel 0, but the `Tile memory` actually uses channel 1.
 
 The `packet IDs`, on the other hand, an be variable but must be globally unique to distinguish routes from one another. An example is shown below for two tiles where both tile core and tile memory trace units are routed. Note the `packet ID` used after the `packetflow` keyword. Also note that we set `keep_pkt_hdr = true` as we would like to keep the packet headers when they are moved to DDR so we can distinguish the packets during post-run parsing.
 
@@ -211,7 +211,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 ## <u>Exercises</u>
 1. Let's give tracing a try. In this directory, we're been examining a simplified version of the `vector ccalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and run `prase_trace.py` to generate the `trace_4b.json` waveform file. 
 
-    **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
+    > **NOTE** In this example, `make`, `make run` and `make trace` will all build a structural design with tracing enabled to keep things simple. But only `make trace` will enable tracing in the host code and call `parse_trace.py`. In contrast, the reference `vector scalar multiply example` has a more robust `Makefile` where `make` and `make run` builds the structural design with tracing disabled.
 
     Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut key W and S to zoom in and out respectively and A and D to pan left and right. You should seem a wave like the following:
 

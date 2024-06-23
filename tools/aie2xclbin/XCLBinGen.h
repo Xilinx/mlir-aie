@@ -41,7 +41,8 @@ struct XCLBinGenConfig {
 void findVitis(XCLBinGenConfig &TK);
 
 mlir::LogicalResult aie2xclbin(mlir::MLIRContext *ctx, mlir::ModuleOp moduleOp,
-                               XCLBinGenConfig &TK, llvm::StringRef OutputNPU,
-                               llvm::StringRef OutputXCLBin);
+                               XCLBinGenConfig &TK, llvm::StringRef outputNPU,
+                               llvm::StringRef outputXCLBin,
+                               llvm::StringRef inputXCLBin);
 
 } // namespace xilinx

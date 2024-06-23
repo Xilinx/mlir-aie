@@ -28,7 +28,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/IndentedOstream.h"
-#include "mlir/Support/MathExtras.h"
 
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallSet.h"
@@ -37,6 +36,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <limits>
 #include <numeric>
@@ -2449,8 +2449,10 @@ static LogicalResult printOperation(CppEmitter &emitter, scf::ForOp forOp) {
   if (auto [constantLoopBound, tripCount] = getTripCount(forOp);
       constantLoopBound) {
     auto [constantStep, step] = getStep(forOp);
-    int64_t lb = constantStep && step > 0 ? floorDiv(tripCount, step) : 1;
-    int64_t ub = constantStep && step > 0 ? ceilDiv(tripCount, step) : 0;
+    int64_t lb =
+        constantStep && step > 0 ? llvm::divideFloorSigned(tripCount, step) : 1;
+    int64_t ub =
+        constantStep && step > 0 ? llvm::divideCeilSigned(tripCount, step) : 0;
     os << "chess_loop_range(";
     os << std::to_string(lb);
     os << ", ";

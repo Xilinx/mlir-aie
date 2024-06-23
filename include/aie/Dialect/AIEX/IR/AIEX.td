@@ -648,7 +648,6 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,
-        I32Attr:$ddr_id,
         I32Attr:$bd_id,
         I32Attr:$buffer_length,
         I32Attr:$buffer_offset,
