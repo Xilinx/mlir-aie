@@ -71,21 +71,19 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
   void runOnFlow(DeviceOp d, mlir::OpBuilder &builder);
   void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
 
-  bool attemptFixupMemTileRouting(const mlir::OpBuilder &builder,
-                                  SwitchboxOp northSwOp, SwitchboxOp southSwOp,
-                                  ConnectOp &problemConnect);
+  typedef std::pair<mlir::Operation *, Port> PhysPort;
 
-  bool reconnectConnectOps(const mlir::OpBuilder &builder, SwitchboxOp sw,
-                           ConnectOp problemConnect, bool isIncomingToSW,
-                           WireBundle problemBundle, int problemChan,
-                           int emptyChan);
+  typedef struct {
+    SwitchboxOp sw;
+    Port sourcePort;
+    Port destPort;
+  } SwConnection;
 
-  ConnectOp replaceConnectOpWithNewDest(mlir::OpBuilder builder,
-                                        ConnectOp connect, WireBundle newBundle,
-                                        int newChannel);
-  ConnectOp replaceConnectOpWithNewSource(mlir::OpBuilder builder,
-                                          ConnectOp connect,
-                                          WireBundle newBundle, int newChannel);
+  bool attemptFixupMemTileRouting(DeviceOp &d, SwConnection &problemConnect);
+
+  bool checkChannelEmpty(SwitchboxOp swOp, WireBundle bundle, int channel);
+  void replaceRoutingChannel(SwitchboxOp &swOp, WireBundle Bundle,
+                             int oldChannel, int newChannel);
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
 

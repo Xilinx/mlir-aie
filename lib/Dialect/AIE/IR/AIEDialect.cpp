@@ -1086,10 +1086,10 @@ bool TileOp::isShimNOCorPLTile() {
 
 bool isLegalMemtileConnection(const AIETargetModel &targetModel,
                               MasterSetOp masterOp, PacketRulesOp slaveOp) {
-  auto srcBundle = masterOp.destPort().bundle;
-  auto srcChan = masterOp.destPort().channel;
-  auto dstBundle = slaveOp.sourcePort().bundle;
-  auto dstChan = slaveOp.sourcePort().channel;
+  auto srcBundle = slaveOp.sourcePort().bundle;
+  auto srcChan = slaveOp.sourcePort().channel;
+  auto dstBundle = masterOp.destPort().bundle;
+  auto dstChan = masterOp.destPort().channel;
   return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
                                               dstChan);
 }
