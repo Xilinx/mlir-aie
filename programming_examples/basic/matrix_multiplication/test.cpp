@@ -28,11 +28,20 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using A_DATATYPE = std::bfloat16_t;
-using B_DATATYPE = std::bfloat16_t;
-using C_DATATYPE = std::bfloat16_t;
+#ifndef DTYPE_IN
+#define DTYPE_IN std::bfloat16_t
+#endif
+#ifndef DTYPE_OUT
+#define DTYPE_OUT std::bfloat16_t
+#endif
+using A_DATATYPE = DTYPE_IN;
+using B_DATATYPE = DTYPE_IN;
+using C_DATATYPE = DTYPE_OUT;
 using ACC_DATATYPE = float;
 #endif
+
+#define XSTR(X) STR(X)
+#define STR(X) #X
 
 constexpr long long verify_stochastic_threshold = 1024 * 1024 * 1024;
 constexpr int verify_stochastic_n_samples = 1000;
@@ -140,7 +149,7 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::random_bfloat16_t();
-    // AVec[i] = i;
+    //AVec[i] = i;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
@@ -148,11 +157,11 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < B_VOLUME; i++) {
     BVec[i] = matmul_common::random_bfloat16_t();
     // Diagonal:
-    // if(i % N == i / N) {
-    //   BVec[i] = 1.0;
-    // } else {
-    //   BVec[i] = 0.0;
-    // }
+    //if(i % N == i / N) {
+    //  BVec[i] = 1.0;
+    //} else {
+    //  BVec[i] = 0.0;
+    //}
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
 
@@ -162,6 +171,8 @@ int main(int argc, const char *argv[]) {
   memset(bufOut, 0, OUT_SIZE);
 
   if (verbosity >= 2) {
+    std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
+    std::cout << "DTYPE_OUT = " XSTR(DTYPE_OUT) "\n";
     std::cout << "A = \n";
     matmul_common::print_matrix(AVec, K);
     std::cout << "B = \n";

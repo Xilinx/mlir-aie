@@ -26,11 +26,13 @@ def main():
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
+    argparser.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="bf16")
+    argparser.add_argument("--dtype_out", type=str, choices=["bf16", "i16"], default="bf16")
     args = argparser.parse_args()
-    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n)
+    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out)
 
 
-def my_matmul(M, K, N, m, k, n):
+def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     assert M % m == 0
     assert K % k == 0
@@ -44,9 +46,20 @@ def my_matmul(M, K, N, m, k, n):
     assert k % s == 0
     assert n % t == 0
 
-    vectorized = True
+    vectorized = False
     enable_tracing = False
     trace_size = 65536
+
+    dtype_in = None
+    if dtype_in_str == "bf16":
+        dtype_in = T.bf16
+    elif dtype_in_str == "i16":
+        dtype_in = T.i16
+    dtype_out = None
+    if dtype_out_str == "bf16":
+        dtype_out = T.bf16
+    elif dtype_out_str == "i16":
+        dtype_out = T.i16
 
     A_sz = M * K
     B_sz = K * N
@@ -68,23 +81,23 @@ def my_matmul(M, K, N, m, k, n):
 
         @device(AIEDevice.npu1_1col)
         def device_body():
-            memref_a_ty = T.memref(m, k, T.bf16())
-            memref_b_ty = T.memref(k, n, T.bf16())
-            memref_c_ty = T.memref(m, n, T.bf16())
+            memref_a_ty = T.memref(m, k, dtype_in())
+            memref_b_ty = T.memref(k, n, dtype_in())
+            memref_c_ty = T.memref(m, n, dtype_out())
 
             ofifo_memref_a_ty = TypeAttr.get(ObjectFifoType.get(memref_a_ty))
             ofifo_memref_b_ty = TypeAttr.get(ObjectFifoType.get(memref_b_ty))
             ofifo_memref_c_ty = TypeAttr.get(ObjectFifoType.get(memref_c_ty))
 
             # AIE Core Function declarations
-            zero_scalar = external_func("zero_scalar_bf16", inputs=[memref_c_ty])
-            zero = external_func("zero_bf16", inputs=[memref_c_ty])
+            zero_scalar = external_func(f"zero_scalar_{dtype_out_str}", inputs=[memref_c_ty])
+            zero = external_func(f"zero_{dtype_out_str}", inputs=[memref_c_ty])
             matmul_scalar = external_func(
-                "matmul_scalar_bf16_bf16",
+                f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memref_a_ty, memref_b_ty, memref_c_ty],
             )
             matmul = external_func(
-                "matmul_bf16_bf16", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
+                f"matmul_{dtype_in_str}_{dtype_out_str}", inputs=[memref_a_ty, memref_b_ty, memref_c_ty]
             )
 
             # Tile declarations
@@ -196,9 +209,9 @@ def my_matmul(M, K, N, m, k, n):
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz, T.bf16()),
-                T.memref(B_sz, T.bf16()),
-                T.memref(C_sz, T.bf16()),
+                T.memref(A_sz, dtype_in()),
+                T.memref(B_sz, dtype_in()),
+                T.memref(C_sz, dtype_out()),
             )
             def sequence(A, B, C):
 
