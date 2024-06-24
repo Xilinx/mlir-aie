@@ -15,13 +15,13 @@
 #define MATRIX_MULTIPLICATION_H
 
 #include <algorithm>
+#include <bits/stdc++.h>
 #include <boost/program_options.hpp>
 #include <cmath>
+#include <fstream>
 #include <optional>
 #include <ostream>
-#include <fstream>
 #include <stdfloat>
-#include <bits/stdc++.h>
 
 namespace matmul_common {
 
