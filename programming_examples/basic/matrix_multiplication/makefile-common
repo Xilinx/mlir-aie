@@ -28,10 +28,7 @@
 #					  N=1 for matrix-vector
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-#include ${CURDIR}/../../makefile-common
 current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-#include ${current_dir}../../makefile-common
-SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${current_dir}../../makefile-common
 
 # defaults; overwrite if needed
@@ -39,13 +36,15 @@ M?=512
 K?=512
 N?=512
 
-trace_size=65536
+trace_size?=65536
 
-mlir_target?=build/aie_${M}x${K}x${N}.mlir
-xclbin_target?=build/final_${M}x${K}x${N}.xclbin
-insts_target?=build/insts_${M}x${K}x${N}.txt
+target_suffix?=${M}x${K}x${N}
+mlir_target?=build/aie_${target_suffix}.mlir
+xclbin_target?=build/final_${target_suffix}.xclbin
+insts_target?=build/insts_${target_suffix}.txt
 
-runargs?=-v 1 --warmup 1 --iters 1
+runargs?=-v 2 --warmup 1 --iters 1
+aieargs+=-M $M -K $K -N $N
 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
@@ -58,7 +57,7 @@ build/%.o: ${kernels_dir}/%.cc
 
 ${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< -M $M -K $K -N $N > $@
+	python3 $< ${aieargs} > $@
 
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
