@@ -45,6 +45,7 @@ ifeq ($(dtype_in),bf16)
 endif
 ifeq ($(dtype_out),bf16)
 	dtype_out_cpp=std::bfloat16_t
+	dtype_acc_cpp=float
 endif
 
 ifeq ($(dtype_in),i16)
@@ -52,6 +53,7 @@ ifeq ($(dtype_in),i16)
 endif
 ifeq ($(dtype_out),i16)
 	dtype_out_cpp=int16_t
+	dtype_acc_cpp=int16_t
 endif
 
 trace_size?=65536
@@ -85,7 +87,7 @@ ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp}" \
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
 		cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"

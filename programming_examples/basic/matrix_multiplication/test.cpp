@@ -34,10 +34,13 @@
 #ifndef DTYPE_OUT
 #define DTYPE_OUT std::bfloat16_t
 #endif
+#ifndef DTYPE_ACC
+#define DTYPE_ACC float
+#endif
 using A_DATATYPE = DTYPE_IN;
 using B_DATATYPE = DTYPE_IN;
 using C_DATATYPE = DTYPE_OUT;
-using ACC_DATATYPE = float;
+using ACC_DATATYPE = DTYPE_ACC;
 #endif
 
 #define XSTR(X) STR(X)
@@ -45,6 +48,9 @@ using ACC_DATATYPE = float;
 
 constexpr long long verify_stochastic_threshold = 1024 * 1024 * 1024;
 constexpr int verify_stochastic_n_samples = 1000;
+
+constexpr float abs_tol = 0.5;
+constexpr float rel_tol = 0.05;
 
 namespace po = boost::program_options;
 
@@ -173,6 +179,7 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 2) {
     std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
     std::cout << "DTYPE_OUT = " XSTR(DTYPE_OUT) "\n";
+    std::cout << "Verification tolerance " << abs_tol << " absolute, " << rel_tol << " relative.\n";
     std::cout << "A = \n";
     matmul_common::print_matrix(AVec, K);
     std::cout << "B = \n";
@@ -232,10 +239,10 @@ int main(int argc, const char *argv[]) {
       if (do_verify_stochastic) {
         errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
                                                   ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity);
+            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity, abs_tol, rel_tol);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec);
+            M, N, K, AVec, BVec, CVec, abs_tol, rel_tol);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =
