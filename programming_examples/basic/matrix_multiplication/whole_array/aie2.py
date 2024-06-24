@@ -41,9 +41,6 @@ def ceildiv(a, b):
 
 
 def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
-    r = 4
-    s = 8
-    t = 4
 
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
@@ -58,6 +55,15 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         dtype_out = T.bf16
     elif dtype_out_str == "i16":
         dtype_out = T.i16
+
+    if dtype_in_str == "bf16":
+        r = 4
+        s = 8
+        t = 4
+    elif dtype_in_str == "i16":
+        r = 4
+        s = 4
+        t = 4
 
 
     # Input matrix A:

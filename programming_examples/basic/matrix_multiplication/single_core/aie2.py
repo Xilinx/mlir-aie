@@ -32,15 +32,24 @@ def main():
     my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out)
 
 
+def ceildiv(a, b):
+    return (a + b - 1) // b
+
+
 def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    r = 4
-    s = 8
-    t = 4
+    if dtype_in_str == "bf16":
+        r = 4
+        s = 8
+        t = 4
+    elif dtype_in_str == "i16":
+        r = 4
+        s = 4
+        t = 4
 
     assert m % r == 0
     assert k % s == 0
@@ -226,10 +235,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
 
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
-                for tile_row_block in range(
-                    (M_div_m + rows_per_block - 1) // rows_per_block
-                ):
-                    C_row_offset = tile_row_block * rows_per_block * m * N
+                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                    C_row_offset = tile_row_block * rows_per_block * m * N * 2
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
