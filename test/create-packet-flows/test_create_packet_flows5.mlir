@@ -7,7 +7,7 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 1)
 // CHECK:           %[[VAL_1:.*]] = aie.switchbox(%[[VAL_0]]) {

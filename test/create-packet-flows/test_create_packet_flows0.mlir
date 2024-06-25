@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // one-to-many, single arbiter
 module @test_create_packet_flows0 {

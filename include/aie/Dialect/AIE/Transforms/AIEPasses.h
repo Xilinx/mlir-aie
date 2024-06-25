@@ -79,6 +79,10 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
     Port destPort;
   } SwConnection;
 
+  bool findPathToDest(SwitchSettings settings, TileID currTile,
+                      WireBundle currDestBundle, int currDestChannel,
+                      TileID finalTile, WireBundle finalDestBundle,
+                      int finalDestChannel);
   bool attemptFixupMemTileRouting(DeviceOp &d, SwConnection &problemConnect);
 
   bool checkChannelEmpty(SwitchboxOp swOp, WireBundle bundle, int channel);

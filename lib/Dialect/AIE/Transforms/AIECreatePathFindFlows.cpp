@@ -319,6 +319,52 @@ struct AIEOpRemoval : OpConversionPattern<MyOp> {
   }
 };
 
+bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
+                                       WireBundle currDestBundle,
+                                       int currDestChannel, TileID finalTile,
+                                       WireBundle finalDestBundle,
+                                       int finalDestChannel) {
+
+  if ((currTile == finalTile) && (currDestBundle == finalDestBundle) &&
+      (currDestChannel == finalDestChannel)) {
+    return true;
+  }
+
+  WireBundle neighbourSourceBundle;
+  TileID neighbourTile;
+  if (currDestBundle == WireBundle::East) {
+    neighbourSourceBundle = WireBundle::West;
+    neighbourTile = {currTile.col + 1, currTile.row};
+  } else if (currDestBundle == WireBundle::West) {
+    neighbourSourceBundle = WireBundle::East;
+    neighbourTile = {currTile.col - 1, currTile.row};
+  } else if (currDestBundle == WireBundle::North) {
+    neighbourSourceBundle = WireBundle::South;
+    neighbourTile = {currTile.col, currTile.row + 1};
+  } else if (currDestBundle == WireBundle::South) {
+    neighbourSourceBundle = WireBundle::North;
+    neighbourTile = {currTile.col, currTile.row - 1};
+  } else {
+    return false;
+  }
+
+  int neighbourSourceChannel = currDestChannel;
+  for (const auto &[tile, setting] : settings) {
+    if ((tile == neighbourTile) &&
+        (setting.src.bundle == neighbourSourceBundle) &&
+        (setting.src.channel == neighbourSourceChannel)) {
+      for (const auto &[bundle, channel] : setting.dsts) {
+        if (findPathToDest(settings, neighbourTile, bundle, channel, finalTile,
+                           finalDestBundle, finalDestChannel)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
   ConversionTarget target(getContext());
@@ -344,7 +390,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     int flowID = pktFlowOp.IDInt();
     Port srcPort, destPort;
     TileOp srcTile, destTile;
-    TileID srcCoords;
+    TileID srcCoords, destCoords;
 
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
@@ -354,22 +400,30 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         destPort = pktDest.port();
+        destCoords = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{destTile, destPort}] =
               StringAttr::get(Op.getContext(), "true");
-      }
-    }
-    Switchbox srcSB = {srcCoords.col, srcCoords.row};
-    if (PathEndPoint srcPoint = {srcSB, srcPort};
-        !analyzer.processedFlows[srcPoint]) {
-      SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-      // add connections for all the Switchboxes in SwitchSettings
-      for (const auto &[curr, setting] : settings) {
-        for (const auto &[bundle, channel] : setting.dsts) {
-          Connect connect = {{setting.src.bundle, setting.src.channel},
-                             {bundle, channel}};
-          switchboxes[curr].push_back({connect, flowID});
+        Switchbox srcSB = {srcCoords.col, srcCoords.row};
+        if (PathEndPoint srcPoint = {srcSB, srcPort};
+            !analyzer.processedFlows[srcPoint]) {
+          SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+          // add connections for all the Switchboxes in SwitchSettings
+          for (const auto &[curr, setting] : settings) {
+            for (const auto &[bundle, channel] : setting.dsts) {
+              // reject false broadcast
+              if (!findPathToDest(settings, curr, bundle, channel, destCoords,
+                                  destPort.bundle, destPort.channel))
+                continue;
+              Connect connect = {{setting.src.bundle, setting.src.channel},
+                                 {bundle, channel}};
+              if (std::find(switchboxes[curr].begin(), switchboxes[curr].end(),
+                            std::pair{connect, flowID}) ==
+                  switchboxes[curr].end())
+                switchboxes[curr].push_back({connect, flowID});
+            }
+          }
         }
       }
     }
@@ -381,7 +435,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     int col = tileId.col;
     int row = tileId.row;
     Operation *tileOp = getOrCreateTile(builder, col, row);
-
     LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n');
     for (const auto &[conn, flowID] : connects) {
       Port sourcePort = conn.src;
@@ -390,6 +443,11 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
       packetFlows[sourceFlow].push_back({tileOp, destPort});
       slavePorts.push_back(sourceFlow);
+      LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
+                              << stringifyWireBundle(sourcePort.bundle) << " "
+                              << sourcePort.channel << " -> "
+                              << stringifyWireBundle(destPort.bundle) << " "
+                              << destPort.channel << "\n");
     }
   }
 
