@@ -13,17 +13,17 @@
 // CHECK: TEST PASSED
 
 module {
-  func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<bf16>) {
-    memref.assume_alignment %arg0, 32 : memref<1024xbf16>
-    %cst_0 = arith.constant dense<0xFF80> : vector<32xbf16>
-    %0 = affine.for %arg2 = 0 to 1024 step 32 iter_args(%arg3 = %cst_0) -> (vector<32xbf16>) {
-      %cst_1 = arith.constant 0.000000e+00 : bf16
-      %3 = vector.transfer_read %arg0[%arg2], %cst_1 : memref<1024xbf16>, vector<32xbf16>
-      %4 = arith.maximumf %arg3, %3 : vector<32xbf16>
-      affine.yield %4 : vector<32xbf16>
+  func.func @dut(%arg0: memref<1024xi32>, %arg1: memref<i32>) {
+    memref.assume_alignment %arg0, 32 : memref<1024xi32>
+    %c0_i32 = arith.constant 0 : i32
+    %cst = arith.constant dense<-2147483648> : vector<16xi32>
+    %0 = affine.for %arg2 = 0 to 1024 step 16 iter_args(%arg3 = %cst) -> (vector<16xi32>) {
+      %2 = vector.transfer_read %arg0[%arg2], %c0_i32 : memref<1024xi32>, vector<16xi32>
+      %3 = arith.maxsi %arg3, %2 : vector<16xi32>
+      affine.yield %3 : vector<16xi32>
     }
-    %1 = vector.reduction <maximumf>, %0 : vector<32xbf16> into bf16
-    affine.store %1, %arg1[] : memref<bf16>
+    %1 = vector.reduction <maxsi>, %0 : vector<16xi32> into i32
+    affine.store %1, %arg1[] : memref<i32>
     return
   }
 }

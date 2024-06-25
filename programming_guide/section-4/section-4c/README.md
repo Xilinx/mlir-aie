@@ -21,7 +21,7 @@ Now that we are able to measure the total application time ([section-4a](../sect
 
 Go ahead and read the design example summary for [vector-scalar multiply](../../../programming_examples/basic/vector_scalar_mul/) first to get an idea of the different components of this example design. Then, let's take a closer look at the kernel source file ([scale.cc](../../../aie_kernels/aie2/scale.cc)).
 
-In [scale.cc](../../../aie_kernels/aie2/scale.cc), we see that the scalar code is relatively straight forward and similar to the scalar code we used in [section-4bb](../section-4b):
+In [scale.cc](../../../aie_kernels/aie2/scale.cc), we see that the scalar code is relatively straight forward and similar to the scalar code we used in [section-4b](../section-4b):
 ```C++
 template <typename T>
 void scale_scalar(T *a, T *c, T factor, const int32_t N) {
@@ -36,7 +36,7 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
 Here, the code iterates over the input vector (`a`) and multiplies each element from the vector with a scalar value (`factor`) before storing the results in output vector (`c`). The simple C/C++ code for this consists of a for-loop, with a simple read and scalar multiply operation inside the loop.
 
 ### <u>AIE API</u>
-To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with an higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/modules.html). To view details on the vector x scalar multiplier, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int. 
+To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with an higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__arithmetic.html#gafdca71673bdae6c6642b88dab9aee1fe). To view details on the vector x scalar multiplier, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int. 
 
 To be able to use this AIE API function in our kernel code, we first need to include the AIE API headers in our kernel source.
 ```C++
@@ -147,7 +147,7 @@ Once data is loaded and permuted, it passes to the Multiplier block which suppor
 
 ### The Vector Unit - SRS and Stores
 
-Once data has been computed (either in 1 cycle or accumulated over a number of cycles), the results can be then be written back out to local L1 memory via the Store Unit. This mirrors the 2 Load Units except there is a just 1 Store Unit. Bridging between the accumulator registers and vector registers or local L1 memory utilizes the SRS Unit (shift-round-saturate) which shifts, rounds and saturates with a number of configurable rounding and saturation modes. 
+Once data has been computed (either in 1 cycle or accumulated over a number of cycles), the results can then be written back out to local L1 memory via the Store Unit. This mirrors the 2 Load Units except there is a just 1 Store Unit. Bridging between the accumulator registers and vector registers or local L1 memory utilizes the SRS Unit (shift-round-saturate) which shifts, rounds and saturates with a number of configurable rounding and saturation modes. 
 
 <img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML SRS UPS Unit." height=230>
 

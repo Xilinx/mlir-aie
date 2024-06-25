@@ -23,7 +23,7 @@ concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
-  group: ci-build-test-multi-cpp-linux-${{ github.event.number || github.sha }}
+  group: ci-build-test-multi-cpp-linux-${{ github.event.number || github.sha }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:

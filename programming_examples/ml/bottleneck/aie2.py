@@ -580,7 +580,6 @@ def bottleneck4AIEs():
                         d1_stepsize=0,
                         d1_wrap=0,
                         d2_stepsize=0,
-                        ddr_id=2,
                         iteration_current=0,
                         iteration_stepsize=0,
                         iteration_wrap=0,

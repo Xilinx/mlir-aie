@@ -71,6 +71,13 @@
 // CHECK:             "name": "bo4",
 // CHECK:             "offset": "0x34",
 // CHECK:             "type": "void*"
+// CHECK:           },
+// CHECK:           {
+// CHECK:             "address-qualifier": "GLOBAL",
+// CHECK:             "memory-connection": "HOST",
+// CHECK:             "name": "bo5",
+// CHECK:             "offset": "0x3c",
+// CHECK:             "type": "void*"
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "extended-data": {

@@ -28,19 +28,20 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 | Design name | Data type | Description |
 |-|-|-|
-| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector | 
-| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor | 
-| [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector | 
+| [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector |
+| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor |
+| [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector |
 | [Vector Vector Modulo](../../programming_examples/basic/vector_vector_modulo/) | i32 | Returns vector % vector |
 | [Vector Vector Multiply](../../programming_examples/basic/vector_vector_mul/) | i32 | Returns a vector multiplied by a vector |
-| [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector | 
-| [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector | 
-| [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector | 
-| [Vector Exp](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing $e^x$ of the inputs | 
-| [DMA Transpose](../../programming_examples/basic/dma_transpose/) | i32 | Transposes a matrix with the Shim DMA using `npu_dma_memcpy_nd` | 
-| [Matrix Scalar Add](../../programming_examples/basic/matrix_scalar_add/) | i32 | Returns a matrix multiplied by a scalar | [Single core GEMM](../../programming_examples/basic/matrix_multiplication/single_core) | bfloat16 | A single core matrix-matrix multiply | 
-| [Multi core GEMM](../../programming_examples/basic/matrix_multiplication/whole_array) | bfloat16 | A matrix-matrix multiply using 16 AIEs with operand broadcast.  Uses a simple "accumulate in place" strategy | 
-| [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector) | bfloat16 | A vector-matrix multiply returning a vector
+| [Vector Reduce Add](../../programming_examples/basic/vector_reduce_add/) | bfloat16 | Returns the sum of all elements in a vector |
+| [Vector Reduce Max](../../programming_examples/basic/vector_reduce_max/) | bfloat16 | Returns the maximum of all elements in a vector |
+| [Vector Reduce Min](../../programming_examples/basic/vector_reduce_min/) | bfloat16 | Returns the minimum of all elements in a vector |
+| [Vector Exp](../../programming_examples/basic/vector_exp/) | bfloat16 | Returns a vector representing e<sup>x</sup> of the inputs |
+| [DMA Transpose](../../programming_examples/basic/dma_transpose/) | i32 | Transposes a matrix with the Shim DMA using `npu_dma_memcpy_nd` |
+| [Matrix Scalar Add](../../programming_examples/basic/matrix_scalar_add/) | i32 | Returns a matrix multiplied by a scalar |
+| [Single core GEMM](../../programming_examples/basic/matrix_multiplication/single_core/) | bfloat16 | A single core matrix-matrix multiply |
+| [Multi core GEMM](../../programming_examples/basic/matrix_multiplication/whole_array/) | bfloat16 | A matrix-matrix multiply using 16 AIEs with operand broadcast.  Uses a simple "accumulate in place" strategy |
+| [GEMV](../../programming_examples/basic/matrix_multiplication/matrix_vector/) | bfloat16 | A vector-matrix multiply returning a vector |
 
 ## Machine Learning Kernels
 
@@ -50,8 +51,8 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | [Eltwise Mul](../../programming_examples/ml/eltwise_mul/) | i32 | An element by element multiplication of two vectors | 
 | [ReLU](../../programming_examples/ml/relu/) | bfloat16 | Rectified linear unit (ReLU) activation function on a vector| 
 | [Softmax](../../programming_examples/ml/softmax/) | bfloat16 | Softmax operation on a matrix  | 
-| [Conv2D](../../programming_examples/ml/conv2d) | i8 | A single core 2D convolution for CNNs |
-| [Conv2D+ReLU](../../programming_examples/ml/conv2d_fused_relu) | i8 | A Conv2D with a ReLU fused at the vector register level |
+| [Conv2D](../../programming_examples/ml/conv2d/) | i8 | A single core 2D convolution for CNNs |
+| [Conv2D+ReLU](../../programming_examples/ml/conv2d_fused_relu/) | i8 | A Conv2D with a ReLU fused at the vector register level |
 
 ## Exercises
 

@@ -6,7 +6,14 @@
 #include <cstdlib>
 #include <limits.h>
 
+#ifdef TO_LLVM
+extern "C" {
+#endif
 void dut(int16_t *restrict in0, int16_t *restrict out0);
+#ifdef TO_LLVM
+}
+#endif
+
 void dut_ref(int16_t *in0, int16_t *out0);
 
 alignas(32) int16_t g_in0[IN0_SIZE];
