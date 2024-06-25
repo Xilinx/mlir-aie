@@ -241,8 +241,8 @@ public:
       }
       if (!sizes.empty())
         sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
-      if (!offsets.empty())
-        offsets[0] = (offsets[0] * elemWidth) / addressGranularity;
+      // Multiplying offsets with element width and strides is taken care of
+      // further below
     }
 
     // column
