@@ -16,11 +16,11 @@
 #include <string>
 #include <vector>
 
+#include "experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/xrt_aie.h"
+#include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-#include "xrt/xrt_bo.h"
-#include "xrt/xrt_aie.h"
-#include "experimental/xrt_kernel.h" // for xrt::runlist
 
 #include "test_utils.h"
 
@@ -101,23 +101,23 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
 
   auto bo_instr_0 = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA_0 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out_0 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   auto bo_instr_1 = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA_1 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out_1 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  // Initializing the input vectors 
+  // Initializing the input vectors
   std::vector<uint32_t> srcVecA;
   std::vector<uint32_t> srcVecA_1;
   for (int i = 0; i < IN_SIZE; i++)
@@ -199,7 +199,6 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  
   std::cout << "Checking run 1" << std::endl;
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     uint32_t ref = i + 3;
