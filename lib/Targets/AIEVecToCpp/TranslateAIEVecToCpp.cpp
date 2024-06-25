@@ -488,8 +488,7 @@ static std::pair<bool, int64_t> getStep(scf::ForOp forOp) {
 }
 
 // Return the operator string of the SCF dialect binary operator
-template <typename T>
-static StringRef getOperator(T binOp) {
+template <typename T> static StringRef getOperator(T binOp) {
   if (isa<arith::AddIOp>(binOp) || isa<arith::AddFOp>(binOp))
     return " + ";
   if (isa<arith::MulIOp>(binOp) || isa<arith::MulFOp>(binOp))
@@ -1377,6 +1376,39 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   return success();
 }
+// convert operand to 512 bits
+static std::string printConversionTo512bit(CppEmitter &emitter, Value v) {
+  std::string vName = emitter.getOrCreateName(v).str();
+  auto vTy = cast<VectorType>(v.getType());
+  auto vShape = vTy.getShape();
+  int64_t elemBitWidth = vTy.getElementTypeBitWidth();
+  int64_t numElems = std::accumulate(vShape.begin(), vShape.end(), 1,
+                                     std::multiplies<int64_t>());
+  int64_t vBitWidth = numElems * elemBitWidth;
+  if (vBitWidth >= 512)
+    return vName;
+
+  int64_t newNumElems = 512 / elemBitWidth;
+
+  std::string vNewName = emitter.getNewName();
+  raw_indented_ostream &os = emitter.ostream();
+  auto newVecTy = VectorType::get({512 / elemBitWidth}, vTy.getElementType());
+  auto newTyName = *(
+      emitter.genCppTypeName(newVecTy, /*stdintType=*/false, /*isAcc=*/false));
+  auto oldTyName =
+      *(emitter.genCppTypeName(vTy, /*stdintType=*/false, /*isAcc=*/false));
+
+  os << newTyName << " " << vNewName << " = concat(";
+  if (newNumElems / numElems == 4) {
+    os << "concat(" << vName << ", undef_" << oldTyName << "())";
+    oldTyName = *(emitter.genCppTypeName(
+        VectorType::get({256 / elemBitWidth}, vTy.getElementType())));
+  } else {
+    os << vName;
+  }
+  os << ", undef_" << oldTyName << "());\n";
+  return vNewName;
+}
 
 // Generate the MulElem op
 static LogicalResult printOperation(CppEmitter &emitter,
@@ -1387,6 +1419,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
   // The sources should have already been emitted
   if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
     return failure();
+
+  auto lhsName = printConversionTo512bit(emitter, lhs);
+  auto rhsName = printConversionTo512bit(emitter, rhs);
 
   std::string opname = "mul_elem";
 
@@ -1417,16 +1452,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
     return failure();
 
   os << opname;
-  os << "(";
-  if (failed(printFMAOrMulElemOperand<aievec::MulElemOp>(emitter, mulElemOp,
-                                                         iType, lsize, 1)))
-    return failure();
-  os << ", ";
-  if (failed(printFMAOrMulElemOperand<aievec::MulElemOp>(emitter, mulElemOp,
-                                                         iType, lsize, 0)))
-    return failure();
-  os << ")";
-
+  os << "(" << lhsName << "," << rhsName << ")";
   return success();
 }
 
@@ -2708,39 +2734,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os.unindent() << "}\n";
 
   return success();
-}
-
-static std::string printConversionTo512bit(CppEmitter &emitter, Value v) {
-  std::string vName = emitter.getOrCreateName(v).str();
-  auto vTy = cast<VectorType>(v.getType());
-  auto vShape = vTy.getShape();
-  int64_t elemBitWidth = vTy.getElementTypeBitWidth();
-  int64_t numElems = std::accumulate(vShape.begin(), vShape.end(), 1,
-                                     std::multiplies<int64_t>());
-  int64_t vBitWidth = numElems * elemBitWidth;
-  if (vBitWidth >= 512)
-    return vName;
-
-  int64_t newNumElems = 512 / elemBitWidth;
-
-  std::string vNewName = emitter.getNewName();
-  raw_indented_ostream &os = emitter.ostream();
-  auto newVecTy = VectorType::get({512 / elemBitWidth}, vTy.getElementType());
-  auto newTyName = *(
-      emitter.genCppTypeName(newVecTy, /*stdintType=*/false, /*isAcc=*/false));
-  auto oldTyName =
-      *(emitter.genCppTypeName(vTy, /*stdintType=*/false, /*isAcc=*/false));
-
-  os << newTyName << " " << vNewName << " = concat(";
-  if (newNumElems / numElems == 4) {
-    os << "concat(" << vName << ", undef_" << oldTyName << "())";
-    oldTyName = *(emitter.genCppTypeName(
-        VectorType::get({256 / elemBitWidth}, vTy.getElementType())));
-  } else {
-    os << vName;
-  }
-  os << ", undef_" << oldTyName << "());\n";
-  return vNewName;
 }
 
 static LogicalResult printOperation(CppEmitter &emitter,

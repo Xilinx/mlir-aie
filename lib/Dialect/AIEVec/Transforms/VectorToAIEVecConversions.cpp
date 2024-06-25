@@ -680,28 +680,31 @@ struct ConvertMulFToAIEVecMulElemOpPattern
 
     // Prepare lhr/rhs for the aievec.mul_elem op
     unsigned bitWidth = (rBitWidth > lBitWidth) ? rBitWidth : lBitWidth;
-    Type srcElemType  = (rBitWidth > lBitWidth) ? rSrcType.getElementType() :
-                                                  lSrcType.getElementType();
+    Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
+                                               : lSrcType.getElementType();
     unsigned numLanes = 0;
     if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
       numLanes = 16;
-    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 8 || bitWidth == 16)) {  
+    } else if (isa<IntegerType>(srcElemType) &&
+               (bitWidth == 8 || bitWidth == 16)) {
       numLanes = 32;
-    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) { 
-      numLanes = 16; 
+    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) {
+      numLanes = 16;
     } else {
       return failure();
-    }  
+    }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     auto lValConverted = lval;
     auto rValConverted = rval;
     if (targetInputType != lSrcType) {
       lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       lval, targetInputType).value();
+                                                    lval, targetInputType)
+                          .value();
     }
     if (targetInputType != rSrcType) {
       rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       rval, targetInputType).value();
+                                                    rval, targetInputType)
+                          .value();
     }
     if (!lValConverted || !rValConverted)
       return failure();
@@ -771,7 +774,7 @@ struct ConvertMulIToAIEVecMulElemOpPattern
 
     lval = getSourceOfWideningOp(lval).value_or(lval);
     rval = getSourceOfWideningOp(rval).value_or(rval);
-    
+
     auto lSrcType = cast<VectorType>(lval.getType());
     auto rSrcType = cast<VectorType>(rval.getType());
     unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
@@ -783,28 +786,31 @@ struct ConvertMulIToAIEVecMulElemOpPattern
 
     // Prepare lhr/rhs for the aievec.mul_elem op
     unsigned bitWidth = (rBitWidth > lBitWidth) ? rBitWidth : lBitWidth;
-    Type srcElemType  = (rBitWidth > lBitWidth) ? rSrcType.getElementType() :
-                                                  lSrcType.getElementType();
+    Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
+                                               : lSrcType.getElementType();
     unsigned numLanes = 0;
     if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
       numLanes = 16;
-    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 8 || bitWidth == 16)) {  
+    } else if (isa<IntegerType>(srcElemType) &&
+               (bitWidth == 8 || bitWidth == 16)) {
       numLanes = 32;
-    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) { 
-      numLanes = 16; 
+    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) {
+      numLanes = 16;
     } else {
       return failure();
-    }  
+    }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     auto lValConverted = lval;
     auto rValConverted = rval;
     if (targetInputType != lSrcType) {
       lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       lval, targetInputType).value();
+                                                    lval, targetInputType)
+                          .value();
     }
     if (targetInputType != rSrcType) {
       rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       rval, targetInputType).value();
+                                                    rval, targetInputType)
+                          .value();
     }
     if (!lValConverted || !rValConverted)
       return failure();
