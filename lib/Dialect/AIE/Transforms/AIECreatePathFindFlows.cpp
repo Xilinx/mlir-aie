@@ -26,6 +26,7 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-create-pathfinder-flows"
 
 namespace {
+std::vector<Operation *> flowOps;
 
 // allocates channels between switchboxes ( but does not assign them)
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
@@ -33,9 +34,12 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   using OpConversionPattern::OpConversionPattern;
   DeviceOp &device;
   DynamicTileAnalysis &analyzer;
+  bool keepFlowOp;
   ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
-                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
+                             DynamicTileAnalysis &a, bool keepFlowOp,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), device(d), analyzer(a),
+        keepFlowOp(keepFlowOp) {}
 
   LogicalResult match(FlowOp op) const override { return success(); }
 
@@ -71,11 +75,16 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
 
-#ifndef NDEBUG
     auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
+
+    if (keepFlowOp) {
+      auto *clonedOp = Op->clone();
+      flowOps.push_back(clonedOp);
+    }
+#ifndef NDEBUG
+    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
                << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
@@ -210,9 +219,15 @@ void AIEPathfinderPass::runOnOperation() {
   target.addLegalOp<EndOp>();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
+  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer,
+                                              clKeepFlowOp);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
     return signalPassFailure();
+
+  // Keep for visualization
+  if (clKeepFlowOp)
+    for (auto op : flowOps)
+      builder.insert(op);
 
   // Populate wires between switchboxes and tiles.
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {

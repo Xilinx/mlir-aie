@@ -138,6 +138,11 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];
+
+  let options = [
+    Option<"clKeepFlowOp", "keep-flow-op", "bool", /*default=*/"false",
+            "Flag to keep aie.flow to enable routing visualization.">
+  ];
 }
 
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
@@ -151,6 +156,12 @@ def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];
+
+  let options = [
+    Option<"clKeepPacketFlowOp", "keep-packet-flow-op", "bool", /*default=*/"false",
+            "Flag to keep aie.packetflow to enable routing visualization.">
+  ];
+
 }
 
 def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {

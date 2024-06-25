@@ -814,7 +814,8 @@ struct AIERoutePacketFlowsPass
     }
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
+    if (!clKeepPacketFlowOp)
+      patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
