@@ -17,12 +17,7 @@ from aie.extras.dialects.ext import memref, arith  # memref and arithmatic diale
 # AI Engine structural design function
 def my_eltwise_exp():
 
-    word_size_in = 2
     N = 65536
-    N_in_bytes = N * word_size_in
-
-    A_sz_in_i32s = N_in_bytes // 4
-    C_sz_in_i32s = N_in_bytes // 4
 
     # Tile sizes
     n = 1024
@@ -103,16 +98,12 @@ def my_eltwise_exp():
                     yield_([])
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.i32())
+        tensor_ty = T.memref(N, T.bf16())
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty)
         def sequence(A, C):
-            npu_dma_memcpy_nd(
-                metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
-            )
-            npu_dma_memcpy_nd(
-                metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
-            )
+            npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 

@@ -21,9 +21,9 @@
 
 -----
 
-In the preceding sections, we looked at how we can describe data movement between tiles *within* the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e. from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. 
+In the preceding sections, we looked at how we can describe data movement between tiles *within* the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e., from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. 
 
-The operations that will be described in this section must be placed in a separate `sequence` function. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../../programming_examples/) contains an example.
+The operations that will be described in this section must be placed in a separate `sequence` function. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../section-3/) contains an example.
 
 ### Guide to Managing Runtime Data Movement to/from Host Memory
 
@@ -51,7 +51,7 @@ It is important to note that dimension 0 of the **`sizes`** and all **`strides`*
 npu_dma_memcpy_nd("of_in", 0, input_buffer, sizes=[1, 1, 1, 30])
 ```
 
-The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the `input_buffer` in host memory into an object FIFO with matching metadata labled "of_in". The `size` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the `input_buffer` in host memory into an object FIFO with matching metadata labeled "of_in". The `size` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
 
 
 #### **Advanced Techniques for Multi-dimensional `npu_dma_memcpy_nd`**

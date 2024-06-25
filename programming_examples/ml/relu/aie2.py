@@ -21,9 +21,6 @@ def my_relu(trace_size):
     N = 65536
     N_in_bytes = N * word_size_in
 
-    A_sz_in_i32s = N_in_bytes // 4
-    C_sz_in_i32s = N_in_bytes // 4
-
     # Tile sizes
     n = 1024
     N_div_n = N // n
@@ -105,7 +102,7 @@ def my_relu(trace_size):
                     yield_([])
 
         # To/from AIE-array data movement
-        tensor_ty = T.memref(N, T.i32())
+        tensor_ty = T.memref(N, T.bf16())
 
         @FuncOp.from_py_func(tensor_ty, tensor_ty)
         def sequence(A, C):
@@ -118,12 +115,8 @@ def my_relu(trace_size):
                     size=trace_size,
                     offset=N_in_bytes,
                 )
-            npu_dma_memcpy_nd(
-                metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, C_sz_in_i32s]
-            )
-            npu_dma_memcpy_nd(
-                metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, A_sz_in_i32s]
-            )
+            npu_dma_memcpy_nd(metadata="outC", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="inA", bd_id=1, mem=A, sizes=[1, 1, 1, N])
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 

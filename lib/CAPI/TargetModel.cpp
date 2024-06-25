@@ -28,6 +28,10 @@ AieTargetModel aieGetTargetModel(uint32_t device) {
       xilinx::AIE::getTargetModel(static_cast<xilinx::AIE::AIEDevice>(device)));
 }
 
+uint32_t aieGetTargetModelAddressGenGranularity(AieTargetModel targetModel) {
+  return unwrap(targetModel).getAddressGenGranularity();
+}
+
 int aieTargetModelColumns(AieTargetModel targetModel) {
   return unwrap(targetModel).columns();
 }
@@ -147,4 +151,12 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
 
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
   return unwrap(targetModel).isNPU();
+}
+
+uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel) {
+  return unwrap(targetModel).getColumnShift();
+}
+
+uint32_t aieTargetModelGetRowShift(AieTargetModel targetModel) {
+  return unwrap(targetModel).getRowShift();
 }

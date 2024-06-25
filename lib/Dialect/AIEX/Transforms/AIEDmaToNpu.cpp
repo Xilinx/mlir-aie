@@ -191,7 +191,6 @@ public:
 
     // initialize fields to zero
     auto column = zero;
-    auto ddr_id = zero;
     auto bd_id = zero;
     auto buffer_length = zero;
     auto buffer_offset = zero;
@@ -230,10 +229,26 @@ public:
         llvm::reverse(op.getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
+    MemRefType buffer = op.getMemref().getType();
+    const auto &targetModel = AIE::getTargetModel(op);
+    auto elemWidth = buffer.getElementTypeBitWidth();
+    auto addressGranularity = targetModel.getAddressGenGranularity();
+    if (elemWidth < addressGranularity) {
+      if (!strides.empty()) {
+        for (int i = 0; i < 3; i++) {
+          strides[i] = (strides[i] * elemWidth) / addressGranularity;
+        }
+      }
+      if (!sizes.empty())
+        sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
+      if (!offsets.empty())
+        offsets[0] = (offsets[0] * elemWidth) / addressGranularity;
+    }
+
     // column
     column = IntegerAttr::get(i32ty, col);
 
-    // ddr_id
+    // arg_idx
     Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
@@ -244,7 +259,6 @@ public:
     }
     if (arg_idx < 0)
       return failure();
-    ddr_id = IntegerAttr::get(i32ty, arg_idx);
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
@@ -337,7 +351,7 @@ public:
       issue_token = BoolAttr::get(ctx, true);
 
     rewriter.create<NpuWriteBdOp>(
-        op->getLoc(), column, ddr_id, bd_id, buffer_length, buffer_offset,
+        op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
         d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
