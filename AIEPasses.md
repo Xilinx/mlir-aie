@@ -36,12 +36,22 @@ _Route aie.packetflow operations through switchboxes_
 
 Replace each aie.packetflow operation with an equivalent set of aie.switchbox and aie.wire
 operations.  
+
+#### Options
+```
+-keep-packet-flow-op : Flag to keep aie.packetflow to enable routing visualization.
+```
 ### `-aie-create-pathfinder-flows`
 
 _Route aie.flow operations through switchboxes with Pathfinder algorithm_
 
 Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
 operations. Uses Pathfinder congestion-aware algorithm. 
+
+#### Options
+```
+-keep-flow-op : Flag to keep aie.flow to enable routing visualization.
+```
 ### `-aie-find-flows`
 
 _Recover flows from switchbox configuration_
