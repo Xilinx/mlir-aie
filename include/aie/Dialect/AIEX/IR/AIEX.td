@@ -509,6 +509,9 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
+    llvm::SmallVector<int64_t, 3> getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
+    int64_t getOffsetInBytes(); 
   }];
 
   let extraClassDefinition = [{
