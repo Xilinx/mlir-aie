@@ -95,7 +95,10 @@ class PortEvent(GenericEvent):
 
         value = (value & 0xFF) << 8 * (self.event_number % 4)
 
-        return {address: value}
+        ret = {0x3FF00: 0, 0x3FF04: 0}
+        ret[address] = value
+
+        return ret
 
 
 def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
