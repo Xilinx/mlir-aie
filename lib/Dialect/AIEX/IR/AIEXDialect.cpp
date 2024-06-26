@@ -185,7 +185,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       error = true;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
           << (elemWidth / 8) << " bytes = " << (raw_strides[i] * elemWidth / 8)
-          << " bytes, which is not divisible by 4. ";
+          << " bytes, which is not divisible by " << addressGranularity << ". ";
     }
   }
   if (error) {
@@ -197,7 +197,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
         << " bytes. " << raw_sizes[0] << " elements at " << (elemWidth / 8)
         << " bytes each equal " << (raw_sizes[0] * elemWidth / 8)
-        << " bytes, which is not divisible by 4. ";
+        << " bytes, which is not divisible by " << addressGranularity << ". ";
     return emitOpError(msg.str());
   }
 
