@@ -794,18 +794,15 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
 
-  LogicalResult x = success();
-  if (emitUnified) {
-    llvm::outs() << "Emitting unified CDO\n";
-
-    x = generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
-  } else {
-
-    x = generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
-                                      enableCores);
-  }
-
-  return x;
+  auto result = [&]() {
+    if (emitUnified) {
+      return generateCDOUnified(ctl, workDirPath, targetOp, aieSim,
+                                enableCores);
+    }
+    return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
+                                         enableCores);
+  }();
+  return result;
 }
 // Not sure why but defining this with xilinx::AIE will create a duplicate
 // symbol in libAIETargets.a that then doesn't actually match the header?

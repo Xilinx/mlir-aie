@@ -601,7 +601,6 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    llvm::outs() << "Running bootgen with verbose = " << TK.Verbose << "\n";
     SmallString<64> bootgenBin(TK.InstallDir);
     sys::path::append(bootgenBin, "bin", "bootgen");
     if (runTool(bootgenBin, flags, TK.Verbose) != 0)
@@ -668,14 +667,12 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                "--add-replace-section", partArg, "--force",
                                "--output", std::string(Output)});
 
-    llvm::outs() << "Running xclbinutil with verbose = " << TK.Verbose << "\n";
     if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
       if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
         return moduleOp.emitOpError("failed to execute xclbinutil");
     } else {
       return moduleOp.emitOpError("could not find xclbinutil");
     }
-    llvm::outs() << "Finished xclbinutil\n";
   }
   return success();
 }
