@@ -1452,7 +1452,15 @@ static LogicalResult printOperation(CppEmitter &emitter,
     return failure();
 
   os << opname;
-  os << "(" << lhsName << "," << rhsName << ")";
+  os << "(" << lhsName;
+  if (lsize == 32)
+    os << " ,"
+       << "undef_v16int32()";
+  os << " ," << rhsName;
+  if (lsize == 32)
+    os << " , "
+       << "broadcast_zero_s32()";
+  os << ")";
   return success();
 }
 
