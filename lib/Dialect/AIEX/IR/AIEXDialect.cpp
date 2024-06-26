@@ -73,7 +73,7 @@ llvm::SmallVector<int64_t, 3> AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranula
       llvm::reverse(getMixedStrides()),
       [](OpFoldResult s) { return getConstantIntValue(s).value(); });
   if (!strides.empty()) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
       strides[i] = (strides[i] * elemWidth) / addressGranularity;
     }
   }
