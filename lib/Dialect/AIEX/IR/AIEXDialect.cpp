@@ -121,16 +121,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = buffer.getElementTypeBitWidth();
-  llvm::SmallVector<int64_t, 3> raw_strides = llvm::map_to_vector(
-      llvm::reverse(getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  llvm::SmallVector<int64_t, 4> raw_sizes = llvm::map_to_vector(
-      llvm::reverse(getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-
-  llvm::SmallVector<int64_t, 3> strides = getStridesInAddressGranularity();
-  llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
-  int64_t offset = getOffsetInBytes();
 
   if (buffer.getElementTypeBitWidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
@@ -152,6 +142,17 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         return getConstantIntValue(s).has_value();
       }))
     emitOpError("Only constant offsets currently supported.");
+
+  llvm::SmallVector<int64_t, 3> raw_strides = llvm::map_to_vector(
+      llvm::reverse(getMixedStrides()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> raw_sizes = llvm::map_to_vector(
+      llvm::reverse(getMixedSizes()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+
+  llvm::SmallVector<int64_t, 3> strides = getStridesInAddressGranularity();
+  llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
+  int64_t offset = getOffsetInBytes();
 
   if (sizes[3] > 64)
     return emitOpError("Size 3 exceeds the [1:64] range.");
