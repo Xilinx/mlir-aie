@@ -33,7 +33,6 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIENormalizeAddressSpacesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIERouteFlowsPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorOptPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();

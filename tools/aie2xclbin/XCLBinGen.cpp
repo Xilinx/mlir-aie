@@ -166,7 +166,6 @@ static void addAIELoweringPasses(OpPassManager &pm) {
   devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
   devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(AIEX::createAIEBroadcastPacketPass());
-  devicePM.addPass(AIE::createAIERoutePacketFlowsPass());
   devicePM.addPass(AIEX::createAIELowerMulticastPass());
   devicePM.addPass(AIE::createAIEAssignBufferAddressesPass());
   pm.addPass(createConvertSCFToCFPass());
@@ -371,11 +370,6 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   applyConfigToPassManager(TK, passManager);
 
   passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
-  passManager.addNestedPass<AIE::DeviceOp>(
-      AIEX::createAIEBroadcastPacketPass());
-  passManager.addNestedPass<AIE::DeviceOp>(
-      AIE::createAIERoutePacketFlowsPass());
-  passManager.addNestedPass<AIE::DeviceOp>(AIEX::createAIELowerMulticastPass());
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");

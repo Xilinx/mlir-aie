@@ -75,16 +75,16 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
 
-    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
-
     if (keepFlowOp) {
       auto *clonedOp = Op->clone();
       flowOps.push_back(clonedOp);
     }
+
 #ifndef NDEBUG
+    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    auto dstBundle = flowOp.getDestBundle();
+    auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
                << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)

@@ -152,25 +152,6 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   ];
 }
 
-def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
-  let summary = "Route aie.packetflow operations through switchboxes";
-  let description = [{
-    Replace each aie.packetflow operation with an equivalent set of aie.switchbox and aie.wire
-    operations.  
-  }];
-
-  let constructor = "xilinx::AIE::createAIERoutePacketFlowsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-
-  let options = [
-    Option<"clKeepPacketFlowOp", "keep-packet-flow-op", "bool", /*default=*/"false",
-            "Flag to keep aie.packetflow to enable routing visualization.">
-  ];
-
-}
-
 def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   let summary = "Recover flows from switchbox configuration";
   let description = [{
