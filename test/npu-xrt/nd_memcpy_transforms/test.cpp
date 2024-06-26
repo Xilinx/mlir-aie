@@ -1,7 +1,7 @@
-#include <fstream>
-#include <iomanip>
 #include <cassert>
 #include <cstring>
+#include <fstream>
+#include <iomanip>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -26,7 +26,6 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-
 #ifndef XCLBIN
 #define XCLBIN "final.xclbin"
 #endif
@@ -49,10 +48,9 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 #define C_OFFSET 2
 #define C_LEN (A_LEN + B_LEN + C_OFFSET)
 
-#define A_SIZE (A_LEN * sizeof(A_DATATYPE))  // in bytes
-#define B_SIZE (B_LEN * sizeof(B_DATATYPE))  // in bytes
-#define C_SIZE (C_LEN * sizeof(C_DATATYPE))  // in bytes
-
+#define A_SIZE (A_LEN * sizeof(A_DATATYPE)) // in bytes
+#define B_SIZE (B_LEN * sizeof(B_DATATYPE)) // in bytes
+#define C_SIZE (C_LEN * sizeof(C_DATATYPE)) // in bytes
 
 int main(int argc, const char *argv[]) {
 
@@ -68,10 +66,10 @@ int main(int argc, const char *argv[]) {
 
   // Get the kernel from the xclbin
   std::vector<xrt::xclbin::kernel> xkernels = xclbin.get_kernels();
-  xrt::xclbin::kernel xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [](xrt::xclbin::kernel &k) {
-                                 return k.get_name().rfind(KERNEL_NAME, 0) == 0;
-                               });
+  xrt::xclbin::kernel xkernel = *std::find_if(
+      xkernels.begin(), xkernels.end(), [](xrt::xclbin::kernel &k) {
+        return k.get_name().rfind(KERNEL_NAME, 0) == 0;
+      });
   std::string kernel_name = xkernel.get_name();
   assert(strcmp(kernel_name.c_str(), KERNEL_NAME) == 0);
 
@@ -93,12 +91,12 @@ int main(int argc, const char *argv[]) {
       xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   A_DATATYPE *buf_a = bo_a.map<A_DATATYPE *>();
-  for(int i = 0; i < A_SIZE/sizeof(buf_a[0]); i++) {
-    buf_a[i] = 2*i;  // even
+  for (int i = 0; i < A_SIZE / sizeof(buf_a[0]); i++) {
+    buf_a[i] = 2 * i; // even
   }
   B_DATATYPE *buf_b = bo_b.map<A_DATATYPE *>();
-  for(int i = 0; i < B_SIZE/sizeof(buf_b[0]); i++) {
-    buf_b[i] = 2*i + 1;  // odd
+  for (int i = 0; i < B_SIZE / sizeof(buf_b[0]); i++) {
+    buf_b[i] = 2 * i + 1; // odd
   }
   C_DATATYPE *buf_c = bo_c.map<C_DATATYPE *>();
   memset(buf_c, 0, C_SIZE);
@@ -122,13 +120,14 @@ int main(int argc, const char *argv[]) {
 
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  for(int i = 0; i < C_SIZE/sizeof(buf_c[0]); i++) {
+  for (int i = 0; i < C_SIZE / sizeof(buf_c[0]); i++) {
     std::cout << std::setw(4) << (long)buf_c[i] << " ";
   }
   std::cout << std::endl;
 
-  C_DATATYPE ref[] = {0, 0, 0, 2, 8, 10, 4, 6, 12, 14, 1, 3, 9, 11, 17, 19, 5, 7, 13, 15, 21, 23};
-  if(memcmp(ref, buf_c, sizeof(ref)) == 0) {
+  C_DATATYPE ref[] = {0, 0, 0,  2,  8,  10, 4, 6,  12, 14, 1,
+                      3, 9, 11, 17, 19, 5,  7, 13, 15, 21, 23};
+  if (memcmp(ref, buf_c, sizeof(ref)) == 0) {
     std::cout << "PASS!" << std::endl;
   } else {
     std::cout << "FAIL." << std::endl;

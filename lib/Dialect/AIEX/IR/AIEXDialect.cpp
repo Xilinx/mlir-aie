@@ -64,14 +64,16 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
   return success();
 }
 
-llvm::SmallVector<int64_t, 3> AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
+llvm::SmallVector<int64_t, 3>
+AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
   const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
-      llvm::reverse(getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 3> strides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
   if (!strides.empty()) {
     for (int i = 0; i < 3; i++) {
       strides[i] = (strides[i] * elemWidth) / addressGranularity;
@@ -80,26 +82,29 @@ llvm::SmallVector<int64_t, 3> AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranula
   return strides;
 }
 
-llvm::SmallVector<int64_t, 4> AIEX::NpuDmaMemcpyNdOp::getSizesInAddressGranularity() {
+llvm::SmallVector<int64_t, 4>
+AIEX::NpuDmaMemcpyNdOp::getSizesInAddressGranularity() {
   const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
-      llvm::reverse(getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> sizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
   if (!sizes.empty()) {
     sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
   }
   return sizes;
 }
 
-/* Calculates the offset value to be written to the 
+/* Calculates the offset value to be written to the
  */
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
-  llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
-      llvm::reverse(getMixedOffsets()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> offsets =
+      llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
   size_t stride = 1;
   size_t offset = 0;
   MemRefType my_memref = getMemref().getType();
@@ -107,7 +112,7 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   size_t R = shape.size();
   size_t el_bit_width = my_memref.getElementTypeBitWidth();
   assert(el_bit_width % 8 == 0 &&
-          "Expected Memref element bitwidth to be multiple of 8.");
+         "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
   for (size_t i = 0; i < R; i++) {
     offset += offsets[i] * stride * S;
@@ -143,12 +148,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       }))
     emitOpError("Only constant offsets currently supported.");
 
-  llvm::SmallVector<int64_t, 3> raw_strides = llvm::map_to_vector(
-      llvm::reverse(getMixedStrides()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-  llvm::SmallVector<int64_t, 4> raw_sizes = llvm::map_to_vector(
-      llvm::reverse(getMixedSizes()),
-      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 3> raw_strides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> raw_sizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
 
   llvm::SmallVector<int64_t, 3> strides = getStridesInAddressGranularity();
   llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
@@ -177,8 +184,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
       error = true;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
-          << (elemWidth / 8)
-          << " bytes = " << (raw_strides[i] * elemWidth / 8)
+          << (elemWidth / 8) << " bytes = " << (raw_strides[i] * elemWidth / 8)
           << " bytes, which is not divisible by 4. ";
     }
   }
@@ -188,10 +194,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   if (raw_sizes[0] * elemWidth % addressGranularity != 0) {
     std::stringstream msg;
-    msg << "Transfer sizes must be multiples of "
-        << (addressGranularity / 8) << " bytes. " << raw_sizes[0]
-        << " elements at " << (elemWidth / 8) << " bytes each equal "
-        << (raw_sizes[0] * elemWidth / 8)
+    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
+        << " bytes. " << raw_sizes[0] << " elements at " << (elemWidth / 8)
+        << " bytes each equal " << (raw_sizes[0] * elemWidth / 8)
         << " bytes, which is not divisible by 4. ";
     return emitOpError(msg.str());
   }
