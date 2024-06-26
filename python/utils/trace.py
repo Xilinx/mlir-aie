@@ -205,9 +205,6 @@ def configure_simple_tracing_aie2(
                 "To select master port N, specify the event as follows: "
                 f"PortEvent(CoreEvent.{event.code.name}, N, master=True), "
                 "and analogously with master=False for slave ports. "
-                "PortEvent and CoreEvent are defined at: "
-                "from aie.utils.trace import PortEvent; "
-                "from aie.utils.trace_events_enum import CoreEvent. \n"
                 "For example: "
                 f"configure_simple_tracing_aie2( ..., events=[PortEvent(CoreEvent.{event.code.name}, 1, master=True)])"
             )
