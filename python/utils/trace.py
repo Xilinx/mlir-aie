@@ -188,10 +188,29 @@ def configure_simple_tracing_aie2(
         stop = CoreEvent(stop)
 
     # Pad the input so we have exactly 8 events.
+    if len(events) > 8:
+        raise RuntimeError(
+            f"At most 8 events can be traced at once, have {len(events)}."
+        )
     events = (events + [CoreEvent.NONE] * 8)[:8]
 
     # Assure all selected events are valid
     events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in events]
+
+    # Require ports to be specifically given for port events.
+    for event in events:
+        if event.code in PortEventCodes and not isinstance(event, PortEvent):
+            raise RuntimeError(
+                f"Tracing: {event.code.name} is a PortEvent and requires a port to be specified alongside it. \n"
+                "To select master port N, specify the event as follows: "
+                f"PortEvent(CoreEvent.{event.code.name}, N, master=True), "
+                "and analogously with master=False for slave ports. "
+                "PortEvent and CoreEvent are defined at: "
+                "from aie.utils.trace import PortEvent; "
+                "from aie.utils.trace_events_enum import CoreEvent. \n"
+                "For example: "
+                f"configure_simple_tracing_aie2( ..., events=[PortEvent(CoreEvent.{event.code.name}, 1, master=True)])"
+            )
 
     # 0x340D0: Trace Control 0
     #          0xAABB---C
