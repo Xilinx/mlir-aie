@@ -488,7 +488,8 @@ static std::pair<bool, int64_t> getStep(scf::ForOp forOp) {
 }
 
 // Return the operator string of the SCF dialect binary operator
-template <typename T> static StringRef getOperator(T binOp) {
+template <typename T>
+static StringRef getOperator(T binOp) {
   if (isa<arith::AddIOp>(binOp) || isa<arith::AddFOp>(binOp))
     return " + ";
   if (isa<arith::MulIOp>(binOp) || isa<arith::MulFOp>(binOp))
@@ -1453,11 +1454,11 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
   os << opname;
   os << "(" << lhsName;
-  if (lsize == 32)
+  if ((lsize == 32) && iType)
     os << " ,"
        << "undef_v16int32()";
   os << " ," << rhsName;
-  if (lsize == 32)
+  if ((lsize == 32) && iType)
     os << " , "
        << "broadcast_zero_s32()";
   os << ")";

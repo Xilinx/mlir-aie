@@ -318,7 +318,7 @@ def AIEVec_MulElemOp:
     SameTypeOperands,
     SameOperandsShape,
     SameOperandsAndResultShape,
-    IsValidOperandsAndResultTypeForAIE2MulElem<"lhs", "rhs", "result">
+    isOperandResultTypePairValidForAIE2MulElem<"lhs", "rhs", "result">
   ]>,	  
   Arguments<(ins
     VectorOfLengthAndType<[16, 32], [I8, I16, I32, BF16, F32]>:$lhs, 
