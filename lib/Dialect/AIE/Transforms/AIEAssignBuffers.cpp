@@ -113,14 +113,6 @@ typedef struct BankLimits {
   int64_t endAddr;
 } BankLimits;
 
-// TODO: add to target model
-int getNumBanks(TileOp tile) {
-  if (tile.isMemTile())
-    return 1;
-  else
-    return 4;
-}
-
 // Function that given a number of banks and their size, computes
 // the start and end addresses for each bank and fills in the entry
 // in the bankLimits vector.
@@ -294,7 +286,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   else
     maxDataMemorySize = targetModel.getLocalMemorySize();
 
-  int numBanks = getNumBanks(tile);
+  int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int bankSize = maxDataMemorySize / numBanks;
 
   // Address range owned by the MemTile is 0x80000.
@@ -391,9 +383,15 @@ struct AIEAssignBufferAddressesPass
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
-        if (auto res = simpleBankAwareAllocation(tile); res.failed())
-          if (auto res2 = basicAllocation(tile); res2.failed())
+        if (tile.isMemTile())
+          if(auto res = simpleBankAwareAllocation(tile); res.failed())
             return signalPassFailure();
+        if (!tile.isMemTile())
+          if(auto res = basicAllocation(tile); res.failed())
+            return signalPassFailure();
+        // if(auto res = simpleBankAwareAllocation(tile); res.failed())
+        //   if(auto res2 = basicAllocation(tile); res2.failed())
+        //     return signalPassFailure();
       }
     }
   }
