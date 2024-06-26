@@ -94,7 +94,16 @@ def passthroughKernel():
                         offset=tensorSize,
                         start=0x1,
                         stop=0x0,
-                        events=[PortEvent(0x4B, 1, True), 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, PortEvent(0x4F, 1, False)],
+                        events=[
+                            PortEvent(0x4B, 1, True),
+                            0x22,
+                            0x21,
+                            0x25,
+                            0x2D,
+                            0x2C,
+                            0x1A,
+                            PortEvent(0x4F, 1, False),
+                        ],
                     )
 
                 npu_dma_memcpy_nd(
