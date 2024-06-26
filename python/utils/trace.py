@@ -32,118 +32,48 @@ class GenericEvent:
         return {}
 
 
+# fmt: off
+PortEventCodes = { CoreEvent.PORT_IDLE_0, CoreEvent.PORT_IDLE_1,
+                   CoreEvent.PORT_IDLE_2, CoreEvent.PORT_IDLE_3,
+                   CoreEvent.PORT_IDLE_4, CoreEvent.PORT_IDLE_5,
+                   CoreEvent.PORT_IDLE_6, CoreEvent.PORT_IDLE_7,
+                   CoreEvent.PORT_RUNNING_0, CoreEvent.PORT_RUNNING_1,
+                   CoreEvent.PORT_RUNNING_2, CoreEvent.PORT_RUNNING_3,
+                   CoreEvent.PORT_RUNNING_4, CoreEvent.PORT_RUNNING_5,
+                   CoreEvent.PORT_RUNNING_6, CoreEvent.PORT_RUNNING_7,
+                   CoreEvent.PORT_STALLED_0, CoreEvent.PORT_STALLED_1,
+                   CoreEvent.PORT_STALLED_2, CoreEvent.PORT_STALLED_3,
+                   CoreEvent.PORT_STALLED_4, CoreEvent.PORT_STALLED_5,
+                   CoreEvent.PORT_STALLED_6, CoreEvent.PORT_STALLED_7,
+                   CoreEvent.PORT_TLAST_0, CoreEvent.PORT_TLAST_1,
+                   CoreEvent.PORT_TLAST_2, CoreEvent.PORT_TLAST_3,
+                   CoreEvent.PORT_TLAST_4, CoreEvent.PORT_TLAST_5,
+                   CoreEvent.PORT_TLAST_6, CoreEvent.PORT_TLAST_7, }
+# fmt: on
+
+
 class PortEvent(GenericEvent):
     def __init__(self, code, port_number, master=True):
-        assert code in {
-            CoreEvent.PORT_IDLE_0,
-            CoreEvent.PORT_IDLE_1,
-            CoreEvent.PORT_IDLE_2,
-            CoreEvent.PORT_IDLE_3,
-            CoreEvent.PORT_IDLE_4,
-            CoreEvent.PORT_IDLE_5,
-            CoreEvent.PORT_IDLE_6,
-            CoreEvent.PORT_IDLE_7,
-            CoreEvent.PORT_RUNNING_0,
-            CoreEvent.PORT_RUNNING_1,
-            CoreEvent.PORT_RUNNING_2,
-            CoreEvent.PORT_RUNNING_3,
-            CoreEvent.PORT_RUNNING_4,
-            CoreEvent.PORT_RUNNING_5,
-            CoreEvent.PORT_RUNNING_6,
-            CoreEvent.PORT_RUNNING_7,
-            CoreEvent.PORT_STALLED_0,
-            CoreEvent.PORT_STALLED_1,
-            CoreEvent.PORT_STALLED_2,
-            CoreEvent.PORT_STALLED_3,
-            CoreEvent.PORT_STALLED_4,
-            CoreEvent.PORT_STALLED_5,
-            CoreEvent.PORT_STALLED_6,
-            CoreEvent.PORT_STALLED_7,
-            CoreEvent.PORT_TLAST_0,
-            CoreEvent.PORT_TLAST_1,
-            CoreEvent.PORT_TLAST_2,
-            CoreEvent.PORT_TLAST_3,
-            CoreEvent.PORT_TLAST_4,
-            CoreEvent.PORT_TLAST_5,
-            CoreEvent.PORT_TLAST_6,
-            CoreEvent.PORT_TLAST_7,
-        }
+        assert code in PortEventCodes
+        # fmt: off
         self.event_number = (
-            0
-            if code
-            in {
-                CoreEvent.PORT_IDLE_0,
-                CoreEvent.PORT_RUNNING_0,
-                CoreEvent.PORT_STALLED_0,
-                CoreEvent.PORT_TLAST_0,
-            }
-            else (
-                1
-                if code
-                in {
-                    CoreEvent.PORT_IDLE_1,
-                    CoreEvent.PORT_RUNNING_1,
-                    CoreEvent.PORT_STALLED_1,
-                    CoreEvent.PORT_TLAST_1,
-                }
-                else (
-                    2
-                    if code
-                    in {
-                        CoreEvent.PORT_IDLE_2,
-                        CoreEvent.PORT_RUNNING_2,
-                        CoreEvent.PORT_STALLED_2,
-                        CoreEvent.PORT_TLAST_2,
-                    }
-                    else (
-                        3
-                        if code
-                        in {
-                            CoreEvent.PORT_IDLE_3,
-                            CoreEvent.PORT_RUNNING_3,
-                            CoreEvent.PORT_STALLED_3,
-                            CoreEvent.PORT_TLAST_3,
-                        }
-                        else (
-                            4
-                            if code
-                            in {
-                                CoreEvent.PORT_IDLE_4,
-                                CoreEvent.PORT_RUNNING_4,
-                                CoreEvent.PORT_STALLED_4,
-                                CoreEvent.PORT_TLAST_4,
-                            }
-                            else (
-                                5
-                                if code
-                                in {
-                                    CoreEvent.PORT_IDLE_5,
-                                    CoreEvent.PORT_RUNNING_5,
-                                    CoreEvent.PORT_STALLED_5,
-                                    CoreEvent.PORT_TLAST_5,
-                                }
-                                else (
-                                    6
-                                    if code
-                                    in {
-                                        CoreEvent.PORT_IDLE_6,
-                                        CoreEvent.PORT_RUNNING_6,
-                                        CoreEvent.PORT_STALLED_6,
-                                        CoreEvent.PORT_TLAST_6,
-                                    }
-                                    else {
-                                        CoreEvent.PORT_IDLE_7,
-                                        CoreEvent.PORT_RUNNING_7,
-                                        CoreEvent.PORT_STALLED_7,
-                                        CoreEvent.PORT_TLAST_7,
-                                    }
-                                )
-                            )
-                        )
-                    )
-                )
-            )
+                 0 if code in { CoreEvent.PORT_IDLE_0,    CoreEvent.PORT_RUNNING_0, 
+                                CoreEvent.PORT_STALLED_0, CoreEvent.PORT_TLAST_0    }
+            else 1 if code in { CoreEvent.PORT_IDLE_1,    CoreEvent.PORT_RUNNING_1,
+                                CoreEvent.PORT_STALLED_1, CoreEvent.PORT_TLAST_1,   }
+            else 2 if code in { CoreEvent.PORT_IDLE_2,    CoreEvent.PORT_RUNNING_2,
+                                CoreEvent.PORT_STALLED_2, CoreEvent.PORT_TLAST_2    }
+            else 3 if code in { CoreEvent.PORT_IDLE_3,    CoreEvent.PORT_RUNNING_3,
+                                CoreEvent.PORT_STALLED_3, CoreEvent.PORT_TLAST_3    }
+            else 4 if code in { CoreEvent.PORT_IDLE_4,    CoreEvent.PORT_RUNNING_4,
+                                CoreEvent.PORT_STALLED_4, CoreEvent.PORT_TLAST_4    }
+            else 5 if code in { CoreEvent.PORT_IDLE_5,    CoreEvent.PORT_RUNNING_5,
+                                CoreEvent.PORT_STALLED_5, CoreEvent.PORT_TLAST_5    }
+            else 6 if code in { CoreEvent.PORT_IDLE_6,    CoreEvent.PORT_RUNNING_6,
+                                CoreEvent.PORT_STALLED_6, CoreEvent.PORT_TLAST_6    }
+            else 7
         )
+        # fmt: on
         self.port_number = port_number
         self.master = master
         super().__init__(code)
