@@ -317,7 +317,7 @@ def my_matmul(M, K, N, m, k, n):
                     C_row_offset = tile_row_block * rows_per_block * m * n_rows * N
                     for i in range(n_cols):
                         C_col_offset = i * n
-                        C_offset = (C_col_offset + C_row_offset) * 2
+                        C_offset = C_col_offset + C_row_offset
                         npu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
                             bd_id=0,
@@ -334,8 +334,8 @@ def my_matmul(M, K, N, m, k, n):
                                 * K
                             )
                             A_col_offset = i * m * K
-                            A_offset = (A_row_offset + A_col_offset) * 2
-                            B_col_offset = i * n * 2
+                            A_offset = A_row_offset + A_col_offset
+                            B_col_offset = i * n
                             npu_dma_memcpy_nd(
                                 metadata=inA_fifo_names[i],
                                 bd_id=2 * tile_row + 1,
