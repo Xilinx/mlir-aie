@@ -142,6 +142,7 @@ int main(int argc, char *argv[]) {
   registerPassManagerCLOptions();
   registerTranslationCLOptions();
   cl::ParseCommandLineOptions(argc, argv);
+
   XCLBinGenConfig TK;
   TK.Verbose = Verbose;
   TK.HostArch = HostArch;

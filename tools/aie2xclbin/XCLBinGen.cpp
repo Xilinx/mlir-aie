@@ -9,6 +9,7 @@
 //===---------------------------------------------------------------------===//
 
 #include "XCLBinGen.h"
+#include <fstream>
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -40,6 +41,7 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
 
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -212,14 +214,30 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
   std::optional<sys::ProcessStatistics> opt_stats(stats);
   SmallVector<StringRef, 8> PArgs = {Program};
   PArgs.append(Args.begin(), Args.end());
-  int result = sys::ExecuteAndWait(Program, PArgs, Env, {}, 0, 0, &err_msg,
-                                   nullptr, &opt_stats);
-  if (Verbose)
+
+  SmallVector<char> tmpPath;
+  auto ec = llvm::sys::fs::createTemporaryFile("run_tool", "", tmpPath);
+  if (ec) {
+    llvm::errs() << "Failed to create temporary file: " << ec.message() << "\n";
+    return -1;
+  }
+
+  // Convert tmpPath to a StringRef:
+  StringRef tp(tmpPath.begin(), tmpPath.size());
+
+  int result = sys::ExecuteAndWait(Program, PArgs, Env, {tp, tp, tp}, 0, 0,
+                                   &err_msg, nullptr, &opt_stats);
+  if (Verbose) {
     llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
                  << std::chrono::duration_cast<std::chrono::duration<float>>(
                         stats.TotalTime)
                         .count()
                  << " code: " << result << "\n";
+    std::ifstream t(tp.str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    llvm::outs() << buffer.str();
+  }
   return result;
 }
 
@@ -369,13 +387,13 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   // compilation in aiecc.py... not sure we need this.
   PassManager passManager(context, ModuleOp::getOperationName());
   applyConfigToPassManager(TK, passManager);
-
   passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
   passManager.addNestedPass<AIE::DeviceOp>(
       AIEX::createAIEBroadcastPacketPass());
   passManager.addNestedPass<AIE::DeviceOp>(
       AIE::createAIERoutePacketFlowsPass());
   passManager.addNestedPass<AIE::DeviceOp>(AIEX::createAIELowerMulticastPass());
+
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
