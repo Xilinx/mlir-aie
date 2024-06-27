@@ -35,7 +35,9 @@ target_link_libraries(aie2xclbin
   MLIRAIEVecDialect
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
+  MLIRBuiltinToLLVMIRTranslation
   MLIRXLLVMToLLVMIRTranslation
+  MLIRLLVMToLLVMIRTranslation
   ADF
   AIE
   AIETransforms

@@ -27,7 +27,9 @@ target_link_libraries(aie-visualize
   MLIRAIEVecDialect
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
+  MLIRBuiltinToLLVMIRTranslation
   MLIRXLLVMToLLVMIRTranslation
+  MLIRLLVMToLLVMIRTranslation
   ADF
   AIE
   AIETransforms
