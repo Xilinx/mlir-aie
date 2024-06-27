@@ -709,8 +709,6 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   setEndianness(endianness);
 };
 
-
-
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
 
