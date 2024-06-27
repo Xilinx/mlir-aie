@@ -509,8 +509,31 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
+
+    /* Returns the provided multi-dimensional data transfer strides in units of
+       address granularity. In the IR, we express strides in units of element
+       data type, but the hardware requires it in units of address granularity.
+       Address granularity currently is 4 bytes for all hardware.
+
+       The returned stride[0] is the second-lowest dimension stride, i.e.
+       stride 1. The lowest stride is currently implicitly one, but this is not
+       a hardware requirement and could be changed in the future.  */
     llvm::SmallVector<int64_t, 3> getStridesInAddressGranularity();
+
+    /* Returns the multi-dimensional data transfer sizes in units of address
+       granularity. These sizes are expressed in units of element data type in
+       the IR, but the hardware requires them to be in units of address
+       granularity. Address granularity currently is 4 bytes for all hardware. 
+
+       The returned size[0] is the lowest dimension size. In the IR, the sizes
+       are given in reverse order. For example, specifying sizes in IR as
+       [1, 2, 3, 4] would result in this function returning [4, 3, 2, 1].
+       */
     llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
+
+    /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
+       target buffer will be skipped. In the IR, offsets are expressed in units
+       of memref element data type size. */
     int64_t getOffsetInBytes(); 
   }];
 

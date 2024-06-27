@@ -3,10 +3,16 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2024 AMD Inc.
 
-import sys
-import argparse
+# REQUIRES: ryzen_ai
+#
+# RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
+# RUN: %python %S/aie2.py > %S/aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt %S/aie2.mlir
+# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++
+# RUN: %run_on_npu ./test | FileCheck %s
+# CHECK: PASS!
 
 from aie.extras.context import mlir_mod_ctx
 

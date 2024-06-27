@@ -138,15 +138,15 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
-    emitOpError("Only constant strides currently supported.");
+    return emitOpError("Only constant strides currently supported.");
   if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
-    emitOpError("Only constant sizes currently supported.");
+    return emitOpError("Only constant sizes currently supported.");
   if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
-    emitOpError("Only constant offsets currently supported.");
+    return emitOpError("Only constant offsets currently supported.");
 
   llvm::SmallVector<int64_t, 3> raw_strides =
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
