@@ -27,8 +27,12 @@ def main():
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
-    argparser.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="bf16")
-    argparser.add_argument("--dtype_out", type=str, choices=["bf16", "i16"], default="bf16")
+    argparser.add_argument(
+        "--dtype_in", type=str, choices=["bf16", "i16"], default="bf16"
+    )
+    argparser.add_argument(
+        "--dtype_out", type=str, choices=["bf16", "i16", "f32"], default="bf16"
+    )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
         my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.n_aie_cols, args.dtype_in, args.dtype_out)
@@ -55,6 +59,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         dtype_out = T.bf16
     elif dtype_out_str == "i16":
         dtype_out = T.i16
+    elif dtype_out_str == "f32":
+        dtype_out = T.f32
 
     if dtype_in_str == "bf16":
         r = 4

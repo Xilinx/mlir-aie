@@ -26,8 +26,12 @@ def main():
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
-    argparser.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="bf16")
-    argparser.add_argument("--dtype_out", type=str, choices=["bf16", "i16"], default="bf16")
+    argparser.add_argument(
+        "--dtype_in", type=str, choices=["bf16", "i16"], default="bf16"
+    )
+    argparser.add_argument(
+        "--dtype_out", type=str, choices=["bf16", "i16", "f32"], default="bf16"
+    )
     args = argparser.parse_args()
     my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.dtype_in, args.dtype_out)
 
@@ -69,11 +73,12 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
         dtype_out = T.bf16
     elif dtype_out_str == "i16":
         dtype_out = T.i16
+    elif dtype_out_str == "f32":
+        dtype_out = T.f32
 
     A_sz = M * K
     B_sz = K * N
     C_sz = M * N
-    C_sz_in_bytes = C_sz * 2
 
     M_div_m = M // m
     K_div_k = K // k
@@ -87,6 +92,8 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     m_x_N = m * N
 
     with mlir_mod_ctx() as ctx:
+
+        C_sz_in_bytes = C_sz * dtype_out().width // 8
 
         @device(AIEDevice.npu1_1col)
         def device_body():
@@ -236,7 +243,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                 # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 5
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    C_row_offset = tile_row_block * rows_per_block * m * N * 2
+                    C_row_offset = tile_row_block * rows_per_block * m * N
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )

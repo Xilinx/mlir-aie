@@ -55,6 +55,10 @@ ifeq ($(dtype_out),i16)
 	dtype_out_cpp=int16_t
 	dtype_acc_cpp=int16_t
 endif
+ifeq ($(dtype_out),f32)
+	dtype_out_cpp=float
+	dtype_acc_cpp=float
+endif
 
 trace_size?=65536
 
