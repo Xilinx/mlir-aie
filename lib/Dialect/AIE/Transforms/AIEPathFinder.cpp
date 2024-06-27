@@ -89,7 +89,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
         return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
     }
   }
-  // todo: add existing with PacketRulesOp?
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
