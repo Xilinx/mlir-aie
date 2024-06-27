@@ -226,7 +226,7 @@ def my_matmul(M, K, N, m, k, n):
                         mem=C,
                         offsets=[0, 0, 0, C_row_offset],
                         sizes=[num_tile_rows, N_div_n, m, n],
-                        strides=[m_x_N, n, N],
+                        strides=[m_x_N, n, N, 1],
                     )
                     for tile_row in range(num_tile_rows):
                         A_row_offset = (
@@ -238,14 +238,14 @@ def my_matmul(M, K, N, m, k, n):
                             mem=A,
                             offsets=[0, 0, 0, A_row_offset],
                             sizes=[N_div_n, K_div_k, m, k],
-                            strides=[0, k, K],
+                            strides=[0, k, K, 1],
                         )
                         npu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
                             sizes=[N_div_n, K_div_k, k, n],
-                            strides=[n, k_x_N, N],
+                            strides=[n, k_x_N, N, 1],
                         )
 
                     npu_sync(column=0, row=0, direction=0, channel=0)

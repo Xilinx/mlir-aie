@@ -30,7 +30,7 @@ module @shimDmaMemcpy{
   aie.device(xcve2302) {
     memref.global "public" @toMem : memref<65536xbf16>
     func.func @sequence(%arg0: memref<65536xbf16>, %arg1: memref<65536xbf16>, %arg2: memref<65536xbf16>) {
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][4, 4, 64, 64][0, 64, 256]) {id = 0 : i64, metadata = @toMem} : memref<65536xbf16>
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][4, 4, 64, 64][0, 64, 256, 1]) {id = 0 : i64, metadata = @toMem} : memref<65536xbf16>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
