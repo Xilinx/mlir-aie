@@ -518,7 +518,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
        The returned stride[0] is the second-lowest dimension stride, i.e.
        stride 1. The lowest stride is currently implicitly one, but this is not
        a hardware requirement and could be changed in the future.  */
-    llvm::SmallVector<int64_t, 3> getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
 
     /* Returns the multi-dimensional data transfer sizes in units of address
        granularity. These sizes are expressed in units of element data type in

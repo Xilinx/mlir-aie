@@ -64,18 +64,18 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
   return success();
 }
 
-llvm::SmallVector<int64_t, 3>
+llvm::SmallVector<int64_t, 4>
 AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
   const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 3> strides =
+  llvm::SmallVector<int64_t, 4> strides =
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
   if (!strides.empty()) {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
       strides[i] = (strides[i] * elemWidth) / addressGranularity;
     }
   }
