@@ -219,7 +219,7 @@ public:
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    llvm::SmallVector<int64_t, 3> strides = op.getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> strides = op.getStridesInAddressGranularity();
     llvm::SmallVector<int64_t, 4> sizes = op.getSizesInAddressGranularity();
     int64_t offset = op.getOffsetInBytes();
 
@@ -260,33 +260,34 @@ public:
     // packet_type
 
     // d0_size
-    if (strides[0])
+    if (strides[1])
       d0_size = IntegerAttr::get(i32ty, sizes[0]);
 
     // d0_stride
-    d0_stride = IntegerAttr::get(i32ty, 0);
+    if (strides[0])
+      d0_stride = IntegerAttr::get(i32ty, strides[0] - 1);
 
     // d1_size
-    if (strides[1])
+    if (strides[2])
       d1_size = IntegerAttr::get(i32ty, sizes[1]);
 
     // d1_stride
-    if (strides[0])
-      d1_stride = IntegerAttr::get(i32ty, strides[0] - 1);
+    if (strides[1])
+      d1_stride = IntegerAttr::get(i32ty, strides[1] - 1);
 
     // d2_stride
-    if (strides[1])
-      d2_stride = IntegerAttr::get(i32ty, strides[1] - 1);
+    if (strides[2])
+      d2_stride = IntegerAttr::get(i32ty, strides[2] - 1);
 
     // iteration_current
 
     // iteration_size
-    if (strides[2])
+    if (strides[3])
       iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
 
     // iteration_stride
-    if (strides[2])
-      iteration_stride = IntegerAttr::get(i32ty, strides[2] - 1);
+    if (strides[3])
+      iteration_stride = IntegerAttr::get(i32ty, strides[3] - 1);
 
     // next_bd
 

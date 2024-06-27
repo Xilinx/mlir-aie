@@ -999,11 +999,11 @@ aie.device(npu1_3col) {
       %total_wts_3_off = arith.constant  35840 : i64
 
       //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-      aiex.npu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0, 1]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0, 1]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
 
       aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return

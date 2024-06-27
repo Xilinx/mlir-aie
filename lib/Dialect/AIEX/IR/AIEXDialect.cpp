@@ -148,7 +148,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       }))
     return emitOpError("Only constant offsets currently supported.");
 
-  llvm::SmallVector<int64_t, 3> raw_strides =
+  llvm::SmallVector<int64_t, 4> raw_strides =
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
@@ -163,15 +163,15 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   if (sizes[3] > 64)
     return emitOpError("Size 3 exceeds the [1:64] range.");
-  if (strides[1] && sizes[1] > 0x3FF)
+  if (strides[2] && sizes[1] > 0x3FF)
     return emitOpError("Size 1 exceeds the [0:1023] range.");
-  if (strides[0] && sizes[0] > 0x3FF)
+  if (strides[1] && sizes[0] > 0x3FF)
     return emitOpError("Size 0 exceeds the [0:1023] range.");
-  if (strides[2] > 0x100000)
+  if (strides[3] > 0x100000)
     return emitOpError("Stride 3 exceeds the [1:1M] range.");
-  if (strides[1] > 0x100000)
+  if (strides[2] > 0x100000)
     return emitOpError("Stride 2 exceeds the [1:1M] range.");
-  if (strides[0] > 0x100000)
+  if (strides[1] > 0x100000)
     return emitOpError("Stride 1 exceeds the [1:1M] range.");
 
   if (offset % 4 != 0) {
@@ -180,7 +180,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   bool error = false;
   std::stringstream msg;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 4; i++) {
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
       error = true;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
@@ -202,6 +202,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         << ". ";
     return emitOpError(msg.str());
   }
+
+  if (strides[0] != 1)
+    return emitOpError("FIXME: This is a test.");
 
   return success();
 }

@@ -19,7 +19,7 @@ module {
       %c1920 = arith.constant 1920 : i64
       %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
-      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920, %c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
@@ -40,7 +40,7 @@ module {
       %c32 = arith.constant 32 : i64
       %c128 = arith.constant 128 : i64
       // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
-      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8, %c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
@@ -57,7 +57,7 @@ module {
       %c2 = arith.constant 2 : i64
       %c2097152 = arith.constant 2097152 : i64
       // expected-error@+1 {{Stride 1 exceeds the [1:1M] range}}
-      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152, %c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
       return
     }
     aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
