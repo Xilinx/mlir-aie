@@ -31,6 +31,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 
+#include <set>
+
 #define DEBUG_TYPE "aie-targets"
 
 using namespace mlir;
@@ -161,9 +163,20 @@ void registerAIETranslations() {
         DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
         collectTiles(targetOp, tiles);
+        // sort the tiles for deterministic output
+        using tileType = std::pair<TileID, Operation *>;
+        struct tileCmp {
+          bool operator()(const tileType &lhs, const tileType &rhs) const {
+            return lhs.first < rhs.first;
+          }
+        };
+        std::set<tileType, tileCmp> sortedTiles;
+        for (auto tile : tiles)
+          sortedTiles.insert(tileType{tile.first, tile.second});
+
         collectBuffers(targetOp, buffers);
 
-        for (auto tile : tiles) {
+        for (auto tile : sortedTiles) {
           Operation *srcTileOp = tile.second;
           TileID srcCoord = cast<TileOp>(srcTileOp).getTileID();
           int srcCol = srcCoord.col;
