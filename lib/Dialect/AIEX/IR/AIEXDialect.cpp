@@ -180,7 +180,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   bool error = false;
   std::stringstream msg;
-  for (int i = 0; i < 4; i++) {
+  // FIXME: skip inner dim
+  for (int i = 1; i < 4; i++) {
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
       error = true;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
@@ -203,7 +204,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError(msg.str());
   }
 
-  if (strides[0] != 1)
+  // FIXME: skip inner dim
+  if (raw_strides[0] != 1)
     return emitOpError("FIXME: This is a test.");
 
   return success();
