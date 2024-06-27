@@ -231,7 +231,7 @@ def my_matmul(M, K, N, m, k, n):
                     for tile_row in range(num_tile_rows):
                         A_row_offset = (
                             ((tile_row_block * rows_per_block) + tile_row) * m * K
-                        ) * 2
+                        )
                         npu_dma_memcpy_nd(
                             metadata="inA",
                             bd_id=2 * tile_row + 1,
