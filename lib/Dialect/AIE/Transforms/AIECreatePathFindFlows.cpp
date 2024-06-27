@@ -479,12 +479,23 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   int numMsels = 4;
   int numArbiters = 6;
 
+  std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+      sortedPacketFlows(packetFlows.begin(), packetFlows.end());
+
+  // To get determinsitic behaviour
+  std::sort(sortedPacketFlows.begin(), sortedPacketFlows.end(),
+            [](const auto &lhs, const auto &rhs) {
+              auto lhsFlowID = lhs.first.second;
+              auto rhsFlowID = rhs.first.second;
+              return lhsFlowID < rhsFlowID;
+            });
+
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the
   // destination ports at the same time For destination ports that appear in
   // different (multicast) flows, it should have a different <arbiterID, msel>
   // value pair for each flow
-  for (const auto &packetFlow : packetFlows) {
+  for (const auto &packetFlow : sortedPacketFlows) {
     // The Source Tile of the flow
     Operation *tileOp = packetFlow.first.first.first;
     if (amselValues.count(tileOp) == 0)
