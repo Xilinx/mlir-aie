@@ -548,13 +548,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
     IRMapping mapper;
     ConversionTarget target(getContext());
-    target.addLegalDialect<func::FuncDialect>();
-    target.addLegalDialect<cf::ControlFlowDialect>();
-    target.addLegalDialect<memref::MemRefDialect>();
-    target.addLegalDialect<VectorDialect>();
-    target.addLegalDialect<arith::ArithDialect>();
-    target.addLegalDialect<math::MathDialect>();
-    target.addLegalOp<func::FuncOp, ModuleOp>();
+    target.addLegalDialect<func::FuncDialect, cf::ControlFlowDialect,
+                           memref::MemRefDialect, VectorDialect,
+                           arith::ArithDialect, math::MathDialect,
+                           LLVM::LLVMDialect>();
+    target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
