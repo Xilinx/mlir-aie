@@ -127,10 +127,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = buffer.getElementTypeBitWidth();
 
-  if (targetModel.getTargetArch() != AIE::AIEArch::AIE2)
-    return emitOpError(
-        "Unsupported target architecture, only AIE2 is supported.");
-
   if (buffer.getElementTypeBitWidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
@@ -164,6 +160,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   llvm::SmallVector<int64_t, 4> strides = getStridesInAddressGranularity();
   llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
   int64_t offset = getOffsetInBytes();
+
+  // The experimental HSA target uses this op on AIE1, skip all the AIE2
+  // specific checks
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
