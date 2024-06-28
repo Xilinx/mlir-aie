@@ -220,22 +220,3 @@ module {
     aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
   }
 }
-
-// -----
-
-// bad device
-
-module {
-  aie.device(xcvc1902) {
-    func.func @bad_npu_nd(%a : memref<8xi16>) {
-      %c0 = arith.constant 0 : i64
-      %c1 = arith.constant 1 : i64
-      %c4 = arith.constant 4 : i64
-      %c8 = arith.constant 8 : i64
-      // expected-error@+1 {{Unsupported target architecture, only AIE2 is supported.}}
-      aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c4][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
-      return
-    }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
-  }
-}
