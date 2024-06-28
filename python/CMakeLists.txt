@@ -33,6 +33,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/xrt.py
     utils/ml.py
     utils/trace.py
+    utils/trace_events_enum.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Extras
