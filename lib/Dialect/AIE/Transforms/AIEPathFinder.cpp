@@ -25,13 +25,15 @@ using namespace xilinx::AIE;
 
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
-
   // find the maxCol and maxRow
-  const auto &targetModel = device.getTargetModel();
-  maxCol = targetModel.columns();
-  maxRow = targetModel.rows();
-  pathfinder->initialize(maxCol, maxRow, targetModel);
+  maxCol = 0;
+  maxRow = 0;
+  for (TileOp tileOp : device.getOps<TileOp>()) {
+    maxCol = std::max(maxCol, tileOp.colIndex());
+    maxRow = std::max(maxRow, tileOp.rowIndex());
+  }
 
+  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
   for (FlowOp flowOp : device.getOps<FlowOp>()) {

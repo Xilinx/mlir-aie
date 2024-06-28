@@ -67,6 +67,7 @@ module {
   %tile_0_3 = aie.tile(0, 3)
   %tile_0_4 = aie.tile(0, 4)
   %tile_0_5 = aie.tile(0, 5)
+  %tile_1_0 = aie.tile(1, 0)
   aie.flow(%tile_0_2, DMA : 0, %tile_0_1, DMA : 0)
   aie.flow(%tile_0_3, DMA : 0, %tile_0_1, DMA : 1)
   aie.flow(%tile_0_4, DMA : 0, %tile_0_1, DMA : 2)
