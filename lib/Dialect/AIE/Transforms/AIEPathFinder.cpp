@@ -25,15 +25,12 @@ using namespace xilinx::AIE;
 
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
-  // find the maxCol and maxRow
-  maxCol = 0;
-  maxRow = 0;
-  for (TileOp tileOp : device.getOps<TileOp>()) {
-    maxCol = std::max(maxCol, tileOp.colIndex());
-    maxRow = std::max(maxRow, tileOp.rowIndex());
-  }
 
-  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+  // find the maxCol and maxRow
+  const auto &targetModel = device.getTargetModel();
+  maxCol = targetModel.columns();
+  maxRow = targetModel.rows();
+  pathfinder->initialize(maxCol, maxRow, targetModel);
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
@@ -497,6 +494,14 @@ Pathfinder::findPaths(const int maxIterations) {
       // add this flow to the proposed solution
       routingSolution[src] = switchSettings;
     }
+
+    for (auto &ch : edges) {
+      if (ch.packetFlowCount > 0) {
+        ch.packetFlowCount = 0;
+        ch.usedCapacity++;
+      }
+    }
+
   } while (!isLegal()); // continue iterations until a legal routing is found
 
   return routingSolution;

@@ -1,4 +1,4 @@
-//===- trace_packet_routing.mlir ------------------------------------------------*- MLIR -*-===//
+//===- test_congestion0.mlir ------------------------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
