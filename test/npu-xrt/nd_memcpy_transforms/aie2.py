@@ -8,8 +8,8 @@
 # REQUIRES: ryzen_ai
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
-# RUN: %python %S/aie2.py > %S/aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt %S/aie2.mlir
+# RUN: %python %S/aie2.py > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
 # RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++
 # RUN: %run_on_npu ./test | FileCheck %s
 # CHECK: PASS!
@@ -92,7 +92,7 @@ def design():
                     mem=A,
                     offsets=[0, 0, 0, 0],
                     sizes=[1, a_len // 4, 2, 2],
-                    strides=[0, 2, a_len // 2],
+                    strides=[0, 2, a_len // 2, 1],
                 )
                 npu_dma_memcpy_nd(
                     metadata=fifo_b.sym_name.value,
@@ -100,7 +100,7 @@ def design():
                     mem=B,
                     offsets=[0, 0, 0, 0],
                     sizes=[1, 2, b_len // 4, 2],
-                    strides=[0, 2, 4],
+                    strides=[0, 2, 4, 1],
                 )
                 npu_dma_memcpy_nd(
                     metadata=fifo_c.sym_name.value,
@@ -108,7 +108,7 @@ def design():
                     mem=C,
                     offsets=[0, 0, 0, c_offset],
                     sizes=[1, 1, 1, c_len],
-                    strides=[0, 0, 0],
+                    strides=[0, 0, 0, 1],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 
