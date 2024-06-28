@@ -110,15 +110,16 @@ module {
       %c16_i64 = arith.constant 16 : i64
       %c4_i64 = arith.constant 4 : i64
       %c0_i64 = arith.constant 0 : i64
+      %c1_i64 = arith.constant 0 : i64
       %c2_i64 = arith.constant 2 : i64
       %c64_i64 = arith.constant 64 : i64
       %c32_i64 = arith.constant 32 : i64
       %c4096_i64 = arith.constant 4096 : i64
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c2_i64, %c64_i64, %c32_i64] [%c4096_i64, %c32_i64, %c64_i64]) {id = 0 : i64, metadata = @outC} : memref<8192xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c64_i64, %c16_i64] [%c0_i64, %c16_i64, %c64_i64]) {id = 1 : i64, metadata = @inA} : memref<8192xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c32_i64, %c32_i64] [%c32_i64, %c2048_i64, %c64_i64]) {id = 2 : i64, metadata = @inB} : memref<8192xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c4096_i64] [%c2_i64, %c4_i64, %c64_i64, %c16_i64] [%c0_i64, %c16_i64, %c64_i64]) {id = 3 : i64, metadata = @inA} : memref<8192xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c32_i64, %c32_i64] [%c32_i64, %c2048_i64, %c64_i64]) {id = 4 : i64, metadata = @inB} : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c2_i64, %c64_i64, %c32_i64] [%c4096_i64, %c32_i64, %c64_i64, %c1_i64]) {id = 0 : i64, metadata = @outC} : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c64_i64, %c16_i64] [%c0_i64, %c16_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @inA} : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c32_i64, %c32_i64] [%c32_i64, %c2048_i64, %c64_i64, %c1_i64]) {id = 2 : i64, metadata = @inB} : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c4096_i64] [%c2_i64, %c4_i64, %c64_i64, %c16_i64] [%c0_i64, %c16_i64, %c64_i64, %c1_i64]) {id = 3 : i64, metadata = @inA} : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c2_i64, %c4_i64, %c32_i64, %c32_i64] [%c32_i64, %c2048_i64, %c64_i64, %c1_i64]) {id = 4 : i64, metadata = @inB} : memref<8192xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
       return
     }
