@@ -56,7 +56,7 @@ module {
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
       %c2097152 = arith.constant 2097152 : i64
-      // expected-error@+1 {{Stride 1 exceeds the [1:1M] range}}
+      // expected-error@+1 {{Stride 1 exceeds the [1:1048576] range}}
       aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
       return
     }
@@ -137,8 +137,6 @@ module {
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64  // Stride of 2 i8s = 2 bytes < 4 byte granularity, should not be possible
       %c8 = arith.constant 8 : i64
-      %c1920 = arith.constant 1920 : i64
-      %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{Stride 1 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c2,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
       return
@@ -157,8 +155,6 @@ module {
       %c2 = arith.constant 2 : i64
       %c4 = arith.constant 4 : i64
       %c8 = arith.constant 8 : i64
-      %c1920 = arith.constant 1920 : i64
-      %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{2 elements at 1 bytes each equal 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
       return
@@ -179,8 +175,6 @@ module {
       %c2 = arith.constant 2 : i64
       %c4 = arith.constant 4 : i64
       %c8 = arith.constant 8 : i64
-      %c1920 = arith.constant 1920 : i64
-      %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{Stride 0 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c0,%c2]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
       return
@@ -200,10 +194,46 @@ module {
       %c1 = arith.constant 1 : i64
       %c3 = arith.constant 3 : i64
       %c8 = arith.constant 8 : i64
-      %c1920 = arith.constant 1920 : i64
-      %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{3 elements at 2 bytes each equal 6 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c3][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
+      return
+    }
+    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+  }
+}
+
+// -----
+
+// bad tile
+
+module {
+  aie.device(npu1) {
+    func.func @bad_npu_nd(%a : memref<8xi16>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c4 = arith.constant 4 : i64
+      %c8 = arith.constant 8 : i64
+      // expected-error@+1 {{Unsupported tile type at (0, 0) Must be ShimNOC, Mem or Core.}}
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c4][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
+      return
+    }
+    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+  }
+}
+
+// -----
+
+// bad device
+
+module {
+  aie.device(xcvc1902) {
+    func.func @bad_npu_nd(%a : memref<8xi16>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c4 = arith.constant 4 : i64
+      %c8 = arith.constant 8 : i64
+      // expected-error@+1 {{Unsupported target architecture, only AIE2 is supported.}}
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c4][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
       return
     }
     aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
