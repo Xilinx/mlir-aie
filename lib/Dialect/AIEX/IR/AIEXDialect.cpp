@@ -157,7 +157,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         return getConstantIntValue(s).value();
       });
 
-  llvm::SmallVector<int64_t, 3> strides = getStridesInAddressGranularity();
+  llvm::SmallVector<int64_t, 4> strides = getStridesInAddressGranularity();
   llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
   int64_t offset = getOffsetInBytes();
 
@@ -178,20 +178,19 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  bool error = false;
-  std::stringstream msg;
-  // FIXME: skip inner dim
-  for (int i = 1; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
+    // strides[0] == 1 is ok iff the tranfer size is a multiple of
+    // addressGranularity, which is checked below
+    if (i == 0 && raw_strides[i] == 1)
+      continue;
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
-      error = true;
+      std::stringstream msg;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
           << (elemWidth / 8) << " bytes = " << (raw_strides[i] * elemWidth / 8)
           << " bytes, which is not divisible by " << (addressGranularity / 8)
           << ". ";
+      return emitOpError(msg.str());
     }
-  }
-  if (error) {
-    return emitOpError(msg.str());
   }
 
   if (raw_sizes[0] * elemWidth % addressGranularity != 0) {
@@ -203,10 +202,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         << ". ";
     return emitOpError(msg.str());
   }
-
-  // FIXME: skip inner dim
-  if (raw_strides[0] != 1)
-    return emitOpError("FIXME: This is a test.");
 
   return success();
 }
