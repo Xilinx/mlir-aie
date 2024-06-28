@@ -34,6 +34,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   }
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
