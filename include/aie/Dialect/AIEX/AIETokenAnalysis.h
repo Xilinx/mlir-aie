@@ -31,9 +31,9 @@ class TokenAnalysis {
   AIE::DeviceOp &device;
   llvm::DenseMap<llvm::StringRef, int> tokenSymbols;
   std::vector<std::pair<llvm::StringRef, std::vector<mlir::Operation *>>>
-    tokenAcqMap;
+      tokenAcqMap;
   std::vector<std::pair<llvm::StringRef, std::vector<mlir::Operation *>>>
-    tokenRelMap;
+      tokenRelMap;
   llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
       tokenChains;
   llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
