@@ -172,7 +172,7 @@ Similarly, to visualize a packet-switched example,
 
 ```
 cd ${path-to-mlir-aie}/tools/aie-routing-command-line
-aie-opt --aie-create-packet-flows='keep-packet-flow-op=true' ../../test/create-packet-flows/test_create_packet_flows6.mlir \
+aie-opt --aie-create-pathfinder-flows='keep-flow-op=true' ../../test/create-packet-flows/test_create_packet_flows6.mlir \
     | aie-translate --aie-flows-to-json > example.json
 python3 visualize.py -j example.json
 ```

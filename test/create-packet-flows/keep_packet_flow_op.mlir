@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows='keep-packet-flow-op=true' %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows='keep-flow-op=true' %s | FileCheck %s
 
 // CHECK-LABEL: module @aie_module {
 // CHECK:   %[[VAL_0:.*]] = aie.tile(7, 0)
@@ -15,14 +15,14 @@
 // CHECK:   %[[VAL_2:.*]] = aie.switchbox(%[[VAL_0:.*]]) {
 // CHECK:     %[[VAL_3:.*]] = aie.amsel<0> (0)
 // CHECK:     %[[VAL_4:.*]] = aie.masterset(South : 3, %[[VAL_3:.*]])
-// CHECK:     aie.packet_rules(North : 3) {
+// CHECK:     aie.packet_rules(North : 0) {
 // CHECK:       aie.rule(31, 10, %[[VAL_3:.*]])
 // CHECK:     }
 // CHECK:   }
 // CHECK:   %[[VAL_5:.*]] = aie.tile(7, 1)
 // CHECK:   %[[VAL_6:.*]] = aie.switchbox(%[[VAL_5:.*]]) {
 // CHECK:     %[[VAL_7:.*]] = aie.amsel<0> (0)
-// CHECK:     %[[VAL_8:.*]] = aie.masterset(South : 3, %[[VAL_6:.*]])
+// CHECK:     %[[VAL_8:.*]] = aie.masterset(South : 0, %[[VAL_6:.*]])
 // CHECK:     aie.packet_rules(DMA : 0) {
 // CHECK:       aie.rule(31, 10, %[[VAL_7:.*]])
 // CHECK:     }
