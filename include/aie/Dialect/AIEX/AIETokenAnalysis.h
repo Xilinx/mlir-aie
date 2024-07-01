@@ -30,10 +30,10 @@ namespace xilinx::AIEX {
 class TokenAnalysis {
   AIE::DeviceOp &device;
   llvm::DenseMap<llvm::StringRef, int> tokenSymbols;
-  llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Operation *, 4>>
-      tokenAcqMap;
-  llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Operation *, 4>>
-      tokenRelMap;
+  std::vector<std::pair<llvm::StringRef, std::vector<mlir::Operation *>>>
+    tokenAcqMap;
+  std::vector<std::pair<llvm::StringRef, std::vector<mlir::Operation *>>>
+    tokenRelMap;
   llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
       tokenChains;
   llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
@@ -46,10 +46,6 @@ public:
   void runAnalysis();
 
   auto getTokenSymbols() const { return tokenSymbols; }
-
-  auto getTokenAcqMap() const { return tokenAcqMap; }
-
-  auto getTokenRelMap() const { return tokenRelMap; }
 
   auto getTokenChains() const { return tokenChains; }
 
