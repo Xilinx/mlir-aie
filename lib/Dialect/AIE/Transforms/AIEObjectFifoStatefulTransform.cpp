@@ -1000,10 +1000,12 @@ struct AIEObjectFifoStatefulTransformPass
     createFifoOps.insert(createFifoOps.end(), range.begin(), range.end());
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
-      int consumerIndex = 0;
+      size_t consumerIndex = 0;
       int consumerDepth = createOp.size();
       ArrayRef<BDDimLayoutArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
+      assert(consumerDims.size() >= 1 &&
+             "At least one consumer `BDDimLayoutArrayAttr` expected");
 
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
@@ -1034,10 +1036,13 @@ struct AIEObjectFifoStatefulTransformPass
         }
         BDDimLayoutArrayAttr emptyDims =
             BDDimLayoutArrayAttr::get(builder.getContext(), {});
+        // Avoid overflow in case of a single BDDimLayoutAttr for multiple
+        // consumers.
+        ArrayRef<BDDimLayoutAttr> currentConsumerDim =
+            consumerIndex < consumerDims.size() ? consumerDims[consumerIndex]
+                                                : consumerDims[0];
         BDDimLayoutArrayAttr singletonFromStreamDims =
-            BDDimLayoutArrayAttr::get(
-                builder.getContext(),
-                ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
+            BDDimLayoutArrayAttr::get(builder.getContext(), currentConsumerDim);
         BDDimLayoutArrayArrayAttr fromStreamDims =
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
