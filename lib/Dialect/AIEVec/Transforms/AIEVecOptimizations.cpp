@@ -265,7 +265,7 @@ struct AIEVecTransformationPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -284,8 +284,8 @@ struct AIEVecTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
@@ -350,7 +350,7 @@ struct AIEVecConvOpTransformationPass
     return "test-aievec-convolution-optimize";
   }
   StringRef getDescription() const final {
-    return "Optimize chains of macs into AIEML conv ops.";
+    return "Optimize chains of macs into AIE2 conv ops.";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     // TODO: Review list of dependent dialects.
@@ -361,7 +361,7 @@ struct AIEVecConvOpTransformationPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -385,8 +385,8 @@ struct AIEVecConvOpTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
@@ -412,7 +412,7 @@ struct AIEVecConvOpTransformationPass
     }
 
     AnalysisManager am = getAnalysisManager();
-    if (aieVersion == AIEArch::AIE_ML) {
+    if (aieVersion == AIEArch::AIE2) {
       populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam,
                                                  backend);
       configureAIEVecConvOpTransformationLegalizations(target, am, backend);
@@ -442,7 +442,7 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
 
   // Add generating aievec convolution ops pass
-  if (options.aieTarget == "aieml") {
+  if (options.aieTarget == "aieml" || options.aieTarget == "aie2") {
     pm.addPass(createAIEVecConvolutionAnalysisPass());
     pm.addPass(createAIEVecConvOpTransformationPass(options));
   }

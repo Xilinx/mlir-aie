@@ -75,14 +75,14 @@ inline bool isAIEOp(mlir::Operation *op) {
 
 // Determine the output type for a vector operation based on whether
 // it operates on integer or floating point data.
-inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIEML) {
+inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIE2) {
   mlir::Type stype = type.getElementType();
 
   if (auto itype = llvm::dyn_cast<mlir::IntegerType>(stype)) {
     // Integer vector types are sized for the appropriate accumulators
     assert(itype.getWidth() <= 64);
     unsigned width;
-    if (AIEML)
+    if (AIE2)
       width = itype.getWidth() <= 16 ? 32 : 64;
     else
       width = itype.getWidth() <= 16 ? 48 : 80;
@@ -92,7 +92,7 @@ inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIEML) {
   }
 
   if (auto ftype = llvm::dyn_cast<mlir::FloatType>(stype)) {
-    if (AIEML && ftype.getWidth() == 16)
+    if (AIE2 && ftype.getWidth() == 16)
       return mlir::VectorType::get(type.getShape(),
                                    mlir::FloatType::getF32(ftype.getContext()));
 
