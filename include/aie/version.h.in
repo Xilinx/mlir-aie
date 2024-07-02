@@ -3,7 +3,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// (c) Copyright 2024 Xilinx Inc.
 
 #ifndef AIE_VERSION_H
 #define AIE_VERSION_H
