@@ -517,7 +517,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>y</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>static_offsets</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
-<tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 3 elements</td></tr>
+<tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute with exactly 4 elements</td></tr>
 <tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
@@ -552,7 +552,7 @@ Example:
   ...
   aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
   ...
-  aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+  aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64, 1]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
   ...
   aiex.npu.dma_wait { symbol = @out0 }
 ```
