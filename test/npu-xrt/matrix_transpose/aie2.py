@@ -8,7 +8,7 @@
 # REQUIRES: ryzen_ai
 #
 # RUN: make -f %S/Makefile clean
-# RUN: env SRC=%S AIETOOLS=%aietools XRT_FLAGS=%xrt_flags make -f %S/Makefile test
+# RUN: env SRC=%S AIETOOLS=%aietools XRT_FLAGS="%xrt_flags" make -f %S/Makefile test
 # RUN: make -f %S/Makefile run | FileCheck %s
 # CHECK: PASS!
 
