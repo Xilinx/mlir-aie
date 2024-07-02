@@ -64,18 +64,18 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
   return success();
 }
 
-llvm::SmallVector<int64_t, 3>
+llvm::SmallVector<int64_t, 4>
 AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
   const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 3> strides =
+  llvm::SmallVector<int64_t, 4> strides =
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
   if (!strides.empty()) {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
       strides[i] = (strides[i] * elemWidth) / addressGranularity;
     }
   }
@@ -148,7 +148,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       }))
     return emitOpError("Only constant offsets currently supported.");
 
-  llvm::SmallVector<int64_t, 3> raw_strides =
+  llvm::SmallVector<int64_t, 4> raw_strides =
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
@@ -157,40 +157,69 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         return getConstantIntValue(s).value();
       });
 
-  llvm::SmallVector<int64_t, 3> strides = getStridesInAddressGranularity();
+  llvm::SmallVector<int64_t, 4> strides = getStridesInAddressGranularity();
   llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
   int64_t offset = getOffsetInBytes();
 
-  if (sizes[3] > 64)
-    return emitOpError("Size 3 exceeds the [1:64] range.");
-  if (strides[1] && sizes[1] > 0x3FF)
-    return emitOpError("Size 1 exceeds the [0:1023] range.");
-  if (strides[0] && sizes[0] > 0x3FF)
-    return emitOpError("Size 0 exceeds the [0:1023] range.");
-  if (strides[2] > 0x100000)
-    return emitOpError("Stride 3 exceeds the [1:1M] range.");
-  if (strides[1] > 0x100000)
-    return emitOpError("Stride 2 exceeds the [1:1M] range.");
-  if (strides[0] > 0x100000)
-    return emitOpError("Stride 1 exceeds the [1:1M] range.");
+  // The experimental HSA target uses this op on AIE1, skip all the AIE2
+  // specific checks
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
+
+  uint32_t wrap_bits = 0;
+  uint32_t step_bits = 0;
+  uint32_t iter_bits = 6;
+  if (targetModel.isShimNOCTile(getX(), getY())) {
+    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
+    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+  } else if (targetModel.isMemTile(getX(), getY())) {
+    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
+  } else if (targetModel.isCoreTile(getX(), getY())) {
+    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+  } else {
+    return emitOpError("Unsupported tile type at (" + std::to_string(getX()) +
+                       ", " + std::to_string(getY()) +
+                       ") Must be ShimNOC, Mem or Core.");
+  }
+
+  if (sizes[3] > (1 << iter_bits))
+    return emitOpError(
+        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
+  if (strides[2] && sizes[1] > (1 << wrap_bits) - 1)
+    return emitOpError("Size 1 exceeds the [0:" +
+                       std::to_string((1 << wrap_bits) - 1) + "] range.");
+  if (strides[1] && sizes[0] > (1 << wrap_bits) - 1)
+    return emitOpError("Size 0 exceeds the [0:" +
+                       std::to_string((1 << wrap_bits) - 1) + "] range.");
+  if (strides[3] > (1 << step_bits))
+    return emitOpError("Stride 3 exceeds the [1:" +
+                       std::to_string(1 << step_bits) + "] range.");
+  if (strides[2] > (1 << step_bits))
+    return emitOpError("Stride 2 exceeds the [1:" +
+                       std::to_string(1 << step_bits) + "] range.");
+  if (strides[1] > (1 << step_bits))
+    return emitOpError("Stride 1 exceeds the [1:" +
+                       std::to_string(1 << step_bits) + "] range.");
 
   if (offset % 4 != 0) {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  bool error = false;
-  std::stringstream msg;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 4; i++) {
+    // strides[0] == 1 is ok iff the tranfer size is a multiple of
+    // addressGranularity, which is checked below
+    if (i == 0 && raw_strides[i] == 1)
+      continue;
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
-      error = true;
+      std::stringstream msg;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
           << (elemWidth / 8) << " bytes = " << (raw_strides[i] * elemWidth / 8)
           << " bytes, which is not divisible by " << (addressGranularity / 8)
           << ". ";
+      return emitOpError(msg.str());
     }
-  }
-  if (error) {
-    return emitOpError(msg.str());
   }
 
   if (raw_sizes[0] * elemWidth % addressGranularity != 0) {

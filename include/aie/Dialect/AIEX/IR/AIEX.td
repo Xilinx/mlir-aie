@@ -492,7 +492,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
@@ -518,7 +518,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
        The returned stride[0] is the second-lowest dimension stride, i.e.
        stride 1. The lowest stride is currently implicitly one, but this is not
        a hardware requirement and could be changed in the future.  */
-    llvm::SmallVector<int64_t, 3> getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
 
     /* Returns the multi-dimensional data transfer sizes in units of address
        granularity. These sizes are expressed in units of element data type in
@@ -539,7 +539,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
   }];
 
   let hasVerifier = 1;
@@ -556,7 +556,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
       ...
       aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
       ...
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64, 1]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
       ...
       aiex.npu.dma_wait { symbol = @out0 }
     ```
