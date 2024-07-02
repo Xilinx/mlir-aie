@@ -20,6 +20,19 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
+static void tokenMapPushBack(
+    std::vector<std::pair<llvm::StringRef, std::vector<mlir::Operation *>>>
+        &map,
+    StringRef tokenName, Operation *op) {
+  for (auto &pair : map) {
+    if (pair.first == tokenName) {
+      pair.second.push_back(op);
+      return;
+    }
+  }
+  map.push_back({tokenName, {op}});
+}
+
 void xilinx::AIEX::TokenAnalysis::runAnalysis() {
 
   // Collecting token symbols
@@ -39,10 +52,10 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
       if (op.acquire()) {
-        tokenAcqMap[tokenName].push_back(op.getOperation());
+        tokenMapPushBack(tokenAcqMap, tokenName, op.getOperation());
         visitors[tokenName].push_back(op);
       } else {
-        tokenRelMap[tokenName].push_back(op.getOperation());
+        tokenMapPushBack(tokenRelMap, tokenName, op.getOperation());
         if (!visitors[tokenName].empty()) {
           Operation *Op = visitors[tokenName].pop_back_val();
           tokenPairs.push_back({Op, op.getOperation()});
@@ -53,8 +66,8 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
       Operation *Op = op.getOperation();
-      tokenAcqMap[tokenName].push_back(Op);
-      tokenRelMap[tokenName].push_back(Op);
+      tokenMapPushBack(tokenAcqMap, tokenName, op.getOperation());
+      tokenMapPushBack(tokenRelMap, tokenName, op.getOperation());
       tokenPairs.push_back({Op, Op});
     }
   });
@@ -91,7 +104,12 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
   for (const auto &map : tokenRelMap) {
     StringRef tokenName = map.first;
     auto tokenRels = map.second;
-    auto tokenAcqs = tokenAcqMap[tokenName];
+    auto tokenAcqs = [&]() {
+      for (auto &pair : tokenAcqMap)
+        if (pair.first == tokenName)
+          return pair.second;
+      return std::vector<Operation *>();
+    }();
     for (auto ROp : tokenRels) {
 
       if (auto op = dyn_cast<UseTokenOp>(ROp))
