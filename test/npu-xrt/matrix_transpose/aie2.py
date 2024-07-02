@@ -7,9 +7,11 @@
 
 # REQUIRES: ryzen_ai
 #
-# RUN: make -f %S/Makefile clean
-# RUN: env SRC=%S AIETOOLS=%aietools AIECC=$(which aiecc.py) XRT_FLAGS="%xrt_flags" make -f %S/Makefile test
-# RUN: make -f %S/Makefile run | FileCheck %s
+# RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
+# RUN: %python %S/aie2.py > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: clang %S/test.cpp -o test -std=c++17 -Wall %xrt_flags -lrt -lstdc++
+# RUN: %run_on_npu ./test | FileCheck %s
 # CHECK: PASS!
 
 from aie.extras.context import mlir_mod_ctx
