@@ -30,6 +30,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include "llvm/Support/raw_ostream.h"
 #include <bitset>
 #include <optional>
 #include <tuple>
@@ -678,21 +679,39 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     }
 
     // Prepare lhr/rhs for the aievec.mul_elem op
-    VectorType targetInputType =
-        createVectorType(512 / lBitWidth, lSrcType.getElementType());
-    if (rBitWidth > lBitWidth)
-      targetInputType =
-          createVectorType(512 / rBitWidth, rSrcType.getElementType());
-    auto lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       lval, targetInputType);
-    auto rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       rval, targetInputType);
+    unsigned bitWidth = (rBitWidth > lBitWidth) ? rBitWidth : lBitWidth;
+    Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
+                                               : lSrcType.getElementType();
+    unsigned numLanes = 0;
+    if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
+      numLanes = 16;
+    } else if (isa<IntegerType>(srcElemType) &&
+               (bitWidth == 8 || bitWidth == 16)) {
+      numLanes = 32;
+    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) {
+      numLanes = 16;
+    } else {
+      return failure();
+    }
+    VectorType targetInputType = createVectorType(numLanes, srcElemType);
+    auto lValConverted = lval;
+    auto rValConverted = rval;
+    if (targetInputType != lSrcType) {
+      lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                    lval, targetInputType)
+                          .value();
+    }
+    if (targetInputType != rSrcType) {
+      rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                    rval, targetInputType)
+                          .value();
+    }
     if (!lValConverted || !rValConverted)
       return failure();
 
     // Create an aievec.mul_elem op
     auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, *lValConverted, *rValConverted);
+        mulOp.getLoc(), accType, lValConverted, rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -752,8 +771,10 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     // Decide the accType for aievec.mul_elem based on mulOp's lhs & rhs
     auto lval = adaptor.getLhs();
     auto rval = adaptor.getRhs();
+
     lval = getSourceOfWideningOp(lval).value_or(lval);
     rval = getSourceOfWideningOp(rval).value_or(rval);
+
     auto lSrcType = cast<VectorType>(lval.getType());
     auto rSrcType = cast<VectorType>(rval.getType());
     unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
@@ -764,22 +785,39 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     }
 
     // Prepare lhr/rhs for the aievec.mul_elem op
-    VectorType targetInputType =
-        createVectorType(512 / lBitWidth, lSrcType.getElementType());
-    if (rBitWidth > lBitWidth) {
-      targetInputType =
-          createVectorType(512 / rBitWidth, rSrcType.getElementType());
+    unsigned bitWidth = (rBitWidth > lBitWidth) ? rBitWidth : lBitWidth;
+    Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
+                                               : lSrcType.getElementType();
+    unsigned numLanes = 0;
+    if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
+      numLanes = 16;
+    } else if (isa<IntegerType>(srcElemType) &&
+               (bitWidth == 8 || bitWidth == 16)) {
+      numLanes = 32;
+    } else if (isa<IntegerType>(srcElemType) && (bitWidth == 32)) {
+      numLanes = 16;
+    } else {
+      return failure();
     }
-    auto lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       lval, targetInputType);
-    auto rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                       rval, targetInputType);
+    VectorType targetInputType = createVectorType(numLanes, srcElemType);
+    auto lValConverted = lval;
+    auto rValConverted = rval;
+    if (targetInputType != lSrcType) {
+      lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                    lval, targetInputType)
+                          .value();
+    }
+    if (targetInputType != rSrcType) {
+      rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                    rval, targetInputType)
+                          .value();
+    }
     if (!lValConverted || !rValConverted)
       return failure();
 
     // Create an aievec.mul_elem op
     auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, *lValConverted, *rValConverted);
+        mulOp.getLoc(), accType, lValConverted, rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();

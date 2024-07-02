@@ -146,4 +146,14 @@ class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
                                    rhs, VectorOfShapeAndType<[8, 4], BF16>,
                                    acc, VectorOfShapeAndType<[4, 4], F32>>]>>;
 
+class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs, string acc> :
+  PredOpTrait<lhs # " x " # rhs # " = " # acc # " is a valid AIE2 " #
+    "element-wise multiply and accumulate op 2",
+    Or<[  
+      And <[ElementTypeIsPred<lhs,I8>,  ElementTypeIsPred<acc,I32>]>, 
+      And <[ElementTypeIsPred<lhs,I16>, ElementTypeIsPred<acc,I32>]>, 
+      And <[ElementTypeIsPred<lhs,I32>, ElementTypeIsPred<acc,I64>]>, 
+      And <[ElementTypeIsPred<lhs,BF16>, ElementTypeIsPred<acc,F32>]>, 
+      And <[ElementTypeIsPred<lhs,F32>,  ElementTypeIsPred<acc,F32>]>
+    ]>>;
 #endif
