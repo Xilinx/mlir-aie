@@ -7,9 +7,9 @@
 
 # REQUIRES: ryzen_ai
 #
-# RUN: make clean
-# RUN: env SRC=%S AIETOOLS=%aietools XRT_FLAGS=%xrt_flags make test
-# RUN: make run | FileCheck %s
+# RUN: make -f %S/Makefile clean
+# RUN: env SRC=%S AIETOOLS=%aietools XRT_FLAGS=%xrt_flags make -f %S/Makefile test
+# RUN: make -f %S/Makefile run | FileCheck %s
 # CHECK: PASS!
 
 from aie.extras.context import mlir_mod_ctx
