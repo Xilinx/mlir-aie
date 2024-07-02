@@ -19,11 +19,9 @@ programming_examples/ @denolf @jgmelber @fifield
 python/             @makslevental @AndraBisca
 reference_designs/  @denolf @jgmelber @fifield
 runtime_lib/        @stephenneuendorffer
-test/aie2xclbin/    @erieaton-amd @newling
 test/aievec/        @jsetoain
 test/python/        @makslevental @AndraBisca
 test/objectFifo*/   @AndraBisca
 tools/              @stephenneuendorffer @makslevental
-tools/aie2xclbin/   @erieaton-amd @newling
 tutorials/          @denolf @jackl-xilinx
 utils/              @makslevental @jackl-xilinx @jgmelber
