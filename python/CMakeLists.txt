@@ -316,7 +316,6 @@ else ()
       AIEPythonExtensions
     COMMON_CAPI_LINK_LIBS
       AIEAggregateCAPI
-      AIECAPI
   )
 
 endif ()
