@@ -34,7 +34,8 @@ if not os.path.exists(peano_install_dir):
 if not os.path.exists(peano_install_dir):
     peano_install_dir = "peano_not_found"
 
+
 def install_path():
     path = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(path, '..', '..', '..', '..')
+    path = os.path.join(path, "..", "..", "..", "..")
     return os.path.realpath(path)
