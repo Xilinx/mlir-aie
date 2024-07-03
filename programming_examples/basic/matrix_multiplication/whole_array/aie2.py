@@ -142,7 +142,10 @@ def my_matmul(M, K, N, m, k, n):
             # tiles; distribute it along rows of AIE cores.
             start_row = col * n_A_tiles_per_shim
             stop_row = start_row + n_A_tiles_per_shim
-            object_fifo_link(A_l3l2_fifos[col], [A_l2l1_fifos[row] for row in range(start_row, stop_row)])
+            object_fifo_link(
+                A_l3l2_fifos[col],
+                [A_l2l1_fifos[row] for row in range(start_row, stop_row)],
+            )
 
         # Input B
         for col in range(n_aie_cols):
@@ -240,9 +243,15 @@ def my_matmul(M, K, N, m, k, n):
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
             # We only transfer 5 rows of tiles at once before starting a new transfer block.
-            tb_max_n_rows = 5  # tb = transfer block; block of transfers before sync call
-            for tb in range((M // m // n_aie_rows + tb_max_n_rows - 1) // tb_max_n_rows):
-                tb_n_rows = min([tb_max_n_rows, M // m // n_aie_rows - tb * tb_max_n_rows])
+            tb_max_n_rows = (
+                5  # tb = transfer block; block of transfers before sync call
+            )
+            for tb in range(
+                (M // m // n_aie_rows + tb_max_n_rows - 1) // tb_max_n_rows
+            ):
+                tb_n_rows = min(
+                    [tb_max_n_rows, M // m // n_aie_rows - tb * tb_max_n_rows]
+                )
                 C_row_offset = tb * tb_max_n_rows * m * n_aie_rows * N
                 for col in range(n_aie_cols):
                     C_col_offset = col * n
@@ -257,10 +266,7 @@ def my_matmul(M, K, N, m, k, n):
                     )
                     for tile_row in range(tb_n_rows):
                         A_block_offset = (
-                            ((tb * tb_max_n_rows) + tile_row)
-                            * n_aie_rows
-                            * m
-                            * K
+                            ((tb * tb_max_n_rows) + tile_row) * n_aie_rows * m * K
                         )
                         A_row_offset = col * n_A_tiles_per_shim * m * K
                         A_offset = A_block_offset + A_row_offset
@@ -270,7 +276,12 @@ def my_matmul(M, K, N, m, k, n):
                             bd_id=2 * tile_row + 1,
                             mem=A,
                             offsets=[0, 0, 0, A_offset],
-                            sizes=[N // n // n_aie_cols, K // k, m * n_A_tiles_per_shim, k],
+                            sizes=[
+                                N // n // n_aie_cols,
+                                K // k,
+                                m * n_A_tiles_per_shim,
+                                k,
+                            ],
                             strides=[0, k, K, 1],
                         )
                         npu_dma_memcpy_nd(
