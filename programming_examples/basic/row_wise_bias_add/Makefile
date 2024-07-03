@@ -65,4 +65,4 @@ sign: ${xclbin_target}
 
 .PHONY: clean
 clean:
-	rm -r build
+	-rm -r build
