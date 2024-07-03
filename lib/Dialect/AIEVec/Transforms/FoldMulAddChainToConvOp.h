@@ -19,7 +19,7 @@ enum class TargetBackend;
 namespace aievec {
 //===----------------------------------------------------------------------===//
 // This is the implementation of the folding pass from mul add chain
-// to AIEVec convolution operations, compatible with the AIE-ML architecture.
+// to AIEVec convolution operations, compatible with the AIE2 architecture.
 //===----------------------------------------------------------------------===//
 
 // Configure the legalizations for aievec conv op transformation

@@ -563,7 +563,7 @@ struct ExtractTransposeFromContractionOp
 };
 
 //============================================================================//
-//============ AIEML canonicalization conversion patterns ===============//
+//============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
 
 //============================================================================//
@@ -605,11 +605,11 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns,
 }
 
 //============================================================================//
-//============== AIEML-specific canonicalization configuration ===============//
+//============== AIE2-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
-                                                    TargetBackend backend) {
+static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target,
+                                                   TargetBackend backend) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -628,8 +628,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
 }
 
 static void
-populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns,
-                                            TargetBackend backend) {
+populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                           TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
   patterns
@@ -680,7 +680,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -700,8 +700,8 @@ struct CanonicalizeVectorForAIEVecPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
@@ -732,8 +732,8 @@ struct CanonicalizeVectorForAIEVecPass
       populateAIEv1CanonicalizeConversionPatterns(patterns, backend);
       configureAIEv1CanonicalizeLegalizations(target, backend);
     } else {
-      populateAIEMLCanonicalizeConversionPatterns(patterns, backend);
-      configureAIEMLCanonicalizeLegalizations(target, backend);
+      populateAIE2CanonicalizeConversionPatterns(patterns, backend);
+      configureAIE2CanonicalizeLegalizations(target, backend);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {

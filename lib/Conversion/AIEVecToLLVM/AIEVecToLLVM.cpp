@@ -2160,7 +2160,7 @@ class MatMulOpConversion
   }
 };
 
-// This pattern folds aievec.cast op. For AIE-ML, the accumulators are in 32/64
+// This pattern folds aievec.cast op. For AIE2, the accumulators are in 32/64
 // bits, and the vectors are in 4/8/16/32 bits. Hence, we don't have to
 // explicitly express the casting between accumulators and vectors at the LLVM
 // dialect level. The backend LLVM compiler will decide the correct accumulator
