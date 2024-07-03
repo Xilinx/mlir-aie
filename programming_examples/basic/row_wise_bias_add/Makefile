@@ -17,6 +17,8 @@ XILINX_VITIS?=/tools/Xilinx/Vitis/2023.2
 
 # ---
 
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
@@ -37,20 +39,20 @@ n=32
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
-build/kernel.o: kernel.cc
+build/kernel.o: ${srcdir}/kernel.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c ${<:%=../%} -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
 
-${mlir_target}: aie2.py
+${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
 	python3 $< $M $N $m $n > $@
 
 ${xclbin_target}: ${mlir_target} build/kernel.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} ${<:%=../%}
 
-${host_target}: test.cpp ${xclbin_target}
+${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
 	${CXX} -DM=$M -DN=$N -o $@ $< -lxrt_coreutil
 
