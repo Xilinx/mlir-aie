@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK:   Error in bank(s) : 0 
 // CHECK:   MemoryMap:

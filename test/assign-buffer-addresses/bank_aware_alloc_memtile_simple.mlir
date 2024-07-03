@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "a"} : memref<65536xi32>
 
 module @test {
