@@ -220,14 +220,22 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_tutorials/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_tutorials/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
 
     Here, there are a few common events in our waveform that's further described below.
-    * `Event0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
-    * `Event1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
-    * `VectorInstr` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
-    * `PortRunning0` - Mapped to Port 0 which is by default configured to the S2MM0 input (DMA from stream to local memory). This is usually the first input.
-    * `PortRunning1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
-    * `LockStall` - Any locks stalls
-    * `LockAcquiresInstr` - Any lock acquire requests
-    * `LockReleaseInstr` - Any lock release requests
+    * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
+    * `INSTR_EVENT_1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
+    * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
+    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 7 ports. To select which port to listen to, use the `PortEvent` Python class as your event. For example, to listen to master port 1:
+        ```
+        from aie.utils.trace import configure_simple_tracing_aie2, PortEvent
+        from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+        trace_utils.configure_simple_tracing_aie2(
+            # ... other arguments as above
+            events=[trace_utils.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
+        )
+        ```
+    * `PORT_RUNNING_1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
+    * `LOCK_STALL` - Any locks stalls
+    * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests
+    * `INSTR_LOCK_RELEASE_REQ` - Any lock release requests
 
     We will look at more exercises with Trace and performance measurement in the next [section](../section-4c).
 

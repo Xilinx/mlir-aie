@@ -37,12 +37,12 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_15:.*]] = aie.mem(%[[VAL_0]]) {
-// CHECK:             aie.use_lock(%[[VAL_1]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 256)
-// CHECK:             aie.use_lock(%[[VAL_1]], Release, 1)
 // CHECK:             aie.use_lock(%[[VAL_2]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 256)
 // CHECK:             aie.use_lock(%[[VAL_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_1]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.use_lock(%[[VAL_1]], Release, 1)
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_18:.*]] = aie.core(%[[VAL_5]]) {
@@ -56,10 +56,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_20:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             aie.use_lock(%[[VAL_2]], Acquire, 1)
 // CHECK:             aie.use_lock(%[[VAL_1]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_1]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_2]], Acquire, 1)
 // CHECK:             aie.use_lock(%[[VAL_2]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_1]], Release, 0)
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           aie.flow(%[[VAL_5]], DMA : 0, %[[VAL_0]], DMA : 0)

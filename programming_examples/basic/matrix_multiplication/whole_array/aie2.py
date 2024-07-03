@@ -317,14 +317,14 @@ def my_matmul(M, K, N, m, k, n):
                     C_row_offset = tile_row_block * rows_per_block * m * n_rows * N
                     for i in range(n_cols):
                         C_col_offset = i * n
-                        C_offset = (C_col_offset + C_row_offset) * 2
+                        C_offset = C_col_offset + C_row_offset
                         npu_dma_memcpy_nd(
                             metadata=outC_fifo_names[i],
                             bd_id=0,
                             mem=C,
                             offsets=[0, 0, 0, C_offset],
                             sizes=[num_tile_rows, N // n // n_cols, m * n_rows, n],
-                            strides=[m * n_rows * N, n * n_cols, N],
+                            strides=[m * n_rows * N, n * n_cols, N, 1],
                         )
                         for tile_row in range(num_tile_rows):
                             A_row_offset = (
@@ -334,15 +334,15 @@ def my_matmul(M, K, N, m, k, n):
                                 * K
                             )
                             A_col_offset = i * m * K
-                            A_offset = (A_row_offset + A_col_offset) * 2
-                            B_col_offset = i * n * 2
+                            A_offset = A_row_offset + A_col_offset
+                            B_col_offset = i * n
                             npu_dma_memcpy_nd(
                                 metadata=inA_fifo_names[i],
                                 bd_id=2 * tile_row + 1,
                                 mem=A,
                                 offsets=[0, 0, 0, A_offset],
                                 sizes=[N // n // n_cols, K // k, m, k],
-                                strides=[0, k, K],
+                                strides=[0, k, K, 1],
                             )
                             npu_dma_memcpy_nd(
                                 metadata=inB_fifo_names[i],
@@ -350,7 +350,7 @@ def my_matmul(M, K, N, m, k, n):
                                 mem=B,
                                 offsets=[0, 0, 0, B_col_offset],
                                 sizes=[N // n // n_cols, K // k, k, n],
-                                strides=[n * n_cols, k * N, N],
+                                strides=[n * n_cols, k * N, N, 1],
                             )
                     for i in range(n_cols):
                         npu_sync(column=i, row=0, direction=0, channel=0)

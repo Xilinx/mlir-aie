@@ -50,7 +50,35 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
                << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                << "\n");
-    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
+    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
+  }
+
+  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+    Region &r = pktFlowOp.getPorts();
+    Block &b = r.front();
+    Port srcPort, dstPort;
+    TileOp srcTile, dstTile;
+    TileID srcCoords, dstCoords;
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
+        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        srcPort = pktSource.port();
+        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+        dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        dstPort = pktDest.port();
+        dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        LLVM_DEBUG(llvm::dbgs()
+                   << "\tAdding Packet Flow: (" << srcCoords.col << ", "
+                   << srcCoords.row << ")"
+                   << stringifyWireBundle(srcPort.bundle) << srcPort.channel
+                   << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
+                   << stringifyWireBundle(dstPort.bundle) << dstPort.channel
+                   << "\n");
+        // todo: support many-to-one & many-to-many?
+        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
+      }
+    }
   }
 
   // add existing connections so Pathfinder knows which resources are
@@ -203,9 +231,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 // Add a flow from src to dst can have an arbitrary number of dst locations due
 // to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                         Port dstPort) {
+                         Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists
-  for (auto &[src, dsts] : flows) {
+  for (auto &[isPkt, src, dsts] : flows) {
     SwitchboxNode *existingSrc = src.sb;
     assert(existingSrc && "nullptr flow source");
     if (Port existingPort = src.port; existingSrc->col == srcCoords.col &&
@@ -233,7 +261,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
         return sb->col == dstCoords.col && sb->row == dstCoords.row;
       });
   assert(matchingDstSb != graph.end() && "didn't add flow destinations");
-  flows.push_back({PathEndPointNode{*matchingSrcSb, srcPort},
+  flows.push_back({isPacketFlow, PathEndPointNode{*matchingSrcSb, srcPort},
                    std::vector<PathEndPointNode>{{*matchingDstSb, dstPort}}});
 }
 
@@ -398,7 +426,7 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
-    for (const auto &[src, dsts] : flows) {
+    for (const auto &[isPkt, src, dsts] : flows) {
       // Use dijkstra to find path given current demand from the start
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
@@ -443,7 +471,18 @@ Pathfinder::findPaths(const int maxIterations) {
           switchSettings[*preds[curr]].dsts.insert(
               {ch->bundle, ch->usedCapacity});
 
-          ch->usedCapacity++;
+          if (isPkt) {
+            ch->packetFlowCount++;
+            // up to 32 packet strams flow through a port
+            if (ch->packetFlowCount > 32) {
+              ch->packetFlowCount = 0;
+              ch->usedCapacity++;
+            }
+          } else {
+            ch->packetFlowCount = 0;
+            ch->usedCapacity++;
+          }
+
           // if at capacity, bump demand to discourage using this Channel
           if (ch->usedCapacity >= ch->maxCapacity) {
             LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
@@ -458,6 +497,14 @@ Pathfinder::findPaths(const int maxIterations) {
       // add this flow to the proposed solution
       routingSolution[src] = switchSettings;
     }
+
+    for (auto &ch : edges) {
+      if (ch.packetFlowCount > 0) {
+        ch.packetFlowCount = 0;
+        ch.usedCapacity++;
+      }
+    }
+
   } while (!isLegal()); // continue iterations until a legal routing is found
 
   return routingSolution;

@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: stephenn
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // Fixme: may fail non-deterministically
 
@@ -21,7 +21,7 @@ module @test_create_packet_flows6 {
 // CHECK:           %{{.*}} = aie.amsel<0> (0)
 // CHECK:           %[[VAL_3:.*]] = aie.masterset(East : 0, %[[VAL_2:.*]])
 // CHECK:           aie.packet_rules(DMA : 0) {
-// CHECK:             aie.rule(28, 3, %[[VAL_2]])
+// CHECK:             aie.rule(28, 0, %[[VAL_2]])
 // CHECK:           }
 // CHECK:         }
 
@@ -32,7 +32,7 @@ module @test_create_packet_flows6 {
 // CHECK:           %[[VAL_8:.*]] = aie.masterset(DMA : 0, %[[VAL_7:.*]])
 // CHECK:           %[[VAL_9:.*]] = aie.masterset(East : 0, %[[VAL_6:.*]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(28, 3, %[[VAL_6]])
+// CHECK:             aie.rule(28, 0, %[[VAL_6]])
 // CHECK:             aie.rule(31, 0, %[[VAL_7]])
 // CHECK:           }
 // CHECK:         }
@@ -44,7 +44,7 @@ module @test_create_packet_flows6 {
 // CHECK:           %[[VAL_14:.*]] = aie.masterset(DMA : 0, %[[VAL_13:.*]])
 // CHECK:           %[[VAL_15:.*]] = aie.masterset(East : 0, %[[VAL_12:.*]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(30, 3, %[[VAL_12]])
+// CHECK:             aie.rule(30, 2, %[[VAL_12]])
 // CHECK:             aie.rule(31, 1, %[[VAL_13]])
 // CHECK:           }
 // CHECK:         }
