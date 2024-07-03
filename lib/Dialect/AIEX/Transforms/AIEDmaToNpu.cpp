@@ -219,31 +219,9 @@ public:
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
-        llvm::reverse(op.getMixedStrides()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
-        llvm::reverse(op.getMixedSizes()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
-        llvm::reverse(op.getMixedOffsets()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-
-    MemRefType buffer = op.getMemref().getType();
-    const auto &targetModel = AIE::getTargetModel(op);
-    auto elemWidth = buffer.getElementTypeBitWidth();
-    auto addressGranularity = targetModel.getAddressGenGranularity();
-    if (elemWidth < addressGranularity) {
-      if (!strides.empty()) {
-        for (int i = 0; i < 3; i++) {
-          strides[i] = (strides[i] * elemWidth) / addressGranularity;
-        }
-      }
-      if (!sizes.empty())
-        sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
-      if (!offsets.empty())
-        offsets[0] = (offsets[0] * elemWidth) / addressGranularity;
-    }
+    llvm::SmallVector<int64_t, 4> strides = op.getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> sizes = op.getSizesInAddressGranularity();
+    int64_t offset = op.getOffsetInBytes();
 
     // column
     column = IntegerAttr::get(i32ty, col);
@@ -271,19 +249,6 @@ public:
     buffer_length = IntegerAttr::get(i32ty, repeat_length);
 
     // buffer_offset
-    size_t stride = 1;
-    size_t offset = 0;
-    MemRefType my_memref = op.getMemref().getType();
-    auto shape = my_memref.getShape();
-    size_t R = shape.size();
-    size_t el_bit_width = my_memref.getElementTypeBitWidth();
-    assert(el_bit_width % 8 == 0 &&
-           "Expected Memref element bitwidth to be multiple of 8.");
-    size_t S = el_bit_width / 8;
-    for (size_t i = 0; i < R; i++) {
-      offset += offsets[i] * stride * S;
-      stride *= shape[R - i - 1];
-    }
     buffer_offset = IntegerAttr::get(i32ty, offset);
 
     // enable_packet
@@ -295,33 +260,34 @@ public:
     // packet_type
 
     // d0_size
-    if (strides[0])
+    if (strides[1])
       d0_size = IntegerAttr::get(i32ty, sizes[0]);
 
     // d0_stride
-    d0_stride = IntegerAttr::get(i32ty, 0);
+    if (strides[0])
+      d0_stride = IntegerAttr::get(i32ty, strides[0] - 1);
 
     // d1_size
-    if (strides[1])
+    if (strides[2])
       d1_size = IntegerAttr::get(i32ty, sizes[1]);
 
     // d1_stride
-    if (strides[0])
-      d1_stride = IntegerAttr::get(i32ty, strides[0] - 1);
+    if (strides[1])
+      d1_stride = IntegerAttr::get(i32ty, strides[1] - 1);
 
     // d2_stride
-    if (strides[1])
-      d2_stride = IntegerAttr::get(i32ty, strides[1] - 1);
+    if (strides[2])
+      d2_stride = IntegerAttr::get(i32ty, strides[2] - 1);
 
     // iteration_current
 
     // iteration_size
-    if (strides[2])
+    if (strides[3])
       iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
 
     // iteration_stride
-    if (strides[2])
-      iteration_stride = IntegerAttr::get(i32ty, strides[2] - 1);
+    if (strides[3])
+      iteration_stride = IntegerAttr::get(i32ty, strides[3] - 1);
 
     // next_bd
 

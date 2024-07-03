@@ -106,7 +106,7 @@ This access and execute pattern runs on the AIE compute core `ComputeTile2` and 
 
 ## Kernel Code
 
-We can program the AIE compute core using C++ code and compile it with `xchesscc` into a kernel object file. For our local verion of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
+We can program the AIE compute core using C++ code and compile it with `xchesscc` into a kernel object file. For our local version of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
 void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,

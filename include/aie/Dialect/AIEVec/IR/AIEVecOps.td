@@ -85,7 +85,7 @@ def AIEVec_AddElemOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector add elem";
   let description = [{
-    AMD-specific aie-ml intrinsic that allows you to perform addition operation
+    AMD-specific AIE2 intrinsic that allows you to perform addition operation
     on all types of vectors.`$result = `$lhs + $rhs`.
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -143,7 +143,7 @@ def AIEVec_SubElemOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector sub elem";
   let description = [{
-    AMD-specific aie-ml intrinsic that allows you to perform substraction operation
+    AMD-specific AIE2 intrinsic that allows you to perform substraction operation
     on all types of vectors.`$result = `$lhs - $rhs`.
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -228,7 +228,7 @@ def AIEVec_FMAElemOp :
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
   Results<(outs AnyVector:$result)> {
-  let summary = "AIE-ML element-wise vector fused multiply-add";
+  let summary = "AIE2 element-wise vector fused multiply-add";
   let description = [{
     AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
     and adds the result to an accumulator.
@@ -318,7 +318,7 @@ def AIEVec_MulElemOp:
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
-  let summary = "AIE-ML vector element-wise multiply";
+  let summary = "AIE2 vector element-wise multiply";
   let description = [{
     AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
     The vector sizes are at least 512 bits.
@@ -337,7 +337,7 @@ def AIEVec_BroadcastOp:
   Arguments<(ins AnyVector:$source,
           DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$idx)>,
   Results<(outs AnyVector:$result)> {
-  let summary = "AIE-ML broadcast";
+  let summary = "AIE2 broadcast";
   let description = [{
     AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
     value to all lanes of the vector.
@@ -355,7 +355,7 @@ def AIEVec_BroadcastScalarOp:
   ]>,
   Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
   Results<(outs AnyVector:$result)> {
-  let summary = "AIE-ML broadcast scalar";
+  let summary = "AIE2 broadcast scalar";
   let description = [{
     AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
     `$result = broadcast_scalar($source)`
@@ -395,7 +395,7 @@ def AIEVec_CastOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE cast";
   let description = [{
-    AIE-ML cast intrinsic. Cast values from source data type to result data types.
+    AIE2 cast intrinsic. Cast values from source data type to result data types.
     `$result = cast($source, isResAcc)`
   }];
   let builders = [
@@ -848,7 +848,7 @@ def AIEVec_MatMulOp:
                  AIE2MatMulRHS:$rhs,
                  AIE2MatMulACC:$acc)>,
   Results<(outs AIE2MatMulACC:$result)> {
-  let summary = "AIEML matrix-multiply and accummulate";
+  let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2-specific intrinsic that performs a matrix multiplications
     between `lhs` and `rhs`, and accumulates the result in `acc`.

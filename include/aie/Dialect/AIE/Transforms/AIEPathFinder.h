@@ -65,6 +65,7 @@ using Channel = struct Channel {
   int usedCapacity = 0; // how many flows are actually using this Channel
   std::set<int> fixedCapacity; // channels not available to the algorithm
   int overCapacityCount = 0;   // history of Channel being over capacity
+  int packetFlowCount = 0;     // up to 32 packet strams flow through a port
 };
 
 struct SwitchboxNode;
@@ -182,6 +183,7 @@ using PathEndPointNode = struct PathEndPointNode : PathEndPoint {
 };
 
 using FlowNode = struct FlowNode {
+  bool isPacketFlow;
   PathEndPointNode src;
   std::vector<PathEndPointNode> dsts;
 };
@@ -195,7 +197,7 @@ public:
   virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort) = 0;
+                       Port dstPort, bool isPacketFlow) = 0;
   virtual bool addFixedConnection(ConnectOp connectOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
@@ -207,8 +209,8 @@ public:
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-               Port dstPort) override;
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
+               bool isPacketFlow) override;
   bool addFixedConnection(ConnectOp connectOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;

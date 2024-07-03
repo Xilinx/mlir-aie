@@ -643,7 +643,6 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-create-packet-flows",
                     file_with_addresses,
                     "-o",
                     file_physical,

@@ -200,7 +200,7 @@ def my_matmul(module):
                     mem=C,
                     offsets=[0, 0, 0, C_row_offset_in_i32s],
                     sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out, 1],
                 )
                 for tile_row in range(num_tile_rows):
                     A_row_offset_in_i32s = (
@@ -216,14 +216,14 @@ def my_matmul(module):
                         mem=A,
                         offsets=[0, 0, 0, A_row_offset_in_i32s],
                         sizes=[N_div_n, K_div_k, m, k_in_i32s],
-                        strides=[0, k_in_i32s, K_in_i32s],
+                        strides=[0, k_in_i32s, K_in_i32s, 1],
                     )
                     npu_dma_memcpy_nd(
                         metadata="inB",
                         bd_id=2 * tile_row + 2,
                         mem=B,
                         sizes=[N_div_n, K_div_k, k, n_in_i32s],
-                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s, 1],
                     )
 
                 npu_sync(column=0, row=0, direction=0, channel=0)
@@ -446,14 +446,14 @@ def edge_detect(module):
                 bd_id=0,
                 mem=O,
                 sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64],
+                strides=[0, 0, 64, 1],
             )
             npu_dma_memcpy_nd(
                 metadata="inOF_L3L2",
                 bd_id=1,
                 mem=I,
                 sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64],
+                strides=[0, 0, 64, 1],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 

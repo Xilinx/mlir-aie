@@ -135,7 +135,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
     int col = infoOp->getCol();
 
-    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     ::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
@@ -171,6 +171,10 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
       }
     }
 
+    if (strides[0] != 1)
+      return module.emitOpError("nd_memcpy inner-dimension stride != 1 is "
+                                "unsupported by HSA target");
+
     // Writing the packet information to perform the DMA
     output << "\thsa_agent_dispatch_packet_t pkt" << op_count << " ;\n";
     output << "\twr_idx  = hsa_queue_add_write_index_relaxed(q, 1);\n";
@@ -181,10 +185,10 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
            << "/* channel */, 4 /* Burst length */, 2 /* Memory space */, "
               "(uint64_t)buf"
            << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4
-           << " /* 1d_length */, " << (strides[0] ? sizes[1] : 1)
-           << " /* 2d_length */, " << (strides[0] ? strides[0] * 4 : 0)
-           << " /* 2d_stride */, " << (strides[1] ? sizes[2] : 1)
-           << " /* 3d_length */, " << (strides[1] ? strides[1] * 4 : 0)
+           << " /* 1d_length */, " << (strides[1] ? sizes[1] : 1)
+           << " /* 2d_length */, " << (strides[1] ? strides[1] * 4 : 0)
+           << " /* 2d_stride */, " << (strides[2] ? sizes[2] : 1)
+           << " /* 3d_length */, " << (strides[2] ? strides[2] * 4 : 0)
            << " /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n";
 
     bool last_op = op_count == (num_ops - 1);

@@ -54,8 +54,8 @@ module @passThroughLine_aie2 {
             %totalLenRGBA = arith.constant 2073600 : i64
 
             //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-            aiex.npu.dma_memcpy_nd (0, 0, %in[%c0, %c0, %c0, %c0][%c1, %c1, %c1, %totalLenRGBA][%c0, %c0, %c0]) { metadata = @inOF, id = 1 : i64 } : memref<2073600xi32>
-            aiex.npu.dma_memcpy_nd (0, 0, %out[%c0, %c0, %c0, %c0][%c1, %c1, %c1, %totalLenRGBA][%c0, %c0, %c0]) { metadata = @outOF, id = 0 : i64 } : memref<2073600xi32>
+            aiex.npu.dma_memcpy_nd (0, 0, %in[%c0, %c0, %c0, %c0][%c1, %c1, %c1, %totalLenRGBA][%c0, %c0, %c0, %c1]) { metadata = @inOF, id = 1 : i64 } : memref<2073600xi32>
+            aiex.npu.dma_memcpy_nd (0, 0, %out[%c0, %c0, %c0, %c0][%c1, %c1, %c1, %totalLenRGBA][%c0, %c0, %c0, %c1]) { metadata = @outOF, id = 0 : i64 } : memref<2073600xi32>
             aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
             return
         }

@@ -711,6 +711,8 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
+
+  // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
@@ -775,6 +777,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
                                       bool enableCores) {
+
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -788,10 +791,16 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 
   AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
-  if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
-                                       enableCores);
+
+  auto result = [&]() {
+    if (emitUnified) {
+      return generateCDOUnified(ctl, workDirPath, targetOp, aieSim,
+                                enableCores);
+    }
+    return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
+                                         enableCores);
+  }();
+  return result;
 }
 // Not sure why but defining this with xilinx::AIE will create a duplicate
 // symbol in libAIETargets.a that then doesn't actually match the header?
