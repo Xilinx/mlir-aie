@@ -262,7 +262,7 @@ def my_matmul(M, K, N, m, k, n):
                             * m
                             * K
                         )
-                        A_row_offset = col * m * K
+                        A_row_offset = col * n_A_tiles_per_shim * m * K
                         A_offset = A_block_offset + A_row_offset
                         B_col_offset = col * n
                         npu_dma_memcpy_nd(
