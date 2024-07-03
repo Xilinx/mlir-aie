@@ -35,14 +35,15 @@ namespace aievec {
 // AIEVec to Cpp translation registration
 //===----------------------------------------------------------------------===//
 
-static llvm::cl::opt<bool> AIEML("aieml", llvm::cl::desc("AI Engine-ML"),
-                                 llvm::cl::init(false));
+static llvm::cl::opt<bool> AIE2("aie2",
+                                llvm::cl::desc("AIE2 (i.e. AI Engine-ML)"),
+                                llvm::cl::init(false));
 
 void registerAIEVecToCppTranslation() {
   TranslateFromMLIRRegistration reg(
       "aievec-to-cpp", "Translate AIEVecDialect dialect to C++",
       [](ModuleOp module, raw_ostream &output) {
-        return aievec::translateAIEVecToCpp(module, AIEML.getValue(), output);
+        return aievec::translateAIEVecToCpp(module, AIE2.getValue(), output);
       },
       [](DialectRegistry &registry) {
         // clang-format off
