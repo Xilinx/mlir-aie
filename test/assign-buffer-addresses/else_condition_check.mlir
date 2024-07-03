@@ -26,6 +26,6 @@ module @test {
   %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
   %b1 = aie.buffer(%tile12) { sym_name = "b" } : memref<16xi16> // 32 bytes
   %tile13 = aie.tile(1, 3)
-  aie.objectfifo @act_3_4(%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+  aie.objectfifo @act_3_4(%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<8xi32>>
  }
 }
