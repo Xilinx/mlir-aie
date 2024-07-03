@@ -694,24 +694,22 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       return failure();
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
-    auto lValConverted = lval;
-    auto rValConverted = rval;
     if (targetInputType != lSrcType) {
-      lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
                                                     lval, targetInputType)
                           .value();
     }
     if (targetInputType != rSrcType) {
-      rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
                                                     rval, targetInputType)
                           .value();
     }
-    if (!lValConverted || !rValConverted)
+    if (!lval || !rval)
       return failure();
 
     // Create an aievec.mul_elem op
     auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, lValConverted, rValConverted);
+        mulOp.getLoc(), accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -800,24 +798,22 @@ struct ConvertMulIToAIEVecMulElemOpPattern
       return failure();
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
-    auto lValConverted = lval;
-    auto rValConverted = rval;
     if (targetInputType != lSrcType) {
-      lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
                                                     lval, targetInputType)
                           .value();
     }
     if (targetInputType != rSrcType) {
-      rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
                                                     rval, targetInputType)
                           .value();
     }
-    if (!lValConverted || !rValConverted)
+    if (!lval || !rval)
       return failure();
 
     // Create an aievec.mul_elem op
     auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, lValConverted, rValConverted);
+        mulOp.getLoc(), accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();

@@ -339,10 +339,6 @@ def AIEVec_MulElemOp:
         `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
         `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Type":$accType),
-      [{build($_builder, $_state, accType, lhs, rhs);}]>
-  ];
 } 
 
 def AIEVec_BroadcastOp:
