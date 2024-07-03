@@ -25,8 +25,8 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define IN_SIZE (M * N * sizeof(float)) // in bytes
-#define BIAS_SIZE (N * sizeof(float)) // in bytes
+#define IN_SIZE (M * N * sizeof(float))  // in bytes
+#define BIAS_SIZE (N * sizeof(float))    // in bytes
 #define OUT_SIZE (M * N * sizeof(float)) // in bytes
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
@@ -97,7 +97,7 @@ int main(int argc, const char *argv[]) {
   }
   float *buf_bias = bo_bias.map<float *>();
   for (int i = 0; i < BIAS_SIZE / sizeof(buf_bias[0]); i++) {
-    buf_bias[i] = 3*i;
+    buf_bias[i] = 3 * i;
   }
   float *buf_out = bo_out.map<float *>();
   memset(buf_out, 0, OUT_SIZE);
@@ -124,11 +124,11 @@ int main(int argc, const char *argv[]) {
   float ref[M * N] = {};
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
-      ref[i*N + j] = buf_in[i*N + j] + buf_bias[j];
+      ref[i * N + j] = buf_in[i * N + j] + buf_bias[j];
     }
   }
 
-  if(M <= 64 && N <= 64) {
+  if (M <= 64 && N <= 64) {
     std::cout << "Input:" << std::endl;
     print_matrix(buf_in, M, N);
     std::cout << "Bias:" << std::endl;

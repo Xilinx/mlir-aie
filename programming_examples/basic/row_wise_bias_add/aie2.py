@@ -22,15 +22,17 @@ def row_wise_bias_add(M, N, m, n):
     @device(AIEDevice.npu1_1col)
     def device_body():
 
-        complete_in_memref = T.memref(m*n, T.f32())
+        complete_in_memref = T.memref(m * n, T.f32())
         complete_bias_memref = T.memref(n, T.f32())
-        complete_out_memref = T.memref(m*n, T.f32())
+        complete_out_memref = T.memref(m * n, T.f32())
 
-        in_memref = T.memref(m*n, T.f32())
+        in_memref = T.memref(m * n, T.f32())
         bias_memref = T.memref(n, T.f32())
-        out_memref = T.memref(m*n, T.f32())
+        out_memref = T.memref(m * n, T.f32())
 
-        kernel_func = external_func(f"row_wise_bias_add_f32_f32", inputs=[in_memref, bias_memref, out_memref])
+        kernel_func = external_func(
+            f"row_wise_bias_add_f32_f32", inputs=[in_memref, bias_memref, out_memref]
+        )
 
         shim_tile = tile(0, 0)
         compute_tile = tile(0, 2)
@@ -42,9 +44,9 @@ def row_wise_bias_add(M, N, m, n):
         @core(compute_tile, "kernel.o")
         def core_body():
             for _ in for_(0xFFFFFFFF):
-                for _ in for_(N//n):
+                for _ in for_(N // n):
                     elem_bias = bias_fifo.acquire(ObjectFifoPort.Consume, 1)
-                    for i in for_(M//m):
+                    for i in for_(M // m):
                         elem_in = in_fifo.acquire(ObjectFifoPort.Consume, 1)
                         elem_out = out_fifo.acquire(ObjectFifoPort.Produce, 1)
                         call(kernel_func, [elem_in, elem_bias, elem_out])
@@ -55,23 +57,39 @@ def row_wise_bias_add(M, N, m, n):
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(complete_in_memref, complete_bias_memref, complete_out_memref)
+        @FuncOp.from_py_func(
+            complete_in_memref, complete_bias_memref, complete_out_memref
+        )
         def sequence(inp, bias, out):
             npu_dma_memcpy_nd(
-                metadata=in_fifo.sym_name.value, bd_id=0, mem=inp, sizes=[1, N//n, M, n], strides=[0, n, N, 1]
+                metadata=in_fifo.sym_name.value,
+                bd_id=0,
+                mem=inp,
+                sizes=[1, N // n, M, n],
+                strides=[0, n, N, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=bias_fifo.sym_name.value, bd_id=1, mem=bias, sizes=[1, 1, N//n, n], strides=[0, 0, n, 1]
+                metadata=bias_fifo.sym_name.value,
+                bd_id=1,
+                mem=bias,
+                sizes=[1, 1, N // n, n],
+                strides=[0, 0, n, 1],
             )
             npu_dma_memcpy_nd(
-                metadata=out_fifo.sym_name.value, bd_id=2, mem=out, sizes=[1, N//n, M, n], strides=[0, n, N, 1]
+                metadata=out_fifo.sym_name.value,
+                bd_id=2,
+                mem=out,
+                sizes=[1, N // n, M, n],
+                strides=[0, n, N, 1],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)
 
 
 # Declares that subsequent code is in mlir-aie context
 with mlir_mod_ctx() as ctx:
-    row_wise_bias_add(int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
+    row_wise_bias_add(
+        int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+    )
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
