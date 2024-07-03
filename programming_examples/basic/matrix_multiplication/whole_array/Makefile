@@ -17,10 +17,11 @@ N?=768
 m?=16
 k?=64
 n?=48
+n_aie_cols?=2
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
+aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols}
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 
 include ${srcdir}/../makefile-common
 

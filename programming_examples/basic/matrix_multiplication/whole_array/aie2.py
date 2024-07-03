@@ -26,20 +26,24 @@ def main():
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
     argparser.add_argument("-n", type=int, default=64)
+    argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        my_matmul(args.M, args.K, args.N, args.m, args.k, args.n)
+        my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.n_aie_cols)
         # print(ctx.module.operation.verify())
         print(ctx.module)
 
 
-def my_matmul(M, K, N, m, k, n):
+def ceildiv(a, b):
+    return (a + b - 1) // b
+
+
+def my_matmul(M, K, N, m, k, n, n_aie_cols):
     r = 4
     s = 8
     t = 4
 
     n_aie_rows = 4
-    n_aie_cols = 2
     n_aie_cores = n_aie_rows * n_aie_cols
 
     # Input matrix A:
@@ -135,7 +139,7 @@ def my_matmul(M, K, N, m, k, n):
                 fifo_depth,
                 A_l2_memref_ty,
             )
-            # If n_cols == n_rows, n_a_tiles_per_shim_transmission is 1 and
+            # If n_cols == n_rows, n_A_tiles_per_shim is 1 and
             # this simply links a_l3l2_fifos[col] to a_l2l1_fifos[row] directly,
             # where col == row.
             # If n_cols < n_rows, each column receives multiple rows of
@@ -246,9 +250,7 @@ def my_matmul(M, K, N, m, k, n):
             tb_max_n_rows = (
                 5  # tb = transfer block; block of transfers before sync call
             )
-            for tb in range(
-                (M // m // n_aie_rows + tb_max_n_rows - 1) // tb_max_n_rows
-            ):
+            for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 tb_n_rows = min(
                     [tb_max_n_rows, M // m // n_aie_rows - tb * tb_max_n_rows]
                 )
