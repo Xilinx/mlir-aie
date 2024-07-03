@@ -598,7 +598,7 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
         extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
     if (!res)
       return failure();
-    auto[lhs, rhs, acc] = *res;
+    auto [lhs, rhs, acc] = *res;
 
     // Verify the vector type is supported by AIEML
     unsigned resultElWidth =
@@ -899,7 +899,7 @@ struct ConvertMulAddToAIEVecFMAOpPattern : OpConversionPattern<aievec::AddOp> {
         extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
     if (!res)
       return failure();
-    auto[lhs, rhs, acc] = *res;
+    auto [lhs, rhs, acc] = *res;
 
     SmallVector<int64_t, 4> concatVecShape(vecType.getShape().begin(),
                                            vecType.getShape().end());
