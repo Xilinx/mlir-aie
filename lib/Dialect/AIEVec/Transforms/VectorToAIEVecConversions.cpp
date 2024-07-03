@@ -598,7 +598,7 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
         extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
     if (!res)
       return failure();
-    auto [lhs, rhs, acc] = *res;
+    auto[lhs, rhs, acc] = *res;
 
     // Verify the vector type is supported by AIEML
     unsigned resultElWidth =
@@ -695,21 +695,21 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
-      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                    lval, targetInputType)
-                          .value();
+      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(), lval,
+                                           targetInputType)
+                 .value();
     }
     if (targetInputType != rSrcType) {
-      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                    rval, targetInputType)
-                          .value();
+      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(), rval,
+                                           targetInputType)
+                 .value();
     }
     if (!lval || !rval)
       return failure();
 
     // Create an aievec.mul_elem op
-    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, lval, rval);
+    auto mulElemOp =
+        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -799,21 +799,21 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
-      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                    lval, targetInputType)
-                          .value();
+      lval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(), lval,
+                                           targetInputType)
+                 .value();
     }
     if (targetInputType != rSrcType) {
-      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
-                                                    rval, targetInputType)
-                          .value();
+      rval = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(), rval,
+                                           targetInputType)
+                 .value();
     }
     if (!lval || !rval)
       return failure();
 
     // Create an aievec.mul_elem op
-    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, lval, rval);
+    auto mulElemOp =
+        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -899,7 +899,7 @@ struct ConvertMulAddToAIEVecFMAOpPattern : OpConversionPattern<aievec::AddOp> {
         extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
     if (!res)
       return failure();
-    auto [lhs, rhs, acc] = *res;
+    auto[lhs, rhs, acc] = *res;
 
     SmallVector<int64_t, 4> concatVecShape(vecType.getShape().begin(),
                                            vecType.getShape().end());
