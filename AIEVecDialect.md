@@ -59,7 +59,7 @@ Syntax:
 operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-AMD-specific aie-ml intrinsic that allows you to perform addition operation
+AMD-specific AIE2 intrinsic that allows you to perform addition operation
 on all types of vectors.`$result = `$lhs + $rhs`.
 
 Traits: `AlwaysSpeculatableImplTrait`
@@ -190,7 +190,7 @@ Effects: `MemoryEffects::Effect{}`
 
 ### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
 
-_AIE-ML broadcast_
+_AIE2 broadcast_
 
 AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
 value to all lanes of the vector.
@@ -224,7 +224,7 @@ Effects: `MemoryEffects::Effect{}`
 
 ### `aievec.broadcast_scalar` (::xilinx::aievec::BroadcastScalarOp)
 
-_AIE-ML broadcast scalar_
+_AIE2 broadcast scalar_
 
 AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
 `$result = broadcast_scalar($source)`
@@ -288,7 +288,7 @@ Effects: `MemoryEffects::Effect{}`
 
 _AIE cast_
 
-AIE-ML cast intrinsic. Cast values from source data type to result data types.
+AIE2 cast intrinsic. Cast values from source data type to result data types.
 `$result = cast($source, isResAcc)`
 
 Traits: `AlwaysSpeculatableImplTrait`
@@ -595,7 +595,7 @@ Effects: `MemoryEffects::Effect{}`
 
 ### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
 
-_AIE-ML element-wise vector fused multiply-add_
+_AIE2 element-wise vector fused multiply-add_
 
 AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
 and adds the result to an accumulator.
@@ -633,7 +633,7 @@ Effects: `MemoryEffects::Effect{}`
 
 ### `aievec.matmul` (::xilinx::aievec::MatMulOp)
 
-_AIEML matrix-multiply and accummulate_
+_AIE2 matrix-multiply and accummulate_
 
 
 Syntax:
@@ -834,7 +834,7 @@ Effects: `MemoryEffects::Effect{}`
 
 ### `aievec.mul_elem` (::xilinx::aievec::MulElemOp)
 
-_AIE-ML vector element-wise multiply_
+_AIE2 vector element-wise multiply_
 
 AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
 The vector sizes are at least 512 bits.
@@ -1338,7 +1338,7 @@ Syntax:
 operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-AMD-specific aie-ml intrinsic that allows you to perform substraction operation
+AMD-specific AIE2 intrinsic that allows you to perform substraction operation
 on all types of vectors.`$result = `$lhs - $rhs`.
 
 Traits: `AlwaysSpeculatableImplTrait`
