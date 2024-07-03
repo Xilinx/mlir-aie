@@ -29,7 +29,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
                                     SmallVector<BufferOp, 4> buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
-        tile.emitOpError("allocated buffers exceeded available memory\n");
+        tile.emitOpError("allocated buffers exceeded available memory: Sequential\n");
     auto &note = error.attachNote() << "MemoryMap:\n";
     auto printbuffer = [&](StringRef name, int address, int size) {
       note << "\t" << name << " \t"
@@ -230,7 +230,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
   }
   if (foundOverflow) {
     InFlightDiagnostic error =
-        tile.emitOpError("allocated buffers exceeded available memory\n");
+        tile.emitOpError("allocated buffers exceeded available memory: Bank aware\n");
     auto &note = error.attachNote() << "Error in bank(s) : ";
     for (auto bank : overflow_banks)
       note << bank << " ";
@@ -383,15 +383,27 @@ struct AIEAssignBufferAddressesPass
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
-        if (tile.isMemTile())
-          if(auto res = simpleBankAwareAllocation(tile); res.failed())
-            return signalPassFailure();
-        if (!tile.isMemTile())
-          if(auto res = basicAllocation(tile); res.failed())
-            return signalPassFailure();
-        // if(auto res = simpleBankAwareAllocation(tile); res.failed())
-        //   if(auto res2 = basicAllocation(tile); res2.failed())
+        // if (tile.isMemTile())
+        //   if(auto res = simpleBankAwareAllocation(tile); res.failed())
         //     return signalPassFailure();
+        // if (!tile.isMemTile())
+        //   if(auto res = basicAllocation(tile); res.failed())
+        //     return signalPassFailure();
+        if(auto res = simpleBankAwareAllocation(tile); res.failed()){
+          // Collect all the buffers for this tile.
+          device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+            if(buffer.getTileOp() == tile){
+              buffer->removeAttr("address");
+              buffer->removeAttr("mem_bank");
+            }
+          });
+          if(auto res2 = basicAllocation(tile); res2.failed())
+            return signalPassFailure();
+          else
+            tile.emitOpError("Passed tile: sequential");
+        }
+        else
+            tile.emitOpError("Passed tile: bank-aware");
       }
     }
   }
