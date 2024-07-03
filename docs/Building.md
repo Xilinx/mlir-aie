@@ -28,7 +28,7 @@ This script requires `virtualenv`.
 
 clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
 
-When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install our experimental ROCm runtime. When targetting the VCK5000, it will be necessary to [install a global version of ROCM 5.6](https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html). Details of all these steps can be found in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms#getting-started). 
+When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime which allows us to communicate with the AIEs. The [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to install our experimental ROCm runtime. When targetting the VCK5000, it will be necessary to [install a global version of ROCM 5.6](https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html). Details of all these steps can be found in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms#getting-started) repo. 
 
 ## Building on X86 for mlir-aie development
 
