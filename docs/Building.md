@@ -86,12 +86,11 @@ When targetting the VCK5000 Versal device, you must build and install our experi
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or Ryzen AI 
-    with the path to the `llvm/build` directory. The Vitis environment will have to be 
-    set up for this to succeed. Note that there are seperate scripts to run when targetting
-    Ryzen AI vs the VCK5000. See the two scripts below: 
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` or `utils/build-mlir-aie-pcie.sh` 
+    for Versal or Ryzen AI with the path to the `llvm/build` directory. The Vitis environment 
+    will have to be set up for this to succeed.  
 
-    Building mlir-aie for the Ryzen AI system:
+    Building mlir-aie for a Ryzen AI system:
 
     ```
     source <Vitis Install Path>/settings64.sh
