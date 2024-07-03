@@ -78,6 +78,9 @@ option(LLVM_BUILD_TOOLS
 option(AIE_INCLUDE_INTEGRATION_TESTS
        "Generate build targets for the mlir-aie integration tests." OFF)
 
+# Take note of the current git revision for outputting version strings in built executables
+execute_process(COMMAND git rev-parse HEAD OUTPUT_VARIABLE AIE_GIT_COMMIT ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+
 find_package(MLIR REQUIRED CONFIG)
 
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
