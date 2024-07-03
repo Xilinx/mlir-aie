@@ -13,7 +13,7 @@
 # The following environment variables that point to the Xilinx runtime (XRT)
 # should be set up by an environment setup script already.
 XILINX_XRT?=/opt/xilinx/xrt
-XILINX_VITIS?=/tools/Xilinx/Vitis/2023.2
+XILINX_VITIS?=$(shell realpath $(dir $(shell which vitis))/../)
 
 # ---
 
@@ -22,9 +22,10 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
-CXX=g++-13 -ggdb -I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
-
-CHESSCCWRAP2_FLAGS = aie2 -I${XILINX_VITIS}/aietools/include 
+CHESSCCWRAP2_FLAGS=aie2 -I${XILINX_VITIS}/aietools/include 
+XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
+XRT_LIBS=-lxrt_coreutil
+CXX=g++-13 -ggdb 
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
@@ -54,7 +55,7 @@ ${xclbin_target}: ${mlir_target} build/kernel.o
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
-	${CXX} -DM=$M -DN=$N -o $@ $< -lxrt_coreutil
+	${CXX} ${XRT_FLAGS} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
 
 .PHONY: run
 run: ${host_target}
