@@ -77,7 +77,6 @@ aie-opt
 --aie-register-objectFifos
 --aie-objectFifo-stateful-transform
 --aie-lower-broadcast-packet
---aie-create-packet-flows
 --aie-lower-multicast
 --aie-assign-buffer-addresses
 --convert-scf-to-cf
@@ -125,7 +124,6 @@ This section does cross-compilation which includes calling clang with a specific
 aie-opt
 --aie-create-pathfinder-flows
 --aie-lower-broadcast-packet
---aie-create-packet-flows
 --aie-lower-multicast
 input_with_addresses.mlir -o input_physical.mlir
 aie-translate --aie-generate-xaie --xaie-target=v2 input_physical.mlir -o aie_inc.cpp

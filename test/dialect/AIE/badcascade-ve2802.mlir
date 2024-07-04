@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}}'aie.put_cascade' op must be a 512-bit type
+// CHECK: error{{.*}}'aie.put_cascade' op type must match architecture cascade width (512 bits in AIE2)
 
 module @test {
   aie.device(xcve2802) {

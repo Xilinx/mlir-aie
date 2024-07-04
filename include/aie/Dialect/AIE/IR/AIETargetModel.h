@@ -54,12 +54,15 @@ using TileID = struct TileID {
 
 class AIETargetModel {
 public:
-  AIETargetModel(AIEDevice device) : device(device) {}
+  AIETargetModel() = default;
 
   virtual ~AIETargetModel();
 
   /// Return the target architecture.
   virtual AIEArch getTargetArch() const = 0;
+
+  /// Return the data bus width of the device.
+  virtual uint32_t getAddressGenGranularity() const = 0;
 
   /// Return the number of columns in the device.
   virtual int columns() const = 0;
@@ -165,6 +168,9 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the size (in bits) of the accumulator/cascade.
+  virtual uint32_t getAccumulatorCascadeSize() const = 0;
+
   /// Return the number of lock objects
   virtual uint32_t getNumLocks(int col, int row) const = 0;
 
@@ -205,16 +211,20 @@ public:
   // There are several special cases for handling the NPU at the moment.
   virtual bool isNPU() const { return false; }
 
-  // Return the AIEDevice for this target model
-  AIEDevice getDevice() const { return device; }
+  // Return the bit offset of the column within a tile address.
+  // This is used to compute the control address of a tile from it's column
+  // location.
+  virtual uint32_t getColumnShift() const = 0;
 
-private:
-  AIEDevice device;
+  // Return the bit offset of the row within a tile address.
+  // This is used to compute the control address of a tile from it's row
+  // location.
+  virtual uint32_t getRowShift() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel(AIEDevice device) : AIETargetModel(device) {}
+  AIE1TargetModel() = default;
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -249,6 +259,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   uint32_t getNumMemTileRows() const override { return 0; }
@@ -274,13 +285,18 @@ public:
       return true;
     return false;
   }
+
+  uint32_t getColumnShift() const override { return 23; }
+  uint32_t getRowShift() const override { return 18; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel(AIEDevice device) : AIETargetModel(device) {}
+  AIE2TargetModel() = default;
 
   AIEArch getTargetArch() const override;
+
+  uint32_t getAddressGenGranularity() const override { return 32; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -306,6 +322,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getAccumulatorCascadeSize() const override { return 512; }
 
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
@@ -328,6 +345,9 @@ public:
   bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
                                 WireBundle dstBundle,
                                 int dstChan) const override;
+
+  uint32_t getColumnShift() const override { return 25; }
+  uint32_t getRowShift() const override { return 20; }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -335,7 +355,9 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel(AIEDevice device) : AIE1TargetModel(device) {}
+  VC1902TargetModel() = default;
+
+  uint32_t getAddressGenGranularity() const override { return 32; }
 
   int columns() const override { return 50; }
 
@@ -358,7 +380,7 @@ class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  VE2302TargetModel() = default;
 
   int columns() const override { return 17; }
 
@@ -410,7 +432,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  VE2802TargetModel() = default;
 
   int columns() const override { return 38; }
 
@@ -462,7 +484,7 @@ public:
 
 class BaseNPUTargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel(AIEDevice device) : AIE2TargetModel(device) {}
+  BaseNPUTargetModel() = default;
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -494,7 +516,7 @@ public:
 // The full Phoenix NPU
 class NPUTargetModel : public BaseNPUTargetModel {
 public:
-  NPUTargetModel(AIEDevice device) : BaseNPUTargetModel(device) {}
+  NPUTargetModel() = default;
 
   int columns() const override { return 5; }
 
@@ -515,8 +537,9 @@ class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(AIEDevice device, int _cols)
-      : BaseNPUTargetModel(device), cols(_cols) {}
+  VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
+
+  uint32_t getAddressGenGranularity() const override { return 32; }
 
   int columns() const override { return cols; }
 

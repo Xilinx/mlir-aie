@@ -45,7 +45,8 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   static_assert(s == 8); // s is fixed to 8 because that is the number of
                          // column vectors (a_vec_0_0..a_vec_3_1) we create
   static_assert(k % s == 0);
-  static_assert(std::is_same<T_in, bfloat16>::value);
+  static_assert(std::is_same<T_in, bfloat16>::value ||
+                std::is_same<T_in, int16_t>::value);
 
   // This kernel expects a "32-bit word transposed matrix", i.e. the result
   // of transposing the row-major representation of the matrix at a
@@ -133,35 +134,48 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
 
 extern "C" {
 
+// If you want to compile microkernels with different inner tile sizes,
+// define DIM_M and DIM_K at compile time using -DDIM_M 16 etc.
+// These dimensions must be divisible by the r, s dimensions used in
+// the kernels.
+
+#ifndef DIM_M
+#define DIM_M 32
+#endif
+
+#ifndef DIM_K
+#define DIM_K 32
+#endif
+
 #define combos(X)                                                              \
-  X(bfloat16, bf16, float, f32, accfloat)                                      \
-//    X(int16,         i16, int16,    i16, acc32)                                  \
+  /* X(bfloat16, bf16, float, f32, accfloat) */                                \
+  X(int16, i16, int32, i32, acc32)
 
 #define matvec_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              ctype_acc)                                        \
   void matvec_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvec_scalar<ctype_in, ctype_out, 32, 32>(a_in, b_in, c_out);             \
+    matvec_scalar<ctype_in, ctype_out, DIM_M, DIM_K>(a_in, b_in, c_out);       \
   }
 
 #define matvec_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, ctype_acc)                     \
   void matvec_vectorized_##mlir_type_in##_##mlir_type_out(                     \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matvec_vectorized<ctype_in, ctype_out, ctype_acc, 32, 32, 16, 8>(          \
+    matvec_vectorized<ctype_in, ctype_out, ctype_acc, DIM_M, DIM_K, 16, 8>(    \
         a_in, b_in, c_out);                                                    \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
                                mlir_type_out, ctype_acc)                       \
   void zero_vectorized_##mlir_type_out(ctype_out *c_out) {                     \
-    zero_vectorized<ctype_out, 32, 1, 32>(c_out);                              \
+    zero_vectorized<ctype_out, DIM_M, 1, 32>(c_out);                           \
   }
 
 #define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
                            ctype_acc)                                          \
   void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zero_scalar<ctype_out, 32, 1>(c_out);                                      \
+    zero_scalar<ctype_out, DIM_M, 1>(c_out);                                   \
   }
 
 combos(matvec_scalar_c_func) combos(matvec_vectorized_c_func)

@@ -12,8 +12,16 @@
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-bcf %s | FileCheck --check-prefix=BCF44 %s
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-ldscript %s | FileCheck --check-prefix=LD44 %s
 
-// CHECK-LABEL: Tile(5, 4)
-// CHECK: _symbol y 0x28000 32
+// CHECK-LABEL: Tile(3, 4)
+// CHECK: _symbol x 0x28000 32
+// CHECK: _symbol a 0x38000 16
+// CHECK: _symbol b 0x38010 64
+// CHECK: _symbol c 0x38050 1024
+// CHECK-LABEL: Tile(4, 3)
+// CHECK: _symbol a 0x30000 16
+// CHECK: _symbol b 0x30010 64
+// CHECK: _symbol c 0x30050 1024
+// CHECK: _symbol z 0x38000 32
 // CHECK-LABEL: Tile(4, 4)
 // CHECK: _symbol z 0x20000 32
 // CHECK: _symbol a 0x28000 16
@@ -26,16 +34,8 @@
 // CHECK: _symbol b 0x20010 64
 // CHECK: _symbol c 0x20050 1024
 // CHECK: _symbol t 0x38000 32
-// CHECK-LABEL: Tile(4, 3)
-// CHECK: _symbol a 0x30000 16
-// CHECK: _symbol b 0x30010 64
-// CHECK: _symbol c 0x30050 1024
-// CHECK: _symbol z 0x38000 32
-// CHECK-LABEL: Tile(3, 4)
-// CHECK: _symbol x 0x28000 32
-// CHECK: _symbol a 0x38000 16
-// CHECK: _symbol b 0x38010 64
-// CHECK: _symbol c 0x38050 1024
+// CHECK-LABEL: Tile(5, 4)
+// CHECK: _symbol y 0x28000 32
 
 // BCF44:      _entry_point _main_init
 // BCF44-NEXT: _symbol core_4_4 _after _main_init
@@ -69,7 +69,7 @@
 // BCF44-NEXT: _extern y
 // BCF44-NEXT: _reserved DMb 0x38000 32
 // BCF44:      // end mapping neighbors tile memory
-// BCF44:      _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+// BCF44:      _reserved DMb 0x40000 0xC0000 // And everything else the core can't see
 // BCF44-NEXT: _resolve _main core_4_4
 
 

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 // REQUIRES: ryzen_ai, chess
 
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 // CHECK-LABEL: module @trace_packet_routing {
   
 module @trace_packet_routing {

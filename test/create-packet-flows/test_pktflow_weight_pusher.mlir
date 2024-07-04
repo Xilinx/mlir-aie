@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: stephenn
-// RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // FIXCore : nondeterministic
 

@@ -110,31 +110,43 @@ def emit_design_kernel_json(
     buffer_args=None,
 ):
     if buffer_args is None:
-        buffer_args = ["in", "tmp", "out"]
+        buffer_args = [f"bo{i}" for i in range(5)]
 
     arguments = [
+        {
+            "name": "opcode",
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": "0x00",
+        },
+    ]
+    offset = 0x08
+
+    inst_arguments = [
         {
             "name": "instr",
             "memory-connection": "SRAM",
             "address-qualifier": "GLOBAL",
             "type": "char *",
-            "offset": "0x00",
+            "offset": str(hex(offset)),
         },
         {
             "name": "ninstr",
             "address-qualifier": "SCALAR",
-            "type": "uint64_t",
-            "offset": "0x08",
+            "type": "uint32_t",
+            "offset": str(hex(offset + 8)),
         },
     ]
+    arguments.append(inst_arguments[0])
+    arguments.append(inst_arguments[1])
+    offset += 12
 
-    offset = 0x10
     for buf in buffer_args:
         arg = {
             "name": buf,
             "memory-connection": "HOST",
             "address-qualifier": "GLOBAL",
-            "type": "char *",
+            "type": "void*",
             "offset": str(hex(offset)),
         }
         arguments.append(arg)
@@ -148,7 +160,7 @@ def emit_design_kernel_json(
                     "type": "dpu",
                     "extended-data": {
                         "subtype": "DPU",
-                        "functional": "1",
+                        "functional": "0",
                         "dpu_kernel_id": kernel_id,
                     },
                     "arguments": arguments,
@@ -570,7 +582,7 @@ class FlowRunner:
             self.prepend_tmp("aie_partition.json"),
         )
 
-        buffer_arg_names = [f"bo{i}" for i in range(6)]
+        buffer_arg_names = [f"bo{i}" for i in range(5)]
         await write_file_async(
             json.dumps(
                 emit_design_kernel_json(
@@ -631,7 +643,6 @@ class FlowRunner:
                 [
                     "aie-opt",
                     "--aie-create-pathfinder-flows",
-                    "--aie-create-packet-flows",
                     file_with_addresses,
                     "-o",
                     file_physical,
@@ -1175,6 +1186,11 @@ def run(mlir_module, args=None):
 def main():
     global opts
     opts = aie.compiler.aiecc.cl_arguments.parse_args()
+
+    if opts.version:
+        print(f"aiecc.py {aie.compiler.aiecc.configure.git_commit}")
+        sys.exit(0)
+
     if opts.filename is None:
         print("error: the 'file' positional argument is required.")
         sys.exit(1)

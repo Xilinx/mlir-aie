@@ -22,11 +22,9 @@ if len(sys.argv) == 3:
 
 lineWidth = width
 lineWidthInBytes = width * 4
-lineWidthInInt32s = lineWidthInBytes // 4
 
 enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
+traceSize = 1024
 
 
 def color_detect():
@@ -242,8 +240,7 @@ def color_detect():
             # To/from AIE-array data movement
 
             tensorSize = width * height * 4  # 4 channels
-            tensorSizeInInt32s = tensorSize // 4
-            tensor_ty = MemRefType.get((tensorSizeInInt32s,), T.i32())
+            tensor_ty = MemRefType.get((tensorSize,), T.i8())
             memRef_16x16_ty = MemRefType.get(
                 (
                     16,
@@ -258,13 +255,13 @@ def color_detect():
                     metadata="inOF_L3L2",
                     bd_id=1,
                     mem=I,
-                    sizes=[1, 1, 1, height * lineWidthInInt32s],
+                    sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
                 npu_dma_memcpy_nd(
                     metadata="outOF_L2L3",
                     bd_id=0,
                     mem=O,
-                    sizes=[1, 1, 1, height * lineWidthInInt32s],
+                    sizes=[1, 1, 1, height * lineWidthInBytes],
                 )
                 npu_sync(column=0, row=0, direction=0, channel=0)
 

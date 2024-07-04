@@ -4,18 +4,27 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# 
 ##===----------------------------------------------------------------------===##
 
 subdir=matrix_vector
 targetname=matrixVectorMultiplication
-kernels=mv
 
 # Currently does not accept reconfiguring size via these variables; must change
 # in source at aie2.py as well as here
 M=288
 K=288
 N=1
+m=32
+k=32
+
+kernels=mv_${m}x${k}
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
+
+build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -DDIM_M=${m} -DDIM_K=${k} -c $< -o ${@F}
 
