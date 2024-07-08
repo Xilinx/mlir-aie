@@ -80,7 +80,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
 
-    dev = None 
+    dev = None
     if n_aie_cols == 1:
         dev = AIEDevice.npu1_1col
     elif n_aie_cols == 2:
@@ -110,7 +110,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         )
 
         # Tile declarations as tile[row][col]
-        tiles = [[tile(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
+        tiles = [
+            [tile(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)
+        ]
         shim_tiles = tiles[0]
         mem_tiles = tiles[1]
         core_tiles = tiles[2:]
