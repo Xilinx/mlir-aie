@@ -9,6 +9,8 @@ import os
 
 from aie.util import pythonize_bool
 
+git_commit = "@AIE_GIT_COMMIT@"
+
 aie_link_with_xchesscc = pythonize_bool("@AIECC_LINK_WITH_XCHESSCC@")
 aie_compile_with_xchesscc = pythonize_bool("@AIECC_COMPILE_WITH_XCHESSCC@")
 aie_disable_link = not pythonize_bool("@AIECC_LINK@")
@@ -32,7 +34,8 @@ if not os.path.exists(peano_install_dir):
 if not os.path.exists(peano_install_dir):
     peano_install_dir = "peano_not_found"
 
+
 def install_path():
     path = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(path, '..', '..', '..', '..')
+    path = os.path.join(path, "..", "..", "..", "..")
     return os.path.realpath(path)

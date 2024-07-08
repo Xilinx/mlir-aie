@@ -21,9 +21,14 @@
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
+#include "aie/version.h"
 
 using namespace llvm;
 using namespace mlir;
+
+void version_printer(raw_ostream &os) {
+  os << "aie-opt " << AIE_GIT_COMMIT << "\n";
+}
 
 int main(int argc, char **argv) {
 
@@ -42,6 +47,8 @@ int main(int argc, char **argv) {
   registerAllExtensions(registry);
 
   xilinx::aievec::registerTransformDialectExtension(registry);
+
+  cl::AddExtraVersionPrinter(version_printer);
 
   return failed(
       MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));

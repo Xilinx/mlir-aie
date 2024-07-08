@@ -1186,6 +1186,11 @@ def run(mlir_module, args=None):
 def main():
     global opts
     opts = aie.compiler.aiecc.cl_arguments.parse_args()
+
+    if opts.version:
+        print(f"aiecc.py {aie.compiler.aiecc.configure.git_commit}")
+        sys.exit(0)
+
     if opts.filename is None:
         print("error: the 'file' positional argument is required.")
         sys.exit(1)

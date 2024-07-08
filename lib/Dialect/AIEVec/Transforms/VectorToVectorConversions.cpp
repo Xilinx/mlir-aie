@@ -39,6 +39,30 @@ using namespace xilinx::aievec;
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
 
+static TargetBackend decodeTargetBackend(const std::string backend) {
+  if (!backend.empty()) {
+    if (backend == "llvmir")
+      return TargetBackend::LLVMIR;
+    else if (backend != "cpp")
+      return TargetBackend::UNKNOWN;
+  }
+  return TargetBackend::CPP;
+}
+
+static AIEArch decodeAIETarget(const std::string target) {
+  if (!target.empty()) {
+    if (target == "aieml" || target == "aie2")
+      return AIEArch::AIE2;
+    else if (target != "aie")
+      return AIEArch::UNKNOWN;
+  }
+  return AIEArch::AIE;
+}
+
+//============================================================================//
+//================== Common AIE canonicalization analysis ====================//
+//============================================================================//
+
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD)
     return false;
@@ -563,7 +587,7 @@ struct ExtractTransposeFromContractionOp
 };
 
 //============================================================================//
-//============ AIEML canonicalization conversion patterns ===============//
+//============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
 
 //============================================================================//
@@ -605,11 +629,11 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns,
 }
 
 //============================================================================//
-//============== AIEML-specific canonicalization configuration ===============//
+//============== AIE2-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
-                                                    TargetBackend backend) {
+static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target,
+                                                   TargetBackend backend) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -628,8 +652,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
 }
 
 static void
-populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns,
-                                            TargetBackend backend) {
+populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                           TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
   patterns
@@ -680,7 +704,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -697,33 +721,23 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    AIEArch aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
-      } else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        signalPassFailure();
-        return;
-      }
+    AIEArch aieVersion = decodeAIETarget(aieTarget);
+    if (aieVersion == AIEArch::UNKNOWN) {
+      op->emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
     }
 
-    TargetBackend backend = TargetBackend::CPP;
-    if (!targetBackend.empty()) {
-      std::string backendStr = targetBackend;
-      if (backendStr == "llvmir") {
-        backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
-        signalPassFailure();
-        return;
-      }
+    TargetBackend backend = decodeTargetBackend(targetBackend);
+    if (backend == TargetBackend::UNKNOWN) {
+      op->emitError() << "unknown target backend '" << targetBackend << "'";
+      signalPassFailure();
+      return;
+    }
+    if (backend == TargetBackend::LLVMIR && aieVersion == AIEArch::AIE) {
+      op->emitError() << "targetting LLVM IR is not supported for AIEv1";
+      signalPassFailure();
+      return;
     }
 
     populateCommonAIECanonicalizeConversionPatterns(patterns, backend);
@@ -732,8 +746,8 @@ struct CanonicalizeVectorForAIEVecPass
       populateAIEv1CanonicalizeConversionPatterns(patterns, backend);
       configureAIEv1CanonicalizeLegalizations(target, backend);
     } else {
-      populateAIEMLCanonicalizeConversionPatterns(patterns, backend);
-      configureAIEMLCanonicalizeLegalizations(target, backend);
+      populateAIE2CanonicalizeConversionPatterns(patterns, backend);
+      configureAIE2CanonicalizeLegalizations(target, backend);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
@@ -776,5 +790,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
-  pm.addPass(createHoistCastOpToDataSourcePass());
+  if (decodeTargetBackend(options.targetBackend) == TargetBackend::CPP)
+    pm.addPass(createHoistCastOpToDataSourcePass());
 }
