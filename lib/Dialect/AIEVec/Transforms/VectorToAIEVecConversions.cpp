@@ -696,12 +696,12 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
       lval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), lval,
-                                           targetInputType)
+                                          targetInputType)
                  .value();
     }
     if (targetInputType != rSrcType) {
       rval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), rval,
-                                           targetInputType)
+                                          targetInputType)
                  .value();
     }
     if (!lval || !rval)
@@ -800,12 +800,12 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
       lval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), lval,
-                                           targetInputType)
+                                          targetInputType)
                  .value();
     }
     if (targetInputType != rSrcType) {
       rval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), rval,
-                                           targetInputType)
+                                          targetInputType)
                  .value();
     }
     if (!lval || !rval)

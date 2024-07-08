@@ -64,3 +64,11 @@ func.func @invalidShuffleModeMissingOperand(%v : vector<32xi16>)
   %r = aievec.shuffle %v [t16_16x4_lo] : vector<32xi16>
   return %r : vector<32xi16>
 }
+
+// -----
+
+func.func @invalidElementTypeMulElem(%arg0 : vector<32xi8>, %arg1 : vector<32xi8>) -> vector<32xi64> {
+  // expected-error @+1 {{'aievec.mul_elem' op failed to verify that result type is not a valid accumulator type for the lhs x rhs operands type.}}
+  %t11 = aievec.mul_elem %arg0, %arg1 : vector<32xi8>, vector<32xi8>, vector<32xi64>
+  return %t11 : vector<32xi64>
+}
