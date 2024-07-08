@@ -1,5 +1,5 @@
 // RUN: aie-opt %s --convert-vector-to-aievec -split-input-file | FileCheck %s
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -split-input-file | FileCheck %s --check-prefix=CHECK-V2
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -split-input-file | FileCheck %s --check-prefix=CHECK-V2
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml target-backend=llvmir" -split-input-file | FileCheck %s --check-prefix=CHECK-V2-LLVM
 
 // CHECK-V2-LABEL: func @veccopy_i8
