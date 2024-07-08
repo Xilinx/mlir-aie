@@ -35,7 +35,17 @@ def main():
     )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.n_aie_cols, args.dtype_in, args.dtype_out)
+        my_matmul(
+            args.M,
+            args.K,
+            args.N,
+            args.m,
+            args.k,
+            args.n,
+            args.n_aie_cols,
+            args.dtype_in,
+            args.dtype_out,
+        )
         # print(ctx.module.operation.verify())
         print(ctx.module)
 
@@ -70,7 +80,6 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         r = 4
         s = 4
         t = 4
-
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -125,7 +134,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
         # AIE Core Function declarations
         zero_scalar = external_func("zero_scalar_bf16", inputs=[C_l1_memref_ty])
-        zero_scalar = external_func(f"zero_scalar_{dtype_out_str}", inputs=[C_l1_memref_ty])
+        zero_scalar = external_func(
+            f"zero_scalar_{dtype_out_str}", inputs=[C_l1_memref_ty]
+        )
         zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_memref_ty])
         matmul_scalar = external_func(
             "matmul_scalar_bf16_bf16",
@@ -137,9 +148,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
         )
         matmul = external_func(
             f"matmul_{dtype_in_str}_{dtype_out_str}",
-            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty]
+            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
-
 
         # Tile declarations as tile[row][col]
         tiles = [
