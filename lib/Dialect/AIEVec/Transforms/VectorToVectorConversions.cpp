@@ -39,6 +39,30 @@ using namespace xilinx::aievec;
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
 
+static TargetBackend decodeTargetBackend(const std::string backend) {
+  if (!backend.empty()) {
+    if (backend == "llvmir")
+      return TargetBackend::LLVMIR;
+    else if (backend != "cpp")
+      return TargetBackend::UNKNOWN;
+  }
+  return TargetBackend::CPP;
+}
+
+static AIEArch decodeAIETarget(const std::string target) {
+  if (!target.empty()) {
+    if (target == "aieml" || target == "aie2")
+      return AIEArch::AIE2;
+    else if (target != "aie")
+      return AIEArch::UNKNOWN;
+  }
+  return AIEArch::AIE;
+}
+
+//============================================================================//
+//================== Common AIE canonicalization analysis ====================//
+//============================================================================//
+
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD)
     return false;
@@ -697,33 +721,23 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    AIEArch aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2") {
-        aieVersion = AIEArch::AIE2;
-      } else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        signalPassFailure();
-        return;
-      }
+    AIEArch aieVersion = decodeAIETarget(aieTarget);
+    if (aieVersion == AIEArch::UNKNOWN) {
+      op->emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
     }
 
-    TargetBackend backend = TargetBackend::CPP;
-    if (!targetBackend.empty()) {
-      std::string backendStr = targetBackend;
-      if (backendStr == "llvmir") {
-        backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
-        signalPassFailure();
-        return;
-      }
+    TargetBackend backend = decodeTargetBackend(targetBackend);
+    if (backend == TargetBackend::UNKNOWN) {
+      op->emitError() << "unknown target backend '" << targetBackend << "'";
+      signalPassFailure();
+      return;
+    }
+    if (backend == TargetBackend::LLVMIR && aieVersion == AIEArch::AIE) {
+      op->emitError() << "targetting LLVM IR is not supported for AIEv1";
+      signalPassFailure();
+      return;
     }
 
     populateCommonAIECanonicalizeConversionPatterns(patterns, backend);
@@ -776,5 +790,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
-  pm.addPass(createHoistCastOpToDataSourcePass());
+  if (decodeTargetBackend(options.targetBackend) == TargetBackend::CPP)
+    pm.addPass(createHoistCastOpToDataSourcePass());
 }
