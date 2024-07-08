@@ -87,7 +87,6 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         dev = AIEDevice.npu1_2col
     elif n_aie_cols == 4:
         dev = AIEDevice.npu1_4col
-        sys.exit(1)
 
     @device(dev)
     def device_body():
@@ -129,7 +128,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
         # Input A
         for row in range(n_aie_rows):
-            A_l2l1_fifos[row] = object_fifo(  # TODO i --> j (n rows)
+            A_l2l1_fifos[row] = object_fifo(
                 f"A_L2L1_{row}",
                 mem_tiles[row // n_A_tiles_per_shim],
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
