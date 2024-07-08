@@ -89,7 +89,7 @@ PYBIND11_MODULE(_aie, m) {
       [&stealCStr](MlirOperation op, bool aieml) {
         return stealCStr(aieTranslateAIEVecToCpp(op, aieml));
       },
-      "module"_a, "aieml"_a = false);
+      "module"_a, "aie2"_a = false);
 
   m.def(
       "translate_mlir_to_llvmir",
