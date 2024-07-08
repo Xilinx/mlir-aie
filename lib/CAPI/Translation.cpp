@@ -33,7 +33,7 @@ using namespace llvm;
 using namespace mlir;
 using namespace xilinx::AIE;
 
-MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aieml) {
+MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aie2) {
   std::string cpp;
   llvm::raw_string_ostream os(cpp);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
