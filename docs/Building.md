@@ -115,7 +115,7 @@ and llvm.
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
     ```
 
-6. **Only for the VCK5000:** The PCIe AIR runtime requires the use of the [AIR PCIe kernel driver](https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver). The driver directory in the [ROCm-air-platforms](https://github.com/Xilinx/ROCm-air-platforms) repository contains documentation on how to compile and load the AIR PCIe kernel driver.
+6. **Only for the VCK5000:** The PCIe AIR runtime requires the use of the [AIR PCIe kernel driver](https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver). This directory contains documentation on how to compile and load the AIR PCIe kernel driver.
 
 Note that when coming back to this install with a fresh environment, it is necessary to rerun the `utils/env_setup.sh` script to setup your environment as well as activate the Python virtual environment using the following command.
 ```
@@ -148,7 +148,7 @@ To install our experimental ROCm runtime  which allows us to communicate with th
 Then, set `${ROCM_ROOT}` to the ROCm install. Then, run the following command to build the mlir-aie toolchain targetting the VCK5000 pointing to the externally installed aie-rt and experimental ROCm runtime.
 
 ```
-./utils/build-mlirgaie-pcie.sh llvm/build/ build install /opt/xaiengine ${ROCM_ROOT}/lib/cmake/hsa-runtime64/ ${ROCM_ROOT}/lib/cmake/hsakmt/
+./utils/build-mlir-aie-pcie.sh llvm/build/ build install /opt/xaiengine ${ROCM_ROOT}/lib/cmake/hsa-runtime64/ ${ROCM_ROOT}/lib/cmake/hsakmt/
 ```
 
 ### Sysroot
