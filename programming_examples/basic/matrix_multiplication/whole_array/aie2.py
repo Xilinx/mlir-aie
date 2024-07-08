@@ -80,7 +80,16 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols
 
-    @device(AIEDevice.npu1_4col)
+    dev = None 
+    if n_aie_cols == 1:
+        dev = AIEDevice.npu1_1col
+    elif n_aie_cols == 2:
+        dev = AIEDevice.npu1_2col
+    elif n_aie_cols == 4:
+        dev = AIEDevice.npu1_4col
+        sys.exit(1)
+
+    @device(dev)
     def device_body():
         A_l2_memref_ty = T.memref(m * k * n_A_tiles_per_shim, T.bf16())
         B_l2_memref_ty = T.memref(k * n, T.bf16())
@@ -101,7 +110,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         )
 
         # Tile declarations as tile[row][col]
-        tiles = [[tile(col, row) for col in range(0, 4)] for row in range(0, 6)]
+        tiles = [[tile(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
         shim_tiles = tiles[0]
         mem_tiles = tiles[1]
         core_tiles = tiles[2:]
