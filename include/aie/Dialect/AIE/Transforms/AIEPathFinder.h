@@ -332,8 +332,7 @@ public:
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow) = 0;
-  // virtual bool addFixedConnection(ConnectOp connectOp) = 0; // ZY, todo:
-  // FIXME
+  virtual bool addFixedConnection(ConnectOp connectOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
   virtual SwitchboxNode getSwitchboxNode(TileID coords) = 0;
