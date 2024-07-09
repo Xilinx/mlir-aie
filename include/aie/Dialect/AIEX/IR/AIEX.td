@@ -492,7 +492,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
@@ -509,11 +509,37 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
+
+    /* Returns the provided multi-dimensional data transfer strides in units of
+       address granularity. In the IR, we express strides in units of element
+       data type, but the hardware requires it in units of address granularity.
+       Address granularity currently is 4 bytes for all hardware.
+
+       The returned stride[0] is the second-lowest dimension stride, i.e.
+       stride 1. The lowest stride is currently implicitly one, but this is not
+       a hardware requirement and could be changed in the future.  */
+    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
+
+    /* Returns the multi-dimensional data transfer sizes in units of address
+       granularity. These sizes are expressed in units of element data type in
+       the IR, but the hardware requires them to be in units of address
+       granularity. Address granularity currently is 4 bytes for all hardware. 
+
+       The returned size[0] is the lowest dimension size. In the IR, the sizes
+       are given in reverse order. For example, specifying sizes in IR as
+       [1, 2, 3, 4] would result in this function returning [4, 3, 2, 1].
+       */
+    llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
+
+    /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
+       target buffer will be skipped. In the IR, offsets are expressed in units
+       of memref element data type size. */
+    int64_t getOffsetInBytes(); 
   }];
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
   }];
 
   let hasVerifier = 1;
@@ -530,7 +556,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
       ...
       aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
       ...
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64, 1]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
       ...
       aiex.npu.dma_wait { symbol = @out0 }
     ```
@@ -567,17 +593,20 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
 }
 
 // Push BD to Queue
-def AIE_NpuShimTilePushQueueOp: AIEX_Op<"npu.shimtile_push_queue", []> {
+def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
   let summary = "bd queue push operator";
   let arguments = (
-    ins FlatSymbolRefAttr:$metadata,
+    ins I32Attr:$column,
+        I32Attr:$row,
+        DMAChannelDir:$direction,
+        I32Attr:$channel,
         BoolAttr:$issue_token,
         I32Attr:$repeat_count,
         I32Attr:$bd_id
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
   }];
   let hasVerifier = 1;
   let description = [{
@@ -589,10 +618,10 @@ def AIE_NpuShimTilePushQueueOp: AIEX_Op<"npu.shimtile_push_queue", []> {
 def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
-        UI32Attr:$address,
-        UI32Attr:$value
+    ins UI32Attr:$address,
+        UI32Attr:$value,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
@@ -623,13 +652,28 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   }];
 }
 
-// WRITEBD_EXTEND_SHIMTILE
-def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
+// XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
+def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+  let summary = "address patch operator";
+  let arguments = (
+    ins UI32Attr:$addr,
+        I32Attr:$arg_idx,
+        I32Attr:$arg_plus
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    address patch operator
+  }];
+}
+
+// NPU Bd Write operation
+def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,
-        I32Attr:$column_num,
-        I32Attr:$ddr_id,
         I32Attr:$bd_id,
         I32Attr:$buffer_length,
         I32Attr:$buffer_offset,
@@ -646,6 +690,7 @@ def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
         I32Attr:$iteration_size,
         I32Attr:$iteration_stride,
         I32Attr:$next_bd,
+        I32Attr:$row,
         I32Attr:$use_next_bd,
         I32Attr:$valid_bd,
         I32Attr:$lock_rel_val,
@@ -658,7 +703,7 @@ def AIE_NpuWriteBdExShimTileOp: AIEX_Op<"npu.writebd_shimtile", []> {
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
   let description = [{
-    writebd_shimtile operator
+    writebd operator
   }];
 }
 

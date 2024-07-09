@@ -16,8 +16,8 @@
 // CHECK:           %[[VAL_2:.*]] = aie.tile(4, 4)
 // CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_2]], 0)
 // CHECK:           %[[VAL_4:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_4]], 1)
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_4]], 0)
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_4]], 1)
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_4]], 0)
 // CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_4]]) : memref<256xi32>
 // CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_2]]) : memref<256xi32>
 // CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>

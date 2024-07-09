@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 // This is the implementation of the folding pass from mul add chain
-// to AIEVec convolution operations, compatible with the AIE-ML architecture.
+// to AIEVec convolution operations, compatible with the AIE2 architecture.
 //===----------------------------------------------------------------------===//
 
 #include "FoldMulAddChainToConvOp.h"
@@ -38,7 +38,7 @@ namespace xilinx::aievec {
 /// This analysis builds the longest possible chain of MAC operations whose
 /// operands are a vector that may or may not be shifted, and a broadcast.
 /// That is, these MACs represent `vector x scalar` ops, and are candidates to
-/// be grouped and replaced by mul_conv/fma_conv ops in AIE-ML.
+/// be grouped and replaced by mul_conv/fma_conv ops in AIE2.
 //
 // We build this chain recursively, climbing up the
 struct LongestConvMACChainAnalysis {

@@ -5,53 +5,64 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import sys
+import argparse
+
+from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
-from aie.extras.context import mlir_mod_ctx
 import aie.utils.trace as trace_utils
 
 
-def my_matmul():
-    M = 256
-    K = 256
-    N = 256
-    m = 64
-    k = 64
-    n = 64
+def main():
+    argparser = argparse.ArgumentParser(
+        prog="AIE Matrix Multiplication MLIR Design (Whole Array)",
+        description="Emits MLIR code for a matrix multiplication design of the given input size",
+    )
+    argparser.add_argument("-M", type=int, default=256)
+    argparser.add_argument("-K", type=int, default=256)
+    argparser.add_argument("-N", type=int, default=256)
+    argparser.add_argument("-m", type=int, default=64)
+    argparser.add_argument("-k", type=int, default=64)
+    argparser.add_argument("-n", type=int, default=64)
+    args = argparser.parse_args()
+    my_matmul(args.M, args.K, args.N, args.m, args.k, args.n)
+
+
+def my_matmul(M, K, N, m, k, n):
+
+    assert M % m == 0
+    assert K % k == 0
+    assert N % n == 0
+
     r = 4
     s = 8
     t = 4
-    word_size_in = 2
-    word_size_out = 2
+
+    assert m % r == 0
+    assert k % s == 0
+    assert n % t == 0
 
     vectorized = True
     enable_tracing = False
     trace_size = 65536
 
-    A_sz_in_i32s = M * K * word_size_in // 4
-    B_sz_in_i32s = K * N * word_size_in // 4
-    C_sz_in_bytes = M * N * word_size_out
-    C_sz_in_i32s = C_sz_in_bytes // 4
+    A_sz = M * K
+    B_sz = K * N
+    C_sz = M * N
+    C_sz_in_bytes = C_sz * 2
 
     M_div_m = M // m
     K_div_k = K // k
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
-    # Matrix A: MxK, submatrices a: mxk
-    k_in_i32s = k * word_size_in // 4
-    K_in_i32s = K * word_size_in // 4
-
     # Matrix B: KxN, submatrices b: kxn
-    n_in_i32s = n * word_size_in // 4
-    N_in_i32s = N * word_size_in // 4
-    k_x_N_in_i32s = k * N * word_size_in // 4
+    k_x_N = k * N
 
     # Output Matrix C: MxN
-    n_in_i32s_out = n * word_size_out // 4
-    N_in_i32s_out = N * word_size_out // 4
-    m_x_N_in_i32s_out = m * N * word_size_out // 4
+    m_x_N = m * N
 
     with mlir_mod_ctx() as ctx:
 
@@ -91,12 +102,16 @@ def my_matmul():
                 compute_tile2,
                 2,
                 memref_a_ty,
-                [
-                    (m // r, r * k),
-                    (k // s, s),
-                    (r, k),
-                    (s, 1),
-                ],
+                (
+                    [
+                        (m // r, r * k),
+                        (k // s, s),
+                        (r, k),
+                        (s, 1),
+                    ]
+                    if vectorized
+                    else []
+                ),
             )
             object_fifo_link(inA, memA)
 
@@ -108,12 +123,16 @@ def my_matmul():
                 compute_tile2,
                 2,
                 memref_b_ty,
-                [
-                    (k // s, s * n),
-                    (n // t, t),
-                    (s, n),
-                    (t, 1),
-                ],
+                (
+                    [
+                        (k // s, s * n),
+                        (n // t, t),
+                        (s, n),
+                        (t, 1),
+                    ]
+                    if vectorized
+                    else []
+                ),
             )
             object_fifo_link(inB, memB)
 
@@ -125,12 +144,16 @@ def my_matmul():
                 shim_tile,
                 2,
                 memref_c_ty,
-                [
-                    (m // r, r * n),
-                    (r, t),
-                    (n // t, r * t),
-                    (t, 1),
-                ],
+                (
+                    [
+                        (m // r, r * n),
+                        (r, t),
+                        (n // t, r * t),
+                        (t, 1),
+                    ]
+                    if vectorized
+                    else []
+                ),
             )
             object_fifo_link(memC, outC)
 
@@ -141,17 +164,19 @@ def my_matmul():
             # Set up compute tiles
 
             # Compute tile 2
-            @core(compute_tile2, "mm.o")
+            @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
             def core_body():
                 for _ in for_(0xFFFFFFFF):
-                    for _ in for_(tiles):
+                    for _ in for_(tiles) if tiles > 1 else range(1):  # issue #1547
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         if vectorized:
                             call(zero, [elem_out])
                         else:
                             call(zero_scalar, [elem_out])
 
-                        for _ in for_(K_div_k):
+                        for _ in (
+                            for_(K_div_k) if K_div_k > 1 else range(1)
+                        ):  # issue #1547
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
                             if vectorized:
@@ -160,18 +185,20 @@ def my_matmul():
                                 call(matmul_scalar, [elem_in_a, elem_in_b, elem_out])
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
-                            yield_([])
+                            if K_div_k > 1:
+                                yield_([])
 
                         memC.release(ObjectFifoPort.Produce, 1)
-                        yield_([])
+                        if tiles > 1:
+                            yield_([])
                     yield_([])
 
             # To/from AIE-array data movement
 
             @FuncOp.from_py_func(
-                T.memref(A_sz_in_i32s, T.i32()),
-                T.memref(B_sz_in_i32s, T.i32()),
-                T.memref(C_sz_in_i32s, T.i32()),
+                T.memref(A_sz, T.bf16()),
+                T.memref(B_sz, T.bf16()),
+                T.memref(C_sz, T.bf16()),
             )
             def sequence(A, B, C):
 
@@ -189,9 +216,7 @@ def my_matmul():
                 for tile_row_block in range(
                     (M_div_m + rows_per_block - 1) // rows_per_block
                 ):
-                    C_row_offset_in_i32s = (
-                        tile_row_block * rows_per_block * m * N * word_size_out // 4
-                    )
+                    C_row_offset = tile_row_block * rows_per_block * m * N
                     num_tile_rows = min(
                         [rows_per_block, M_div_m - tile_row_block * rows_per_block]
                     )
@@ -199,32 +224,28 @@ def my_matmul():
                         metadata="outC",
                         bd_id=0,
                         mem=C,
-                        offsets=[0, 0, 0, C_row_offset_in_i32s],
-                        sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                        strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out],
+                        offsets=[0, 0, 0, C_row_offset],
+                        sizes=[num_tile_rows, N_div_n, m, n],
+                        strides=[m_x_N, n, N, 1],
                     )
                     for tile_row in range(num_tile_rows):
-                        A_row_offset_in_i32s = (
-                            ((tile_row_block * rows_per_block) + tile_row)
-                            * m
-                            * K
-                            * word_size_in
-                            // 4
+                        A_row_offset = (
+                            ((tile_row_block * rows_per_block) + tile_row) * m * K
                         )
                         npu_dma_memcpy_nd(
                             metadata="inA",
                             bd_id=2 * tile_row + 1,
                             mem=A,
-                            offsets=[0, 0, 0, A_row_offset_in_i32s],
-                            sizes=[N_div_n, K_div_k, m, k_in_i32s],
-                            strides=[0, k_in_i32s, K_in_i32s],
+                            offsets=[0, 0, 0, A_row_offset],
+                            sizes=[N_div_n, K_div_k, m, k],
+                            strides=[0, k, K, 1],
                         )
                         npu_dma_memcpy_nd(
                             metadata="inB",
                             bd_id=2 * tile_row + 2,
                             mem=B,
-                            sizes=[N_div_n, K_div_k, k, n_in_i32s],
-                            strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s],
+                            sizes=[N_div_n, K_div_k, k, n],
+                            strides=[n, k_x_N, N, 1],
                         )
 
                     npu_sync(column=0, row=0, direction=0, channel=0)
@@ -232,4 +253,8 @@ def my_matmul():
     print(ctx.module)
 
 
-my_matmul()
+if __name__ == "__main__":
+    main()
+else:
+    print("Not meant to be imported")
+    sys.exit(1)

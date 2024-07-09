@@ -140,10 +140,6 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
     TokenAnalysis TA(device);
     TA.runAnalysis();
     LLVM_DEBUG(TA.print(llvm::dbgs()));
-    DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap(
-        TA.getTokenAcqMap());
-    DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap(
-        TA.getTokenRelMap());
     SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains(
         TA.getTokenChains());
     SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs(

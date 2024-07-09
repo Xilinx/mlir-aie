@@ -3,6 +3,8 @@
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -28,10 +30,7 @@
 #					  N=1 for matrix-vector
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-#include ${CURDIR}/../../makefile-common
 current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-#include ${current_dir}../../makefile-common
-SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${current_dir}../../makefile-common
 
 # defaults; overwrite if needed
@@ -39,18 +38,20 @@ M?=512
 K?=512
 N?=512
 
-trace_size=65536
+trace_size?=65536
 
-mlir_target?=build/aie_${M}x${K}x${N}.mlir
-xclbin_target?=build/final_${M}x${K}x${N}.xclbin
-insts_target?=build/insts_${M}x${K}x${N}.txt
+target_suffix?=${M}x${K}x${N}
+mlir_target?=build/aie_${target_suffix}.mlir
+xclbin_target?=build/final_${target_suffix}.xclbin
+insts_target?=build/insts_${target_suffix}.txt
 
-runargs?=-v 1 --warmup 10 --iters 10
+runargs?=-v 2 --warmup 1 --iters 1
+aieargs+=-M $M -K $K -N $N
 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
 .PHONY: all
-all: ${xclbin_target} ${insts_target} ${targetname}.exe
+all: ${xclbin_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
@@ -58,7 +59,7 @@ build/%.o: ${kernels_dir}/%.cc
 
 ${mlir_target}: ${srcdir}/aie2.py
 	mkdir -p ${@D}
-	python3 $< -M $M -K $K -N $N > $@
+	python3 $< ${aieargs} > $@
 
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
@@ -82,11 +83,11 @@ sign: ${xclbin_target}
 	${xclbin_sign} -dev Phoenix -xclbin $<
 
 .PHONY: run
-run: ${targetname}.exe ${xclbin_target} ${insts_target} #sign
+run: ${targetname}.exe ${xclbin_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
 
-trace: ${targetname}.exe ${xclbin_target} ${insts_target} # sign
+trace: ${targetname}.exe ${xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 	../../../utils/parse_trace.py --filename trace.txt --mlir ${mlir_target} --colshift 1 > trace_mm.json

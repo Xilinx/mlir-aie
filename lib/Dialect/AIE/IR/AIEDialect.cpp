@@ -101,14 +101,14 @@ LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   return success();
 }
 
-static VC1902TargetModel VC1902model(AIEDevice::xcvc1902);
-static VE2302TargetModel VE2302model(AIEDevice::xcve2302);
-static VE2802TargetModel VE2802model(AIEDevice::xcve2802);
-static NPUTargetModel NPUmodel(AIEDevice::npu1);
-static VirtualizedNPUTargetModel NPUmodel1col(AIEDevice::npu1_1col, 1);
-static VirtualizedNPUTargetModel NPUmodel2col(AIEDevice::npu1_2col, 2);
-static VirtualizedNPUTargetModel NPUmodel3col(AIEDevice::npu1_3col, 3);
-static VirtualizedNPUTargetModel NPUmodel4col(AIEDevice::npu1_4col, 4);
+static VC1902TargetModel VC1902model;
+static VE2302TargetModel VE2302model;
+static VE2802TargetModel VE2802model;
+static NPUTargetModel NPUmodel;
+static VirtualizedNPUTargetModel NPUmodel1col(1);
+static VirtualizedNPUTargetModel NPUmodel2col(2);
+static VirtualizedNPUTargetModel NPUmodel3col(3);
+static VirtualizedNPUTargetModel NPUmodel4col(4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<AIETarget>(op))
@@ -625,11 +625,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (!fifoOut.getDimensionsToStream().empty() &&
-          fifoOut.getConsumerTiles().size() > 1) {
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsToStream and multiple consumers.");
-      }
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
         if (!dims.empty())
           return emitOpError("currently does not support objectFifos with "
@@ -966,15 +961,11 @@ LogicalResult PutCascadeOp::verify() {
   Type type = getCascadeValue().getType();
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
-  if (targetModel.getTargetArch() == AIEArch::AIE1) {
-    if (bits != 384)
-      return emitOpError("must be a 384-bit type");
-  } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
-    if (bits != 512)
-      return emitOpError("must be a 512-bit type");
-  } else
-    return emitOpError("cascade not supported in ")
-           << stringifyAIEArch(targetModel.getTargetArch());
+  auto archbits = targetModel.getAccumulatorCascadeSize();
+  if (bits != archbits)
+    return emitOpError("type must match architecture cascade width (")
+           << archbits << " bits in "
+           << stringifyAIEArch(targetModel.getTargetArch()) << ")";
   return success();
 }
 
@@ -1093,24 +1084,24 @@ bool TileOp::isShimNOCorPLTile() {
   return targetModel.isShimNOCorPLTile(getCol(), getRow());
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
-                              MasterSetOp masterOp, PacketRulesOp slaveOp) {
-  auto srcBundle = masterOp.destPort().bundle;
-  auto srcChan = masterOp.destPort().channel;
-  auto dstBundle = slaveOp.sourcePort().bundle;
-  auto dstChan = slaveOp.sourcePort().channel;
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
+                           MasterSetOp masterOp, PacketRulesOp slaveOp) {
+  auto srcBundle = slaveOp.sourcePort().bundle;
+  auto srcChan = slaveOp.sourcePort().channel;
+  auto dstBundle = masterOp.destPort().bundle;
+  auto dstChan = masterOp.destPort().channel;
+  return targetModel.isLegalTileConnection(
+      tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
-                              ConnectOp connectOp) {
+bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
+                           ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
   auto dstChan = connectOp.getDestChannel();
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+  return targetModel.isLegalTileConnection(
+      tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1721,20 +1712,9 @@ LogicalResult SwitchboxOp::verify() {
               .failed())
         return failure();
 
-      // Memtile stream switch connection constraints
-      if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, connectOp))
-        return connectOp.emitOpError(
-            "illegal memtile stream switch connection");
-
-      // Trace stream switch connection constraints
-      if (connectOp.getDestBundle() == WireBundle::Trace)
-        return connectOp.emitOpError("Trace port cannot be a destination");
-
-      if (connectOp.getSourceBundle() == WireBundle::Trace &&
-          !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                          connectOp.getDestBundle(),
-                                          connectOp.getDestChannel()))
-        return connectOp.emitOpError("illegal Trace destination");
+      // Stream switch connection constraints
+      if (!isLegalTileConnection(tile, targetModel, connectOp))
+        return connectOp.emitOpError("illegal stream switch connection");
 
     } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
@@ -1779,20 +1759,10 @@ LogicalResult SwitchboxOp::verify() {
           mstrs.push_back(m);
       }
       for (auto m : mstrs) {
-        // Trace stream switch connection constraints
-        if (m.destPort().bundle == WireBundle::Trace)
-          return connectOp.emitOpError("Trace port cannot be a destination");
         for (auto s : slvs) {
-          if (s.sourcePort().bundle == WireBundle::Trace &&
-              !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                              m.destPort().bundle,
-                                              m.destPort().channel))
-            return amselOp.emitOpError("illegal Trace destination");
-
-          // Memtile stream switch connection constraints
-          if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, m, s))
-            return amselOp->emitOpError(
-                "illegal memtile stream switch connection");
+          // Stream switch connection constraints
+          if (!isLegalTileConnection(tile, targetModel, m, s))
+            return amselOp->emitOpError("illegal stream switch connection");
         }
       }
     } else if (isa<EndOp>(ops)) {
