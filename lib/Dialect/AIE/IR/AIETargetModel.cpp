@@ -261,8 +261,6 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
                                             WireBundle srcBundle, int srcChan,
                                             WireBundle dstBundle,
                                             int dstChan) const {
-  // ZY: todo, FIXME
-
   // Check Channel Id within the range
   if (srcChan >= int(getNumSourceSwitchboxConnections(col, row, srcBundle)))
     return false;
@@ -277,11 +275,15 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   else if (isShimNOCorPLTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
+    else
+      return true;
   }
   // Coretile
   else if (isCoreTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
+    else
+      return true;
   }
   return false;
 }

@@ -187,7 +187,6 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       auto [it, _] = grid.insert(
           {{col, row},
            SwitchboxNode{col, row, id++, maxCol, maxRow, targetModel}});
-      it->second.visualize();
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
@@ -247,42 +246,14 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                    std::vector<PathEndPointNode>{{matchingDstSbPtr, dstPort}}});
 }
 
-// Keep track of connections already used in the AIE; Pathfinder algorithm will avoid using these.
+// Keep track of connections already used in the AIE; Pathfinder algorithm will
+// avoid using these.
 bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
-  auto sb = connectOp->getParentOfType<SwitchboxOp>();
-  // TODO: keep track of capacity?
-  if (sb.getTileOp().isShimNOCTile())
-    return true;
-
-  TileID sbTile = sb.getTileID();
-  WireBundle sourceBundle = connectOp.getSourceBundle();
-  WireBundle destBundle = connectOp.getDestBundle();
-
-  // find the correct Channel and indicate the fixed direction
-  // outgoing connection
-  auto matchingCh =
-      std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-        TileID srcTile = {ch.src.col, ch.src.row};
-        return srcTile == sbTile && ch.bundle == destBundle;
-      });
-  if (matchingCh != edges.end())
-    return matchingCh->fixedCapacity.insert(connectOp.getDestChannel())
-               .second ||
-           true;
-
-  // incoming connection
-  matchingCh = std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch)
-  {
-    TileID targetTile = {ch.target.col, ch.target.row};
-    return targetTile == sbTile &&
-           ch.bundle == getConnectingBundle(sourceBundle);
-  });
-  if (matchingCh != edges.end())
-    return matchingCh->fixedCapacity.insert(connectOp.getSourceChannel())
-               .second ||
-           true;
-
-  return false;
+  SwitchboxOp switchboxOp = connectOp->getParentOfType<SwitchboxOp>();
+  int col = switchboxOp.colIndex();
+  int row = switchboxOp.rowIndex();
+  SwitchboxNode sb = grid.at({col, row});
+  return sb.allocate(connectOp.sourcePort(), connectOp.destPort(), false);
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();
@@ -330,17 +301,16 @@ Pathfinder::dijkstraShortestPaths(SwitchboxNode *src) {
     Q.pop();
     for (ChannelEdge *e : channels[src]) {
       SwitchboxNode *dest = e->target;
-      double &demand = demandMatrix[std::make_pair(e->src, e->target)];
-      bool relax = distance[src] + demand < distance[dest];
+      bool relax = distance[src] + demand[e] < distance[dest];
       if (colors[dest] == WHITE) {
         if (relax) {
-          distance[dest] = distance[src] + demand;
+          distance[dest] = distance[src] + demand[e];
           preds[dest] = src;
           colors[dest] = GRAY;
         }
         Q.push(dest);
       } else if (colors[dest] == GRAY && relax) {
-        distance[dest] = distance[src] + demand;
+        distance[dest] = distance[src] + demand[e];
         preds[dest] = src;
       }
     }
@@ -363,7 +333,7 @@ Pathfinder::findPaths(const int maxIterations) {
 
   // initialize all Channel histories to 0
   for (auto &ch : edges)
-    overCapacityMatrix[std::make_pair(ch.src, ch.target)] = 0;
+    overCapacity[&ch] = 0;
   // assume legal until found otherwise
   bool isLegal = true;
 
@@ -372,16 +342,9 @@ Pathfinder::findPaths(const int maxIterations) {
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
     for (auto &ch : edges) {
-      double &demand = demandMatrix[std::make_pair(ch.src, ch.target)];
-      int &overCapacity = overCapacityMatrix[std::make_pair(ch.src, ch.target)];
-      if (ch.fixedCapacity.size() >=
-          static_cast<std::set<int>::size_type>(ch.getMaxCapacity())) {
-        demand = INF;
-      } else {
-        double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity;
-        double congestion = 1.0 + USED_CAPACITY_COEFF * ch.getUsedCapacity();
-        demand = history * congestion;
-      }
+      double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
+      double congestion = 1.0 + USED_CAPACITY_COEFF * ch.getUsedCapacity();
+      demand[&ch] = history * congestion;
     }
     // if reach maxIterations, throw an error since no routing can be found
     if (++iterationCount > maxIterations) {
@@ -434,66 +397,58 @@ Pathfinder::findPaths(const int maxIterations) {
             }
           }
           assert(ch != nullptr && "couldn't find ch");
-
-          // don't use fixed channels
-          while (ch->fixedCapacity.count(ch->usedCapacity))
-            ch->usedCapacity++;
-
-          // must get same channel???
-          // check same id availble inPort curr, and outPort preds[curr]
-          int channel = ch->getUsedCapacity();
-          double &demand = demandMatrix[std::make_pair(ch->src, ch->target)];
-          int &overCapacity =
-              overCapacityMatrix[std::make_pair(ch->src, ch->target)];
-          std::vector<int> availableChannels = curr->findAvailableChannelIn(
-              getConnectingBundle(ch->getBundle()), lastDestPort, isPkt);
-          if (availableChannels.size() > 0) {
-            channel = availableChannels[0];
-            curr->allocate({getConnectingBundle(ch->getBundle()), channel},
-                           lastDestPort, isPkt);
+          int channel = curr->findAvailableChannelIn(
+              getConnectingBundle(ch->bundle), lastDestPort, isPkt);
+          if (channel >= 0) {
+            bool succeed =
+                curr->allocate({getConnectingBundle(ch->bundle), channel},
+                               lastDestPort, isPkt);
+            if (!succeed)
+              assert(false && "invalid allocation");
           } else {
+            // if no channel available, use a virtual channel id and mark
+            // routing as being invalid
+            channel = ch->getUsedCapacity() + overCapacity[ch];
             LLVM_DEBUG(llvm::dbgs()
                        << "Too much capacity on Edge (" << ch->target.col
                        << ", " << ch->target.row << ") . "
-                       << stringifyWireBundle(ch->getBundle())
+                       << stringifyWireBundle(ch->bundle)
                        << "\t: used_capacity = " << ch->getUsedCapacity()
-                       << "\t: Demand = " << demand << "\n");
-            overCapacity++;
+                       << "\t: Demand = " << demand[ch] << "\n");
+            overCapacity[ch]++;
             LLVM_DEBUG(llvm::dbgs()
-                       << "over_capacity_count = " << overCapacity << "\n");
+                       << "over_capacity_count = " << overCapacity[ch] << "\n");
             isLegal = false;
           }
 
           // add the entrance port for this Switchbox
-          Port currSourcePort = {getConnectingBundle(ch->getBundle()), channel};
+          Port currSourcePort = {getConnectingBundle(ch->bundle), channel};
           switchSettings[*curr].src = {currSourcePort};
 
           // add the current Switchbox to the map of the predecessor
-          Port PredDestPort = {ch->getBundle(), channel};
+          Port PredDestPort = {ch->bundle, channel};
           switchSettings[*preds[curr]].dsts.insert(PredDestPort);
           lastDestPort = PredDestPort;
 
           // if at capacity, bump demand to discourage using this Channel
-          if (ch->getUsedCapacity() >= ch->getMaxCapacity()) {
+          if (ch->getUsedCapacity() >= ch->maxCapacity) {
             LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
             // this means the order matters!
-            demand *= DEMAND_COEFF;
+            demand[ch] *= DEMAND_COEFF;
           }
 
           processed.insert(curr);
           curr = preds[curr];
         }
-        src.sb->allocate(src.port, lastDestPort, isPkt);
+        bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
+        if (!succeed)
+          assert(false && "invalid allocation");
       }
       // add this flow to the proposed solution
       routingSolution[src] = switchSettings;
     }
 
   } while (!isLegal); // continue iterations until a legal routing is found
-
-  for (auto &[tileId, node] : grid) {
-    node.visualize();
-  }
 
   return routingSolution;
 }

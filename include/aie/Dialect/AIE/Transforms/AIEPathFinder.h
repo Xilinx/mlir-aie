@@ -43,7 +43,7 @@ using SwitchboxNode = struct SwitchboxNode {
     for (WireBundle bundle : bundles) {
       int maxCapacity =
           targetModel.getNumSourceSwitchboxConnections(col, row, bundle);
-      if (row == 0 && bundle == WireBundle::DMA) // ZY: hack for shimmux
+      if (row == 0 && bundle == WireBundle::DMA) // for shimmux
         maxCapacity = 2;
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port inPort = {bundle, channel};
@@ -53,7 +53,7 @@ using SwitchboxNode = struct SwitchboxNode {
 
       maxCapacity =
           targetModel.getNumDestSwitchboxConnections(col, row, bundle);
-      if (row == 0 && bundle == WireBundle::DMA) // ZY: hack for shimmux
+      if (row == 0 && bundle == WireBundle::DMA) // for shimmux
         maxCapacity = 2;
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port outPort = {bundle, channel};
@@ -73,7 +73,7 @@ using SwitchboxNode = struct SwitchboxNode {
                                                outPort.channel))
           connectionMatrix[inId][outId] = -1;
 
-        // ZY: hack for shimmux
+        // for shimmux
         if (row == 0 && (inPort.bundle == WireBundle::DMA ||
                          outPort.bundle == WireBundle::DMA))
           connectionMatrix[inId][outId] = 0;
@@ -82,80 +82,105 @@ using SwitchboxNode = struct SwitchboxNode {
   }
 
   // given a outPort, find availble input channel
-  std::vector<int> findAvailableChannelIn(WireBundle inBundle, Port outPort,
-                                          bool isPkt) {
-    if (outPortToId.count(outPort) == 0) {
-      printf("ERR%6s:%d ", stringifyWireBundle(outPort.bundle).str().c_str(),
-             outPort.channel);
-      return {};
-    }
-
+  int findAvailableChannelIn(WireBundle inBundle, Port outPort, bool isPkt) {
     int outId = outPortToId[outPort];
-    std::vector<int> availableChannels;
 
-    for (const auto &[inPort, inId] : inPortToId) {
-      if (inPort.bundle == inBundle && connectionMatrix[inId][outId] == 0) {
-        bool available = true;
-        int streamCount = 0;
-        int maxStreams = 1;
-        if (isPkt &&
-            std::find(pktInId.begin(), pktInId.end(), inId) != pktInId.end())
-          maxStreams = 32;
-        for (const auto &[outPort, outId] : outPortToId) {
-          streamCount += connectionMatrix[inId][outId];
-          if (streamCount >= maxStreams) {
-            available = false;
-            break;
+    if (isPkt) {
+      for (const auto &[inPort, inId] : inPortToId) {
+        if (inPort.bundle == inBundle && connectionMatrix[inId][outId] >= 0) {
+          bool available = true;
+          if (inPortPktCount.count(inPort) == 0) {
+            for (const auto &[outPort, outId] : outPortToId) {
+              if (connectionMatrix[inId][outId] == 1) {
+                // occupied by others as circuit-switched
+                available = false;
+                break;
+              }
+            }
+          } else {
+            if (inPortPktCount[inPort] >= maxPktStream) {
+              // occupied by others as packet-switched but exceed max packet
+              // stream capacity
+              available = false;
+            }
           }
+          if (available)
+            return inPort.channel;
         }
-        if (available)
-          availableChannels.push_back(inPort.channel);
+      }
+    } else {
+      for (const auto &[inPort, inId] : inPortToId) {
+        if (inPort.bundle == inBundle && connectionMatrix[inId][outId] == 0) {
+          bool available = true;
+          for (const auto &[outPort, outId] : outPortToId) {
+            if (connectionMatrix[inId][outId] == 1) {
+              available = false;
+              break;
+            }
+          }
+          if (available)
+            return inPort.channel;
+        }
       }
     }
-    return availableChannels;
+
+    // couldn't find any availale channel
+    return -1;
   }
 
-  void allocate(Port inPort, Port outPort, bool isPkt) {
+  bool allocate(Port inPort, Port outPort, bool isPkt) {
     int inId = inPortToId.at(inPort);
     int outId = outPortToId.at(outPort);
-    assert(connectionMatrix[inId][outId] >= 0 && "invalid allocation");
-    connectionMatrix[inId][outId]++;
-    if (isPkt &&
-        std::find(pktInId.begin(), pktInId.end(), inId) == pktInId.end())
-      pktInId.push_back(inId);
+
+    // invalid connection
+    if (connectionMatrix[inId][outId] == -1)
+      return false;
+
+    if (isPkt) {
+      // a packet-switched stream to be allocated
+      if (inPortPktCount.count(inPort) == 0) {
+        for (const auto &[outPort, outId] : outPortToId) {
+          if (connectionMatrix[inId][outId] == 1)
+            // occupied by others as circuit-switched, allocation fail!
+            return false;
+        }
+        // empty channel, allocation succeed!
+        inPortPktCount[inPort] = 1;
+        connectionMatrix[inId][outId] = 1;
+        return true;
+      } else {
+        if (inPortPktCount[inPort] >= maxPktStream) {
+          // occupied by others as packet-switched but exceed max packet stream
+          // capacity, allocation fail!
+          return false;
+        } else {
+          // valid packet-switched, allocation succeed!
+          inPortPktCount[inPort]++;
+          return true;
+        }
+      }
+    } else {
+      // a circuit-switched stream to be allocated
+      if (connectionMatrix[inId][outId] == 0) {
+        // empty channel, allocation succeed!
+        connectionMatrix[inId][outId] = 1;
+        return true;
+      } else {
+        // occupied by others, allocation fail!
+        return false;
+      }
+    }
   }
 
   void clearAllocation() {
     for (int inId = 0; inId < inPortId; inId++) {
       for (int outId = 0; outId < outPortId; outId++) {
-        if (connectionMatrix[inId][outId] == 1) {
+        if (connectionMatrix[inId][outId] != -1) {
           connectionMatrix[inId][outId] = 0;
         }
       }
     }
-  }
-
-  void visualize() {
-    printf("Switchbox@ col:%d, row:%d\n", col, row);
-
-    // Print header for columns (outPorts)
-    printf("         ");
-    for (const auto &[outPort, outId] : outPortToId) {
-      printf("%6s:%d ", stringifyWireBundle(outPort.bundle).str().c_str(),
-             outPort.channel);
-    }
-    printf("\n");
-
-    for (const auto &[inPort, inId] : inPortToId) {
-      // Print header for rows (inPorts)
-      printf("%6s:%d ", stringifyWireBundle(inPort.bundle).str().c_str(),
-             inPort.channel);
-      for (const auto &[outPort, outId] : outPortToId) {
-        printf("%8d ", connectionMatrix[inId][outId]);
-      }
-      printf("\n");
-    }
-    printf("\n");
+    inPortPktCount.clear();
   }
 
   friend std::ostream &operator<<(std::ostream &os, const SwitchboxNode &s) {
@@ -172,13 +197,59 @@ using SwitchboxNode = struct SwitchboxNode {
   int col, row, id;
   int inPortId = 0, outPortId = 0;
   std::map<Port, int> inPortToId, outPortToId;
+
+  // tenary representation of switchbox connectivity
+  // -1: invalid in arch, 0: empty and available, 1: occupued
   std::vector<std::vector<int>> connectionMatrix;
-  std::vector<int> pktInId;
+
+  // input ports with incoming packet-switched streams
+  std::map<Port, int> inPortPktCount;
+
+  // up to 32 packet-switched stram through a port
+  const int maxPktStream = 32;
 };
 
 using ChannelEdge = struct ChannelEdge {
   ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
-      : src(src), target(target) {}
+      : src(src), target(target) {
+
+    // get bundle from src to target
+    if (src->col == target->col) {
+      if (src->row > target->row)
+        bundle = WireBundle::South;
+      else
+        bundle = WireBundle::North;
+    } else {
+      if (src->col > target->col)
+        bundle = WireBundle::West;
+      else
+        bundle = WireBundle::East;
+    }
+
+    // maximum number of routing resources
+    maxCapacity = 0;
+    for (auto &[outPort, _] : src->outPortToId) {
+      if (outPort.bundle == bundle) {
+        maxCapacity++;
+      }
+    }
+  }
+
+  // how many flows are actually using this Channel
+  int getUsedCapacity() {
+    int usedCapacity = 0;
+    for (auto &[outPort, outPortId] : src->outPortToId) {
+      if (outPort.bundle == bundle) {
+        for (auto &[inPort, inPortId] : src->inPortToId) {
+          if (src->connectionMatrix[inPortId][outPortId] > 0) {
+            usedCapacity++;
+            break;
+          }
+        }
+      }
+    }
+    return usedCapacity;
+  }
 
   friend std::ostream &operator<<(std::ostream &os, const ChannelEdge &c) {
     os << "Channel(src=" << c.src << ", dst=" << c.target << ")";
@@ -193,49 +264,11 @@ using ChannelEdge = struct ChannelEdge {
     return os;
   }
 
-  WireBundle getBundle() {
-    if (src->col == target->col)
-      if (src->row > target->row)
-        return WireBundle::South;
-      else
-        return WireBundle::North;
-    else if (src->col > target->col)
-      return WireBundle::West;
-    else
-      return WireBundle::East;
-  }
-
-  int getMaxCapacity() {
-    auto bundle = getBundle();
-    int maxCapacity = 0; // maximum number of routing resources
-    for (auto &[outPort, _] : src->outPortToId) {
-      if (outPort.bundle == bundle) {
-        maxCapacity++;
-      }
-    }
-    return maxCapacity;
-  }
-
-  int getUsedCapacity() {
-    auto bundle = getBundle();
-    int usedCapacity = 0; // how many flows are actually using this Channel
-    for (auto &[outPort, outPortId] : src->outPortToId) {
-      if (outPort.bundle == bundle) {
-        for (auto &[inPort, inPortId] : src->inPortToId) {
-          if (src->connectionMatrix[inPortId][outPortId] > 0) {
-            usedCapacity++;
-            break;
-          }
-        }
-      }
-    }
-    return usedCapacity;
-  }
-
   SwitchboxNode *src;
   SwitchboxNode *target;
 
-  std::set<int> fixedCapacity; // channels not available to the algorithm
+  int maxCapacity;
+  WireBundle bundle;
 };
 
 // A SwitchSetting defines the required settings for a SwitchboxNode for a flow
@@ -345,7 +378,7 @@ public:
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow) override;
-  // bool addFixedConnection(ConnectOp connectOp) override; // ZY, todo: FIXME
+  bool addFixedConnection(ConnectOp connectOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
 
@@ -357,17 +390,22 @@ public:
   }
 
 private:
+  // Flows to be routed
   std::vector<FlowNode> flows;
+
+  // Grid of switchboxes available
   std::map<TileID, SwitchboxNode> grid;
+
   // Use a list instead of a vector because nodes have an edge list of raw
   // pointers to edges (so growing a vector would invalidate the pointers).
   std::list<ChannelEdge> edges;
 
   // Use Dijkstra's shortest path to find routes, and use "demand" as the
   // weights.
-  std::map<std::pair<SwitchboxNode *, SwitchboxNode *>, double> demandMatrix;
+  std::map<ChannelEdge *, double> demand;
+
   // History of Channel being over capacity
-  std::map<std::pair<SwitchboxNode *, SwitchboxNode *>, int> overCapacityMatrix;
+  std::map<ChannelEdge *, int> overCapacity;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

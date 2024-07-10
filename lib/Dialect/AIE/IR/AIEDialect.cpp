@@ -1761,8 +1761,12 @@ LogicalResult SwitchboxOp::verify() {
       for (auto m : mstrs) {
         for (auto s : slvs) {
           // Stream switch connection constraints
-          if (!isLegalTileConnection(tile, targetModel, m, s))
+          if (!isLegalTileConnection(tile, targetModel, m, s)) {
+            printf("illegal connection %d %d %d %d\n", s.sourcePort().bundle,
+                   s.sourcePort().channel, m.destPort().bundle,
+                   m.destPort().channel);
             return amselOp->emitOpError("illegal stream switch connection");
+          }
         }
       }
     } else if (isa<EndOp>(ops)) {
