@@ -839,8 +839,16 @@ _AIE2 vector element-wise multiply_
 AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
 The vector sizes are at least 512 bits.
 `$result = `$lhs * $rhs`.
+Currently, the following are the supported type combinations:
+    lhs                | rhs                | Accumulator
+  :------------------:|:------------------:|:-----------------:
+    `vector<32xi8>`    | `vector<32xi8>`    | `vector<32xi32>`
+    `vector<32xi16>`   | `vector<32xi16>`   | `vector<32xi32>`
+    `vector<16xi32>`   | `vector<16xi32>`   | `vector<16xi64>`
+    `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
+    `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
 
-Traits: `AlwaysSpeculatableImplTrait`
+Traits: `AlwaysSpeculatableImplTrait`, `SameOperandsAndResultShape`, `SameOperandsShape`, `SameTypeOperands`
 
 Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
@@ -850,14 +858,14 @@ Effects: `MemoryEffects::Effect{}`
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
+| `lhs` | vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32
+| `rhs` | vector of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type or 32-bit float values of length 16/32
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | vector of any type values
+| `result` | vector of 32-bit signless integer or 64-bit signless integer or 32-bit float values of length 16/32
 
 
 ### `aievec.neg` (::xilinx::aievec::NegOp)
