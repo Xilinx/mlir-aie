@@ -295,7 +295,7 @@ def test_nonsquare_matrix_mult_vectorized(ctx: MLIRContext, workdir: Path):
                 any_op_t(),
                 target,
                 "convert-vector-to-aievec",
-                options="aie-target=aieml",
+                options="aie-target=aie2",
             )
 
     mod_aievec.finish()
@@ -548,7 +548,7 @@ def test_nonsquare_matrix_mult_vectorized_sugar(ctx: MLIRContext, workdir: Path)
                 any_op_t(),
                 target,
                 "convert-vector-to-aievec",
-                options="aie-target=aieml",
+                options="aie-target=aie2",
             )
 
     mod_aievec.finish()

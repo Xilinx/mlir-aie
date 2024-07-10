@@ -1,5 +1,5 @@
 // RUN: aie-opt %s --convert-vector-to-aievec -split-input-file | FileCheck %s
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -split-input-file | FileCheck %s --check-prefix=CHECK-V2
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -split-input-file | FileCheck %s --check-prefix=CHECK-V2
 
 // CHECK-LABEL: func @unaligned_read
 // CHECK: %[[C0:.*]] = arith.constant 0 : index

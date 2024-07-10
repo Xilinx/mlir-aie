@@ -376,7 +376,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized(ctx: MLIRContext, workdir: 
                 any_op_t(),
                 target,
                 "convert-vector-to-aievec",
-                options="aie-target=aieml",
+                options="aie-target=aie2",
             )
 
     mod_aievec.finish()
@@ -703,7 +703,7 @@ def test_tiled_nonsquare_tile_matrix_mult_vectorized_sugar(
                 any_op_t(),
                 target,
                 "convert-vector-to-aievec",
-                options="aie-target=aieml",
+                options="aie-target=aie2",
             )
 
     mod_aievec.finish()
