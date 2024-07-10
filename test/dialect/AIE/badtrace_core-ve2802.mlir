@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt -split-input-file %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'aie.connect' op illegal Trace destination
+// CHECK: error{{.*}} 'aie.connect' op illegal stream switch connection
 
 aie.device(xcve2802) {
   %01 = aie.tile(0, 3)
@@ -20,7 +20,7 @@ aie.device(xcve2802) {
 
 // -----
 
-// CHECK: error{{.*}} 'aie.amsel' op illegal Trace destination
+// CHECK: error{{.*}} 'aie.amsel' op illegal stream switch connection
 
 aie.device(xcve2802) {
   %02 = aie.tile(0, 3)

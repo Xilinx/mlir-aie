@@ -928,9 +928,10 @@ void AIEPathfinderPass::runOnOperation() {
       // Constraint: memtile stream switch constraints
       if (auto tile = sw.getTileOp();
           tile.isMemTile() &&
-          !targetModel.isLegalMemtileConnection(
-              connect.getSourceBundle(), connect.getSourceChannel(),
-              connect.getDestBundle(), connect.getDestChannel())) {
+          !targetModel.isLegalTileConnection(
+              tile.colIndex(), tile.rowIndex(), connect.getSourceBundle(),
+              connect.getSourceChannel(), connect.getDestBundle(),
+              connect.getDestChannel())) {
         problemConnects.push_back(
             {sw, connect.sourcePort(), connect.destPort()});
       }
@@ -952,9 +953,10 @@ void AIEPathfinderPass::runOnOperation() {
         for (auto s : slvs) {
           if (auto tile = sw.getTileOp();
               tile.isMemTile() &&
-              !targetModel.isLegalMemtileConnection(
-                  s.sourcePort().bundle, s.sourcePort().channel,
-                  m.destPort().bundle, m.destPort().channel))
+              !targetModel.isLegalTileConnection(
+                  tile.colIndex(), tile.rowIndex(), s.sourcePort().bundle,
+                  s.sourcePort().channel, m.destPort().bundle,
+                  m.destPort().channel))
             problemConnects.push_back({sw, s.sourcePort(), m.destPort()});
         }
       }
