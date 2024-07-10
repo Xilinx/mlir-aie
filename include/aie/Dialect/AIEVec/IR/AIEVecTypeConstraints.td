@@ -149,8 +149,8 @@ class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
 
 
 class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs, string acc> :
-  PredOpTrait<acc # " type is not a valid accumulator type given the type of" #
-              " the operands.",
+  PredOpTrait<acc # " type is a valid accumulator type given the type of the" #
+              " operands.",
     Or<[  
       And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I8>]>, 
       And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I16>]>, 
