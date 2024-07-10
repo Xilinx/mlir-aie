@@ -190,6 +190,12 @@ using SwitchboxNode = struct SwitchboxNode {
 
   GENERATE_TO_STRING(SwitchboxNode);
 
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const SwitchboxNode &s) {
+    os << to_string(s);
+    return os;
+  }
+
   bool operator<(const SwitchboxNode &rhs) const { return this->id < rhs.id; }
 
   bool operator==(const SwitchboxNode &rhs) const { return this->id == rhs.id; }

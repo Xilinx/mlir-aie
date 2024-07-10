@@ -227,7 +227,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   // check if a flow with this source already exists
   for (auto &[isPkt, src, dsts] : flows) {
     SwitchboxNode *existingSrcPtr = src.sb;
-    assert(existingSrc && "nullptr flow source");
+    assert(existingSrcPtr && "nullptr flow source");
     if (Port existingPort = src.port; existingSrcPtr->col == srcCoords.col &&
                                       existingSrcPtr->row == srcCoords.row &&
                                       existingPort == srcPort) {
@@ -409,8 +409,8 @@ Pathfinder::findPaths(const int maxIterations) {
             // routing as being invalid
             channel = ch->getUsedCapacity() + overCapacity[ch];
             LLVM_DEBUG(llvm::dbgs()
-                       << "Too much capacity on Edge (" << ch->target.col
-                       << ", " << ch->target.row << ") . "
+                       << "Too much capacity on Edge (" << ch->target->col
+                       << ", " << ch->target->row << ") . "
                        << stringifyWireBundle(ch->bundle)
                        << "\t: used_capacity = " << ch->getUsedCapacity()
                        << "\t: Demand = " << demand[ch] << "\n");
