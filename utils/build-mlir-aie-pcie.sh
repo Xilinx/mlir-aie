@@ -46,6 +46,32 @@ cd $BUILD_DIR
 set -o pipefail
 set -e
 
+# Building LIBXAIE with the VCK5000 backend
+if [ -z "$LIBXAIE_DIR" ] || [ -z "$HSAKMT_DIR" ]; then
+  echo "No LIBXAIE_DIR. Building aie-rt with AMDAIR backend"
+  git clone https://github.com/stephenneuendorffer/aie-rt
+  mkdir aie-rt-x86_64-hsa
+  mkdir aie-rt-x86_64-hsa/lib/
+  cd aie-rt
+  git checkout phoenix_v2023.2
+  cd driver/src
+  make -f Makefile.Linux CFLAGS="-D__AIEAMDAIR__"
+  cp -r ../include ../../../aie-rt-x86_64-hsa
+  cp libxaiengine.so* ../../../aie-rt-x86_64-hsa/lib
+  cd ../../../
+  LIBXAIE_DIR=$(pwd)/aie-rt-x86_64-hsa/
+fi
+
+# If HSA_DIR and HSAKMT_DIR are not provided, build ROCr
+if [ -z "$HSA_DIR" ] || [ -z "$HSAKMT_DIR" ]; then
+  echo "No HSA_DIR or HSAKMT_DIR provided. Building ROCr."
+  ./../utils/clone-rocm-air-platforms.sh
+ ./ROCm-air-platforms/utils/clone-build-roct.sh
+ ./ROCm-air-platforms/utils/clone-build-rocr.sh
+ HSA_DIR=$(pwd)/rocm/lib/cmake/hsa-runtime64/
+ HSAKMT_DIR=$(pwd)/rocm/lib/cmake/hsakmt/
+fi
+
 CMAKE_CONFIGS="\
     -GNinja \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \

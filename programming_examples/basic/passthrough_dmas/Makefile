@@ -55,17 +55,14 @@ vck5000: col=6
 
 vck5000: build/aie.mlir
 	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
-		-I/opt/xaiengine/include \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
-		-L/opt/xaiengine/lib \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,-R/opt/xaiengine/lib \
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 run_vck5000:
 	test.elf
 
 clean:
-	rm -rf build _build inst ${targetname}.exe
+	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

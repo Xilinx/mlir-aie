@@ -184,9 +184,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
-      auto [it, _] = grid.insert(
-          {{col, row},
-           SwitchboxNode{col, row, id++, maxCol, maxRow, targetModel}});
+      grid.insert({{col, row},
+                   SwitchboxNode{col, row, id++, maxCol, maxRow, targetModel}});
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
