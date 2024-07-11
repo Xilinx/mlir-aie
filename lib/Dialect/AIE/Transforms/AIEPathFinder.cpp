@@ -398,8 +398,10 @@ Pathfinder::findPaths(const int maxIterations) {
             }
           }
           assert(ch != nullptr && "couldn't find ch");
-          int channel = curr->findAvailableChannelIn(
-              getConnectingBundle(ch->bundle), lastDestPort, isPkt);
+          int channel = isLegal ? curr->findAvailableChannelIn(
+                                      getConnectingBundle(ch->bundle),
+                                      lastDestPort, isPkt)
+                                : -1;
           if (channel >= 0) {
             bool succeed =
                 curr->allocate({getConnectingBundle(ch->bundle), channel},
@@ -441,8 +443,8 @@ Pathfinder::findPaths(const int maxIterations) {
           processed.insert(curr);
           curr = preds[curr];
         }
-        if (std::find(srcDestPorts.begin(), srcDestPorts.end(), lastDestPort) ==
-            srcDestPorts.end()) {
+        if (isLegal && std::find(srcDestPorts.begin(), srcDestPorts.end(),
+                                 lastDestPort) == srcDestPorts.end()) {
           bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
           if (!succeed)
             assert(false && "invalid allocation");

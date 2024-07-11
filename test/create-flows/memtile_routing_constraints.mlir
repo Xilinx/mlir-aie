@@ -32,13 +32,13 @@
 
 module {
     aie.device(xcve2802) {
-        %t04 = aie.tile(2, 4)
-        %t03 = aie.tile(2, 3)
-        %t02 = aie.tile(2, 2)
-        %t01 = aie.tile(2, 1)
-        %t00 = aie.tile(2, 0)
+        %t24 = aie.tile(2, 4)
+        %t23 = aie.tile(2, 3)
+        %t22 = aie.tile(2, 2)
+        %t21 = aie.tile(2, 1)
+        %t20 = aie.tile(2, 0)
 
-        aie.flow(%t02, DMA : 0, %t01, DMA : 0)
-        aie.flow(%t03, DMA : 0, %t00, DMA : 0)
+        aie.flow(%t22, DMA : 0, %t21, DMA : 0)
+        aie.flow(%t23, DMA : 0, %t20, DMA : 0)
     }
 }

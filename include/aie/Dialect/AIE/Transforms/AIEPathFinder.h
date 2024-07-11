@@ -42,8 +42,6 @@ using SwitchboxNode = struct SwitchboxNode {
             targetModel.getNumSourceShimMuxConnections(col, row, bundle);
       }
 
-      if (row == 0 && bundle == WireBundle::DMA)
-        maxCapacity = 2;
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port inPort = {bundle, channel};
         inPortToId[inPort] = inPortId;
