@@ -27,23 +27,22 @@ using SwitchboxNode = struct SwitchboxNode {
                 const AIETargetModel &targetModel)
       : col{col}, row{row}, id{id} {
 
-    std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA,
-                                       WireBundle::FIFO, WireBundle::Trace,
-                                       WireBundle::Ctrl};
-
-    if (col > 0)
-      bundles.push_back(WireBundle::West);
-    if (col < maxCol)
-      bundles.push_back(WireBundle::East);
-    if (row > 0)
-      bundles.push_back(WireBundle::South);
-    if (row < maxRow)
-      bundles.push_back(WireBundle::North);
+    std::vector<WireBundle> bundles = {
+        WireBundle::Core,  WireBundle::DMA,  WireBundle::FIFO,
+        WireBundle::South, WireBundle::West, WireBundle::North,
+        WireBundle::East,  WireBundle::PLIO, WireBundle::NOC,
+        WireBundle::Trace, WireBundle::Ctrl};
 
     for (WireBundle bundle : bundles) {
       int maxCapacity =
           targetModel.getNumSourceSwitchboxConnections(col, row, bundle);
-      if (row == 0 && bundle == WireBundle::DMA) // for shimmux
+      if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+        // wordaround for shimMux, todo: integrate shimMux into routable grid
+        maxCapacity =
+            targetModel.getNumSourceShimMuxConnections(col, row, bundle);
+      }
+
+      if (row == 0 && bundle == WireBundle::DMA)
         maxCapacity = 2;
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port inPort = {bundle, channel};
@@ -53,8 +52,11 @@ using SwitchboxNode = struct SwitchboxNode {
 
       maxCapacity =
           targetModel.getNumDestSwitchboxConnections(col, row, bundle);
-      if (row == 0 && bundle == WireBundle::DMA) // for shimmux
-        maxCapacity = 2;
+      if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+        // wordaround for shimMux, todo: integrate shimMux into routable grid
+        maxCapacity =
+            targetModel.getNumDestShimMuxConnections(col, row, bundle);
+      }
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port outPort = {bundle, channel};
         outPortToId[outPort] = outPortId;
@@ -62,7 +64,6 @@ using SwitchboxNode = struct SwitchboxNode {
       }
     }
 
-    // -1:illegal, 0:available, 1:used
     connectionMatrix.resize(inPortId, std::vector<int>(outPortId, 0));
 
     // illegal connection
@@ -73,17 +74,26 @@ using SwitchboxNode = struct SwitchboxNode {
                                                outPort.channel))
           connectionMatrix[inId][outId] = -1;
 
-        // for shimmux
-        if (row == 0 && (inPort.bundle == WireBundle::DMA ||
-                         outPort.bundle == WireBundle::DMA))
-          connectionMatrix[inId][outId] = 0;
+        if (targetModel.isShimNOCorPLTile(col, row)) {
+          // wordaround for shimMux, todo: integrate shimMux into routable grid
+          auto isBundleInList = [](WireBundle bundle,
+                                   std::vector<WireBundle> bundles) {
+            return std::find(bundles.begin(), bundles.end(), bundle) !=
+                   bundles.end();
+          };
+          std::vector<WireBundle> bundles = {WireBundle::DMA, WireBundle::NOC,
+                                             WireBundle::PLIO};
+          if (isBundleInList(inPort.bundle, bundles) ||
+              isBundleInList(outPort.bundle, bundles))
+            connectionMatrix[inId][outId] = 0;
+        }
       }
     }
   }
 
   // given a outPort, find availble input channel
   int findAvailableChannelIn(WireBundle inBundle, Port outPort, bool isPkt) {
-    int outId = outPortToId[outPort];
+    int outId = outPortToId.at(outPort);
 
     if (isPkt) {
       for (const auto &[inPort, inId] : inPortToId) {

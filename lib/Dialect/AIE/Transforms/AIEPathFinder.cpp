@@ -379,6 +379,8 @@ Pathfinder::findPaths(const int maxIterations) {
       // set the input bundle for the source endpoint
       switchSettings[*src.sb].src = src.port;
       processed.insert(src.sb);
+      // destination ports used by src.sb
+      std::vector<Port> srcDestPorts;
       for (const PathEndPointNode &endPoint : dsts) {
         SwitchboxNode *curr = endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
@@ -439,9 +441,13 @@ Pathfinder::findPaths(const int maxIterations) {
           processed.insert(curr);
           curr = preds[curr];
         }
-        bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
-        if (!succeed)
-          assert(false && "invalid allocation");
+        if (std::find(srcDestPorts.begin(), srcDestPorts.end(), lastDestPort) ==
+            srcDestPorts.end()) {
+          bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
+          if (!succeed)
+            assert(false && "invalid allocation");
+          srcDestPorts.push_back(lastDestPort);
+        }
       }
       // add this flow to the proposed solution
       routingSolution[src] = switchSettings;
