@@ -9,7 +9,6 @@
 add_custom_target(aie-runtime-libs ALL)
 
 function(add_aie_runtime_libs arch) 
-  add_custom_target(${arch}_me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
   # Precompile the intrinsic wrappers.  
   if(DEFINED VITIS_ROOT)
     add_custom_target(${arch}_chess_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll)
