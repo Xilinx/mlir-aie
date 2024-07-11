@@ -454,31 +454,8 @@ class FlowRunner:
             runtime_lib_path = os.path.join(
                 install_path, "aie_runtime_lib", aie_target.upper()
             )
-            clang_path = os.path.dirname(shutil.which("clang"))
-            # The build path for libc can be very different from where it's installed.
-            llvmlibc_build_lib_path = os.path.join(
-                clang_path,
-                "..",
-                "runtimes",
-                "runtimes-" + aie_target.lower() + "-none-unknown-elf-bins",
-                "libc",
-                "lib",
-                "libc.a",
-            )
-            llvmlibc_install_lib_path = os.path.join(
-                clang_path,
-                "..",
-                "lib",
-                aie_target.lower() + "-none-unknown-elf",
-                "libc.a",
-            )
-            me_basic_o = os.path.join(runtime_lib_path, "me_basic.o")
-            if os.path.isfile(llvmlibc_build_lib_path):
-                libc = llvmlibc_build_lib_path
-            else:
-                libc = llvmlibc_install_lib_path
 
-            clang_link_args = [me_basic_o, libc, "-Wl,--gc-sections"]
+            clang_link_args = ["-Wl,--gc-sections"]
 
             if opts.progress:
                 task = self.progress_bar.add_task(
