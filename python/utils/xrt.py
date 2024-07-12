@@ -55,7 +55,7 @@ class AIE_Application:
         h = self.kernel(
             opcode,
             self.insts_buffer.bo,
-            self.n_insts * 4,
+            self.n_insts,
             *[b.bo for b in self.buffers if b is not None],
         )
         return h
