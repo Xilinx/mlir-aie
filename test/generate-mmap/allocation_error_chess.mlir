@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: peano
-// RUN: not aiecc.py --basic-alloc-scheme --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
-// PEANO: ld.lld: error: section '.bss' will not fit in region 'data': overflowed by 4 bytes
+// REQUIRES: chess
+// RUN: not aiecc.py --basic-alloc-scheme --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
+// CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
 
 // If we use all of the local memory, then linking the AIE executable should fail.
 // The fundamental problem here is that we can stuff things in the executable that 
