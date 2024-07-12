@@ -854,7 +854,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
     AIE-ML devices can apply zero padding at the buffer descriptor level, described with pairs of zero count 
     before and after every dimension, up to three dimensions (four dimensions on memtiles). The zero-padding 
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
-    `bd_pad_layout<zero_pad_before, zero_pad_after>`.
+    `bd_pad_layout<zero_pad_before, zero_pad_after>`. All zero counts are expressed in multiples of the 
+    element width.
   }];
 
   let arguments = (
