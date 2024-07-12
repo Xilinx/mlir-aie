@@ -342,10 +342,15 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
       int j = padDims->size() - i - 1;
       uint8_t before;
       uint8_t after;
-      before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore() *
-                                    elementWidthIn32bWords);
-      after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter() *
-                                   elementWidthIn32bWords);
+      if (j > 0) {
+        before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore());
+        after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter());
+      } else {
+        before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore() *
+                                      elementWidthIn32bWords);
+        after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter() *
+                                     elementWidthIn32bWords);
+      }
       dmaPadTensor.PadDesc[j] = {before, after};
     }
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
