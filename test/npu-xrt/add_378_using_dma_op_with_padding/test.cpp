@@ -19,7 +19,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 56;
+constexpr int IN_SIZE = 52;
 constexpr int OUT_SIZE = 64;
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
@@ -104,17 +104,17 @@ int main(int argc, const char *argv[]) {
     for (uint32_t j = 0; j < 16; j++) {
       uint32_t ref = idx + 1 + 378;
       // Zero padding at first and last element for every 14 inputs.
-      if (j == 0 || j == 15)
+      if (j == 0 || j == 1 || j == 15)
         ref = 0 + 378;
       else
         idx++;
       if (*(bufOut + i * 16 + j) != ref) {
-        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                  << std::endl;
+        std::cout << "Error in output " << *(bufOut + i * 16 + j)
+                  << " != " << ref << std::endl;
         errors++;
       } else
-        std::cout << "Correct output " << *(bufOut + i) << " == " << ref
-                  << std::endl;
+        std::cout << "Correct output " << *(bufOut + i * 16 + j)
+                  << " == " << ref << std::endl;
     }
   }
 
