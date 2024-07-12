@@ -39,7 +39,9 @@ using SwitchboxNode = struct SwitchboxNode {
       if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
         // wordaround for shimMux, todo: integrate shimMux into routable grid
         maxCapacity =
-            targetModel.getNumSourceShimMuxConnections(col, row, bundle);
+            (bundle == WireBundle::PLIO)
+                ? 8
+                : targetModel.getNumSourceShimMuxConnections(col, row, bundle);
       }
 
       for (int channel = 0; channel < maxCapacity; channel++) {
@@ -53,7 +55,9 @@ using SwitchboxNode = struct SwitchboxNode {
       if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
         // wordaround for shimMux, todo: integrate shimMux into routable grid
         maxCapacity =
-            targetModel.getNumDestShimMuxConnections(col, row, bundle);
+            (bundle == WireBundle::PLIO)
+                ? 8
+                : targetModel.getNumDestShimMuxConnections(col, row, bundle);
       }
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port outPort = {bundle, channel};
@@ -249,22 +253,6 @@ using ChannelEdge = struct ChannelEdge {
     }
   }
 
-  // how many flows are actually using this Channel
-  int getUsedCapacity() {
-    int usedCapacity = 0;
-    for (auto &[outPort, outPortId] : src->outPortToId) {
-      if (outPort.bundle == bundle) {
-        for (auto &[inPort, inPortId] : src->inPortToId) {
-          if (src->connectionMatrix[inPortId][outPortId] > 0) {
-            usedCapacity++;
-            break;
-          }
-        }
-      }
-    }
-    return usedCapacity;
-  }
-
   friend std::ostream &operator<<(std::ostream &os, const ChannelEdge &c) {
     os << "Channel(src=" << c.src << ", dst=" << c.target << ")";
     return os;
@@ -379,7 +367,7 @@ public:
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow) = 0;
-  virtual bool addFixedConnection(ConnectOp connectOp) = 0;
+  virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
   virtual SwitchboxNode getSwitchboxNode(TileID coords) = 0;
@@ -392,7 +380,7 @@ public:
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow) override;
-  bool addFixedConnection(ConnectOp connectOp) override;
+  bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
 
@@ -420,6 +408,9 @@ private:
 
   // History of Channel being over capacity
   std::map<ChannelEdge *, int> overCapacity;
+
+  // how many flows are actually using this Channel
+  std::map<ChannelEdge *, int> usedCapacity;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

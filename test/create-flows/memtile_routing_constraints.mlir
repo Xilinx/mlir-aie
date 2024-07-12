@@ -15,20 +15,8 @@
 // CHECK: %[[T22:.*]] = aie.tile(2, 2)
 // CHECK: %[[T21:.*]] = aie.tile(2, 1)
 // CHECK: %[[T20:.*]] = aie.tile(2, 0)
-// CHECK: aie.switchbox(%[[T21]]) {
-// CHECK:   aie.connect<North : 0, DMA : 0>
-// CHECK:   aie.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T22]]) {
-// CHECK:   aie.connect<DMA : 0, South : 0>
-// CHECK:   aie.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T20]]) {
-// CHECK:   aie.connect<North : 1, South : 2>
-// CHECK: }
-// CHECK: aie.switchbox(%[[T23]]) {
-// CHECK:   aie.connect<DMA : 0, South : 1>
-// CHECK: }
+// CHECK: aie.flow(%[[T23]], DMA : 0, %[[T20]], DMA : 0)
+// CHECK: aie.flow(%[[T22]], DMA : 0, %[[T21]], DMA : 0)
 
 module {
     aie.device(xcve2802) {

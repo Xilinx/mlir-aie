@@ -84,10 +84,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-    for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      if (!pathfinder->addFixedConnection(connectOp))
-        return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
-    }
+    if (!pathfinder->addFixedConnection(switchboxOp))
+      return switchboxOp.emitOpError() << "Unable to add fixed connections";
   }
 
   // all flows are now populated, call the congestion-aware pathfinder
@@ -247,12 +245,36 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
-  SwitchboxOp switchboxOp = connectOp->getParentOfType<SwitchboxOp>();
+bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int col = switchboxOp.colIndex();
   int row = switchboxOp.rowIndex();
-  SwitchboxNode sb = grid.at({col, row});
-  return sb.allocate(connectOp.sourcePort(), connectOp.destPort(), false);
+  SwitchboxNode &sb = grid.at({col, row});
+  std::set<int> invalidInId, invalidOutId;
+
+  for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
+    Port srcPort = connectOp.sourcePort();
+    Port destPort = connectOp.destPort();
+    if (sb.inPortToId.count(srcPort) == 0 ||
+        sb.outPortToId.count(destPort) == 0)
+      return false;
+    int inId = sb.inPortToId.at(srcPort);
+    int outId = sb.outPortToId.at(destPort);
+    if (sb.connectionMatrix[inId][outId] != 0)
+      return false;
+    invalidInId.insert(inId);
+    invalidOutId.insert(outId);
+  }
+
+  for (const auto &[inPort, inId] : sb.inPortToId) {
+    for (const auto &[outPort, outId] : sb.outPortToId) {
+      if (invalidInId.find(inId) != invalidInId.end() ||
+          invalidOutId.find(outId) != invalidOutId.end()) {
+        // mark as invalid
+        sb.connectionMatrix[inId][outId] = -1;
+      }
+    }
+  }
+  return true;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();
@@ -331,8 +353,10 @@ Pathfinder::findPaths(const int maxIterations) {
   std::map<PathEndPoint, SwitchSettings> routingSolution;
 
   // initialize all Channel histories to 0
-  for (auto &ch : edges)
+  for (auto &ch : edges) {
     overCapacity[&ch] = 0;
+    usedCapacity[&ch] = 0;
+  }
   // assume legal until found otherwise
   bool isLegal = true;
 
@@ -342,7 +366,7 @@ Pathfinder::findPaths(const int maxIterations) {
     // update demand on all channels
     for (auto &ch : edges) {
       double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
-      double congestion = 1.0 + USED_CAPACITY_COEFF * ch.getUsedCapacity();
+      double congestion = 1.0 + USED_CAPACITY_COEFF * usedCapacity[&ch];
       demand[&ch] = history * congestion;
     }
     // if reach maxIterations, throw an error since no routing can be found
@@ -398,10 +422,11 @@ Pathfinder::findPaths(const int maxIterations) {
             }
           }
           assert(ch != nullptr && "couldn't find ch");
-          int channel = isLegal ? curr->findAvailableChannelIn(
-                                      getConnectingBundle(ch->bundle),
-                                      lastDestPort, isPkt)
-                                : -1;
+          int channel =
+              curr->outPortToId.count(lastDestPort) > 0
+                  ? curr->findAvailableChannelIn(
+                        getConnectingBundle(ch->bundle), lastDestPort, isPkt)
+                  : -1;
           if (channel >= 0) {
             bool succeed =
                 curr->allocate({getConnectingBundle(ch->bundle), channel},
@@ -411,18 +436,21 @@ Pathfinder::findPaths(const int maxIterations) {
           } else {
             // if no channel available, use a virtual channel id and mark
             // routing as being invalid
-            channel = ch->getUsedCapacity() + overCapacity[ch];
+            channel = usedCapacity[ch];
             LLVM_DEBUG(llvm::dbgs()
                        << "Too much capacity on Edge (" << ch->target->col
                        << ", " << ch->target->row << ") . "
                        << stringifyWireBundle(ch->bundle)
-                       << "\t: used_capacity = " << ch->getUsedCapacity()
+                       << "\t: used_capacity = " << usedCapacity[ch]
                        << "\t: Demand = " << demand[ch] << "\n");
-            overCapacity[ch]++;
+            if (isLegal) {
+              overCapacity[ch]++;
+            }
             LLVM_DEBUG(llvm::dbgs()
                        << "over_capacity_count = " << overCapacity[ch] << "\n");
             isLegal = false;
           }
+          usedCapacity[ch]++;
 
           // add the entrance port for this Switchbox
           Port currSourcePort = {getConnectingBundle(ch->bundle), channel};
@@ -434,7 +462,7 @@ Pathfinder::findPaths(const int maxIterations) {
           lastDestPort = PredDestPort;
 
           // if at capacity, bump demand to discourage using this Channel
-          if (ch->getUsedCapacity() >= ch->maxCapacity) {
+          if (usedCapacity[ch] >= ch->maxCapacity) {
             LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
             // this means the order matters!
             demand[ch] *= DEMAND_COEFF;
@@ -443,8 +471,9 @@ Pathfinder::findPaths(const int maxIterations) {
           processed.insert(curr);
           curr = preds[curr];
         }
-        if (isLegal && std::find(srcDestPorts.begin(), srcDestPorts.end(),
-                                 lastDestPort) == srcDestPorts.end()) {
+        if (src.sb->outPortToId.count(lastDestPort) &&
+            std::find(srcDestPorts.begin(), srcDestPorts.end(), lastDestPort) ==
+                srcDestPorts.end()) {
           bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
           if (!succeed)
             assert(false && "invalid allocation");
