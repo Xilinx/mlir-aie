@@ -335,7 +335,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
     if (!dmaPadTensor.PadDesc)
       return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
     // libxaie requires stride in multiples of 32b
-    int elementWidthIn32bWords =
+    double elementWidthIn32bWords =
         static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
     for (size_t i = 0; i < padDims->size(); i++) {
       // Pass down dimensions in reverse order.
