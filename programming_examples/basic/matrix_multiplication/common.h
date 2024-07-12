@@ -109,11 +109,16 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 // Matrix / Float / Math
 // --------------------------------------------------------------------------
 
-static inline std::int16_t random_int16_t() {
+template <typename T>
+static inline T get_random();
+
+template <>
+std::int16_t get_random<std::int16_t>() {
   return (std::int16_t)rand() % 0x10000;
 }
 
-static inline std::bfloat16_t random_bfloat16_t() {
+template <>
+std::bfloat16_t get_random<std::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
   return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
@@ -163,6 +168,31 @@ bool nearly_equal(float a, float b, float epsilon = 128 * FLT_EPSILON,
   // std::numeric_limits<float>::max()); keeping this commented out until I
   // update figures below
   return diff < std::max(abs_th, epsilon * norm);
+}
+
+template <typename T>
+static inline float get_abs_tol();
+template <typename T>
+static inline float get_rel_tol();
+
+template <>
+float get_abs_tol<std::int32_t>() {
+  return 0.0;
+}
+
+template <>
+float get_abs_tol<std::bfloat16_t>() {
+  return 0.5;
+}
+
+template <>
+float get_rel_tol<std::int32_t>() {
+  return 0.0;
+}
+
+template <>
+float get_rel_tol<std::bfloat16_t>() {
+  return 0.05;
 }
 
 template <typename T>
@@ -237,8 +267,14 @@ struct error {
 
 template <typename Tout>
 std::optional<struct error<Tout>>
-verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual, float abs_tol, float rel_tol) {
-  if (!nearly_equal(expected, actual, rel_tol, abs_tol)) {
+verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
+              float abs_tol, float rel_tol) {
+  bool match = expected == actual;
+  if (abs_tol > 0 || rel_tol > 0) {
+    // Allow for some tolerance for float data types
+    match = nearly_equal(expected, actual, rel_tol, abs_tol);
+  }
+  if (!match) {
     return (struct error<Tout>){row, col, expected, actual};
   }
   return std::nullopt;
@@ -273,8 +309,8 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
 
 template <typename Tin, typename Tout, typename Tacc>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
-           std::vector<Tout> C, int verbosity = 0,
-           float abs_tol = 0.5, float rel_tol = 0.05) {
+           std::vector<Tout> C, int verbosity = 0, float abs_tol = 0.5,
+           float rel_tol = 0.05) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
   Tout max_rel_error = (Tout)0.0f;
@@ -284,9 +320,9 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      std::optional<struct error<Tout>> error = verify_single(
-          std::cout, row, col, CRef[row * N + col], C[row * N + col],
-          abs_tol, rel_tol);
+      std::optional<struct error<Tout>> error =
+          verify_single(std::cout, row, col, CRef[row * N + col],
+                        C[row * N + col], abs_tol, rel_tol);
       if (error.has_value()) {
         if (n_errors < max_printable_errors) {
           errors.push_back(*error);
@@ -316,8 +352,8 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
 template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
-                      int verbosity = 0,
-                      float abs_tol=0.5, float rel_tol=0.05) {
+                      int verbosity = 0, float abs_tol = 0.5,
+                      float rel_tol = 0.05) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -343,8 +379,8 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       print_progress_bar(std::cerr, progress);
     }
     Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B);
-    std::optional<struct error<Tout>> error =
-        verify_single(std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
+    std::optional<struct error<Tout>> error = verify_single(
+        std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
     if (error.has_value()) {
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);
