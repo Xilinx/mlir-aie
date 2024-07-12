@@ -176,6 +176,11 @@ template <typename T>
 static inline float get_rel_tol();
 
 template <>
+float get_abs_tol<std::int16_t>() {
+  return 0.0;
+}
+
+template <>
 float get_abs_tol<std::int32_t>() {
   return 0.0;
 }
@@ -186,12 +191,27 @@ float get_abs_tol<std::bfloat16_t>() {
 }
 
 template <>
+float get_abs_tol<float>() {
+  return 0.5;
+}
+
+template <>
+float get_rel_tol<std::int16_t>() {
+  return 0.0;
+}
+
+template <>
 float get_rel_tol<std::int32_t>() {
   return 0.0;
 }
 
 template <>
 float get_rel_tol<std::bfloat16_t>() {
+  return 0.05;
+}
+
+template <>
+float get_rel_tol<float>() {
   return 0.05;
 }
 
