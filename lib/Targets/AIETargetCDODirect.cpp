@@ -343,12 +343,12 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
       uint8_t before;
       uint8_t after;
       if (j > 0) {
-        before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore());
-        after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter());
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore());
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter());
       } else {
-        before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore() *
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore() *
                                       elementWidthIn32bWords);
-        after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter() *
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter() *
                                      elementWidthIn32bWords);
       }
       dmaPadTensor.PadDesc[j] = {before, after};

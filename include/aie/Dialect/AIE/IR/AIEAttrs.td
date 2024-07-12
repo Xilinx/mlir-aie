@@ -167,8 +167,8 @@ def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   }];
 
   let parameters = (ins
-    "uint16_t" : $zero_pad_before,
-    "uint16_t" : $zero_pad_after
+    "uint16_t" : $const_pad_before,
+    "uint16_t" : $const_pad_after
   );
 
   let assemblyFormat = "`<` struct(params) `>`";

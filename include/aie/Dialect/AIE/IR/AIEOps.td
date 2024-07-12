@@ -849,13 +849,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
     All strides are expressed in multiples of the element width (just like `len` and `offset`)
     **with the caveat that the inner-most dimension's stride must be 1**.
 
-    ## DMA zero padding on AIE-ML Devices
+    ## DMA constant padding on AIE-ML Devices
 
-    AIE-ML devices can apply zero padding at the buffer descriptor level, described with pairs of zero count 
-    before and after every dimension, up to three dimensions (four dimensions on memtiles). The zero-padding 
+    AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
+    counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
-    `bd_pad_layout<zero_pad_before, zero_pad_after>`. All zero counts are expressed in multiples of the 
-    element width.
+    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+    is 0). All counts are expressed in multiples of the element width.
   }];
 
   let arguments = (
@@ -866,6 +866,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
@@ -874,7 +875,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? `)` attr-dict
+    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{

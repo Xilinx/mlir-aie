@@ -84,7 +84,7 @@ module {
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<64x64xi8>, 0, 4096, [<size = 61, stride = 56>, <size = 56, stride = 1>], [<zero_pad_before = 2, zero_pad_after = 1>, <zero_pad_before = 4, zero_pad_after = 4>])
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<64x64xi8>, 0, 4096, [<size = 61, stride = 56>, <size = 56, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
         aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       }]
       %2 = aie.dma(MM2S, 1) [{
