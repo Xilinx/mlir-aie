@@ -324,6 +324,33 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             lenInBytes);
   }
 
+  // ND zero padding.
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
+      bdOp.getPadDimensions();
+  if (padDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
+        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
+    if (!dmaPadTensor.PadDesc)
+      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    // libxaie requires stride in multiples of 32b
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    for (size_t i = 0; i < padDims->size(); i++) {
+      // Pass down dimensions in reverse order.
+      int j = padDims->size() - i - 1;
+      uint8_t before;
+      uint8_t after;
+      before = static_cast<uint8_t>(padDims.value()[i].getZeroPadBefore() *
+                                    elementWidthIn32bWords);
+      after = static_cast<uint8_t>(padDims.value()[i].getZeroPadAfter() *
+                                   elementWidthIn32bWords);
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
+                            &dmaPadTensor);
+  }
   if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
