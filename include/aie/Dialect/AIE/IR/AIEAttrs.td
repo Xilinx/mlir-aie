@@ -148,14 +148,14 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
 def BDDimLayoutArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
     /*attrName*/"BDDimLayoutArray",
-    /*attrMnemonic*/"bd_dim_layout_arr",
+    /*attrMnemonic*/"bd_dim_layout_array",
     /*eltName*/BDDimLayoutAttr.cppClassName
 >;
 
 def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
     /*attrName*/"BDDimLayoutArrayArray",
-    /*attrMnemonic*/"bd_dim_layout_arr_arr",
+    /*attrMnemonic*/"bd_dim_layout_array_array",
     /*eltName*/BDDimLayoutArrayAttr.cppClassName
 >;
 
@@ -177,7 +177,7 @@ def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
 def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
     /*attrName*/"BDPadLayoutArray",
-    /*attrMnemonic*/"bd_pad_layout_arr",
+    /*attrMnemonic*/"bd_pad_layout_array",
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
