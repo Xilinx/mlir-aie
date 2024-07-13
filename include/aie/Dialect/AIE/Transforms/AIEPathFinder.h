@@ -95,7 +95,10 @@ using SwitchboxNode = struct SwitchboxNode {
 
   // given a outPort, find availble input channel
   int findAvailableChannelIn(WireBundle inBundle, Port outPort, bool isPkt) {
-    int outId = outPortToId.at(outPort);
+    if (outPortToId.count(outPort) == 0)
+      return -1;
+
+    int outId = outPortToId[outPort];
 
     if (isPkt) {
       for (const auto &[inPort, inId] : inPortToId) {
@@ -141,8 +144,12 @@ using SwitchboxNode = struct SwitchboxNode {
   }
 
   bool allocate(Port inPort, Port outPort, bool isPkt) {
-    int inId = inPortToId.at(inPort);
-    int outId = outPortToId.at(outPort);
+    // invalid port
+    if (outPortToId.count(outPort) == 0 || inPortToId.count(inPort) == 0)
+      return false;
+
+    int inId = inPortToId[inPort];
+    int outId = outPortToId[outPort];
 
     // invalid connection
     if (connectionMatrix[inId][outId] == -1)
