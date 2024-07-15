@@ -197,23 +197,35 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 // of the next bank to search (which should be given to subsequent
 // calls of this function to ensure a round-robin allocation scheme
 // over the available banks).
-int setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
+bool setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
   int bankIndex = startBankIndex;
+  bool allocated = false;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
     int64_t endAddr = startAddr + buffer.getAllocationSize();
-    if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) {
+    //if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) { //Trying to fit if it is on the last bank
+    if (endAddr <= bankLimits[bankIndex].endAddr){
+      if (endAddr > bankLimits[bankIndex].endAddr){ //That trying to fit is the problem which created the overflow
+        buffer->emitWarning("Potential overflow in bank");
+      }
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
+      allocated = true;
       bankIndex++;
       break;
     }
+    // Move to the next bank
     bankIndex++;
+    bankIndex %= numBanks;
   }
-  bankIndex %= numBanks;
-  return bankIndex;
+  // If allocation was not successful, handle the error
+  if(!allocated){
+    buffer.emitError("Failed to allocated buffer: insufficient memory in all banks");
+    return false;
+  }
+  return true;
 }
 
 LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
@@ -334,8 +346,16 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   // Set addresses for remaining buffers.
   int bankIndex = 0;
   for (auto buffer : buffersToAlloc)
-    bankIndex = setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
-                                 bankLimits);
+    if(!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
+                                 bankLimits)){
+      device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+        if(buffer.getTileOp() == tile){
+          buffer->removeAttr("address");
+          buffer->removeAttr("mem_bank");
+        }
+      }); 
+      return basicAllocation(tile);
+    }
 
   // Sort by smallest address before printing memory map.
   std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
@@ -383,27 +403,9 @@ struct AIEAssignBufferAddressesPass
       }
     } else {
       for (auto tile : device.getOps<TileOp>()) {
-        // if (tile.isMemTile())
-        //   if(auto res = simpleBankAwareAllocation(tile); res.failed())
-        //     return signalPassFailure();
-        // if (!tile.isMemTile())
-        //   if(auto res = basicAllocation(tile); res.failed())
-        //     return signalPassFailure();
         if(auto res = simpleBankAwareAllocation(tile); res.failed()){
-          // Collect all the buffers for this tile.
-          device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-            if(buffer.getTileOp() == tile){
-              buffer->removeAttr("address");
-              buffer->removeAttr("mem_bank");
-            }
-          });
-          if(auto res2 = basicAllocation(tile); res2.failed())
-            return signalPassFailure();
-          else
-            tile.emitOpError("Passed tile: sequential");
+          return signalPassFailure();
         }
-        else
-            tile.emitOpError("Passed tile: bank-aware");
       }
     }
   }
