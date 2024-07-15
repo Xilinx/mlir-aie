@@ -39,9 +39,7 @@ using SwitchboxNode = struct SwitchboxNode {
       if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
         // wordaround for shimMux, todo: integrate shimMux into routable grid
         maxCapacity =
-            (bundle == WireBundle::PLIO)
-                ? 8
-                : targetModel.getNumSourceShimMuxConnections(col, row, bundle);
+            targetModel.getNumSourceShimMuxConnections(col, row, bundle);
       }
 
       for (int channel = 0; channel < maxCapacity; channel++) {
@@ -55,9 +53,7 @@ using SwitchboxNode = struct SwitchboxNode {
       if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
         // wordaround for shimMux, todo: integrate shimMux into routable grid
         maxCapacity =
-            (bundle == WireBundle::PLIO)
-                ? 8
-                : targetModel.getNumDestShimMuxConnections(col, row, bundle);
+            targetModel.getNumDestShimMuxConnections(col, row, bundle);
       }
       for (int channel = 0; channel < maxCapacity; channel++) {
         Port outPort = {bundle, channel};
@@ -159,9 +155,10 @@ using SwitchboxNode = struct SwitchboxNode {
       // a packet-switched stream to be allocated
       if (inPortPktCount.count(inPort) == 0) {
         for (const auto &[outPort, outId] : outPortToId) {
-          if (connectionMatrix[inId][outId] == 1)
+          if (connectionMatrix[inId][outId] == 1) {
             // occupied by others as circuit-switched, allocation fail!
             return false;
+          }
         }
         // empty channel, allocation succeed!
         inPortPktCount[inPort] = 1;

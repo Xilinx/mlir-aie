@@ -232,7 +232,7 @@ AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
       return 4;
     case WireBundle::PLIO:
       return 6;
-    case WireBundle::South:
+    case WireBundle::North:
       return 8; // Connection to the south port of the stream switch
     default:
       return 0;
@@ -242,15 +242,16 @@ AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
 uint32_t
 AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
                                                 WireBundle bundle) const {
-  if (isShimNOCTile(col, row))
+  if (isShimNOCorPLTile(col, row))
     switch (bundle) {
     case WireBundle::DMA:
       return 2;
     case WireBundle::NOC:
       return 4;
     case WireBundle::PLIO:
+      return 8;
     case WireBundle::South:
-      return 6;
+      return 6; // Connection to the north port of the stream switch
     default:
       return 0;
     }
@@ -526,8 +527,8 @@ AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
       return 4;
     case WireBundle::PLIO:
       return 6;
-    case WireBundle::South:
-      return 8;
+    case WireBundle::North:
+      return 8; // Connection to the south port of the stream switch
     default:
       return 0;
     }
@@ -538,15 +539,16 @@ AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
 uint32_t
 AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
                                                 WireBundle bundle) const {
-  if (isShimNOCTile(col, row))
+  if (isShimNOCorPLTile(col, row))
     switch (bundle) {
     case WireBundle::DMA:
       return 2;
     case WireBundle::NOC:
       return 4;
     case WireBundle::PLIO:
+      return 8;
     case WireBundle::South:
-      return 6;
+      return 6; // Connection to the north port of the stream switch
     default:
       return 0;
     }
