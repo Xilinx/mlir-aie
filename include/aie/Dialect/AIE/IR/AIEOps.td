@@ -793,13 +793,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         aie.dma_bd(<$buf2 : memref<64xi32>, 0, 64)
     ```
 
-    ## Background/context:
+    #### Background/context
 
     A DMA channel in a Memory Module can process one buffer descriptor after another by chaining them.
     There are 16 buffer descriptors per Core memory module and 48 buffer descriptors per Memtile memory module.
     They are shared by four DMA channels (or 12).
 
-    ## DMA Data Layout Transformations on AIE-ML Devices
+    #### DMA Data Layout Transformations on AIE-ML Devices
 
     AIE-ML devices can apply data layout transformations at the buffer
     descriptor level. These transformation are described by strides and sizes in up to three dimensions (four
@@ -844,7 +844,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
           // access/store element at/to index (i * 16 /*stride_2*/ + j * 1 /*stride_1*/ + k * 2 /*stride_0*/)
     ```
 
-    ## Important gotcha regarding strides
+    #### Important gotcha regarding strides
 
     All strides are expressed in multiples of the element width (just like `len` and `offset`)
     **with the caveat that the inner-most dimension's stride must be 1**.
@@ -1590,7 +1590,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis
     specified in the first example.
 
-    ## Data Layout Transformations on AIE-ML devices
+    #### Data Layout Transformations on AIE-ML devices
 
     On AIE-ML devices, objectFifos can also apply data layout transformations by
     using the DMAs n-dimensional address generation scheme. Two transformations
