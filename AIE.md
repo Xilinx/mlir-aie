@@ -427,7 +427,7 @@ _Declare a dma buffer descriptor op_
 Syntax:
 
 ```
-operation ::= `aie.dma_bd` `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
+operation ::= `aie.dma_bd` `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
 ```
 
 This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -437,6 +437,7 @@ what buffer to use, and optionally:
     2. the transfer length;
     3. the sizes and strides for n-d tensor addressing (described below);
     4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
+    5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
 
 `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
 `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -527,6 +528,14 @@ for(int i = 0; i < 8 /*size_2*/; i++)
 All strides are expressed in multiples of the element width (just like `len` and `offset`)
 **with the caveat that the inner-most dimension's stride must be 1**.
 
+## DMA constant padding on AIE-ML Devices
+
+AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
+counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
+counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
+`bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+is 0). All counts are expressed in multiples of the element width.
+
 Traits: `HasParent<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>`
 
 #### Attributes:
@@ -536,6 +545,8 @@ Traits: `HasParent<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>`
 <tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>len</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>dimensions</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
+<tr><td><code>pad_dimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
+<tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>next_bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
@@ -2146,7 +2157,7 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 Syntax:
 
 ```
-#aie.bd_dim_layout_arr_arr<
+#aie.bd_dim_layout_array_array<
   ::llvm::ArrayRef<BDDimLayoutArrayAttr>   # value
 >
 ```
@@ -2165,7 +2176,7 @@ Syntax:
 Syntax:
 
 ```
-#aie.bd_dim_layout_arr<
+#aie.bd_dim_layout_array<
   ::llvm::ArrayRef<BDDimLayoutAttr>   # value
 >
 ```
@@ -2200,6 +2211,49 @@ Syntax:
 | :-------: | :-------: | ----------- |
 | size | `uint16_t` |  |
 | stride | `uint32_t` |  |
+
+### BDPadLayoutArrayAttr
+
+
+
+Syntax:
+
+```
+#aie.bd_pad_layout_array<
+  ::llvm::ArrayRef<BDPadLayoutAttr>   # value
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| value | `::llvm::ArrayRef<BDPadLayoutAttr>` |  |
+
+### BDPadLayoutAttr
+
+
+    Tuple encoding number of zeros before and after on that dimension in an AIE2 
+    n-dimensional buffer descriptor;
+  
+
+Syntax:
+
+```
+#aie.bd_pad_layout<
+  uint16_t,   # const_pad_before
+  uint16_t   # const_pad_after
+>
+```
+
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| const_pad_before | `uint16_t` |  |
+| const_pad_after | `uint16_t` |  |
 
 ## Type constraints
 
