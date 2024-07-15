@@ -193,7 +193,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (strides[1] && sizes[0] > (1 << wrap_bits) - 1)
     return emitOpError("Size 0 exceeds the [0:" +
                        std::to_string((1 << wrap_bits) - 1) + "] range.");
-  if (strides[3] > (1 << step_bits))
+  // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
+  // checked below
+  if (strides[3] > (1 << step_bits) && sizes[3] != 1)
     return emitOpError("Stride 3 exceeds the [1:" +
                        std::to_string(1 << step_bits) + "] range.");
   if (strides[2] > (1 << step_bits))
