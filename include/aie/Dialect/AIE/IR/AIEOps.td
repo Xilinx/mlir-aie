@@ -758,6 +758,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         2. the transfer length;
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty).
+        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -847,6 +848,14 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
 
     All strides are expressed in multiples of the element width (just like `len` and `offset`)
     **with the caveat that the inner-most dimension's stride must be 1**.
+
+    ## DMA constant padding on AIE-ML Devices
+
+    AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
+    counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
+    counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
+    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+    is 0). All counts are expressed in multiples of the element width.
   }];
 
   let arguments = (
@@ -856,6 +865,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         // in multiples of element width (not bytes)
         OptionalAttr<AIEI32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+        OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
@@ -864,7 +875,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? `)` attr-dict
+    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -893,6 +904,19 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("pad_dimensions", paddims);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims), [{
+      $_state.addOperands(buffer);
+      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
+      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      $_state.addAttribute("dimensions", dims);
+      $_state.addAttribute("pad_dimensions", paddims);
     }]>
   ];
 }

@@ -148,15 +148,37 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
 def BDDimLayoutArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
     /*attrName*/"BDDimLayoutArray",
-    /*attrMnemonic*/"bd_dim_layout_arr",
+    /*attrMnemonic*/"bd_dim_layout_array",
     /*eltName*/BDDimLayoutAttr.cppClassName
 >;
 
 def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
     /*dialect*/AIE_Dialect,
     /*attrName*/"BDDimLayoutArrayArray",
-    /*attrMnemonic*/"bd_dim_layout_arr_arr",
+    /*attrMnemonic*/"bd_dim_layout_array_array",
     /*eltName*/BDDimLayoutArrayAttr.cppClassName
+>;
+
+def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
+  let mnemonic = "bd_pad_layout";
+  let summary = [{
+    Tuple encoding number of zeros before and after on that dimension in an AIE2 
+    n-dimensional buffer descriptor;
+  }];
+
+  let parameters = (ins
+    "uint16_t" : $const_pad_before,
+    "uint16_t" : $const_pad_after
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def BDPadLayoutArrayAttr : ArrayOfAttr<
+    /*dialect*/AIE_Dialect,
+    /*attrName*/"BDPadLayoutArray",
+    /*attrMnemonic*/"bd_pad_layout_array",
+    /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
 #endif // AIE_ATTRS
