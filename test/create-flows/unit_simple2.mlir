@@ -17,11 +17,11 @@
 // CHECK:           %[[VAL_3:.*]] = aie.switchbox(%[[VAL_2]]) {
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_4:.*]] = aie.switchbox(%[[VAL_1]]) {
-// CHECK:             aie.connect<West : 0, DMA : 0>
-// CHECK:           }
-// CHECK:           %[[VAL_5:.*]] = aie.switchbox(%[[VAL_0]]) {
+// CHECK:           %[[VAL_4:.*]] = aie.switchbox(%[[VAL_0]]) {
 // CHECK:             aie.connect<Core : 1, South : 0>
+// CHECK:           }
+// CHECK:           %[[VAL_5:.*]] = aie.switchbox(%[[VAL_1]]) {
+// CHECK:             aie.connect<West : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           aie.wire(%[[VAL_2]] : Core, %[[VAL_6:.*]] : Core)
 // CHECK:           aie.wire(%[[VAL_2]] : DMA, %[[VAL_6]] : DMA)

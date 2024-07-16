@@ -210,9 +210,13 @@ using SwitchboxNode = struct SwitchboxNode {
     return os;
   }
 
-  bool operator<(const SwitchboxNode &rhs) const { return this->id < rhs.id; }
+  bool operator<(const SwitchboxNode &rhs) const {
+    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
+  }
 
-  bool operator==(const SwitchboxNode &rhs) const { return this->id == rhs.id; }
+  bool operator==(const SwitchboxNode &rhs) const {
+    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  }
 
   int col, row, id;
   int inPortId = 0, outPortId = 0;
