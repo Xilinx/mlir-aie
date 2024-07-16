@@ -10,8 +10,8 @@
 // This file defines the AIE1 vector dialect and the operations.
 //===----------------------------------------------------------------------===//
 
-#ifndef AIE_DIALECT_AIEVEC_IR_AIEVECAIE1OPS_H
-#define AIE_DIALECT_AIEVEC_IR_AIEVECAIE1OPS_H
+#ifndef AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1OPS_H
+#define AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1OPS_H
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -26,4 +26,4 @@
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h.inc"
 
-#endif // AIE_DIALECT_AIEVEC_IR_AIEVECAIE1OPS_H
+#endif // AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1OPS_H
