@@ -10,22 +10,22 @@
 // This file defines the AIE1 vector dialect.
 //===----------------------------------------------------------------------===//
 
-#ifndef AIE_DIALECT_AIEVEC_IR_AIEVECAIE1DIALECT_H
-#define AIE_DIALECT_AIEVEC_IR_AIEVECAIE1DIALECT_H
+#ifndef AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1DIALECT_H
+#define AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1DIALECT_H
 
 // #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
 
 namespace xilinx {
-namespace aievec_aie1 {
+namespace aievec {
 
 class AIEVecAIE1Dialect;
 // Translation from AIE vector code to C++
 // void registerAIEVecToCppTranslation();
 
-} // end namespace aievec_aie1
+} // end namespace aievec
 } // end namespace xilinx
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1OpsDialect.h.inc"
 
-#endif // AIE_DIALECT_AIEVEC_IR_AIEVECAIE1DIALECT_H
+#endif // AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1DIALECT_H

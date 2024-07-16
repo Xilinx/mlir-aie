@@ -1,13 +1,13 @@
-//===---- AIEVecOps.cpp - MLIR AIE Vector Dialect Operations ----*- C++ -*-===//
+//===-- AIEVecAIE1Ops.cpp - MLIR AIE Vector Dialect Operations --*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2022-2024 Advanced Micro Devices, Inc. or its affiliates
+// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
-// This file implements AIE vector op printing, pasing, and verification.
+// This file implements AIE1 vector op printing, pasing, and verification.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -23,7 +23,7 @@
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::aievec_aie1;
+using namespace xilinx::aievec;
 
 // #include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1OpsDialect.cpp.inc"
@@ -75,12 +75,12 @@ void printAddAIE1_SubOp(OpAsmPrinter &p, T op) {
   p << ", " << op.getResult().getType();
 }
 
-void aievec_aie1::AIE1_AddOp::print(OpAsmPrinter &p) {
-  printAddAIE1_SubOp<aievec_aie1::AIE1_AddOp>(p, *this);
+void aievec::AIE1_AddOp::print(OpAsmPrinter &p) {
+  printAddAIE1_SubOp<aievec::AIE1_AddOp>(p, *this);
 }
 
-void aievec_aie1::AIE1_SubOp::print(OpAsmPrinter &p) {
-  printAddAIE1_SubOp<aievec_aie1::AIE1_SubOp>(p, *this);
+void aievec::AIE1_SubOp::print(OpAsmPrinter &p) {
+  printAddAIE1_SubOp<aievec::AIE1_SubOp>(p, *this);
 }
 
 // Verify Add and Sub op.
@@ -101,12 +101,12 @@ LogicalResult verifyAddAIE1_SubOp(T op) {
   return success();
 }
 
-LogicalResult aievec_aie1::AIE1_AddOp::verify() {
-  return verifyAddAIE1_SubOp<aievec_aie1::AIE1_AddOp>(*this);
+LogicalResult aievec::AIE1_AddOp::verify() {
+  return verifyAddAIE1_SubOp<aievec::AIE1_AddOp>(*this);
 }
 
-LogicalResult aievec_aie1::AIE1_SubOp::verify() {
-  return verifyAddAIE1_SubOp<aievec_aie1::AIE1_SubOp>(*this);
+LogicalResult aievec::AIE1_SubOp::verify() {
+  return verifyAddAIE1_SubOp<aievec::AIE1_SubOp>(*this);
 }
 
 // Parse Add and Sub op.

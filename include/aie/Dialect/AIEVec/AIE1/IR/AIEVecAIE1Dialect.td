@@ -18,13 +18,13 @@ include "mlir/IR/OpBase.td"
 def AIEVec_AIE1_Dialect : Dialect {
   let name = "aievec_aie1";
   let summary = "Types and operations for AIE1 vector dialect";
-  let cppNamespace = "::xilinx::aievec_aie1";
+  let cppNamespace = "::xilinx::aievec";
 
   // let useDefaultAttributePrinterParser = 1;
 
-  let extraClassDeclaration = [{
-    void registerTypes();
-  }];
+  // let extraClassDeclaration = [{
+  //   void registerTypes();
+  // }];
 }
 
 #endif // AIEVEC_AIE1_DIALECT
