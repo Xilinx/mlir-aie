@@ -232,7 +232,7 @@ AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
       return 4;
     case WireBundle::PLIO:
       return 6;
-    case WireBundle::North:
+    case WireBundle::South:
       return 8; // Connection to the south port of the stream switch
     default:
       return 0;
@@ -251,7 +251,7 @@ AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
     case WireBundle::PLIO:
       return 8;
     case WireBundle::South:
-      return 6; // Connection to the north port of the stream switch
+      return 6; // Connection to the south port of the stream switch
     default:
       return 0;
     }
@@ -527,7 +527,7 @@ AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
       return 4;
     case WireBundle::PLIO:
       return 6;
-    case WireBundle::North:
+    case WireBundle::South:
       return 8; // Connection to the south port of the stream switch
     default:
       return 0;
@@ -548,7 +548,7 @@ AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
     case WireBundle::PLIO:
       return 8;
     case WireBundle::South:
-      return 6; // Connection to the north port of the stream switch
+      return 6; // Connection to the south port of the stream switch
     default:
       return 0;
     }
