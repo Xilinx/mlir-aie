@@ -5,20 +5,17 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
-add_mlir_dialect_library(MLIRAIEVecDialect
-  AIEVecOps.cpp
-  AIEVecTypes.cpp
+add_mlir_dialect_library(MLIRAIEVecAIE1Dialect
+  AIEVecAIE1Ops.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../../include/aie/Dialect/AIEVec/
 
   DEPENDS
-  MLIRAIEVecOpsIncGen
-  MLIRAIEVecAttributesIncGen
+  MLIRAIEVecAIE1OpsIncGen
+  # MLIRAIEVecAttributesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
   )
-
-  add_subdirectory(AIE1)
