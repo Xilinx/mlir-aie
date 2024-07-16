@@ -15,15 +15,15 @@
 
 // #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
 
-// namespace xilinx {
-// namespace aievec {
+namespace xilinx {
+namespace aievec_aie1 {
 
-// class AIEVecDialect;
-// // Translation from AIE vector code to C++
+class AIEVecAIE1Dialect;
+// Translation from AIE vector code to C++
 // void registerAIEVecToCppTranslation();
 
-// } // end namespace aievec
-// } // end namespace xilinx
+} // end namespace aievec_aie1
+} // end namespace xilinx
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1OpsDialect.h.inc"

@@ -33,7 +33,7 @@ using namespace xilinx::aievec_aie1;
 //===----------------------------------------------------------------------===//
 
 void AIEVecAIE1Dialect::initialize() {
-  registerTypes();
+  // registerTypes();
   //   addAttributes<
   // #define GET_ATTRDEF_LIST
   // #include "aie/Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc"

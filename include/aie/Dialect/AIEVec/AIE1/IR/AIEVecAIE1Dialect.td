@@ -20,7 +20,7 @@ def AIEVec_AIE1_Dialect : Dialect {
   let summary = "Types and operations for AIE1 vector dialect";
   let cppNamespace = "::xilinx::aievec_aie1";
 
-  let useDefaultAttributePrinterParser = 1;
+  // let useDefaultAttributePrinterParser = 1;
 
   let extraClassDeclaration = [{
     void registerTypes();
