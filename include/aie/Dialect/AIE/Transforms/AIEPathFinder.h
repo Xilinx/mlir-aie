@@ -90,53 +90,51 @@ using SwitchboxNode = struct SwitchboxNode {
   }
 
   // given a outPort, find availble input channel
-  int findAvailableChannelIn(WireBundle inBundle, Port outPort, bool isPkt) {
-    if (outPortToId.count(outPort) == 0)
-      return -1;
-
-    int outId = outPortToId[outPort];
-
-    if (isPkt) {
-      for (const auto &[inPort, inId] : inPortToId) {
-        if (inPort.bundle == inBundle && connectionMatrix[inId][outId] >= 0) {
-          bool available = true;
-          if (inPortPktCount.count(inPort) == 0) {
+  std::vector<int> findAvailableChannelIn(WireBundle inBundle, Port outPort,
+                                          bool isPkt) {
+    std::vector<int> availableChannels;
+    if (outPortToId.count(outPort) > 0) {
+      int outId = outPortToId[outPort];
+      if (isPkt) {
+        for (const auto &[inPort, inId] : inPortToId) {
+          if (inPort.bundle == inBundle && connectionMatrix[inId][outId] >= 0) {
+            bool available = true;
+            if (inPortPktCount.count(inPort) == 0) {
+              for (const auto &[outPort, outId] : outPortToId) {
+                if (connectionMatrix[inId][outId] == 1) {
+                  // occupied by others as circuit-switched
+                  available = false;
+                  break;
+                }
+              }
+            } else {
+              if (inPortPktCount[inPort] >= maxPktStream) {
+                // occupied by others as packet-switched but exceed max packet
+                // stream capacity
+                available = false;
+              }
+            }
+            if (available)
+              availableChannels.push_back(inPort.channel);
+          }
+        }
+      } else {
+        for (const auto &[inPort, inId] : inPortToId) {
+          if (inPort.bundle == inBundle && connectionMatrix[inId][outId] == 0) {
+            bool available = true;
             for (const auto &[outPort, outId] : outPortToId) {
               if (connectionMatrix[inId][outId] == 1) {
-                // occupied by others as circuit-switched
                 available = false;
                 break;
               }
             }
-          } else {
-            if (inPortPktCount[inPort] >= maxPktStream) {
-              // occupied by others as packet-switched but exceed max packet
-              // stream capacity
-              available = false;
-            }
+            if (available)
+              availableChannels.push_back(inPort.channel);
           }
-          if (available)
-            return inPort.channel;
-        }
-      }
-    } else {
-      for (const auto &[inPort, inId] : inPortToId) {
-        if (inPort.bundle == inBundle && connectionMatrix[inId][outId] == 0) {
-          bool available = true;
-          for (const auto &[outPort, outId] : outPortToId) {
-            if (connectionMatrix[inId][outId] == 1) {
-              available = false;
-              break;
-            }
-          }
-          if (available)
-            return inPort.channel;
         }
       }
     }
-
-    // couldn't find any availale channel
-    return -1;
+    return availableChannels;
   }
 
   bool allocate(Port inPort, Port outPort, bool isPkt) {

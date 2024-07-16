@@ -380,9 +380,10 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // "rip up" all routes
     routingSolution.clear();
-    for (auto &[tileID, node] : grid) {
+    for (auto &[tileID, node] : grid)
       node.clearAllocation();
-    }
+    for (auto &ch : edges)
+      usedCapacity[&ch] = 0;
     isLegal = true;
 
     // for each flow, find the shortest path from source to destination
@@ -396,6 +397,15 @@ Pathfinder::findPaths(const int maxIterations) {
       std::set<SwitchboxNode *> processed;
       std::map<SwitchboxNode *, SwitchboxNode *> preds =
           dijkstraShortestPaths(src.sb);
+
+      auto findIncomingEdge = [&](SwitchboxNode *sb) -> ChannelEdge * {
+        for (auto &e : edges) {
+          if (e.src == preds[sb] && e.target == sb) {
+            return &e;
+          }
+        }
+        return nullptr;
+      };
 
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
@@ -414,17 +424,34 @@ Pathfinder::findPaths(const int maxIterations) {
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
           // find the incoming edge from the pred to curr
-          ChannelEdge *ch = nullptr;
-          for (auto &e : edges) {
-            if (e.src == preds[curr] && e.target == curr) {
-              ch = &e;
-              break;
-            }
-          }
+          ChannelEdge *ch = findIncomingEdge(curr);
           assert(ch != nullptr && "couldn't find ch");
-          int channel = curr->findAvailableChannelIn(
+          int channel;
+          // find all available channels in
+          std::vector<int> availableChannels = curr->findAvailableChannelIn(
               getConnectingBundle(ch->bundle), lastDestPort, isPkt);
-          if (channel >= 0) {
+          if (availableChannels.size() > 0) {
+            // if possible, choose the channel that predecessor can also use
+            // todo: consider all predecessors?
+            int bFound = false;
+            auto &pred = preds[curr];
+            if (!processed.count(pred) && pred != src.sb) {
+              ChannelEdge *predCh = findIncomingEdge(pred);
+              assert(predCh != nullptr && "couldn't find ch");
+              for (int availableCh : availableChannels) {
+                channel = availableCh;
+                std::vector<int> availablePredChannels =
+                    pred->findAvailableChannelIn(
+                        getConnectingBundle(predCh->bundle),
+                        {ch->bundle, channel}, isPkt);
+                if (availablePredChannels.size() > 0) {
+                  bFound = true;
+                  break;
+                }
+              }
+            }
+            if (!bFound)
+              channel = availableChannels[0];
             bool succeed =
                 curr->allocate({getConnectingBundle(ch->bundle), channel},
                                lastDestPort, isPkt);
