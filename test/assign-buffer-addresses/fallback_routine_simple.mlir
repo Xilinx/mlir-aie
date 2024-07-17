@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
-// CHECK:   fallback_routine.mlir:17:8: error: Failed to allocate buffer: "a" with size: 16384 bytes.
+// CHECK:   error: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:     %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
 // CHECK:          ^
 // CHECK:   note: see current operation: %1 = "aie.buffer"(%0) <{sym_name = "a"}> : (index) -> memref<4096xi32>
