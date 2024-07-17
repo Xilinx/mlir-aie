@@ -753,7 +753,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         // Note: Right now this just works with PLIO channel 0 and 1 as those
         // don't require to program the shim mux
         if (connectOp.destIndex() != 0 && connectOp.destIndex() != 1) {
-          return connectOp.emitWarning(
+          connectOp.emitWarning(
               "Currently only PLIO channel 0 and 1 are supported.");
         }
 
