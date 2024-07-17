@@ -14,7 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h" // Eddie added to get the NPU func ops
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -134,6 +134,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     uint32_t ChannelId = infoOp->getChannelIndex();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
     int col = infoOp->getCol();
+    bool isPlio = infoOp->getPlio();
 
     llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
@@ -182,7 +183,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     output << "\tmlir_aie_packet_nd_memcpy(&pkt" << op_count
            << ", 0 /* herd_id */, " << col << " /* col */, " << isMM2S
            << " /* dir */, " << ChannelId
-           << "/* channel */, 4 /* Burst length */, 2 /* Memory space */, "
+           << "/* channel */, 4 /* Burst length */, " << (isPlio ? 1 : 2) << " /* Memory space */, "
               "(uint64_t)buf"
            << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4
            << " /* 1d_length */, " << (strides[1] ? sizes[1] : 1)

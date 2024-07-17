@@ -725,24 +725,44 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
 
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (connectOp.getSourceBundle() == WireBundle::North)
-        // demux!
-        output
-            << "__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort("
-            << deviceInstRef << ", " << tileLocStr("x", "y")
-            << ", "
-            //               <<
-            //               stringifyWireBundle(connectOp.sourceBundle()).upper()
-            << connectOp.sourceIndex() << "));\n";
-      else if (connectOp.getDestBundle() == WireBundle::North)
-        // mux
-        output
-            << "__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort("
-            << deviceInstRef << ", " << tileLocStr("x", "y")
-            << ", "
-            //               <<
-            //               stringifyWireBundle(connectOp.sourceBundle()).upper()
-            << connectOp.destIndex() << "));\n";
+
+      if(connectOp.getSourceBundle() == WireBundle::DMA || connectOp.getDestBundle() == WireBundle::DMA) {
+        if (connectOp.getSourceBundle() == WireBundle::North)
+          // demux!
+          output
+              << "__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort("
+              << deviceInstRef << ", " << tileLocStr("x", "y")
+              << ", "
+              //               <<
+              //               stringifyWireBundle(connectOp.sourceBundle()).upper()
+              << connectOp.sourceIndex() << "));\n";
+        else if (connectOp.getDestBundle() == WireBundle::North)
+          // mux
+          output
+              << "__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort("
+              << deviceInstRef << ", " << tileLocStr("x", "y")
+              << ", "
+              //               <<
+              //               stringifyWireBundle(connectOp.sourceBundle()).upper()
+              << connectOp.destIndex() << "));\n";
+      }
+
+      else if(connectOp.getSourceBundle() == WireBundle::PLIO || connectOp.getDestBundle() == WireBundle::PLIO) {
+        // Note: Right now this just works with PLIO channel 0 and 1 as those don't require to program
+        // the shim mux
+        if(connectOp.destIndex() != 0 && connectOp.destIndex() != 1) {
+          return connectOp.emitOpError("Currently only PLIO channel 0 and 1 are supported.");
+        }
+
+        if (connectOp.getDestBundle() == WireBundle::North)
+          // mux
+          output
+              << "__mlir_aie_try(XAie_PlToAieIntfEnable("
+              << deviceInstRef << ", " << tileLocStr("x", "y")
+              << ", "  
+              << connectOp.destIndex()
+              << ", PLIF_WIDTH_64));\n";
+      }
     }
   }
   for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
