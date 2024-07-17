@@ -187,29 +187,58 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
   return false;
 }
 
+// Prints the memory map across banks
+// void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allBuffers,
+//                   int numBanks, std::vector<BankLimits> &bankLimits, 
+//                   int stacksize) {
+//   InFlightDiagnostic error =
+//       tile.emitOpError("All requested buffers doesn't fit in the available memory: Bank aware\n");
+//   auto &note = error.attachNote() << "Current configuration of buffers in bank(s) : ";
+//   note << "MemoryMap:\n";
+//   auto printbuffer = [&](StringRef name, int address, int size) {
+//     note << "\t"
+//            << "\t" << name << " \t"
+//            << ": 0x" << llvm::utohexstr(address) << "-0x"
+//            << llvm::utohexstr(address + size - 1) << " \t(" << size
+//            << " bytes)\n";
+//   };
+//     for (int i = 0; i < numBanks; i++) {
+//       note << "\t"
+//            << "bank : " << i << "\t"
+//            << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+//            << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
+//       if (i == 0) {
+//         if (stacksize > 0)
+//           printbuffer("(stack)", 0, stacksize);
+//         else
+//           error << "(no stack allocated)\n";
+//       }
+//       for (auto buffer : allBuffers) {
+//         auto addr = buffer.getAddress().value();
+//         auto mem_bank = buffer.getMemBank().value();
+//         if (mem_bank == i)
+//           printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+//       }
+//     }
+// }
+
 // Function that given a buffer will iterate over all the memory banks
 // starting from the given index to try and find a bank with enough
 // space. If it does, it will set the buffer's address and mem_bank
 // attributes and update the nextAddrInBanks vector.
-// If it does not find one with enough space, it will allocate the
-// buffer in the last checked bank (this will be picked up during
-// overflow error checking). Finally, the function returns the index
-// of the next bank to search (which should be given to subsequent
+// If it does not find one with enough space, it will throw an error. 
+// Finally, the function returns a pass or a fail.
+// The index of the next bank to search (which should be given to subsequent
 // calls of this function to ensure a round-robin allocation scheme
 // over the available banks).
-bool setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
+bool setBufferAddress(BufferOp buffer, int numBanks, int &bankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
-  int bankIndex = startBankIndex;
   bool allocated = false;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
     int64_t endAddr = startAddr + buffer.getAllocationSize();
-    //if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) { //Trying to fit if it is on the last bank
     if (endAddr <= bankLimits[bankIndex].endAddr){
-      // if (endAddr > bankLimits[bankIndex].endAddr){ //That trying to fit is the problem which created the overflow
-      //   buffer->emitWarning("Potential overflow in bank");
-      // }
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
       allocated = true;
@@ -219,12 +248,12 @@ bool setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
     // Move to the next bank
     bankIndex++;
     bankIndex %= numBanks;
-
   }
-  // If allocation was not successful, handle the error
+  // If no bank has enough space, handle the error
   if(!allocated){
-    buffer.emitError("Failed to allocated buffer: insufficient memory in all banks");
-      //Print the memory map and the buffer that caused the error
+    buffer.emitError("Failed to allocate buffer: ") << buffer.name()
+                      << " with size: " << buffer.getAllocationSize()
+                      << " bytes.";
     return false;
   }
   return true;
@@ -278,6 +307,14 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
     return failure();
   }
   return success();
+}
+
+// Function to deallocate attributes of buffers in case of a failure
+void deallocationBuffers(SmallVector<BufferOp, 4> &buffers){
+  for (auto buffer : buffers){
+    buffer->removeAttr("address");
+    buffer->removeAttr("mem_bank");
+  }
 }
 
 LogicalResult simpleBankAwareAllocation(TileOp tile) {
@@ -346,19 +383,24 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
             });
 
   // Set addresses for remaining buffers.
+  SmallVector<BufferOp, 4> allocatedBuffers;
   int bankIndex = 0;
-  for (auto buffer : buffersToAlloc)
+  for (auto buffer : buffersToAlloc){
+    // If the buffer doesn't fit in any of the bank space then 
+    // it prints the current memory map of the banks, 
+    // deallocates all the buffers, and
+    // returns a failure.
     if(!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
                                  bankLimits)){
-      device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-        // Handle only the buffersToAlloc
-        if(buffer.getTileOp() == tile){
-          buffer->removeAttr("address");
-          buffer->removeAttr("mem_bank");
-        }
-      }); 
-      return failure();//basicAllocation(tile);
+                                  
+      //printMemMap(tile, allBuffers, numBanks, bankLimits, stacksize); 
+      deallocationBuffers(allocatedBuffers);
+      return failure();
     }
+    else{
+      allocatedBuffers.push_back(buffer);
+    }
+  }
 
   // Sort by smallest address before printing memory map.
   std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
@@ -407,7 +449,8 @@ struct AIEAssignBufferAddressesPass
     } else {
       for (auto tile : device.getOps<TileOp>()) {
         if(auto res = simpleBankAwareAllocation(tile); res.failed()){
-          return signalPassFailure();
+          if (auto res2 = basicAllocation(tile); res2.failed())
+            return signalPassFailure();
         }
       }
     }
