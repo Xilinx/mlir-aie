@@ -1,4 +1,4 @@
-# passthrough_dmas/aie2.py -*- Python -*-
+# passthrough_dmas_plio/aie2-output-plio.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -47,7 +47,9 @@ def my_passthrough():
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile1, ComputeTile2, 2, memRef_ty)
-            of_out = object_fifo("out", ComputeTile2, ShimTile2, 2, memRef_ty, plio=True)
+            of_out = object_fifo(
+                "out", ComputeTile2, ShimTile2, 2, memRef_ty, plio=True
+            )
             object_fifo_link(of_in, of_out)
 
             # Set up compute tiles
