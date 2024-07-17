@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
-// RUN: not aiecc.py --basic-alloc-scheme --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: not aiecc.py --alloc-scheme=basic-sequential --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
 // PEANO: ld.lld: error: section '.bss' will not fit in region 'data': overflowed by 4 bytes
 
 // If we use all of the local memory, then linking the AIE executable should fail.
