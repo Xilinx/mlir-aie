@@ -12,14 +12,14 @@
 // CHECK:   fallback_routine.mlir:17:8: error: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:     %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
 // CHECK:          ^
-// CHECK:   fallback_routine.mlir:17:8: note: see current operation: %1 = "aie.buffer"(%0) <{sym_name = "a"}> : (index) -> memref<4096xi32>
-// CHECK:   fallback_routine.mlir:16:13: error: 'aie.tile' op All requested buffers doesn't fit in the available memory: Bank aware
+// CHECK:   note: see current operation: %1 = "aie.buffer"(%0) <{sym_name = "a"}> : (index) -> memref<4096xi32>
+// CHECK:   error: 'aie.tile' op All requested buffers doesn't fit in the available memory: Bank aware
 // CHECK:   (no stack allocated)
 
 // CHECK:     %tile12 = aie.tile(1, 2)
 // CHECK:               ^
-// CHECK:   fallback_routine.mlir:16:13: note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
-// CHECK:   fallback_routine.mlir:16:13: note: Current configuration of buffers in bank(s) : MemoryMap:
+// CHECK:   note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
+// CHECK:   note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK:           bank : 0        0x0-0x1FFF
 // CHECK:           bank : 1        0x2000-0x3FFF
 // CHECK:           bank : 2        0x4000-0x5FFF
