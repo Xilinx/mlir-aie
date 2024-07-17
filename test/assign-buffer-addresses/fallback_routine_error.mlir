@@ -12,12 +12,10 @@
 // CHECK:   error: Failed to allocate buffer: "f" with size: 512 bytes.
 // CHECK:     %6 = aie.buffer(%tile12) { sym_name = "f" } : memref<256xi16>   //32 bytes
 // CHECK:          ^
-// CHECK:   note: see current operation: %6 = "aie.buffer"(%0) <{sym_name = "f"}> : (index) -> memref<256xi16>
 // CHECK:   error: 'aie.tile' op All requested buffers doesn't fit in the available memory: Bank aware
 
 // CHECK:     %tile12 = aie.tile(1, 2)
 // CHECK:               ^
-// CHECK:   note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
 // CHECK:   note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK:   (no stack allocated)
 // CHECK:           bank : 0        0x0-0x1FFF
@@ -39,7 +37,6 @@
 
 // CHECK:     %tile12 = aie.tile(1, 2)
 // CHECK:               ^
-// CHECK:   note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
 // CHECK:   note: MemoryMap:
 // CHECK:           b       : 0x0-0x1FFF    (8192 bytes)
 // CHECK:           c       : 0x2000-0x3FFF         (8192 bytes)
