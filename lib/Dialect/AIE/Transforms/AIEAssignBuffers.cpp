@@ -207,9 +207,9 @@ bool setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
     int64_t endAddr = startAddr + buffer.getAllocationSize();
     //if (endAddr <= bankLimits[bankIndex].endAddr || i == numBanks - 1) { //Trying to fit if it is on the last bank
     if (endAddr <= bankLimits[bankIndex].endAddr){
-      if (endAddr > bankLimits[bankIndex].endAddr){ //That trying to fit is the problem which created the overflow
-        buffer->emitWarning("Potential overflow in bank");
-      }
+      // if (endAddr > bankLimits[bankIndex].endAddr){ //That trying to fit is the problem which created the overflow
+      //   buffer->emitWarning("Potential overflow in bank");
+      // }
       buffer.setMemBank(bankIndex);
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
       allocated = true;
@@ -219,10 +219,12 @@ bool setBufferAddress(BufferOp buffer, int numBanks, int startBankIndex,
     // Move to the next bank
     bankIndex++;
     bankIndex %= numBanks;
+
   }
   // If allocation was not successful, handle the error
   if(!allocated){
     buffer.emitError("Failed to allocated buffer: insufficient memory in all banks");
+      //Print the memory map and the buffer that caused the error
     return false;
   }
   return true;
@@ -349,12 +351,13 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
     if(!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
                                  bankLimits)){
       device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+        // Handle only the buffersToAlloc
         if(buffer.getTileOp() == tile){
           buffer->removeAttr("address");
           buffer->removeAttr("mem_bank");
         }
       }); 
-      return basicAllocation(tile);
+      return failure();//basicAllocation(tile);
     }
 
   // Sort by smallest address before printing memory map.
