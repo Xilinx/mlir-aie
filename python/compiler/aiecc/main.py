@@ -979,9 +979,9 @@ class FlowRunner:
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             if opts.alloc_scheme:
-                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(opts.alloc_scheme).materialize(
-                    module=True
-                )
+                pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                    opts.alloc_scheme
+                ).materialize(module=True)
             else:
                 pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE().materialize(module=True)
             run_passes(
