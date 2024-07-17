@@ -188,39 +188,45 @@ bool checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 }
 
 // Prints the memory map across banks
-// void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allBuffers,
-//                   int numBanks, std::vector<BankLimits> &bankLimits, 
-//                   int stacksize) {
-//   InFlightDiagnostic error =
-//       tile.emitOpError("All requested buffers doesn't fit in the available memory: Bank aware\n");
-//   auto &note = error.attachNote() << "Current configuration of buffers in bank(s) : ";
-//   note << "MemoryMap:\n";
-//   auto printbuffer = [&](StringRef name, int address, int size) {
-//     note << "\t"
-//            << "\t" << name << " \t"
-//            << ": 0x" << llvm::utohexstr(address) << "-0x"
-//            << llvm::utohexstr(address + size - 1) << " \t(" << size
-//            << " bytes)\n";
-//   };
-//     for (int i = 0; i < numBanks; i++) {
-//       note << "\t"
-//            << "bank : " << i << "\t"
-//            << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
-//            << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
-//       if (i == 0) {
-//         if (stacksize > 0)
-//           printbuffer("(stack)", 0, stacksize);
-//         else
-//           error << "(no stack allocated)\n";
-//       }
-//       for (auto buffer : allBuffers) {
-//         auto addr = buffer.getAddress().value();
-//         auto mem_bank = buffer.getMemBank().value();
-//         if (mem_bank == i)
-//           printbuffer(buffer.name(), addr, buffer.getAllocationSize());
-//       }
-//     }
-// }
+void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
+                  SmallVector<BufferOp, 4> preAllocatedBuffers,int numBanks, 
+                  std::vector<BankLimits> &bankLimits, int stacksize) {
+  InFlightDiagnostic error =
+      tile.emitOpError("All requested buffers doesn't fit in the available memory: Bank aware\n");
+  auto &note = error.attachNote() << "Current configuration of buffers in bank(s) : ";
+  note << "MemoryMap:\n";
+  auto printbuffer = [&](StringRef name, int address, int size) {
+    note << "\t"
+           << "\t" << name << " \t"
+           << ": 0x" << llvm::utohexstr(address) << "-0x"
+           << llvm::utohexstr(address + size - 1) << " \t(" << size
+           << " bytes)\n";
+  };
+    for (int i = 0; i < numBanks; i++) {
+      if (i == 0) {
+        if (stacksize > 0)
+          printbuffer("(stack)", 0, stacksize);
+        else
+          note << "(no stack allocated)\n";
+      }
+      note << "\t"
+           << "bank : " << i << "\t"
+           << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+           << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
+      for (auto buffer : preAllocatedBuffers) {
+        auto addr = buffer.getAddress().value();
+        auto mem_bank = buffer.getMemBank().value();
+        if (mem_bank == i)
+          printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+      }
+      for (auto buffer : allocatedBuffers) {
+        auto addr = buffer.getAddress().value();
+        auto mem_bank = buffer.getMemBank().value();
+        if (mem_bank == i)
+          printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+      }
+    }
+}
 
 // Function that given a buffer will iterate over all the memory banks
 // starting from the given index to try and find a bank with enough
@@ -310,7 +316,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
 }
 
 // Function to deallocate attributes of buffers in case of a failure
-void deallocationBuffers(SmallVector<BufferOp, 4> &buffers){
+void deAllocationBuffers(SmallVector<BufferOp, 4> &buffers){
   for (auto buffer : buffers){
     buffer->removeAttr("address");
     buffer->removeAttr("mem_bank");
@@ -354,6 +360,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
   fillBankLimits(numBanks, bankSize, bankLimits);
 
   SmallVector<BufferOp, 4> buffersToAlloc;
+  SmallVector<BufferOp, 4> preAllocatedBuffers;
   SmallVector<BufferOp, 4> allBuffers;
   // Collect all the buffers for this tile.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -373,6 +380,8 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
                                                    nextAddrInBanks, bankLimits);
       if (!has_addr && !has_bank)
         buffersToAlloc.push_back(buffer);
+      else
+        preAllocatedBuffers.push_back(buffer);
     }
   }
 
@@ -393,8 +402,8 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
     if(!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
                                  bankLimits)){
                                   
-      //printMemMap(tile, allBuffers, numBanks, bankLimits, stacksize); 
-      deallocationBuffers(allocatedBuffers);
+      printMemMap(tile, allocatedBuffers, preAllocatedBuffers, numBanks, bankLimits, stacksize); 
+      deAllocationBuffers(allocatedBuffers);
       return failure();
     }
     else{
