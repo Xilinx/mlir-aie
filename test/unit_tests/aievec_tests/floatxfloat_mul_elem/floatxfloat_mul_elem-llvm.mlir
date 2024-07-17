@@ -2,7 +2,7 @@
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 // REQUIRES: valid_xchess_license
-// REQUIRES: peano
+// REQUIRES: peano, peano_and_chess
 // RUN: mkdir -p %t/data; cd %t
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" %vector-to-llvmir% -o llvmir.mlir
 // RUN: aie-translate llvmir.mlir %llvmir-to-ll% -o dut.ll

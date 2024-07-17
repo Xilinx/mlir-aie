@@ -37,6 +37,32 @@ include ${current_dir}../../makefile-common
 M?=512	
 K?=512
 N?=512
+dtype_in?=i16
+dtype_out?=i32
+
+ifeq ($(dtype_in),bf16)
+	dtype_in_cpp=std::bfloat16_t
+endif
+ifeq ($(dtype_out),bf16)
+	dtype_out_cpp=std::bfloat16_t
+	dtype_acc_cpp=float
+endif
+
+ifeq ($(dtype_in),i16)
+	dtype_in_cpp=int16_t
+endif
+ifeq ($(dtype_out),i16)
+	dtype_out_cpp=int16_t
+	dtype_acc_cpp=int16_t
+endif
+ifeq ($(dtype_out),i32)
+	dtype_out_cpp=int32_t
+	dtype_acc_cpp=int32_t
+endif
+ifeq ($(dtype_out),f32)
+	dtype_out_cpp=float
+	dtype_acc_cpp=float
+endif
 
 trace_size?=65536
 
@@ -46,7 +72,7 @@ xclbin_target?=build/final_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+=-M $M -K $K -N $N
+aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
@@ -69,7 +95,8 @@ ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
+		cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

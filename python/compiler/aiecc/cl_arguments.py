@@ -16,6 +16,12 @@ def parse_args(args=None):
         args = sys.argv[1:]
     parser = argparse.ArgumentParser(prog="aiecc")
     parser.add_argument(
+        "--version",
+        default=False,
+        action="store_true",
+        help="Output commit at which the compiler was built and exit.",
+    )
+    parser.add_argument(
         "filename", nargs="?", metavar="file", default=None, help="MLIR file to compile"
     )
     parser.add_argument(

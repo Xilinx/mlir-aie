@@ -83,8 +83,8 @@
 // LD44-NEXT: {
 // LD44-NEXT:   . = 0x0;
 // LD44-NEXT:  .text : {
-// LD44-NEXT:     /* the _main_init symbol from me_basic.o has to come at address zero. */
-// LD44-NEXT:     *me_basic.o(.text)
+// LD44-NEXT:     /* the _main_init symbol has to come at address zero. */
+// LD44-NEXT:     *crt0.o(.text)
 // LD44-NEXT:     . = 0x200;
 // LD44-NEXT:     _ctors_start = .;
 // LD44-NEXT:     _init_array_start = .;

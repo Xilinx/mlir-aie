@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -split-input-file | FileCheck %s --check-prefix=CHECK
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -split-input-file | FileCheck %s --check-prefix=CHECK
 func.func @unaligned_read(%a: memref<48xi8>) -> (vector<32xi8>, vector<32xi8>) {
    %c0_i8 = arith.constant 0 : i8
    %c16 = arith.constant 16 : index

@@ -296,7 +296,7 @@ def test_i8xi8_add_elem(module):
         .cse()
         .convert_linalg_to_affine_loops()
         .Func(p().affine_super_vectorize(virtual_vector_size=64))
-        .add_pass("convert-vector-to-aievec", aie_target="aieml")
+        .add_pass("convert-vector-to-aievec", aie_target="aie2")
         .lower_affine()
     )
 
@@ -315,7 +315,7 @@ def test_i8xi8_add_elem(module):
     # CHECK: }
     print(mod)
 
-    cpp = translate_aie_vec_to_cpp(mod.operation, aieml=True)
+    cpp = translate_aie_vec_to_cpp(mod.operation, aie2=True)
     # CHECK: void dut(int8_t * restrict v1, int8_t * restrict v2, int8_t * restrict v3) {
     # CHECK:   size_t v4 = 0;
     # CHECK:   size_t v5 = 1024;

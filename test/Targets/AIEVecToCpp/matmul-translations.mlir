@@ -7,7 +7,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
-// RUN: aie-translate %s -aieml -aievec-to-cpp | FileCheck %s
+// RUN: aie-translate %s -aie2 -aievec-to-cpp | FileCheck %s
 
 // CHECK-LABEL: v16float matmul_nopad(
 // CHECK-SAME:             v32bfloat16 [[A:[a-zA-Z0-9]+]],

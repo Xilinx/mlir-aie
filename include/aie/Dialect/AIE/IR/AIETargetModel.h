@@ -98,11 +98,6 @@ public:
            src.row < rows();
   }
 
-  /// Return true if the given port in the given tile is a valid destination for
-  /// traces
-  virtual bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                                  int destIndex) const = 0;
-
   /// Return the tile ID of the memory to the west of the given tile, if it
   /// exists.
   virtual std::optional<TileID> getMemWest(TileID src) const = 0;
@@ -202,9 +197,9 @@ public:
                                                   WireBundle bundle) const = 0;
 
   // Return true if the stream switch connection is legal, false otherwise.
-  virtual bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
-                                        WireBundle dstBundle,
-                                        int dstChan) const = 0;
+  virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
+                                     int srcChan, WireBundle dstBundle,
+                                     int dstChan) const = 0;
 
   // Run consistency checks on the target model.
   void validate() const;
@@ -276,18 +271,9 @@ public:
                                         WireBundle bundle) const override;
   uint32_t getNumSourceShimMuxConnections(int col, int row,
                                           WireBundle bundle) const override;
-  bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
-                                WireBundle dstBundle,
-                                int dstChan) const override;
-
-  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override {
-    if (isCoreTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    return false;
-  }
+  bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
+                             int srcChan, WireBundle dstBundle,
+                             int dstChan) const override;
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
@@ -347,9 +333,9 @@ public:
                                         WireBundle bundle) const override;
   uint32_t getNumSourceShimMuxConnections(int col, int row,
                                           WireBundle bundle) const override;
-  bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
-                                WireBundle dstBundle,
-                                int dstChan) const override;
+  bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
+                             int srcChan, WireBundle dstBundle,
+                             int dstChan) const override;
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
@@ -409,27 +395,6 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
-
-  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override {
-    if (isCoreTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-        destIndex == 0)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-        destIndex == 0)
-      return true;
-    return false;
-  }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
@@ -464,27 +429,6 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 2; }
-
-  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override {
-    if (isCoreTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-        destIndex == 0)
-      return true;
-    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-        destIndex == 0)
-      return true;
-    return false;
-  }
 };
 
 class BaseNPUTargetModel : public AIE2TargetModel {
@@ -507,9 +451,6 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
-
-  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
-                          int destIndex) const override;
 
   // Return true if the device model is virtualized.  This is used
   // during CDO code generation to configure aie-rt properly.
