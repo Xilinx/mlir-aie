@@ -32,7 +32,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     ADF::ADFDialect,
     AIE::AIEDialect,
     aievec::AIEVecDialect,
-    aievec::AIEVecAIE1Dialect,
+    aievec::aie1::AIEVecAIE1Dialect,
     AIEX::AIEXDialect,
     xllvm::XLLVMDialect
   >();

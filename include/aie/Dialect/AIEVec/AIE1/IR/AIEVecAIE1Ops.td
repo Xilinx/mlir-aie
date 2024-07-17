@@ -23,7 +23,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
-class AIEVec_AIE1_Op<string mnemonic, list<Trait> traits = []> :
+class AIEVecAIE1_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEVec_AIE1_Dialect, mnemonic, traits> {
   // For every AIE vector op, there needs to be a:
   //   * void ${C++ class of Op}::print(OpAsmPrinter &p)
@@ -35,8 +35,8 @@ class AIEVec_AIE1_Op<string mnemonic, list<Trait> traits = []> :
   let hasVerifier = 1;
 }
 
-def AIEVec_AIE1_AddOp:
-  AIEVec_AIE1_Op<"add", [
+def AIEVecAIE1_AddOp:
+  AIEVecAIE1_Op<"add", [
     Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
@@ -77,8 +77,8 @@ def AIEVec_AIE1_AddOp:
   }];
 }
 
-def AIEVec_AIE1_SubOp:
-  AIEVec_AIE1_Op<"sub", [
+def AIEVecAIE1_SubOp:
+  AIEVecAIE1_Op<"sub", [
     Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,

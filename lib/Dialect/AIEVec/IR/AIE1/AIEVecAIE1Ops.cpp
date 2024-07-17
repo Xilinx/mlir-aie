@@ -22,8 +22,6 @@
 
 using namespace llvm;
 using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::aievec;
 
 // #include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1OpsDialect.cpp.inc"
@@ -32,7 +30,7 @@ using namespace xilinx::aievec;
 // AIEVecAIE1Dialect
 //===----------------------------------------------------------------------===//
 
-void AIEVecAIE1Dialect::initialize() {
+void xilinx::aievec::aie1::AIEVecAIE1Dialect::initialize() {
   // registerTypes();
   //   addAttributes<
   // #define GET_ATTRDEF_LIST
@@ -44,13 +42,15 @@ void AIEVecAIE1Dialect::initialize() {
       >();
 }
 
+namespace xilinx::aievec::aie1 {
+
 //===----------------------------------------------------------------------===//
 // AIE1_AddOp and AIE1_SubOp
 //===----------------------------------------------------------------------===//
 
 // Print out Add and Sub op.
 template <typename T>
-void printAddAIE1_SubOp(OpAsmPrinter &p, T op) {
+void printAddSubOp(OpAsmPrinter &p, T op) {
   // Print the lhs operand
   p << " " << op.getLhs();
   // Print the rhs operand
@@ -75,17 +75,13 @@ void printAddAIE1_SubOp(OpAsmPrinter &p, T op) {
   p << ", " << op.getResult().getType();
 }
 
-void aievec::AIE1_AddOp::print(OpAsmPrinter &p) {
-  printAddAIE1_SubOp<aievec::AIE1_AddOp>(p, *this);
-}
+void AddOp::print(OpAsmPrinter &p) { printAddSubOp<AddOp>(p, *this); }
 
-void aievec::AIE1_SubOp::print(OpAsmPrinter &p) {
-  printAddAIE1_SubOp<aievec::AIE1_SubOp>(p, *this);
-}
+void SubOp::print(OpAsmPrinter &p) { printAddSubOp<SubOp>(p, *this); }
 
 // Verify Add and Sub op.
 template <typename T>
-LogicalResult verifyAddAIE1_SubOp(T op) {
+LogicalResult verifyAddSubOp(T op) {
   // Verify the types
   auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
   auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
@@ -101,16 +97,12 @@ LogicalResult verifyAddAIE1_SubOp(T op) {
   return success();
 }
 
-LogicalResult aievec::AIE1_AddOp::verify() {
-  return verifyAddAIE1_SubOp<aievec::AIE1_AddOp>(*this);
-}
+LogicalResult AddOp::verify() { return verifyAddSubOp<AddOp>(*this); }
 
-LogicalResult aievec::AIE1_SubOp::verify() {
-  return verifyAddAIE1_SubOp<aievec::AIE1_SubOp>(*this);
-}
+LogicalResult SubOp::verify() { return verifyAddSubOp<SubOp>(*this); }
 
 // Parse Add and Sub op.
-ParseResult parseAddAIE1_SubOp(OpAsmParser &parser, OperationState &result) {
+ParseResult parseAddSubOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::UnresolvedOperand lhs, rhs;
@@ -148,13 +140,15 @@ ParseResult parseAddAIE1_SubOp(OpAsmParser &parser, OperationState &result) {
   return parser.addTypeToList(resultType, result.types);
 }
 
-ParseResult AIE1_AddOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseAddAIE1_SubOp(parser, result);
+ParseResult AddOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseAddSubOp(parser, result);
 }
 
-ParseResult AIE1_SubOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseAddAIE1_SubOp(parser, result);
+ParseResult SubOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseAddSubOp(parser, result);
 }
+
+} // namespace xilinx::aievec::aie1
 
 // #define GET_ATTRDEF_CLASSES
 // #include "aie/Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc"
