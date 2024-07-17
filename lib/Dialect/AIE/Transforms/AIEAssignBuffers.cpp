@@ -255,7 +255,7 @@ bool setBufferAddress(BufferOp buffer, int numBanks, int &bankIndex,
     bankIndex++;
     bankIndex %= numBanks;
   }
-  // If no bank has enough space, handle the error
+  // If no bank has enough space, throws error
   if(!allocated){
     buffer.emitError("Failed to allocate buffer: ") << buffer.name()
                       << " with size: " << buffer.getAllocationSize()
