@@ -977,7 +977,8 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex), builder.getBoolAttr(plio));
+                                        builder.getI64IntegerAttr(colIndex),
+                                        builder.getBoolAttr(plio));
   }
 
   void runOnOperation() override {
@@ -1147,13 +1148,16 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPoint(&device.getBody()->back());
 
         // If we have PLIO then figure out the direction and make that a PLIO
-        if(producer.getPlio()) {
-          producerWireType = producer.getProducerTileOp().isShimTile() ? WireBundle::PLIO : WireBundle::DMA;
-          consumerWireType = !(producer.getProducerTileOp().isShimTile()) ? WireBundle::PLIO : WireBundle::DMA;
-        }
-        else {
-          producerWireType =  WireBundle::DMA;
-          consumerWireType =  WireBundle::DMA;
+        if (producer.getPlio()) {
+          producerWireType = producer.getProducerTileOp().isShimTile()
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+          consumerWireType = !(producer.getProducerTileOp().isShimTile())
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+        } else {
+          producerWireType = WireBundle::DMA;
+          consumerWireType = WireBundle::DMA;
         }
 
         if (consumer.getProducerTileOp().isShimTile())
@@ -1162,8 +1166,6 @@ struct AIEObjectFifoStatefulTransformPass
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
               consumerChan.channel, producer.getPlio());
 
-
-        
         // create flow
         builder.setInsertionPointAfter(producer);
         builder.create<FlowOp>(builder.getUnknownLoc(),

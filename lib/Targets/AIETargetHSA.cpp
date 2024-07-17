@@ -183,7 +183,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     output << "\tmlir_aie_packet_nd_memcpy(&pkt" << op_count
            << ", 0 /* herd_id */, " << col << " /* col */, " << isMM2S
            << " /* dir */, " << ChannelId
-           << "/* channel */, 4 /* Burst length */, " << (isPlio ? 1 : 2) << " /* Memory space */, "
+           << "/* channel */, 4 /* Burst length */, " << (isPlio ? 1 : 2)
+           << " /* Memory space */, "
               "(uint64_t)buf"
            << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4
            << " /* 1d_length */, " << (strides[1] ? sizes[1] : 1)

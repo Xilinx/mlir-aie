@@ -126,9 +126,9 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           } else if (srcBundle ==
                      WireBundle::PLIO) { // PLIO at start of flows with mux
             ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(
-                rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                flowOp, srcBundle, srcChannel, WireBundle::North, shimCh);
+            addConnection(rewriter,
+                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                          srcBundle, srcChannel, WireBundle::North, shimCh);
           }
         }
         for (const auto &[bundle, channel] : setting.dsts) {
