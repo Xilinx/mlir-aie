@@ -323,7 +323,9 @@ public:
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
-  uint32_t getNumBanks(int col, int row) const override { return isMemTile(col, row) ? 8 : 4; }
+  uint32_t getNumBanks(int col, int row) const override {
+    return isMemTile(col, row) ? 8 : 4;
+  }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
