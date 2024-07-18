@@ -2017,14 +2017,6 @@ ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
     return argParseResult;
   }
 
-  // For now we only support one entry argument, %addr
-  if (entryArgs.size() > 0) {
-    if (entryArgs.size() > 1) {
-      return failure(); // parser.emitError(*entryArgs[1].sourceLoc, "Only one
-                        // argument supported");
-    }
-  }
-
   // Store entry arg types in op attributes
   SmallVector<::mlir::Type> entryArgTypes;
   entryArgTypes.reserve(entryArgs.size());
