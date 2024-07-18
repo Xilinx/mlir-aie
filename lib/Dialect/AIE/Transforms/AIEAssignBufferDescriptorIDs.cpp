@@ -28,7 +28,7 @@ std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex) {
   uint32_t bd_id = 0;
   // Find the next free BD ID. This is not an efficient algorithm, but doesn't need to be since BD IDs are small numbers.
   // FIXME: Specify WireBundle
-  for(; bdIdAlreadyAssigned(bd_id) || !targetModel.bdCanAccessChannel(col, row, bd_id, (WireBundle)0, channelIndex); bd_id++);
+  for(; bdIdAlreadyAssigned(bd_id) || !targetModel.bdCanAccessChannel(col, row, bd_id, channelIndex); bd_id++);
   if(bd_id > targetModel.getNumBDs(col, row)) {
     return std::nullopt;
   }
