@@ -2052,16 +2052,21 @@ class MatMulOpConversion
     auto accVecTy = cast<VectorType>(acc.getType());
     if (isa<Float32Type>(accVecTy.getElementType()))
       // <4x8xbf16> x <8x4xbf16> + <4x4xf32>
-      return {DecodedMatMulOp::Kind::BF16, lhs, rhs, acc, 28};
+      return {DecodedMatMulOp::Kind::BF16, lhs, rhs, acc,
+              aiev2_vmac_compute_control(
+                  /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/2, /*bmode=*/3,
+                  /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                  /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                  /*sub_mask=*/0)};
 
-    int signConf = 0;
+    int signX = 0, signY = 0;
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
     if (auto extSIOp = lhs.getDefiningOp<arith::ExtSIOp>()) {
       lhs = extSIOp.getIn();
       lhsVecTy = cast<VectorType>(lhs.getType());
       lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-      signConf |= (1 << 9);
+      signX = 1;
     } else if (auto extUIOp = lhs.getDefiningOp<arith::ExtUIOp>()) {
       lhs = extUIOp.getIn();
       lhsVecTy = cast<VectorType>(lhs.getType());
@@ -2069,7 +2074,7 @@ class MatMulOpConversion
     } else {
       // NOTE: We're choosing 'signed' by default
       if (!lhsScaTy.isUnsigned())
-        signConf |= (1 << 9);
+        signX = 1;
     }
     auto lhsShape = lhsVecTy.getShape();
 
@@ -2079,7 +2084,7 @@ class MatMulOpConversion
       rhs = extSIOp.getIn();
       rhsVecTy = cast<VectorType>(rhs.getType());
       rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-      signConf |= (1 << 8);
+      signY = 1;
     } else if (auto extUIOp = rhs.getDefiningOp<arith::ExtUIOp>()) {
       rhs = extUIOp.getIn();
       rhsVecTy = cast<VectorType>(rhs.getType());
@@ -2087,7 +2092,7 @@ class MatMulOpConversion
     } else {
       // NOTE: We're choosing 'signed' by default
       if (!rhsScaTy.isUnsigned())
-        signConf |= (1 << 8);
+        signY = 1;
     }
 
     unsigned lhsBitWidth = lhsScaTy.getWidth();
@@ -2098,18 +2103,42 @@ class MatMulOpConversion
       if (lhsBitWidth == 8) {
         if (rhsBitWidth == 4) {
           // <4x16xi8> x <16x8xi4> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf};
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                  aiev2_vmac_compute_control(
+                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                      /*bmode=*/0,
+                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                      /*sub_mask=*/0)};
         } else {
           // <4x8xi8> x <8x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                  aiev2_vmac_compute_control(
+                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                      /*bmode=*/1,
+                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                      /*sub_mask=*/0)};
         }
       } else {
         if (rhsBitWidth == 8) {
           // <4x4xi16> x <4x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                  aiev2_vmac_compute_control(
+                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                      /*bmode=*/2,
+                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                      /*sub_mask=*/0)};
         } else {
           // <4x2xi16> x <2x8xi16> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                  aiev2_vmac_compute_control(
+                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                      /*bmode=*/3,
+                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                      /*sub_mask=*/0)};
         }
       }
     }
@@ -2118,20 +2147,46 @@ class MatMulOpConversion
       if (rhsBitWidth == 8) {
         if (lhsShape == ArrayRef<int64_t>({2, 8})) {
           // <2x8xi16> x <8x8xi8> + <2x8xi64>
-          return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 18};
+          return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc,
+                  aiev2_vmac_compute_control(
+                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/1,
+                      /*bmode=*/2,
+                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                      /*sub_mask=*/0)};
         }
         // <4x8xi16> x <8x4xi8> + <4x4xi64>
-        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 50};
+        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/1, /*bmode=*/2,
+                    /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       }
       if (lhsShape == ArrayRef<int64_t>({2, 4})) {
         // <2x4xi16> x <4x8xi16> + <2x8xi64>
-        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 26};
+        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/1, /*bmode=*/3,
+                    /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       }
       // <4x4xi16> x <4x4xi16> + <4x4xi64>
-      return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 58};
+      return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc,
+              aiev2_vmac_compute_control(
+                  /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/1, /*bmode=*/3,
+                  /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+                  /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                  /*sub_mask=*/0)};
     }
     // <4x2xi32> x <2x4xi16> + <4x4xi64>
-    return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 2};
+    return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc,
+            aiev2_vmac_compute_control(
+                /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/1, /*bmode=*/0,
+                /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                /*sub_mask=*/0)};
   }
 
   LogicalResult
