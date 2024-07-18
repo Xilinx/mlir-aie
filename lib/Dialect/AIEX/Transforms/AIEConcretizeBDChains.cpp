@@ -10,15 +10,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/DenseMap.h"
-
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/AnalysisManager.h"
@@ -31,8 +26,6 @@ using namespace xilinx::AIEX;
 
 struct AIEConcretizeBDChainsPass
     : AIEConcretizeBDChainsBase<AIEConcretizeBDChainsPass> {
-
-  typedef DMAStartTask BDChainCallOp;
 
   LogicalResult inlineUsages() {
     InlinerConfig config;
@@ -88,7 +81,6 @@ struct AIEConcretizeBDChainsPass
       builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult(),
                                   start_op.getTile(), start_op.getDirection(),
                                   start_op.getChannel());
-      // start_op->moveBefore(&b.back());
     });
 
     // Inline all usages of BD chains at their sites

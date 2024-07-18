@@ -831,6 +831,32 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
   let assemblyFormat = [{
     `(` $tile `)` regions attr-dict
   }];
+
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+
+  let extraClassDefinition = [{
+    AIE::TileOp DMAConfigureBDs::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMAFreeBDs : AIEX_Op<"dma_free_bds", []> {
+  let arguments = (
+    ins Index:$bds
+  );
+
+  let assemblyFormat = [{
+    `(` $bds `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DMAConfigureBDs getBdsOp();
+  }];
+
+  let extraClassDefinition = [{
+    DMAConfigureBDs DMAFreeBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
+  }];
 }
 
 def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
@@ -843,6 +869,14 @@ def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
 
   let assemblyFormat = [{
     $bds `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+
+  let extraClassDefinition = [{
+    AIE::TileOp DMAStartBDs::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 }
 

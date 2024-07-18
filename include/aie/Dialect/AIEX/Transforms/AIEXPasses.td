@@ -155,7 +155,18 @@ def AIEConcretizeBDChains : Pass<"aie-concretize-bd-chains", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEConcretizeBDChainsPass()";
   let dependentDialects = [
-    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEAssignRuntimeBufferDescriptorIDs : Pass<"aie-assign-runtime-buffer-descriptor-ids", "AIE::DeviceOp"> {
+  let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+  let description = [{
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEAssignRuntimeBufferDescriptorIDsPass()";
+  let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

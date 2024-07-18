@@ -1102,7 +1102,8 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
 }
 
 def AIE_NextBDOp: AIE_Op<"next_bd", [
-    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
+    Terminator, 
+    //ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
   ]> {
   let summary = "The next buffer descriptor";
   let description = [{

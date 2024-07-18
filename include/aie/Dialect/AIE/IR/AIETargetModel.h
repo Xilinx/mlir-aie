@@ -173,6 +173,9 @@ public:
   /// tile.
   virtual uint32_t getNumBDs(int col, int row) const = 0;
 
+  /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be submitted on channel (`bundle`, `channel`).
+  virtual bool bdCanAccessChannel(int col, int row, uint32_t bd_id, WireBundle bundle, int channel) const = 0;
+
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
@@ -257,6 +260,7 @@ public:
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
+  bool bdCanAccessChannel(int col, int row, uint32_t bd_id, WireBundle bundle, int channel) const override { return true; }
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
 
@@ -316,6 +320,18 @@ public:
 
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
+  }
+
+  bool bdCanAccessChannel(int col, int row, uint32_t bd_id, WireBundle bundle, int channel) const override { 
+    if (!isMemTile(col, row)) {
+      return true;
+    } else {
+      if ((channel & 1) == 0) {  // even channel number
+        return channel < 24;
+      } else {
+        return channel >= 24;
+      }
+    }
   }
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
