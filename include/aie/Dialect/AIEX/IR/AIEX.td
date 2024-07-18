@@ -813,4 +813,65 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
+def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:$result)> {
+  let summary = "Concrete Instantiation of a Buffer Descriptor Chain";
+  let description = [{
+    Describes a chain of buffer descriptors. 
+    Unlike aie.bd_chain, this chain cannot be parametrized, and it is associated with one tile on which it may be submitted to a channel's task queue for execution.
+  }];
+
+  let arguments = (
+    ins Index:$tile
+  );
+
+  let regions = (
+    region AnyRegion:$body
+  );
+
+  let assemblyFormat = [{
+    `(` $tile `)` regions attr-dict
+  }];
+}
+
+def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
+  let arguments = (
+    ins Index:$bds,
+        Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+
+  let assemblyFormat = [{
+    $bds `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict
+  }];
+}
+
+def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
+    DeclareOpInterfaceMethods<CallOpInterface>
+  ]> {
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol,
+        Variadic<AnyType>:$concrete_args,
+        Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+
+  let assemblyFormat = [{ 
+    $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict 
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+
+  let extraClassDefinition = [{
+    AIE::TileOp DMAStartTask::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+  }];
+
+}
+
 #endif // AIEX_OPS

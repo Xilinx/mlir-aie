@@ -147,4 +147,18 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEConcretizeBDChains : Pass<"aie-concretize-bd-chains", "AIE::DeviceOp"> {
+  let summary = "Concretize aie.bd_chain ops at aiex.start_bds use sites";
+  let description = [{
+    Turns pre-defined BD chains with parameters into concrete BD configuration instructions without parameters at their usage sites.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEConcretizeBDChainsPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

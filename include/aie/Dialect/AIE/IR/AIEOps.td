@@ -747,7 +747,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
 }
 
 def AIE_DMABDOp: AIE_Op<"dma_bd", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp"]>,
+    //ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp", "BDChainOp"]>,
   ]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
@@ -1965,6 +1965,34 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
           .getInt();
     }
   }];
+}
+
+def AIE_BDChainOp: AIE_Op<"bd_chain", [
+    Symbol,
+    DeclareOpInterfaceMethods<CallableOpInterface>
+  ]> {
+  let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
+  let description = [{
+    This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+    This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
+
+    Once defined, an abstract BD chain can be used elsewhere using
+      TODO
+    ops.
+    At its usage sites, the abstract BD chain will be concretized with the given input arguments, becoming a concrete aie.bd_configuration.
+  }];
+
+  let arguments = (
+    ins SymbolNameAttr:$sym_name,
+        TypeAttrOf<AnyTuple>:$entry_arg_types_attr
+  );
+  let regions = (region AnyRegion:$body);
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+  }];
+  let hasCustomAssemblyFormat = 1;
+
 }
 
 #endif // AIE_OPS

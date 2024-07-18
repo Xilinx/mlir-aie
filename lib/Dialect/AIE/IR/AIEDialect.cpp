@@ -1551,6 +1551,15 @@ BufferOp DMABDOp::getBufferOp() {
 }
 
 LogicalResult DMABDOp::verify() {
+  // Skip verification of the BDOp outside of mem operations.
+  // BDOps may appear elsewhere and subsequent lowerings will place them in the
+  // correct mem ops.
+  Operation *p = (*this)->getParentOp();
+  if (!llvm::isa<MemOp>(*p) && !llvm::isa<MemTileDMAOp>(*p) &&
+      !llvm::isa<ShimDMAOp>(*p) && !llvm::isa<DMAOp>(*p)) {
+    return success();
+  }
+
   if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
     return emitOpError(
         "BDs only support BufferOp or ExternalBufferOp operands.");
@@ -1978,6 +1987,104 @@ WireBundle getConnectingBundle(WireBundle dir) {
 }
 
 } // namespace xilinx::AIE
+
+//===----------------------------------------------------------------------===//
+// BDChainOp
+//===----------------------------------------------------------------------===//
+
+ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  auto &builder = parser.getBuilder();
+
+  // Symbol name, e.g. @my_chain
+  StringAttr symNameAttr;
+  if (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes)) {
+    return failure();
+  }
+
+  // Entry arguments (placeholders), e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // For now we only support one entry argument, %addr
+  if (entryArgs.size() > 0) {
+    if (entryArgs.size() > 1) {
+      return failure(); // parser.emitError(*entryArgs[1].sourceLoc, "Only one
+                        // argument supported");
+    }
+  }
+
+  // Store entry arg types in op attributes
+  SmallVector<::mlir::Type> entryArgTypes;
+  entryArgTypes.reserve(entryArgs.size());
+  for (auto entryArg : entryArgs) {
+    entryArgTypes.push_back(entryArg.type);
+  }
+  result.addAttribute(getEntryArgTypesAttrAttrName(result.name),
+                      TypeAttr::get(builder.getTupleType(entryArgTypes)));
+
+  // BD Chain Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void BDChainOp::print(OpAsmPrinter &printer) {
+
+  auto bdChainName =
+      (*this)
+          ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
+          .getValue();
+  printer << ' ';
+  printer.printSymbolName(bdChainName);
+
+  ArrayRef<Type> entryArgTypes = this->getEntryArgTypesAttr().getTypes();
+  Region &body = getRegion();
+  assert(body.getNumArguments() == entryArgTypes.size());
+  printer << '(';
+  for (unsigned i = 0, n = entryArgTypes.size(); i < n; i++) {
+    if (i > 0) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(body.getArgument(i));
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+LogicalResult BDChainOp::verify() {
+  Region &body = getRegion();
+  if (body.getNumArguments() != getEntryArgTypesAttr().getTypes().size()) {
+    return emitOpError(
+        "Number of region arguments and argument types mismatch.");
+  }
+  return success();
+}
+
+Region *BDChainOp::getCallableRegion() { return &getRegion(); }
+
+llvm::ArrayRef<mlir::Type> BDChainOp::getArgumentTypes() {
+  return getEntryArgTypesAttr().getTypes();
+}
+
+llvm::ArrayRef<mlir::Type> BDChainOp::getResultTypes() { return std::nullopt; }
 
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES

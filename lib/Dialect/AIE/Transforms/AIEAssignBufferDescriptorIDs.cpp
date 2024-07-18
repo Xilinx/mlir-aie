@@ -8,45 +8,38 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "aie-assign-bd-ids"
-#define EVEN_BD_ID_START 0
-#define ODD_BD_ID_START 24
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct BdIdGenerator {
-  BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
-      : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
+BdIdGenerator::BdIdGenerator(int col, int row,
+                             const AIETargetModel &targetModel)
+    : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
 
-  int32_t nextBdId(int channelIndex) {
-    int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
-    while (bdIdAlreadyAssigned(bdId))
-      bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
-    assignBdId(bdId);
-    return bdId;
-  }
+int32_t BdIdGenerator::nextBdId(int channelIndex) {
+  int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
+  while (bdIdAlreadyAssigned(bdId))
+    bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
+  assignBdId(bdId);
+  return bdId;
+}
 
-  void assignBdId(int32_t bdId) {
-    assert(!alreadyAssigned.count(bdId) && "bdId has already been assigned");
-    alreadyAssigned.insert(bdId);
-  }
+void BdIdGenerator::assignBdId(int32_t bdId) {
+  assert(!alreadyAssigned.count(bdId) && "bdId has already been assigned");
+  alreadyAssigned.insert(bdId);
+}
 
-  bool bdIdAlreadyAssigned(int32_t bdId) { return alreadyAssigned.count(bdId); }
-
-  int col;
-  int row;
-  int oddBdId = ODD_BD_ID_START;
-  int evenBdId = EVEN_BD_ID_START;
-  bool isMemTile;
-  std::set<int32_t> alreadyAssigned;
-};
+bool BdIdGenerator::bdIdAlreadyAssigned(int32_t bdId) {
+  return alreadyAssigned.count(bdId);
+}
 
 struct AIEAssignBufferDescriptorIDsPass
     : AIEAssignBufferDescriptorIDsBase<AIEAssignBufferDescriptorIDsPass> {

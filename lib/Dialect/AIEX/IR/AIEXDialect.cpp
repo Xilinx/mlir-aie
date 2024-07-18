@@ -21,12 +21,37 @@ using namespace xilinx;
 
 namespace xilinx::AIEX {
 
+struct AIEXInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return llvm::isa<AIE::BDChainOp>(callable) && llvm::isa<DMAStartTask>(call);
+  }
+
+  bool isLegalToInline(Operation *op, Region *r, bool,
+                       IRMapping &) const final {
+    return true;
+  }
+
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
+                       IRMapping &valueMapping) const final {
+    return true;
+  }
+
+  void handleTerminator(Operation *op, Block *newDest) const final override {}
+
+  void handleTerminator(Operation *op,
+                        ValueRange valuesToRepl) const final override {}
+};
+
 // FIXME: use Tablegen'd dialect class
 void AIEXDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
       >();
+  addInterfaces<AIEXInlinerInterface>();
 }
 
 } // namespace xilinx::AIEX
@@ -356,4 +381,46 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
     return failure();
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DMAStartTask
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::DMAStartTask::verify() {
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  auto chain = device.lookupSymbol<AIE::BDChainOp>(getSymbol());
+  if (!chain) {
+    return emitOpError("symbol does not reference valid BD chain");
+  }
+
+  auto actualArgTypes = getConcreteArgs().getTypes();
+  ArrayRef<Type> expectedArgTypes = chain.getEntryArgTypesAttr().getTypes();
+  if (actualArgTypes.size() != expectedArgTypes.size()) {
+    return emitOpError("Number of arguments mismatches.");
+  }
+  for (unsigned i = 0, n = expectedArgTypes.size(); i < n; i++) {
+    if (actualArgTypes[i] != expectedArgTypes[i]) {
+      return emitOpError("Argument ") << (i + 1) << " types mismatch: "
+                                      << "expected " << expectedArgTypes[i]
+                                      << " but got " << actualArgTypes[i];
+    }
+  }
+  return success();
+}
+
+CallInterfaceCallable AIEX::DMAStartTask::getCallableForCallee() {
+  return (*this)->getAttrOfType<SymbolRefAttr>(getSymbolAttrName());
+}
+
+void AIEX::DMAStartTask::setCalleeFromCallable(CallInterfaceCallable callee) {
+  (*this)->setAttr(getSymbolAttrName(), callee.get<SymbolRefAttr>());
+}
+
+Operation::operand_range AIEX::DMAStartTask::getArgOperands() {
+  return getConcreteArgs();
+}
+
+::mlir::MutableOperandRange AIEX::DMAStartTask::getArgOperandsMutable() {
+  return getConcreteArgsMutable();
 }
