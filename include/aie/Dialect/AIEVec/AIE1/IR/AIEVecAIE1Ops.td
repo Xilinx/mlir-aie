@@ -119,4 +119,139 @@ def AIEVecAIE1_SubOp:
   }];
 }
 
+def AIEVecAIE1_MulOp:
+  AIEVecAIE1_Op<"mul", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+               DefaultValuedStrAttr<StrAttr, "">:$xstart,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$xstep,
+               DefaultValuedStrAttr<StrAttr, "">:$xsquare,
+               DefaultValuedStrAttr<StrAttr, "">:$zstart,
+               DefaultValuedStrAttr<StrAttr, "">:$zoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$zstep,
+               DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector multiply";
+  let description = [{
+    AMD-specific multiply operation that multiplies two 1-D vectors.
+    The vector sizes are at least 256 bits, and the left operand vector 
+    is at least twice the size of right operand vector. For integers, the
+    lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
+    `$result = `$lhs * $rhs`.
+  }];
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Type":$accType,
+            "llvm::StringRef":$xstart,
+            "llvm::StringRef":$xoffsets, "llvm::StringRef":$xoffsets_hi,
+            "llvm::StringRef":$xstep, "llvm::StringRef":$xsquare,
+            "llvm::StringRef":$zstart,
+            "llvm::StringRef":$zoffsets, "llvm::StringRef":$zoffsets_hi,
+            "llvm::StringRef":$zstep, "llvm::StringRef":$zsquare),
+    [{build($_builder, $_state, accType, lhs, rhs, 
+            xstart, xoffsets, xoffsets_hi,
+            xstep, xsquare,
+            zstart, zoffsets, zoffsets_hi,
+            zstep, zsquare);}]>
+  ];
+  let extraClassDeclaration = [{
+    // Get the attributes
+    llvm::StringRef getStart(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? getXstart() : getZstart(); }
+    llvm::StringRef getOffset(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? getXoffsets() : getZoffsets(); }
+    llvm::StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); }
+    llvm::StringRef getStep(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? getXstep() : getZstep(); }
+    llvm::StringRef getSquare(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? getXsquare() : getZsquare(); }
+    // Get the attribute names
+    llvm::StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? "xstart" : "zstart"; }
+    llvm::StringRef getOffsetAttrName(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? "xoffsets" : "zoffsets"; }
+    llvm::StringRef getOffsetHiAttrName(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? "xoffsets_hi" : "zoffsets_hi"; }
+    llvm::StringRef getStepAttrName(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? "xstep" : "zstep"; }
+    llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
+                            return idx==0 ? "xsquare" : "zsquare"; }
+  }];
+}
+
+def AIEVecAIE1_FMAOp :
+  AIEVecAIE1_Op<"mac", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+               DefaultValuedStrAttr<StrAttr, "">:$xstart,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$xstep,
+               DefaultValuedStrAttr<StrAttr, "">:$xsquare,
+               DefaultValuedStrAttr<StrAttr, "">:$zstart,
+               DefaultValuedStrAttr<StrAttr, "">:$zoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$zstep,
+               DefaultValuedStrAttr<StrAttr, "">:$zsquare,
+               DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector fused multiply-add";
+  let description = [{
+    AMD-specific multiply-add operation. It multiplies two 1-D vectors,
+    and adds the result to an accumulator. The vector sizes are at least
+    256 bits, and the left operand vector is at least twice the size of
+    right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
+    the result and acc are 48-bit or 80-bit accumulator.
+    `$result = `$lhs * $rhs + $acc`.
+    Note: the same operator can be used as fmsub operator by setting the
+    'fmsub' bool to true.
+  }];
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Value":$acc,
+            "llvm::StringRef":$xstart,
+            "llvm::StringRef":$xoffsets, "llvm::StringRef":$xoffsets_hi,
+            "llvm::StringRef":$xstep, "llvm::StringRef":$xsquare,
+            "llvm::StringRef":$zstart,
+            "llvm::StringRef":$zoffsets, "llvm::StringRef":$zoffsets_hi,
+            "llvm::StringRef":$zstep, "llvm::StringRef":$zsquare,
+            "bool":$fmsub),
+    [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
+            xstart, xoffsets, xoffsets_hi,
+            xstep, xsquare,
+            zstart, zoffsets, zoffsets_hi,
+            zstep, zsquare,
+            fmsub);}]>
+  ];
+  let extraClassDeclaration = [{
+    // Get the attributes
+    llvm::StringRef getStart(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXstart() : getZstart(); }
+    llvm::StringRef getOffset(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXoffsets() : getZoffsets(); }
+    llvm::StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); }
+    llvm::StringRef getStep(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXstep() : getZstep(); }
+    llvm::StringRef getSquare(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXsquare() : getZsquare(); }
+    // Get the attribute names
+    llvm::StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xstart" : "zstart"; }
+    llvm::StringRef getOffsetAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xoffsets" : "zoffsets"; }
+    llvm::StringRef getOffsetHiAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xoffsets_hi" : "zoffsets_hi"; }
+    llvm::StringRef getStepAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xstep" : "zstep"; }
+    llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xsquare" : "zsquare"; }
+    llvm::StringRef getSubAttrName() { return "fmsub"; }
+  }];
+}
+
 #endif // AIEVEC_AIE1_OPS
