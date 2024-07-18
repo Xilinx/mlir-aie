@@ -28,7 +28,7 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let options = [
     Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
-           "Choose allocation scheme; possibilities: basic-sequential, bank-aware. By default, basic-sequential is selected for the Tile's memory and bank-aware is selected for the rest.">,
+           "Choose allocation scheme; possibilities: basic-sequential, bank-aware. By default, bank-aware is selected and if it fails, will fall back to basic-sequential scheme.">,
   ];
 }
 
