@@ -1618,6 +1618,36 @@ LogicalResult DMABDOp::verify() {
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
   }
+  if (auto paddims = getPadDimensions(); paddims.has_value()) {
+    auto dims = getDimensions();
+    if (!dims.has_value())
+      return emitOpError() << "Padding requires n-d data layouts expressed as"
+                           << " wrap(s) and stride(s).";
+    if (dims->size() != paddims->size())
+      return emitOpError() << "Mismatch number of dimensions between padding(s)"
+                           << " and wrap(s) and stride(s).";
+    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+      return emitOpError() << "Padding is only supported by memtile dma bds.";
+    int actuallen = 1;
+    for (unsigned i = 0; i < paddims->size(); i++) {
+      auto dim = (*dims)[i];
+      auto paddim = (*paddims)[i];
+      actuallen *= paddim.getConstPadBefore() + paddim.getConstPadAfter() +
+                   dim.getSize();
+      if (actuallen > getLen())
+        return emitOpError() << "Data exceeds len after padding.";
+    }
+    if ((paddims->back().getConstPadBefore() *
+         getBufferElementTypeWidthInBytes()) %
+        4)
+      return emitOpError() << "Inner-most padding-before count must result in"
+                           << " padding in 32-bit words.";
+    if ((paddims->back().getConstPadAfter() *
+         getBufferElementTypeWidthInBytes()) %
+        4)
+      return emitOpError() << "Inner-most padding-after count must result in"
+                           << " padding in 32-bit words.";
+  }
   if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
       targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {

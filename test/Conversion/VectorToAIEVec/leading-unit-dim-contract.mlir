@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aieml target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir" | FileCheck %s
 
 #map  = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d4, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d3, d5, d8, d7)>
