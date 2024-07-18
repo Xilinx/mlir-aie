@@ -21,6 +21,8 @@
 
 namespace xilinx::AIE {
 
+enum class Connectivity { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
+
 using SwitchboxNode = struct SwitchboxNode {
 
   SwitchboxNode(int col, int row, int id, int maxCol, int maxRow,
@@ -62,7 +64,8 @@ using SwitchboxNode = struct SwitchboxNode {
       }
     }
 
-    connectionMatrix.resize(inPortId, std::vector<int>(outPortId, 0));
+    connectionMatrix.resize(inPortId, std::vector<Connectivity>(
+                                          outPortId, Connectivity::AVAILABLE));
 
     // illegal connection
     for (const auto &[inPort, inId] : inPortToId) {
@@ -70,7 +73,7 @@ using SwitchboxNode = struct SwitchboxNode {
         if (!targetModel.isLegalTileConnection(col, row, inPort.bundle,
                                                inPort.channel, outPort.bundle,
                                                outPort.channel))
-          connectionMatrix[inId][outId] = -1;
+          connectionMatrix[inId][outId] = Connectivity::INVALID;
 
         if (targetModel.isShimNOCorPLTile(col, row)) {
           // wordaround for shimMux, todo: integrate shimMux into routable grid
@@ -83,7 +86,7 @@ using SwitchboxNode = struct SwitchboxNode {
                                              WireBundle::PLIO};
           if (isBundleInList(inPort.bundle, bundles) ||
               isBundleInList(outPort.bundle, bundles))
-            connectionMatrix[inId][outId] = 0;
+            connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
         }
       }
     }
@@ -97,11 +100,12 @@ using SwitchboxNode = struct SwitchboxNode {
       int outId = outPortToId[outPort];
       if (isPkt) {
         for (const auto &[inPort, inId] : inPortToId) {
-          if (inPort.bundle == inBundle && connectionMatrix[inId][outId] >= 0) {
+          if (inPort.bundle == inBundle &&
+              connectionMatrix[inId][outId] != Connectivity::INVALID) {
             bool available = true;
             if (inPortPktCount.count(inPort) == 0) {
               for (const auto &[outPort, outId] : outPortToId) {
-                if (connectionMatrix[inId][outId] == 1) {
+                if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
                   // occupied by others as circuit-switched
                   available = false;
                   break;
@@ -120,10 +124,11 @@ using SwitchboxNode = struct SwitchboxNode {
         }
       } else {
         for (const auto &[inPort, inId] : inPortToId) {
-          if (inPort.bundle == inBundle && connectionMatrix[inId][outId] == 0) {
+          if (inPort.bundle == inBundle &&
+              connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
             bool available = true;
             for (const auto &[outPort, outId] : outPortToId) {
-              if (connectionMatrix[inId][outId] == 1) {
+              if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
                 available = false;
                 break;
               }
@@ -146,21 +151,21 @@ using SwitchboxNode = struct SwitchboxNode {
     int outId = outPortToId[outPort];
 
     // invalid connection
-    if (connectionMatrix[inId][outId] == -1)
+    if (connectionMatrix[inId][outId] == Connectivity::INVALID)
       return false;
 
     if (isPkt) {
       // a packet-switched stream to be allocated
       if (inPortPktCount.count(inPort) == 0) {
         for (const auto &[outPort, outId] : outPortToId) {
-          if (connectionMatrix[inId][outId] == 1) {
+          if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
             // occupied by others as circuit-switched, allocation fail!
             return false;
           }
         }
         // empty channel, allocation succeed!
         inPortPktCount[inPort] = 1;
-        connectionMatrix[inId][outId] = 1;
+        connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
         return true;
       } else {
         if (inPortPktCount[inPort] >= maxPktStream) {
@@ -175,9 +180,9 @@ using SwitchboxNode = struct SwitchboxNode {
       }
     } else {
       // a circuit-switched stream to be allocated
-      if (connectionMatrix[inId][outId] == 0) {
+      if (connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
         // empty channel, allocation succeed!
-        connectionMatrix[inId][outId] = 1;
+        connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
         return true;
       } else {
         // occupied by others, allocation fail!
@@ -189,8 +194,8 @@ using SwitchboxNode = struct SwitchboxNode {
   void clearAllocation() {
     for (int inId = 0; inId < inPortId; inId++) {
       for (int outId = 0; outId < outPortId; outId++) {
-        if (connectionMatrix[inId][outId] != -1) {
-          connectionMatrix[inId][outId] = 0;
+        if (connectionMatrix[inId][outId] != Connectivity::INVALID) {
+          connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
         }
       }
     }
@@ -224,7 +229,7 @@ using SwitchboxNode = struct SwitchboxNode {
 
   // tenary representation of switchbox connectivity
   // -1: invalid in arch, 0: empty and available, 1: occupued
-  std::vector<std::vector<int>> connectionMatrix;
+  std::vector<std::vector<Connectivity>> connectionMatrix;
 
   // input ports with incoming packet-switched streams
   std::map<Port, int> inPortPktCount;

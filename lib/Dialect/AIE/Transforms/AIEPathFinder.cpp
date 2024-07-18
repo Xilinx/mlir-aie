@@ -259,7 +259,7 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       return false;
     int inId = sb.inPortToId.at(srcPort);
     int outId = sb.outPortToId.at(destPort);
-    if (sb.connectionMatrix[inId][outId] != 0)
+    if (sb.connectionMatrix[inId][outId] != Connectivity::AVAILABLE)
       return false;
     invalidInId.insert(inId);
     invalidOutId.insert(outId);
@@ -270,7 +270,7 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       if (invalidInId.find(inId) != invalidInId.end() ||
           invalidOutId.find(outId) != invalidOutId.end()) {
         // mark as invalid
-        sb.connectionMatrix[inId][outId] = -1;
+        sb.connectionMatrix[inId][outId] = Connectivity::INVALID;
       }
     }
   }
