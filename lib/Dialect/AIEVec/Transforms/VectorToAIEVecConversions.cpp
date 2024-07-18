@@ -634,7 +634,7 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
 // `vector<16xbf16>` operand types are supported. In the case of vectors with
 // `f32` elemental type, this pattern will try to match `bf16` to `f32`
 // widening ops in the `lhs` and `rhs` operands, or fail otherwise.
-// TODO: When sign extensions are not found, a conversion from `f32` to `bf32`
+// TODO: When sign extensions are not found, a conversion from `f32` to `bf16`
 // TODO: can be inserted to emulate `f32` fma with `bf16` logic.
 struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     : OpConversionPattern<vector::FMAOp> {
