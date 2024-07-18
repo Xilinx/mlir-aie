@@ -652,10 +652,9 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     auto resElemTy = resVecTy.getElementType();
     unsigned numElems = getVectorLaneSize(resVecTy);
 
-    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16())) {
-      LDBG("Unsupported operand types in vector.fma lowering.");
-      return failure();
-    }
+    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16()))
+      return rewriter.notifyMatchFailure(
+          fmaOp, "Unsupported operand types in vector.fma lowering.");
 
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();
@@ -667,17 +666,15 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     else {
       lhs = getSourceOfWideningOp(lhs).value_or(nullptr);
       rhs = getSourceOfWideningOp(rhs).value_or(nullptr);
-      if (!lhs || !rhs) {
-        LDBG("vector.fma operands are f32, and they don't come from arith.extf "
-             "on bf16; can't lower to aievec.");
-        return failure();
-      }
+      if (!lhs || !rhs)
+        return rewriter.notifyMatchFailure(
+            fmaOp, "vector.fma operands are f32, and they don't come from "
+                   "arith.extf on bf16; can't lower to aievec.");
       if (!cast<VectorType>(lhs.getType()).getElementType().isBF16() ||
-          !cast<VectorType>(rhs.getType()).getElementType().isBF16()) {
-        LDBG("vector.fma operands come from arith.extf, but the source of the "
-             "widening op is not bf16; can't lower to aievec.");
-        return failure();
-      }
+          !cast<VectorType>(rhs.getType()).getElementType().isBF16())
+        return rewriter.notifyMatchFailure(
+            fmaOp, "vector.fma operands come from arith.extf, but the source "
+                   "of the widening op is not bf16; can't lower to aievec.");
     }
     Value newOp = rewriter.create<aievec::FMAElemOp>(
         fmaOp.getLoc(), acc.getType(), lhs, rhs, acc, /*fmsub=*/false);
