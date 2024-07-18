@@ -242,7 +242,7 @@ using ChannelEdge = struct ChannelEdge {
   ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
       : src(src), target(target) {
 
-    // get bundle from src to target
+    // get bundle from src to target coordinates
     if (src->col == target->col) {
       if (src->row > target->row)
         bundle = WireBundle::South;

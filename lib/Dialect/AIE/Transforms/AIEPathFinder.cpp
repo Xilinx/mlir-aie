@@ -457,21 +457,25 @@ Pathfinder::findPaths(const int maxIterations) {
                                lastDestPort, isPkt);
             if (!succeed)
               assert(false && "invalid allocation");
+            LLVM_DEBUG(llvm::dbgs()
+                       << *curr << ", connecting: "
+                       << stringifyWireBundle(getConnectingBundle(ch->bundle))
+                       << channel << " -> "
+                       << stringifyWireBundle(lastDestPort.bundle)
+                       << lastDestPort.channel << "\n");
           } else {
             // if no channel available, use a virtual channel id and mark
             // routing as being invalid
             channel = usedCapacity[ch];
-            LLVM_DEBUG(llvm::dbgs()
-                       << "Too much capacity on Edge (" << ch->target->col
-                       << ", " << ch->target->row << ") . "
-                       << stringifyWireBundle(ch->bundle)
-                       << "\t: used_capacity = " << usedCapacity[ch]
-                       << "\t: Demand = " << demand[ch] << "\n");
             if (isLegal) {
               overCapacity[ch]++;
+              LLVM_DEBUG(llvm::dbgs()
+                         << *curr << ", congestion: "
+                         << stringifyWireBundle(getConnectingBundle(ch->bundle))
+                         << ", used_capacity = " << usedCapacity[ch]
+                         << ", over_capacity_count = " << overCapacity[ch]
+                         << "\n");
             }
-            LLVM_DEBUG(llvm::dbgs()
-                       << "over_capacity_count = " << overCapacity[ch] << "\n");
             isLegal = false;
           }
           usedCapacity[ch]++;
@@ -487,9 +491,12 @@ Pathfinder::findPaths(const int maxIterations) {
 
           // if at capacity, bump demand to discourage using this Channel
           if (usedCapacity[ch] >= ch->maxCapacity) {
-            LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
             // this means the order matters!
             demand[ch] *= DEMAND_COEFF;
+            LLVM_DEBUG(llvm::dbgs()
+                       << *curr << ", bump demand: "
+                       << stringifyWireBundle(getConnectingBundle(ch->bundle))
+                       << ", demand = " << demand[ch] << "\n");
           }
 
           processed.insert(curr);
@@ -504,6 +511,12 @@ Pathfinder::findPaths(const int maxIterations) {
             if (!succeed) {
               isLegal = false;
               overCapacity[ch]++;
+              LLVM_DEBUG(llvm::dbgs()
+                         << *curr << ", unable to connect: "
+                         << stringifyWireBundle(src.port.bundle)
+                         << src.port.channel << " -> "
+                         << stringifyWireBundle(lastDestPort.bundle)
+                         << lastDestPort.channel << "\n");
             }
             srcDestPorts.push_back(lastDestPort);
           }
