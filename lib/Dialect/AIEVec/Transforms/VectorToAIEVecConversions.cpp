@@ -29,13 +29,15 @@
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
-
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <bitset>
 #include <optional>
 #include <tuple>
 
 #define DEBUG_TYPE "lower-vector-to-aievec"
+#define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
+#define LDBG(X) LLVM_DEBUG(DBGS() << (X))
 
 using namespace llvm;
 using namespace mlir;
@@ -621,6 +623,73 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
         addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         addOp, resultType, fmaElemOp.getResult(), shiftParamOp.getResult());
+
+    return success();
+  }
+
+  unsigned shiftParam;
+};
+
+// Convert `vector.fma` to `aievec.mac_elem`. Only `vector<16xf32>` and
+// `vector<16xbf16>` operand types are supported. In the case of vectors with
+// `f32` elemental type, this pattern will try to match `bf16` to `f32`
+// widening ops in the `lhs` and `rhs` operands, or fail otherwise.
+// TODO: When sign extensions are not found, a conversion from `f32` to `bf32`
+// TODO: can be inserted to emulate `f32` fma with `bf16` logic.
+struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
+    : OpConversionPattern<vector::FMAOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  ConvertVectorFMAOpToAIEVecFMAElemOpPattern(MLIRContext *context,
+                                             unsigned shiftParam = 0)
+      : OpConversionPattern(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify the vector type is supported by AIE2
+    auto resVecTy = cast<VectorType>(fmaOp.getType());
+    auto resElemTy = resVecTy.getElementType();
+    unsigned numElems = getVectorLaneSize(resVecTy);
+
+    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16())) {
+      LDBG("Unsupported operand types in vector.fma lowering.");
+      return failure();
+    }
+
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    Value acc = adaptor.getAcc();
+    if (resElemTy.isBF16())
+      acc = rewriter.create<aievec::UPSOp>(
+          fmaOp.getLoc(), VectorType::get({16}, rewriter.getF32Type()), acc,
+          shiftParam);
+    else {
+      lhs = getSourceOfWideningOp(lhs).value_or(nullptr);
+      rhs = getSourceOfWideningOp(rhs).value_or(nullptr);
+      if (!lhs || !rhs) {
+        LDBG("vector.fma operands are f32, and they don't come from arith.extf "
+             "on bf16; can't lower to aievec.");
+        return failure();
+      }
+      if (!cast<VectorType>(lhs.getType()).getElementType().isBF16() ||
+          !cast<VectorType>(rhs.getType()).getElementType().isBF16()) {
+        LDBG("vector.fma operands come from arith.extf, but the source of the "
+             "widening op is not bf16; can't lower to aievec.");
+        return failure();
+      }
+    }
+    Value newOp = rewriter.create<aievec::FMAElemOp>(
+        fmaOp.getLoc(), acc.getType(), lhs, rhs, acc, /*fmsub=*/false);
+
+    if (resElemTy.isBF16()) {
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          fmaOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+      newOp = rewriter.create<aievec::SRSOp>(fmaOp.getLoc(), resVecTy, newOp,
+                                             shiftParamOp);
+    }
+
+    rewriter.replaceOp(fmaOp, newOp);
 
     return success();
   }
@@ -2994,6 +3063,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
+      ConvertVectorFMAOpToAIEVecFMAElemOpPattern,
       LowerVectorExtractStridedSliceOpAIE2Pattern,
       LowerVectorTransposeOpToAIEVecShuffleOpPattern
       >(patterns.getContext());
@@ -3675,7 +3745,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
         return false;
       });
 
-  target.addIllegalOp<vector::ContractionOp, vector::TransposeOp>();
+  target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
+                      vector::FMAOp>();
 }
 
 //===----------------------------------------------------------------------===//
