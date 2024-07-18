@@ -46,7 +46,8 @@ vck5000: devicename=xcvc1902
 vck5000: col=6
 
 vck5000: build/aie.mlir
-	aiecc.py --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+	aiecc.py --no-xchesscc --no-xbridge --peano ${PEANO_DIR} \
+    --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
