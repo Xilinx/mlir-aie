@@ -2060,26 +2060,27 @@ static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
 // the acc of fma is a mul/fma operation which uses the same operands as fma.
 // the def of two operands are upd operations.
 // Transform -
-// %5 = aievec.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]",
-// xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]", zoffsets_hi =
+// %5 = aievec_aie1.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
+// zoffsets_hi =
 // "[[Zh:.*]]", zstart = "0", zstep = "[[Zs:.*]]"}
 //
-// %6 = aievec.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
+// %6 = aievec_aie1.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
 // xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2", zoffsets =
 // "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "2", zstep = "[[Zs:.*]]"}
 //
 // to-
 //
-// %7 = aievec.mul_conv %6, %1 {M = 16 : si32, N = 4 : si32}
+// %7 = aievec_aie1.mul_conv %6, %1 {M = 16 : si32, N = 4 : si32}
 //
 // or transform the pattern like this-
 //
-// %9 = aievec.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// %9 = aievec_aie1.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
 // "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
 // zoffsets_hi =
 // "[[Zh:.*]]", zstart = "4", zstep = "[[Zs:.*]]"}
 //
-// %10 = aievec.mac %8, %0, %9 {xoffsets =
+// %10 = aievec_aie1.mac %8, %0, %9 {xoffsets =
 // "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2",
 // zoffsets = "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "6", zstep =
 // "[[Zs:.*]]"}
