@@ -12,6 +12,7 @@
 #include "../PassDetail.h"
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
@@ -133,11 +134,11 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
 std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
   Value lhs, result;
-  if (auto mulOp = dyn_cast<aievec::MulOp>(op)) {
+  if (auto mulOp = dyn_cast<aievec::aie1::MulOp>(op)) {
     baseName = "mul";
     lhs = mulOp.getLhs();
     result = mulOp.getResult();
-  } else if (auto fmaOp = dyn_cast<aievec::FMAOp>(op)) {
+  } else if (auto fmaOp = dyn_cast<aievec::aie1::FMAOp>(op)) {
     baseName = "mac";
     lhs = fmaOp.getLhs();
     result = fmaOp.getResult();
@@ -176,36 +177,39 @@ void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z,
   conf[1] |= sub << 17;
 }
 
-class AddOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::AddOp> {
+class AddOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::AddOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::AddOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::AddOp>::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(aievec::AddOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::AddOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     op.emitWarning() << "aie.add conversion is not implemented\n";
     return failure();
   }
 };
 
-class SubOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::SubOp> {
+class SubOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SubOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::SubOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::SubOp>::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(aievec::SubOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::SubOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     op.emitWarning() << "aie.sub conversion is not implemented\n";
     return failure();
   }
 };
 
-class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::FMAOp> {
+class FMAOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::FMAOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::FMAOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::FMAOp>::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(aievec::FMAOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::FMAOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
@@ -277,12 +281,13 @@ public:
   }
 };
 
-class MulOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::MulOp> {
+class MulOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::MulOp> {
 public:
-  using ConvertOpToLLVMPattern<aievec::MulOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<aievec::aie1::MulOp>::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(aievec::MulOp op, OpAdaptor adaptor,
+  matchAndRewrite(aievec::aie1::MulOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
@@ -2259,7 +2264,8 @@ struct ConvertAIEVecToLLVMPass
                                            aie2Fp32Emulation);
 
     LLVMConversionTarget target(getContext());
-    target.addIllegalDialect<AIEVecDialect>();
+    target.addIllegalDialect<xilinx::aievec::AIEVecDialect,
+                             xilinx::aievec::aie1::AIEVecAIE1Dialect>();
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
                            xilinx::xllvm::XLLVMDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
