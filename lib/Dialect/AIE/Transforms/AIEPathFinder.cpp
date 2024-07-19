@@ -83,10 +83,10 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
-  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-    if (!pathfinder->addFixedConnection(switchboxOp))
-      return switchboxOp.emitOpError() << "Unable to add fixed connections";
-  }
+  // for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
+  //   if (!pathfinder->addFixedConnection(switchboxOp))
+  //     return switchboxOp.emitOpError() << "Unable to add fixed connections";
+  // }
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
@@ -97,10 +97,10 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     return device.emitError("Unable to find a legal routing");
 
   // initialize all flows as unprocessed to prep for rewrite
-  for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
-    processedFlows[pathEndPoint] = false;
-    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb.col
-                            << "," << pathEndPoint.sb.row << "):\t");
+  for (const auto &[pathNode, switchSetting] : flowSolutions) {
+    processedFlows[pathNode] = false;
+    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathNode.sb.col << ","
+                            << pathNode.sb.row << "):\t");
     LLVM_DEBUG(llvm::dbgs() << switchSetting);
   }
 
@@ -178,40 +178,106 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 
 void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
-  // make grid of switchboxes
-  int id = 0;
+
+  auto insertAndConnect = [&](int colSrc, int rowSrc, WireBundle bundleSrc,
+                              int channelSrc, int colDest, int rowDest,
+                              WireBundle bundleDest, int channelDest) {
+    auto sourcePair =
+        pathNodes.insert({TileID{colSrc, rowSrc}, Port{bundleSrc, channelSrc}});
+    auto targetPair = pathNodes.insert(
+        {TileID{colDest, rowDest}, Port{bundleDest, channelDest}});
+
+    auto &sourceIt = std::get<0>(sourcePair);
+    auto &targetIt = std::get<0>(targetPair);
+
+    pathEdges.push_back(PathEdge{const_cast<PathNode *>(&(*sourceIt)),
+                                 const_cast<PathNode *>(&(*targetIt))});
+  };
+
+  const std::vector<WireBundle> bundles = {
+      WireBundle::Core, WireBundle::DMA,   WireBundle::FIFO, WireBundle::South,
+      WireBundle::West, WireBundle::North, WireBundle::East, WireBundle::PLIO,
+      WireBundle::NOC,  WireBundle::Trace, WireBundle::Ctrl};
+
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
-      grid.insert({{col, row},
-                   SwitchboxNode{col, row, id++, maxCol, maxRow, targetModel}});
-      SwitchboxNode &thisNode = grid.at({col, row});
-      if (row > 0) { // if not in row 0 add channel to North/South
-        SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
-        // get the number of outgoing connections on the south side - outgoing
-        // because these correspond to rhs of a connect op
-        if (targetModel.getNumDestSwitchboxConnections(col, row,
-                                                       WireBundle::South)) {
-          edges.emplace_back(&thisNode, &southernNeighbor);
+      std::vector<Port> inPorts, outPorts;
+      for (WireBundle bundle : bundles) {
+        // get all ports into current switchbox
+        int maxCapacity =
+            targetModel.getNumSourceSwitchboxConnections(col, row, bundle);
+        if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+          // wordaround for shimMux, todo: integrate shimMux into routable grid
+          maxCapacity =
+              targetModel.getNumSourceShimMuxConnections(col, row, bundle);
         }
-        // get the number of incoming connections on the south side - incoming
-        // because they correspond to connections on the southside that are then
-        // routed using internal connect ops through the switchbox (i.e., lhs of
-        // connect ops)
-        if (targetModel.getNumSourceSwitchboxConnections(col, row,
-                                                         WireBundle::South)) {
-          edges.emplace_back(&southernNeighbor, &thisNode);
+        for (int channel = 0; channel < maxCapacity; channel++) {
+          inPorts.push_back({bundle, channel});
+        }
+
+        // get all ports out of current switchbox
+        maxCapacity =
+            targetModel.getNumDestSwitchboxConnections(col, row, bundle);
+        if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+          // wordaround for shimMux, todo: integrate shimMux into routable grid
+          maxCapacity =
+              targetModel.getNumDestShimMuxConnections(col, row, bundle);
+        }
+        for (int channel = 0; channel < maxCapacity; channel++) {
+          outPorts.push_back({bundle, channel});
         }
       }
 
-      if (col > 0) { // if not in col 0 add channel to East/West
-        SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
-        if (targetModel.getNumDestSwitchboxConnections(col, row,
-                                                       WireBundle::West)) {
-          edges.emplace_back(&thisNode, &westernNeighbor);
+      for (auto &inPort : inPorts) {
+        for (auto &outPort : outPorts) {
+          Connectivity status = Connectivity::AVAILABLE;
+
+          if (!targetModel.isLegalTileConnection(col, row, inPort.bundle,
+                                                 inPort.channel, outPort.bundle,
+                                                 outPort.channel))
+            status = Connectivity::INVALID;
+
+          if (targetModel.isShimNOCorPLTile(col, row)) {
+            // wordaround for shimMux, todo: integrate shimMux into routable
+            // grid
+            auto isBundleInList = [](WireBundle bundle,
+                                     std::vector<WireBundle> bundles) {
+              return std::find(bundles.begin(), bundles.end(), bundle) !=
+                     bundles.end();
+            };
+            std::vector<WireBundle> bundles = {WireBundle::DMA, WireBundle::NOC,
+                                               WireBundle::PLIO};
+            if (isBundleInList(inPort.bundle, bundles) ||
+                isBundleInList(outPort.bundle, bundles))
+              status = Connectivity::AVAILABLE;
+          }
+
+          if (status == Connectivity::AVAILABLE) {
+            // connection inside switchboxes
+            insertAndConnect(col, row, inPort.bundle, inPort.channel, col, row,
+                             outPort.bundle, outPort.channel);
+          }
         }
-        if (targetModel.getNumSourceSwitchboxConnections(col, row,
-                                                         WireBundle::West)) {
-          edges.emplace_back(&westernNeighbor, &thisNode);
+
+        if (inPort.bundle == WireBundle::South && row > 0) {
+          // connection between switchboxes, from north to south
+          insertAndConnect(col, row - 1, WireBundle::North, inPort.channel, col,
+                           row, inPort.bundle, inPort.channel);
+        }
+        if (inPort.bundle == WireBundle::North && row < maxRow) {
+          // connection between switchboxes, from south to north
+          insertAndConnect(col, row + 1, WireBundle::South, inPort.channel, col,
+                           row, inPort.bundle, inPort.channel);
+        }
+        if (inPort.bundle == WireBundle::West && col > 0) {
+          // connection between switchboxes, from east to west
+          insertAndConnect(col - 1, row, WireBundle::East, inPort.channel, col,
+                           row, inPort.bundle, inPort.channel);
+        }
+        if (inPort.bundle == WireBundle::East && col < maxCol) {
+          // connection between switchboxes, from west to east
+          insertAndConnect(col + 1, row, WireBundle::West, inPort.channel, col,
+                           row, inPort.bundle, inPort.channel);
         }
       }
     }
@@ -224,104 +290,120 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists
   for (auto &[isPkt, src, dsts] : flows) {
-    SwitchboxNode *existingSrcPtr = src.sb;
-    assert(existingSrcPtr && "nullptr flow source");
-    if (Port existingPort = src.port; existingSrcPtr->col == srcCoords.col &&
-                                      existingSrcPtr->row == srcCoords.row &&
-                                      existingPort == srcPort) {
+    if (src->sb == srcCoords && src->port == srcPort) {
       // find the vertex corresponding to the destination
-      SwitchboxNode *matchingDstSbPtr = &grid.at(dstCoords);
-      dsts.emplace_back(matchingDstSbPtr, dstPort);
+      auto dstIt = pathNodes.find(PathNode{dstCoords, dstPort});
+      assert(dstIt != pathNodes.end());
+      dsts.emplace_back(const_cast<PathNode *>(&(*dstIt)));
       return;
     }
   }
 
   // If no existing flow was found with this source, create a new flow.
-  SwitchboxNode *matchingSrcSbPtr = &grid.at(srcCoords);
-  SwitchboxNode *matchingDstSbPtr = &grid.at(dstCoords);
-  flows.push_back({isPacketFlow, PathEndPointNode{matchingSrcSbPtr, srcPort},
-                   std::vector<PathEndPointNode>{{matchingDstSbPtr, dstPort}}});
+  auto srcIt = pathNodes.find(PathNode{srcCoords, srcPort});
+  auto dstIt = pathNodes.find(PathNode{dstCoords, dstPort});
+  assert(srcIt != pathNodes.end() && dstIt != pathNodes.end());
+  flows.push_back(
+      FlowNode{isPacketFlow, const_cast<PathNode *>(&(*srcIt)),
+               std::vector<PathNode *>{const_cast<PathNode *>(&(*dstIt))}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
-  int col = switchboxOp.colIndex();
-  int row = switchboxOp.rowIndex();
-  SwitchboxNode &sb = grid.at({col, row});
-  std::set<int> invalidInId, invalidOutId;
+// bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
+//   int col = switchboxOp.colIndex();
+//   int row = switchboxOp.rowIndex();
+//   SwitchboxNode &sb = grid.at({col, row});
+//   std::set<int> invalidInId, invalidOutId;
 
-  for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-    Port srcPort = connectOp.sourcePort();
-    Port destPort = connectOp.destPort();
-    if (sb.inPortToId.count(srcPort) == 0 ||
-        sb.outPortToId.count(destPort) == 0)
-      return false;
-    int inId = sb.inPortToId.at(srcPort);
-    int outId = sb.outPortToId.at(destPort);
-    if (sb.connectionMatrix[inId][outId] != Connectivity::AVAILABLE)
-      return false;
-    invalidInId.insert(inId);
-    invalidOutId.insert(outId);
-  }
+//   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
+//     Port srcPort = connectOp.sourcePort();
+//     Port destPort = connectOp.destPort();
+//     if (sb.inPortToId.count(srcPort) == 0 ||
+//         sb.outPortToId.count(destPort) == 0)
+//       return false;
+//     int inId = sb.inPortToId.at(srcPort);
+//     int outId = sb.outPortToId.at(destPort);
+//     if (sb.connectionMatrix[inId][outId] != Connectivity::AVAILABLE)
+//       return false;
+//     invalidInId.insert(inId);
+//     invalidOutId.insert(outId);
+//   }
 
-  for (const auto &[inPort, inId] : sb.inPortToId) {
-    for (const auto &[outPort, outId] : sb.outPortToId) {
-      if (invalidInId.find(inId) != invalidInId.end() ||
-          invalidOutId.find(outId) != invalidOutId.end()) {
-        // mark as invalid
-        sb.connectionMatrix[inId][outId] = Connectivity::INVALID;
-      }
-    }
-  }
-  return true;
-}
+//   for (const auto &[inPort, inId] : sb.inPortToId) {
+//     for (const auto &[outPort, outId] : sb.outPortToId) {
+//       if (invalidInId.find(inId) != invalidInId.end() ||
+//           invalidOutId.find(outId) != invalidOutId.end()) {
+//         // mark as invalid
+//         sb.connectionMatrix[inId][outId] = Connectivity::INVALID;
+//       }
+//     }
+//   }
+//   return true;
+// }
 
 static constexpr double INF = std::numeric_limits<double>::max();
 
-std::map<SwitchboxNode *, SwitchboxNode *>
-Pathfinder::dijkstraShortestPaths(SwitchboxNode *src) {
+std::map<PathNode *, PathNode *>
+Pathfinder::dijkstraShortestPaths(PathNode *src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
-  auto distance = std::map<SwitchboxNode *, double>();
-  auto preds = std::map<SwitchboxNode *, SwitchboxNode *>();
-  std::map<SwitchboxNode *, uint64_t> indexInHeap;
+  auto distance = std::map<PathNode *, double>();
+  auto preds = std::map<PathNode *, PathNode *>();
+  std::map<PathNode *, uint64_t> indexInHeap;
   typedef d_ary_heap_indirect<
-      /*Value=*/SwitchboxNode *, /*Arity=*/4,
-      /*IndexInHeapPropertyMap=*/std::map<SwitchboxNode *, uint64_t>,
-      /*DistanceMap=*/std::map<SwitchboxNode *, double> &,
+      /*Value=*/PathNode *, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::map<PathNode *, uint64_t>,
+      /*DistanceMap=*/std::map<PathNode *, double> &,
       /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
 
-  for (auto &[_, sb] : grid)
-    distance.emplace(&sb, INF);
+  for (auto &pathNode : pathNodes) {
+    PathNode *pathNodePtr = const_cast<PathNode *>(&pathNode);
+    distance.emplace(pathNodePtr, INF);
+  }
   distance[src] = 0.0;
 
-  std::map<SwitchboxNode *, std::vector<ChannelEdge *>> channels;
+  std::map<PathNode *, std::vector<PathEdge *>> channels;
 
   enum Color { WHITE, GRAY, BLACK };
-  std::map<SwitchboxNode *, Color> colors;
-  for (auto &[_, sb] : grid) {
-    SwitchboxNode *sbPtr = &sb;
-    colors[sbPtr] = WHITE;
-    for (auto &e : edges) {
-      if (e.src == sbPtr) {
-        channels[sbPtr].push_back(&e);
+  std::map<PathNode *, Color> colors;
+  for (auto &pathNode : pathNodes) {
+    PathNode *pathNodePtr = const_cast<PathNode *>(&pathNode);
+    colors[pathNodePtr] = WHITE;
+    for (auto &e : pathEdges) {
+      if (e.source == pathNodePtr) {
+        channels[pathNodePtr].push_back(&e);
       }
     }
-    std::sort(channels[sbPtr].begin(), channels[sbPtr].end(),
-              [](const ChannelEdge *c1, ChannelEdge *c2) {
-                return c1->target->id < c2->target->id;
+    std::sort(channels[pathNodePtr].begin(), channels[pathNodePtr].end(),
+              [](const PathEdge *c1, PathEdge *c2) {
+                return std::tie(c1->target->sb.row, c1->target->sb.col) <
+                       std::tie(c2->target->sb.row, c2->target->sb.col);
               });
   }
 
+  // print channels for debug
+  for (auto [pathNodePtr, edges] : channels) {
+    LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << ":\n");
+    for (auto e : edges) {
+      LLVM_DEBUG(llvm::dbgs() << "\t" << *e << "\n");
+    }
+  }
+  LLVM_DEBUG(llvm::dbgs() << "********"
+                          << "\n");
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
     Q.pop();
-    for (ChannelEdge *e : channels[src]) {
-      SwitchboxNode *dest = e->target;
+    for (PathEdge *e : channels[src]) {
+      PathNode *dest = e->target;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "src: " << *src << ", dest: " << *dest
+                 << ", distance[src]: " << distance[src]
+                 << ", demand: " << demand[e]
+                 << ", distance[dest]: " << distance[dest] << "\n");
       bool relax = distance[src] + demand[e] < distance[dest];
       if (colors[dest] == WHITE) {
         if (relax) {
@@ -329,6 +411,7 @@ Pathfinder::dijkstraShortestPaths(SwitchboxNode *src) {
           preds[dest] = src;
           colors[dest] = GRAY;
         }
+        LLVM_DEBUG(llvm::dbgs() << "pushing " << *dest << "\n");
         Q.push(dest);
       } else if (colors[dest] == GRAY && relax) {
         distance[dest] = distance[src] + demand[e];
@@ -336,6 +419,12 @@ Pathfinder::dijkstraShortestPaths(SwitchboxNode *src) {
       }
     }
     colors[src] = BLACK;
+  }
+  LLVM_DEBUG(llvm::dbgs() << "********"
+                          << "\n");
+  // print preds for debug
+  for (auto [pathNodePtr, pred] : preds) {
+    LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << " <- " << *pred << "\n");
   }
   return preds;
 }
@@ -346,25 +435,46 @@ Pathfinder::dijkstraShortestPaths(SwitchboxNode *src) {
 // and repeat the process until a valid solution is found.
 // Returns a map specifying switchbox settings for all flows.
 // If no legal routing can be found after maxIterations, returns empty vector.
-std::optional<std::map<PathEndPoint, SwitchSettings>>
+std::optional<std::map<PathNode, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
   int iterationCount = 0;
-  std::map<PathEndPoint, SwitchSettings> routingSolution;
+  std::map<PathNode, SwitchSettings> routingSolution;
+
+  // Check that every channel does not exceed max capacity.
+  auto isLegal = [&] {
+    bool legal = true; // assume legal until found otherwise
+    for (auto &e : pathEdges) {
+      if (usedCapacity[&e] > 1) {
+        overCapacity[&e]++;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Too much capacity on Edge : (" << e.source->sb.col
+                   << ", " << e.source->sb.row << ") "
+                   << stringifyWireBundle(e.source->port.bundle)
+                   << e.source->port.channel << " --> (" << e.target->sb.col
+                   << ", " << e.target->sb.row << ") "
+                   << stringifyWireBundle(e.target->port.bundle)
+                   << e.target->port.channel << ", used_capacity = "
+                   << usedCapacity[&e] << "\t: Demand = " << demand[&e]
+                   << "over_capacity_count = " << overCapacity[&e] << "\n");
+        legal = false;
+        break;
+      }
+    }
+    return legal;
+  };
 
   // initialize all Channel histories to 0
-  for (auto &ch : edges) {
+  for (auto &ch : pathEdges) {
     overCapacity[&ch] = 0;
     usedCapacity[&ch] = 0;
   }
-  // assume legal until found otherwise
-  bool isLegal = true;
 
   do {
     LLVM_DEBUG(llvm::dbgs()
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
-    for (auto &ch : edges) {
+    for (auto &ch : pathEdges) {
       double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
       double congestion = 1.0 + USED_CAPACITY_COEFF * usedCapacity[&ch];
       demand[&ch] = history * congestion;
@@ -380,11 +490,8 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // "rip up" all routes
     routingSolution.clear();
-    for (auto &[tileID, node] : grid)
-      node.clearAllocation();
-    for (auto &ch : edges)
+    for (auto &ch : pathEdges)
       usedCapacity[&ch] = 0;
-    isLegal = true;
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
@@ -393,140 +500,56 @@ Pathfinder::findPaths(const int maxIterations) {
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
       // switchbox settings
-      assert(src.sb && "nonexistent flow source");
-      std::set<SwitchboxNode *> processed;
-      std::map<SwitchboxNode *, SwitchboxNode *> preds =
-          dijkstraShortestPaths(src.sb);
-
-      auto findIncomingEdge = [&](SwitchboxNode *sb) -> ChannelEdge * {
-        for (auto &e : edges) {
-          if (e.src == preds[sb] && e.target == sb) {
-            return &e;
-          }
-        }
-        return nullptr;
-      };
-
+      std::set<PathNode *> processed;
+      std::map<PathNode *, PathNode *> preds = dijkstraShortestPaths(src);
+      LLVM_DEBUG(llvm::dbgs() << "***************"
+                              << ":\n");
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[*src.sb].src = src.port;
-      processed.insert(src.sb);
-      // track destination ports used by src.sb
-      std::vector<Port> srcDestPorts;
-      for (const PathEndPointNode &endPoint : dsts) {
-        SwitchboxNode *curr = endPoint.sb;
-        assert(curr && "endpoint has no source switchbox");
+      switchSettings[src->sb].src = src->port;
+      processed.insert(src);
+      for (auto endPoint : dsts) {
+        PathNode *curr = endPoint;
         // set the output bundle for this destination endpoint
-        switchSettings[*curr].dsts.insert(endPoint.port);
-        Port lastDestPort = endPoint.port;
+        switchSettings[endPoint->sb].dsts.insert(endPoint->port);
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
           // find the incoming edge from the pred to curr
-          ChannelEdge *ch = findIncomingEdge(curr);
-          assert(ch != nullptr && "couldn't find ch");
-          int channel;
-          // find all available channels in
-          std::vector<int> availableChannels = curr->findAvailableChannelIn(
-              getConnectingBundle(ch->bundle), lastDestPort, isPkt);
-          if (availableChannels.size() > 0) {
-            // if possible, choose the channel that predecessor can also use
-            // todo: consider all predecessors?
-            int bFound = false;
-            auto &pred = preds[curr];
-            if (!processed.count(pred) && pred != src.sb) {
-              ChannelEdge *predCh = findIncomingEdge(pred);
-              assert(predCh != nullptr && "couldn't find ch");
-              for (int availableCh : availableChannels) {
-                channel = availableCh;
-                std::vector<int> availablePredChannels =
-                    pred->findAvailableChannelIn(
-                        getConnectingBundle(predCh->bundle),
-                        {ch->bundle, channel}, isPkt);
-                if (availablePredChannels.size() > 0) {
-                  bFound = true;
-                  break;
-                }
-              }
+          PathEdge *ch = nullptr;
+          for (auto &e : pathEdges) {
+            if (e.source == preds[curr] && e.target == curr) {
+              ch = &e;
+              break;
             }
-            if (!bFound)
-              channel = availableChannels[0];
-            bool succeed =
-                curr->allocate({getConnectingBundle(ch->bundle), channel},
-                               lastDestPort, isPkt);
-            if (!succeed)
-              assert(false && "invalid allocation");
-            LLVM_DEBUG(llvm::dbgs()
-                       << *curr << ", connecting: "
-                       << stringifyWireBundle(getConnectingBundle(ch->bundle))
-                       << channel << " -> "
-                       << stringifyWireBundle(lastDestPort.bundle)
-                       << lastDestPort.channel << "\n");
-          } else {
-            // if no channel available, use a virtual channel id and mark
-            // routing as being invalid
-            channel = usedCapacity[ch];
-            if (isLegal) {
-              overCapacity[ch]++;
-              LLVM_DEBUG(llvm::dbgs()
-                         << *curr << ", congestion: "
-                         << stringifyWireBundle(getConnectingBundle(ch->bundle))
-                         << ", used_capacity = " << usedCapacity[ch]
-                         << ", over_capacity_count = " << overCapacity[ch]
-                         << "\n");
-            }
-            isLegal = false;
           }
+          assert(ch != nullptr);
           usedCapacity[ch]++;
 
-          // add the entrance port for this Switchbox
-          Port currSourcePort = {getConnectingBundle(ch->bundle), channel};
-          switchSettings[*curr].src = {currSourcePort};
-
-          // add the current Switchbox to the map of the predecessor
-          Port PredDestPort = {ch->bundle, channel};
-          switchSettings[*preds[curr]].dsts.insert(PredDestPort);
-          lastDestPort = PredDestPort;
+          if (preds[curr]->sb == curr->sb) {
+            switchSettings[preds[curr]->sb].src = preds[curr]->port;
+            switchSettings[curr->sb].dsts.insert(curr->port);
+          }
 
           // if at capacity, bump demand to discourage using this Channel
-          if (usedCapacity[ch] >= ch->maxCapacity) {
+          if (usedCapacity[ch] >= 1) {
             // this means the order matters!
             demand[ch] *= DEMAND_COEFF;
-            LLVM_DEBUG(llvm::dbgs()
-                       << *curr << ", bump demand: "
-                       << stringifyWireBundle(getConnectingBundle(ch->bundle))
-                       << ", demand = " << demand[ch] << "\n");
+            LLVM_DEBUG(llvm::dbgs() << *curr << ", bump demand: "
+                                    << ", demand = " << demand[ch] << "\n");
           }
 
           processed.insert(curr);
+          LLVM_DEBUG(llvm::dbgs() << *curr << " <- " << *preds[curr] << "\n");
           curr = preds[curr];
-
-          // allocation may fail, as we start from the dest of flow while
-          // src.port is not chosen by router
-          if (curr == src.sb &&
-              std::find(srcDestPorts.begin(), srcDestPorts.end(),
-                        lastDestPort) == srcDestPorts.end()) {
-            bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
-            if (!succeed) {
-              isLegal = false;
-              overCapacity[ch]++;
-              LLVM_DEBUG(llvm::dbgs()
-                         << *curr << ", unable to connect: "
-                         << stringifyWireBundle(src.port.bundle)
-                         << src.port.channel << " -> "
-                         << stringifyWireBundle(lastDestPort.bundle)
-                         << lastDestPort.channel << "\n");
-            }
-            srcDestPorts.push_back(lastDestPort);
-          }
         }
       }
       // add this flow to the proposed solution
-      routingSolution[src] = switchSettings;
+      routingSolution[*src] = switchSettings;
     }
 
-  } while (!isLegal); // continue iterations until a legal routing is found
+  } while (!isLegal()); // continue iterations until a legal routing is found
 
   return routingSolution;
 }
