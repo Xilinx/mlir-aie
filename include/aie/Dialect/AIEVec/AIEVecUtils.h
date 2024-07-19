@@ -68,11 +68,6 @@ inline int32_t getVectorSizeInBits(mlir::VectorType type) {
   return veclen;
 }
 
-// Return true if this is an operation defined in AIE dialect
-inline bool isAIEOp(mlir::Operation *op) {
-  return llvm::isa<AIEVecDialect>(op->getDialect());
-}
-
 // Determine the output type for a vector operation based on whether
 // it operates on integer or floating point data.
 inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIE2) {

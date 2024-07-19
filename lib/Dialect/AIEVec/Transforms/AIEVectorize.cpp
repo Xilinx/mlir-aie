@@ -174,6 +174,12 @@ struct Scheme {
 // Helper Routines
 //===----------------------------------------------------------------------===//
 
+// Return true if this is an operation defined in AIE dialect
+static bool isAIEOp(mlir::Operation *op) {
+  return llvm::isa<aievec::AIEVecDialect, aievec::aie1::AIEVecAIE1Dialect>(
+      op->getDialect());
+}
+
 // Combine the result of vector-related utilities into a single utility.
 static AIEVecAttributes getVectorStats(VectorType type) {
   return AIEVecAttributes(getVectorLaneSize(type), getVectorSizeInBits(type),
