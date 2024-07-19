@@ -17,11 +17,11 @@ func.func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) 
       %a = affine.load %A[%arg3] : memref<128xi32>
       %b = affine.load %B[0] : memref<8xi32>
       //CHECK-NEXT: %4 = aievec.concat %2, %2 : vector<8xi32>, vector<16xi32>
-      //CHECK-NEXT: %5 = aievec.mac %4, %0, %3 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+      //CHECK-NEXT: %5 = aievec_aie1.mac %4, %0, %3 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
       %p = arith.muli %a, %b : i32
       %co = arith.addi %ci, %p : i32
       //CHECK-NEXT: %6 = aievec.srs %5, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
-      //CHECK-NEXT: %7 = aievec.add %6, %6 : vector<8xi32>, vector<8xi32>, vector<8xi32>
+      //CHECK-NEXT: %7 = aievec_aie1.add %6, %6 : vector<8xi32>, vector<8xi32>, vector<8xi32>
       %co1 = arith.addi %co, %co : i32
       //CHECK-NEXT: vector.transfer_write %7, %arg2[%arg3] {in_bounds = [true]} : vector<8xi32>, memref<126xi32>
       affine.store %co1, %C[%arg3] : memref<126xi32>

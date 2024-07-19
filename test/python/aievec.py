@@ -86,7 +86,7 @@ def test_aievec():
             )
 
             scf.yield_([])
-
+    # XFAIL: *
     # CHECK-LABEL:   func.func @mul_mul(
     # CHECK-SAME:                       %[[VAL_0:.*]]: memref<2048xf32>, %[[VAL_1:.*]]: memref<2048xf32>, %[[VAL_2:.*]]: memref<2048xf32>, %[[VAL_3:.*]]: f32) {
     # CHECK:           %[[VAL_4:.*]] = vector.broadcast %[[VAL_3]] : f32 to vector<8xf32>

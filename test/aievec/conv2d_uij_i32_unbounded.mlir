@@ -100,22 +100,22 @@ func.func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>
 // CHECK:               %[[VAL_20:.*]] = aievec.upd %[[VAL_2]]{{\[}}%[[VAL_12]], %[[VAL_19]]] {index = 0 : i8, offset = 0 : i32} : memref<?x?xi32>, vector<8xi32>
 // CHECK:               %[[VAL_21:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_12]], %[[VAL_19]]] {index = 0 : i8, offset = 0 : i32} : memref<?x?xi32>, vector<16xi32>
 // CHECK:               %[[VAL_22:.*]] = aievec.ups %[[VAL_20]] {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_23:.*]] = aievec.mac %[[VAL_21]], %[[VAL_8]], %[[VAL_22]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_23:.*]] = aievec_aie1.mac %[[VAL_21]], %[[VAL_8]], %[[VAL_22]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_24:.*]] = arith.constant 1 : index
 // CHECK:               %[[VAL_25:.*]] = arith.addi %[[VAL_19]], %[[VAL_24]] : index
 // CHECK:               %[[VAL_26:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_12]], %[[VAL_25]]], %[[VAL_21]] {index = 1 : i8, offset = 224 : i32} : memref<?x?xi32>, vector<16xi32>
-// CHECK:               %[[VAL_27:.*]] = aievec.mac %[[VAL_26]], %[[VAL_8]], %[[VAL_23]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_28:.*]] = aievec.mac %[[VAL_26]], %[[VAL_8]], %[[VAL_27]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_27:.*]] = aievec_aie1.mac %[[VAL_26]], %[[VAL_8]], %[[VAL_23]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_28:.*]] = aievec_aie1.mac %[[VAL_26]], %[[VAL_8]], %[[VAL_27]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_29:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_14]], %[[VAL_19]]] {index = 0 : i8, offset = 0 : i32} : memref<?x?xi32>, vector<16xi32>
-// CHECK:               %[[VAL_30:.*]] = aievec.mac %[[VAL_29]], %[[VAL_8]], %[[VAL_28]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_30:.*]] = aievec_aie1.mac %[[VAL_29]], %[[VAL_8]], %[[VAL_28]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_31:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_14]], %[[VAL_25]]], %[[VAL_29]] {index = 1 : i8, offset = 224 : i32} : memref<?x?xi32>, vector<16xi32>
-// CHECK:               %[[VAL_32:.*]] = aievec.mac %[[VAL_31]], %[[VAL_8]], %[[VAL_30]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_33:.*]] = aievec.mac %[[VAL_31]], %[[VAL_8]], %[[VAL_32]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_32:.*]] = aievec_aie1.mac %[[VAL_31]], %[[VAL_8]], %[[VAL_30]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_33:.*]] = aievec_aie1.mac %[[VAL_31]], %[[VAL_8]], %[[VAL_32]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_34:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_16]], %[[VAL_19]]] {index = 0 : i8, offset = 0 : i32} : memref<?x?xi32>, vector<16xi32>
-// CHECK:               %[[VAL_35:.*]] = aievec.mac %[[VAL_34]], %[[VAL_8]], %[[VAL_33]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_35:.*]] = aievec_aie1.mac %[[VAL_34]], %[[VAL_8]], %[[VAL_33]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_36:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_16]], %[[VAL_25]]], %[[VAL_34]] {index = 1 : i8, offset = 224 : i32} : memref<?x?xi32>, vector<16xi32>
-// CHECK:               %[[VAL_37:.*]] = aievec.mac %[[VAL_36]], %[[VAL_8]], %[[VAL_35]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_38:.*]] = aievec.mac %[[VAL_36]], %[[VAL_9]], %[[VAL_37]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_37:.*]] = aievec_aie1.mac %[[VAL_36]], %[[VAL_8]], %[[VAL_35]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_38:.*]] = aievec_aie1.mac %[[VAL_36]], %[[VAL_9]], %[[VAL_37]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_39:.*]] = aievec.srs %[[VAL_38]], %[[C0]] : vector<8xi80>, i32, vector<8xi32>
 // CHECK:               vector.transfer_write %[[VAL_39]], %[[VAL_2]]{{\[}}%[[VAL_12]], %[[VAL_19]]] {in_bounds = [true]} : vector<8xi32>, memref<?x?xi32>
 
@@ -218,21 +218,21 @@ func.func @conv2d_1 (%A: memref<?x256xi32>, %B: memref<?xi32>, %C: memref<?x256x
 // CHECK:               %[[VAL_19:.*]] = aievec.upd %[[VAL_2]]{{\[}}%[[VAL_10]], %[[VAL_18]]] {index = 0 : i8, offset = 0 : i32} : memref<?x256xi32>, vector<8xi32>
 // CHECK:               %[[VAL_20:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_10]], %[[VAL_18]]] {index = 0 : i8, offset = 0 : i32} : memref<?x256xi32>, vector<16xi32>
 // CHECK:               %[[VAL_21:.*]] = aievec.ups %[[VAL_19]] {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_22:.*]] = aievec.mac %[[VAL_20]], %[[VAL_6]], %[[VAL_21]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_22:.*]] = aievec_aie1.mac %[[VAL_20]], %[[VAL_6]], %[[VAL_21]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_23:.*]] = arith.constant 1 : index
 // CHECK:               %[[VAL_24:.*]] = arith.addi %[[VAL_18]], %[[VAL_23]] : index
 // CHECK:               %[[VAL_25:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_10]], %[[VAL_24]]], %[[VAL_20]] {index = 1 : i8, offset = 224 : i32} : memref<?x256xi32>, vector<16xi32>
-// CHECK:               %[[VAL_26:.*]] = aievec.mac %[[VAL_25]], %[[VAL_6]], %[[VAL_22]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_27:.*]] = aievec.mac %[[VAL_25]], %[[VAL_6]], %[[VAL_26]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_26:.*]] = aievec_aie1.mac %[[VAL_25]], %[[VAL_6]], %[[VAL_22]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_27:.*]] = aievec_aie1.mac %[[VAL_25]], %[[VAL_6]], %[[VAL_26]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_28:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_12]], %[[VAL_18]]] {index = 0 : i8, offset = 0 : i32} : memref<?x256xi32>, vector<16xi32>
-// CHECK:               %[[VAL_29:.*]] = aievec.mac %[[VAL_28]], %[[VAL_6]], %[[VAL_27]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_29:.*]] = aievec_aie1.mac %[[VAL_28]], %[[VAL_6]], %[[VAL_27]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_30:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_12]], %[[VAL_24]]], %[[VAL_28]] {index = 1 : i8, offset = 224 : i32} : memref<?x256xi32>, vector<16xi32>
-// CHECK:               %[[VAL_31:.*]] = aievec.mac %[[VAL_30]], %[[VAL_6]], %[[VAL_29]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_32:.*]] = aievec.mac %[[VAL_30]], %[[VAL_6]], %[[VAL_31]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_31:.*]] = aievec_aie1.mac %[[VAL_30]], %[[VAL_6]], %[[VAL_29]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_32:.*]] = aievec_aie1.mac %[[VAL_30]], %[[VAL_6]], %[[VAL_31]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_33:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_14]], %[[VAL_18]]] {index = 0 : i8, offset = 0 : i32} : memref<?x256xi32>, vector<16xi32>
-// CHECK:               %[[VAL_34:.*]] = aievec.mac %[[VAL_33]], %[[VAL_6]], %[[VAL_32]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_34:.*]] = aievec_aie1.mac %[[VAL_33]], %[[VAL_6]], %[[VAL_32]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_35:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_14]], %[[VAL_24]]], %[[VAL_33]] {index = 1 : i8, offset = 224 : i32} : memref<?x256xi32>, vector<16xi32>
-// CHECK:               %[[VAL_36:.*]] = aievec.mac %[[VAL_35]], %[[VAL_6]], %[[VAL_34]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-// CHECK:               %[[VAL_37:.*]] = aievec.mac %[[VAL_35]], %[[VAL_7]], %[[VAL_36]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_36:.*]] = aievec_aie1.mac %[[VAL_35]], %[[VAL_6]], %[[VAL_34]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+// CHECK:               %[[VAL_37:.*]] = aievec_aie1.mac %[[VAL_35]], %[[VAL_7]], %[[VAL_36]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 // CHECK:               %[[VAL_38:.*]] = aievec.srs %[[VAL_37]], %[[C0]] : vector<8xi80>, i32, vector<8xi32>
 // CHECK:               vector.transfer_write %[[VAL_38]], %[[VAL_2]]{{\[}}%[[VAL_10]], %[[VAL_18]]] {in_bounds = [true]} : vector<8xi32>, memref<?x256xi32>
