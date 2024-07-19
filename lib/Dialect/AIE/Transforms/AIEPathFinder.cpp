@@ -384,6 +384,7 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
               });
   }
 
+#ifndef NDEBUG
   // print channels for debug
   for (auto [pathNodePtr, edges] : channels) {
     LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << ":\n");
@@ -393,6 +394,7 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
   }
   LLVM_DEBUG(llvm::dbgs() << "********"
                           << "\n");
+#endif
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
@@ -420,12 +422,14 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
     }
     colors[src] = BLACK;
   }
+#ifndef NDEBUG
   LLVM_DEBUG(llvm::dbgs() << "********"
                           << "\n");
   // print preds for debug
   for (auto [pathNodePtr, pred] : preds) {
     LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << " <- " << *pred << "\n");
   }
+#endif
   return preds;
 }
 
