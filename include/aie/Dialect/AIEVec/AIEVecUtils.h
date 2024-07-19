@@ -13,6 +13,7 @@
 #ifndef AIE_DIALECT_AIEVEC_AIEVECUTILS_H
 #define AIE_DIALECT_AIEVEC_AIEVECUTILS_H
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
@@ -66,6 +67,12 @@ inline int32_t getVectorSizeInBits(mlir::VectorType type) {
   int32_t veclen = getVectorLaneSize(type) * getElementSizeInBits(type);
   assert(veclen >= 128 && "AIE vector size should be greater than 128 bits");
   return veclen;
+}
+
+// Return true if this is an operation defined in AIE dialect
+inline bool isAIEOp(mlir::Operation *op) {
+  return llvm::isa<aievec::AIEVecDialect, aievec::aie1::AIEVecAIE1Dialect>(
+      op->getDialect());
 }
 
 // Determine the output type for a vector operation based on whether
