@@ -834,6 +834,7 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
+    std::optional<uint32_t> getFirstBdId();
   }];
 
   let extraClassDefinition = [{
@@ -864,7 +865,9 @@ def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
     ins Index:$bds,
         Index:$tile,
         DMAChannelDir:$direction,
-        I32Attr:$channel
+        I32Attr:$channel,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
 
   let assemblyFormat = [{
@@ -872,10 +875,12 @@ def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
   }];
 
   let extraClassDeclaration = [{
+    DMAConfigureBDs getBdsOp();
     AIE::TileOp getTileOp();
   }];
 
   let extraClassDefinition = [{
+    DMAConfigureBDs DMAStartBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
     AIE::TileOp DMAStartBDs::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 }
@@ -889,7 +894,9 @@ def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
         Variadic<AnyType>:$concrete_args,
         Index:$tile,
         DMAChannelDir:$direction,
-        I32Attr:$channel
+        I32Attr:$channel,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
 
   let assemblyFormat = [{ 

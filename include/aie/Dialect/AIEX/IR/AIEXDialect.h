@@ -11,6 +11,8 @@
 #ifndef MLIR_AIEX_DIALECT_H
 #define MLIR_AIEX_DIALECT_H
 
+#include <optional>
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 // Include dialect declarations such as parseAttributes, parseType

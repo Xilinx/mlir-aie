@@ -387,6 +387,22 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
 // DMAStartTask
 //===----------------------------------------------------------------------===//
 
+std::optional<uint32_t> AIEX::DMAConfigureBDs::getFirstBdId() {
+  Region &body = getBody();
+  if(body.empty()) {
+    return std::nullopt;
+  }
+  auto bd_ops = body.front().getOps<AIE::DMABDOp>();
+  if(bd_ops.empty()) {
+    return std::nullopt;
+  }
+  AIE::DMABDOp bd = *bd_ops.begin();
+  if(!bd.getBdId().has_value()) {
+    return std::nullopt;
+  }
+  return bd.getBdId().value();
+}
+
 LogicalResult AIEX::DMAStartTask::verify() {
   auto device = (*this)->getParentOfType<AIE::DeviceOp>();
   auto chain = device.lookupSymbol<AIE::BDChainOp>(getSymbol());

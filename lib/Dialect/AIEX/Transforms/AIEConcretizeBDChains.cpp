@@ -68,6 +68,8 @@ struct AIEConcretizeBDChainsPass
 
     AIE::DeviceOp device = getOperation();
 
+    llvm::SmallVector<llvm::StringRef> concretized_syms = {};
+
     // Wrap bd chains in DMAConfigureBDs regions before inlining
     device.walk([&](DMAStartTask start_op) {
       OpBuilder builder = OpBuilder(start_op);
@@ -80,12 +82,45 @@ struct AIEConcretizeBDChainsPass
       builder.setInsertionPointAfter(configure_op);
       builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult(),
                                   start_op.getTile(), start_op.getDirection(),
-                                  start_op.getChannel());
+                                  start_op.getChannel(), start_op.getIssueToken(), start_op.getRepeatCount());
+      concretized_syms.push_back(start_op.getSymbol());
     });
 
     // Inline all usages of BD chains at their sites
     if (failed(inlineUsages())) {
       return signalPassFailure();
+    }
+
+    // Verify inlined basic blocks do form a chain reachable from the start;
+    // Remove empty blocks
+    WalkResult result = device.walk([&](DMAConfigureBDs configure_bds_op) {
+      Region &body = configure_bds_op.getBody();
+      for(auto it = body.begin(); it != body.end(); ++it) {
+        Block &block = *it;
+        auto ops_it = block.without_terminator();
+        if(std::distance(ops_it.begin(), ops_it.end()) == 0) {
+          block.erase();
+          return WalkResult::advance();
+        }
+        if(block.hasNoPredecessors() && !block.isEntryBlock()) {
+          auto error = block.getTerminator()->emitError("Block ending in this terminator does not form a chain with entry block.");
+          return WalkResult::interrupt();
+        }
+      }
+      return WalkResult::advance();
+    });
+    if(result.wasInterrupted()) {
+      return signalPassFailure();
+    }
+
+    // If after concretizing no uses of the symbol are left, remove its definition
+    for(auto it = concretized_syms.begin(); it != concretized_syms.end(); ++it) {
+      llvm::StringRef sym = *it;
+      Operation *def_op = SymbolTable::lookupSymbolIn(device, sym);
+      if(SymbolTable::symbolKnownUseEmpty(def_op, device)) {
+        assert(llvm::isa<AIE::BDChainOp>(def_op));
+        def_op->erase();
+      }
     }
   }
 };

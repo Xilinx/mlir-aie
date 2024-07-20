@@ -172,4 +172,16 @@ def AIEAssignRuntimeBufferDescriptorIDs : Pass<"aie-assign-runtime-buffer-descri
   ];
 }
 
+def AIEBDChainsToNPU : Pass<"aie-bd-chains-to-npu", "AIE::DeviceOp"> {
+  let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+  let description = [{
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEBDChainsToNPUPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif
