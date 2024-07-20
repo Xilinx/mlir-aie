@@ -9,6 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <set>
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
@@ -68,22 +70,22 @@ struct AIEConcretizeBDChainsPass
 
     AIE::DeviceOp device = getOperation();
 
-    llvm::SmallVector<llvm::StringRef> concretized_syms = {};
+    std::set<llvm::StringRef> concretized_syms = {};
 
     // Wrap bd chains in DMAConfigureBDs regions before inlining
     device.walk([&](DMAStartTask start_op) {
       OpBuilder builder = OpBuilder(start_op);
       DMAConfigureBDs configure_op = builder.create<DMAConfigureBDs>(
-          start_op.getLoc(), builder.getIndexType(), start_op.getTile());
+          start_op.getLoc(), builder.getIndexType(), 
+          start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
+          start_op.getIssueToken(), start_op.getRepeatCount());
       Block &b = configure_op.getBody().emplaceBlock();
       start_op->moveBefore(&b, b.end());
       builder.setInsertionPointAfter(start_op);
       builder.create<AIE::EndOp>(start_op.getLoc());
       builder.setInsertionPointAfter(configure_op);
-      builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult(),
-                                  start_op.getTile(), start_op.getDirection(),
-                                  start_op.getChannel(), start_op.getIssueToken(), start_op.getRepeatCount());
-      concretized_syms.push_back(start_op.getSymbol());
+      builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult());
+      concretized_syms.insert(start_op.getSymbol());
     });
 
     // Inline all usages of BD chains at their sites
@@ -117,6 +119,9 @@ struct AIEConcretizeBDChainsPass
     for(auto it = concretized_syms.begin(); it != concretized_syms.end(); ++it) {
       llvm::StringRef sym = *it;
       Operation *def_op = SymbolTable::lookupSymbolIn(device, sym);
+      if(!def_op) {
+        continue;
+      }
       if(SymbolTable::symbolKnownUseEmpty(def_op, device)) {
         assert(llvm::isa<AIE::BDChainOp>(def_op));
         def_op->erase();

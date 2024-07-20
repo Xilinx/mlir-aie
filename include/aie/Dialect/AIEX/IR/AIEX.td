@@ -821,7 +821,11 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
   }];
 
   let arguments = (
-    ins Index:$tile
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
 
   let regions = (
@@ -829,7 +833,7 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
   );
 
   let assemblyFormat = [{
-    `(` $tile `)` regions attr-dict
+    `on` ` ` `(` $tile `,` $direction `,` $channel `)` regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -862,32 +866,45 @@ def AIE_DMAFreeBDs : AIEX_Op<"dma_free_bds", []> {
 
 def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
   let arguments = (
-    ins Index:$bds,
-        Index:$tile,
-        DMAChannelDir:$direction,
-        I32Attr:$channel,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+    ins Index:$bds
   );
 
   let assemblyFormat = [{
-    $bds `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict
+    $bds attr-dict
   }];
 
   let extraClassDeclaration = [{
     DMAConfigureBDs getBdsOp();
-    AIE::TileOp getTileOp();
   }];
 
   let extraClassDefinition = [{
     DMAConfigureBDs DMAStartBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
-    AIE::TileOp DMAStartBDs::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 }
 
+def AIE_DMAAwaitBDs : AIEX_Op<"dma_await_bds", []> {
+  let arguments = (
+    ins Index:$bds
+  );
+
+  let assemblyFormat = [{
+    `(` $bds `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DMAConfigureBDs getBdsOp();
+  }];
+
+  let extraClassDefinition = [{
+    DMAConfigureBDs DMAAwaitBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
+  }];
+}
+
+
 def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
-    DeclareOpInterfaceMethods<CallOpInterface>
-  ]> {
+    DeclareOpInterfaceMethods<CallOpInterface>,
+  ]>
+  {
 
   let arguments = (
     ins FlatSymbolRefAttr:$symbol,
@@ -912,6 +929,10 @@ def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
   let extraClassDefinition = [{
     AIE::TileOp DMAStartTask::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
+
+}
+
+def AIE_DMAAwaitTask : AIEX_Op<"dma_await_task", []> {
 
 }
 

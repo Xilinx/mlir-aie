@@ -27,15 +27,16 @@ struct DMAStartBDsPattern : OpConversionPattern<DMAStartBDs> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(DMAStartBDs op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    AIE::TileOp tile = op.getTileOp();
-    std::optional<uint32_t> first_bd_id = op.getBdsOp().getFirstBdId();
+    DMAConfigureBDs bds_op = op.getBdsOp();
+    AIE::TileOp tile = bds_op.getTileOp();
+    std::optional<uint32_t> first_bd_id = bds_op.getFirstBdId();
     if(!first_bd_id) {
         auto err = op.emitOpError("First buffer descriptor in chain has not been assigned an ID");
         err.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` pass first or manually assign an ID.";
         return failure();
     }
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
-        op, tile.getCol(), tile.getRow(), op.getDirection(), op.getChannel(), op.getIssueToken(), op.getRepeatCount(), *first_bd_id);
+        op, tile.getCol(), tile.getRow(), bds_op.getDirection(), bds_op.getChannel(), bds_op.getIssueToken(), bds_op.getRepeatCount(), *first_bd_id);
     return success();
   }
 };
