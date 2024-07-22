@@ -21,6 +21,7 @@ if len(sys.argv) > 1:
 
 dev = AIEDevice.xcvc1902
 
+
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
 
