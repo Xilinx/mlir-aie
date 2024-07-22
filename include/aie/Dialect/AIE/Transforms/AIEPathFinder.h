@@ -129,7 +129,7 @@ public:
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow) = 0;
-  // virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
+  virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathNode, SwitchSettings>>
   findPaths(int maxIterations) = 0;
 };
@@ -141,7 +141,7 @@ public:
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow) override;
-  // bool addFixedConnection(SwitchboxOp switchboxOp) override;
+  bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathNode, SwitchSettings>>
   findPaths(int maxIterations) override;
 
@@ -161,8 +161,11 @@ private:
   // History of Channel being over capacity
   std::map<PathEdge *, int> overCapacity;
 
-  // how many flows are actually using this Channel
+  // how many circuit streams are actually using this Channel
   std::map<PathEdge *, int> usedCapacity;
+
+  // how many packet streams are actually using this Channel
+  std::map<PathEdge *, int> packetFlowCount;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

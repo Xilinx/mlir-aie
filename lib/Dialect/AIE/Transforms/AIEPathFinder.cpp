@@ -19,9 +19,11 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
-#define OVER_CAPACITY_COEFF 0.02
-#define USED_CAPACITY_COEFF 0.02
+#define OVER_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.1
 #define DEMAND_COEFF 1.1
+#define MAX_CIRCUIT_STREAM_CAPACITY 1
+#define MAX_PACKET_STREAM_CAPACITY 32
 
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
@@ -83,10 +85,10 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
-  // for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-  //   if (!pathfinder->addFixedConnection(switchboxOp))
-  //     return switchboxOp.emitOpError() << "Unable to add fixed connections";
-  // }
+  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
+    if (!pathfinder->addFixedConnection(switchboxOp))
+      return switchboxOp.emitOpError() << "Unable to add fixed connections";
+  }
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
@@ -99,9 +101,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // initialize all flows as unprocessed to prep for rewrite
   for (const auto &[pathNode, switchSetting] : flowSolutions) {
     processedFlows[pathNode] = false;
-    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathNode.sb.col << ","
-                            << pathNode.sb.row << "):\t");
-    LLVM_DEBUG(llvm::dbgs() << switchSetting);
   }
 
   // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
@@ -310,37 +309,40 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-// bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
-//   int col = switchboxOp.colIndex();
-//   int row = switchboxOp.rowIndex();
-//   SwitchboxNode &sb = grid.at({col, row});
-//   std::set<int> invalidInId, invalidOutId;
+bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
+  int col = switchboxOp.colIndex();
+  int row = switchboxOp.rowIndex();
+  TileID coords = {col, row};
 
-//   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-//     Port srcPort = connectOp.sourcePort();
-//     Port destPort = connectOp.destPort();
-//     if (sb.inPortToId.count(srcPort) == 0 ||
-//         sb.outPortToId.count(destPort) == 0)
-//       return false;
-//     int inId = sb.inPortToId.at(srcPort);
-//     int outId = sb.outPortToId.at(destPort);
-//     if (sb.connectionMatrix[inId][outId] != Connectivity::AVAILABLE)
-//       return false;
-//     invalidInId.insert(inId);
-//     invalidOutId.insert(outId);
-//   }
+  for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
+    Port srcPort = connectOp.sourcePort();
+    Port destPort = connectOp.destPort();
 
-//   for (const auto &[inPort, inId] : sb.inPortToId) {
-//     for (const auto &[outPort, outId] : sb.outPortToId) {
-//       if (invalidInId.find(inId) != invalidInId.end() ||
-//           invalidOutId.find(outId) != invalidOutId.end()) {
-//         // mark as invalid
-//         sb.connectionMatrix[inId][outId] = Connectivity::INVALID;
-//       }
-//     }
-//   }
-//   return true;
-// }
+    auto srcIt = pathNodes.find(PathNode{coords, srcPort});
+    auto destIt = pathNodes.find(PathNode{coords, destPort});
+
+    if (srcIt == pathNodes.end() || destIt == pathNodes.end()) {
+      return false;
+    }
+
+    PathNode *pathNodeSrcPtr = const_cast<PathNode *>(&(*srcIt));
+    PathNode *pathNodeDstPtr = const_cast<PathNode *>(&(*destIt));
+    // remove the edge from the list of edges
+    bool found = false;
+    for (auto it = pathEdges.begin(); it != pathEdges.end(); ++it) {
+      if ((*it).source == pathNodeSrcPtr && (*it).target == pathNodeDstPtr) {
+        pathEdges.erase(it);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 static constexpr double INF = std::numeric_limits<double>::max();
 
@@ -377,35 +379,19 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
         channels[pathNodePtr].push_back(&e);
       }
     }
+    // sort the channels in descending order
     std::sort(channels[pathNodePtr].begin(), channels[pathNodePtr].end(),
               [](const PathEdge *c1, PathEdge *c2) {
-                return std::tie(c1->target->sb.row, c1->target->sb.col) <
-                       std::tie(c2->target->sb.row, c2->target->sb.col);
+                return *(c2->target) < *(c1->target);
               });
   }
 
-#ifndef NDEBUG
-  // print channels for debug
-  for (auto [pathNodePtr, edges] : channels) {
-    LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << ":\n");
-    for (auto e : edges) {
-      LLVM_DEBUG(llvm::dbgs() << "\t" << *e << "\n");
-    }
-  }
-  LLVM_DEBUG(llvm::dbgs() << "********"
-                          << "\n");
-#endif
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
     Q.pop();
     for (PathEdge *e : channels[src]) {
       PathNode *dest = e->target;
-      LLVM_DEBUG(llvm::dbgs()
-                 << "src: " << *src << ", dest: " << *dest
-                 << ", distance[src]: " << distance[src]
-                 << ", demand: " << demand[e]
-                 << ", distance[dest]: " << distance[dest] << "\n");
       bool relax = distance[src] + demand[e] < distance[dest];
       if (colors[dest] == WHITE) {
         if (relax) {
@@ -413,7 +399,6 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
           preds[dest] = src;
           colors[dest] = GRAY;
         }
-        LLVM_DEBUG(llvm::dbgs() << "pushing " << *dest << "\n");
         Q.push(dest);
       } else if (colors[dest] == GRAY && relax) {
         distance[dest] = distance[src] + demand[e];
@@ -422,14 +407,7 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
     }
     colors[src] = BLACK;
   }
-#ifndef NDEBUG
-  LLVM_DEBUG(llvm::dbgs() << "********"
-                          << "\n");
-  // print preds for debug
-  for (auto [pathNodePtr, pred] : preds) {
-    LLVM_DEBUG(llvm::dbgs() << *pathNodePtr << " <- " << *pred << "\n");
-  }
-#endif
+
   return preds;
 }
 
@@ -441,32 +419,8 @@ Pathfinder::dijkstraShortestPaths(PathNode *src) {
 // If no legal routing can be found after maxIterations, returns empty vector.
 std::optional<std::map<PathNode, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
-  LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
-  int iterationCount = 0;
+  LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   std::map<PathNode, SwitchSettings> routingSolution;
-
-  // Check that every channel does not exceed max capacity.
-  auto isLegal = [&] {
-    bool legal = true; // assume legal until found otherwise
-    for (auto &e : pathEdges) {
-      if (usedCapacity[&e] > 1) {
-        overCapacity[&e]++;
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Too much capacity on Edge : (" << e.source->sb.col
-                   << ", " << e.source->sb.row << ") "
-                   << stringifyWireBundle(e.source->port.bundle)
-                   << e.source->port.channel << " --> (" << e.target->sb.col
-                   << ", " << e.target->sb.row << ") "
-                   << stringifyWireBundle(e.target->port.bundle)
-                   << e.target->port.channel << ", used_capacity = "
-                   << usedCapacity[&e] << "\t: Demand = " << demand[&e]
-                   << "over_capacity_count = " << overCapacity[&e] << "\n");
-        legal = false;
-        break;
-      }
-    }
-    return legal;
-  };
 
   // initialize all Channel histories to 0
   for (auto &ch : pathEdges) {
@@ -474,28 +428,34 @@ Pathfinder::findPaths(const int maxIterations) {
     usedCapacity[&ch] = 0;
   }
 
+  int iterationCount = -1;
+  int illegalEdges = 0;
+  int totalPathLength = 0;
   do {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Begin findPaths iteration #" << iterationCount << "\n");
+    // if reach maxIterations, throw an error since no routing can be found
+    if (++iterationCount >= maxIterations) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\t\tPathfinder: maxIterations has been exceeded ("
+                 << maxIterations
+                 << " iterations)...unable to find routing for flows.\n");
+      return std::nullopt;
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "\t\t---Begin findPaths iteration #"
+                            << iterationCount << "---\n");
     // update demand on all channels
     for (auto &ch : pathEdges) {
       double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
       double congestion = 1.0 + USED_CAPACITY_COEFF * usedCapacity[&ch];
       demand[&ch] = history * congestion;
     }
-    // if reach maxIterations, throw an error since no routing can be found
-    if (++iterationCount > maxIterations) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Pathfinder: maxIterations has been exceeded ("
-                 << maxIterations
-                 << " iterations)...unable to find routing for flows.\n");
-      return std::nullopt;
-    }
 
     // "rip up" all routes
     routingSolution.clear();
-    for (auto &ch : pathEdges)
+    for (auto &ch : pathEdges) {
       usedCapacity[&ch] = 0;
+      packetFlowCount[&ch] = 0;
+    }
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
@@ -506,8 +466,7 @@ Pathfinder::findPaths(const int maxIterations) {
       // switchbox settings
       std::set<PathNode *> processed;
       std::map<PathNode *, PathNode *> preds = dijkstraShortestPaths(src);
-      LLVM_DEBUG(llvm::dbgs() << "***************"
-                              << ":\n");
+
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
@@ -529,23 +488,30 @@ Pathfinder::findPaths(const int maxIterations) {
             }
           }
           assert(ch != nullptr);
-          usedCapacity[ch]++;
-
           if (preds[curr]->sb == curr->sb) {
             switchSettings[preds[curr]->sb].src = preds[curr]->port;
             switchSettings[curr->sb].dsts.insert(curr->port);
           }
 
+          if (isPkt) {
+            packetFlowCount[ch]++;
+            // maximum packet stream per channel
+            if (packetFlowCount[ch] >= MAX_PACKET_STREAM_CAPACITY) {
+              packetFlowCount[ch] = 0;
+              usedCapacity[ch]++;
+            }
+          } else {
+            packetFlowCount[ch] = 0;
+            usedCapacity[ch]++;
+          }
+
           // if at capacity, bump demand to discourage using this Channel
-          if (usedCapacity[ch] >= 1) {
+          if (usedCapacity[ch] >= MAX_CIRCUIT_STREAM_CAPACITY) {
             // this means the order matters!
             demand[ch] *= DEMAND_COEFF;
-            LLVM_DEBUG(llvm::dbgs() << *curr << ", bump demand: "
-                                    << ", demand = " << demand[ch] << "\n");
           }
 
           processed.insert(curr);
-          LLVM_DEBUG(llvm::dbgs() << *curr << " <- " << *preds[curr] << "\n");
           curr = preds[curr];
         }
       }
@@ -553,7 +519,47 @@ Pathfinder::findPaths(const int maxIterations) {
       routingSolution[*src] = switchSettings;
     }
 
-  } while (!isLegal()); // continue iterations until a legal routing is found
+    // fix used capacity for packet flows
+    for (auto &ch : pathEdges) {
+      if (packetFlowCount[&ch] > 0) {
+        packetFlowCount[&ch] = 0;
+        usedCapacity[&ch]++;
+      }
+    }
 
+    illegalEdges = 0;
+    totalPathLength = 0;
+    for (auto &e : pathEdges) {
+      // Calculate total path length across switchboxes
+      if (e.source->sb != e.target->sb) {
+        totalPathLength += usedCapacity[&e];
+      }
+      // Check that every channel does not exceed max capacity.
+      if (usedCapacity[&e] > MAX_CIRCUIT_STREAM_CAPACITY) {
+        overCapacity[&e]++;
+        illegalEdges++;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "\t\t\tToo much capacity on " << e << ", used_capacity = "
+                   << usedCapacity[&e] << ", demand = " << demand[&e]
+                   << ", over_capacity_count = " << overCapacity[&e] << "\n");
+      }
+    }
+
+#ifndef NDEBUG
+    for (const auto &[pathNode, switchSetting] : routingSolution) {
+      LLVM_DEBUG(llvm::dbgs() << "\t\t\tFlow starting at (" << pathNode.sb.col
+                              << "," << pathNode.sb.row << "):\t");
+      LLVM_DEBUG(llvm::dbgs() << switchSetting);
+    }
+#endif
+    LLVM_DEBUG(llvm::dbgs()
+               << "\t\t---End findPaths iteration #" << iterationCount
+               << " , illegal edges count = " << illegalEdges
+               << ", total path length = " << totalPathLength << "---\n");
+
+  } while (illegalEdges >
+           0); // continue iterations until a legal routing is found
+
+  LLVM_DEBUG(llvm::dbgs() << "\t---End Pathfinder::findPaths---\n");
   return routingSolution;
 }

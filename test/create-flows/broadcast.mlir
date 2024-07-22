@@ -28,8 +28,8 @@
 // CHECK: %[[T82:.*]] = aie.tile(8, 2)
 // CHECK: %[[T83:.*]] = aie.tile(8, 3)
 //
-// CHECK: aie.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
 // CHECK: aie.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
+// CHECK: aie.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
 // CHECK: aie.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
 // CHECK: aie.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
 // CHECK: aie.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
