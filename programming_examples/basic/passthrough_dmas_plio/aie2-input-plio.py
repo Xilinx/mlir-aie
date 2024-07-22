@@ -15,23 +15,11 @@ from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
 N = 1024
-dev = AIEDevice.npu1_1col
-col = 0
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
 
-if len(sys.argv) > 2:
-    if sys.argv[2] == "npu":
-        dev = AIEDevice.npu1_1col
-    elif sys.argv[2] == "xcvc1902":
-        dev = AIEDevice.xcvc1902
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-if len(sys.argv) > 3:
-    col = int(sys.argv[3])
-
+dev = AIEDevice.xcvc1902
 
 def my_passthrough():
     with mlir_mod_ctx() as ctx:
@@ -41,9 +29,9 @@ def my_passthrough():
             memRef_ty = T.memref(1024, T.i32())
 
             # Tile declarations
-            ShimTile1 = tile(col, 0)
-            ShimTile2 = tile(col + 1, 0)
-            ComputeTile2 = tile(col, 2)
+            ShimTile1 = tile(30, 0)
+            ShimTile2 = tile(26, 0)
+            ComputeTile2 = tile(30, 2)
 
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile1, ComputeTile2, 2, memRef_ty, plio=True)

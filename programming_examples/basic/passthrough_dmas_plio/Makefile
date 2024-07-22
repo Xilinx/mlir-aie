@@ -12,8 +12,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= xcvc1902
-col ?= 26
 targetname = passThroughDMAs
 LENGTH ?= 1024
 
@@ -21,11 +19,11 @@ all: input output
 
 build/aie-input-plio.mlir: ${srcdir}/aie2-input-plio.py
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} ${col} > $@
+	python3 $< ${LENGTH} > $@
 
 build/aie-output-plio.mlir: ${srcdir}/aie2-output-plio.py
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} ${col} > $@
+	python3 $< ${LENGTH} > $@
 
 input: build/aie-input-plio.mlir
 	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie-input-plio.mlir \
