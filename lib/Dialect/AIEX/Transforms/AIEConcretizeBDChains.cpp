@@ -29,73 +29,65 @@ using namespace xilinx::AIEX;
 struct AIEConcretizeBDChainsPass
     : AIEConcretizeBDChainsBase<AIEConcretizeBDChainsPass> {
 
-  LogicalResult inlineUsages() {
-    InlinerConfig config;
-    config.setMaxInliningIterations(1);
+  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTask start_op) {
+    OpBuilder builder = OpBuilder(start_op);
 
-    Inliner::RunPipelineHelperTy runPipelineHelper =
-        [&](Pass &pass, OpPassManager &pipeline, Operation *op) {
-          return mlir::cast<AIEConcretizeBDChainsPass>(pass).runPipeline(
-              pipeline, op);
-        };
+    // Get referenced abstract BD chain
+    AIE::BDChainOp chain_def = start_op.getBDChain();
+    assert(chain_def);
+    Region &source_region = chain_def.getBody();
 
-    CallGraph &cg = getAnalysis<CallGraph>();
+    // Create BD op into which the result will be inlined
+    DMAConfigureBDs configure_op = builder.create<DMAConfigureBDs>(
+        start_op.getLoc(), builder.getIndexType(), 
+        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
+        start_op.getIssueToken(), start_op.getRepeatCount());
+    Region &target_region = configure_op.getBody();
 
-    // The inliner should only be run on operations that define a symbol table,
-    // as the callgraph will need to resolve references.
-    Operation *op = getOperation();
-    if (!op->hasTrait<OpTrait::SymbolTable>()) {
-      op->emitOpError() << " was scheduled to run under the inliner, but does "
-                           "not define a symbol table";
-      return failure();
+    // Clone BD definition into usage site, replacing abstract SSA values with concrete ones
+    IRMapping arg_map;
+    ValueRange values = start_op.getConcreteArgs();
+    for (unsigned i = 0, n = source_region.getNumArguments(); i < n; i++) {
+      BlockArgument arg = source_region.getArgument(i);
+      Value val = values[i];
+      assert(arg.getType() == val.getType());
+      arg_map.map(arg, val);
+    }
+    source_region.cloneInto(&target_region, arg_map);
+
+    // Replace result of dma start task with result of bd chain configuration
+    start_op.getResult().replaceAllUsesWith(configure_op.getResult());
+
+    // Remove definition too if this was the only/last usage of it
+    if(SymbolTable::symbolKnownUseEmpty(chain_def, device)) {
+      chain_def.erase();
     }
 
-    // We must inline at all call sites
-    auto profitabilityCb = [=](const Inliner::ResolvedCall &call) {
-      return true;
-    };
+    // Add a start BDs instruction
+    builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult());
 
-    // Get an instance of the inliner.
-    Inliner inliner(op, cg, *this, getAnalysisManager(), runPipelineHelper,
-                    config, profitabilityCb);
+    // After fully inlining, remove the original instruction
+    start_op.erase();
 
-    // Run the inlining.
-    if (failed(inliner.doInlining())) {
-      return failure();
-    }
-    return success();
+    return WalkResult::advance();
   }
 
   void runOnOperation() override {
+    WalkResult r;
 
     AIE::DeviceOp device = getOperation();
 
-    std::set<llvm::StringRef> concretized_syms = {};
-
     // Wrap bd chains in DMAConfigureBDs regions before inlining
-    device.walk([&](DMAStartTask start_op) {
-      OpBuilder builder = OpBuilder(start_op);
-      DMAConfigureBDs configure_op = builder.create<DMAConfigureBDs>(
-          start_op.getLoc(), builder.getIndexType(), 
-          start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
-          start_op.getIssueToken(), start_op.getRepeatCount());
-      Block &b = configure_op.getBody().emplaceBlock();
-      start_op->moveBefore(&b, b.end());
-      builder.setInsertionPointAfter(start_op);
-      builder.create<AIE::EndOp>(start_op.getLoc());
-      builder.setInsertionPointAfter(configure_op);
-      builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult());
-      concretized_syms.insert(start_op.getSymbol());
+    r = device.walk([&](DMAStartTask start_op) {
+      return inlineUsage(device, start_op);
     });
-
-    // Inline all usages of BD chains at their sites
-    if (failed(inlineUsages())) {
+    if(r.wasInterrupted()) {
       return signalPassFailure();
     }
 
     // Verify inlined basic blocks do form a chain reachable from the start;
     // Remove empty blocks
-    WalkResult result = device.walk([&](DMAConfigureBDs configure_bds_op) {
+    r = device.walk([&](DMAConfigureBDs configure_bds_op) {
       Region &body = configure_bds_op.getBody();
       for(auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
@@ -111,22 +103,10 @@ struct AIEConcretizeBDChainsPass
       }
       return WalkResult::advance();
     });
-    if(result.wasInterrupted()) {
+    if(r.wasInterrupted()) {
       return signalPassFailure();
     }
 
-    // If after concretizing no uses of the symbol are left, remove its definition
-    for(auto it = concretized_syms.begin(); it != concretized_syms.end(); ++it) {
-      llvm::StringRef sym = *it;
-      Operation *def_op = SymbolTable::lookupSymbolIn(device, sym);
-      if(!def_op) {
-        continue;
-      }
-      if(SymbolTable::symbolKnownUseEmpty(def_op, device)) {
-        assert(llvm::isa<AIE::BDChainOp>(def_op));
-        def_op->erase();
-      }
-    }
   }
 };
 

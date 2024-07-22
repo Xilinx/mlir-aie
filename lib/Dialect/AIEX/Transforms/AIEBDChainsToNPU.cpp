@@ -41,6 +41,23 @@ struct DMAStartBDsPattern : OpConversionPattern<DMAStartBDs> {
   }
 };
 
+struct DMAAwaitBDsPattern : OpConversionPattern<DMAAwaitBDs> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(DMAAwaitBDs op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    DMAConfigureBDs bds_op = op.getBdsOp();
+    if(!bds_op.getIssueToken()) {
+      auto err = op.emitOpError("Cannot wait on a BD that is not configured to issue a token.");
+      err.attachNote(bds_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
+      return failure();
+    }
+    AIE::TileOp tile = bds_op.getTileOp();
+    rewriter.replaceOpWithNewOp<NpuSyncOp>(
+        op, tile.getCol(), tile.getRow(), (uint32_t)bds_op.getDirection(), bds_op.getChannel(), 1, 1);
+    return success();
+  }
+};
+
 struct AIEBDChainsToNPUPass
     : AIEBDChainsToNPUBase<AIEBDChainsToNPUPass> {
   
@@ -234,13 +251,15 @@ struct AIEBDChainsToNPUPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Convert DMAStartBD ops
+    // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addIllegalOp<DMAStartBDs>();
-    RewritePatternSet start_patterns(&getContext());
-    start_patterns.insert<DMAStartBDsPattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(start_patterns)))) {
+    target.addIllegalOp<DMAAwaitBDs>();
+    RewritePatternSet patterns(&getContext());
+    patterns.insert<DMAStartBDsPattern>(&getContext());
+    patterns.insert<DMAAwaitBDsPattern>(&getContext());
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }
 

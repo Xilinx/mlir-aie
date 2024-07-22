@@ -833,7 +833,7 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
   );
 
   let assemblyFormat = [{
-    `on` ` ` `(` $tile `,` $direction `,` $channel `)` regions attr-dict
+    `(` $tile `,` $direction `,` $channel `)` regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -870,7 +870,7 @@ def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
   );
 
   let assemblyFormat = [{
-    $bds attr-dict
+    `(` $bds `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -901,9 +901,8 @@ def AIE_DMAAwaitBDs : AIEX_Op<"dma_await_bds", []> {
 }
 
 
-def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
-    DeclareOpInterfaceMethods<CallOpInterface>,
-  ]>
+def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [DeclareOpInterfaceMethods<CallOpInterface>]>,
+    Results<(outs Index:$result)>
   {
 
   let arguments = (
@@ -924,15 +923,12 @@ def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
+    AIE::BDChainOp getBDChain();
   }];
 
   let extraClassDefinition = [{
     AIE::TileOp DMAStartTask::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
-
-}
-
-def AIE_DMAAwaitTask : AIEX_Op<"dma_await_task", []> {
 
 }
 

@@ -100,10 +100,22 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
 
   void runOnOperation() override {
 
+    // This pass currently assigns BD IDs with a simple linear pass. IDs are assigned in sequence,
+    // and issuing an aiex.free_bds or aiex.await_bds op kills the correspondings IDs use.
+    // If in the future we support branching/jumping in the sequence function, a proper liveness
+    // analysis will become necessary here.
+
     AIE::DeviceOp device = getOperation();
     std::map<AIE::TileOp, BdIdGenerator> gens;
 
-    // Wrap bd chains in DMAConfigureBDs regions before inlining
+    // Insert a free_bds operation for each await_bds
+    // After waiting for BD IDs, they can definitely safely be reused
+    device.walk([&](DMAAwaitBDs op) {
+      OpBuilder builder(op);
+      builder.setInsertionPointAfter(op);
+      builder.create<DMAFreeBDs>(op.getLoc(), op.getBds());
+    });
+
     // TODO: Only walk the sequence function
     device.walk([&](Operation *op) {
       LogicalResult result = llvm::TypeSwitch<Operation *, LogicalResult>(op)

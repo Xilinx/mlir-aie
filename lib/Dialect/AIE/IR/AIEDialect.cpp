@@ -2070,14 +2070,6 @@ LogicalResult BDChainOp::verify() {
   return success();
 }
 
-Region *BDChainOp::getCallableRegion() { return &getRegion(); }
-
-llvm::ArrayRef<mlir::Type> BDChainOp::getArgumentTypes() {
-  return getEntryArgTypesAttr().getTypes();
-}
-
-llvm::ArrayRef<mlir::Type> BDChainOp::getResultTypes() { return std::nullopt; }
-
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
