@@ -367,6 +367,23 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
 }
 
 template <unsigned m, unsigned k, unsigned n>
+void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
+                                     const int16 *__restrict pB,
+                                     int32 *__restrict pC) {
+  // matmul_vectorized operates on two 4x4 input blocks of A, and two 4x4 input
+  // blocks of B in each iteration. Make sure we have at least 2 blocks in each
+  // dimension, and that our input matrix is evenly divisible.
+  constexpr int r = 4;
+  constexpr int s = 4;
+  constexpr int t = 4;
+  static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
+  static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
+  static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
+  return matmul_vectorized<int16, int32, m / r, k / s, n / t, r, s, t>(pA, pB,
+                                                                       pC);
+}
+
+template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
                                        const bfloat16 *__restrict pB,
                                        bfloat16 *__restrict pC) {
@@ -416,6 +433,7 @@ extern "C" {
 
 #define combos(X)                                                              \
   X(int16, i16, int16, i16, 4, 4, 4)                                           \
+  X(int16, i16, int32, i32, 4, 4, 4)                                           \
   X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
   X(bfloat16, bf16, float, f32, 4, 8, 4)
 

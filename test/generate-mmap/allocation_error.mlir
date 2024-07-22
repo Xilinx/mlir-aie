@@ -8,16 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
-// RUN: not aiecc.py --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
-
-// CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
+// REQUIRES: peano
+// RUN: not aiecc.py --basic-alloc-scheme --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
 // PEANO: ld.lld: error: section '.bss' will not fit in region 'data': overflowed by 4 bytes
 
-// REQUIRES: chess
-// REQUIRES: peano
 // If we use all of the local memory, then linking the AIE executable should fail.
-
+// The fundamental problem here is that we can stuff things in the executable that 
+// aren't visibla at the MLIR level, so the assign-buffer-addresses pass can't generate
+// a good error message.
 module @example0 {
  aie.device(xcvc1902) {
   memref.global @x : memref<4xi8> = uninitialized

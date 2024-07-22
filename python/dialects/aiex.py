@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from functools import partial
 import itertools
 from operator import itemgetter
-from typing import Union
+from typing import Union, Optional
 
 import numpy as np
 
@@ -46,6 +46,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         offsets: MixedValues = None,
         sizes: MixedValues = None,
         strides: MixedValues = None,
+        issue_token: Optional[bool] = None,
     ):
         x = 0
         y = 0
@@ -74,6 +75,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             static_strides,
             metadata,
             bd_id,
+            issue_token=issue_token,
         )
 
 

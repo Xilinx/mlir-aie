@@ -18,7 +18,7 @@ K?=256
 N?=256
 m?=64
 k?=64
-n?=64
+n?=32
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n

@@ -25,11 +25,27 @@ def main():
     argparser.add_argument("-N", type=int, default=512)
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
-    argparser.add_argument("-n", type=int, default=64)
+    argparser.add_argument("-n", type=int, default=32)
     argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
+    argparser.add_argument(
+        "--dtype_in", type=str, choices=["bf16", "i16"], default="i16"
+    )
+    argparser.add_argument(
+        "--dtype_out", type=str, choices=["bf16", "i16", "f32", "i32"], default="i16"
+    )
     args = argparser.parse_args()
     with mlir_mod_ctx() as ctx:
-        my_matmul(args.M, args.K, args.N, args.m, args.k, args.n, args.n_aie_cols)
+        my_matmul(
+            args.M,
+            args.K,
+            args.N,
+            args.m,
+            args.k,
+            args.n,
+            args.n_aie_cols,
+            args.dtype_in,
+            args.dtype_out,
+        )
         # print(ctx.module.operation.verify())
         print(ctx.module)
 
@@ -38,13 +54,34 @@ def ceildiv(a, b):
     return (a + b - 1) // b
 
 
-def my_matmul(M, K, N, m, k, n, n_aie_cols):
-    r = 4
-    s = 8
-    t = 4
+def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
 
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
+
+    dtype_in = None
+    if dtype_in_str == "bf16":
+        dtype_in = T.bf16
+    elif dtype_in_str == "i16":
+        dtype_in = T.i16
+    dtype_out = None
+    if dtype_out_str == "bf16":
+        dtype_out = T.bf16
+    elif dtype_out_str == "i16":
+        dtype_out = T.i16
+    elif dtype_out_str == "f32":
+        dtype_out = T.f32
+    elif dtype_out_str == "i32":
+        dtype_out = T.i32
+
+    if dtype_in_str == "bf16":
+        r = 4
+        s = 8
+        t = 4
+    elif dtype_in_str == "i16":
+        r = 4
+        s = 4
+        t = 4
 
     # Input matrix A:
     # Conceptually, we divide input A into (m * n_rows, k)-sized blocks. These
@@ -90,22 +127,30 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
     @device(dev)
     def device_body():
-        A_l2_memref_ty = T.memref(m * k * n_A_tiles_per_shim, T.bf16())
-        B_l2_memref_ty = T.memref(k * n, T.bf16())
-        C_l2_memref_ty = T.memref(m * n * n_aie_rows, T.bf16())
-        A_l1_memref_ty = T.memref(m, k, T.bf16())
-        B_l1_memref_ty = T.memref(k, n, T.bf16())
-        C_l1_memref_ty = T.memref(m, n, T.bf16())
+        A_l2_memref_ty = T.memref(m * k * n_A_tiles_per_shim, dtype_in())
+        B_l2_memref_ty = T.memref(k * n, dtype_in())
+        C_l2_memref_ty = T.memref(m * n * n_aie_rows, dtype_out())
+        A_l1_memref_ty = T.memref(m, k, dtype_in())
+        B_l1_memref_ty = T.memref(k, n, dtype_in())
+        C_l1_memref_ty = T.memref(m, n, dtype_out())
 
         # AIE Core Function declarations
         zero_scalar = external_func("zero_scalar_bf16", inputs=[C_l1_memref_ty])
-        zero = external_func("zero_bf16", inputs=[C_l1_memref_ty])
+        zero_scalar = external_func(
+            f"zero_scalar_{dtype_out_str}", inputs=[C_l1_memref_ty]
+        )
+        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_memref_ty])
         matmul_scalar = external_func(
             "matmul_scalar_bf16_bf16",
             inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
+        matmul_scalar = external_func(
+            f"matmul_scalar_{dtype_in_str}_{dtype_out_str}",
+            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
+        )
         matmul = external_func(
-            "matmul_bf16_bf16", inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty]
+            f"matmul_{dtype_in_str}_{dtype_out_str}",
+            inputs=[A_l1_memref_ty, B_l1_memref_ty, C_l1_memref_ty],
         )
 
         # Tile declarations as tile[row][col]
@@ -250,9 +295,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
         # To/from AIE-array data movement
         @FuncOp.from_py_func(
-            T.memref(M * K, T.bf16()),
-            T.memref(K * N, T.bf16()),
-            T.memref(M * N, T.bf16()),
+            T.memref(M * K, dtype_in()),
+            T.memref(K * N, dtype_in()),
+            T.memref(M * N, dtype_out()),
         )
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.

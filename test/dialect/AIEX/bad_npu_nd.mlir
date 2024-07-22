@@ -220,3 +220,25 @@ module {
     aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
   }
 }
+
+// -----
+
+// first (highest-dimension) stride can go beyond the limit, as long as the corresponding wrap is 1
+
+module {
+  aie.device(npu1_4col) {
+    func.func @bad_npu_nd(%a : memref<8xi32>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c2 = arith.constant 2 : i64
+      %c3 = arith.constant 3 : i64
+      %c8 = arith.constant 8 : i64
+      %c1572864 = arith.constant 1572864 : i64
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c1572864,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi32>
+      // expected-error@+1 {{Stride 3 exceeds the [1:1048576] range.}}
+      aiex.npu.dma_memcpy_nd (0, 0, %a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c1572864,%c0,%c0,%c1]) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
+      return
+    }
+    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+  }
+}

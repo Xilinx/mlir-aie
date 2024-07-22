@@ -19,6 +19,7 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -82,6 +83,7 @@ static void registerDialects(DialectRegistry &registry) {
   registry.insert<VectorDialect>();
   registry.insert<LLVM::LLVMDialect>();
   registry.insert<emitc::EmitCDialect>();
+  registry.insert<index::IndexDialect>();
 }
 
 // Output the buffer map for the given buffer operations, with the given offset.
