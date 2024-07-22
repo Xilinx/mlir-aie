@@ -282,7 +282,8 @@ public:
     // iteration_current
 
     // iteration_size
-    if (strides[3])
+    // strides[3] doesn't need to lower to hardware if sizes[3] is one
+    if (strides[3] && sizes[3] != 1)
       iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
 
     // iteration_stride
