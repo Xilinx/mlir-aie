@@ -105,7 +105,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         int shimCh = srcChannel;
         // TODO: must reserve N3, N7, S2, S3 for DMA connections
         if (curr == srcSB &&
-            analyzer.getTile(rewriter, srcSB.col, srcSB.row).isShimNOCTile()) {
+            analyzer.getTile(rewriter, srcSB.col, srcSB.row).isShimNOCorPLTile()) {
           // shim DMAs at start of flows
           if (srcBundle == WireBundle::DMA) {
             shimCh = srcChannel == 0
