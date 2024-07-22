@@ -132,7 +132,7 @@ def objFifo():
 # CHECK: %[[VAL_2:.*]] = aie.tile(7, 3)
 # CHECK: aie.objectfifo @[[VAL_3:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
 # CHECK: aie.objectfifo @[[VAL_4:.*]](%[[VAL_1]], {%[[VAL_2]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
+# CHECK: aie.objectfifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]([] [])
 @construct_and_print_module
 def objFifoLink():
     dev = Device(AIEDevice.xcve2302)
@@ -143,7 +143,7 @@ def objFifoLink():
         tile2 = tile(col=7, row=3)
         of0 = object_fifo("of0", tile0, tile1, 2, T.memref(12, T.f16()))
         of1 = object_fifo("of1", tile1, tile2, 2, T.memref(12, T.f16()))
-        object_fifo_link(of0, of1)
+        object_fifo_link(of0, of1, [], [])
         end()
 
 
