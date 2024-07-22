@@ -159,7 +159,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                     flowOp, WireBundle::North, shimCh, bundle, channel);
-              } else if (bundle == WireBundle::PLIO) { 
+              } else if (bundle == WireBundle::PLIO) {
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),

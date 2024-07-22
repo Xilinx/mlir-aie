@@ -755,8 +755,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           output << "__mlir_aie_try(XAie_AieToPlIntfEnable(" << deviceInstRef
                  << ", " << tileLocStr("x", "y") << ", "
                  << connectOp.destIndex() << ", PLIF_WIDTH_64));\n";
-        }
-        else if (connectOp.getDestBundle() == WireBundle::North) {
+        } else if (connectOp.getDestBundle() == WireBundle::North) {
           // mux
           output << "__mlir_aie_try(XAie_PlToAieIntfEnable(" << deviceInstRef
                  << ", " << tileLocStr("x", "y") << ", "
