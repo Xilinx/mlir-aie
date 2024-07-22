@@ -46,39 +46,23 @@ def test_emit():
 @construct_and_print_module
 def test_aievec():
     @func
-    def mul_mul(
-        A: T.memref(2048, T.f32()),
-        B: T.memref(2048, T.f32()),
-        C: T.memref(2048, T.f32()),
-        d: T.f32(),
+    def mul_elem(
+        A: T.memref(2048, T.i16()),
+        B: T.memref(2048, T.i16()),
+        C: T.memref(2048, T.i16()),
     ):
-        v0 = vector.broadcast(T.vector(8, T.f32()), d)
-        v1 = aievec.concat([v0, v0])
-        for i in scf.for_(0, 2048, 8):
-            v2 = aievec.upd(T.vector(8, T.f32()), A, [i])
-            v3 = aievec.upd(T.vector(8, T.f32()), B, [i])
-            v4 = aievec.mul(
-                T.vector(8, T.f32()),
+        for i in scf.for_(0, 2048, 32):
+            v0 = aievec.upd(T.vector(32, T.i16()), A, [i])
+            v1 = aievec.upd(T.vector(32, T.i16()), B, [i])
+            v2 = aievec.mul_elem(
+                T.vector(32, T.i32()),
+                v0,
                 v1,
-                v2,
-                xoffsets="0x76543210",
-                xstart="0",
-                zoffsets="0x76543210",
-                zstart="0",
             )
-            v5 = aievec.concat([v4, v4])
-            v6 = aievec.mul(
-                T.vector(8, T.f32()),
-                v5,
-                v3,
-                xoffsets="0x76543210",
-                xstart="0",
-                zoffsets="0x76543210",
-                zstart="0",
-            )
+            v3 = aievec.srs(T.vector(32, T.i16()), v2, arith.constant(0))
             vector.transfer_write(
                 None,
-                v6,
+                v3,
                 C,
                 [i],
                 AffineMap.get_identity(1),
@@ -86,25 +70,23 @@ def test_aievec():
             )
 
             scf.yield_([])
-    # XFAIL: *
-    # CHECK-LABEL:   func.func @mul_mul(
-    # CHECK-SAME:                       %[[VAL_0:.*]]: memref<2048xf32>, %[[VAL_1:.*]]: memref<2048xf32>, %[[VAL_2:.*]]: memref<2048xf32>, %[[VAL_3:.*]]: f32) {
-    # CHECK:           %[[VAL_4:.*]] = vector.broadcast %[[VAL_3]] : f32 to vector<8xf32>
-    # CHECK:           %[[VAL_5:.*]] = aievec.concat %[[VAL_4]], %[[VAL_4]] : vector<8xf32>, vector<16xf32>
-    # CHECK:           %[[VAL_6:.*]] = arith.constant 0 : index
-    # CHECK:           %[[VAL_7:.*]] = arith.constant 2048 : index
-    # CHECK:           %[[VAL_8:.*]] = arith.constant 8 : index
-    # CHECK:           scf.for %[[VAL_9:.*]] = %[[VAL_6]] to %[[VAL_7]] step %[[VAL_8]] {
-    # CHECK:             %[[VAL_10:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_9]]] {index = 0 : i8, offset = 0 : i32} : memref<2048xf32>, vector<8xf32>
-    # CHECK:             %[[VAL_11:.*]] = aievec.upd %[[VAL_1]]{{\[}}%[[VAL_9]]] {index = 0 : i8, offset = 0 : i32} : memref<2048xf32>, vector<8xf32>
-    # CHECK:             %[[VAL_12:.*]] = aievec.mul %[[VAL_5]], %[[VAL_10]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x76543210", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-    # CHECK:             %[[VAL_13:.*]] = aievec.concat %[[VAL_12]], %[[VAL_12]] : vector<8xf32>, vector<16xf32>
-    # CHECK:             %[[VAL_14:.*]] = aievec.mul %[[VAL_13]], %[[VAL_11]] {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x76543210", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-    # CHECK:             vector.transfer_write %[[VAL_14]], %[[VAL_2]]{{\[}}%[[VAL_9]]] {in_bounds = [true]} : vector<8xf32>, memref<2048xf32>
+
+    # CHECK-LABEL:   func.func @mul_elem(
+    # CHECK-SAME:                       %[[VAL_0:.*]]: memref<2048xi16>, %[[VAL_1:.*]]: memref<2048xi16>, %[[VAL_2:.*]]: memref<2048xi16>) {
+    # CHECK:           %[[VAL_3:.*]] = arith.constant 0 : index
+    # CHECK:           %[[VAL_4:.*]] = arith.constant 2048 : index
+    # CHECK:           %[[VAL_5:.*]] = arith.constant 32 : index
+    # CHECK:           scf.for %[[VAL_6:.*]] = %[[VAL_3]] to %[[VAL_4]] step %[[VAL_5]] {
+    # CHECK:             %[[VAL_7:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_6]]] {index = 0 : i8, offset = 0 : i32} : memref<2048xi16>, vector<32xi16>
+    # CHECK:             %[[VAL_8:.*]] = aievec.upd %[[VAL_1]]{{\[}}%[[VAL_6]]] {index = 0 : i8, offset = 0 : i32} : memref<2048xi16>, vector<32xi16>
+    # CHECK:             %[[VAL_9:.*]] = aievec.mul_elem %[[VAL_7]], %[[VAL_8]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
+    # CHECK:             %[[VAL_10:.*]] = arith.constant 0 : i32
+    # CHECK:             %[[VAL_11:.*]] = aievec.srs %[[VAL_9]], %[[VAL_10]] : vector<32xi32>, i32, vector<32xi16>
+    # CHECK:             vector.transfer_write %[[VAL_11]], %[[VAL_2]]{{\[}}%[[VAL_6]]] {in_bounds = [true]} : vector<32xi16>, memref<2048xi16>
     # CHECK:           }
     # CHECK:           return
     # CHECK:         }
-    mul_mul.emit()
+    mul_elem.emit()
 
 
 @construct_and_print_module
