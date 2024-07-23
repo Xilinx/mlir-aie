@@ -22,6 +22,7 @@ using namespace xilinx::AIE;
 #define OVER_CAPACITY_COEFF 0.1
 #define USED_CAPACITY_COEFF 0.1
 #define DEMAND_COEFF 1.1
+#define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1
 #define MAX_PACKET_STREAM_CAPACITY 32
 
@@ -428,6 +429,21 @@ Pathfinder::findPaths(const int maxIterations) {
     usedCapacity[&ch] = 0;
   }
 
+  // update demand at the beginning of each iteration
+  auto updateDemand = [&](PathEdge *e) {
+    double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[e];
+    double congestion = DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[e];
+    demand[e] = history * congestion;
+  };
+
+  // inside each interation, bump demand when exceeds capacity
+  auto bumpDemand = [&](PathEdge *e) {
+    if (usedCapacity[e] >= MAX_CIRCUIT_STREAM_CAPACITY) {
+      // this means the order matters!
+      demand[e] *= DEMAND_COEFF;
+    }
+  };
+
   int iterationCount = -1;
   int illegalEdges = 0;
   int totalPathLength = 0;
@@ -445,9 +461,7 @@ Pathfinder::findPaths(const int maxIterations) {
                             << iterationCount << "---\n");
     // update demand on all channels
     for (auto &ch : pathEdges) {
-      double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
-      double congestion = 1.0 + USED_CAPACITY_COEFF * usedCapacity[&ch];
-      demand[&ch] = history * congestion;
+      updateDemand(&ch);
     }
 
     // "rip up" all routes
@@ -506,10 +520,7 @@ Pathfinder::findPaths(const int maxIterations) {
           }
 
           // if at capacity, bump demand to discourage using this Channel
-          if (usedCapacity[ch] >= MAX_CIRCUIT_STREAM_CAPACITY) {
-            // this means the order matters!
-            demand[ch] *= DEMAND_COEFF;
-          }
+          bumpDemand(ch);
 
           processed.insert(curr);
           curr = preds[curr];
