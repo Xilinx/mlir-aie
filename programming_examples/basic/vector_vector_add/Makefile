@@ -25,6 +25,7 @@ build/aie.mlir: ${srcdir}/aie2.py
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+    	--no-xchesscc --no-xbridge --peano ${PEANO_DIR} \
 		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
@@ -45,7 +46,8 @@ vck5000: devicename=xcvc1902
 vck5000: col=6
 
 vck5000: build/aie.mlir
-	aiecc.py --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+	aiecc.py --no-xchesscc --no-xbridge --peano ${PEANO_DIR} \
+    --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
