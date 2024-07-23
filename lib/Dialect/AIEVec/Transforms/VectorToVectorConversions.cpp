@@ -412,8 +412,8 @@ struct FlattenMultDimTransferReadPattern
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds = llvm::to_vector(
-          inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
+      SmallVector<bool> inBounds =
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -472,8 +472,8 @@ struct FlattenMultDimTransferWritePattern
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds = llvm::to_vector(
-          inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
+      SmallVector<bool> inBounds =
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
