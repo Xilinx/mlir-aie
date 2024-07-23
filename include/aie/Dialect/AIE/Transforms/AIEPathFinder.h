@@ -24,7 +24,9 @@ namespace xilinx::AIE {
 enum class Connectivity { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
 
 using PathNode = struct PathNode {
+  PathNode() : sb(), port() {}
   PathNode(TileID sb, Port port) : sb(sb), port(port) {}
+  PathNode(const PathNode &other) : sb(other.sb), port(other.port) {}
 
   TileID sb;
   Port port;
