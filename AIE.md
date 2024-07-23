@@ -1220,6 +1220,7 @@ Interfaces: `Symbol`
 <tr><td><code>dimensionsToStream</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
 <tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
@@ -1890,6 +1891,7 @@ Traits: `HasParent<DeviceOp>`
 * MM2S (`MM2S`){{% /markdown %}}</details></td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 
