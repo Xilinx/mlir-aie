@@ -167,7 +167,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
   if (coordToShimMux.count({col, row})) {
     return coordToShimMux[{col, row}];
   }
-  assert(getTile(builder, col, row).isShimNOCTile());
+  assert(getTile(builder, col, row).isShimNOCorPLTile());
   auto switchboxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                                getTile(builder, col, row));
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
