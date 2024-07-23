@@ -53,13 +53,12 @@ using PathNode = struct PathNode {
 };
 
 using PathEdge = struct PathEdge {
-  PathEdge(PathNode *source, PathNode *target)
-      : source(source), target(target) {}
-  PathNode *source;
-  PathNode *target;
+  PathEdge(PathNode source, PathNode target) : source(source), target(target) {}
+  PathNode source;
+  PathNode target;
 
   friend std::ostream &operator<<(std::ostream &os, const PathEdge &s) {
-    os << "PathEdge(" << *s.source << " -> " << *s.target << ")";
+    os << "PathEdge(" << s.source << " -> " << s.target << ")";
     return os;
   }
 
@@ -70,12 +69,21 @@ using PathEdge = struct PathEdge {
     os << to_string(s);
     return os;
   }
+
+  // Needed for the std::maps that store PathEdge.
+  bool operator<(const PathEdge &rhs) const {
+    return std::tie(source, target) < std::tie(rhs.source, rhs.target);
+  }
+
+  bool operator==(const PathEdge &rhs) const {
+    return std::tie(source, target) == std::tie(rhs.source, rhs.target);
+  }
 };
 
 using FlowNode = struct FlowNode {
   bool isPacketFlow;
-  PathNode *src;
-  std::vector<PathNode *> dsts;
+  PathNode src;
+  std::vector<PathNode> dsts;
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
@@ -145,7 +153,7 @@ public:
   std::optional<std::map<PathNode, SwitchSettings>>
   findPaths(int maxIterations) override;
 
-  std::map<PathNode *, PathNode *> dijkstraShortestPaths(PathNode *src);
+  std::map<PathNode, PathNode> dijkstraShortestPaths(PathNode src);
 
 private:
   // Flows to be routed
@@ -156,16 +164,16 @@ private:
 
   // Use Dijkstra's shortest path to find routes, and use "demand" as the
   // weights.
-  std::map<PathEdge *, double> demand;
+  std::map<PathEdge, double> demand;
 
   // History of Channel being over capacity
-  std::map<PathEdge *, int> overCapacity;
+  std::map<PathEdge, int> overCapacity;
 
   // how many circuit streams are actually using this Channel
-  std::map<PathEdge *, int> usedCapacity;
+  std::map<PathEdge, int> usedCapacity;
 
   // how many packet streams are actually using this Channel
-  std::map<PathEdge *, int> packetFlowCount;
+  std::map<PathEdge, int> packetFlowCount;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

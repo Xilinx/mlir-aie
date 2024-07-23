@@ -182,16 +182,12 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   auto insertAndConnect = [&](int colSrc, int rowSrc, WireBundle bundleSrc,
                               int channelSrc, int colDest, int rowDest,
                               WireBundle bundleDest, int channelDest) {
-    auto sourcePair =
-        pathNodes.insert({TileID{colSrc, rowSrc}, Port{bundleSrc, channelSrc}});
-    auto targetPair = pathNodes.insert(
-        {TileID{colDest, rowDest}, Port{bundleDest, channelDest}});
-
-    auto &sourceIt = std::get<0>(sourcePair);
-    auto &targetIt = std::get<0>(targetPair);
-
-    pathEdges.push_back(PathEdge{const_cast<PathNode *>(&(*sourceIt)),
-                                 const_cast<PathNode *>(&(*targetIt))});
+    PathNode sourceNode = {TileID{colSrc, rowSrc}, Port{bundleSrc, channelSrc}};
+    PathNode targetNode = {TileID{colDest, rowDest},
+                           Port{bundleDest, channelDest}};
+    pathNodes.insert(sourceNode);
+    pathNodes.insert(targetNode);
+    pathEdges.push_back(PathEdge{sourceNode, targetNode});
   };
 
   const std::vector<WireBundle> bundles = {
@@ -290,22 +286,16 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists
   for (auto &[isPkt, src, dsts] : flows) {
-    if (src->sb == srcCoords && src->port == srcPort) {
-      // find the vertex corresponding to the destination
-      auto dstIt = pathNodes.find(PathNode{dstCoords, dstPort});
-      assert(dstIt != pathNodes.end());
-      dsts.emplace_back(const_cast<PathNode *>(&(*dstIt)));
+    if (src.sb == srcCoords && src.port == srcPort) {
+      dsts.emplace_back(PathNode{dstCoords, dstPort});
       return;
     }
   }
 
   // If no existing flow was found with this source, create a new flow.
-  auto srcIt = pathNodes.find(PathNode{srcCoords, srcPort});
-  auto dstIt = pathNodes.find(PathNode{dstCoords, dstPort});
-  assert(srcIt != pathNodes.end() && dstIt != pathNodes.end());
   flows.push_back(
-      FlowNode{isPacketFlow, const_cast<PathNode *>(&(*srcIt)),
-               std::vector<PathNode *>{const_cast<PathNode *>(&(*dstIt))}});
+      FlowNode{isPacketFlow, PathNode{srcCoords, srcPort},
+               std::vector<PathNode>{PathNode{dstCoords, dstPort}}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
@@ -316,22 +306,12 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   TileID coords = {col, row};
 
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-    Port srcPort = connectOp.sourcePort();
-    Port destPort = connectOp.destPort();
-
-    auto srcIt = pathNodes.find(PathNode{coords, srcPort});
-    auto destIt = pathNodes.find(PathNode{coords, destPort});
-
-    if (srcIt == pathNodes.end() || destIt == pathNodes.end()) {
-      return false;
-    }
-
-    PathNode *pathNodeSrcPtr = const_cast<PathNode *>(&(*srcIt));
-    PathNode *pathNodeDstPtr = const_cast<PathNode *>(&(*destIt));
+    PathNode sourceNode = {coords, connectOp.sourcePort()};
+    PathNode destNode = {coords, connectOp.destPort()};
     // remove the edge from the list of edges
     bool found = false;
     for (auto it = pathEdges.begin(); it != pathEdges.end(); ++it) {
-      if ((*it).source == pathNodeSrcPtr && (*it).target == pathNodeDstPtr) {
+      if ((*it).source == sourceNode && (*it).target == destNode) {
         pathEdges.erase(it);
         found = true;
         break;
@@ -347,62 +327,57 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
 
 static constexpr double INF = std::numeric_limits<double>::max();
 
-std::map<PathNode *, PathNode *>
-Pathfinder::dijkstraShortestPaths(PathNode *src) {
+std::map<PathNode, PathNode> Pathfinder::dijkstraShortestPaths(PathNode src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
-  auto distance = std::map<PathNode *, double>();
-  auto preds = std::map<PathNode *, PathNode *>();
-  std::map<PathNode *, uint64_t> indexInHeap;
+  auto distance = std::map<PathNode, double>();
+  auto preds = std::map<PathNode, PathNode>();
+  std::map<PathNode, uint64_t> indexInHeap;
   typedef d_ary_heap_indirect<
-      /*Value=*/PathNode *, /*Arity=*/4,
-      /*IndexInHeapPropertyMap=*/std::map<PathNode *, uint64_t>,
-      /*DistanceMap=*/std::map<PathNode *, double> &,
+      /*Value=*/PathNode, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::map<PathNode, uint64_t>,
+      /*DistanceMap=*/std::map<PathNode, double> &,
       /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
 
   for (auto &pathNode : pathNodes) {
-    PathNode *pathNodePtr = const_cast<PathNode *>(&pathNode);
-    distance.emplace(pathNodePtr, INF);
+    distance.emplace(pathNode, INF);
   }
   distance[src] = 0.0;
 
-  std::map<PathNode *, std::vector<PathEdge *>> channels;
+  std::map<PathNode, std::vector<PathEdge *>> channels;
 
   enum Color { WHITE, GRAY, BLACK };
-  std::map<PathNode *, Color> colors;
+  std::map<PathNode, Color> colors;
   for (auto &pathNode : pathNodes) {
-    PathNode *pathNodePtr = const_cast<PathNode *>(&pathNode);
-    colors[pathNodePtr] = WHITE;
+    colors[pathNode] = WHITE;
     for (auto &e : pathEdges) {
-      if (e.source == pathNodePtr) {
-        channels[pathNodePtr].push_back(&e);
+      if (e.source == pathNode) {
+        channels[pathNode].push_back(&e);
       }
     }
     // sort the channels in descending order
-    std::sort(channels[pathNodePtr].begin(), channels[pathNodePtr].end(),
-              [](const PathEdge *c1, PathEdge *c2) {
-                return *(c2->target) < *(c1->target);
-              });
+    std::sort(channels[pathNode].begin(), channels[pathNode].end(),
+              [](const PathEdge *c1, PathEdge *c2) { return *c1 < *c2; });
   }
 
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
     Q.pop();
-    for (PathEdge *e : channels[src]) {
-      PathNode *dest = e->target;
-      bool relax = distance[src] + demand[e] < distance[dest];
+    for (auto &e : channels[src]) {
+      PathNode dest = e->target;
+      bool relax = distance[src] + demand[*e] < distance[dest];
       if (colors[dest] == WHITE) {
         if (relax) {
-          distance[dest] = distance[src] + demand[e];
+          distance[dest] = distance[src] + demand[*e];
           preds[dest] = src;
           colors[dest] = GRAY;
         }
         Q.push(dest);
       } else if (colors[dest] == GRAY && relax) {
-        distance[dest] = distance[src] + demand[e];
+        distance[dest] = distance[src] + demand[*e];
         preds[dest] = src;
       }
     }
@@ -425,19 +400,19 @@ Pathfinder::findPaths(const int maxIterations) {
 
   // initialize all Channel histories to 0
   for (auto &ch : pathEdges) {
-    overCapacity[&ch] = 0;
-    usedCapacity[&ch] = 0;
+    overCapacity[ch] = 0;
+    usedCapacity[ch] = 0;
   }
 
   // update demand at the beginning of each iteration
-  auto updateDemand = [&](PathEdge *e) {
+  auto updateDemand = [&](PathEdge e) {
     double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[e];
     double congestion = DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[e];
     demand[e] = history * congestion;
   };
 
   // inside each interation, bump demand when exceeds capacity
-  auto bumpDemand = [&](PathEdge *e) {
+  auto bumpDemand = [&](PathEdge e) {
     if (usedCapacity[e] >= MAX_CIRCUIT_STREAM_CAPACITY) {
       // this means the order matters!
       demand[e] *= DEMAND_COEFF;
@@ -461,14 +436,14 @@ Pathfinder::findPaths(const int maxIterations) {
                             << iterationCount << "---\n");
     // update demand on all channels
     for (auto &ch : pathEdges) {
-      updateDemand(&ch);
+      updateDemand(ch);
     }
 
     // "rip up" all routes
     routingSolution.clear();
     for (auto &ch : pathEdges) {
-      usedCapacity[&ch] = 0;
-      packetFlowCount[&ch] = 0;
+      usedCapacity[ch] = 0;
+      packetFlowCount[ch] = 0;
     }
 
     // for each flow, find the shortest path from source to destination
@@ -478,19 +453,19 @@ Pathfinder::findPaths(const int maxIterations) {
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
       // switchbox settings
-      std::set<PathNode *> processed;
-      std::map<PathNode *, PathNode *> preds = dijkstraShortestPaths(src);
+      std::set<PathNode> processed;
+      std::map<PathNode, PathNode> preds = dijkstraShortestPaths(src);
 
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[src->sb].src = src->port;
+      switchSettings[src.sb].src = src.port;
       processed.insert(src);
       for (auto endPoint : dsts) {
-        PathNode *curr = endPoint;
+        auto curr = endPoint;
         // set the output bundle for this destination endpoint
-        switchSettings[endPoint->sb].dsts.insert(endPoint->port);
+        switchSettings[endPoint.sb].dsts.insert(endPoint.port);
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
           // find the incoming edge from the pred to curr
@@ -502,39 +477,39 @@ Pathfinder::findPaths(const int maxIterations) {
             }
           }
           assert(ch != nullptr);
-          if (preds[curr]->sb == curr->sb) {
-            switchSettings[preds[curr]->sb].src = preds[curr]->port;
-            switchSettings[curr->sb].dsts.insert(curr->port);
+          if (preds[curr].sb == curr.sb) {
+            switchSettings[preds[curr].sb].src = preds[curr].port;
+            switchSettings[curr.sb].dsts.insert(curr.port);
           }
 
           if (isPkt) {
-            packetFlowCount[ch]++;
+            packetFlowCount[*ch]++;
             // maximum packet stream per channel
-            if (packetFlowCount[ch] >= MAX_PACKET_STREAM_CAPACITY) {
-              packetFlowCount[ch] = 0;
-              usedCapacity[ch]++;
+            if (packetFlowCount[*ch] >= MAX_PACKET_STREAM_CAPACITY) {
+              packetFlowCount[*ch] = 0;
+              usedCapacity[*ch]++;
             }
           } else {
-            packetFlowCount[ch] = 0;
-            usedCapacity[ch]++;
+            packetFlowCount[*ch] = 0;
+            usedCapacity[*ch]++;
           }
 
           // if at capacity, bump demand to discourage using this Channel
-          bumpDemand(ch);
+          bumpDemand(*ch);
 
           processed.insert(curr);
           curr = preds[curr];
         }
       }
       // add this flow to the proposed solution
-      routingSolution[*src] = switchSettings;
+      routingSolution[src] = switchSettings;
     }
 
     // fix used capacity for packet flows
     for (auto &ch : pathEdges) {
-      if (packetFlowCount[&ch] > 0) {
-        packetFlowCount[&ch] = 0;
-        usedCapacity[&ch]++;
+      if (packetFlowCount[ch] > 0) {
+        packetFlowCount[ch] = 0;
+        usedCapacity[ch]++;
       }
     }
 
@@ -542,17 +517,17 @@ Pathfinder::findPaths(const int maxIterations) {
     totalPathLength = 0;
     for (auto &e : pathEdges) {
       // Calculate total path length across switchboxes
-      if (e.source->sb != e.target->sb) {
-        totalPathLength += usedCapacity[&e];
+      if (e.source.sb != e.target.sb) {
+        totalPathLength += usedCapacity[e];
       }
       // Check that every channel does not exceed max capacity.
-      if (usedCapacity[&e] > MAX_CIRCUIT_STREAM_CAPACITY) {
-        overCapacity[&e]++;
+      if (usedCapacity[e] > MAX_CIRCUIT_STREAM_CAPACITY) {
+        overCapacity[e]++;
         illegalEdges++;
         LLVM_DEBUG(llvm::dbgs()
                    << "\t\t\tToo much capacity on " << e << ", used_capacity = "
-                   << usedCapacity[&e] << ", demand = " << demand[&e]
-                   << ", over_capacity_count = " << overCapacity[&e] << "\n");
+                   << usedCapacity[e] << ", demand = " << demand[e]
+                   << ", over_capacity_count = " << overCapacity[e] << "\n");
       }
     }
 
