@@ -95,7 +95,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
-    Switchbox srcSB = {srcCoords.col, srcCoords.row};
+    SwitchboxNode srcSB =
+        analyzer.pathfinder->getSwitchboxNode({srcCoords.col, srcCoords.row});
     if (PathEndPoint srcPoint = {srcSB, srcPort};
         !analyzer.processedFlows[srcPoint]) {
       SwitchSettings settings = analyzer.flowSolutions[srcPoint];
@@ -355,7 +356,8 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   }
 
   int neighbourSourceChannel = currDestChannel;
-  for (const auto &[tile, setting] : settings) {
+  for (const auto &[sbNode, setting] : settings) {
+    TileID tile = {sbNode.col, sbNode.row};
     if ((tile == neighbourTile) &&
         (setting.src.bundle == neighbourSourceBundle) &&
         (setting.src.channel == neighbourSourceChannel)) {
@@ -411,23 +413,27 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{destTile, destPort}] =
               StringAttr::get(Op.getContext(), "true");
-        Switchbox srcSB = {srcCoords.col, srcCoords.row};
+        SwitchboxNode srcSB = analyzer.pathfinder->getSwitchboxNode(
+            {srcCoords.col, srcCoords.row});
         if (PathEndPoint srcPoint = {srcSB, srcPort};
             !analyzer.processedFlows[srcPoint]) {
           SwitchSettings settings = analyzer.flowSolutions[srcPoint];
           // add connections for all the Switchboxes in SwitchSettings
           for (const auto &[curr, setting] : settings) {
             for (const auto &[bundle, channel] : setting.dsts) {
+              TileID currTile = {curr.col, curr.row};
               // reject false broadcast
-              if (!findPathToDest(settings, curr, bundle, channel, destCoords,
-                                  destPort.bundle, destPort.channel))
+              if (!findPathToDest(settings, currTile, bundle, channel,
+                                  destCoords, destPort.bundle,
+                                  destPort.channel))
                 continue;
               Connect connect = {{setting.src.bundle, setting.src.channel},
                                  {bundle, channel}};
-              if (std::find(switchboxes[curr].begin(), switchboxes[curr].end(),
+              if (std::find(switchboxes[currTile].begin(),
+                            switchboxes[currTile].end(),
                             std::pair{connect, flowID}) ==
-                  switchboxes[curr].end())
-                switchboxes[curr].push_back({connect, flowID});
+                  switchboxes[currTile].end())
+                switchboxes[currTile].push_back({connect, flowID});
             }
           }
         }
@@ -914,161 +920,6 @@ void AIEPathfinderPass::runOnOperation() {
     runOnFlow(d, builder);
   if (clRoutePacket)
     runOnPacketFlow(d, builder);
-
-  // If the routing violates architecture-specific routing constraints, then
-  // attempt to partially reroute.
-  const auto &targetModel = d.getTargetModel();
-  std::vector<SwConnection> problemConnects;
-  d.walk([&](ConnectOp connect) {
-    if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
-      // Constraint: memtile stream switch constraints
-      if (auto tile = sw.getTileOp();
-          tile.isMemTile() &&
-          !targetModel.isLegalTileConnection(
-              tile.colIndex(), tile.rowIndex(), connect.getSourceBundle(),
-              connect.getSourceChannel(), connect.getDestBundle(),
-              connect.getDestChannel())) {
-        problemConnects.push_back(
-            {sw, connect.sourcePort(), connect.destPort()});
-      }
-    }
-  });
-
-  d.walk([&](AMSelOp amsel) {
-    if (auto sw = amsel->getParentOfType<SwitchboxOp>()) {
-      std::vector<MasterSetOp> mstrs;
-      std::vector<PacketRulesOp> slvs;
-      for (auto *user : amsel.getResult().getUsers()) {
-        if (auto s = dyn_cast<PacketRuleOp>(user)) {
-          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
-          slvs.push_back(pktRules);
-        } else if (auto m = dyn_cast<MasterSetOp>(user))
-          mstrs.push_back(m);
-      }
-      for (auto m : mstrs) {
-        for (auto s : slvs) {
-          if (auto tile = sw.getTileOp();
-              tile.isMemTile() &&
-              !targetModel.isLegalTileConnection(
-                  tile.colIndex(), tile.rowIndex(), s.sourcePort().bundle,
-                  s.sourcePort().channel, m.destPort().bundle,
-                  m.destPort().channel))
-            problemConnects.push_back({sw, s.sourcePort(), m.destPort()});
-        }
-      }
-    }
-  });
-
-  for (SwConnection swConnect : problemConnects) {
-    if (!attemptFixupMemTileRouting(d, swConnect))
-      return signalPassFailure();
-  }
-}
-
-bool AIEPathfinderPass::attemptFixupMemTileRouting(
-    DeviceOp &d, SwConnection &problemConnect) {
-  int northChannel;
-  int southChannel;
-  if (problemConnect.sourcePort.bundle == WireBundle::North &&
-      problemConnect.destPort.bundle == WireBundle::South) {
-    northChannel = problemConnect.sourcePort.channel;
-    southChannel = problemConnect.destPort.channel;
-  } else if (problemConnect.sourcePort.bundle == WireBundle::South &&
-             problemConnect.destPort.bundle == WireBundle::North) {
-    northChannel = problemConnect.destPort.channel;
-    southChannel = problemConnect.sourcePort.channel;
-  } else
-    return false; // Problem is not about n-s routing
-
-  SwitchboxOp &swBox = problemConnect.sw;
-
-  // Attempt to reroute northern channel and neighbouring sw
-  if (auto neighbourSw =
-          getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1)) {
-    WireBundle problemBundle = WireBundle::North;
-    WireBundle neighbourBundle = WireBundle::South;
-    int problemChannel = northChannel;
-    int candidateChannel = southChannel;
-    if (checkChannelEmpty(neighbourSw, neighbourBundle, candidateChannel)) {
-      replaceRoutingChannel(swBox, problemBundle, problemChannel,
-                            candidateChannel);
-      replaceRoutingChannel(neighbourSw, neighbourBundle, problemChannel,
-                            candidateChannel);
-      return true;
-    }
-  }
-  // Attempt to reroute southern channel and neighbouring sw
-  if (auto neighbourSw =
-          getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1)) {
-    WireBundle problemBundle = WireBundle::South;
-    WireBundle neighbourBundle = WireBundle::North;
-    int problemChannel = southChannel;
-    int candidateChannel = northChannel;
-    if (checkChannelEmpty(neighbourSw, neighbourBundle, candidateChannel)) {
-      replaceRoutingChannel(swBox, problemBundle, problemChannel,
-                            candidateChannel);
-      replaceRoutingChannel(neighbourSw, neighbourBundle, problemChannel,
-                            candidateChannel);
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool AIEPathfinderPass::checkChannelEmpty(SwitchboxOp swOp, WireBundle bundle,
-                                          int channel) {
-  // Check circuit-switched
-  for (auto connect : swOp.getOps<ConnectOp>()) {
-    if (connect.getSourceBundle() == bundle &&
-        connect.getSourceChannel() == channel)
-      return false;
-    if (connect.getDestBundle() == bundle &&
-        connect.getDestChannel() == channel)
-      return false;
-  }
-
-  // Check packet-switched
-  for (auto pktRules : swOp.getOps<PacketRulesOp>()) {
-    if (pktRules.sourcePort().bundle == bundle &&
-        pktRules.sourcePort().channel == channel)
-      return false;
-  }
-  for (auto masterSet : swOp.getOps<MasterSetOp>()) {
-    if (masterSet.destPort().bundle == bundle &&
-        masterSet.destPort().channel == channel)
-      return false;
-  }
-
-  return true;
-}
-
-void AIEPathfinderPass::replaceRoutingChannel(SwitchboxOp &swOp,
-                                              WireBundle bundle, int oldChannel,
-                                              int newChannel) {
-  // replace any macthed circuit-switched
-  for (auto connect : swOp.getOps<ConnectOp>()) {
-    if (connect.getSourceBundle() == bundle &&
-        connect.getSourceChannel() == oldChannel)
-      connect.setSourceChannel(newChannel);
-    if (connect.getDestBundle() == bundle &&
-        connect.getDestChannel() == oldChannel)
-      connect.setDestChannel(newChannel);
-  }
-
-  // replace any macthed packet-switched
-  std::vector<PacketRulesOp> newSourcePacketRules;
-  std::vector<MasterSetOp> newDestAMSels;
-  for (auto pktRules : swOp.getOps<PacketRulesOp>()) {
-    if (pktRules.sourcePort().bundle == bundle &&
-        pktRules.sourcePort().channel == oldChannel)
-      pktRules.setSourceChannel(newChannel);
-  }
-  for (auto masterSet : swOp.getOps<MasterSetOp>()) {
-    if (masterSet.destPort().bundle == bundle &&
-        masterSet.destPort().channel == oldChannel)
-      masterSet.setDestChannel(newChannel);
-  }
 }
 
 SwitchboxOp AIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {

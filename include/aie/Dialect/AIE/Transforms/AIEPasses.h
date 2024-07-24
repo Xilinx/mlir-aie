@@ -82,11 +82,6 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
                       WireBundle currDestBundle, int currDestChannel,
                       TileID finalTile, WireBundle finalDestBundle,
                       int finalDestChannel);
-  bool attemptFixupMemTileRouting(DeviceOp &d, SwConnection &problemConnect);
-
-  bool checkChannelEmpty(SwitchboxOp swOp, WireBundle bundle, int channel);
-  void replaceRoutingChannel(SwitchboxOp &swOp, WireBundle Bundle,
-                             int oldChannel, int newChannel);
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
 
