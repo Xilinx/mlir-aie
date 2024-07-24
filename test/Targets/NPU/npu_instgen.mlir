@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-instgen | FileCheck %s
 module {
   aie.device(npu1_4col) {
-    func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header
       // CHECK: 06030100
@@ -73,7 +73,6 @@ module {
       // CHECK: 00030401
       // CHECK: 05010200
       aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
-      return
     }
   }
 }
