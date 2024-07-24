@@ -11,7 +11,7 @@
 // RUN: not aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   error: Failed to allocate buffer: "f" with size: 512 bytes.
 // CHECK: note: see current operation: %6 = "aie.buffer"(%0) <{sym_name = "f"}> : (index) -> memref<256xi16>
-// CHECK: error: 'aie.tile' op All requested buffers doesn't fit in the available memory: Bank aware
+// CHECK: error: 'aie.tile' op All requested buffers don't fit in the available memory: Bank aware
 
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK:             ^

@@ -192,7 +192,7 @@ void printMemMap(TileOp tile, SmallVector<BufferOp, 4> allocatedBuffers,
                  SmallVector<BufferOp, 4> preAllocatedBuffers, int numBanks,
                  std::vector<BankLimits> &bankLimits, int stacksize) {
   InFlightDiagnostic error =
-      tile.emitOpError("All requested buffers doesn't fit in the available "
+      tile.emitOpError("All requested buffers don't fit in the available "
                        "memory: Bank aware\n");
   auto &note = error.attachNote()
                << "Current configuration of buffers in bank(s) : ";

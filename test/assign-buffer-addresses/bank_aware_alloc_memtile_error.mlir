@@ -13,7 +13,7 @@
 // CHECK:   %b1 = aie.buffer(%0) { sym_name = "a" } : memref<132000xi32>
 // CHECK:         ^
 // CHECK: note: see current operation: %1 = "aie.buffer"(%0) <{sym_name = "a"}> : (index) -> memref<132000xi32>
-// CHECK: error: 'aie.tile' op All requested buffers doesn't fit in the available memory: Bank aware
+// CHECK: error: 'aie.tile' op All requested buffers don't fit in the available memory: Bank aware
 
 // CHECK:   %0 = aie.tile(3, 1)
 // CHECK:        ^
