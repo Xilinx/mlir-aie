@@ -398,6 +398,8 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
                        (0x1D000 + bd_id * 0x20);
 
     std::vector<uint32_t> words(8, 0);
+
+    // DMA_BDX_0
     words[0] = op.getBufferLength();
 
     // DMA_BDX_1
@@ -416,7 +418,7 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     words[3] |= op.getD0Stride() & 0xfffff;
 
     // DMA_BDX_4
-    words[4] = 0x40000000; // burst length;
+    words[4] = 0x80000000; // burst length;
     words[4] |= (op.getD1Size() & 0x3ff) << 20;
     words[4] |= op.getD1Stride() & 0xfffff;
 
@@ -464,6 +466,11 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
 };
 
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect>();
+  }
+
   void runOnOperation() override {
 
     ShimDMAllocationGetter cachingGetter;
@@ -472,8 +479,7 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
-    target.addLegalOp<memref::GlobalOp>();
-    target.addLegalOp<memref::GetGlobalOp>();
+    target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
 

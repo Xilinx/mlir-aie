@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
+// RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-instgen | FileCheck %s
 module {
   aie.device(npu1_4col) {
     func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
