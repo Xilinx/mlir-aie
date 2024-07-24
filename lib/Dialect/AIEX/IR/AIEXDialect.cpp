@@ -26,7 +26,7 @@ struct AIEXInlinerInterface : public DialectInlinerInterface {
 
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    return llvm::isa<AIE::BDChainOp>(callable) && llvm::isa<DMAStartTask>(call);
+    return llvm::isa<AIE::DMATaskOp>(callable) && llvm::isa<DMAStartTask>(call);
   }
 
   bool isLegalToInline(Operation *op, Region *r, bool,
@@ -403,14 +403,14 @@ std::optional<uint32_t> AIEX::DMAConfigureBDs::getFirstBdId() {
   return bd.getBdId().value();
 }
 
-AIE::BDChainOp AIEX::DMAStartTask::getBDChain() {
+AIE::DMATaskOp AIEX::DMAStartTask::getDMATaskOp() {
   AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
-  AIE::BDChainOp chain = device.lookupSymbol<AIE::BDChainOp>(getSymbol());
+  AIE::DMATaskOp chain = device.lookupSymbol<AIE::DMATaskOp>(getSymbol());
   return chain;
 }
 
 LogicalResult AIEX::DMAStartTask::verify() {
-  AIE::BDChainOp chain = getBDChain();
+  AIE::DMATaskOp chain = getDMATaskOp();
   if (!chain) {
     return emitOpError("symbol does not reference valid BD chain");
   }

@@ -1989,10 +1989,10 @@ WireBundle getConnectingBundle(WireBundle dir) {
 } // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
-// BDChainOp
+// DMATaskOp
 //===----------------------------------------------------------------------===//
 
-ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult DMATaskOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> entryArgs;
   auto &builder = parser.getBuilder();
 
@@ -2036,14 +2036,14 @@ ParseResult BDChainOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void BDChainOp::print(OpAsmPrinter &printer) {
+void DMATaskOp::print(OpAsmPrinter &printer) {
 
-  auto bdChainName =
+  auto taskName =
       (*this)
           ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
           .getValue();
   printer << ' ';
-  printer.printSymbolName(bdChainName);
+  printer.printSymbolName(taskName);
 
   ArrayRef<Type> entryArgTypes = this->getEntryArgTypesAttr().getTypes();
   Region &body = getRegion();
@@ -2061,7 +2061,7 @@ void BDChainOp::print(OpAsmPrinter &printer) {
   printer.printRegion(body, false, true);
 }
 
-LogicalResult BDChainOp::verify() {
+LogicalResult DMATaskOp::verify() {
   Region &body = getRegion();
   if (body.getNumArguments() != getEntryArgTypesAttr().getTypes().size()) {
     return emitOpError(

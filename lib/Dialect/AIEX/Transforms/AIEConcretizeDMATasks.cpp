@@ -1,4 +1,4 @@
-//===- AIEConcretizeBDChains.cpp ---------------------------------*- C++
+//===- AIEConcretizeDMATasks.cpp ---------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -26,14 +26,14 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct AIEConcretizeBDChainsPass
-    : AIEConcretizeBDChainsBase<AIEConcretizeBDChainsPass> {
+struct AIEConcretizeDMATasksPass
+    : AIEConcretizeDMATasksBase<AIEConcretizeDMATasksPass> {
 
   WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTask start_op) {
     OpBuilder builder = OpBuilder(start_op);
 
     // Get referenced abstract BD chain
-    AIE::BDChainOp chain_def = start_op.getBDChain();
+    AIE::DMATaskOp chain_def = start_op.getDMATaskOp();
     assert(chain_def);
     Region &source_region = chain_def.getBody();
 
@@ -111,6 +111,6 @@ struct AIEConcretizeBDChainsPass
 };
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIEConcretizeBDChainsPass() {
-  return std::make_unique<AIEConcretizeBDChainsPass>();
+AIEX::createAIEConcretizeDMATasksPass() {
+  return std::make_unique<AIEConcretizeDMATasksPass>();
 }

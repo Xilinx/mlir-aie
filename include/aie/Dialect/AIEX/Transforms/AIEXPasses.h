@@ -30,7 +30,7 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEConcretizeBDChainsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEConcretizeDMATasksPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEAssignRuntimeBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEBDChainsToNPUPass();
 

@@ -14,7 +14,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
-  AIEConcretizeBDChains.cpp
+  AIEConcretizeDMATasks.cpp
   AIEAssignRuntimeBufferDescriptorIDs.cpp
   AIEBDChainsToNPU.cpp
   ADDITIONAL_HEADER_DIRS

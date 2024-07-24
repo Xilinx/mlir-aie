@@ -923,7 +923,7 @@ def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [DeclareOpInterfaceMethods<CallO
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
-    AIE::BDChainOp getBDChain();
+    AIE::DMATaskOp getDMATaskOp();
   }];
 
   let extraClassDefinition = [{

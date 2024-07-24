@@ -747,7 +747,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
 }
 
 def AIE_DMABDOp: AIE_Op<"dma_bd", [
-    //ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp", "BDChainOp"]>,
+    //ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp", "DMATaskOp"]>,
   ]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
@@ -1968,7 +1968,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
   }];
 }
 
-def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol]> {
+def AIE_DMATaskOp: AIE_Op<"dma_task", [Symbol]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
   let description = [{
     This operation allows you to define buffer descriptor chains with parametrizable inputs. 
