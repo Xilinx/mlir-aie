@@ -81,7 +81,7 @@ def passthroughKernel():
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
                 if enableTrace:
                     configure_simple_tracing_aie2(

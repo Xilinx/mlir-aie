@@ -68,7 +68,7 @@ def my_vector_scalar():
         tensor_ty = T.memref(4096, T.i32())
         scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if enableTrace:
                 trace_utils.configure_simple_tracing_aie2(

@@ -56,7 +56,7 @@ def external_mem_to_core_L2():
             memRef_48_ty = T.memref(48, T.i32())
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(memRef_48_ty, memRef_48_ty, memRef_48_ty)
+            @runtime_sequence(memRef_48_ty, memRef_48_ty, memRef_48_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
                     metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]

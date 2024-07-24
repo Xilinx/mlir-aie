@@ -61,7 +61,7 @@ def my_vector_scalar():
         tensor_ty = T.memref(4096, T.i32())
         scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, 4096])
             npu_dma_memcpy_nd(metadata="in", bd_id=1, mem=A, sizes=[1, 1, 1, 4096])

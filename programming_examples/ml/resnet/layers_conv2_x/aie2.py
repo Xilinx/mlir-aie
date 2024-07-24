@@ -918,7 +918,7 @@ def resnet_conv_x():
 
             weightsInL3_ty_complete = MemRefType.get((totalWeights_complete,), int8_ty)
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
             )
             def sequence(inputFromL3, weightsFromL3, outputToL3):

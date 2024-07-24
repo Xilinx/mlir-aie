@@ -52,7 +52,7 @@ def external_mem_to_core():
 
             memRef_48_ty = T.memref(48, T.i32())
 
-            @FuncOp.from_py_func(memRef_48_ty, memRef_48_ty, memRef_48_ty)
+            @runtime_sequence(memRef_48_ty, memRef_48_ty, memRef_48_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
                     metadata="out", bd_id=0, mem=outTensor, sizes=[1, 1, 1, 48]
