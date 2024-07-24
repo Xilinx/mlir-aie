@@ -57,9 +57,7 @@ def row_wise_bias_add(M, N, m, n):
                     yield_([])
                 yield_([])
 
-        @runtime_sequence(
-            complete_in_memref, complete_bias_memref, complete_out_memref
-        )
+        @runtime_sequence(complete_in_memref, complete_bias_memref, complete_out_memref)
         def sequence(inp, bias, out):
             npu_dma_memcpy_nd(
                 metadata=in_fifo.sym_name.value,
