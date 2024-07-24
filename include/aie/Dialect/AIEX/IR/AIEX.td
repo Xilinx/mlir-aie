@@ -20,6 +20,7 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
   let name = "aiex";
@@ -463,9 +464,29 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+  let summary = "Program the configuration co-processor of the AI Engine array";
+  let description = [{
+    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+    These instructions will execute on the configuration co-processor of the AI Engine array.
+
+    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+  }];
+  let arguments = (ins
+    Variadic<AnyType>:$args
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
-    MyOffsetSizeAndStrideOpInterface
+    MyOffsetSizeAndStrideOpInterface,
+    HasParent<"RuntimeSequenceOp">
   ]> {
   let summary = "half DMA operator";
 
@@ -592,7 +613,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let hasVerifier = 1;
 }
 
-def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
+def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let description = [{
     The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
@@ -626,7 +647,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
 }
 
 // Write RTP
-def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
+def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "rtp write operator";
   let arguments = (
     ins StrAttr:$buffer_sym_name,
@@ -644,7 +665,7 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
 }
 
 // Push BD to Queue
-def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
+def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "bd queue push operator";
   let arguments = (
     ins I32Attr:$column,
@@ -666,7 +687,7 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
+def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "write32 operator";
   let arguments = (
     ins UI32Attr:$address,
@@ -700,7 +721,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 }
 
 // OP_SYNC
-def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
+def AIE_NpuSyncOp: AIEX_Op<"npu.sync", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "sync operator";
   let arguments = (
     ins I32Attr:$column,
@@ -725,7 +746,7 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
@@ -742,7 +763,7 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
 }
 
 // NPU Bd Write operation
-def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
+def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,
