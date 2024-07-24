@@ -21,9 +21,11 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -1784,6 +1786,73 @@ struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
   }
 };
 
+struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+
+    if (!srcType)
+      return failure();
+
+    Type scalarType = srcType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+      return failure();
+
+    StringRef funcName = "_Z10getExpBf16Dv16_u6__bf16";
+    auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+
+    SymbolTable st = SymbolTable(moduleOp);
+    func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
+
+    func::FuncOp fn_op;
+    VectorType vec_in = mlir::VectorType::get({16}, rewriter.getBF16Type());
+    VectorType vec_out = mlir::VectorType::get({8}, rewriter.getI64Type());
+    //if the function is already declared, use the existing function, don't declare multiple times
+    if (fn_op_lookup != NULL){
+        fn_op = fn_op_lookup;
+    }
+    else{
+      StringAttr t1 = rewriter.getStringAttr("sym_visibility");
+      StringAttr t2 = rewriter.getStringAttr("private");
+      NamedAttribute funcAccess = NamedAttribute(t1,t2);
+      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{vec_in}, TypeRange{vec_out});
+      fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, fn_type, funcAccess);
+    }
+
+    rewriter.setInsertionPoint(expOp);
+
+    auto v16bf16Ty = vec_in;
+    auto opaquedOperand =
+        rewriter
+            .create<UnrealizedConversionCastOp>(expOp.getLoc(), v16bf16Ty,
+                                                adaptor.getOperand())
+            .getResult(0);
+    SmallVector<Value> expOperands = {opaquedOperand};
+
+    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
+    // Type v16accf32OpaqueTy =
+    //     emitc::OpaqueType::get(rewriter.getContext(), "v16accfloat");
+    // auto callOp = rewriter.create<emitc::CallOpaqueOp>(
+    //     expOp.getLoc(), TypeRange{v16accf32OpaqueTy}, "getExpBf16", nullptr,
+    //     nullptr, expOperands);
+    auto callOp = rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
+    auto resCastOp = rewriter.create<vector::BitCastOp>(
+        expOp.getLoc(), accTypeNative, callOp.getResults());
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        expOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        expOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
+
+    return success();
+  }
+};
 // Lower ExpOp to function call
 struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -2920,14 +2989,18 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
         LowerVectorTransferReadToAIEUPD
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
+        ComputeExpOpByLUTPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
         LowerVectorSubIOpToAIEVecSubElemOp
       >(patterns.getContext());
+  } else if (backend == TargetBackend::LLVMIR){
+      patterns.add<
+      ComputeExpOpByLUTPattern_llvm
+      >(patterns.getContext());
   }
   patterns.add<
-      ComputeExpOpByLUTPattern,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
@@ -3032,11 +3105,12 @@ static bool isInSigmoidOperationChain(math::ExpOp expOp) {
 static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                                                TargetBackend backend) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect, arith::ArithDialect,
-                         emitc::EmitCDialect>();
+                         emitc::EmitCDialect, func::FuncDialect>();
   if (backend == TargetBackend::CPP) {
     target.addIllegalOp<vector::TransferReadOp>();
   }
   target.addIllegalOp<vector::ExtractStridedSliceOp>();
+  target.addLegalOp<vector::BitCastOp>();
 
   target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
     auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());

@@ -53,6 +53,8 @@ config.substitutions.append(
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
+# for peano clang
+llvm_config.with_environment("XILINX_VITIS_AIETOOLS", config.vitis_aietools_dir)
 
 run_on_npu = "echo"
 xrt_flags = ""
