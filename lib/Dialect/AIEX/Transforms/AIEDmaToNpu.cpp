@@ -70,10 +70,10 @@ private:
 };
 } // namespace
 
-struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
+struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  RtpToWrite32Pattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
@@ -118,12 +118,12 @@ struct RtpToNpuPattern : OpConversionPattern<NpuWriteRTPOp> {
   }
 };
 
-struct PushToNpuPattern : OpConversionPattern<NpuPushQueueOp> {
+struct PushQueuetoWrite32Pattern : OpConversionPattern<NpuPushQueueOp> {
 
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  PushToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+  PushQueuetoWrite32Pattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
@@ -343,7 +343,7 @@ public:
 /// Convert NpuDmaWaitOp into NpuSyncOp by retrieving the necessary
 /// information from the ShimDMAAllocationOp referenced through the
 /// symbol argument of this op.
-struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
+struct DmaWaitToSyncPattern : OpConversionPattern<NpuDmaWaitOp> {
 
 private:
   ShimDMAllocationGetter &allocGetter;
@@ -351,8 +351,8 @@ private:
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToNpuPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
-                      PatternBenefit benefit = 1)
+  DmaWaitToSyncPattern(MLIRContext *context, ShimDMAllocationGetter &getter,
+                       PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), allocGetter(getter) {}
 
   LogicalResult
@@ -374,6 +374,91 @@ public:
         op, shimDmaAllocOp->getCol(), /* row */ 0,
         static_cast<uint32_t>(shimDmaAllocOp->getChannelDir()),
         shimDmaAllocOp->getChannelIndex(), 1, 1);
+
+    return success();
+  }
+};
+
+struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
+
+  LogicalResult
+  matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
+    const AIE::AIETargetModel &tm = dev.getTargetModel();
+
+    auto bd_id = op.getBdId();
+    uint32_t bd_addr = (op.getColumn() << tm.getColumnShift()) |
+                       (op.getRow() << tm.getRowShift()) |
+                       (0x1D000 + bd_id * 0x20);
+
+    std::vector<uint32_t> words(8, 0);
+    words[0] = op.getBufferLength();
+
+    // DMA_BDX_1
+    words[1] = op.getBufferOffset();
+
+    // DMA_BDX_2
+    // En Packet , OoO BD ID , Packet ID , Packet Type
+    words[2] |= (op.getEnablePacket() & 0x1) << 30;
+    words[2] |= (op.getOutOfOrderId() & 0x3f) << 24;
+    words[2] |= (op.getPacketId() & 0x1f) << 19;
+    words[2] |= (op.getPacketType() & 0x7) << 16;
+
+    // DMA_BDX_3
+    // TODO: Secure Access
+    words[3] |= (op.getD0Size() & 0x3ff) << 20;
+    words[3] |= op.getD0Stride() & 0xfffff;
+
+    // DMA_BDX_4
+    words[4] = 0x40000000; // burst length;
+    words[4] |= (op.getD1Size() & 0x3ff) << 20;
+    words[4] |= op.getD1Stride() & 0xfffff;
+
+    // DMA_BDX_5
+    // TODO: SIMID, AxCache, AXQoS
+    words[5] = op.getD2Stride() & 0xfffff;
+
+    // DMA_BDX_6
+    words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
+    words[6] |= (op.getIterationSize() & 0x3f) << 20;
+    words[6] |= op.getIterationStride() & 0xfffff;
+
+    // DMA_BDX_7
+    // TODO: TLAST Suppress
+    words[7] |= (op.getNextBd() & 0xf) << 27;
+    words[7] |= (op.getUseNextBd() & 0x1) << 26;
+    words[7] |= (op.getValidBd() & 0x1) << 25;
+    words[7] |= (op.getLockRelVal() & 0xef) << 18;
+    words[7] |= (op.getLockRelId() & 0xf) << 13;
+    words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
+    words[7] |= (op.getLockAcqVal() & 0xef) << 5;
+    words[7] |= op.getLockAcqId() & 0xf;
+
+    MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
+    TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
+    memref::GlobalOp global = nullptr;
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      std::string name = "blockwrite_data_";
+      rewriter.setInsertionPoint(op->getParentOfType<func::FuncOp>());
+      int id = 0;
+      while (dev.lookupSymbol(name + std::to_string(id)))
+        id++;
+      name += std::to_string(id);
+      global = rewriter.create<memref::GlobalOp>(
+          op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
+          DenseElementsAttr::get<uint32_t>(tensorType, words), true, nullptr);
+    }
+    auto memref = rewriter.create<memref::GetGlobalOp>(op->getLoc(), memrefType,
+                                                       global.getName());
+    (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
+        op, memref.getResult(), rewriter.getUI32IntegerAttr(bd_addr));
     return success();
   }
 };
@@ -387,18 +472,23 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
+    target.addLegalOp<memref::GlobalOp>();
+    target.addLegalOp<memref::GetGlobalOp>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
-    target.addIllegalOp<NpuWriteRTPOp>();
+
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
     target.addIllegalOp<NpuPushQueueOp>();
+    target.addIllegalOp<NpuWriteRTPOp>();
+    target.addIllegalOp<NpuWriteBdOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<DmaWaitToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<PushToNpuPattern>(&getContext());
-    patterns.insert<RtpToNpuPattern>(&getContext());
+    patterns.insert<DmaWaitToSyncPattern>(&getContext(), cachingGetter);
+    patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
+    patterns.insert<RtpToWrite32Pattern>(&getContext());
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
