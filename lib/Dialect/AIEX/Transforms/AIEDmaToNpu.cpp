@@ -12,7 +12,6 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
@@ -227,7 +226,11 @@ public:
     column = IntegerAttr::get(i32ty, col);
 
     // arg_idx
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    AIEX::RuntimeSequenceOp seq_op =
+        op->getParentOfType<AIEX::RuntimeSequenceOp>();
+    assert(seq_op && "NpuDmaMemcpyNdOp must be inside a RuntimeSequenceOp; "
+                     "verify() should have ensured this.");
+    Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
