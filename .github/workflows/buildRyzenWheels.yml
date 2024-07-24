@@ -70,11 +70,15 @@ jobs:
           export XRT_ROOT=/opt/xilinx/xrt
           export AIE_PROJECT_COMMIT=$(git rev-parse --short HEAD)
           export DATETIME=$(date +"%Y%m%d%H")
+          export REQUIRED_LLVM_WHEEL_VERSION=$VERSION \
           
           pushd utils/mlir_aie_wheels
           
           pip install wheel auditwheel patchelf importlib_metadata
-          CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+          CIBW_ARCHS=x86_64 \
+            pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/",
+    
           
           popd
           

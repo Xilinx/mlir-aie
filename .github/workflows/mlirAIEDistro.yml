@@ -58,10 +58,38 @@ jobs:
           echo "AIE_PROJECT_COMMIT=${AIE_PROJECT_COMMIT}" | tee -a $GITHUB_OUTPUT
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
+  
+  get_required_llvm_wheel_version:
 
-  build_distro_wheels:
+    name: Idenitfy which version of LLVM is required to build MLIR-AIE at the given commit
 
     needs: get_aie_project_commit
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      REQUIRED_LLVM_WHEEL_VERSION: ${{ steps.get_required_llvm_wheel_version.outputs.LLVM_VERSION }}
+    
+    steps:
+      - name: Run `./utils/clone-llvm.sh --get-wheel-version`
+        id: get_required_llvm_wheel_version:
+        shell: bash
+        run: |
+          git clone --recursive https://github.com/${{ github.repository }}.git
+          pushd mlir-aie
+          git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
+          LLVM_VERSION=$(./utils/clone-llvm.sh --get-wheel-version)
+          if [[ ! $LLVM_VERSION ]]; then
+            echo "::error::Unable to determine required LLVM version at commit " ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
+          fi
+          echo "LLVM_VERSION=${LLVM_VERSION}" >> $GITHUB_OUTPUT
+          popd
+          
+  build_distro_wheels:
+
+    needs: 
+      - get_aie_project_commit
+      - get_required_llvm_wheel_version
 
     name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
@@ -209,6 +237,7 @@ jobs:
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        REQUIRED_LLVM_WHEEL_VERSION=${{ needs.get_required_llvm_wheel_version.outputs.REQUIRED_LLVM_WHEEL_VERSION }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
@@ -233,6 +262,7 @@ jobs:
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        REQUIRED_LLVM_WHEEL_VERSION=${{ needs.get_required_llvm_wheel_version.outputs.REQUIRED_LLVM_WHEEL_VERSION }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         pip wheel . -v -w wheelhouse

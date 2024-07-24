@@ -230,6 +230,18 @@ class CMakeBuild(build_ext):
             check=True,
         )
 
+        # Copy the built binaries back into the source directory.
+        # This is needed so that the setup(data_files = [(scripts, ...)]) argument below can
+        # pick them up.
+
+        print(f"Copying bin to {extdir}.")
+
+        subprocess.run(
+            ["cp", "-r", "bin", extdir],
+            cwd=build_temp,
+            check=True
+        )
+
 
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
 release_version = "0.0.1"
@@ -245,6 +257,9 @@ MLIR_AIE_SOURCE_DIR = Path(
         Path(__file__).parent / "mlir-aie",
     )
 ).absolute()
+
+REQUIRED_LLVM_WHEEL_VERSION = os.environ["REQUIRED_LLVM_WHEEL_VERSION"]
+mlir_prereq = "mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti"
 
 setup(
     version=version,
@@ -270,4 +285,34 @@ setup(
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.8",
+    install_requires=[
+        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}" # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/",
+    ],
+    extras_require={
+        "peano": [
+            "llvm-aie @ https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly"
+            # TODO: Might want to fix a version for llvm-aie here
+        ]
+    },
+    data_files=[
+        # These files will end in the <packagename>.data/scripts directory.
+        # The wheel package format prescribes that files in <packagename>.data/scripts be added to the PATH on install.
+        # So whatever is added here will end up in the virtualenv's bin directory upon install.
+        # The source to be copied from is relative to the source directory.
+        ('scripts', [
+            'test.txt'
+        ])
+    ]
+    #console_scripts=[
+    #    "bin/aie-lsp-server",
+    #    "bin/aie-opt",
+    #    "bin/aie-reset",
+    #    "bin/aie-translate",
+    #    "bin/aie-visualize",
+    #    "bin/aiecc.py",
+    #    "bin/bootgen",
+    #    "bin/chess-clang",
+    #    "bin/xchesscc_wrapper"
+    #],
+
 )
