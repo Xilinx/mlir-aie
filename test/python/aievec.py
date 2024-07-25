@@ -309,7 +309,7 @@ def test_i8xi8_add_elem(module):
     # CHECK:     %0 = aievec.upd %arg0[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<1024xi8>, vector<64xi8>
     # CHECK:     %1 = aievec.upd %arg1[%arg3] {index = 0 : i8, offset = 0 : i32} : memref<1024xi8>, vector<64xi8>
     # CHECK:     %2 = aievec.add_elem %0, %1 : vector<64xi8>
-    # CHECK:     vector.transfer_write %2, %arg2[%arg3] {in_bounds = [true]} : vector<64xi8>, memref<1024xi8>
+    # CHECK:     vector.transfer_write %2, %arg2[%arg3] : vector<64xi8>, memref<1024xi8>
     # CHECK:   }
     # CHECK:   return
     # CHECK: }

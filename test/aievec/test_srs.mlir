@@ -23,7 +23,7 @@ func.func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) 
       //CHECK-NEXT: %6 = aievec.srs %5, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
       //CHECK-NEXT: %7 = aievec.add %6, %6 : vector<8xi32>, vector<8xi32>, vector<8xi32>
       %co1 = arith.addi %co, %co : i32
-      //CHECK-NEXT: vector.transfer_write %7, %arg2[%arg3] {in_bounds = [true]} : vector<8xi32>, memref<126xi32>
+      //CHECK-NEXT: vector.transfer_write %7, %arg2[%arg3] : vector<8xi32>, memref<126xi32>
       affine.store %co1, %C[%arg3] : memref<126xi32>
     }
     return
