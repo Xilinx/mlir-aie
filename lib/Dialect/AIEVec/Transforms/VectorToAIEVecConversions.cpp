@@ -1812,8 +1812,8 @@ struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
     func::FuncOp fn_op_lookup = st.lookup<func::FuncOp>(funcName);
 
     func::FuncOp fn_op;
-    VectorType vec_in = mlir::VectorType::get({16}, rewriter.getBF16Type());
-    VectorType vec_out = mlir::VectorType::get({8}, rewriter.getI64Type());
+    VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
+    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
     //if the function is already declared, use the existing function, don't declare multiple times
     if (fn_op_lookup != NULL){
         fn_op = fn_op_lookup;
@@ -1822,26 +1822,19 @@ struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
       StringAttr t1 = rewriter.getStringAttr("sym_visibility");
       StringAttr t2 = rewriter.getStringAttr("private");
       NamedAttribute funcAccess = NamedAttribute(t1,t2);
-      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{vec_in}, TypeRange{vec_out});
+      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{accTypeNative});
       fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, fn_type, funcAccess);
     }
 
     rewriter.setInsertionPoint(expOp);
 
-    auto v16bf16Ty = vec_in;
-    auto opaquedOperand =
+    auto v16bf16Casted =
         rewriter
             .create<UnrealizedConversionCastOp>(expOp.getLoc(), v16bf16Ty,
                                                 adaptor.getOperand())
             .getResult(0);
-    SmallVector<Value> expOperands = {opaquedOperand};
+    SmallVector<Value> expOperands = {v16bf16Casted};
 
-    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
-    // Type v16accf32OpaqueTy =
-    //     emitc::OpaqueType::get(rewriter.getContext(), "v16accfloat");
-    // auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-    //     expOp.getLoc(), TypeRange{v16accf32OpaqueTy}, "getExpBf16", nullptr,
-    //     nullptr, expOperands);
     auto callOp = rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
     auto resCastOp = rewriter.create<vector::BitCastOp>(
         expOp.getLoc(), accTypeNative, callOp.getResults());
