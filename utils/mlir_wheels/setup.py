@@ -12,7 +12,7 @@ from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
-    return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
+    return os.environ.get(build, str(default)).lower() in {"1", "true", "on", "yes"}
 
 
 class CMakeExtension(Extension):
