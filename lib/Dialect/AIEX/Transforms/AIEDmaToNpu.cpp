@@ -451,7 +451,7 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     {
       OpBuilder::InsertionGuard guard(rewriter);
       std::string name = "blockwrite_data_";
-      rewriter.setInsertionPoint(op->getParentOfType<func::FuncOp>());
+      rewriter.setInsertionPoint(op->getParentOfType<AIEX::RuntimeSequenceOp>());
       int id = 0;
       while (dev.lookupSymbol(name + std::to_string(id)))
         id++;
