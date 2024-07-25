@@ -1538,7 +1538,9 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     ins FlatSymbolRefAttr:$sym_name,
         DMAChannelDir:$channel_dir,
         AIEI64Attr:$channel_index,
-        AIEI64Attr:$col
+        AIEI64Attr:$col,
+        // If this is set we are using the PLIO in this ShimTile
+        DefaultValuedAttr<BoolAttr, "false">:$plio
   );
 
   let results = (outs);
@@ -1634,7 +1636,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+        DefaultValuedAttr<BoolAttr, "false">:$plio
   );
 
   let assemblyFormat = [{

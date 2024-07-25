@@ -683,6 +683,22 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   }];
 }
 
+// BLOCKWRITE
+def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
+  let summary = "blockwrite operator";
+  let arguments = (
+    ins AnyMemRef:$data,
+        UI32Attr:$address
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $data `)` attr-dict `:` type($data)
+  }];
+  let description = [{
+    blockwrite operator
+  }];
+}
+
 // OP_SYNC
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";

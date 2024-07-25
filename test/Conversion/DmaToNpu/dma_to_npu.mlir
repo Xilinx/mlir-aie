@@ -12,11 +12,10 @@
 
 // TODO - more
 // CHECK-LABEL: dma_memcpy_nd_0
-// CHECK: aiex.npu.writebd
-// CHECK-SAME: valid_bd = 1 : i32
+// CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK: aiex.npu.writebd
+// CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 1 : i32
 module  {
@@ -36,11 +35,11 @@ module  {
 // -----
 
 // CHECK-LABEL: dma_wait_s2mm
-// CHECK: aiex.npu.writebd
-// CHECK-SAME: valid_bd = 1 : i32
+// CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
+// CHECK-SAME: value = 2147483649
 // CHECK: aiex.npu.sync 
 // CHECK-SAME: channel = 0 : i32
 // CHECK-SAME: column = 0 : i32
@@ -52,7 +51,7 @@ module  {
   aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     func.func @dma_wait_s2mm(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
       return
     }
@@ -63,11 +62,11 @@ module  {
 // -----
 
 // CHECK-LABEL: dma_wait_mm2s
-// CHECK: aiex.npu.writebd
-// CHECK-SAME: valid_bd = 1 : i32
+// CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
+// CHECK-SAME: value = 2147483649
 // CHECK: aiex.npu.sync 
 // CHECK-SAME: channel = 1 : i32
 // CHECK-SAME: column = 1 : i32
@@ -79,7 +78,7 @@ module  {
   aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
     func.func @dma_wait_mm2s(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
       return
     }

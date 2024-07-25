@@ -3,8 +3,9 @@
 # run this script from one of the subdirectories to perform a sweep,
 # e.g. from within whole_array, run ../sweep.sh.
 
-csv_out=sweep_2.csv
-log_out=sweep_2.log
+
+csv_out=my_sweep.csv
+log_out=my_sweep.log
 runargs="--iters 20 --warmup 10"
 iterations=1
 
@@ -21,8 +22,17 @@ N_step=256
 N_hi=4096
 Ns=$(seq $N_lo $N_step $N_hi)
 
-here=$(realpath $(dirname $BASH_SOURCE[0]))
-cd $here
+export m=64
+export k=64
+export n=64
+export dtype_in=i16
+export dtype_out=i16
+export n_aie_cols=4
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
+
+# Print configuration used to run for reproducibility
+env >>$log_out
+cat Makefile >>$log_out
 
 printf "M,K,N" >>$csv_out
 for i in $(seq 1 $iterations); do
@@ -33,12 +43,15 @@ printf "\n" >>$csv_out
 for M in $Ms; do
     for K in $Ks; do
         for N in $Ns; do
+            export M=$M
+            export K=$K
+            export N=$N
             echo ${M}x${K}x${N} 1>&2
-            rm -r /lib/firmware/amdnpu/1502/*_unsigned.xclbin  # Signing step may hang otherwise
-            M=${M} K=${K} N=${N} make all 1>>$log_out 2>&1
+            make clean 1>>$log_out 2>&1
+            make all 1>>$log_out 2>&1
             printf "${M},${K},${N}" >>$csv_out
             for i in $(seq 1 $iterations); do
-                M=${M} K=${K} N=${N} runargs=${runargs} make run >.tmp_run.log
+                make run >.tmp_run.log
                 cat .tmp_run.log $run_output >>$log_out
                 t=$(cat .tmp_run.log | sed -rn 's/^Avg NPU matmul time: ([0-9.]+)us.$/\1/p')
                 printf ",${t}" >>$csv_out

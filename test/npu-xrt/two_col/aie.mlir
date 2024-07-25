@@ -140,9 +140,9 @@ module {
       aiex.npu.rtp_write(0, 3, 1, 0) { buffer_sym_name = "rtp1" }
       aiex.npu.rtp_write(1, 4, 1, 0) { buffer_sym_name = "rtp2" }
       aiex.npu.rtp_write(1, 5, 1, 0) { buffer_sym_name = "rtp3" }
-      aiex.npu.dma_memcpy_nd (0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64 } : memref<2048xi32>
+      aiex.npu.dma_memcpy_nd (0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64, issue_token = true } : memref<2048xi32>
       aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
-      aiex.npu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
+      aiex.npu.dma_wait {symbol = @objFifo_out0}
       return
     }
   }
