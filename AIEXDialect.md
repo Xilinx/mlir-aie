@@ -884,6 +884,25 @@ A route operation that routes one herd to another.
 | `destHerds` | index
 
 
+### `aiex.runtime_sequence` (::xilinx::AIEX::RuntimeSequenceOp)
+
+_Program the configuration co-processor of the AI Engine array_
+
+Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+These instructions will execute on the configuration co-processor of the AI Engine array.
+
+Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+
+Traits: `HasParent<AIE::DeviceOp>`, `NoTerminator`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `args` | variadic of any type
+
+
 ### `aiex.select` (::xilinx::AIEX::SelectOp)
 
 _A select operation_
