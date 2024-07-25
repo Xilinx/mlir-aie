@@ -96,7 +96,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
     TileID srcSB = {srcCoords.col, srcCoords.row};
-    if (PathNode srcPoint = {srcSB, srcPort};
+    if (PathEndPoint srcPoint = {srcSB, srcPort};
         !analyzer.processedFlows[srcPoint]) {
       SwitchSettings settings = analyzer.flowSolutions[srcPoint];
       // add connections for all the Switchboxes in SwitchSettings
@@ -417,7 +417,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           keepPktHeaderAttr[{destTile, destPort}] =
               StringAttr::get(Op.getContext(), "true");
         TileID srcSB = {srcCoords.col, srcCoords.row};
-        if (PathNode srcPoint = {srcSB, srcPort};
+        if (PathEndPoint srcPoint = {srcSB, srcPort};
             !analyzer.processedFlows[srcPoint]) {
           SwitchSettings settings = analyzer.flowSolutions[srcPoint];
           // add connections for all the Switchboxes in SwitchSettings

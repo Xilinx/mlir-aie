@@ -32,11 +32,11 @@ enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
 using SwitchboxConnect = struct SwitchboxConnect {
   SwitchboxConnect() = default;
-  SwitchboxConnect(TileID tile) : srcTile(tile), dstTile(tile) {}
-  SwitchboxConnect(TileID srcTile, TileID dstTile)
-      : srcTile(srcTile), dstTile(dstTile) {}
+  SwitchboxConnect(TileID coords) : srcCoords(coords), dstCoords(coords) {}
+  SwitchboxConnect(TileID srcCoords, TileID dstCoords)
+      : srcCoords(srcCoords), dstCoords(dstCoords) {}
 
-  TileID srcTile, dstTile;
+  TileID srcCoords, dstCoords;
   std::vector<Port> srcPorts;
   std::vector<Port> dstPorts;
   // connectivity between ports
@@ -83,40 +83,40 @@ using SwitchboxConnect = struct SwitchboxConnect {
   }
 };
 
-using PathNode = struct PathNode {
-  PathNode() = default;
-  PathNode(TileID sb, Port port) : sb(sb), port(port) {}
+using PathEndPoint = struct PathEndPoint {
+  PathEndPoint() = default;
+  PathEndPoint(TileID tile, Port port) : tile(tile), port(port) {}
 
-  TileID sb;
+  TileID coords;
   Port port;
 
-  friend std::ostream &operator<<(std::ostream &os, const PathNode &s) {
-    os << "PathNode(" << s.sb << ": " << s.port << ")";
+  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
+    os << "PathEndPoint(" << s.coords << ": " << s.port << ")";
     return os;
   }
 
-  GENERATE_TO_STRING(PathNode)
+  GENERATE_TO_STRING(PathEndPoint)
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const PathNode &s) {
+                                       const PathEndPoint &s) {
     os << to_string(s);
     return os;
   }
 
-  // Needed for the std::maps that store PathNode.
-  bool operator<(const PathNode &rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
+  // Needed for the std::maps that store PathEndPoint.
+  bool operator<(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) < std::tie(rhs.coords, rhs.port);
   }
 
-  bool operator==(const PathNode &rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
+  bool operator==(const PathEndPoint &rhs) const {
+    return std::tie(coords, port) == std::tie(rhs.coords, rhs.port);
   }
 };
 
-using FlowNode = struct FlowNode {
+using Flow = struct Flow {
   bool isPacketFlow;
-  PathNode src;
-  std::vector<PathNode> dsts;
+  PathEndPoint src;
+  std::vector<PathEndPoint> dsts;
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
@@ -171,7 +171,7 @@ public:
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow) = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
-  virtual std::optional<std::map<PathNode, SwitchSettings>>
+  virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
 };
 
@@ -183,16 +183,24 @@ public:
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow) override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
-  std::optional<std::map<PathNode, SwitchSettings>>
+  std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
-
-  std::map<PathNode, PathNode> dijkstraShortestPaths(PathNode src);
+  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
 
 private:
   // Flows to be routed
-  std::vector<FlowNode> flows;
-  std::map<std::pair<TileID, TileID>, SwitchboxConnect> grid;
-  std::map<PathNode, std::vector<PathNode>> channels;
+  std::vector<Flow> flows;
+  // Represent all routable paths as a graph
+  // The key is a pair of TileIDs representing the connectivity from srcTile to
+  // dstTile If srcTile == dstTile, it represents connections inside the same
+  // switchbox otherwise, it represents connections (South, North, West, East)
+  // accross two switchboxes
+  std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+  // Channels available in the network
+  // The key is a PathEndPoint representing the start of a path
+  // The value is a vector of PathEndPoints representing the possible ends of
+  // the path
+  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
@@ -203,8 +211,8 @@ class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
   std::shared_ptr<Router> pathfinder;
-  std::map<PathNode, SwitchSettings> flowSolutions;
-  std::map<PathNode, bool> processedFlows;
+  std::map<PathEndPoint, SwitchSettings> flowSolutions;
+  std::map<PathEndPoint, bool> processedFlows;
 
   llvm::DenseMap<TileID, TileOp> coordToTile;
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
@@ -236,8 +244,8 @@ inline raw_ostream &operator<<(raw_ostream &os,
                                const xilinx::AIE::SwitchSettings &ss) {
   std::stringstream s;
   s << "\tSwitchSettings: ";
-  for (const auto &[sb, setting] : ss) {
-    s << sb << ": " << setting << " | ";
+  for (const auto &[coords, setting] : ss) {
+    s << coords << ": " << setting << " | ";
   }
   s << "\n";
   os << s.str();
