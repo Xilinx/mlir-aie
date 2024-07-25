@@ -232,7 +232,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         }
       }
     }
-    grid[std::make_pair(coords, coords)] = sb;
+    graph[std::make_pair(coords, coords)] = sb;
   };
 
   auto interconnect = [&](int col, int row, int targetCol, int targetRow,
@@ -246,7 +246,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       sb.connectivity[i][i] = Connectivity::AVAILABLE;
     }
-    grid[std::make_pair(TileID{col, row}, TileID{targetCol, targetRow})] = sb;
+    graph[std::make_pair(TileID{col, row}, TileID{targetCol, targetRow})] = sb;
   };
 
   for (int row = 0; row <= maxRow; row++) {
@@ -304,7 +304,7 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int col = switchboxOp.colIndex();
   int row = switchboxOp.rowIndex();
   TileID coords = {col, row};
-  auto &sb = grid[std::make_pair(coords, coords)];
+  auto &sb = graph[std::make_pair(coords, coords)];
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
     bool found = false;
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -352,7 +352,7 @@ Pathfinder::dijkstraShortestPaths(PathEndPoint src) {
 
     // get all channels src connects to
     if (channels.count(src) == 0) {
-      auto &sb = grid[std::make_pair(src.coords, src.coords)];
+      auto &sb = graph[std::make_pair(src.coords, src.coords)];
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           if (sb.srcPorts[i] == src.port &&
@@ -374,9 +374,9 @@ Pathfinder::dijkstraShortestPaths(PathEndPoint src) {
            {WireBundle::West, src.port.channel}}};
 
       for (const auto &[neighborCoords, neighborPort] : neighbors) {
-        if (grid.count(std::make_pair(src.coords, neighborCoords)) > 0 &&
+        if (graph.count(std::make_pair(src.coords, neighborCoords)) > 0 &&
             src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
-          auto &sb = grid[std::make_pair(src.coords, neighborCoords)];
+          auto &sb = graph[std::make_pair(src.coords, neighborCoords)];
           if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
               sb.dstPorts.end())
             channels[src].push_back({neighborCoords, neighborPort});
@@ -388,7 +388,7 @@ Pathfinder::dijkstraShortestPaths(PathEndPoint src) {
     for (auto &dest : channels[src]) {
       if (distance.count(dest) == 0)
         distance[dest] = INF;
-      auto &sb = grid[std::make_pair(src.coords, dest.coords)];
+      auto &sb = graph[std::make_pair(src.coords, dest.coords)];
       size_t i = std::distance(
           sb.srcPorts.begin(),
           std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port));
@@ -428,7 +428,7 @@ Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   std::map<PathEndPoint, SwitchSettings> routingSolution;
   // initialize all Channel histories to 0
-  for (auto &[_, sb] : grid) {
+  for (auto &[_, sb] : graph) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
         sb.usedCapacity[i][j] = 0;
@@ -453,7 +453,7 @@ Pathfinder::findPaths(const int maxIterations) {
     LLVM_DEBUG(llvm::dbgs() << "\t\t---Begin findPaths iteration #"
                             << iterationCount << "---\n");
     // update demand at the beginning of each iteration
-    for (auto &[_, sb] : grid) {
+    for (auto &[_, sb] : graph) {
       sb.updateDemand();
     }
 
@@ -461,7 +461,7 @@ Pathfinder::findPaths(const int maxIterations) {
     illegalEdges = 0;
     totalPathLength = 0;
     routingSolution.clear();
-    for (auto &[_, sb] : grid) {
+    for (auto &[_, sb] : graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           sb.usedCapacity[i][j] = 0;
@@ -492,7 +492,7 @@ Pathfinder::findPaths(const int maxIterations) {
         switchSettings[endPoint.coords].dsts.insert(endPoint.port);
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
-          auto &sb = grid[std::make_pair(preds[curr].coords, curr.coords)];
+          auto &sb = graph[std::make_pair(preds[curr].coords, curr.coords)];
           size_t i =
               std::distance(sb.srcPorts.begin(),
                             std::find(sb.srcPorts.begin(), sb.srcPorts.end(),
@@ -528,7 +528,7 @@ Pathfinder::findPaths(const int maxIterations) {
       routingSolution[src] = switchSettings;
     }
 
-    for (auto &[_, sb] : grid) {
+    for (auto &[_, sb] : graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           // fix used capacity for packet flows
