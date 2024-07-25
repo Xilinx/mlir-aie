@@ -23,7 +23,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd
+from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_

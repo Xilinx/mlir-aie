@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --split-input-file %s | FileCheck %s
 
-// CHECK-LABEL: aiex.runtime_sequence
+// CHECK: aie.device
 // CHECK: aiex.npu.dma_wait {symbol = @out0}
 aie.device(npu1_4col) {
   memref.global "public" @out0 : memref<16xi32>
@@ -21,16 +21,21 @@ aie.device(npu1_4col) {
 
 // -----
 
-// CHECK-LABEL: aiex.runtime_sequence
+// CHECK: aie.device
 // CHECK: aiex.npu.dma_wait {symbol = @out0}
-aiex.runtime_sequence() {
-  aiex.npu.dma_wait {symbol = @out0}
+aie.device(npu1_4col) {
+  memref.global "public" @out0 : memref<16xi32>
+  aiex.runtime_sequence() {
+    aiex.npu.dma_wait {symbol = @out0}
+  }
 }
 
 // -----
 
-// CHECK-LABEL: aiex.runtime_sequence
+// CHECK: aie.device
 // CHECK: aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
-aiex.runtime_sequence() {
-  aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+aie.device(npu1_4col) {
+  aiex.runtime_sequence() {
+    aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+  }
 }

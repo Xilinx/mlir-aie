@@ -11,8 +11,14 @@
 // RUN: aie-opt --split-input-file -aie-dma-to-npu %s | FileCheck %s
 
 // TODO - more
+<<<<<<< HEAD
 // CHECK-LABEL: dma_memcpy_nd_0
 // CHECK: aiex.npu.blockwrite
+=======
+// CHECK: module
+// CHECK: aiex.npu.writebd
+// CHECK-SAME: valid_bd = 1 : i32
+>>>>>>> 5aca5d36 (fix tests depending on runtime sequence name)
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.blockwrite
@@ -33,8 +39,14 @@ module  {
 
 // -----
 
+<<<<<<< HEAD
 // CHECK-LABEL: dma_wait_s2mm
 // CHECK: aiex.npu.blockwrite
+=======
+// CHECK: module
+// CHECK: aiex.npu.writebd
+// CHECK-SAME: valid_bd = 1 : i32
+>>>>>>> 5aca5d36 (fix tests depending on runtime sequence name)
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
@@ -59,7 +71,7 @@ module  {
 
 // -----
 
-// CHECK-LABEL: dma_wait_mm2s
+// CHECK: module
 // CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32

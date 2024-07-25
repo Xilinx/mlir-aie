@@ -11,7 +11,6 @@
 // RUN: aie-opt -aie-dma-to-npu %s | FileCheck %s
 
 // TODO - more
-// CHECK-LABEL: test1
 // CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
