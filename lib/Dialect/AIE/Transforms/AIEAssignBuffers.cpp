@@ -251,6 +251,7 @@ bool setBufferAddress(BufferOp buffer, int numBanks, int &bankIndex,
       setAndUpdateAddressInBank(buffer, startAddr, endAddr, nextAddrInBanks);
       allocated = true;
       bankIndex++;
+      bankIndex %= numBanks;
       break;
     }
     // Move to the next bank
