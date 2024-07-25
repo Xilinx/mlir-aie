@@ -1084,24 +1084,24 @@ bool TileOp::isShimNOCorPLTile() {
   return targetModel.isShimNOCorPLTile(getCol(), getRow());
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
-                              MasterSetOp masterOp, PacketRulesOp slaveOp) {
-  auto srcBundle = masterOp.destPort().bundle;
-  auto srcChan = masterOp.destPort().channel;
-  auto dstBundle = slaveOp.sourcePort().bundle;
-  auto dstChan = slaveOp.sourcePort().channel;
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
+                           MasterSetOp masterOp, PacketRulesOp slaveOp) {
+  auto srcBundle = slaveOp.sourcePort().bundle;
+  auto srcChan = slaveOp.sourcePort().channel;
+  auto dstBundle = masterOp.destPort().bundle;
+  auto dstChan = masterOp.destPort().channel;
+  return targetModel.isLegalTileConnection(
+      tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
-bool isLegalMemtileConnection(const AIETargetModel &targetModel,
-                              ConnectOp connectOp) {
+bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
+                           ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
   auto dstChan = connectOp.getDestChannel();
-  return targetModel.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
-                                              dstChan);
+  return targetModel.isLegalTileConnection(
+      tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1618,6 +1618,36 @@ LogicalResult DMABDOp::verify() {
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
   }
+  if (auto paddims = getPadDimensions(); paddims.has_value()) {
+    auto dims = getDimensions();
+    if (!dims.has_value())
+      return emitOpError() << "Padding requires n-d data layouts expressed as"
+                           << " wrap(s) and stride(s).";
+    if (dims->size() != paddims->size())
+      return emitOpError() << "Mismatch number of dimensions between padding(s)"
+                           << " and wrap(s) and stride(s).";
+    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+      return emitOpError() << "Padding is only supported by memtile dma bds.";
+    int actuallen = 1;
+    for (unsigned i = 0; i < paddims->size(); i++) {
+      auto dim = (*dims)[i];
+      auto paddim = (*paddims)[i];
+      actuallen *= paddim.getConstPadBefore() + paddim.getConstPadAfter() +
+                   dim.getSize();
+      if (actuallen > getLen())
+        return emitOpError() << "Data exceeds len after padding.";
+    }
+    if ((paddims->back().getConstPadBefore() *
+         getBufferElementTypeWidthInBytes()) %
+        4)
+      return emitOpError() << "Inner-most padding-before count must result in"
+                           << " padding in 32-bit words.";
+    if ((paddims->back().getConstPadAfter() *
+         getBufferElementTypeWidthInBytes()) %
+        4)
+      return emitOpError() << "Inner-most padding-after count must result in"
+                           << " padding in 32-bit words.";
+  }
   if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
       targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
@@ -1712,20 +1742,9 @@ LogicalResult SwitchboxOp::verify() {
               .failed())
         return failure();
 
-      // Memtile stream switch connection constraints
-      if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, connectOp))
-        return connectOp.emitOpError(
-            "illegal memtile stream switch connection");
-
-      // Trace stream switch connection constraints
-      if (connectOp.getDestBundle() == WireBundle::Trace)
-        return connectOp.emitOpError("Trace port cannot be a destination");
-
-      if (connectOp.getSourceBundle() == WireBundle::Trace &&
-          !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                          connectOp.getDestBundle(),
-                                          connectOp.getDestChannel()))
-        return connectOp.emitOpError("illegal Trace destination");
+      // Stream switch connection constraints
+      if (!isLegalTileConnection(tile, targetModel, connectOp))
+        return connectOp.emitOpError("illegal stream switch connection");
 
     } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
@@ -1770,20 +1789,11 @@ LogicalResult SwitchboxOp::verify() {
           mstrs.push_back(m);
       }
       for (auto m : mstrs) {
-        // Trace stream switch connection constraints
-        if (m.destPort().bundle == WireBundle::Trace)
-          return connectOp.emitOpError("Trace port cannot be a destination");
         for (auto s : slvs) {
-          if (s.sourcePort().bundle == WireBundle::Trace &&
-              !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                              m.destPort().bundle,
-                                              m.destPort().channel))
-            return amselOp.emitOpError("illegal Trace destination");
-
-          // Memtile stream switch connection constraints
-          if (tile.isMemTile() && !isLegalMemtileConnection(targetModel, m, s))
-            return amselOp->emitOpError(
-                "illegal memtile stream switch connection");
+          // Stream switch connection constraints
+          if (!isLegalTileConnection(tile, targetModel, m, s)) {
+            return amselOp->emitOpError("illegal stream switch connection");
+          }
         }
       }
     } else if (isa<EndOp>(ops)) {

@@ -196,7 +196,7 @@ def my_matmul():
                     bd_id=2,
                     mem=B,
                     sizes=[M_div_m_div_n_cores, 1, 1, K],
-                    strides=[0, 0, 0],
+                    strides=[0, 0, 0, 1],
                 )
                 for i in range(n_cores):
                     A_offset = i * M_div_m_div_n_cores * m * K
@@ -207,7 +207,7 @@ def my_matmul():
                         mem=A,
                         offsets=[0, 0, 0, A_offset],
                         sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                        strides=[m_x_K, k, K],
+                        strides=[m_x_K, k, K, 1],
                     )
                     npu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
@@ -215,7 +215,7 @@ def my_matmul():
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
                         sizes=[1, 1, 1, C_sz_div_n_cores],
-                        strides=[0, 0, 0],
+                        strides=[0, 0, 0, 1],
                     )
 
                 for i in range(n_cores):

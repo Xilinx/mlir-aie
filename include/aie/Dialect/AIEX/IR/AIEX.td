@@ -467,10 +467,10 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
   ]> {
-  let summary = "half dma operator";
+  let summary = "half DMA operator";
 
   let description = [{
-    An nd half dma operator.
+    An n-dimensional half DMA operator.
 
     Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
     pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
@@ -480,6 +480,53 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     operation should issue a token which can be received and read for synchronization purposes.
     This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
     and **is always set to true for** `S2MM` channels.
+
+    #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
+
+    The `metadata` attribute must point to a symbol referencing a 
+    [`aie.shim_dma_allocation` operation](AIE.html#aiedma_bd-xilinxaiedmabdop).
+    The tile coordinates of the DMA to configure, the channel number and the direction (`MM2S` or `S2MM`) are taken from this operation.
+
+    To connect the DMA to its other half (i.e. a `MM2S` DMA to its receiving end and a `S2MM` to the sending end), 
+    the user must configure a flow (`aie.flow`) between the tile and channel referenced in the `aie.shim_dma_allocation` and the corresponding other end.
+
+    When using ObjectFIFOs, the `aie.shim_dma_allocation` operations and the `aie.flows` are generated automatically.
+    The symbol of the `aie.objectfifo` (create) operation can be used directly in `metadata` in this case.
+
+    #### Notes on Synchronization and Reusing Buffer Descriptor IDs
+
+    When the `dma_memcpy_nd` operation executes, it immediately reprograms the buffer descriptor with ID `bd_id` on tile (`x`, `y`), even if that buffer descriptor is currently executing.
+    Without proper synchronization, this inevitably leads to nondeterministic results.
+
+    Programming a buffer descriptor that is not currently executing is harmless. 
+    Thus, the first `dma_memcpy_nd` call for each `bd_id` requires no synchronization.
+
+    However, if you wish to later re-use a `bd_id` on the same tile, you must wait for the previous buffer descriptor to complete. 
+    The `sync` or `dma_wait` operations can be used for this.
+
+    `sync` blocks until it receives a _task completion token_ (TCT). 
+    To properly synchronize, you must thus configure your BD to issue a TCT using the `issue_token` attribute, then wait on that token before reusing the BD.
+
+    `dma_wait` is a convenience operation that lowers to the corresponding `sync` operation for the refrenced symbol.
+
+    Note that if you have multiple concurrently running BDs and you can reason one BD will always complete after all others, it is not strictly necessary to issue and wait on the TC token for every BD.
+    For example, if you have input and output BDs on the shim, and you know the cores will only push output onto the output BD after the input BDs have completed, it may be sufficient to synchronize only on the output BD before reusing input BDs.
+
+    #### Data Layout Transformations
+
+    The `sizes` and `strides` attributes describe a data layout transformation to be performed by the DMA.
+    These transformations are described in more depth in the documentation for the 
+    [`aie.dma_bd` operation](AIE.html#aiedma_bd-xilinxaiedmabdop).
+    Note that the syntax here differs from that of the `dma_bd` operation: 
+    offsets and strides are given as separate arrays instead of tuples.
+
+    The `offsets` array is used to calculate a static offset into the memref.
+    Each offset in the array is understood in relation to the shape of the memref; 
+    the lowest-dimension `offset` is a direct offset in units of memref element type, and the higher dimensions are multiplied by the size of the memref in those dimensions. 
+    Note that this is for convenience of the user only. 
+    The hardware only supports a single static offset, and this offset is calculated at compile time.
+    Thus, all offsets can be equivalently expressed with the lowest dimension only.
+
   }];
 
   let arguments = (
@@ -492,7 +539,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
@@ -509,11 +556,37 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
+
+    /* Returns the provided multi-dimensional data transfer strides in units of
+       address granularity. In the IR, we express strides in units of element
+       data type, but the hardware requires it in units of address granularity.
+       Address granularity currently is 4 bytes for all hardware.
+
+       The returned stride[0] is the second-lowest dimension stride, i.e.
+       stride 1. The lowest stride is currently implicitly one, but this is not
+       a hardware requirement and could be changed in the future.  */
+    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
+
+    /* Returns the multi-dimensional data transfer sizes in units of address
+       granularity. These sizes are expressed in units of element data type in
+       the IR, but the hardware requires them to be in units of address
+       granularity. Address granularity currently is 4 bytes for all hardware. 
+
+       The returned size[0] is the lowest dimension size. In the IR, the sizes
+       are given in reverse order. For example, specifying sizes in IR as
+       [1, 2, 3, 4] would result in this function returning [4, 3, 2, 1].
+       */
+    llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
+
+    /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
+       target buffer will be skipped. In the IR, offsets are expressed in units
+       of memref element data type size. */
+    int64_t getOffsetInBytes(); 
   }];
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 3}; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
   }];
 
   let hasVerifier = 1;
@@ -523,14 +596,18 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let description = [{
     The NpuDmaWaitOp blocks until the DMA referenced through `symbol` completes execution
-    and issues a task-complete-token.
+    and issues a task-complete-token (TCT).
+
+    `symbol` is a reference to a `aie.shim_dma_allocation`, which contains information about the column, channel and channel direction on which to wait for a TCT. 
+    The `aie.shim_dma_allocation` may be generated from an ObjectFIFO, in which case you can directly pass the ObjectFIFO symbol refrence.
+    `npu.dma_wait` will be lowered to the corresponding `npu.sync` operation using the information from `symbol`.
 
     Example:
     ```mlir
       ...
-      aie.objectfifo @out0(%tile_0_1, {%tile_0_0}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
+      aie.objectfifo @out0(%tile_0_1, {% raw %}{%tile_0_0}{% endraw %}, 4 : i32) : !aie.objectfifo<memref<32x32xi32>>
       ...
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %arg2[1, 1, 0, 0][1, 1, 32, 32][1, 1, 64, 1]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<32x64xi32>
       ...
       aiex.npu.dma_wait { symbol = @out0 }
     ```
@@ -622,7 +699,12 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
     attr-dict
   }];
   let description = [{
-    tct sync operator
+    The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
+
+    #### Troubleshooting
+
+    If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
+    By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
   }];
 }
 

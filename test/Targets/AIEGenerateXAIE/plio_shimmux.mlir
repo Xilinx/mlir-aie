@@ -26,7 +26,6 @@
 // CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0));
 // CHECK: x = 2;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 2));
 
 module {
  aie.device(xcvc1902) {

@@ -33,7 +33,6 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIENormalizeAddressSpacesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIERouteFlowsPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorOptPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
@@ -61,30 +60,33 @@ createAIEAssignBufferDescriptorIDsPass();
 struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   DynamicTileAnalysis analyzer;
+  mlir::DenseMap<TileID, mlir::Operation *> tiles;
 
   AIEPathfinderPass() = default;
   AIEPathfinderPass(DynamicTileAnalysis analyzer)
       : analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
+  void runOnFlow(DeviceOp d, mlir::OpBuilder &builder);
+  void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
 
-  bool attemptFixupMemTileRouting(const mlir::OpBuilder &builder,
-                                  SwitchboxOp northSwOp, SwitchboxOp southSwOp,
-                                  ConnectOp &problemConnect);
+  typedef std::pair<mlir::Operation *, Port> PhysPort;
 
-  bool reconnectConnectOps(const mlir::OpBuilder &builder, SwitchboxOp sw,
-                           ConnectOp problemConnect, bool isIncomingToSW,
-                           WireBundle problemBundle, int problemChan,
-                           int emptyChan);
+  typedef struct {
+    SwitchboxOp sw;
+    Port sourcePort;
+    Port destPort;
+  } SwConnection;
 
-  ConnectOp replaceConnectOpWithNewDest(mlir::OpBuilder builder,
-                                        ConnectOp connect, WireBundle newBundle,
-                                        int newChannel);
-  ConnectOp replaceConnectOpWithNewSource(mlir::OpBuilder builder,
-                                          ConnectOp connect,
-                                          WireBundle newBundle, int newChannel);
+  bool findPathToDest(SwitchSettings settings, TileID currTile,
+                      WireBundle currDestBundle, int currDestChannel,
+                      TileID finalTile, WireBundle finalDestBundle,
+                      int finalDestChannel);
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
+
+  mlir::Operation *getOrCreateTile(mlir::OpBuilder &builder, int col, int row);
+  SwitchboxOp getOrCreateSwitchbox(mlir::OpBuilder &builder, TileOp tile);
 };
 
 } // namespace xilinx::AIE

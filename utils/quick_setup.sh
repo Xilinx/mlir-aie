@@ -61,17 +61,19 @@ if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
   mkdir -p my_install
   pushd my_install
-  # pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024061822+29d5cec-py3-none-manylinux_2_35_x86_64.whl
+  pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
   unzip -q mlir_aie-*_x86_64.whl
-  # pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
-  wget -q --show-progress https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2024061721+a50bcc03-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+  pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
   unzip -q mlir-*_x86_64.whl
-  pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
+  pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  unzip -q llvm_aie*.whl
   rm -rf mlir*.whl
-  export PATH=`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
-  export LD_LIBRARY_PATH=`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
+  rm -rf llvm_aie*.whl
+  pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
+  export PATH=`realpath llvm-aie/bin`:`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
+  export LD_LIBRARY_PATH=`realpath llvm-aie/lib`:`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
+  export PEANO_DIR=`realpath llvm-aie`
   popd
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt

@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Target/LLVMIR/Dialect/All.h"
+#include "aie/version.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Support/LogicalResult.h"
@@ -44,6 +45,10 @@ void registerToLLVMIRTranslation() {
 }
 } // namespace aie
 
+void version_printer(raw_ostream &os) {
+  os << "aie-translate " << AIE_GIT_COMMIT << "\n";
+}
+
 int main(int argc, char **argv) {
   // NOTE: these are the contents of registerAllTranslations();
   registerFromLLVMIRTranslation();
@@ -54,6 +59,8 @@ int main(int argc, char **argv) {
 
   xilinx::AIE::registerAIETranslations();
   xilinx::aievec::registerAIEVecToCppTranslation();
+
+  llvm::cl::AddExtraVersionPrinter(version_printer);
 
   return failed(mlirTranslateMain(argc, argv, "AIE Translation Tool"));
 }
