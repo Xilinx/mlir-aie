@@ -7,12 +7,3 @@
 
 add_mlir_dialect(AIEVecAIE1Ops aievec_aie1)
 add_mlir_doc(AIEVecAIE1Ops AIEVecAIE1Dialect ./ -gen-dialect-doc -dialect=aievec_aie1)
-
-# Add AIEVec attributes
-# set(LLVM_TARGET_DEFINITIONS AIEVecAttributes.td)
-# mlir_tablegen(AIEVecEnums.h.inc -gen-enum-decls)
-# mlir_tablegen(AIEVecEnums.cpp.inc -gen-enum-defs)
-# mlir_tablegen(AIEVecAttributes.h.inc -gen-attrdef-decls)
-# mlir_tablegen(AIEVecAttributes.cpp.inc -gen-attrdef-defs)
-# add_public_tablegen_target(MLIRAIEVecAttributesIncGen)
-# add_dependencies(mlir-generic-headers MLIRAIEVecAttributesIncGen)

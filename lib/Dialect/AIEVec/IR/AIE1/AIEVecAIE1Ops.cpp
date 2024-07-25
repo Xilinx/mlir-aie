@@ -23,7 +23,6 @@
 using namespace llvm;
 using namespace mlir;
 
-// #include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1OpsDialect.cpp.inc"
 
 namespace xilinx::aievec::aie1 {
@@ -33,11 +32,6 @@ namespace xilinx::aievec::aie1 {
 //===----------------------------------------------------------------------===//
 
 void AIEVecAIE1Dialect::initialize() {
-  // registerTypes();
-  //   addAttributes<
-  // #define GET_ATTRDEF_LIST
-  // #include "aie/Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc"
-  //       >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.cpp.inc"

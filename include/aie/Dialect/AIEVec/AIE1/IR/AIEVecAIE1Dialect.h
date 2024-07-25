@@ -13,15 +13,11 @@
 #ifndef AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1DIALECT_H
 #define AIE_DIALECT_AIEVEC_AIE1_IR_AIEVECAIE1DIALECT_H
 
-// #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
-
 namespace xilinx {
 namespace aievec {
 namespace aie1 {
 
 class AIEVecAIE1Dialect;
-// Translation from AIE vector code to C++
-// void registerAIEVecToCppTranslation();
 
 } // end namespace aie1
 } // end namespace aievec
