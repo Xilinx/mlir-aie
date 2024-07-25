@@ -1883,7 +1883,7 @@ struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
   }
 };
 
-struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
+struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -1910,7 +1910,7 @@ struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
 
     func::FuncOp fn_op;
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
-    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
+    VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
     //if the function is already declared, use the existing function, don't declare multiple times
     if (fn_op_lookup != NULL){
         fn_op = fn_op_lookup;
@@ -1919,19 +1919,15 @@ struct ComputeExpOpByLUTPattern_llvm : OpConversionPattern<math::ExpOp> {
       StringAttr t1 = rewriter.getStringAttr("sym_visibility");
       StringAttr t2 = rewriter.getStringAttr("private");
       NamedAttribute funcAccess = NamedAttribute(t1,t2);
-      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{accTypeNative});
+      FunctionType fn_type = mlir::FunctionType::get(rewriter.getContext(), TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
       fn_op = rewriter.create<func::FuncOp>(moduleOp.getLoc(), funcName, fn_type, funcAccess);
     }
 
     rewriter.setInsertionPoint(expOp);
 
-    auto v16bf16Casted =
-        rewriter
-            .create<UnrealizedConversionCastOp>(expOp.getLoc(), v16bf16Ty,
-                                                adaptor.getOperand())
-            .getResult(0);
-    SmallVector<Value> expOperands = {v16bf16Casted};
+    SmallVector<Value> expOperands = {adaptor.getOperand()};
 
+    Type accTypeNative = getVectorOpDestType(srcType, /*AIEML =*/true);
     auto callOp = rewriter.create<func::CallOp>(expOp.getLoc(), fn_op, expOperands);
     auto resCastOp = rewriter.create<vector::BitCastOp>(
         expOp.getLoc(), accTypeNative, callOp.getResults());
@@ -3087,7 +3083,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTPattern_llvm
+      ComputeExpOpByLUTLLVMPattern
       >(patterns.getContext());
   }
   patterns.add<
@@ -3140,7 +3136,12 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 
 static bool isInSigmoidOperationChain(math::ExpOp expOp) {
 
-  if (auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
+  //guard segfault if definingOp() does not exist (as with a function parameter)
+  auto negPart = expOp.getOperand().getDefiningOp();
+  if (!negPart){
+    return false;
+  }
+  if (auto negOp = dyn_cast<arith::NegFOp>(negPart);
       !negOp)
     return false;
 

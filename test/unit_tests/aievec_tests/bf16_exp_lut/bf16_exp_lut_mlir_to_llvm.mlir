@@ -2,11 +2,10 @@
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 
 // REQUIRES: valid_xchess_license
-// REQUIRES: peano
+// REQUIRES: peano, peano_and_chess
 // RUN: mkdir -p %t/data; cd %t
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" %vector-to-llvmir% -o llvmir.mlir
 // RUN: aie-translate --mlir-to-llvmir llvmir.mlir -o dut_part.ll
-// RUN %PEANO_INSTALL_DIR/bin/clang -S -emit-llvm %clang_aie2_lib_args %aie_runtime_lib%/AIE2/lut_based_ops.h -o lut_based_ops.ll
 // RUN: %PEANO_INSTALL_DIR/bin/clang -S -emit-llvm %clang_aie2_lib_args -I%aie_runtime_lib%/AIE2/ -c %S/dut_simple.cc -o lut_based_ops.ll
 // RUN: %PEANO_INSTALL_DIR/bin/clang -S -emit-llvm %clang_aie2_lib_args -c %aie_runtime_lib%/AIE2/lut_based_ops.cpp -o lut_constants.ll
 // RUN: llvm-link -S lut_based_ops.ll dut_part.ll -o dut_functions.ll
