@@ -85,7 +85,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
 
 using PathEndPoint = struct PathEndPoint {
   PathEndPoint() = default;
-  PathEndPoint(TileID tile, Port port) : tile(tile), port(port) {}
+  PathEndPoint(TileID coords, Port port) : coords(coords), port(port) {}
 
   TileID coords;
   Port port;
