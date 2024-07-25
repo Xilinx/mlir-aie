@@ -89,7 +89,7 @@ with open(csv_file, mode="w", newline="") as file:
     writer.writerow(
         [
             "Test",
-            "Iterations",
+            "Iterations Count",
             "Illegal Edges Count",
             "Total Path Length",
             "Status",
@@ -100,7 +100,7 @@ with open(csv_file, mode="w", newline="") as file:
         writer.writerow(
             [
                 test,
-                data["iterations"],
+                data["iteration_count"],
                 data["illegal_edges_count"],
                 data["total_path_length"],
                 data["status"],
