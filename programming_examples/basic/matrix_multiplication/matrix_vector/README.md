@@ -17,7 +17,7 @@ In this design, one or multiple AI Engine compute cores (spread across hardware 
 ## Differences from the [Whole-Array Matrix-Matrix Multiplication Design](../whole_array/README.md)
 
 - A specialized matrix-*vector* microkernel, named `matvec_vectorized` is used in this design, as opposed to the more general matrix-matrix microkernel (`matmul_vectorized`) used in the matrix-matrix-multiplication designs.
-- The data movement in this design varies as follows: An identical `32`-element chunk of the vector `B` is **broadcast** to the cores in all columns, whereas _distinct_ subsequent `32`&times;`32`-sized tiles of the `A` matrix are **distributed** to the cores. As such, each core is responsible for a distinct `32`-element chunk of the output vector `C`. These chunks are assembled (**joined**) at the shim tile level (in the `sequence()` function).
+- The data movement in this design varies as follows: An identical `32`-element chunk of the vector `B` is **broadcast** to the cores in all columns, whereas _distinct_ subsequent `32`&times;`32`-sized tiles of the `A` matrix are **distributed** to the cores. As such, each core is responsible for a distinct `32`-element chunk of the output vector `C`. These chunks are assembled (**joined**) at the shim tile level (in the `aiex.runtime_sequence()`).
 - This design does not use all available compute cores. Instead, it uses at most one core in each hardware column. The variable `n_cores` defines the number of columns to be used. It would however be possible to extend this design to use all cores.
 
 ## Building and Running the Design
