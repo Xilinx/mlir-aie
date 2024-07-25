@@ -163,12 +163,10 @@ std::vector<uint32_t> xilinx::AIE::AIETranslateToNPU(ModuleOp module) {
   words[1] = 0x00000105;
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
-  auto funcOps = deviceOp.getOps<func::FuncOp>();
+  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
   int count = 0;
-  for (auto f : funcOps) {
-    if (f.isDeclaration())
-      continue;
-    Block &entry = f.getRegion().front();
+  for (auto f : sequenceOps) {
+    Block &entry = f.getBody().front();
     for (auto &o : entry) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {

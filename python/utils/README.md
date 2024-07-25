@@ -130,7 +130,7 @@ configure_tracing_aie2(
 `PortEvent` is defined in `aie.utils.trace` and `CoreEvent` is defined in `aie.utils.trace_events_enum`.
 
 ### Configure tile trace settings
-Within the `func.func @sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA. 
+Within the `aiex.runtime_sequence` block, we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA. 
 
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 

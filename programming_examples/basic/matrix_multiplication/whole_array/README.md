@@ -22,7 +22,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_body()` function contains the code that will be loaded onto each AIE core. This code describes the matrix multiplication using the input submatrices `a` and `b` acquired through the ObjectFIFOs. The results are accumulated in the output submatrix `c`.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `sequence()` function sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Data Movement Accelerator (DMA) transfers, sets memory access patterns, and performs synchronization.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Data Movement Accelerator (DMA) transfers, sets memory access patterns, and performs synchronization.
 
 1. **Generating the Design:** The `my_matmul()` function triggers the code generation process and represents the main entry point of the design. The final print statement outputs the MLIR representation of the AIE array configuration.
 
@@ -72,7 +72,7 @@ The input and output matrix sizes are given by the user. We subdivide the input 
 
 1. **Tiling to Compute Core Submatrix Chunks:** The input and output matrices stream to/from the AIE compute cores in chunks of size of `m`&times;`k`, `k`&times;`n` and `n`&times;`m`. Tiling into these chunks allows each of the computation cores to concurrently work on distinct sub-sections of the input matrices in parallel, which improves performance. This also reduces on-chip memory requirements. The final result is re-assembled using the sub-matrix results of all cores.
 
-    > This tiling occurs in the `sequence()` function describing the host-to-memory-tile transfer.
+    > This tiling occurs in the `aie.runtime_sequence()` operation describing the host-to-memory-tile transfer.
 We describe it further below, in section *"5. Defining External Data Transfer Sequences"*.
 
 1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`). 
@@ -198,7 +198,7 @@ We define a `core_body()` function for each compute core `i`, inside of which we
 
 ### 5. Defining External Data Transfer Sequences
 
-The function signature of the `sequence()` function lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
+The signature of the `aie.runtime_sequence()` operation lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
 
 * The `tile_row_block` variable segments the M (rows of A) into smaller chunks, each containing `rows_per_block` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
 * For each column `i`:

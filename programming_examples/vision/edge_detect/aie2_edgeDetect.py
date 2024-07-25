@@ -296,7 +296,7 @@ def edge_detect():
             tensor_ty = T.memref(tensorSize, T.i8())
             memRef_16x16_ty = T.memref(16, 16, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata="outOF_L2L3",

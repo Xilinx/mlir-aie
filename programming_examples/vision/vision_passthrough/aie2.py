@@ -69,7 +69,7 @@ def passThroughAIE2():
             tensorSize = width * height
             tensor_ty = T.memref(tensorSize, T.i8())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, notUsed, outTensor):
                 if enableTrace:
                     # Trace output
