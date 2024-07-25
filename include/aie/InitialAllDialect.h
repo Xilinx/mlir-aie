@@ -16,6 +16,7 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Dialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
@@ -31,6 +32,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     ADF::ADFDialect,
     AIE::AIEDialect,
     aievec::AIEVecDialect,
+    aievec::aie1::AIEVecAIE1Dialect,
     AIEX::AIEXDialect,
     xllvm::XLLVMDialect
   >();
