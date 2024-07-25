@@ -42,7 +42,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // connectivity between ports
   std::vector<std::vector<Connectivity>> connectivity;
   // weights of Dijkstra's shortest path
-  std::vector<std::vector<int>> demand;
+  std::vector<std::vector<double>> demand;
   // history of Channel being over capacity
   std::vector<std::vector<int>> overCapacity;
   // how many circuit streams are actually using this Channel
