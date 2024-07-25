@@ -68,23 +68,15 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Putting the standard header
   output << hsa_cpp_file_header;
 
-  // Getting the func op which has the data movement
-  if (targetOp.getOps<mlir::func::FuncOp>().empty()) {
-    return success();
-  }
-
   // Getting the sequence function op which contains the instructions
-  mlir::func::FuncOp funcOp = NULL;
-  for (auto op : targetOp.getOps<mlir::func::FuncOp>()) {
-    if (op.getName().str().compare("sequence") == 0) {
-      funcOp = op;
-    }
-  }
-
-  // If no funcOp then just return
-  if (funcOp == NULL) {
+  auto sequenceOps = targetOp.getOps<AIEX::RuntimeSequenceOp>();
+  if(sequenceOps.empty()) {
+    // If no sequenceOp then just return
     return success();
+  } else if(std::distance(sequenceOps.begin(), sequenceOps.end()) > 1) {
+    return module.emitOpError("expected at most one sequence operation");
   }
+  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -95,10 +87,10 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Looping over every Memcpy operation so we take the correct number of
   // buffers
   int num_ops = 0;
-  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
+  for (auto op : sequenceOp.getOps<NpuDmaMemcpyNdOp>()) {
     // Getting the IDs of the buffers
     auto memref = op.getMemref();
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    Block &entryBB = op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -117,8 +109,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   output << "\tuint64_t packet_id = 0;\n";
 
   int op_count = 0;
-  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
-    auto dev = funcOp->getParentOfType<AIE::DeviceOp>();
+  for (auto op : sequenceOp.getOps<NpuDmaMemcpyNdOp>()) {
+    auto dev = sequenceOp->getParentOfType<AIE::DeviceOp>();
     if (!dev) {
       op.emitOpError("couldn't get DeviceOp");
       return failure();
@@ -163,7 +155,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
 
     // Getting the ID of the buffer that we are using
     auto memref = op.getMemref();
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    Block &entryBB = op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
