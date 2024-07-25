@@ -454,7 +454,7 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // "rip up" all routes
     illegalEdges = 0;
-    totalPathLength = -1;
+    totalPathLength = 0;
     routingSolution.clear();
     for (auto &[_, sb] : grid) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
