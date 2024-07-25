@@ -55,7 +55,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
     connectivity.resize(
         srcPorts.size(),
         std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
-    demand.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    demand.resize(srcPorts.size(), std::vector<double>(dstPorts.size(), 0.0));
     overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
