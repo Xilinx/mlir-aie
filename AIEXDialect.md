@@ -479,6 +479,33 @@ address patch operator
 </table>
 
 
+### `aiex.npu.blockwrite` (::xilinx::AIEX::NpuBlockWriteOp)
+
+_Blockwrite operator_
+
+
+Syntax:
+
+```
+operation ::= `aiex.npu.blockwrite` `(` $data `)` attr-dict `:` type($data)
+```
+
+blockwrite operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `data` | memref of any type values
+
+
 ### `aiex.npu.dma_memcpy_nd` (::xilinx::AIEX::NpuDmaMemcpyNdOp)
 
 _Half DMA operator_
