@@ -3,6 +3,7 @@ import csv
 import os
 import re
 import subprocess
+import time
 
 # Parse arguments
 parser = argparse.ArgumentParser()
@@ -35,9 +36,10 @@ for file in files:
                     parts[0] = parts[0].strip() + " --debug"
                     debug_command = " | ".join(parts)
 
+                    # Execute the command
+                    print(f"Executing command: {debug_command}")
+                    start_time = time.time()
                     try:
-                        # Execute the command
-                        print(f"Executing command: {debug_command}")
                         result = subprocess.run(
                             debug_command,
                             shell=True,
@@ -60,6 +62,7 @@ for file in files:
                     except subprocess.TimeoutExpired as e:
                         result = e
                         status = "FAILED"
+                    end_time = time.time()
 
                     iteration_count = illegal_edges_count = total_path_length = -1
                     if result.stderr and status != "FAILED":
@@ -76,6 +79,7 @@ for file in files:
                         "illegal_edges_count": illegal_edges_count,
                         "total_path_length": total_path_length,
                         "status": status,
+                        "execution_time": end_time - start_time,
                     }
 print(results)
 # Write the results to a CSV file
@@ -85,20 +89,22 @@ with open(csv_file, mode="w", newline="") as file:
     writer.writerow(
         [
             "Test",
-            "Iteration Count",
+            "Iterations",
             "Illegal Edges Count",
             "Total Path Length",
             "Status",
+            "Execution Time",
         ]
     )
     for test, data in results.items():
         writer.writerow(
             [
                 test,
-                data["iteration_count"],
+                data["iterations"],
                 data["illegal_edges_count"],
                 data["total_path_length"],
                 data["status"],
+                data["execution_time"],
             ]
         )
 

@@ -21,12 +21,71 @@
 
 namespace xilinx::AIE {
 
-enum class Connectivity { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
+#define OVER_CAPACITY_COEFF 0.1
+#define USED_CAPACITY_COEFF 0.1
+#define DEMAND_COEFF 1.1
+#define DEMAND_BASE 1.0
+#define MAX_CIRCUIT_STREAM_CAPACITY 1
+#define MAX_PACKET_STREAM_CAPACITY 32
+
+enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
+
+using SwitchboxConnect = struct SwitchboxConnect {
+  SwitchboxConnect() = default;
+  SwitchboxConnect(TileID tile) : srcTile(tile), dstTile(tile) {}
+  SwitchboxConnect(TileID srcTile, TileID dstTile)
+      : srcTile(srcTile), dstTile(dstTile) {}
+
+  TileID srcTile, dstTile;
+  std::vector<Port> srcPorts;
+  std::vector<Port> dstPorts;
+  // connectivity between ports
+  std::vector<std::vector<Connectivity>> connectivity;
+  // weights of Dijkstra's shortest path
+  std::vector<std::vector<int>> demand;
+  // history of Channel being over capacity
+  std::vector<std::vector<int>> overCapacity;
+  // how many circuit streams are actually using this Channel
+  std::vector<std::vector<int>> usedCapacity;
+  // how many packet streams are actually using this Channel
+  std::vector<std::vector<int>> packetFlowCount;
+
+  // resize the matrices to the size of srcPorts and dstPorts
+  void resize() {
+    connectivity.resize(
+        srcPorts.size(),
+        std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
+    demand.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    packetFlowCount.resize(srcPorts.size(),
+                           std::vector<int>(dstPorts.size(), 0));
+  }
+
+  // update demand at the beginning of each dijkstraShortestPaths iteration
+  void updateDemand() {
+    for (size_t i = 0; i < srcPorts.size(); i++) {
+      for (size_t j = 0; j < dstPorts.size(); j++) {
+        double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[i][j];
+        double congestion =
+            DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[i][j];
+        demand[i][j] = history * congestion;
+      }
+    }
+  }
+
+  // inside each dijkstraShortestPaths interation, bump demand when exceeds
+  // capacity
+  void bumpDemand(size_t i, size_t j) {
+    if (usedCapacity[i][j] >= MAX_CIRCUIT_STREAM_CAPACITY) {
+      demand[i][j] *= DEMAND_COEFF;
+    }
+  }
+};
 
 using PathNode = struct PathNode {
-  PathNode() : sb(), port() {}
+  PathNode() = default;
   PathNode(TileID sb, Port port) : sb(sb), port(port) {}
-  PathNode(const PathNode &other) : sb(other.sb), port(other.port) {}
 
   TileID sb;
   Port port;
@@ -54,34 +113,6 @@ using PathNode = struct PathNode {
   }
 };
 
-using PathEdge = struct PathEdge {
-  PathEdge(PathNode source, PathNode target) : source(source), target(target) {}
-  PathNode source;
-  PathNode target;
-
-  friend std::ostream &operator<<(std::ostream &os, const PathEdge &s) {
-    os << "PathEdge(" << s.source << " -> " << s.target << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(PathEdge)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const PathEdge &s) {
-    os << to_string(s);
-    return os;
-  }
-
-  // Needed for the std::maps that store PathEdge.
-  bool operator<(const PathEdge &rhs) const {
-    return std::tie(source, target) < std::tie(rhs.source, rhs.target);
-  }
-
-  bool operator==(const PathEdge &rhs) const {
-    return std::tie(source, target) == std::tie(rhs.source, rhs.target);
-  }
-};
-
 using FlowNode = struct FlowNode {
   bool isPacketFlow;
   PathNode src;
@@ -99,8 +130,8 @@ using SwitchSetting = struct SwitchSetting {
   Port src;
   std::set<Port> dsts;
 
-  // friend definition (will define the function as a non-member function of the
-  // namespace surrounding the class).
+  // friend definition (will define the function as a non-member function of
+  // the namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os,
                                   const SwitchSetting &setting) {
     os << setting.src << " -> "
@@ -160,22 +191,8 @@ public:
 private:
   // Flows to be routed
   std::vector<FlowNode> flows;
-
-  std::set<PathNode> pathNodes;
-  std::vector<PathEdge> pathEdges;
-
-  // Use Dijkstra's shortest path to find routes, and use "demand" as the
-  // weights.
-  std::map<PathEdge, double> demand;
-
-  // History of Channel being over capacity
-  std::map<PathEdge, int> overCapacity;
-
-  // how many circuit streams are actually using this Channel
-  std::map<PathEdge, int> usedCapacity;
-
-  // how many packet streams are actually using this Channel
-  std::map<PathEdge, int> packetFlowCount;
+  std::map<std::pair<TileID, TileID>, SwitchboxConnect> grid;
+  std::map<PathNode, std::vector<PathNode>> channels;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
