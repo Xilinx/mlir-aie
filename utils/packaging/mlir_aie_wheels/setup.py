@@ -300,8 +300,10 @@ setuptools.setup(
         # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/",
     ],
     install_requires=[
-        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}"
-        # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/",
+        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}",
+        # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/"
+        "mlir-python-utils"
+        # @ https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
     ],
     extras_require={
         "peano": [

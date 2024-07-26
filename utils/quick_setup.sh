@@ -59,22 +59,22 @@ python3 -m pip install --upgrade pip
 VPP=`which v++`
 if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
+  # mlir is a dependency of mlir-aie and will be pulled as part of the following install
+  pip install mlir-aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/ -f https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
+
+  # TODO: make llvm-aie a dependency as well
   mkdir -p my_install
   pushd my_install
-  pip download mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/
-  unzip -q mlir_aie-*_x86_64.whl
-  pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
-  unzip -q mlir-*_x86_64.whl
   pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
   unzip -q llvm_aie*.whl
-  rm -rf mlir*.whl
   rm -rf llvm_aie*.whl
   pip install https://github.com/makslevental/mlir-python-extras/archive/d84f05582adb2eed07145dabce1e03e13d0e29a6.zip
-  export PATH=`realpath llvm-aie/bin`:`realpath mlir_aie/bin`:`realpath mlir/bin`:$PATH
+  export PATH=`realpath llvm-aie/bin`
   export LD_LIBRARY_PATH=`realpath llvm-aie/lib`:`realpath mlir_aie/lib`:`realpath mlir/lib`:$LD_LIBRARY_PATH
   export PYTHONPATH=`realpath mlir_aie/python`:$PYTHONPATH
   export PEANO_DIR=`realpath llvm-aie`
   popd
+
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements.txt
   python3 -m pip install --upgrade --force-reinstall --no-cache-dir -r python/requirements_ml.txt
   pushd programming_examples
