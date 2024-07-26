@@ -6,48 +6,6 @@ Types and operations for AIE vector dialect
 
 ## Operations
 
-### `aievec.add` (::xilinx::aievec::AddOp)
-
-_AIE vector add_
-
-AMD-specific advanced add operation that adds two 1-D vectors 
-with lane selection. The vector sizes are at least 256 bits.
-`$result = `$lhs + $rhs`.
-
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
-
-Effects: `MemoryEffects::Effect{}`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.add_elem` (::xilinx::aievec::AddElemOp)
 
 _AIE vector add elem_
@@ -542,57 +500,6 @@ Effects: `MemoryEffects::Effect{}`
 | `result` | vector of any type values
 
 
-### `aievec.mac` (::xilinx::aievec::FMAOp)
-
-_AIE vector fused multiply-add_
-
-AMD-specific multiply-add operation. It multiplies two 1-D vectors,
-and adds the result to an accumulator. The vector sizes are at least
-256 bits, and the left operand vector is at least twice the size of
-right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
-the result and acc are 48-bit or 80-bit accumulator.
-`$result = `$lhs * $rhs + $acc`.
-Note: the same operator can be used as fmsub operator by setting the
-'fmsub' bool to true.
-
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
-
-Effects: `MemoryEffects::Effect{}`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xstep</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstep</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>fmsub</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-| `acc` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
 
 _AIE2 element-wise vector fused multiply-add_
@@ -735,52 +642,6 @@ Traits: `AlwaysSpeculatableImplTrait`
 Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
 Effects: `MemoryEffects::Effect{}`
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
-### `aievec.mul` (::xilinx::aievec::MulOp)
-
-_AIE vector multiply_
-
-AMD-specific multiply operation that multiplies two 1-D vectors.
-The vector sizes are at least 256 bits, and the left operand vector 
-is at least twice the size of right operand vector. For integers, the
-lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
-`$result = `$lhs * $rhs`.
-
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
-
-Effects: `MemoryEffects::Effect{}`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xstep</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstep</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-</table>
 
 #### Operands:
 
@@ -1285,48 +1146,6 @@ Effects: `MemoryEffects::Effect{}`
 | :-----: | ----------- |
 | `source` | vector of any type values
 | `shift` | integer
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
-### `aievec.sub` (::xilinx::aievec::SubOp)
-
-_AIE vector subtract_
-
-AMD-specific advanced sub operation that subtracts two 1-D vectors
-with lane selection. The vector sizes are at least 256 bits.
-`$result = `$lhs - $rhs`.
-
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
-
-Effects: `MemoryEffects::Effect{}`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>xstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>xsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zstart</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zoffsets_hi</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>zsquare</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
 
 #### Results:
 
