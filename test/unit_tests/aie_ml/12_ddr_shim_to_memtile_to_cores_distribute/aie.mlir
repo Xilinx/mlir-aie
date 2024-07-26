@@ -80,7 +80,7 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
             }
 
             // Signal to host that we are done
-            AIE.useLock(%lock33, "Release", 1)
+            aie.use_lock(%lock33, "Release", 1)
 
             AIE.end
         }
@@ -102,7 +102,7 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
             }
 
             // Signal to host that we are done
-            AIE.useLock(%lock34, "Release", 1)
+            aie.use_lock(%lock34, "Release", 1)
 
             AIE.end
         }
@@ -124,7 +124,7 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
             }
 
             // Signal to host that we are done
-            AIE.useLock(%lock35, "Release", 1)
+            aie.use_lock(%lock35, "Release", 1)
 
             AIE.end
         }

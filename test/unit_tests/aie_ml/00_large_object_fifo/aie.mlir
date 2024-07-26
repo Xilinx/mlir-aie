@@ -28,17 +28,17 @@
 // XFAIL: *
 
 module @aie2_cyclostatic_dma {
-    AIE.device(xcve2802) {
+    aie.device(xcve2802) {
 
-        %tile23 = AIE.tile(2, 3)  // producer tile
-        %tile28 = AIE.tile(2, 8)  // consumer tile
-        %buf28  = AIE.buffer(%tile28) {sym_name = "buf28"} : memref<16x10xi32>
-        %lock28 = AIE.lock(%tile28, 0) { init = 0 : i32, sym_name = "lock28" }
+        %tile23 = aie.tile(2, 3)  // producer tile
+        %tile28 = aie.tile(2, 8)  // consumer tile
+        %buf28  = aie.buffer(%tile28) {sym_name = "buf28"} : memref<16x10xi32>
+        %lock28 = aie.lock(%tile28, 0) { init = 0 : i32, sym_name = "lock28" }
 
-        %fifo = AIE.objectFifo.createObjectFifo(%tile23, {%tile28}, 20 : i32) {sym_name = "fifo"} : !AIE.objectFifo<memref<i32>>
+        aie.objectfifo @fifo (%tile23, {%tile28}, 20 : i32) : !aie.objectFifo<memref<i32>>
 
         // Producer core
-        %core23 = AIE.core(%tile23) {
+        %core23 = aie.core(%tile23) {
             %i0   = arith.constant   0 : index
             %i1   = arith.constant   1 : index
             %i160 = arith.constant 160 : index
@@ -46,17 +46,17 @@ module @aie2_cyclostatic_dma {
 
             scf.for %iter = %i0 to %i160 step %i1
             {
-                %subview0 = AIE.objectFifo.acquire<Produce>(%fifo : !AIE.objectFifo<memref<i32>>, 1) : !AIE.objectFifoSubview<memref<i32>>
-                %subview0_obj = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
+                %subview0 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+                %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
                 memref.store %c7, %subview0_obj[] : memref<i32>
-                AIE.objectFifo.release<Produce>(%fifo : !AIE.objectFifo<memref<i32>>, 1)
+                aie.objectfifo.release @fifo (Produce, 1)
             }
 
-            AIE.end
+            aie.end
         }
 
         // Consumer core
-        %core28 = AIE.core(%tile28) {
+        %core28 = aie.core(%tile28) {
             %i0  = arith.constant  0 : index
             %i1  = arith.constant  1 : index
             %i2  = arith.constant  2 : index
@@ -74,17 +74,17 @@ module @aie2_cyclostatic_dma {
             scf.for %iter = %i0 to %i16 step %i1 {
                 
                 // consume 10
-                %subview0 = AIE.objectFifo.acquire<Consume>(%fifo : !AIE.objectFifo<memref<i32>>, 10) : !AIE.objectFifoSubview<memref<i32>>
-                %subview0_obj0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj1 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj2 = AIE.objectFifo.subview.access %subview0[2] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj3 = AIE.objectFifo.subview.access %subview0[3] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj4 = AIE.objectFifo.subview.access %subview0[4] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj5 = AIE.objectFifo.subview.access %subview0[5] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj6 = AIE.objectFifo.subview.access %subview0[6] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj7 = AIE.objectFifo.subview.access %subview0[7] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj8 = AIE.objectFifo.subview.access %subview0[8] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
-                %subview0_obj9 = AIE.objectFifo.subview.access %subview0[9] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
+                %subview0 = aie.objectfifo.acquire @fifo (Consume, 10) : !aie.objectfifosubview<memref<i32>>
+                %subview0_obj0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj1 = aie.objectfifo.subview.access %subview0[1] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj2 = aie.objectfifo.subview.access %subview0[2] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj3 = aie.objectfifo.subview.access %subview0[3] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj4 = aie.objectfifo.subview.access %subview0[4] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj5 = aie.objectfifo.subview.access %subview0[5] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj6 = aie.objectfifo.subview.access %subview0[6] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj7 = aie.objectfifo.subview.access %subview0[7] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj8 = aie.objectfifo.subview.access %subview0[8] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %subview0_obj9 = aie.objectfifo.subview.access %subview0[9] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
                 %v0_0 = memref.load %subview0_obj0[] : memref<i32>
                 %v0_1 = memref.load %subview0_obj1[] : memref<i32>
                 %v0_2 = memref.load %subview0_obj2[] : memref<i32>
@@ -105,13 +105,13 @@ module @aie2_cyclostatic_dma {
                 memref.store %v0_7, %buf28[%iter, %i7] : memref<16x10xi32>
                 memref.store %v0_8, %buf28[%iter, %i8] : memref<16x10xi32>
                 memref.store %v0_9, %buf28[%iter, %i9] : memref<16x10xi32>
-                AIE.objectFifo.release<Consume>(%fifo : !AIE.objectFifo<memref<i32>>, 10)
+                aie.objectfifo.release @fifo (Consume, 10)
 
             }
 
-            AIE.useLock(%lock28, "Release", 1)
+            aie.use_lock(%lock28, "Release", 1)
 
-            AIE.end
+            aie.end
         }
 
     }
