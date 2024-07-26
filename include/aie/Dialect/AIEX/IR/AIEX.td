@@ -689,6 +689,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let arguments = (
     ins UI32Attr:$address,
         UI32Attr:$value,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
@@ -697,7 +698,13 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     attr-dict
   }];
   let description = [{
-    write32 operator
+    NPU write32 operator writes a 32bit value to the AIE array.
+    If 'buffer' is present then 'address' is interpreted as an offset into the
+    aie.buffer with symbol name 'buffer'.
+    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    into the memory space of aie.tile(column, row).
+    If 'buffer' is not present and 'column' and 'row' are not present then
+    'address' is interpreted as a full 32-bit address in the AIE array.
   }];
 }
 
@@ -705,15 +712,24 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
 def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   let summary = "blockwrite operator";
   let arguments = (
-    ins AnyMemRef:$data,
-        UI32Attr:$address
+    ins UI32Attr:$address,
+        AnyMemRef:$data,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
     `(` $data `)` attr-dict `:` type($data)
   }];
   let description = [{
-    blockwrite operator
+    blockwrite operator writes the data from the memref 'data' to the AIE array.
+    If 'buffer' is present then 'address' is interpreted as an offset into the
+    aie.buffer with symbol name 'buffer'.
+    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    into the memory space of aie.tile(column, row).
+    If 'buffer' is not present and 'column' and 'row' are not present then
+    'address' is interpreted as a full 32-bit address in the AIE array.
   }];
 }
 

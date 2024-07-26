@@ -71,6 +71,11 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   auto words = reserveAndGetTail(instructions, 6);
   const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
 
+  if (op.getBuffer()) {
+    op.emitOpError("Cannot translate symbolic address");
+    return;
+  }
+
   // XAIE_IO_WRITE
   words[0] = TXN_OPC_WRITE;
   words[1] = 0;
