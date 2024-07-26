@@ -649,14 +649,12 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
 def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let summary = "rtp write operator";
   let arguments = (
-    ins StrAttr:$buffer_sym_name,
-        UI32Attr:$col,
-        UI32Attr:$row,
+    ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
         I32Attr:$value
   );
   let results = (outs );
-  let assemblyFormat = [{ `(` $col `,` $row `,` $index `,` $value `)` attr-dict 
+  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict 
   }];
   let description = [{
     rtp write operator

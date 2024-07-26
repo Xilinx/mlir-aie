@@ -970,24 +970,24 @@ aie.device(npu1_3col) {
 
 
 
-      aiex.npu.rtp_write(0, 2, 0,  1) { buffer_sym_name = "rtp2" }
-      aiex.npu.rtp_write(0, 3, 0,  1) { buffer_sym_name = "rtp3" }
-      aiex.npu.rtp_write(0, 5, 0,  1) { buffer_sym_name = "rtp4" }
-      aiex.npu.rtp_write(0, 4, 0,  1)  { buffer_sym_name = "rtp5" }
-      aiex.npu.rtp_write(0, 4, 1,  0)  { buffer_sym_name = "rtp5" }
-      aiex.npu.rtp_write(0, 4, 2,  1)  { buffer_sym_name = "rtp5" }
+      aiex.npu.rtp_write(@rtp2, 0, 1)
+      aiex.npu.rtp_write(@rtp3, 0, 1)
+      aiex.npu.rtp_write(@rtp4, 0, 1)
+      aiex.npu.rtp_write(@rtp5, 0, 1)
+      aiex.npu.rtp_write(@rtp5, 1, 0)
+      aiex.npu.rtp_write(@rtp5, 2, 1)
 
-      aiex.npu.rtp_write(1, 5, 0,  1) { buffer_sym_name = "rtp15" }
-      aiex.npu.rtp_write(1, 4, 0,  1) { buffer_sym_name = "rtp14" }
-      aiex.npu.rtp_write(1, 2, 0,  1) { buffer_sym_name = "rtp12" }
-      aiex.npu.rtp_write(1, 3, 0,  1)  { buffer_sym_name = "rtp13" }
-      aiex.npu.rtp_write(1, 3, 1,  0)  { buffer_sym_name = "rtp13" }
+      aiex.npu.rtp_write(@rtp15, 0, 1)
+      aiex.npu.rtp_write(@rtp14, 0, 1)
+      aiex.npu.rtp_write(@rtp12, 0, 1)
+      aiex.npu.rtp_write(@rtp13, 0, 1)
+      aiex.npu.rtp_write(@rtp13, 1, 0)
 
-      aiex.npu.rtp_write(2, 2, 0,  1) { buffer_sym_name = "rtp22" }
-      aiex.npu.rtp_write(2, 3, 0,  1) { buffer_sym_name = "rtp23" }
-      aiex.npu.rtp_write(2, 5, 0,  1) { buffer_sym_name = "rtp25" }
-      aiex.npu.rtp_write(2, 4, 0,  1)  { buffer_sym_name = "rtp24" }
-      aiex.npu.rtp_write(2, 4, 1,  0)  { buffer_sym_name = "rtp24" }
+      aiex.npu.rtp_write(@rtp22, 0, 1)
+      aiex.npu.rtp_write(@rtp23, 0, 1)
+      aiex.npu.rtp_write(@rtp25, 0, 1)
+      aiex.npu.rtp_write(@rtp24, 0, 1)
+      aiex.npu.rtp_write(@rtp24, 1, 0)
 
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32

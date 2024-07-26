@@ -78,39 +78,27 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto *ctx = op->getContext();
-    auto i32ty = IntegerType::get(ctx, 32);
-    auto ui32ty =
-        IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
+
     auto device = op->getParentOfType<AIE::DeviceOp>();
 
-    uint32_t rtp_buffer_addr = UINT_MAX;
-    int c = op.getCol();
-    int r = op.getRow();
-    uint32_t v = op.getValue();
-    uint32_t idx = op.getIndex();
-
-    if (auto buffer = device.lookupSymbol<AIE::BufferOp>(op.getBufferSymName()))
-      if (AIE::TileOp tile = buffer.getTileOp();
-          tile.colIndex() == c && tile.rowIndex() == r) {
-        assert(buffer.getAddress().has_value() &&
-               "buffer must have address assigned");
-        rtp_buffer_addr = static_cast<uint32_t>(buffer.getAddress().value());
-      }
-
-    if (rtp_buffer_addr == UINT_MAX) {
-      return op->emitOpError("RTP buffer address cannot be found. Has "
-                             "an RTP buffer been allocated?");
+    auto buffer = device.lookupSymbol<AIE::BufferOp>(op.getBuffer());
+    if (!buffer) {
+      op->emitError("buffer '" + op.getBuffer() + "' not found in device");
+      return failure();
     }
 
-    rtp_buffer_addr += idx * sizeof(uint32_t);
+    if (!buffer.getAddress()) {
+      op->emitError("buffer must have address assigned");
+      return failure();
+    }
+    AIE::TileOp tile = buffer.getTileOp();
 
-    IntegerAttr column = IntegerAttr::get(i32ty, c);
-    IntegerAttr row = IntegerAttr::get(i32ty, r);
-    IntegerAttr address = IntegerAttr::get(ui32ty, rtp_buffer_addr);
-    IntegerAttr value = IntegerAttr::get(i32ty, v);
-    rewriter.create<NpuWrite32Op>(op->getLoc(), address.getUInt(),
-                                  value.getInt(), column, row);
+    uint32_t idx = op.getIndex() * sizeof(uint32_t);
+    uint32_t address = buffer.getAddress().value() + idx;
+
+    rewriter.create<NpuWrite32Op>(op->getLoc(), address, op.getValue(),
+                                  rewriter.getI32IntegerAttr(tile.getCol()),
+                                  rewriter.getI32IntegerAttr(tile.getRow()));
 
     rewriter.eraseOp(op);
     return success();
