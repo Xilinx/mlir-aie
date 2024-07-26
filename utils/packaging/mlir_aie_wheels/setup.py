@@ -18,6 +18,7 @@ from importlib_metadata import files
 import setuptools
 from setuptools.command.build_ext import build_ext
 from setuptools.command.install_scripts import install_scripts, log
+from setuptools.command.easy_install import chmod, current_umask
 
 # --------------------------------------------------------------------------
 # Utilities
