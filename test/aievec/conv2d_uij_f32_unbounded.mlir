@@ -114,7 +114,7 @@ func.func @conv2d_0 (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>
 // CHECK:               %[[VAL_35:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_16]], %[[VAL_24]]], %[[VAL_33]] {index = 1 : i8, offset = 224 : i32} : memref<?x?xf32>, vector<16xf32>
 // CHECK:               %[[VAL_36:.*]] = aievec_aie1.mac %[[VAL_35]], %[[VAL_8]], %[[VAL_34]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 // CHECK:               %[[VAL_37:.*]] = aievec_aie1.mac %[[VAL_35]], %[[VAL_9]], %[[VAL_36]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-// CHECK:               vector.transfer_write %[[VAL_37]], %[[VAL_2]]{{\[}}%[[VAL_12]], %[[VAL_19]]] {in_bounds = [true]} : vector<8xf32>, memref<?x?xf32>
+// CHECK:               vector.transfer_write %[[VAL_37]], %[[VAL_2]]{{\[}}%[[VAL_12]], %[[VAL_19]]] : vector<8xf32>, memref<?x?xf32>
 
 //CHECK-LABEL: func.func @conv2d_1
 func.func @conv2d_1 (%A: memref<?x256xf32>, %B: memref<?xf32>, %C: memref<?x256xf32>) {
@@ -229,4 +229,4 @@ func.func @conv2d_1 (%A: memref<?x256xf32>, %B: memref<?xf32>, %C: memref<?x256x
 // CHECK:               %[[VAL_34:.*]] = aievec.upd %[[VAL_0]]{{\[}}%[[VAL_14]], %[[VAL_23]]], %[[VAL_32]] {index = 1 : i8, offset = 224 : i32} : memref<?x256xf32>, vector<16xf32>
 // CHECK:               %[[VAL_35:.*]] = aievec_aie1.mac %[[VAL_34]], %[[VAL_6]], %[[VAL_33]] {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 // CHECK:               %[[VAL_36:.*]] = aievec_aie1.mac %[[VAL_34]], %[[VAL_7]], %[[VAL_35]] {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-// CHECK:               vector.transfer_write %[[VAL_36]], %[[VAL_2]]{{\[}}%[[VAL_10]], %[[VAL_18]]] {in_bounds = [true]} : vector<8xf32>, memref<?x256xf32>
+// CHECK:               vector.transfer_write %[[VAL_36]], %[[VAL_2]]{{\[}}%[[VAL_10]], %[[VAL_18]]] : vector<8xf32>, memref<?x256xf32>

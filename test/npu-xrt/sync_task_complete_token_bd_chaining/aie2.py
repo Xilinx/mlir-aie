@@ -70,7 +70,7 @@ def design():
                     yield_([])
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(memref_t, memref_t)
+            @runtime_sequence(memref_t, memref_t)
             def sequence(input, output):
                 for i in range(output_sz):
 

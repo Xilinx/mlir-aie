@@ -142,7 +142,7 @@ def conv2dk1():
             memRef_wts_ty = T.memref(weights, T.i8())
             # memRef_16x16_ty = T.memref(16, 16, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, memRef_wts_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, memRef_wts_ty, tensor_ty)
             def sequence(I, W, O):
                 NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=10)
 

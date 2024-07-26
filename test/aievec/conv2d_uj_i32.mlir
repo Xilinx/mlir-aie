@@ -60,4 +60,4 @@ func.func @conv2d (%A: memref<2048x2048xi32>, %B: memref<3x3xi32>, %C: memref<20
 //CHECK-NEXT:          %8 = aievec_aie1.mac %7, %5, %6 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 //CHECK-NEXT:          %9 = aievec_aie1.mac %7, %5, %8 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 //CHECK-NEXT:          %10 = aievec.srs %9, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
-//CHECK-NEXT:          vector.transfer_write %10, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xi32>, memref<2046x2046xi32>
+//CHECK-NEXT:          vector.transfer_write %10, %arg2[%arg3, %arg4] : vector<8xi32>, memref<2046x2046xi32>

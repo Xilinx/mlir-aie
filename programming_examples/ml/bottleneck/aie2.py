@@ -512,7 +512,7 @@ def bottleneck4AIEs():
             activationsInL3_ty = MemRefType.get((activationsIn,), int8_ty)
             weightsInL3_ty = MemRefType.get((totalWeights,), uint8_ty)
 
-            @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
+            @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsInL3_ty)
             def sequence(inputFromL3, weightsFromL3, outputToL3):
 
                 if enableTrace:

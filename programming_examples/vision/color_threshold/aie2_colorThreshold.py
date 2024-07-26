@@ -248,7 +248,7 @@ def color_threshold():
 
             tensorSize = width * height
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 T.memref(tensorSize, T.i8()),
                 T.memref(32, T.i32()),  # not used
                 T.memref(tensorSize, T.i8()),
