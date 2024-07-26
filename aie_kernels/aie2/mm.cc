@@ -352,12 +352,12 @@ void matmul_vectorized_2x2(const T_in *__restrict pA, const T_in *__restrict pB,
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t>
 void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
-                      T_out *__restrict pC) {
+                           T_out *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accfloat>;
   unsigned long long time;
   event0();
 
-  // Microkernel extended to maximize accumulator usage 
+  // Microkernel extended to maximize accumulator usage
 
   // unsigned long long start = get_cycles ();
   for (unsigned z = 0; z < rowA; z += 4)
@@ -373,7 +373,7 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
           const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
           const T_in *__restrict pA4 = pA + ((z + 3) * colA + 0) * MMUL::size_A;
-          
+
           const T_in *__restrict pB1 = pB + (0 * colB + j) * MMUL::size_B;
           const T_in *__restrict pB2 = pB + (0 * colB + (j + 1)) * MMUL::size_B;
 
@@ -389,7 +389,7 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
           pB1 += (MMUL::size_B * colB);
           aie::vector<T_in, MMUL::size_B> B11 = aie::load_v<MMUL::size_B>(pB2);
           pB2 += (MMUL::size_B * colB);
-          
+
           aie::vector<T_out, MMUL::size_C> acc_C00 =
               aie::load_v<MMUL::size_C>(pC1);
           aie::vector<T_out, MMUL::size_C> acc_C01 =
@@ -417,7 +417,7 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
           MMUL C31(acc_C31);
 
           C00.mac(A01, B01);
-          C01.mac(A01, B11);           
+          C01.mac(A01, B11);
           C10.mac(A11, B01);
           C11.mac(A11, B11);
           C20.mac(A21, B01);
@@ -425,9 +425,8 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
           C30.mac(A31, B01);
           C31.mac(A31, B11);
 
-          for (unsigned i = 1; i < colA; i+=1)
+          for (unsigned i = 1; i < colA; i += 1)
             chess_prepare_for_pipelining chess_loop_range(3, ) {
-             
 
               A01 = aie::load_v<MMUL::size_A>(pA1);
               pA1 += MMUL::size_A;
@@ -450,7 +449,7 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
               C21.mac(A21, B11);
               C30.mac(A31, B01);
               C31.mac(A31, B11);
-              }
+            }
 
           aie::store_v(pC1, C00.template to_vector<T_out>());
           pC1 += MMUL::size_C;
@@ -476,7 +475,6 @@ void matmul_vectorized_1x2(const T_in *__restrict pA, const T_in *__restrict pB,
   event1();
 }
 
-
 template <unsigned m, unsigned k, unsigned n>
 void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
                                      const int16 *__restrict pB,
@@ -490,10 +488,11 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  //return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
-  //                                                                     pC);
-  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
-                                                                       pC);
+  // return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA,
+  // pB,
+  //                                                                      pC);
+  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(
+      pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
