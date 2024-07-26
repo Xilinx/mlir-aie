@@ -8,8 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie_inc.cpp"
-#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +18,8 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+#include "test_library.h"
+#include "aie_inc.cpp"
 
 #define BUF_SIZE (16 * 4) // # ints
 

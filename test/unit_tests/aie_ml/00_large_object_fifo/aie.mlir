@@ -15,7 +15,7 @@
 // are small), moved between two non-adjacent AIE cores 
 // (i.e. L1 -> DMA -> L1).
 
-// RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: make -f %S/Makefile && %S/build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
@@ -35,7 +35,7 @@ module @aie2_cyclostatic_dma {
         %buf28  = aie.buffer(%tile28) {sym_name = "buf28"} : memref<16x10xi32>
         %lock28 = aie.lock(%tile28, 0) { init = 0 : i32, sym_name = "lock28" }
 
-        aie.objectfifo @fifo (%tile23, {%tile28}, 20 : i32) : !aie.objectFifo<memref<i32>>
+        aie.objectfifo @fifo (%tile23, {%tile28}, 20 : i32) : !aie.objectfifo<memref<i32>>
 
         // Producer core
         %core23 = aie.core(%tile23) {

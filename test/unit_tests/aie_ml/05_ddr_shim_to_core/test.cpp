@@ -18,10 +18,9 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
-
-#include "aie_inc.cpp"
-#include "memory_allocator.h"
 #include "test_library.h"
+#include "memory_allocator.h"
+#include "aie_inc.cpp"
 
 #define BUF_SIZE (4 * 10) // # ints
 
