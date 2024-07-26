@@ -20,3 +20,5 @@ add_mlir_dialect_library(MLIRAIEVecDialect
   MLIRIR
   MLIRPass
   )
+
+  add_subdirectory(AIE1)

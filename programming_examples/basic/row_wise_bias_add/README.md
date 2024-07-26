@@ -21,7 +21,7 @@ The data movement and call into the kernel (see below) is described in `aie2.py`
 A single AIE core is configured to process chunks of `m`&times;`n` of `in` and chunks of `n` of `bias` to produce `m`&times;`n` chunks of output.
 Therefore, the output is tiled into `M/m`&times;`N/n` tiles, and the kernel function is called that number of times.
 To avoid unnecessarily reloading the `bias` vector, we iterate through these tiles in a column-major fashion.
-The `strides` and `sizes` in the `sequence` function describe this column-major iteration.
+The `strides` and `sizes` in the `aie.runtime_sequence` operation describe this column-major iteration.
 
 ## Kernel
 

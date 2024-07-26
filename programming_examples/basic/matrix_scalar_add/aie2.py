@@ -78,7 +78,7 @@ def my_matrix_add_one():
 
         tensor_ty = T.memref(TILE_SIZE, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
             npu_dma_memcpy_nd(
                 metadata="out0",

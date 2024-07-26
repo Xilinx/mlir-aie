@@ -51,7 +51,7 @@ def my_passthrough():
             # To/from AIE-array data movement
             tensor_ty = T.memref(N, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
                 # The strides below are configured to read across all rows in the same column

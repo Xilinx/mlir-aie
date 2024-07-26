@@ -294,7 +294,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str):
                             yield_([])
 
         # To/from AIE-array data movement
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(M * K, dtype_in()),
             T.memref(K * N, dtype_in()),
             T.memref(M * N, dtype_out()),

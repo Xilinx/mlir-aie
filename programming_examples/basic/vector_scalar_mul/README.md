@@ -54,9 +54,9 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 1. **Core Definition:** The `core_body` function loops through sub-vectors of the input data, acquiring elements from `of_in`, processing using `vector_scalar_mul_aie_scalar()` or `vector_scalar_mul_aie()`, and outputting the result to `of_out`.
 
-1. **Data Movement Configuration:** The `sequence` function configures data movement and synchronization on the `ShimTile` for input and output buffer management.
+1. **Data Movement Configuration:** The `aie.runtime_sequence` operation configures data movement and synchronization on the `ShimTile` for input and output buffer management.
 
-1. **Tracing Configuration (Optional):** Trace control, event groups, and buffer descriptors are set up in the `sequence` function when tracing is enabled.
+1. **Tracing Configuration (Optional):** Trace control, event groups, and buffer descriptors are set up in the `aie.runtime_sequence` operation when tracing is enabled.
 
 1. **Generate the design:** The `my_vector_scalar()` function triggers the code generation process. The final print statement outputs the MLIR representation of the AIE array configuration.
 

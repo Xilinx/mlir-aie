@@ -44,4 +44,4 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
 //      CHECK:        %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x288xi16>, vector<32xi16>
 //      CHECK:        %[[T3:.*]] = aievec.mul_conv %[[T2:.*]], %[[T1:.*]] {M = 16 : i32, N = 4 : i32} : vector<32xi16>, vector<32xi16>, vector<16xi64>
 //      CHECK:        %[[T4:.*]] = aievec.srs %[[T3:.*]], %[[C10]] : vector<16xi64>, i32, vector<16xi32>
-//      CHECK:        vector.transfer_write %[[T4:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<16xi32>, memref<?x256xi32>
+//      CHECK:        vector.transfer_write %[[T4:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] : vector<16xi32>, memref<?x256xi32>

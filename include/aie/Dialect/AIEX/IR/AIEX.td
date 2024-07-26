@@ -20,6 +20,7 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
   let name = "aiex";
@@ -463,6 +464,25 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+  let summary = "Program the configuration co-processor of the AI Engine array";
+  let description = [{
+    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+    These instructions will execute on the configuration co-processor of the AI Engine array.
+
+    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+  }];
+  let arguments = (ins
+    Variadic<AnyType>:$args
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
@@ -680,6 +700,22 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   }];
   let description = [{
     write32 operator
+  }];
+}
+
+// BLOCKWRITE
+def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
+  let summary = "blockwrite operator";
+  let arguments = (
+    ins AnyMemRef:$data,
+        UI32Attr:$address
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $data `)` attr-dict `:` type($data)
+  }];
+  let description = [{
+    blockwrite operator
   }];
 }
 

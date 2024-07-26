@@ -59,7 +59,7 @@ def passthroughKernel(vector_size, trace_size):
 
         tensor_ty = T.memref(N, T.ui8())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
                 trace_utils.configure_simple_tracing_aie2(

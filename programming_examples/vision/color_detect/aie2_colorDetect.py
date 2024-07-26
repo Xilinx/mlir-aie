@@ -249,7 +249,7 @@ def color_detect():
                 T.i32(),
             )
 
-            @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, memRef_16x16_ty, tensor_ty)
             def sequence(I, B, O):
                 npu_dma_memcpy_nd(
                     metadata="inOF_L3L2",
