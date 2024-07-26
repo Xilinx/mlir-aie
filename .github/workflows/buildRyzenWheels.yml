@@ -77,7 +77,7 @@ jobs:
           pip install wheel auditwheel patchelf importlib_metadata
           CIBW_ARCHS=x86_64 \
             pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro/ \
             -f https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
     
           
