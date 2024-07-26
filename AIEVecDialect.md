@@ -1539,3 +1539,168 @@ Enum cases:
 | :-------: | :-------: | ----------- |
 | value | `::xilinx::aievec::ShuffleMode` | an enum of type ShuffleMode |
 
+## Enums
+
+### AIEArch
+
+AIE Architecture
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| AIE1 | `1` | AIE1 |
+| AIE2 | `2` | AIE2 |
+
+### AIEDevice
+
+AIE Device
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| xcvc1902 | `1` | xcvc1902 |
+| xcve2302 | `2` | xcve2302 |
+| xcve2802 | `3` | xcve2802 |
+| npu1 | `4` | npu1 |
+| npu1_1col | `5` | npu1_1col |
+| npu1_2col | `6` | npu1_2col |
+| npu1_3col | `7` | npu1_3col |
+| npu1_4col | `8` | npu1_4col |
+
+### CascadeDir
+
+Directions for cascade
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| South | `3` | South |
+| West | `4` | West |
+| North | `5` | North |
+| East | `6` | East |
+
+### DMAChannelDir
+
+DMA Channel direction
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| S2MM | `0` | S2MM |
+| MM2S | `1` | MM2S |
+
+### LockAction
+
+lock acquire/release
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Acquire | `0` | Acquire |
+| AcquireGreaterEqual | `2` | AcquireGreaterEqual |
+| Release | `1` | Release |
+
+### LockBlocking
+
+lock operation is blocking
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| NonBlocking | `0` | NonBlocking |
+| Blocking | `1` | Blocking |
+
+### ObjectFifoPort
+
+Ports of an object FIFO
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Produce | `0` | Produce |
+| Consume | `1` | Consume |
+
+### ShuffleMode
+
+Shuffle mode for AIEVec shuffle operations
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| T8_64X2_LO | `0` | t8_64x2_lo |
+| T8_64X2_HI | `1` | t8_64x2_hi |
+| T16_32X2_LO | `2` | t16_32x2_lo |
+| T16_32X2_HI | `3` | t16_32x2_hi |
+| T32_16X2_LO | `4` | t32_16x2_lo |
+| T32_16X2_HI | `5` | t32_16x2_hi |
+| T64_8X2_LO | `6` | t64_8x2_lo |
+| T64_8X2_HI | `7` | t64_8x2_hi |
+| T128_4X2_LO | `8` | t128_4x2_lo |
+| T128_4X2_HI | `9` | t128_4x2_hi |
+| T256_2X2_LO | `10` | t256_2x2_lo |
+| T256_2X2_HI | `11` | t256_2x2_hi |
+| T128_2X4_LO | `12` | t128_2x4_lo |
+| T128_2X4_HI | `13` | t128_2x4_hi |
+| T64_2X8_LO | `14` | t64_2x8_lo |
+| T64_2X8_HI | `15` | t64_2x8_hi |
+| T32_2X16_LO | `16` | t32_2x16_lo |
+| T32_2X16_HI | `17` | t32_2x16_hi |
+| T16_2X32_LO | `18` | t16_2x32_lo |
+| T16_2X32_HI | `19` | t16_2x32_hi |
+| T8_2X64_LO | `20` | t8_2x64_lo |
+| T8_2X64_HI | `21` | t8_2x64_hi |
+| T512_1X2_LO | `22` | t512_1x2_lo |
+| T512_1X2_HI | `23` | t512_1x2_hi |
+| T16_16X4_LO | `24` | t16_16x4_lo |
+| T16_16X4_HI | `25` | t16_16x4_hi |
+| T16_4X16_LO | `26` | t16_4x16_lo |
+| T16_4X16_HI | `27` | t16_4x16_hi |
+| T16_8X4 | `28` | t16_8x4 |
+| T16_4X8 | `29` | t16_4x8 |
+| T32_8X4_LO | `30` | t32_8x4_lo |
+| T32_8X4_HI | `31` | t32_8x4_hi |
+| T32_4X8_LO | `32` | t32_4x8_lo |
+| T32_4X8_HI | `33` | t32_4x8_hi |
+| T32_4X4 | `34` | t32_4x4 |
+| T8_8X8 | `35` | t8_8x8 |
+| T8_16X4 | `36` | t8_16x4 |
+| T8_4X16 | `37` | t8_4x16 |
+| T16_1X2_flip | `38` | t16_1x2_flip |
+| T16_4X4 | `39` | t16_4x4 |
+| T16_4X2 | `40` | t16_4x2 |
+| T16_2X4 | `41` | t16_2x4 |
+| T16_8X2 | `42` | t16_8x2 |
+| T16_2X8 | `43` | t16_2x8 |
+| T16_16X2 | `44` | t16_16x2 |
+| T16_2X16 | `45` | t16_2x16 |
+| T8_8X4 | `46` | t8_8x4 |
+| T8_4X8 | `47` | t8_4x8 |
+
+### WireBundle
+
+Bundle of wires
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Core | `0` | Core |
+| DMA | `1` | DMA |
+| FIFO | `2` | FIFO |
+| South | `3` | South |
+| West | `4` | West |
+| North | `5` | North |
+| East | `6` | East |
+| PLIO | `7` | PLIO |
+| NOC | `8` | NOC |
+| Trace | `9` | Trace |
+| Ctrl | `10` | Ctrl |
+
