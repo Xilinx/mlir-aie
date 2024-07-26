@@ -490,10 +490,10 @@ void matmul_vectorized_4x4x4_i16_i16(const int16 *__restrict pA,
   static_assert(m % (2 * r) == 0 && m / (2 * r) > 0);
   static_assert(k % (2 * s) == 0 && k / (2 * s) > 0);
   static_assert(n % (2 * t) == 0 && n / (2 * t) > 0);
-  return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+  //return matmul_vectorized<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
+  //                                                                     pC);
+  return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
                                                                        pC);
-  // return matmul_vectorized_1x2<int16, int16, m / r, k / s, n / t, r, s, t>(pA, pB,
-  //                                                                      pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
