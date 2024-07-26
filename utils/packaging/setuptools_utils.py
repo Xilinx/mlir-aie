@@ -65,10 +65,9 @@ class InstallBin(install_scripts):
             # The pip wheel installer will only copy files marked executable into the bin dir
             chmod(dest, 0o777 - mask)
 
-        
         if not python_module_install_dir.exists():
             python_module_install_dir.mkdir(parents=True)
-        
+
         for mod in built_python_modules_dir.glob("*"):
             dest = str(python_module_install_dir / mod.name)
             log.info(f"Copying Python file {mod} -> {dest}")
@@ -76,4 +75,3 @@ class InstallBin(install_scripts):
                 shutil.copytree(mod, dest)
             else:
                 shutil.copyfile(mod, dest)
-        
