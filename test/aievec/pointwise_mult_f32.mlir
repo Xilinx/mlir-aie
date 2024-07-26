@@ -6,7 +6,7 @@ func.func @pointwise_mult (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memre
        %a = affine.load %A[%arg0] : memref<2048xf32>
        %b = affine.load %B[%arg0] : memref<2048xf32>
        //CHECK: %2 = aievec.concat %0, %0 : vector<8xf32>, vector<16xf32>
-       //CHECK: %3 = aievec.mul %2, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x76543210", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+       //CHECK: %3 = aievec_aie1.mul %2, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x76543210", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
        %c = arith.mulf %a, %b : f32
        affine.store %c, %C[%arg0] : memref<2048xf32>
     }

@@ -55,9 +55,9 @@ func.func @conv2d (%A: memref<2048x2048xi32>, %B: memref<3x3xi32>, %C: memref<20
 //CHECK-NEXT:          %3 = arith.addi %arg3, %arg5 : index
 //CHECK-NEXT:          %4 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xi32>, vector<16xi32>
 //CHECK-NEXT:          %5 = aievec.upd %arg1[%arg5, %c0] {index = 0 : i8, offset = 0 : i32} : memref<3x3xi32>, vector<8xi32>
-//CHECK-NEXT:          %6 = aievec.mac %4, %5, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+//CHECK-NEXT:          %6 = aievec_aie1.mac %4, %5, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 //CHECK-NEXT:          %7 = aievec.upd %arg0[%3, %2], %4 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xi32>, vector<16xi32>
-//CHECK-NEXT:          %8 = aievec.mac %7, %5, %6 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-//CHECK-NEXT:          %9 = aievec.mac %7, %5, %8 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+//CHECK-NEXT:          %8 = aievec_aie1.mac %7, %5, %6 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+//CHECK-NEXT:          %9 = aievec_aie1.mac %7, %5, %8 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 //CHECK-NEXT:          %10 = aievec.srs %9, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
 //CHECK-NEXT:          vector.transfer_write %10, %arg2[%arg3, %arg4] : vector<8xi32>, memref<2046x2046xi32>

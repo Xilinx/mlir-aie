@@ -84,15 +84,15 @@ func.func @conv2d (%A: memref<18x288xi16>, %B: memref<12xi16>, %C: memref<16x256
 //CHECK-NEXT:      scf.for %arg4 = %c0_2 to %c256 step %c16_3 {
 //CHECK-NEXT:        %3 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi16>, vector<32xi16>
 //CHECK-NEXT:        %4 = aievec.upd %arg0[%arg3, %arg4], %3 {index = 1 : i8, offset = 256 : i32} : memref<18x288xi16>, vector<32xi16>
-//CHECK-NEXT:        %5 = aievec.mul %4, %0 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "0", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
-//CHECK-NEXT:        %6 = aievec.mac %4, %0, %5 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %5 = aievec_aie1.mul %4, %0 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "0", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %6 = aievec_aie1.mac %4, %0, %5 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
 //CHECK-NEXT:        %7 = aievec.upd %arg0[%1, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi16>, vector<32xi16>
 //CHECK-NEXT:        %8 = aievec.upd %arg0[%1, %arg4], %7 {index = 1 : i8, offset = 256 : i32} : memref<18x288xi16>, vector<32xi16>
-//CHECK-NEXT:        %9 = aievec.mac %8, %0, %6 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "4", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
-//CHECK-NEXT:        %10 = aievec.mac %8, %0, %9 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "6", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %9 = aievec_aie1.mac %8, %0, %6 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "4", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %10 = aievec_aie1.mac %8, %0, %9 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "6", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
 //CHECK-NEXT:        %11 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi16>, vector<32xi16>
 //CHECK-NEXT:        %12 = aievec.upd %arg0[%2, %arg4], %11 {index = 1 : i8, offset = 256 : i32} : memref<18x288xi16>, vector<32xi16>
-//CHECK-NEXT:        %13 = aievec.mac %12, %0, %10 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "8", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
-//CHECK-NEXT:        %14 = aievec.mac %12, %0, %13 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "10", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %13 = aievec_aie1.mac %12, %0, %10 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "8", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:        %14 = aievec_aie1.mac %12, %0, %13 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "10", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
 //CHECK-NEXT:        %15 = aievec.srs %14, %c10_i32 : vector<16xi48>, i32, vector<16xi16>
 //CHECK-NEXT:        vector.transfer_write %15, %arg2[%arg3, %arg4] : vector<16xi16>, memref<16x256xi16>

@@ -17,10 +17,6 @@
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-// #include "aie/Dialect/AIEVec/IR/AIEVecEnums.h.inc"
-// #define GET_ATTRDEF_CLASSES
-// #include "aie/Dialect/AIEVec/IR/AIEVecAttributes.h.inc"
-
 #include "AIEVecAIE1Dialect.h"
 
 #define GET_OP_CLASSES

@@ -67,7 +67,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB01:.*]] = aievec.concat %[[VB0]], %[[VB1]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk0:.*]] = aievec.mac %[[VB01]], %[[VA]], %[[VC]]
+        // CHECK: %[[ACCk0:.*]] = aievec_aie1.mac %[[VB01]], %[[VA]], %[[VC]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "0", zstep = "1"}
         // CHECK-SAME:                       : vector<32xi16>, vector<16xi16>, vector<16xi48>
@@ -90,7 +90,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB23:.*]] = aievec.concat %[[VB2]], %[[VB3]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk2:.*]] = aievec.mac %[[VB23]], %[[VA]], %[[ACCk0]]
+        // CHECK: %[[ACCk2:.*]] = aievec_aie1.mac %[[VB23]], %[[VA]], %[[ACCk0]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"}
         %16 = affine.apply #map3(%arg5)
@@ -112,7 +112,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB45:.*]] = aievec.concat %[[VB4]], %[[VB5]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk4:.*]] = aievec.mac %[[VB45]], %[[VA]], %[[ACCk2]]
+        // CHECK: %[[ACCk4:.*]] = aievec_aie1.mac %[[VB45]], %[[VA]], %[[ACCk2]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "4", zstep = "1"}
         %26 = affine.apply #map5(%arg5)
@@ -134,7 +134,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB67:.*]] = aievec.concat %[[VB6]], %[[VB7]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk6:.*]] = aievec.mac %[[VB67]], %[[VA]], %[[ACCk4]]
+        // CHECK: %[[ACCk6:.*]] = aievec_aie1.mac %[[VB67]], %[[VA]], %[[ACCk4]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "6", zstep = "1"}
         %36 = affine.apply #map7(%arg5)
@@ -156,7 +156,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VB89:.*]] = aievec.concat %[[VB8]], %[[VB9]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk8:.*]] = aievec.mac %[[VB89]], %[[VA]], %[[ACCk6]]
+        // CHECK: %[[ACCk8:.*]] = aievec_aie1.mac %[[VB89]], %[[VA]], %[[ACCk6]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "8", zstep = "1"}
         %46 = affine.apply #map9(%arg5)
@@ -178,7 +178,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBab:.*]] = aievec.concat %[[VB10]], %[[VB11]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk10:.*]] = aievec.mac %[[VBab]], %[[VA]], %[[ACCk8]]
+        // CHECK: %[[ACCk10:.*]] = aievec_aie1.mac %[[VBab]], %[[VA]], %[[ACCk8]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "10", zstep = "1"}
         %56 = affine.apply #map11(%arg5)
@@ -200,7 +200,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBcd:.*]] = aievec.concat %[[VB12]], %[[VB13]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk12:.*]] = aievec.mac %[[VBcd]], %[[VA]], %[[ACCk10]]
+        // CHECK: %[[ACCk12:.*]] = aievec_aie1.mac %[[VBcd]], %[[VA]], %[[ACCk10]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "12", zstep = "1"}
         %66 = affine.apply #map13(%arg5)
@@ -222,7 +222,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK-SAME:                  {index = 0 : i8, offset = 0 : i32}
         // CHECK-SAME:                  : memref<?x64xi16>, vector<16xi16>
         // CHECK: %[[VBef:.*]] = aievec.concat %[[VB14]], %[[VB15]] : vector<16xi16>, vector<32xi16>
-        // CHECK: %[[ACCk14:.*]] = aievec.mac %[[VBef]], %[[VA]], %[[ACCk12]]
+        // CHECK: %[[ACCk14:.*]] = aievec_aie1.mac %[[VBef]], %[[VA]], %[[ACCk12]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "14", zstep = "1"}
         // CHECK: %[[ACC:.*]] = aievec.srs %[[ACCk14]], %[[C0I32]] : vector<16xi48>, i32, vector<16xi16>

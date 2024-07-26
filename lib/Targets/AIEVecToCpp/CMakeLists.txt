@@ -13,6 +13,7 @@ add_mlir_translation_library(MLIRTargetAIEVecCpp
   $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Targets
 
   LINK_LIBS PUBLIC
+  MLIRAIEVecAIE1Dialect
   MLIRAIEVecDialect
   MLIRIR
   MLIRSupport

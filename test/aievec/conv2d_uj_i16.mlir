@@ -54,8 +54,8 @@ func.func @conv2d (%A: memref<2048x2048xi16>, %B: memref<3x3xi16>, %C: memref<20
 //CHECK-NEXT:          %3 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<2048x2048xi16>, vector<32xi16>
 //CHECK-NEXT:          %4 = aievec.upd %arg0[%2, %arg4], %3 {index = 1 : i8, offset = 256 : i32} : memref<2048x2048xi16>, vector<32xi16>
 //CHECK-NEXT:          %5 = aievec.upd %arg1[%arg5, %c0] {index = 0 : i8, offset = 0 : i32} : memref<3x3xi16>, vector<16xi16>
-//CHECK-NEXT:          %6 = aievec.mac %4, %5, %1 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "0", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
-//CHECK-NEXT:          %7 = aievec.mac %4, %5, %6 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:          %6 = aievec_aie1.mac %4, %5, %1 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "0", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+//CHECK-NEXT:          %7 = aievec_aie1.mac %4, %5, %6 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
 //CHECK-NEXT:          %8 = aievec.srs %7, %c0_i32 : vector<16xi48>, i32, vector<16xi16>
 //CHECK-NEXT:          vector.transfer_write %8, %arg2[%arg3, %arg4] : vector<16xi16>, memref<2046x2046xi16>
 
