@@ -19,19 +19,9 @@ import setuptools
 from setuptools.command.build_ext import build_ext
 from setuptools.command.install_scripts import install_scripts, log
 
-# --------------------------------------------------------------------------
-# Utilities
-
-def check_env(build, default=0):
-    return os.getenv(build, str(default)).lower() in {"1", "true", "true", "on", "yes"}
-
-
-def get_exe_suffix():
-    if platform.system() == "Windows":
-        suffix = ".exe"
-    else:
-        suffix = ""
-    return suffix
+sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
+print(sys.path)
+from setuptools_utils import *
 
 
 # --------------------------------------------------------------------------
@@ -66,10 +56,12 @@ MLIR_INSTALL_ABS_PATH = Path(env_mlir_install_path).absolute()
 # --------------------------------------------------------------------------
 # CMake Build Extension for setuptools build process
 
+
 class CMakeExtension(setuptools.Extension):
     def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
         self.sourcedir = os.fspath(Path(sourcedir).resolve())
+
 
 def get_cross_cmake_args():
     cmake_args = {}
@@ -139,12 +131,15 @@ def get_cross_cmake_args():
 # --------------------------------------------------------------------------
 # CMakeBuild command - overwrites "build_ext" stage of "build" command
 
+
 class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         global MLIR_INSTALL_ABS_PATH, env_mlir_install_path, default_mlir_install_path
 
         if not os.path.isdir(MLIR_INSTALL_ABS_PATH):
-            raise RuntimeError(f"Could not find required LLVM/MLIR build prerequisite. Looked in `{env_mlir_install_path}` and `{default_mlir_install_path}`.")
+            raise RuntimeError(
+                f"Could not find required LLVM/MLIR build prerequisite. Looked in `{env_mlir_install_path}` and `{default_mlir_install_path}`."
+            )
 
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
@@ -270,36 +265,10 @@ class CMakeBuild(build_ext):
 
 
 # --------------------------------------------------------------------------
-# InstallBin command -- overwrites "install_scripts" stage of "install" cmd
-# Copy files into the <packagename>.data/data/scripts directory.
-# The wheel package format prescribes that files in <packagename>.data/scripts be added to the PATH on install.
-# So whatever is added here will end up in the virtualenv's bin directory upon install.
-class InstallBin(install_scripts):
-    def run(self):
-        # Copy the built binaries back into the source directory.
-        # This is needed so that the setup(data_files = [(scripts, ...)]) argument below can
-        # pick them up.
-
-        install_dir = Path(self.install_dir)
-
-        # Not a super clean way of doing this, but:
-        #  1. `build_ext`` will call CMake to build mlir_aie in <temp_build_dir>/lib.linux-x86_64.../mlir_aie
-        #  2. then, `install_lib`` will copy everything in there to <wheelhouse>/mlir_aie
-        #  3. then, this runs -- `install_scripts`, and it will be configured with self.install_dir == <wheelhouse>/<pkgname>.data/scripts
-        #     therefore, we can get our hands on the binaries moved into the wheelhouse root by looking at the grandparent dir 
-        mlir_aie_bin_dir = install_dir.parent.parent.resolve() / "mlir_aie" / "bin"
-
-        if not install_dir.exists():
-            install_dir.mkdir(parents=True)
-
-        for bin in mlir_aie_bin_dir.glob("*"):
-            dest = str(Path(self.install_dir) / os.path.basename(bin))
-            log.info(f"Copying binary {bin} -> {dest}")
-            shutil.copyfile(bin, dest)
-
-
-# --------------------------------------------------------------------------
 # Setuptools package configuration
+
+InstallBin.bin_dir = Path("mlir_aie") / "bin"
+
 setuptools.setup(
     version=version,
     author="",
@@ -318,24 +287,20 @@ setuptools.setup(
         """
     ),
     long_description_content_type="text/markdown",
-
     # cmdclass overwrites/defines the Command objects that will be created and called for the named commands as part of the wheel build.
     # We overwrite "build_ext" to customize our CMake build, and "install_scripts" to be able to copy our binaries to the bin directory in the PATH.
-    cmdclass={
-        "build_ext": CMakeBuild,
-        "install_scripts": InstallBin
-    },
+    cmdclass={"build_ext": CMakeBuild, "install_scripts": InstallBin},
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     zip_safe=False,
     python_requires=">=3.8",
     setup_requires=[
-        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}" 
+        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}"
         # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/",
     ],
     install_requires=[
-        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}" 
+        f"{mlir_prereq}=={REQUIRED_LLVM_WHEEL_VERSION}"
         # @ https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/",
     ],
     extras_require={

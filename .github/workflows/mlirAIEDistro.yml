@@ -203,9 +203,9 @@ jobs:
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
         if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\packaging\mlir_aie_wheels"
         else
-          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/packaging/mlir_aie_wheels"
         fi
         
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT

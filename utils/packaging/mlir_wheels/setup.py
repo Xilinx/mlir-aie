@@ -10,9 +10,12 @@ from pprint import pprint
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
+sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
+from setuptools_utils import *
 
-def check_env(build, default=0):
-    return os.environ.get(build, str(default)).lower() in {"1", "true", "on", "yes"}
+
+# --------------------------------------------------------------------------
+# CMake Build Extension for setuptools build process
 
 
 class CMakeExtension(Extension):
@@ -69,12 +72,8 @@ def get_cross_cmake_args():
     return cmake_args
 
 
-def get_exe_suffix():
-    if platform.system() == "Windows":
-        suffix = ".exe"
-    else:
-        suffix = ""
-    return suffix
+# --------------------------------------------------------------------------
+# CMake Build Command -- overrides "build_ext" command in setuptools
 
 
 class CMakeBuild(build_ext):
@@ -208,6 +207,9 @@ class CMakeBuild(build_ext):
         )
 
 
+# --------------------------------------------------------------------------
+# Environment variable configuration for this package
+
 cmake_txt = open("llvm/cmake/Modules/LLVMVersion.cmake").read()
 llvm_version = []
 for v in ["LLVM_VERSION_MAJOR", "LLVM_VERSION_MINOR", "LLVM_VERSION_PATCH"]:
@@ -226,6 +228,12 @@ version = f"{llvm_version[0]}.{llvm_version[1]}.{llvm_version[2]}.{llvm_datetime
 version += commit_hash
 
 llvm_url = f"https://github.com/llvm/llvm-project/commit/{commit_hash}"
+
+InstallBin.bin_dir = Path("mlir") / "bin"
+
+# --------------------------------------------------------------------------
+# Setuptools package configuration
+
 setup(
     name="mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti",
     version=version,
@@ -234,8 +242,8 @@ setup(
     description=f"MLIR distribution as wheel. Created at {now} build of {llvm_url}",
     long_description=f"MLIR distribution as wheel. Created at {now} build of [llvm/llvm-project/{commit_hash}]({llvm_url})",
     long_description_content_type="text/markdown",
+    cmdclass={"build_ext": CMakeBuild, "install_scripts": InstallBin},
     ext_modules=[CMakeExtension("mlir", sourcedir="llvm-project/llvm")],
-    cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     download_url=llvm_url,
 )
