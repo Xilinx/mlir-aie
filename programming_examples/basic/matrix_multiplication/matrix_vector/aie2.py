@@ -185,7 +185,7 @@ def my_matmul():
 
             # To/from AIE-array data movement
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 T.memref(A_sz, dtype_in()),
                 T.memref(B_sz, dtype_in()),
                 T.memref(C_sz, dtype_out()),

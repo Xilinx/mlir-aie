@@ -83,7 +83,7 @@ def my_vector_scalar(vector_size, trace_size):
         tensor_ty = T.memref(N, T.i16())
         scalar_ty = T.memref(1, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, scalar_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
 
             if trace_size > 0:

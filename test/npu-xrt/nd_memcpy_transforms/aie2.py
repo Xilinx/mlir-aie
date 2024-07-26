@@ -84,7 +84,7 @@ def design():
                     yield_([])
 
             # To/from AIE-array data movement
-            @FuncOp.from_py_func(memref_a, memref_b, memref_c)
+            @runtime_sequence(memref_a, memref_b, memref_c)
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
                     metadata=fifo_a.sym_name.value,

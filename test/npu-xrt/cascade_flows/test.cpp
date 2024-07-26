@@ -160,7 +160,11 @@ int main(int argc, const char *argv[]) {
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
   auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
-  run.wait();
+  ert_cmd_state r = run.wait();
+  if (r != ERT_CMD_STATE_COMPLETED) {
+    std::cout << "Kernel did not complete. Returned status: " << r << "\n";
+    return 1;
+  }
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
