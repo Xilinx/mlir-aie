@@ -60,7 +60,8 @@ VPP=`which v++`
 if test -f "$VPP"; then
   AIETOOLS="`dirname $VPP`/../aietools"
   # mlir is a dependency of mlir-aie and will be pulled as part of the following install
-  pip install mlir-aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/ -f https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
+  pip install mlir-aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels/ \
+                                -f https://github.com/makslevental/mlir-python-extras/releases/expanded_assets/0.0.6
 
   # TODO: make llvm-aie a dependency as well
   mkdir -p my_install

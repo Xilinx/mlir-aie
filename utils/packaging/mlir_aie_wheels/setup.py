@@ -267,7 +267,8 @@ class CMakeBuild(build_ext):
 # --------------------------------------------------------------------------
 # Setuptools package configuration
 
-InstallBin.bin_dir = Path("mlir_aie") / "bin"
+InstallBin.built_bin_dir = Path("mlir_aie") / "bin"
+InstallBin.built_python_modules_dir = Path("mlir_aie") / "python"
 
 setuptools.setup(
     version=version,

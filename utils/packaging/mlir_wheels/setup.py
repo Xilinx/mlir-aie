@@ -229,7 +229,7 @@ version += commit_hash
 
 llvm_url = f"https://github.com/llvm/llvm-project/commit/{commit_hash}"
 
-InstallBin.bin_dir = Path("mlir") / "bin"
+InstallBin.built_bin_dir = Path("mlir") / "bin"
 
 # --------------------------------------------------------------------------
 # Setuptools package configuration
