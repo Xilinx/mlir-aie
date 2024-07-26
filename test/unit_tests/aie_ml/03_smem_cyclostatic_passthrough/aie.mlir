@@ -15,7 +15,7 @@
 // Producer pattern: {1}
 // Consumer pattern: {2, 3, 3, 2}
 
-// RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: make -f %S/Makefile && %S/build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 

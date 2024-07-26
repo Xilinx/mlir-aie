@@ -13,7 +13,7 @@
 //                                      \-> Core DMA -> AIE Core
 // Pattern: Static
 
-// RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: make -f %S/Makefile && %S/build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 

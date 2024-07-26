@@ -24,7 +24,7 @@
 // their L1 memory. The host checks that this memory contains the right values
 // upon completion of the cores.
 
-// RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: make -f %S/Makefile && %S/build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 

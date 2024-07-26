@@ -13,7 +13,7 @@
 
 // Producer AIE core sends data straight to host DDR via objectfifo.
 
-// RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: make -f %S/Makefile && %S/build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
