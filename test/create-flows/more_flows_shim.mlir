@@ -12,7 +12,7 @@
 // These tests verify pathfinder routing flows to/from PLIO in shim tiles.  
 //
 
-// RUN: aie-opt --split-input-file --aie-create-pathfinder-flows -split-input-file %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-create-pathfinder-flows %s | FileCheck %s
 
 // CHECK-LABEL: test70
 // CHECK: %[[T70:.*]] = aie.tile(7, 0)

@@ -8,89 +8,94 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T2:.*]] = aie.tile(47, 0)
-// CHECK: %[[T4:.*]] = aie.tile(10, 5)
-// CHECK: %[[T15:.*]] = aie.tile(46, 0)
-// CHECK: %[[T17:.*]] = aie.tile(9, 5)
-// CHECK: %[[T28:.*]] = aie.tile(43, 0)
-// CHECK: %[[T30:.*]] = aie.tile(8, 5)
-// CHECK: %[[T41:.*]] = aie.tile(42, 0)
-// CHECK: %[[T43:.*]] = aie.tile(7, 5)
-// CHECK: %[[T54:.*]] = aie.tile(35, 0)
-// CHECK: %[[T55:.*]] = aie.tile(10, 4)
-// CHECK: %[[T66:.*]] = aie.tile(34, 0)
-// CHECK: %[[T67:.*]] = aie.tile(9, 4)
-// CHECK: %[[T78:.*]] = aie.tile(27, 0)
-// CHECK: %[[T80:.*]] = aie.tile(8, 4)
-// CHECK: %[[T91:.*]] = aie.tile(26, 0)
-// CHECK: %[[T93:.*]] = aie.tile(7, 4)
-// CHECK: %[[T104:.*]] = aie.tile(19, 0)
-// CHECK: %[[T105:.*]] = aie.tile(10, 3)
-// CHECK: %[[T116:.*]] = aie.tile(18, 0)
-// CHECK: %[[T117:.*]] = aie.tile(9, 3)
-// CHECK: %[[T128:.*]] = aie.tile(11, 0)
-// CHECK: %[[T130:.*]] = aie.tile(8, 3)
-// CHECK: %[[T140:.*]] = aie.tile(10, 0)
-// CHECK: %[[T142:.*]] = aie.tile(7, 3)
-// CHECK: %[[T152:.*]] = aie.tile(7, 0)
-// CHECK: %[[T153:.*]] = aie.tile(10, 2)
-// CHECK: %[[T164:.*]] = aie.tile(6, 0)
-// CHECK: %[[T165:.*]] = aie.tile(9, 2)
-// CHECK: %[[T176:.*]] = aie.tile(3, 0)
-// CHECK: %[[T178:.*]] = aie.tile(8, 2)
-// CHECK: %[[T189:.*]] = aie.tile(2, 0)
-// CHECK: %[[T191:.*]] = aie.tile(7, 2)
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
+
+// CHECK1: %[[T2:.*]] = aie.tile(47, 0)
+// CHECK1: %[[T4:.*]] = aie.tile(10, 5)
+// CHECK1: %[[T15:.*]] = aie.tile(46, 0)
+// CHECK1: %[[T17:.*]] = aie.tile(9, 5)
+// CHECK1: %[[T28:.*]] = aie.tile(43, 0)
+// CHECK1: %[[T30:.*]] = aie.tile(8, 5)
+// CHECK1: %[[T41:.*]] = aie.tile(42, 0)
+// CHECK1: %[[T43:.*]] = aie.tile(7, 5)
+// CHECK1: %[[T54:.*]] = aie.tile(35, 0)
+// CHECK1: %[[T55:.*]] = aie.tile(10, 4)
+// CHECK1: %[[T66:.*]] = aie.tile(34, 0)
+// CHECK1: %[[T67:.*]] = aie.tile(9, 4)
+// CHECK1: %[[T78:.*]] = aie.tile(27, 0)
+// CHECK1: %[[T80:.*]] = aie.tile(8, 4)
+// CHECK1: %[[T91:.*]] = aie.tile(26, 0)
+// CHECK1: %[[T93:.*]] = aie.tile(7, 4)
+// CHECK1: %[[T104:.*]] = aie.tile(19, 0)
+// CHECK1: %[[T105:.*]] = aie.tile(10, 3)
+// CHECK1: %[[T116:.*]] = aie.tile(18, 0)
+// CHECK1: %[[T117:.*]] = aie.tile(9, 3)
+// CHECK1: %[[T128:.*]] = aie.tile(11, 0)
+// CHECK1: %[[T130:.*]] = aie.tile(8, 3)
+// CHECK1: %[[T140:.*]] = aie.tile(10, 0)
+// CHECK1: %[[T142:.*]] = aie.tile(7, 3)
+// CHECK1: %[[T152:.*]] = aie.tile(7, 0)
+// CHECK1: %[[T153:.*]] = aie.tile(10, 2)
+// CHECK1: %[[T164:.*]] = aie.tile(6, 0)
+// CHECK1: %[[T165:.*]] = aie.tile(9, 2)
+// CHECK1: %[[T176:.*]] = aie.tile(3, 0)
+// CHECK1: %[[T178:.*]] = aie.tile(8, 2)
+// CHECK1: %[[T189:.*]] = aie.tile(2, 0)
+// CHECK1: %[[T191:.*]] = aie.tile(7, 2)
 
 //
-// CHECK: aie.flow(%[[T2]], DMA : 0, %[[T4]], DMA : 0)
-// CHECK: aie.flow(%[[T2]], DMA : 1, %[[T4]], DMA : 1)
-// CHECK: aie.flow(%[[T4]], DMA : 0, %[[T104]], DMA : 1)
-// CHECK: aie.flow(%[[T15]], DMA : 0, %[[T17]], DMA : 0)
-// CHECK: aie.flow(%[[T15]], DMA : 1, %[[T17]], DMA : 1)
-// CHECK: aie.flow(%[[T17]], DMA : 0, %[[T104]], DMA : 0)
-// CHECK: aie.flow(%[[T28]], DMA : 0, %[[T30]], DMA : 0)
-// CHECK: aie.flow(%[[T28]], DMA : 1, %[[T30]], DMA : 1)
-// CHECK: aie.flow(%[[T30]], DMA : 0, %[[T116]], DMA : 1)
-// CHECK: aie.flow(%[[T41]], DMA : 0, %[[T43]], DMA : 0)
-// CHECK: aie.flow(%[[T41]], DMA : 1, %[[T43]], DMA : 1)
-// CHECK: aie.flow(%[[T43]], DMA : 0, %[[T116]], DMA : 0)
-// CHECK: aie.flow(%[[T54]], DMA : 0, %[[T55]], DMA : 0)
-// CHECK: aie.flow(%[[T54]], DMA : 1, %[[T55]], DMA : 1)
-// CHECK: aie.flow(%[[T55]], DMA : 0, %[[T128]], DMA : 1)
-// CHECK: aie.flow(%[[T66]], DMA : 0, %[[T67]], DMA : 0)
-// CHECK: aie.flow(%[[T66]], DMA : 1, %[[T67]], DMA : 1)
-// CHECK: aie.flow(%[[T67]], DMA : 0, %[[T128]], DMA : 0)
-// CHECK: aie.flow(%[[T78]], DMA : 0, %[[T80]], DMA : 0)
-// CHECK: aie.flow(%[[T78]], DMA : 1, %[[T80]], DMA : 1)
-// CHECK: aie.flow(%[[T80]], DMA : 0, %[[T140]], DMA : 1)
-// CHECK: aie.flow(%[[T91]], DMA : 0, %[[T93]], DMA : 0)
-// CHECK: aie.flow(%[[T91]], DMA : 1, %[[T93]], DMA : 1)
-// CHECK: aie.flow(%[[T93]], DMA : 0, %[[T140]], DMA : 0)
-// CHECK: aie.flow(%[[T104]], DMA : 0, %[[T105]], DMA : 0)
-// CHECK: aie.flow(%[[T104]], DMA : 1, %[[T105]], DMA : 1)
-// CHECK: aie.flow(%[[T105]], DMA : 0, %[[T152]], DMA : 1)
-// CHECK: aie.flow(%[[T116]], DMA : 0, %[[T117]], DMA : 0)
-// CHECK: aie.flow(%[[T116]], DMA : 1, %[[T117]], DMA : 1)
-// CHECK: aie.flow(%[[T117]], DMA : 0, %[[T152]], DMA : 0)
-// CHECK: aie.flow(%[[T128]], DMA : 0, %[[T130]], DMA : 0)
-// CHECK: aie.flow(%[[T128]], DMA : 1, %[[T130]], DMA : 1)
-// CHECK: aie.flow(%[[T130]], DMA : 0, %[[T164]], DMA : 1)
-// CHECK: aie.flow(%[[T140]], DMA : 0, %[[T142]], DMA : 0)
-// CHECK: aie.flow(%[[T140]], DMA : 1, %[[T142]], DMA : 1)
-// CHECK: aie.flow(%[[T142]], DMA : 0, %[[T164]], DMA : 0)
-// CHECK: aie.flow(%[[T152]], DMA : 0, %[[T153]], DMA : 0)
-// CHECK: aie.flow(%[[T152]], DMA : 1, %[[T153]], DMA : 1)
-// CHECK: aie.flow(%[[T153]], DMA : 0, %[[T176]], DMA : 1)
-// CHECK: aie.flow(%[[T164]], DMA : 0, %[[T165]], DMA : 0)
-// CHECK: aie.flow(%[[T164]], DMA : 1, %[[T165]], DMA : 1)
-// CHECK: aie.flow(%[[T165]], DMA : 0, %[[T176]], DMA : 0)
-// CHECK: aie.flow(%[[T176]], DMA : 0, %[[T178]], DMA : 0)
-// CHECK: aie.flow(%[[T176]], DMA : 1, %[[T178]], DMA : 1)
-// CHECK: aie.flow(%[[T178]], DMA : 0, %[[T189]], DMA : 1)
-// CHECK: aie.flow(%[[T189]], DMA : 0, %[[T191]], DMA : 0)
-// CHECK: aie.flow(%[[T189]], DMA : 1, %[[T191]], DMA : 1)
-// CHECK: aie.flow(%[[T191]], DMA : 0, %[[T189]], DMA : 0)
+// CHECK1: aie.flow(%[[T2]], DMA : 0, %[[T4]], DMA : 0)
+// CHECK1: aie.flow(%[[T2]], DMA : 1, %[[T4]], DMA : 1)
+// CHECK1: aie.flow(%[[T4]], DMA : 0, %[[T104]], DMA : 1)
+// CHECK1: aie.flow(%[[T15]], DMA : 0, %[[T17]], DMA : 0)
+// CHECK1: aie.flow(%[[T15]], DMA : 1, %[[T17]], DMA : 1)
+// CHECK1: aie.flow(%[[T17]], DMA : 0, %[[T104]], DMA : 0)
+// CHECK1: aie.flow(%[[T28]], DMA : 0, %[[T30]], DMA : 0)
+// CHECK1: aie.flow(%[[T28]], DMA : 1, %[[T30]], DMA : 1)
+// CHECK1: aie.flow(%[[T30]], DMA : 0, %[[T116]], DMA : 1)
+// CHECK1: aie.flow(%[[T41]], DMA : 0, %[[T43]], DMA : 0)
+// CHECK1: aie.flow(%[[T41]], DMA : 1, %[[T43]], DMA : 1)
+// CHECK1: aie.flow(%[[T43]], DMA : 0, %[[T116]], DMA : 0)
+// CHECK1: aie.flow(%[[T54]], DMA : 0, %[[T55]], DMA : 0)
+// CHECK1: aie.flow(%[[T54]], DMA : 1, %[[T55]], DMA : 1)
+// CHECK1: aie.flow(%[[T55]], DMA : 0, %[[T128]], DMA : 1)
+// CHECK1: aie.flow(%[[T66]], DMA : 0, %[[T67]], DMA : 0)
+// CHECK1: aie.flow(%[[T66]], DMA : 1, %[[T67]], DMA : 1)
+// CHECK1: aie.flow(%[[T67]], DMA : 0, %[[T128]], DMA : 0)
+// CHECK1: aie.flow(%[[T78]], DMA : 0, %[[T80]], DMA : 0)
+// CHECK1: aie.flow(%[[T78]], DMA : 1, %[[T80]], DMA : 1)
+// CHECK1: aie.flow(%[[T80]], DMA : 0, %[[T140]], DMA : 1)
+// CHECK1: aie.flow(%[[T91]], DMA : 0, %[[T93]], DMA : 0)
+// CHECK1: aie.flow(%[[T91]], DMA : 1, %[[T93]], DMA : 1)
+// CHECK1: aie.flow(%[[T93]], DMA : 0, %[[T140]], DMA : 0)
+// CHECK1: aie.flow(%[[T104]], DMA : 0, %[[T105]], DMA : 0)
+// CHECK1: aie.flow(%[[T104]], DMA : 1, %[[T105]], DMA : 1)
+// CHECK1: aie.flow(%[[T105]], DMA : 0, %[[T152]], DMA : 1)
+// CHECK1: aie.flow(%[[T116]], DMA : 0, %[[T117]], DMA : 0)
+// CHECK1: aie.flow(%[[T116]], DMA : 1, %[[T117]], DMA : 1)
+// CHECK1: aie.flow(%[[T117]], DMA : 0, %[[T152]], DMA : 0)
+// CHECK1: aie.flow(%[[T128]], DMA : 0, %[[T130]], DMA : 0)
+// CHECK1: aie.flow(%[[T128]], DMA : 1, %[[T130]], DMA : 1)
+// CHECK1: aie.flow(%[[T130]], DMA : 0, %[[T164]], DMA : 1)
+// CHECK1: aie.flow(%[[T140]], DMA : 0, %[[T142]], DMA : 0)
+// CHECK1: aie.flow(%[[T140]], DMA : 1, %[[T142]], DMA : 1)
+// CHECK1: aie.flow(%[[T142]], DMA : 0, %[[T164]], DMA : 0)
+// CHECK1: aie.flow(%[[T152]], DMA : 0, %[[T153]], DMA : 0)
+// CHECK1: aie.flow(%[[T152]], DMA : 1, %[[T153]], DMA : 1)
+// CHECK1: aie.flow(%[[T153]], DMA : 0, %[[T176]], DMA : 1)
+// CHECK1: aie.flow(%[[T164]], DMA : 0, %[[T165]], DMA : 0)
+// CHECK1: aie.flow(%[[T164]], DMA : 1, %[[T165]], DMA : 1)
+// CHECK1: aie.flow(%[[T165]], DMA : 0, %[[T176]], DMA : 0)
+// CHECK1: aie.flow(%[[T176]], DMA : 0, %[[T178]], DMA : 0)
+// CHECK1: aie.flow(%[[T176]], DMA : 1, %[[T178]], DMA : 1)
+// CHECK1: aie.flow(%[[T178]], DMA : 0, %[[T189]], DMA : 1)
+// CHECK1: aie.flow(%[[T189]], DMA : 0, %[[T191]], DMA : 0)
+// CHECK1: aie.flow(%[[T189]], DMA : 1, %[[T191]], DMA : 1)
+// CHECK1: aie.flow(%[[T191]], DMA : 0, %[[T189]], DMA : 0)
+
+// CHECK2: "total_path_length": 792
 
 module @vecmul_4x4  {
   aie.device(xcvc1902) {
@@ -137,12 +142,12 @@ module @vecmul_4x4  {
       aie.use_lock(%9, Acquire, 1)
       aie.use_lock(%7, Acquire, 1)
       aie.use_lock(%5, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %10[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %8[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %6[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %10[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %8[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %6[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%5, Release, 1)
       aie.use_lock(%7, Release, 0)
       aie.use_lock(%9, Release, 0)
@@ -191,12 +196,12 @@ module @vecmul_4x4  {
       aie.use_lock(%22, Acquire, 1)
       aie.use_lock(%20, Acquire, 1)
       aie.use_lock(%18, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %23[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %21[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %19[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %23[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %21[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %19[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%18, Release, 1)
       aie.use_lock(%20, Release, 0)
       aie.use_lock(%22, Release, 0)
@@ -245,12 +250,12 @@ module @vecmul_4x4  {
       aie.use_lock(%35, Acquire, 1)
       aie.use_lock(%33, Acquire, 1)
       aie.use_lock(%31, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %36[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %34[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %32[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %36[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %34[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %32[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%31, Release, 1)
       aie.use_lock(%33, Release, 0)
       aie.use_lock(%35, Release, 0)
@@ -299,12 +304,12 @@ module @vecmul_4x4  {
       aie.use_lock(%48, Acquire, 1)
       aie.use_lock(%46, Acquire, 1)
       aie.use_lock(%44, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %49[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %47[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %45[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %49[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %47[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %45[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%44, Release, 1)
       aie.use_lock(%46, Release, 0)
       aie.use_lock(%48, Release, 0)
@@ -352,12 +357,12 @@ module @vecmul_4x4  {
       aie.use_lock(%60, Acquire, 1)
       aie.use_lock(%58, Acquire, 1)
       aie.use_lock(%56, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %61[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %59[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %57[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %61[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %59[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %57[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%56, Release, 1)
       aie.use_lock(%58, Release, 0)
       aie.use_lock(%60, Release, 0)
@@ -405,12 +410,12 @@ module @vecmul_4x4  {
       aie.use_lock(%72, Acquire, 1)
       aie.use_lock(%70, Acquire, 1)
       aie.use_lock(%68, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %73[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %71[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %69[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %73[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %71[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %69[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%68, Release, 1)
       aie.use_lock(%70, Release, 0)
       aie.use_lock(%72, Release, 0)
@@ -459,12 +464,12 @@ module @vecmul_4x4  {
       aie.use_lock(%85, Acquire, 1)
       aie.use_lock(%83, Acquire, 1)
       aie.use_lock(%81, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %86[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %84[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %82[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %86[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %84[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %82[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%81, Release, 1)
       aie.use_lock(%83, Release, 0)
       aie.use_lock(%85, Release, 0)
@@ -513,12 +518,12 @@ module @vecmul_4x4  {
       aie.use_lock(%98, Acquire, 1)
       aie.use_lock(%96, Acquire, 1)
       aie.use_lock(%94, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %99[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %97[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %95[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %99[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %97[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %95[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%94, Release, 1)
       aie.use_lock(%96, Release, 0)
       aie.use_lock(%98, Release, 0)
@@ -566,12 +571,12 @@ module @vecmul_4x4  {
       aie.use_lock(%110, Acquire, 1)
       aie.use_lock(%108, Acquire, 1)
       aie.use_lock(%106, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %111[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %109[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %107[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %111[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %109[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %107[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%106, Release, 1)
       aie.use_lock(%108, Release, 0)
       aie.use_lock(%110, Release, 0)
@@ -619,12 +624,12 @@ module @vecmul_4x4  {
       aie.use_lock(%122, Acquire, 1)
       aie.use_lock(%120, Acquire, 1)
       aie.use_lock(%118, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %123[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %121[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %119[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %123[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %121[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %119[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%118, Release, 1)
       aie.use_lock(%120, Release, 0)
       aie.use_lock(%122, Release, 0)
@@ -673,12 +678,12 @@ module @vecmul_4x4  {
       aie.use_lock(%135, Acquire, 1)
       aie.use_lock(%133, Acquire, 1)
       aie.use_lock(%131, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %136[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %134[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %132[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %136[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %134[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %132[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%131, Release, 1)
       aie.use_lock(%133, Release, 0)
       aie.use_lock(%135, Release, 0)
@@ -726,12 +731,12 @@ module @vecmul_4x4  {
       aie.use_lock(%147, Acquire, 1)
       aie.use_lock(%145, Acquire, 1)
       aie.use_lock(%143, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %148[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %146[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %144[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %148[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %146[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %144[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%143, Release, 1)
       aie.use_lock(%145, Release, 0)
       aie.use_lock(%147, Release, 0)
@@ -778,12 +783,12 @@ module @vecmul_4x4  {
       aie.use_lock(%158, Acquire, 1)
       aie.use_lock(%156, Acquire, 1)
       aie.use_lock(%154, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %159[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %157[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %155[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %159[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %157[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %155[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%154, Release, 1)
       aie.use_lock(%156, Release, 0)
       aie.use_lock(%158, Release, 0)
@@ -831,12 +836,12 @@ module @vecmul_4x4  {
       aie.use_lock(%170, Acquire, 1)
       aie.use_lock(%168, Acquire, 1)
       aie.use_lock(%166, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %171[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %169[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %167[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %171[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %169[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %167[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%166, Release, 1)
       aie.use_lock(%168, Release, 0)
       aie.use_lock(%170, Release, 0)
@@ -885,12 +890,12 @@ module @vecmul_4x4  {
       aie.use_lock(%183, Acquire, 1)
       aie.use_lock(%181, Acquire, 1)
       aie.use_lock(%179, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %184[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %182[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %180[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %184[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %182[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %180[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%179, Release, 1)
       aie.use_lock(%181, Release, 0)
       aie.use_lock(%183, Release, 0)
@@ -939,12 +944,12 @@ module @vecmul_4x4  {
       aie.use_lock(%196, Acquire, 1)
       aie.use_lock(%194, Acquire, 1)
       aie.use_lock(%192, Acquire, 0)
-      affine.for %arg0 = 0 to 64 {
-        %200 = affine.load %197[%arg0] : memref<64xi32, 2>
-        %201 = affine.load %195[%arg0] : memref<64xi32, 2>
-        %202 = arith.muli %200, %201 : i32
-        affine.store %202, %193[%arg0] : memref<64xi32, 2>
-      }
+      // affine.for %arg0 = 0 to 64 {
+      //   %200 = affine.load %197[%arg0] : memref<64xi32, 2>
+      //   %201 = affine.load %195[%arg0] : memref<64xi32, 2>
+      //   %202 = arith.muli %200, %201 : i32
+      //   affine.store %202, %193[%arg0] : memref<64xi32, 2>
+      // }
       aie.use_lock(%192, Release, 1)
       aie.use_lock(%194, Release, 0)
       aie.use_lock(%196, Release, 0)

@@ -8,12 +8,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T23:.*]] = aie.tile(2, 3)
-// CHECK: %[[T22:.*]] = aie.tile(2, 2)
-// CHECK: aie.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
-// CHECK: aie.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
-// CHECK: aie.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
+// RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
+
+// CHECK1: %[[T23:.*]] = aie.tile(2, 3)
+// CHECK1: %[[T22:.*]] = aie.tile(2, 2)
+// CHECK1: aie.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
+// CHECK1: aie.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
+// CHECK1: aie.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
+
+// CHECK2: "total_path_length": 2
 
 module {
   aie.device(xcvc1902) {

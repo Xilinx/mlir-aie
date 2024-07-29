@@ -745,10 +745,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           if (!shimExist) {
             builder.setInsertionPointAfter(tileOp);
             shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            Region &r1 = shimOp.getConnections();
-            Block *b1 = builder.createBlock(&r1);
-            builder.setInsertionPointToEnd(b1);
-            builder.create<EndOp>(builder.getUnknownLoc());
             shimExist = 1;
           }
 
@@ -780,10 +776,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           if (!shimExist) {
             builder.setInsertionPointAfter(tileOp);
             shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            Region &r1 = shimOp.getConnections();
-            Block *b1 = builder.createBlock(&r1);
-            builder.setInsertionPointToEnd(b1);
-            builder.create<EndOp>(builder.getUnknownLoc());
             shimExist = 1;
           }
 
@@ -835,21 +827,16 @@ void AIEPathfinderPass::runOnOperation() {
   builder.setInsertionPointToEnd(d.getBody());
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-      printf("col %d row %d\n", col, row);
       TileOp tile;
       if (analyzer.coordToTile.count({col, row}))
         tile = analyzer.coordToTile[{col, row}];
-      else {
-        printf("tile not found\n");
+      else
         continue;
-      }
       SwitchboxOp sw;
       if (analyzer.coordToSwitchbox.count({col, row}))
         sw = analyzer.coordToSwitchbox[{col, row}];
-      else {
-        printf("switchbox not found\n");
+      else
         continue;
-      }
       if (col > 0) {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
