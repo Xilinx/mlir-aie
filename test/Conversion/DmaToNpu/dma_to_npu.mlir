@@ -85,7 +85,7 @@ module  {
 // -----
 
 // CHECK: module
-// CHECK: aiex.npu.write32 {address = 1424 : ui32, value = 1234 : ui32}
+// CHECK: aiex.npu.write32 {address = 2098576 : ui32, value = 1234 : ui32}
 module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0,2)
