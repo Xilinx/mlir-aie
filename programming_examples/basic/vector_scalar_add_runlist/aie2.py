@@ -20,7 +20,6 @@ AIE_TILE_WIDTH = 32
 
 
 def my_vector_bias_add():
-
     @device(AIEDevice.npu1_1col)
     def device_body():
         memRef_mem_tile_ty = T.memref(MEM_TILE_WIDTH, T.i32())
@@ -63,7 +62,7 @@ def my_vector_bias_add():
         # To/from AIE-array data movement
         tensor_ty = T.memref(PROBLEM_SIZE, T.i32())
 
-        @FuncOp.from_py_func(tensor_ty, tensor_ty)
+        @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(inTensor, outTensor):
             npu_dma_memcpy_nd(
                 metadata="out0", bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]

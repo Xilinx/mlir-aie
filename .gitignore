@@ -7,6 +7,10 @@
 __pycache__
 .DS_Store
 **/CMakeFiles
+**.cmake
+include/**/Makefile
+lib/**/Makefile
+
 
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components

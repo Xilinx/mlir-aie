@@ -23,7 +23,7 @@ from aie.dialects.aie import (
     object_fifo_link,
     tile,
 )
-from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd
+from aie.dialects.aiex import npu_sync, npu_dma_memcpy_nd, runtime_sequence
 from aie.dialects.func import FuncOp
 from aie.dialects.scf import for_
 from aie.dialects.scf import yield_
@@ -75,7 +75,7 @@ def my_vector_scalar(module):
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(N, T.i32()), T.memref(N, T.i32()), T.memref(N, T.i32())
         )
         def sequence(A, B, C):
@@ -177,7 +177,7 @@ def my_matmul(module):
                     yield_([])
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(A_sz_in_i32s, T.i32()),
             T.memref(B_sz_in_i32s, T.i32()),
             T.memref(C_sz_in_i32s, T.i32()),
@@ -437,7 +437,7 @@ def edge_detect(module):
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(2304, T.i32()), T.memref(2304, T.i32()), T.memref(2304, T.i32())
         )
         def sequence(I, B, O):
@@ -492,7 +492,7 @@ def my_add_one_objFifo(module):
                 of_out1.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
-        @FuncOp.from_py_func(
+        @runtime_sequence(
             T.memref(64, T.i32()), T.memref(32, T.i32()), T.memref(64, T.i32())
         )
         def sequence(inTensor, notUsed, outTensor):

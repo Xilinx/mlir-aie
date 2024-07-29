@@ -880,7 +880,7 @@ aie.device(npu1_3col) {
     } { link_with="conv2dk1_skip.o" }
 
 
-  func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
+  aiex.runtime_sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
                   // Trace output
 
       // Trace_Event0, Trace_Event1: Select which events to trace.
@@ -1006,7 +1006,6 @@ aie.device(npu1_3col) {
       aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
 
       aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
-      return
     }
 
     }

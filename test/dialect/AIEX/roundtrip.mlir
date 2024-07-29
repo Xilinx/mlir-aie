@@ -10,30 +10,32 @@
 
 // RUN: aie-opt --split-input-file %s | FileCheck %s
 
-// CHECK-LABEL: func.func @npu_dma_wait
+// CHECK: aie.device
 // CHECK: aiex.npu.dma_wait {symbol = @out0}
 aie.device(npu1_4col) {
   memref.global "public" @out0 : memref<16xi32>
-  func.func @npu_dma_wait() {
+  aiex.runtime_sequence() {
     aiex.npu.dma_wait {symbol = @out0}
-    return
   }
 }
 
 // -----
 
-// CHECK-LABEL: func.func @npu_dma_wait_no_device
+// CHECK: aie.device
 // CHECK: aiex.npu.dma_wait {symbol = @out0}
-func.func @npu_dma_wait_no_device() {
-  aiex.npu.dma_wait {symbol = @out0}
-  return
+aie.device(npu1_4col) {
+  memref.global "public" @out0 : memref<16xi32>
+  aiex.runtime_sequence() {
+    aiex.npu.dma_wait {symbol = @out0}
+  }
 }
 
 // -----
 
-// CHECK-LABEL: func.func @npu_addr_patch
+// CHECK: aie.device
 // CHECK: aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
-func.func @npu_addr_patch() {
-  aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
-  return
+aie.device(npu1_4col) {
+  aiex.runtime_sequence() {
+    aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+  }
 }
