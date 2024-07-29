@@ -26,20 +26,15 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-create-pathfinder-flows"
 
 namespace {
-std::vector<Operation *> flowOps;
-
 // allocates channels between switchboxes ( but does not assign them)
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   using OpConversionPattern::OpConversionPattern;
   DeviceOp &device;
   DynamicTileAnalysis &analyzer;
-  bool keepFlowOp;
   ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
-                             DynamicTileAnalysis &a, bool keepFlowOp,
-                             PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a),
-        keepFlowOp(keepFlowOp) {}
+                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
   LogicalResult match(FlowOp op) const override { return success(); }
 
@@ -74,11 +69,6 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
-
-    if (keepFlowOp) {
-      auto *clonedOp = Op->clone();
-      flowOps.push_back(clonedOp);
-    }
 
 #ifndef NDEBUG
     auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
@@ -206,15 +196,9 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
   target.addLegalOp<EndOp>();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer,
-                                              clKeepFlowOp);
+  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
     return signalPassFailure();
-
-  // Keep for visualization
-  if (clKeepFlowOp)
-    for (auto op : flowOps)
-      builder.insert(op);
 }
 
 template <typename MyOp>
@@ -800,9 +784,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   }
 
   RewritePatternSet patterns(&getContext());
-
-  if (!clKeepFlowOp)
-    patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
   if (failed(applyPartialConversion(device, target, std::move(patterns))))
     signalPassFailure();
