@@ -3137,12 +3137,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 static bool isInSigmoidOperationChain(math::ExpOp expOp) {
 
   //guard segfault if definingOp() does not exist (as with a function parameter)
-  auto negPart = expOp.getOperand().getDefiningOp();
-  if (!negPart){
-    return false;
-  }
-  if (auto negOp = dyn_cast<arith::NegFOp>(negPart);
-      !negOp)
+  if (auto negOp = expOp.getOperand().getDefiningOp<arith::NegFOp>();
+   !negOp)
     return false;
 
   arith::AddFOp addOp = nullptr;
