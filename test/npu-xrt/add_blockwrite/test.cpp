@@ -176,7 +176,7 @@ int main(int argc, const char *argv[]) {
   uint32_t c[8] = {1, 2, 3, 4, 5, 6, 7, 8};
   c[4] = 42;
   for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = i + 1 + c[i%8];
+    uint32_t ref = i + 1 + c[i % 8];
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
