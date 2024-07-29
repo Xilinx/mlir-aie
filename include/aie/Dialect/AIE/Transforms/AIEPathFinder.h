@@ -81,28 +81,6 @@ using SwitchboxConnect = struct SwitchboxConnect {
       demand[i][j] *= DEMAND_COEFF;
     }
   }
-
-  bool operator<(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
-  }
-
-  bool operator==(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
-  }
-
-  int col, row, id;
-  int inPortId = 0, outPortId = 0;
-  std::map<Port, int> inPortToId, outPortToId;
-
-  // tenary representation of switchbox connectivity
-  // -1: invalid in arch, 0: empty and available, 1: occupued
-  std::vector<std::vector<Connectivity>> connectionMatrix;
-
-  // input ports with incoming packet-switched streams
-  std::map<Port, int> inPortPktCount;
-
-  // up to 32 packet-switched stram through a port
-  const int maxPktStream = 32;
 };
 
 using PathEndPoint = struct PathEndPoint {

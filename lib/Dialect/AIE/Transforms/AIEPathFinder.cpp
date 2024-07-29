@@ -522,25 +522,6 @@ Pathfinder::findPaths(const int maxIterations) {
           }
           processed.insert(curr);
           curr = preds[curr];
-
-          // allocation may fail, as we start from the dest of flow while
-          // src.port is not chosen by router
-          if (curr == src.sb &&
-              std::find(srcDestPorts.begin(), srcDestPorts.end(),
-                        lastDestPort) == srcDestPorts.end()) {
-            bool succeed = src.sb->allocate(src.port, lastDestPort, isPkt);
-            if (!succeed) {
-              isLegal = false;
-              overCapacity[ch]++;
-              LLVM_DEBUG(llvm::dbgs()
-                         << *curr << ", unable to connect: "
-                         << stringifyWireBundle(src.port.bundle)
-                         << src.port.channel << " -> "
-                         << stringifyWireBundle(lastDestPort.bundle)
-                         << lastDestPort.channel << "\n");
-            }
-            srcDestPorts.push_back(lastDestPort);
-          }
         }
       }
       // add this flow to the proposed solution
