@@ -215,96 +215,6 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
   if (clKeepFlowOp)
     for (auto op : flowOps)
       builder.insert(op);
-
-  // Populate wires between switchboxes and tiles.
-  for (int col = 0; col <= analyzer.getMaxCol(); col++) {
-    for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-      TileOp tile;
-      if (analyzer.coordToTile.count({col, row}))
-        tile = analyzer.coordToTile[{col, row}];
-      else
-        continue;
-      SwitchboxOp sw;
-      if (analyzer.coordToSwitchbox.count({col, row}))
-        sw = analyzer.coordToSwitchbox[{col, row}];
-      else
-        continue;
-      if (col > 0) {
-        // connections east-west between stream switches
-        if (analyzer.coordToSwitchbox.count({col - 1, row})) {
-          auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
-                                 WireBundle::East, sw, WireBundle::West);
-        }
-      }
-      if (row > 0) {
-        // connections between abstract 'core' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::Core,
-                               sw, WireBundle::Core);
-        // connections between abstract 'dma' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::DMA,
-                               sw, WireBundle::DMA);
-        // connections north-south inside array ( including connection to shim
-        // row)
-        if (analyzer.coordToSwitchbox.count({col, row - 1})) {
-          auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          builder.create<WireOp>(builder.getUnknownLoc(), southsw,
-                                 WireBundle::North, sw, WireBundle::South);
-        }
-      } else if (row == 0) {
-        if (tile.isShimNOCTile()) {
-          if (analyzer.coordToShimMux.count({col, 0})) {
-            auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            builder.create<WireOp>(
-                builder.getUnknownLoc(), shimsw,
-                WireBundle::North, // Changed to connect into the north
-                sw, WireBundle::South);
-            // PLIO is attached to shim mux
-            if (analyzer.coordToPLIO.count(col)) {
-              auto plio = analyzer.coordToPLIO[col];
-              builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                     WireBundle::North, shimsw,
-                                     WireBundle::South);
-            }
-
-            // abstract 'DMA' connection on tile is attached to shim mux ( in
-            // row 0 )
-            builder.create<WireOp>(builder.getUnknownLoc(), tile,
-                                   WireBundle::DMA, shimsw, WireBundle::DMA);
-          }
-        } else if (tile.isShimPLTile()) {
-          // PLIO is attached directly to switch
-          if (analyzer.coordToPLIO.count(col)) {
-            auto plio = analyzer.coordToPLIO[col];
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   WireBundle::North, sw, WireBundle::South);
-          }
-        }
-      }
-    }
-  }
-}
-
-Operation *AIEPathfinderPass::getOrCreateTile(OpBuilder &builder, int col,
-                                              int row) {
-  TileID index = {col, row};
-  Operation *tileOp = tiles[index];
-  if (!tileOp) {
-    auto tile = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
-    tileOp = tile.getOperation();
-    tiles[index] = tileOp;
-  }
-  return tileOp;
-}
-
-SwitchboxOp AIEPathfinderPass::getOrCreateSwitchbox(OpBuilder &builder,
-                                                    TileOp tile) {
-  for (auto i : tile.getResult().getUsers()) {
-    if (llvm::isa<SwitchboxOp>(*i)) {
-      return llvm::cast<SwitchboxOp>(*i);
-    }
-  }
-  return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
 
 template <typename MyOp>
@@ -444,7 +354,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   for (const auto &[tileId, connects] : switchboxes) {
     int col = tileId.col;
     int row = tileId.row;
-    Operation *tileOp = getOrCreateTile(builder, col, row);
+    auto tile = analyzer.getTile(builder, col, row);
+    Operation *tileOp = tile.getOperation();
     LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n');
     for (const auto &[conn, flowID] : connects) {
       Port sourcePort = conn.src;
@@ -698,7 +609,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
     // Create a switchbox for the routes and insert inside it.
     builder.setInsertionPointAfter(tileOp);
-    SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
+    SwitchboxOp swbox =
+        analyzer.getSwitchbox(builder, tile.colIndex(), tile.rowIndex());
     SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
                                   builder.getUnknownLoc());
     Block &b = swbox.getConnections().front();
@@ -832,7 +744,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           // If shimmux not defined then create shimmux
           if (!shimExist) {
             builder.setInsertionPointAfter(tileOp);
-            shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
             Region &r1 = shimOp.getConnections();
             Block *b1 = builder.createBlock(&r1);
             builder.setInsertionPointToEnd(b1);
@@ -867,7 +779,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           // If shimmux not defined then create shimmux
           if (!shimExist) {
             builder.setInsertionPointAfter(tileOp);
-            shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
             Region &r1 = shimOp.getConnections();
             Block *b1 = builder.createBlock(&r1);
             builder.setInsertionPointToEnd(b1);
@@ -918,16 +830,80 @@ void AIEPathfinderPass::runOnOperation() {
     runOnFlow(d, builder);
   if (clRoutePacket)
     runOnPacketFlow(d, builder);
-}
 
-SwitchboxOp AIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {
-  SwitchboxOp output = nullptr;
-  d.walk([&](SwitchboxOp swBox) {
-    if (swBox.colIndex() == col && swBox.rowIndex() == row) {
-      output = swBox;
+  // Populate wires between switchboxes and tiles.
+  builder.setInsertionPointToEnd(d.getBody());
+  for (int col = 0; col <= analyzer.getMaxCol(); col++) {
+    for (int row = 0; row <= analyzer.getMaxRow(); row++) {
+      printf("col %d row %d\n", col, row);
+      TileOp tile;
+      if (analyzer.coordToTile.count({col, row}))
+        tile = analyzer.coordToTile[{col, row}];
+      else {
+        printf("tile not found\n");
+        continue;
+      }
+      SwitchboxOp sw;
+      if (analyzer.coordToSwitchbox.count({col, row}))
+        sw = analyzer.coordToSwitchbox[{col, row}];
+      else {
+        printf("switchbox not found\n");
+        continue;
+      }
+      if (col > 0) {
+        // connections east-west between stream switches
+        if (analyzer.coordToSwitchbox.count({col - 1, row})) {
+          auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
+          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
+                                 WireBundle::East, sw, WireBundle::West);
+        }
+      }
+      if (row > 0) {
+        // connections between abstract 'core' of tile
+        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::Core,
+                               sw, WireBundle::Core);
+        // connections between abstract 'dma' of tile
+        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::DMA,
+                               sw, WireBundle::DMA);
+        // connections north-south inside array ( including connection to shim
+        // row)
+        if (analyzer.coordToSwitchbox.count({col, row - 1})) {
+          auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
+          builder.create<WireOp>(builder.getUnknownLoc(), southsw,
+                                 WireBundle::North, sw, WireBundle::South);
+        }
+      } else if (row == 0) {
+        if (tile.isShimNOCTile()) {
+          if (analyzer.coordToShimMux.count({col, 0})) {
+            auto shimsw = analyzer.coordToShimMux[{col, 0}];
+            builder.create<WireOp>(
+                builder.getUnknownLoc(), shimsw,
+                WireBundle::North, // Changed to connect into the north
+                sw, WireBundle::South);
+            // PLIO is attached to shim mux
+            if (analyzer.coordToPLIO.count(col)) {
+              auto plio = analyzer.coordToPLIO[col];
+              builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                     WireBundle::North, shimsw,
+                                     WireBundle::South);
+            }
+
+            // abstract 'DMA' connection on tile is attached to shim mux ( in
+            // row 0 )
+            builder.create<WireOp>(builder.getUnknownLoc(), tile,
+                                   WireBundle::DMA, shimsw, WireBundle::DMA);
+          }
+        } else if (tile.isShimPLTile()) {
+          // PLIO is attached directly to switch
+          if (analyzer.coordToPLIO.count(col)) {
+            auto plio = analyzer.coordToPLIO[col];
+            builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                   WireBundle::North, sw, WireBundle::South);
+          }
+        }
+      }
     }
-  });
-  return output;
+  }
 }
 
 std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass() {
