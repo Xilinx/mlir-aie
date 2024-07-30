@@ -896,11 +896,12 @@ The input arguments are arguments passed in from the host at kernel invocation t
 
 Traits: `HasParent<AIE::DeviceOp>`, `NoTerminator`
 
-#### Operands:
+#### Attributes:
 
-| Operand | Description |
-| :-----: | ----------- |
-| `args` | variadic of any type
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
 
 
 ### `aiex.select` (::xilinx::AIEX::SelectOp)
