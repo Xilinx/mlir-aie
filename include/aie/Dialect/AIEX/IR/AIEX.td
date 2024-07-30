@@ -18,7 +18,6 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
-include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
@@ -30,8 +29,14 @@ def AIEX_Dialect : Dialect {
     This is a dialect for experimental work related to AIEngine processors.
     The expectation is that new ideas can be developed here before migration
     to the more mature AIE dialect.
-
   }];
+
+  let extraClassDeclaration = [{
+    static uint64_t getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col);
+    static std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> getHardwareStridesWraps(const AIE::AIETargetModel &targetModel, mlir::MemRefType referencedBufType, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides);
+    static mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides, llvm::SmallVector<int64_t, 4> hardwareSizes, llvm::SmallVector<int64_t, 4> hardwareStrides);
+  }];
+
 }
 
 
@@ -577,27 +582,6 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
     static std::array<unsigned, 3> getArrayAttrMaxRanks();
 
-    /* Returns the provided multi-dimensional data transfer strides in units of
-       address granularity. In the IR, we express strides in units of element
-       data type, but the hardware requires it in units of address granularity.
-       Address granularity currently is 4 bytes for all hardware.
-
-       The returned stride[0] is the second-lowest dimension stride, i.e.
-       stride 1. The lowest stride is currently implicitly one, but this is not
-       a hardware requirement and could be changed in the future.  */
-    llvm::SmallVector<int64_t, 4> getStridesInAddressGranularity();
-
-    /* Returns the multi-dimensional data transfer sizes in units of address
-       granularity. These sizes are expressed in units of element data type in
-       the IR, but the hardware requires them to be in units of address
-       granularity. Address granularity currently is 4 bytes for all hardware. 
-
-       The returned size[0] is the lowest dimension size. In the IR, the sizes
-       are given in reverse order. For example, specifying sizes in IR as
-       [1, 2, 3, 4] would result in this function returning [4, 3, 2, 1].
-       */
-    llvm::SmallVector<int64_t, 4> getSizesInAddressGranularity();
-
     /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
        target buffer will be skipped. In the IR, offsets are expressed in units
        of memref element data type size. */
@@ -901,7 +885,7 @@ def AIE_DMAAwaitBDs : AIEX_Op<"dma_await_bds", []> {
 }
 
 
-def AIE_DMAStartTask: AIEX_Op<"dma_start_task", [DeclareOpInterfaceMethods<CallOpInterface>]>,
+def AIE_DMAStartTask: AIEX_Op<"dma_start_task", []>,
     Results<(outs Index:$result)>
   {
 

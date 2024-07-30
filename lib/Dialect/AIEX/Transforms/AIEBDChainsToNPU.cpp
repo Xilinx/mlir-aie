@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <iterator>
+#include <algorithm>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -94,6 +95,7 @@ struct AIEBDChainsToNPUPass
     // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
     if(n_lock_ops > 0) {
+      // TODO: Not yet implemented
       AIE::UseLockOp lock_op = *lock_ops.begin();
       lock_op.emitOpError("Lowering for lock operations in NPU runtime configuration is not yet implemented.");
       return failure();
@@ -131,32 +133,92 @@ struct AIEBDChainsToNPUPass
     return std::nullopt; // Not yet implemented
   }
 
+  LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op, AIE::TileOp &tile) {
+    uint32_t bd_id = bd_op.getBdId().value();
+    auto buf = bd_op.getBuffer();
+    const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
+    AIEX::RuntimeSequenceOp parentOp = buf.getDefiningOp<AIEX::RuntimeSequenceOp>();
+    if(!parentOp) {
+      // TODO: Not yet implemented (for AIE.buffer references)
+      // Implementing this would involve taking the allocated buffer address and plugging it as a register write to `addr` below.
+      bd_op->emitOpError("At present, buffer arguments must be an input to the runtime sequence. Constant buffer arguments not yet implemented.");
+      return failure();
+    }
+    Region &parentRegion = parentOp.getBody();
+    auto arg_idx_it = std::find(parentRegion.args_begin(), parentRegion.args_end(), buf);
+    if(arg_idx_it == parentRegion.args_end()) {
+      auto err = bd_op->emitOpError("Unable to determine argument index for input buffer.");
+      err.attachNote(parentRegion.getLoc()) << "In this region.";
+      return failure();
+    }
+    int arg_idx = std::distance(parentRegion.args_begin(), arg_idx_it);
+    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(target_model, bd_id, tile.getCol());
+    int64_t offset = bd_op.getOffsetInBytes();
+    builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/addr, /*arg_idx*/arg_idx, /*arg_plus*/offset);
+    return success();
+  }
+
   LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile) {
-    
     AIE::DMABDOp bd_op = getBdForBlock(block);
+    const auto &target_model = AIE::getTargetModel(bd_op);
+    MemRefType buffer_type = bd_op.getBuffer().getType();
 
     uint32_t bd_id = bd_op.getBdId().value();
-    uint32_t offset = bd_op.getOffset();
-    uint32_t len = 0;
-    if(bd_op.getLen().has_value()) {
-        len = bd_op.getLen().value();
-    } else {
-        // TODO use memref/buf size
+    int64_t offset = bd_op.getOffsetInBytes();
+    uint32_t len = bd_op.getLenInBytes();
+
+    // Process strides/wraps
+    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims = bd_op.getDimensions();
+    llvm::SmallVector<int64_t, 4> input_sizes = llvm::SmallVector<int64_t, 4>(4, 0);
+    llvm::SmallVector<int64_t, 4> input_strides = llvm::SmallVector<int64_t, 4>(4, 0);
+    if(dims) {
+      for (size_t i = 0; i < dims->size(); i++) {
+        // Pass down dimensions in reverse order; in the MLIR, this allows
+        // us to specify step sizes/wraps in the same order as we would
+        // access a multi-dim C array, with the highest dimension first.
+        int j = dims->size() - i - 1;
+        input_sizes[j] = dims.value()[i].getSize();
+        input_strides[j] = dims.value()[i].getStride();
+      }
     }
-    //NpuWriteBdOp npu_op = 
+    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(target_model, buffer_type, input_sizes, input_strides);
+    if(failed(AIEXDialect::verifyStridesWraps((Operation *)&bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes, strides))) {
+      return failure();
+    }
+
+    // find next BD ID, if any
+    uint32_t use_next_bd = 0;
+    uint32_t next_bd_id = 0;
+    auto next_bd_ops = block.getOps<AIE::NextBDOp>();
+    if(!next_bd_ops.empty()) {
+      AIE::NextBDOp next_bd_op = *next_bd_ops.begin();
+      Block *next_bd_block = next_bd_op.getDest(); 
+      auto next_bd_bd_ops = next_bd_block->getOps<AIE::DMABDOp>();
+      if(next_bd_bd_ops.empty()) {
+        auto err = bd_op->emitOpError("Referenced next BD block contains no BD operation.");
+        return failure();
+      }
+      AIE::DMABDOp next_bd_bd_op = *next_bd_bd_ops.begin();
+      next_bd_id = next_bd_bd_op.getBdId().value();
+      use_next_bd = 1;
+    }
+
     builder.create<NpuWriteBdOp>(bd_op.getLoc(),
         tile.getCol(), bd_id, len, offset, 0, 0, 0, 0,
         /* TODO: Strides/Wraps */
-        /*d0_size=*/1, /*d0_stride=*/1, /*d1_size=*/1, /*d1_stride=*/0, /*d2_stride=*/0,
-        /*iteration_current=*/0, /*iteration_size=*/0, /*iteration_stride=*/0,
+        /*d0_size=*/sizes[0], /*d0_stride=*/strides[0], 
+        /*d1_size=*/sizes[1], /*d1_stride=*/strides[1], 
+        /*d2_stride=*/strides[2],
+        /*iteration_current=*/0, /*iteration_size=*/sizes[3], /*iteration_stride=*/strides[3],
         /* TODO: Next BD */
-        /*next_bd=*/0, /*row=*/tile.getRow(), /*use_next_bd=*/0,
+        /*next_bd=*/next_bd_id, 
+        /*row=*/tile.getRow(), 
+        /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
         /* TODO: Locks */
         /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0, /*lock_acq_val=*/0, /*lock_ackq_id=*/0);
-    //rewriter.insert((mlir::Operation*)&write_bd_op);
 
-    return success();
+    return setAddressForSingleBD(builder, bd_op, tile);
   }
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureBDs op) {

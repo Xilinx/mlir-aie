@@ -231,6 +231,8 @@ public:
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    const auto &targetModel = AIE::getTargetModel(op);
+    MemRefType bufferType = op.getMemref().getType();
     auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
@@ -279,8 +281,15 @@ public:
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    llvm::SmallVector<int64_t, 4> strides = op.getStridesInAddressGranularity();
-    llvm::SmallVector<int64_t, 4> sizes = op.getSizesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> inputSizes =
+      llvm::map_to_vector(llvm::reverse(op.getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+    llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(op.getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -289,8 +298,10 @@ public:
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIEX::RuntimeSequenceOp>();
-    assert(seq_op && "NpuDmaMemcpyNdOp must be inside a RuntimeSequenceOp; "
-                     "verify() should have ensured this.");
+    if(!seq_op) {
+      op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at time of lowering.");
+      return failure();
+    }
     Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
@@ -306,11 +317,13 @@ public:
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    int32_t repeat_length = 0;
-    for (int32_t index_3d = 0; index_3d < sizes[2]; index_3d++)
-      for (int32_t index_2d = 0; index_2d < sizes[1]; index_2d++)
-        repeat_length += sizes[0];
-    buffer_length = IntegerAttr::get(i32ty, repeat_length);
+    uint64_t buffer_length_val = sizes[0] * bufferType.getElementTypeBitWidth() / targetModel.getAddressGenGranularity();
+    if(inputSizes.size() > 1) {
+      for(size_t i = 1; i < inputSizes.size(); i++) {
+        buffer_length_val *= inputSizes[i];
+      }
+    }
+    buffer_length = IntegerAttr::get(i32ty, buffer_length_val);
 
     // buffer_offset
     buffer_offset = IntegerAttr::get(i32ty, offset);
@@ -324,35 +337,28 @@ public:
     // packet_type
 
     // d0_size
-    if (strides[1])
-      d0_size = IntegerAttr::get(i32ty, sizes[0]);
+    d0_size = IntegerAttr::get(i32ty, sizes[0]);
 
     // d0_stride
-    if (strides[0])
-      d0_stride = IntegerAttr::get(i32ty, strides[0] - 1);
+    d0_stride = IntegerAttr::get(i32ty, strides[0]);
 
     // d1_size
-    if (strides[2])
-      d1_size = IntegerAttr::get(i32ty, sizes[1]);
+    d1_size = IntegerAttr::get(i32ty, sizes[1]);
 
     // d1_stride
-    if (strides[1])
-      d1_stride = IntegerAttr::get(i32ty, strides[1] - 1);
+    d1_stride = IntegerAttr::get(i32ty, strides[1]);
 
     // d2_stride
-    if (strides[2])
-      d2_stride = IntegerAttr::get(i32ty, strides[2] - 1);
+    d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
     // iteration_current
 
     // iteration_size
     // strides[3] doesn't need to lower to hardware if sizes[3] is one
-    if (strides[3] && sizes[3] != 1)
-      iteration_size = IntegerAttr::get(i32ty, sizes[3] - 1);
+    iteration_size = IntegerAttr::get(i32ty, sizes[3]);
 
     // iteration_stride
-    if (strides[3])
-      iteration_stride = IntegerAttr::get(i32ty, strides[3] - 1);
+    iteration_stride = IntegerAttr::get(i32ty, strides[3]);
 
     // next_bd
 
@@ -388,11 +394,8 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    const AIE::AIETargetModel &tm =
-        op->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(targetModel, op.getId(), col);
 
-    uint32_t addr =
-        (col << tm.getColumnShift()) | (0x1D004 + op.getId() * 0x20);
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
     rewriter.create<NpuPushQueueOp>(
