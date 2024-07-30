@@ -3,9 +3,9 @@
 //
 // REQUIRES: ryzen_ai, chess
 //
-// RUN: mkdir -p %S/test_4_col
-// RUN: cd %S/test_4_col
+// RUN: mkdir -p %S/test_1_col
+// RUN: cd %S/test_1_col
 // RUN: make -f %S/Makefile clean
-// RUN: env n_aie_cols=4 make -f %S/Makefile 
-// RUN: %run_on_npu env n_aie_cols=4 make -f %S/Makefile run | FileCheck %s
+// RUN: env n_aie_cols=1 make -f %S/Makefile 
+// RUN: %run_on_npu env n_aie_cols=2 make -f %S/Makefile run | FileCheck %s
 // CHECK: PASS!

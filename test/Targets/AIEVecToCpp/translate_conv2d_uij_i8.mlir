@@ -31,14 +31,14 @@ func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
       %4 = aievec.upd %arg2[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<16x256xi8>, vector<16xi8>
       %5 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
       %6 = aievec.ups %4 {shift = 10 : i8} : vector<16xi8>, vector<16xi48>
-      %7 = aievec.mac %0, %5, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %8 = aievec.mac %0, %5, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %7 = aievec_aie1.mac %0, %5, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %8 = aievec_aie1.mac %0, %5, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %9 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
-      %10 = aievec.mac %0, %9, %7 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %11 = aievec.mac %0, %9, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %10 = aievec_aie1.mac %0, %9, %7 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %11 = aievec_aie1.mac %0, %9, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %12 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
-      %13 = aievec.mac %1, %12, %10 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %14 = aievec.mac %1, %12, %11 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %13 = aievec_aie1.mac %1, %12, %10 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %14 = aievec_aie1.mac %1, %12, %11 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %15 = aievec.srs %13, %c10 : vector<16xi48>, i32, vector<16xi16>
       %16 = aievec.srs %14, %c10 : vector<16xi48>, i32, vector<16xi16>
       %17 = aievec.concat %15, %16 : vector<16xi16>, vector<32xi16>
@@ -115,14 +115,14 @@ func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
     %c16_3 = arith.constant 16 : index
     scf.for %arg4 = %c0_2 to %c256 step %c16_3 {
       %4 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
-      %5 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %6 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %5 = aievec_aie1.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %6 = aievec_aie1.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %7 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
-      %8 = aievec.mac %0, %7, %5 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %9 = aievec.mac %0, %7, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %8 = aievec_aie1.mac %0, %7, %5 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %9 = aievec_aie1.mac %0, %7, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %10 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
-      %11 = aievec.mac %1, %10, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %12 = aievec.mac %1, %10, %9 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %11 = aievec_aie1.mac %1, %10, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+      %12 = aievec_aie1.mac %1, %10, %9 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %13 = aievec.srs %11, %c10 : vector<16xi48>, i32, vector<16xi16>
       %14 = aievec.srs %12, %c10 : vector<16xi48>, i32, vector<16xi16>
       %15 = aievec.concat %13, %14 : vector<16xi16>, vector<32xi16>

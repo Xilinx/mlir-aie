@@ -13,10 +13,6 @@
 #ifndef AIEVEC_AIE1_OPS
 #define AIEVEC_AIE1_OPS
 
-// include "aie/Dialect/AIE/IR/AIEAttrs.td"
-// include "aie/Dialect/AIEVec/IR/AIEVecAttributes.td"
-// include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
-// include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Dialect.td"
 
 include "mlir/Interfaces/InferTypeOpInterface.td"

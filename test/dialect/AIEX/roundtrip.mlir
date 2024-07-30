@@ -39,3 +39,14 @@ aie.device(npu1_4col) {
     aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
   }
 }
+
+// -----
+
+// CHECK: aie.device
+// CHECK: runtime_sequence @seq(%arg0: memref<1xi32>)
+// CHECK: aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+aie.device(npu1_4col) {
+  aiex.runtime_sequence @seq(%arg0 : memref<1xi32>) {
+    aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+  }
+}
