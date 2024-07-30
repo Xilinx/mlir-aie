@@ -490,13 +490,22 @@ Syntax:
 operation ::= `aiex.npu.blockwrite` `(` $data `)` attr-dict `:` type($data)
 ```
 
-blockwrite operator
+blockwrite operator writes the data from the memref 'data' to the AIE array.
+If 'buffer' is present then 'address' is interpreted as an offset into the
+aie.buffer with symbol name 'buffer'.
+If 'column' and 'row' are present then 'address' is interpreted as an offset
+into the memory space of aie.tile(column, row).
+If 'buffer' is not present and 'column' and 'row' are not present then
+'address' is interpreted as a full 32-bit address in the AIE array.
 
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
@@ -684,7 +693,7 @@ _Rtp write operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.rtp_write` `(` $col `,` $row `,` $index `,` $value `)` attr-dict
+operation ::= `aiex.npu.rtp_write` `(` $buffer `,` $index `,` $value `)` attr-dict
 ```
 
 rtp write operator
@@ -693,9 +702,7 @@ rtp write operator
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>buffer_sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
@@ -743,7 +750,13 @@ Syntax:
 operation ::= `aiex.npu.write32` attr-dict
 ```
 
-write32 operator
+NPU write32 operator writes a 32bit value to the AIE array.
+If 'buffer' is present then 'address' is interpreted as an offset into the
+aie.buffer with symbol name 'buffer'.
+If 'column' and 'row' are present then 'address' is interpreted as an offset
+into the memory space of aie.tile(column, row).
+If 'buffer' is not present and 'column' and 'row' are not present then
+'address' is interpreted as a full 32-bit address in the AIE array.
 
 #### Attributes:
 
@@ -751,6 +764,7 @@ write32 operator
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
