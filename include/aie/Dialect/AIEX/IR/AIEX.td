@@ -473,8 +473,8 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent
     Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
-  let arguments = (ins
-    Variadic<AnyType>:$args
+  let arguments = (
+    ins OptionalAttr<SymbolNameAttr>:$sym_name
   );
   let regions = (region
     AnyRegion:$body
