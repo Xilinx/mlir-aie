@@ -120,21 +120,30 @@ using Flow = struct Flow {
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
-// SwitchSetting.src is the incoming signal
+// SwitchSetting.srcs is the fanin
 // SwitchSetting.dsts is the fanout
 using SwitchSetting = struct SwitchSetting {
   SwitchSetting() = default;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, std::set<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-  Port src;
-  std::set<Port> dsts;
+  SwitchSetting(std::vector<Port> srcs) : srcs(std::move(srcs)) {}
+  SwitchSetting(std::vector<Port> srcs, std::vector<Port> dsts)
+      : srcs(std::move(srcs)), dsts(std::move(dsts)) {}
+
+  std::vector<Port> srcs;
+  std::vector<Port> dsts;
 
   // friend definition (will define the function as a non-member function of
   // the namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os,
                                   const SwitchSetting &setting) {
-    os << setting.src << " -> "
+    os << "{"
+       << join(llvm::map_range(setting.srcs,
+                               [](const Port &port) {
+                                 std::ostringstream ss;
+                                 ss << port;
+                                 return ss.str();
+                               }),
+               ", ")
+       << " -> "
        << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
@@ -155,7 +164,7 @@ using SwitchSetting = struct SwitchSetting {
     return os;
   }
 
-  bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
+  bool operator<(const SwitchSetting &rhs) const { return srcs < rhs.srcs; }
 };
 
 using SwitchSettings = std::map<TileID, SwitchSetting>;

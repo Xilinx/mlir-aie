@@ -121,49 +121,58 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                           srcBundle, srcChannel, WireBundle::North, shimCh);
           }
         }
-        for (const auto &[bundle, channel] : setting.dsts) {
+        assert(setting.srcs.size() == setting.dsts.size());
+        for (size_t i = 0; i < setting.srcs.size(); i++) {
+          Port src = setting.srcs[i];
+          Port dest = setting.dsts[i];
           // handle special shim connectivity
           if (curr == srcSB && analyzer.getTile(rewriter, srcSB.col, srcSB.row)
                                    .isShimNOCorPLTile()) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, WireBundle::South, shimCh, bundle, channel);
+                          flowOp, WireBundle::South, shimCh, dest.bundle,
+                          dest.channel);
           } else if (analyzer.getTile(rewriter, curr.col, curr.row)
                          .isShimNOCorPLTile() &&
-                     (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
-                      bundle == WireBundle::NOC)) {
-            shimCh = channel;
+                     (dest.bundle == WireBundle::DMA ||
+                      dest.bundle == WireBundle::PLIO ||
+                      dest.bundle == WireBundle::NOC)) {
+            shimCh = dest.channel;
             if (analyzer.getTile(rewriter, curr.col, curr.row)
                     .isShimNOCorPLTile()) {
               // shim DMAs at end of flows
-              if (bundle == WireBundle::DMA) {
-                shimCh = channel == 0
+              if (dest.bundle == WireBundle::DMA) {
+                shimCh = dest.channel == 0
                              ? 2
                              : 3; // must be either N2 -> DMA0 or N3 -> DMA1
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
-              } else if (bundle == WireBundle::NOC) {
-                shimCh = channel + 2; // must be either N2/3/4/5 -> NOC0/1/2/3
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh, dest.bundle,
+                              dest.channel);
+              } else if (dest.bundle == WireBundle::NOC) {
+                shimCh =
+                    dest.channel + 2; // must be either N2/3/4/5 -> NOC0/1/2/3
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
-              } else if (bundle == WireBundle::PLIO) {
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh, dest.bundle,
+                              dest.channel);
+              } else if (dest.bundle == WireBundle::PLIO) {
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh, dest.bundle,
+                              dest.channel);
               }
             }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          WireBundle::South, shimCh);
+                          flowOp, src.bundle, src.channel, WireBundle::South,
+                          shimCh);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          bundle, channel);
+                          flowOp, src.bundle, src.channel, dest.bundle,
+                          dest.channel);
           }
         }
 
@@ -251,13 +260,17 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   int neighbourSourceChannel = currDestChannel;
   for (const auto &[sbNode, setting] : settings) {
     TileID tile = {sbNode.col, sbNode.row};
-    if ((tile == neighbourTile) &&
-        (setting.src.bundle == neighbourSourceBundle) &&
-        (setting.src.channel == neighbourSourceChannel)) {
-      for (const auto &[bundle, channel] : setting.dsts) {
-        if (findPathToDest(settings, neighbourTile, bundle, channel, finalTile,
-                           finalDestBundle, finalDestChannel)) {
-          return true;
+    if (tile == neighbourTile) {
+      assert(setting.srcs.size() == setting.dsts.size());
+      for (size_t i = 0; i < setting.srcs.size(); i++) {
+        Port src = setting.srcs[i];
+        Port dest = setting.dsts[i];
+        if ((src.bundle == neighbourSourceBundle) &&
+            (src.channel == neighbourSourceChannel)) {
+          if (findPathToDest(settings, neighbourTile, dest.bundle, dest.channel,
+                             finalTile, finalDestBundle, finalDestChannel)) {
+            return true;
+          }
         }
       }
     }
@@ -312,15 +325,18 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
           SwitchSettings settings = analyzer.flowSolutions[srcPoint];
           // add connections for all the Switchboxes in SwitchSettings
           for (const auto &[curr, setting] : settings) {
-            for (const auto &[bundle, channel] : setting.dsts) {
-              TileID currTile = {curr.col, curr.row};
+            assert(setting.srcs.size() == setting.dsts.size());
+            TileID currTile = {curr.col, curr.row};
+            for (size_t i = 0; i < setting.srcs.size(); i++) {
+              Port src = setting.srcs[i];
+              Port dest = setting.dsts[i];
               // reject false broadcast
-              if (!findPathToDest(settings, currTile, bundle, channel,
+              if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
                                   destCoords, destPort.bundle,
                                   destPort.channel))
                 continue;
-              Connect connect = {{setting.src.bundle, setting.src.channel},
-                                 {bundle, channel}};
+              Connect connect = {{src.bundle, src.channel},
+                                 {dest.bundle, dest.channel}};
               if (std::find(switchboxes[currTile].begin(),
                             switchboxes[currTile].end(),
                             std::pair{connect, flowID}) ==

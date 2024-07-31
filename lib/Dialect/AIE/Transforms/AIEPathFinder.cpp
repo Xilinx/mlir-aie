@@ -483,13 +483,14 @@ Pathfinder::findPaths(const int maxIterations) {
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
-      // set the input bundle for the source endpoint
-      switchSettings[src.coords].src = src.port;
       processed.insert(src);
       for (auto endPoint : dsts) {
+        if (endPoint == src) {
+          // route to self
+          switchSettings[src.coords].srcs.push_back(src.port);
+          switchSettings[src.coords].dsts.push_back(src.port);
+        }
         auto curr = endPoint;
-        // set the output bundle for this destination endpoint
-        switchSettings[endPoint.coords].dsts.insert(endPoint.port);
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
           auto &sb = graph[std::make_pair(preds[curr].coords, curr.coords)];
@@ -517,8 +518,8 @@ Pathfinder::findPaths(const int maxIterations) {
           // this means the order matters!
           sb.bumpDemand(i, j);
           if (preds[curr].coords == curr.coords) {
-            switchSettings[preds[curr].coords].src = preds[curr].port;
-            switchSettings[curr.coords].dsts.insert(curr.port);
+            switchSettings[preds[curr].coords].srcs.push_back(preds[curr].port);
+            switchSettings[curr.coords].dsts.push_back(curr.port);
           }
           processed.insert(curr);
           curr = preds[curr];
