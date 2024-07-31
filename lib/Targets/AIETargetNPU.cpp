@@ -143,11 +143,18 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
     return;
   }
 
-  // XAIE_IO_BLOCKWRITE
   auto words = reserveAndGetTail(instructions, data.size() + 4);
+  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+
+  // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
   words[1] = 0;
   words[2] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row)
+    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
   words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   unsigned i = 4;
