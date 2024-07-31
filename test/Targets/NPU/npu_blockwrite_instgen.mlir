@@ -45,7 +45,7 @@ module {
                          packet_id = 0 : i32,
                          packet_type = 0 : i32,
                          column = 3 : i32,
-                         row = 0 : i32,
+                         row = 1 : i32,
                          d0_stride = 5 : i32,
                          d0_size = 6 : i32,
                          d1_stride = 7 : i32,
