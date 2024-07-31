@@ -1,4 +1,4 @@
-//===- AIEConcretizeDMATasks.cpp ---------------------------------*- C++
+//===- AIEMaterializeBDChains.cpp ---------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -26,19 +26,19 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct AIEConcretizeDMATasksPass
-    : AIEConcretizeDMATasksBase<AIEConcretizeDMATasksPass> {
+struct AIEMaterializeBDChainsPass
+    : AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
 
   WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTaskOp start_op) {
     OpBuilder builder = OpBuilder(start_op);
 
     // Get referenced abstract BD chain
-    AIE::DMATaskOp chain_def = start_op.getDMATaskOp();
+    AIE::BDChainOp chain_def = start_op.getBDChainOp();
     assert(chain_def);
     Region &source_region = chain_def.getBody();
 
     // Create BD op into which the result will be inlined
-    DMAConfigureBDsOp configure_op = builder.create<DMAConfigureBDsOp>(
+    DMAConfigureTaskOp configure_op = builder.create<DMAConfigureTaskOp>(
         start_op.getLoc(), builder.getIndexType(), 
         start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
@@ -64,7 +64,7 @@ struct AIEConcretizeDMATasksPass
     }
 
     // Add a start BDs instruction
-    builder.create<DMAStartBDsOp>(start_op.getLoc(), configure_op.getResult());
+    builder.create<DMAStartConfiguredTaskOp>(start_op.getLoc(), configure_op.getResult());
 
     // After fully inlining, remove the original instruction
     start_op.erase();
@@ -77,7 +77,7 @@ struct AIEConcretizeDMATasksPass
 
     AIE::DeviceOp device = getOperation();
 
-    // Wrap bd chains in DMAConfigureBDsOp regions before inlining
+    // Wrap bd chains in DMAConfigureTaskOp regions before inlining
     r = device.walk([&](DMAStartTaskOp start_op) {
       return inlineUsage(device, start_op);
     });
@@ -87,7 +87,7 @@ struct AIEConcretizeDMATasksPass
 
     // Verify inlined basic blocks do form a chain reachable from the start;
     // Remove empty blocks
-    r = device.walk([&](DMAConfigureBDsOp configure_bds_op) {
+    r = device.walk([&](DMAConfigureTaskOp configure_bds_op) {
       Region &body = configure_bds_op.getBody();
       for(auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
@@ -111,6 +111,6 @@ struct AIEConcretizeDMATasksPass
 };
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIEConcretizeDMATasksPass() {
-  return std::make_unique<AIEConcretizeDMATasksPass>();
+AIEX::createAIEMaterializeBDChainsPass() {
+  return std::make_unique<AIEMaterializeBDChainsPass>();
 }

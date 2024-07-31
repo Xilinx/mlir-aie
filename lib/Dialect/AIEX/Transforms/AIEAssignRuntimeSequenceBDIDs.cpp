@@ -1,4 +1,4 @@
-//===- AIEAssignRuntimeBufferDescriptorIDs.cpp ---------------------------------*- C++
+//===- AIEAssignRuntimeSequenceBDIDs.cpp ---------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -21,8 +21,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct AIEAssignRuntimeBufferDescriptorIDsPass
-    : AIEAssignRuntimeBufferDescriptorIDsBase<AIEAssignRuntimeBufferDescriptorIDsPass> {
+struct AIEAssignRuntimeSequenceBDIDsPass
+    : AIEAssignRuntimeSequenceBDIDsBase<AIEAssignRuntimeSequenceBDIDsPass> {
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile, std::map<AIE::TileOp, BdIdGenerator> &gens) {
     const AIETargetModel &targetModel = tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
@@ -34,7 +34,7 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
     return gen;
   }
   
-  LogicalResult runOnConfigureBDs(DMAConfigureBDsOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
+  LogicalResult runOnConfigureBDs(DMAConfigureTaskOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
     AIE::TileOp tile = op.getTileOp(); 
     BdIdGenerator &gen = getGeneratorForTile(tile, gens);
 
@@ -74,8 +74,8 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
     return success();
   }
 
-  LogicalResult runOnFreeBDs(DMAFreeBDsOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
-    DMAConfigureBDsOp bds_op = op.getBdsOp();
+  LogicalResult runOnFreeBDs(DMAFreeTaskOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
+    DMAConfigureTaskOp bds_op = op.getBdsOp();
     AIE::TileOp tile = bds_op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile, gens);
 
@@ -110,17 +110,17 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
 
     // Insert a free_bds operation for each await_bds
     // After waiting for BD IDs, they can definitely safely be reused
-    device.walk([&](DMAAwaitBDsOp op) {
+    device.walk([&](DMAAwaitTaskOp op) {
       OpBuilder builder(op);
       builder.setInsertionPointAfter(op);
-      builder.create<DMAFreeBDsOp>(op.getLoc(), op.getBds());
+      builder.create<DMAFreeTaskOp>(op.getLoc(), op.getBds());
     });
 
     // TODO: Only walk the sequence function
     device.walk([&](Operation *op) {
       LogicalResult result = llvm::TypeSwitch<Operation *, LogicalResult>(op)
-        .Case<DMAConfigureBDsOp>([&](DMAConfigureBDsOp op) { return runOnConfigureBDs(op, gens); })
-        .Case<DMAFreeBDsOp>([&](DMAFreeBDsOp op) { return runOnFreeBDs(op, gens); })
+        .Case<DMAConfigureTaskOp>([&](DMAConfigureTaskOp op) { return runOnConfigureBDs(op, gens); })
+        .Case<DMAFreeTaskOp>([&](DMAFreeTaskOp op) { return runOnFreeBDs(op, gens); })
         .Default([](Operation *op) { return success(); });
       if(failed(result)) {
         return signalPassFailure();
@@ -131,6 +131,6 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
 };
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIEAssignRuntimeBufferDescriptorIDsPass() {
-  return std::make_unique<AIEAssignRuntimeBufferDescriptorIDsPass>();
+AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {
+  return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>();
 }

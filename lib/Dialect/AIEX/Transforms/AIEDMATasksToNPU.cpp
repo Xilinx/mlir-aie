@@ -1,4 +1,4 @@
-//===- AIEBDChainsToNPU.cpp ---------------------------------*- C++
+//===- AIEDMATasksToNPU.cpp ---------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -24,11 +24,11 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct DMAStartBDsOpPattern : OpConversionPattern<DMAStartBDsOp> {
+struct DMAStartConfiguredTaskOpPattern : OpConversionPattern<DMAStartConfiguredTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAStartBDsOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureBDsOp bds_op = op.getBdsOp();
+  LogicalResult matchAndRewrite(DMAStartConfiguredTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    DMAConfigureTaskOp bds_op = op.getBdsOp();
     AIE::TileOp tile = bds_op.getTileOp();
     std::optional<uint32_t> first_bd_id = bds_op.getFirstBdId();
     if(!first_bd_id) {
@@ -42,11 +42,11 @@ struct DMAStartBDsOpPattern : OpConversionPattern<DMAStartBDsOp> {
   }
 };
 
-struct DMAAwaitBDsOpPattern : OpConversionPattern<DMAAwaitBDsOp> {
+struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAAwaitBDsOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureBDsOp bds_op = op.getBdsOp();
+  LogicalResult matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    DMAConfigureTaskOp bds_op = op.getBdsOp();
     if(!bds_op.getIssueToken()) {
       auto err = op.emitOpError("Cannot wait on a BD that is not configured to issue a token.");
       err.attachNote(bds_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
@@ -59,8 +59,8 @@ struct DMAAwaitBDsOpPattern : OpConversionPattern<DMAAwaitBDsOp> {
   }
 };
 
-struct AIEBDChainsToNPUPass
-    : AIEBDChainsToNPUBase<AIEBDChainsToNPUPass> {
+struct AIEDMATasksToNPUPass
+    : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
   
 
   LogicalResult verifyBdInBlock(Block &block) {
@@ -205,7 +205,7 @@ struct AIEBDChainsToNPUPass
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
-  LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureBDsOp op) {
+  LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {
     Region &body = op.getBody();
     for(auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it; 
@@ -228,7 +228,7 @@ struct AIEBDChainsToNPUPass
     return success();
   }
   
-  LogicalResult rewriteSingleDMAConfigureBDsOp(DMAConfigureBDsOp op) {
+  LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.getTileOp();
 
@@ -276,9 +276,9 @@ struct AIEBDChainsToNPUPass
     return success();
   }
 
-  LogicalResult rewriteDMAConfigureBDsOp(AIE::DeviceOp device) {
-    WalkResult result = device.walk([&](DMAConfigureBDsOp op) {
-      if(failed(rewriteSingleDMAConfigureBDsOp(op))) {
+  LogicalResult rewriteDMAConfigureTaskOp(AIE::DeviceOp device) {
+    WalkResult result = device.walk([&](DMAConfigureTaskOp op) {
+      if(failed(rewriteSingleDMAConfigureTaskOp(op))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -295,23 +295,23 @@ struct AIEBDChainsToNPUPass
     // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAStartBDsOp>();
-    target.addIllegalOp<DMAAwaitBDsOp>();
+    target.addIllegalOp<DMAStartConfiguredTaskOp>();
+    target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartBDsOpPattern>(&getContext());
-    patterns.insert<DMAAwaitBDsOpPattern>(&getContext());
+    patterns.insert<DMAStartConfiguredTaskOpPattern>(&getContext());
+    patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }
 
     // Lower the configuration for the BDs
-    if (failed(rewriteDMAConfigureBDsOp(device))) {
+    if (failed(rewriteDMAConfigureTaskOp(device))) {
       signalPassFailure();
     }
   }
 };
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIEBDChainsToNPUPass() {
-  return std::make_unique<AIEBDChainsToNPUPass>();
+AIEX::createAIEDMATasksToNPUPass() {
+  return std::make_unique<AIEDMATasksToNPUPass>();
 }

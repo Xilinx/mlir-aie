@@ -797,7 +797,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
-def AIE_DMAConfigureBDsOp : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain";
   let description = [{
     Describes a chain of buffer descriptors. 
@@ -826,11 +826,11 @@ def AIE_DMAConfigureBDsOp : AIEX_Op<"dma_configure_bds", []>, Results<(outs Inde
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAConfigureBDsOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAFreeBDsOp : AIEX_Op<"dma_free_bds", []> {
+def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">]> {
   let arguments = (
     ins Index:$bds
   );
@@ -840,15 +840,15 @@ def AIE_DMAFreeBDsOp : AIEX_Op<"dma_free_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDsOp getBdsOp();
+    DMAConfigureTaskOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDsOp DMAFreeBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAFreeTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAStartBDsOp : AIEX_Op<"dma_start_bds", []> {
+def AIE_DMAStartConfiguredTaskOp : AIEX_Op<"dma_start_configured_task", [HasParent<"RuntimeSequenceOp">]> {
   let arguments = (
     ins Index:$bds
   );
@@ -858,15 +858,15 @@ def AIE_DMAStartBDsOp : AIEX_Op<"dma_start_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDsOp getBdsOp();
+    DMAConfigureTaskOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDsOp DMAStartBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAStartConfiguredTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAAwaitBDsOp : AIEX_Op<"dma_await_bds", []> {
+def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp">]> {
   let arguments = (
     ins Index:$bds
   );
@@ -876,16 +876,16 @@ def AIE_DMAAwaitBDsOp : AIEX_Op<"dma_await_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDsOp getBdsOp();
+    DMAConfigureTaskOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDsOp DMAAwaitBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
   }];
 }
 
 
-def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", []>,
+def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp">]>,
     Results<(outs Index:$result)>
   {
 
@@ -900,14 +900,14 @@ def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", []>,
   );
 
   let assemblyFormat = [{ 
-    $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict 
+    `on` ` ` `(` $tile `,` $direction `,` $channel `)` ` ` `run` ` ` $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` attr-dict 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
-    AIE::DMATaskOp getDMATaskOp();
+    AIE::BDChainOp getBDChainOp();
   }];
 
   let extraClassDefinition = [{
