@@ -24,11 +24,11 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct DMAStartBDsPattern : OpConversionPattern<DMAStartBDs> {
+struct DMAStartBDsOpPattern : OpConversionPattern<DMAStartBDsOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAStartBDs op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureBDs bds_op = op.getBdsOp();
+  LogicalResult matchAndRewrite(DMAStartBDsOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    DMAConfigureBDsOp bds_op = op.getBdsOp();
     AIE::TileOp tile = bds_op.getTileOp();
     std::optional<uint32_t> first_bd_id = bds_op.getFirstBdId();
     if(!first_bd_id) {
@@ -42,11 +42,11 @@ struct DMAStartBDsPattern : OpConversionPattern<DMAStartBDs> {
   }
 };
 
-struct DMAAwaitBDsPattern : OpConversionPattern<DMAAwaitBDs> {
+struct DMAAwaitBDsOpPattern : OpConversionPattern<DMAAwaitBDsOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAAwaitBDs op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureBDs bds_op = op.getBdsOp();
+  LogicalResult matchAndRewrite(DMAAwaitBDsOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    DMAConfigureBDsOp bds_op = op.getBdsOp();
     if(!bds_op.getIssueToken()) {
       auto err = op.emitOpError("Cannot wait on a BD that is not configured to issue a token.");
       err.attachNote(bds_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
@@ -182,8 +182,6 @@ struct AIEBDChainsToNPUPass
     // find next BD ID, if any
     uint32_t use_next_bd = 0;
     uint32_t next_bd_id = 0;
-    auto err = bd_op->emitOpError(":::") << block.getTerminator();
-    err.attachNote(block.getTerminator()->getLoc()) << "here";
     if(bd_op.getNextBdId().has_value()) {
       next_bd_id = bd_op.getNextBdId().value();
       use_next_bd = 1;
@@ -207,7 +205,7 @@ struct AIEBDChainsToNPUPass
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
-  LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureBDs op) {
+  LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureBDsOp op) {
     Region &body = op.getBody();
     for(auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it; 
@@ -230,7 +228,7 @@ struct AIEBDChainsToNPUPass
     return success();
   }
   
-  LogicalResult rewriteSingleDMAConfigureBDs(DMAConfigureBDs op) {
+  LogicalResult rewriteSingleDMAConfigureBDsOp(DMAConfigureBDsOp op) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.getTileOp();
 
@@ -278,9 +276,9 @@ struct AIEBDChainsToNPUPass
     return success();
   }
 
-  LogicalResult rewriteDMAConfigureBDs(AIE::DeviceOp device) {
-    WalkResult result = device.walk([&](DMAConfigureBDs op) {
-      if(failed(rewriteSingleDMAConfigureBDs(op))) {
+  LogicalResult rewriteDMAConfigureBDsOp(AIE::DeviceOp device) {
+    WalkResult result = device.walk([&](DMAConfigureBDsOp op) {
+      if(failed(rewriteSingleDMAConfigureBDsOp(op))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -297,17 +295,17 @@ struct AIEBDChainsToNPUPass
     // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAStartBDs>();
-    target.addIllegalOp<DMAAwaitBDs>();
+    target.addIllegalOp<DMAStartBDsOp>();
+    target.addIllegalOp<DMAAwaitBDsOp>();
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartBDsPattern>(&getContext());
-    patterns.insert<DMAAwaitBDsPattern>(&getContext());
+    patterns.insert<DMAStartBDsOpPattern>(&getContext());
+    patterns.insert<DMAAwaitBDsOpPattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }
 
     // Lower the configuration for the BDs
-    if (failed(rewriteDMAConfigureBDs(device))) {
+    if (failed(rewriteDMAConfigureBDsOp(device))) {
       signalPassFailure();
     }
   }

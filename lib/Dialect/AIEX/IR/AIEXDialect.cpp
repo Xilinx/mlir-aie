@@ -433,10 +433,10 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// DMAConfigureBDs
+// DMAConfigureBDsOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::DMAConfigureBDs::getFirstBdId() {
+std::optional<uint32_t> AIEX::DMAConfigureBDsOp::getFirstBdId() {
   Region &body = getBody();
   if(body.empty()) {
     return std::nullopt;
@@ -453,16 +453,16 @@ std::optional<uint32_t> AIEX::DMAConfigureBDs::getFirstBdId() {
 }
 
 //===----------------------------------------------------------------------===//
-// DMAStartTask
+// DMAStartTaskOp
 //===----------------------------------------------------------------------===//
 
-AIE::DMATaskOp AIEX::DMAStartTask::getDMATaskOp() {
+AIE::DMATaskOp AIEX::DMAStartTaskOp::getDMATaskOp() {
   AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
   AIE::DMATaskOp chain = device.lookupSymbol<AIE::DMATaskOp>(getSymbol());
   return chain;
 }
 
-LogicalResult AIEX::DMAStartTask::verify() {
+LogicalResult AIEX::DMAStartTaskOp::verify() {
   AIE::DMATaskOp chain = getDMATaskOp();
   if (!chain) {
     return emitOpError("symbol does not reference valid BD chain");

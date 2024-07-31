@@ -797,7 +797,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
-def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureBDsOp : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain";
   let description = [{
     Describes a chain of buffer descriptors. 
@@ -826,11 +826,11 @@ def AIE_DMAConfigureBDs : AIEX_Op<"dma_configure_bds", []>, Results<(outs Index:
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAConfigureBDs::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAConfigureBDsOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAFreeBDs : AIEX_Op<"dma_free_bds", []> {
+def AIE_DMAFreeBDsOp : AIEX_Op<"dma_free_bds", []> {
   let arguments = (
     ins Index:$bds
   );
@@ -840,15 +840,15 @@ def AIE_DMAFreeBDs : AIEX_Op<"dma_free_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDs getBdsOp();
+    DMAConfigureBDsOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDs DMAFreeBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
+    DMAConfigureBDsOp DMAFreeBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
+def AIE_DMAStartBDsOp : AIEX_Op<"dma_start_bds", []> {
   let arguments = (
     ins Index:$bds
   );
@@ -858,15 +858,15 @@ def AIE_DMAStartBDs : AIEX_Op<"dma_start_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDs getBdsOp();
+    DMAConfigureBDsOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDs DMAStartBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
+    DMAConfigureBDsOp DMAStartBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
   }];
 }
 
-def AIE_DMAAwaitBDs : AIEX_Op<"dma_await_bds", []> {
+def AIE_DMAAwaitBDsOp : AIEX_Op<"dma_await_bds", []> {
   let arguments = (
     ins Index:$bds
   );
@@ -876,16 +876,16 @@ def AIE_DMAAwaitBDs : AIEX_Op<"dma_await_bds", []> {
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureBDs getBdsOp();
+    DMAConfigureBDsOp getBdsOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureBDs DMAAwaitBDs::getBdsOp() { return cast<DMAConfigureBDs>(getBds().getDefiningOp()); }
+    DMAConfigureBDsOp DMAAwaitBDsOp::getBdsOp() { return cast<DMAConfigureBDsOp>(getBds().getDefiningOp()); }
   }];
 }
 
 
-def AIE_DMAStartTask: AIEX_Op<"dma_start_task", []>,
+def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", []>,
     Results<(outs Index:$result)>
   {
 
@@ -911,7 +911,7 @@ def AIE_DMAStartTask: AIEX_Op<"dma_start_task", []>,
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAStartTask::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAStartTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 
 }

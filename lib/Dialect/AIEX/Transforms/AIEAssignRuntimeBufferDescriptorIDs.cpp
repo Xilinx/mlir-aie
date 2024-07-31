@@ -34,7 +34,7 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
     return gen;
   }
   
-  LogicalResult runOnConfigureBDs(DMAConfigureBDs op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
+  LogicalResult runOnConfigureBDs(DMAConfigureBDsOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
     AIE::TileOp tile = op.getTileOp(); 
     BdIdGenerator &gen = getGeneratorForTile(tile, gens);
 
@@ -74,8 +74,8 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
     return success();
   }
 
-  LogicalResult runOnFreeBDs(DMAFreeBDs op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
-    DMAConfigureBDs bds_op = op.getBdsOp();
+  LogicalResult runOnFreeBDs(DMAFreeBDsOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
+    DMAConfigureBDsOp bds_op = op.getBdsOp();
     AIE::TileOp tile = bds_op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile, gens);
 
@@ -110,17 +110,17 @@ struct AIEAssignRuntimeBufferDescriptorIDsPass
 
     // Insert a free_bds operation for each await_bds
     // After waiting for BD IDs, they can definitely safely be reused
-    device.walk([&](DMAAwaitBDs op) {
+    device.walk([&](DMAAwaitBDsOp op) {
       OpBuilder builder(op);
       builder.setInsertionPointAfter(op);
-      builder.create<DMAFreeBDs>(op.getLoc(), op.getBds());
+      builder.create<DMAFreeBDsOp>(op.getLoc(), op.getBds());
     });
 
     // TODO: Only walk the sequence function
     device.walk([&](Operation *op) {
       LogicalResult result = llvm::TypeSwitch<Operation *, LogicalResult>(op)
-        .Case<DMAConfigureBDs>([&](DMAConfigureBDs op) { return runOnConfigureBDs(op, gens); })
-        .Case<DMAFreeBDs>([&](DMAFreeBDs op) { return runOnFreeBDs(op, gens); })
+        .Case<DMAConfigureBDsOp>([&](DMAConfigureBDsOp op) { return runOnConfigureBDs(op, gens); })
+        .Case<DMAFreeBDsOp>([&](DMAFreeBDsOp op) { return runOnFreeBDs(op, gens); })
         .Default([](Operation *op) { return success(); });
       if(failed(result)) {
         return signalPassFailure();

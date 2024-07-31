@@ -29,7 +29,7 @@ using namespace xilinx::AIEX;
 struct AIEConcretizeDMATasksPass
     : AIEConcretizeDMATasksBase<AIEConcretizeDMATasksPass> {
 
-  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTask start_op) {
+  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTaskOp start_op) {
     OpBuilder builder = OpBuilder(start_op);
 
     // Get referenced abstract BD chain
@@ -38,7 +38,7 @@ struct AIEConcretizeDMATasksPass
     Region &source_region = chain_def.getBody();
 
     // Create BD op into which the result will be inlined
-    DMAConfigureBDs configure_op = builder.create<DMAConfigureBDs>(
+    DMAConfigureBDsOp configure_op = builder.create<DMAConfigureBDsOp>(
         start_op.getLoc(), builder.getIndexType(), 
         start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
@@ -64,7 +64,7 @@ struct AIEConcretizeDMATasksPass
     }
 
     // Add a start BDs instruction
-    builder.create<DMAStartBDs>(start_op.getLoc(), configure_op.getResult());
+    builder.create<DMAStartBDsOp>(start_op.getLoc(), configure_op.getResult());
 
     // After fully inlining, remove the original instruction
     start_op.erase();
@@ -77,8 +77,8 @@ struct AIEConcretizeDMATasksPass
 
     AIE::DeviceOp device = getOperation();
 
-    // Wrap bd chains in DMAConfigureBDs regions before inlining
-    r = device.walk([&](DMAStartTask start_op) {
+    // Wrap bd chains in DMAConfigureBDsOp regions before inlining
+    r = device.walk([&](DMAStartTaskOp start_op) {
       return inlineUsage(device, start_op);
     });
     if(r.wasInterrupted()) {
@@ -87,7 +87,7 @@ struct AIEConcretizeDMATasksPass
 
     // Verify inlined basic blocks do form a chain reachable from the start;
     // Remove empty blocks
-    r = device.walk([&](DMAConfigureBDs configure_bds_op) {
+    r = device.walk([&](DMAConfigureBDsOp configure_bds_op) {
       Region &body = configure_bds_op.getBody();
       for(auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
