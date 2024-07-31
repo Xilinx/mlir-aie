@@ -1973,11 +1973,11 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol]> {
   let description = [{
     This operation allows you to define buffer descriptor chains with parametrizable inputs. 
     This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
+    Currently, only buffers and locks are parametrizable.
 
-    Once defined, an abstract BD chain can be used elsewhere using
-      TODO
-    ops.
-    At its usage sites, the abstract BD chain will be concretized with the given input arguments, becoming a concrete aie.bd_configuration.
+    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+    In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
+    At its usage sites, the abstract BD chain will be concretized with the given input arguments.
   }];
 
   let arguments = (
