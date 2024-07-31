@@ -296,7 +296,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  return AIEXDialect::verifyStridesWraps((Operation *)this, buffer, getX(), getY(), inputSizes, inputStrides, hardwareSizes, hardwareStrides);
+  return AIEXDialect::verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes, inputStrides, hardwareSizes, hardwareStrides);
 }
 
 //===----------------------------------------------------------------------===//
