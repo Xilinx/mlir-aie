@@ -135,23 +135,16 @@ struct AIEBDChainsToNPUPass
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op, AIE::TileOp &tile) {
     uint32_t bd_id = bd_op.getBdId().value();
-    auto buf = bd_op.getBuffer();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
-    AIEX::RuntimeSequenceOp parentOp = buf.getDefiningOp<AIEX::RuntimeSequenceOp>();
-    if(!parentOp) {
+    auto buf = bd_op.getBuffer();
+    mlir::BlockArgument buf_arg = llvm::dyn_cast<mlir::BlockArgument>(buf);
+    if(!buf_arg) {
       // TODO: Not yet implemented (for AIE.buffer references)
       // Implementing this would involve taking the allocated buffer address and plugging it as a register write to `addr` below.
       bd_op->emitOpError("At present, buffer arguments must be an input to the runtime sequence. Constant buffer arguments not yet implemented.");
       return failure();
     }
-    Region &parentRegion = parentOp.getBody();
-    auto arg_idx_it = std::find(parentRegion.args_begin(), parentRegion.args_end(), buf);
-    if(arg_idx_it == parentRegion.args_end()) {
-      auto err = bd_op->emitOpError("Unable to determine argument index for input buffer.");
-      err.attachNote(parentRegion.getLoc()) << "In this region.";
-      return failure();
-    }
-    int arg_idx = std::distance(parentRegion.args_begin(), arg_idx_it);
+    unsigned arg_idx = buf_arg.getArgNumber();
     uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(target_model, bd_id, tile.getCol());
     int64_t offset = bd_op.getOffsetInBytes();
     builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/addr, /*arg_idx*/arg_idx, /*arg_plus*/offset);
@@ -182,24 +175,17 @@ struct AIEBDChainsToNPUPass
       }
     }
     auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(target_model, buffer_type, input_sizes, input_strides);
-    if(failed(AIEXDialect::verifyStridesWraps((Operation *)&bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes, strides))) {
+    if(failed(AIEXDialect::verifyStridesWraps(bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes, strides))) {
       return failure();
     }
 
     // find next BD ID, if any
     uint32_t use_next_bd = 0;
     uint32_t next_bd_id = 0;
-    auto next_bd_ops = block.getOps<AIE::NextBDOp>();
-    if(!next_bd_ops.empty()) {
-      AIE::NextBDOp next_bd_op = *next_bd_ops.begin();
-      Block *next_bd_block = next_bd_op.getDest(); 
-      auto next_bd_bd_ops = next_bd_block->getOps<AIE::DMABDOp>();
-      if(next_bd_bd_ops.empty()) {
-        auto err = bd_op->emitOpError("Referenced next BD block contains no BD operation.");
-        return failure();
-      }
-      AIE::DMABDOp next_bd_bd_op = *next_bd_bd_ops.begin();
-      next_bd_id = next_bd_bd_op.getBdId().value();
+    auto err = bd_op->emitOpError(":::") << block.getTerminator();
+    err.attachNote(block.getTerminator()->getLoc()) << "here";
+    if(bd_op.getNextBdId().has_value()) {
+      next_bd_id = bd_op.getNextBdId().value();
       use_next_bd = 1;
     }
 
@@ -226,14 +212,12 @@ struct AIEBDChainsToNPUPass
     for(auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it; 
       AIE::DMABDOp bd_op = getBdForBlock(block);
-      Operation *terminator = block.getTerminator();
-      if(llvm::isa<AIE::NextBDOp>(terminator)) {
+      if(AIE::NextBDOp next_bd_op = llvm::dyn_cast<AIE::NextBDOp>(block.getTerminator())) {
         if(bd_op.getNextBdId().has_value()) {
           auto error = bd_op.emitOpError("Cannot specify both next_bd_id attribute and aie.next_bd operation."); 
-          error.attachNote(terminator->getLoc()) << "Potentially conflicting next buffer descriptor ID specified here.";
+          error.attachNote(next_bd_op.getLoc()) << "Potentially conflicting next buffer descriptor ID specified here.";
           return failure();
         }
-        AIE::NextBDOp next_bd_op = llvm::cast<AIE::NextBDOp>(*terminator);
         Block &next_bd_block = *next_bd_op.getDest();
         AIE::DMABDOp next_dma_bd_op = getBdForBlock(next_bd_block);
         assert(next_dma_bd_op.getBdId().has_value()); // Next BD should have assigned ID, and this should have been checked by earlier verifyBdInBlock() call
@@ -241,9 +225,6 @@ struct AIEBDChainsToNPUPass
         OpBuilder builder(next_bd_op);
         builder.create<AIE::EndOp>(next_bd_op.getLoc());
         next_bd_op.erase();
-      } else if(!llvm::isa<AIE::EndOp>(terminator)) {
-        terminator->emitOpError("Invalid terminator for a buffer descriptor block. Must be either aie.end or aie.next_bd.");
-        return failure();
       }
     }
     return success();
