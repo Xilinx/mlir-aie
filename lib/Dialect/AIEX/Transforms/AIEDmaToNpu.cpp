@@ -317,9 +317,9 @@ public:
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    uint64_t buffer_length_val = sizes[0] * bufferType.getElementTypeBitWidth() / targetModel.getAddressGenGranularity();
+    uint64_t buffer_length_val = inputSizes[0] * bufferType.getElementTypeBitWidth() / targetModel.getAddressGenGranularity();
     if(inputSizes.size() > 1) {
-      for(size_t i = 1; i < inputSizes.size(); i++) {
+      for(size_t i = 1; i < std::min(inputSizes.size(), (size_t)3); i++) {
         buffer_length_val *= inputSizes[i];
       }
     }
@@ -378,7 +378,7 @@ public:
     // lock_acq_id
 
     // repeat_count
-    repeat_count = IntegerAttr::get(i32ty, sizes[3] - 1);
+    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // Set the issue_token
     issue_token = BoolAttr::get(ctx, op.getIssueToken());

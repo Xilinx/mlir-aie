@@ -147,8 +147,8 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEMaterializeBDChains : Pass<"aie-concretize-dma-tasks", "AIE::DeviceOp"> {
-  let summary = "Concretize aie.bd_chain ops at aiex.start_bds use sites";
+def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
+  let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
   let description = [{
     Turns pre-defined BD chains with parameters into concrete BD configuration instructions without parameters at their usage sites.
   }];
@@ -162,8 +162,6 @@ def AIEMaterializeBDChains : Pass<"aie-concretize-dma-tasks", "AIE::DeviceOp"> {
 
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
-  let description = [{
-  }];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = [
@@ -173,9 +171,7 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
 }
 
 def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
-  let summary = "";
-  let description = [{
-  }];
+  let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
   let dependentDialects = [

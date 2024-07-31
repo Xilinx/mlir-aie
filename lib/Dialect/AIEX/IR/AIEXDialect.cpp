@@ -44,7 +44,7 @@ uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(const AIE::AIETa
    - By default, stride 0 and size 1 is assumed if unspecified.
    - If only N strides/wraps are defined, those define the lowest N dimensions.
   
-  inputStride[3]        == iteration_stride / elemSizeFac
+  inputStride[3]        == iteration_stride / elemSizeFac + 1
   inputWrap[3]          == iteration_size + 1
     Highest-dimension stride/wrap is iteration count / iteration stride.
   inputStride[2]        == d2_stride / elemSizeFac + 1
@@ -73,32 +73,41 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
   llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
 
+  if(inputSizes[0] == 0) {
+    return std::make_pair(sizes, strides);
+  }
+
   // d0_size, d0_stride
-  sizes[0] = inputSizes[0 * elemWidth] / addressGranularity;
-  if (inputStrides[0] != 0) {
-    // stride[0] == 0 really should not be allowed as input, but 
-    strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
+  sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
+  strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
+  if(strides[0] < 0) {
+    // For the case that stride < addressGranularity, but size > addressGranularity,
+    // we can allow this. This is verified in verify().
+    strides[0] = 0;
   }
 
   // d1_size, d1_stride
   sizes[1] = inputSizes[1];
-  if (inputStrides[1]) {
+  if(inputSizes[1] > 1) {
+    // Stride only matters if we have more than one iteration.
     strides[1] = inputStrides[1] * elemWidth / addressGranularity - 1;
+    assert(strides[1] >= 0);
   }
 
   // d2_size, d2_stride
   sizes[2] = inputSizes[2];
-  if (inputStrides[2]) {
+  if(inputSizes[2] > 1) {
+    // Stride only matters if we have more than one iteration.
     strides[2] = inputStrides[2] * elemWidth / addressGranularity - 1;
+    assert(strides[2] >= 0);
   }
 
   // iteration_size, iteration_stride
   // strides[3] doesn't need to lower to hardware if sizes[3] is one
-  if (inputStrides[3] && inputSizes[3] != 1) {
+  if(inputSizes[3] > 1) {
     sizes[3] = inputSizes[3] - 1;
-  }
-  if (inputStrides[3]) {
     strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
+    assert(strides[3] >= 0);
   }
 
   return std::make_pair(sizes, strides);

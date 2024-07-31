@@ -170,8 +170,8 @@ struct AIEDMATasksToNPUPass
         // us to specify step sizes/wraps in the same order as we would
         // access a multi-dim C array, with the highest dimension first.
         int j = dims->size() - i - 1;
-        input_sizes[j] = dims.value()[i].getSize();
-        input_strides[j] = dims.value()[i].getStride();
+        input_sizes[i] = (*dims)[j].getSize();
+        input_strides[i] = (*dims)[j].getStride();
       }
     }
     auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(target_model, buffer_type, input_sizes, input_strides);

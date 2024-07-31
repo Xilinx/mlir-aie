@@ -91,7 +91,15 @@ AIE_LOWER_TO_LLVM = (
 CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
     "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
 )
-DMA_TO_NPU = Pipeline().Nested("aie.device", Pipeline().add_pass("aie-dma-to-npu"))
+
+DMA_TO_NPU = Pipeline().Nested(
+    "aie.device", 
+    Pipeline()
+    .add_pass("aie-materialize-bd-chains")
+    .add_pass("aie-assign-runtime-sequence-bd-ids")
+    .add_pass("aie-dma-tasks-to-npu")
+    .add_pass("aie-dma-to-npu")
+)
 
 
 async def read_file_async(file_path: str) -> str:
@@ -1016,6 +1024,9 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-opt",
+                        "--aie-materialize-bd-chains",
+                        "--aie-assign-runtime-sequence-bd-ids",
+                        "--aie-dma-tasks-to-npu",
                         "--aie-dma-to-npu",
                         file_with_addresses,
                         "-o",
