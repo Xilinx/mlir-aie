@@ -34,7 +34,7 @@ for file in files:
                     # Split the command by pipe to insert --debug appropriately
                     parts = command.split("|")
                     parts[0] = parts[0].strip() + " --debug"
-                    debug_command = " | ".join(parts)
+                    debug_command = parts[0]
 
                     # Execute the command
                     print(f"Executing command: {debug_command}")
@@ -51,14 +51,7 @@ for file in files:
                         status = "SUCCESS"
                     except subprocess.CalledProcessError as e:
                         result = e
-                        if (
-                            result.stderr
-                            and "CHECK: expected string not found in input"
-                            in result.stderr
-                        ):
-                            status = "CHECK_FAILED"
-                        else:
-                            status = "FAILED"
+                        status = "FAILED"
                     except subprocess.TimeoutExpired as e:
                         result = e
                         status = "FAILED"
