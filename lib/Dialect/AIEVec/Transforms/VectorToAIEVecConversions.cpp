@@ -3137,10 +3137,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 // TODO: Review the validity of these legalizations beyond basic cases.
 
 static bool isInSigmoidOperationChain(math::ExpOp expOp) {
-
-  //guard segfault if definingOp() does not exist (as with a function parameter)
-  if (auto negOp = expOp.getOperand().getDefiningOp<arith::NegFOp>();
-   !negOp)
+  if (!expOp.getOperand().getDefiningOp<arith::NegFOp>())
     return false;
 
   arith::AddFOp addOp = nullptr;
