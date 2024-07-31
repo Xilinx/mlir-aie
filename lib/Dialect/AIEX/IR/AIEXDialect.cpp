@@ -1,4 +1,4 @@
-//===- AIEDialect.cpp -------------------------------------------*- C++ -*-===//
+//===- AIEXDialect.cpp ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -284,6 +284,11 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 
 ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
+
+  StringAttr nameAttr;
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
+
   SmallVector<OpAsmParser::Argument> entryArgs;
 
   // Entry arguments,  e.g. (%addr: memref<1xi32>)
@@ -312,6 +317,13 @@ ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
 
 void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
   Region &body = getRegion();
+
+  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName());
+  if (nameAttr) {
+    printer << ' ';
+    printer.printSymbolName(nameAttr);
+  }
 
   printer << '(';
   for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {

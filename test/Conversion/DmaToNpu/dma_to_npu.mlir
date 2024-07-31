@@ -82,3 +82,14 @@ module  {
   }
 }
 
+// -----
+
+// CHECK: module
+// CHECK: aiex.npu.write32 {address = 2098576 : ui32, value = 1234 : ui32}
+module {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0,2)
+    %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
+    aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
+  }
+}

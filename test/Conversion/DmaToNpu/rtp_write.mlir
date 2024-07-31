@@ -17,8 +17,8 @@ module {
     %2 = aie.tile(0, 2)
     %3 = aie.buffer(%2) {address = 3200 : i32, sym_name = "RTP"} : memref<16xi32>
     aiex.runtime_sequence() {
-      aiex.npu.rtp_write(2, 3, 0, 50) { buffer_sym_name = "rtp" }
-      aiex.npu.rtp_write(0, 2, 4, 99) { buffer_sym_name = "RTP" }
+      aiex.npu.rtp_write(@rtp, 0, 50)
+      aiex.npu.rtp_write(@RTP, 4, 99)
     }
   }
 }

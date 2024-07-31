@@ -768,7 +768,7 @@ def broadcast_flow(
 
 def runtime_sequence(*inputs: Type):
     def decorator(f):
-        seq_op = RuntimeSequenceOp(args=[])
+        seq_op = RuntimeSequenceOp()
         entry_block = seq_op.body.blocks.append(*inputs)
         args = entry_block.arguments
         with InsertionPoint(entry_block):
