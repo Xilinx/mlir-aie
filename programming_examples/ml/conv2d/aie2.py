@@ -144,7 +144,7 @@ def conv2dk1():
 
             @runtime_sequence(tensor_ty, memRef_wts_ty, tensor_ty)
             def sequence(I, W, O):
-                NpuWriteRTPOp("rtp2", col=0, row=2, index=0, value=10)
+                NpuWriteRTPOp("rtp2", index=0, value=10)
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",

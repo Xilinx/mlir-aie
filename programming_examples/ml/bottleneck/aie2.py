@@ -595,21 +595,13 @@ def bottleneck4AIEs():
                     npu_write32(0, 2, 0x1D20C, 0x3)
 
                 # write RTP parameters
+                NpuWriteRTPOp("rtpComputeTile2", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile3", index=0, value=1)  # scale
+                NpuWriteRTPOp("rtpComputeTile5", index=0, value=1)  # scale
                 NpuWriteRTPOp(
-                    "rtpComputeTile2", col=0, row=2, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile3", col=0, row=3, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile5", col=0, row=5, index=0, value=1
-                )  # scale
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=0, value=1
+                    "rtpComputeTile4", index=0, value=1
                 )  # scale: conv1x1 with the same scale as the input so we match the scaling factor of output after conv1x1 and the initial input
-                NpuWriteRTPOp(
-                    "rtpComputeTile4", col=0, row=4, index=1, value=0
-                )  # skip_scale
+                NpuWriteRTPOp("rtpComputeTile4", index=1, value=0)  # skip_scale
 
                 npu_dma_memcpy_nd(
                     metadata="inOF_act_L3L2",
