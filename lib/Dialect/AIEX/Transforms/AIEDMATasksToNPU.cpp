@@ -158,7 +158,7 @@ struct AIEDMATasksToNPUPass
 
     uint32_t bd_id = bd_op.getBdId().value();
     int64_t offset = bd_op.getOffsetInBytes();
-    uint32_t len = bd_op.getLenInBytes();
+    uint32_t len_addr_granularity = bd_op.getLenInBytes() * 8 / target_model.getAddressGenGranularity();
 
     // Process strides/wraps
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims = bd_op.getDimensions();
@@ -188,7 +188,7 @@ struct AIEDMATasksToNPUPass
     }
 
     builder.create<NpuWriteBdOp>(bd_op.getLoc(),
-        tile.getCol(), bd_id, len, offset, 0, 0, 0, 0,
+        tile.getCol(), bd_id, len_addr_granularity, offset, 0, 0, 0, 0,
         /* TODO: Strides/Wraps */
         /*d0_size=*/sizes[0], /*d0_stride=*/strides[0], 
         /*d1_size=*/sizes[1], /*d1_stride=*/strides[1], 
