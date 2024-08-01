@@ -62,7 +62,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = False
+    enable_tracing = True
     trace_size = 65536
 
     dtype_in = None
@@ -247,42 +247,48 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                         offset=C_sz_in_bytes,
                     )
 
-                # only do 5 tile rows at a time before synchronizing, so we can reuse BDs
-                rows_per_block = 5
+                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
+                rows_per_block = 4
                 for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-                    C_row_offset = tile_row_block * rows_per_block * m * N
-                    num_tile_rows = min(
-                        [rows_per_block, M_div_m - tile_row_block * rows_per_block]
-                    )
-                    npu_dma_memcpy_nd(
-                        metadata="outC",
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_row_offset],
-                        sizes=[num_tile_rows, N_div_n, m, n],
-                        strides=[m_x_N, n, N, 1],
-                    )
-                    for tile_row in range(num_tile_rows):
-                        A_row_offset = (
-                            ((tile_row_block * rows_per_block) + tile_row) * m * K
+                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
+                    # that's what this loop is for
+                    for pingpong in [0, 1]:
+                        C_row_offset = (tile_row_block * rows_per_block * m * N
+                                        + pingpong * rows_per_block // 2 * m * N)
+                        row_base = tile_row_block * rows_per_block + pingpong * rows_per_block//2
+                        num_tile_rows = min(
+                            [rows_per_block//2, M_div_m - row_base]
                         )
                         npu_dma_memcpy_nd(
-                            metadata="inA",
-                            bd_id=2 * tile_row + 1,
-                            mem=A,
-                            offsets=[0, 0, 0, A_row_offset],
-                            sizes=[N_div_n, K_div_k, m, k],
-                            strides=[0, k, K, 1],
+                            metadata="outC",
+                            bd_id=pingpong,
+                            mem=C,
+                            offsets=[0, 0, 0, C_row_offset],
+                            sizes=[num_tile_rows//2, N_div_n, m, n],
+                            strides=[m_x_N, n, N, 1],
                         )
-                        npu_dma_memcpy_nd(
-                            metadata="inB",
-                            bd_id=2 * tile_row + 2,
-                            mem=B,
-                            sizes=[N_div_n, K_div_k, k, n],
-                            strides=[n, k_x_N, N, 1],
-                        )
-
-                    npu_sync(column=0, row=0, direction=0, channel=0)
+                        for tile_row in range(num_tile_rows):
+                            A_row_offset = (
+                                (row_base + tile_row) * m * K
+                            )
+                            npu_dma_memcpy_nd(
+                                metadata="inA",
+                                bd_id=2 * tile_row + 2 + pingpong * rows_per_block//2,
+                                mem=A,
+                                offsets=[0, 0, 0, A_row_offset],
+                                sizes=[N_div_n, K_div_k, m, k],
+                                strides=[0, k, K, 1],
+                            )
+                            npu_dma_memcpy_nd(
+                                metadata="inB",
+                                bd_id=2 * tile_row + 2 + pingpong * rows_per_block//2 + 1,
+                                mem=B,
+                                sizes=[N_div_n, K_div_k, k, n],
+                                strides=[n, k_x_N, N, 1],
+                            )
+                        if tile_row_block + pingpong > 0:
+                            npu_sync(column=0, row=0, direction=0, channel=0)
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
