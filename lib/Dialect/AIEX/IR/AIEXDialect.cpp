@@ -153,13 +153,6 @@ mlir::LogicalResult AIEXDialect::verifyStridesWraps(
     return forOp->emitOpError(msg.str());
   }
 
-  for (int i = 0; i < 4; i++) {
-    if (inputSizes[i] > 1 && inputStrides[i] < 1) {
-      return forOp->emitOpError("Input stride ")
-             << i << " must be a positive integer.";
-    }
-  }
-
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
   uint32_t iter_bits = 6;
