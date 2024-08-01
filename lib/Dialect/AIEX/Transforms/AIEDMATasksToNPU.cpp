@@ -9,16 +9,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iterator>
 #include <algorithm>
+#include <iterator>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -27,17 +27,23 @@ using namespace xilinx::AIEX;
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
     AIE::TileOp tile = task_op.getTileOp();
     std::optional<uint32_t> first_bd_id = task_op.getFirstBdId();
-    if(!first_bd_id) {
-        auto err = op.emitOpError("First buffer descriptor in chain has not been assigned an ID");
-        err.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` pass first or manually assign an ID.";
-        return failure();
+    if (!first_bd_id) {
+      auto err = op.emitOpError(
+          "First buffer descriptor in chain has not been assigned an ID");
+      err.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` "
+                          "pass first or manually assign an ID.";
+      return failure();
     }
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
-        op, tile.getCol(), tile.getRow(), task_op.getDirection(), task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(), *first_bd_id);
+        op, tile.getCol(), tile.getRow(), task_op.getDirection(),
+        task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(),
+        *first_bd_id);
     return success();
   }
 };
@@ -45,46 +51,58 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
-    if(!task_op.getIssueToken()) {
-      auto err = op.emitOpError("Cannot wait on a BD that is not configured to issue a token.");
-      err.attachNote(task_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
+    if (!task_op.getIssueToken()) {
+      auto err = op.emitOpError(
+          "Cannot wait on a BD that is not configured to issue a token.");
+      err.attachNote(task_op.getLoc())
+          << "Consider adding attribute `issue_token=true` here.";
       return err;
     }
     AIE::TileOp tile = task_op.getTileOp();
-    rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, tile.getCol(), tile.getRow(), (uint32_t)task_op.getDirection(), task_op.getChannel(), 1, 1);
+    rewriter.replaceOpWithNewOp<NpuSyncOp>(op, tile.getCol(), tile.getRow(),
+                                           (uint32_t)task_op.getDirection(),
+                                           task_op.getChannel(), 1, 1);
     return success();
   }
 };
 
-struct AIEDMATasksToNPUPass
-    : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
-  
+struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult verifyBdInBlock(Block &block) {
     auto bd_ops = block.getOps<AIE::DMABDOp>();
     // Exactly one BD op per block
     int n_bd_ops = std::distance(bd_ops.begin(), bd_ops.end());
-    if(n_bd_ops < 1) {
-      auto error = block.getTerminator()->emitError("Block ending in this terminator does not contain a required aie.dma_bd operation.");
-      error.attachNote(block.getParentOp()->getLoc()) << "Error encountered while lowering this BD configuration.";
+    if (n_bd_ops < 1) {
+      auto error = block.getTerminator()->emitError(
+          "Block ending in this terminator does not contain a required "
+          "aie.dma_bd operation.");
+      error.attachNote(block.getParentOp()->getLoc())
+          << "Error encountered while lowering this BD configuration.";
       return failure();
-    } else if(n_bd_ops > 1) {
-      auto error = block.getTerminator()->emitOpError("This block contains multiple aie.dma_bd operations. Exactly one is required.");
-     // auto it = bd_ops.begin();
-     // ++it;
-     // for(; it != it.end(); ++it) {
-     //   error.attachNote(it->getLoc()) << "Extra aie.dma_bd operation here.";
-     // }
+    } else if (n_bd_ops > 1) {
+      auto error = block.getTerminator()->emitOpError(
+          "This block contains multiple aie.dma_bd operations. Exactly one is "
+          "required.");
+      // auto it = bd_ops.begin();
+      // ++it;
+      // for(; it != it.end(); ++it) {
+      //   error.attachNote(it->getLoc()) << "Extra aie.dma_bd operation here.";
+      // }
       return failure();
     }
     AIE::DMABDOp bd_op = *bd_ops.begin();
-    if(!bd_op.getBdId().has_value()) {
-      auto error = bd_op.emitOpError("Cannot lower buffer descriptor without assigned ID.");
-      error.attachNote() << "Run the `--aie-assign-runtime-sequence-bd-ids` pass first or manually assign an ID to this buffer descriptor.";
-      error.attachNote(block.getParentOp()->getLoc()) << "Error encountered while lowering this BD configuration.";
+    if (!bd_op.getBdId().has_value()) {
+      auto error = bd_op.emitOpError(
+          "Cannot lower buffer descriptor without assigned ID.");
+      error.attachNote()
+          << "Run the `--aie-assign-runtime-sequence-bd-ids` pass first or "
+             "manually assign an ID to this buffer descriptor.";
+      error.attachNote(block.getParentOp()->getLoc())
+          << "Error encountered while lowering this BD configuration.";
       return failure();
     }
     return success();
@@ -94,10 +112,11 @@ struct AIEDMATasksToNPUPass
     auto lock_ops = block.getOps<AIE::UseLockOp>();
     // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if(n_lock_ops > 0) {
+    if (n_lock_ops > 0) {
       // TODO: Not yet implemented
       AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("Lowering for lock operations in NPU runtime configuration is not yet implemented.");
+      lock_op.emitOpError("Lowering for lock operations in NPU runtime "
+                          "configuration is not yet implemented.");
       return failure();
     }
     return success();
@@ -106,17 +125,24 @@ struct AIEDMATasksToNPUPass
   LogicalResult verifyNoUnsupportedOpsInBlock(Block &block) {
     WalkResult unsupported_ops = block.walk([&](Operation *inner_op) {
       return llvm::TypeSwitch<Operation *, WalkResult>(inner_op)
-        .Case<AIE::DMABDOp>([&](AIE::DMABDOp bd_op) { return WalkResult::advance(); })
-        .Case<AIE::UseLockOp>([&](AIE::UseLockOp lock_op) { return WalkResult::advance(); })
-        .Case<AIE::NextBDOp>([&](AIE::NextBDOp lock_op) { return WalkResult::advance(); })
-        .Case<AIE::EndOp>([&](AIE::EndOp lock_op) { return WalkResult::advance(); })
-        .Default([&](Operation *inner_op){
-          auto error = block.getParentOp()->emitOpError("Unsupported operation within BD block.");
-          error.attachNote(inner_op->getLoc()) << "No lowering to NPU instructions available for this operation.";
-          return WalkResult::interrupt();
-        });
+          .Case<AIE::DMABDOp>(
+              [&](AIE::DMABDOp bd_op) { return WalkResult::advance(); })
+          .Case<AIE::UseLockOp>(
+              [&](AIE::UseLockOp lock_op) { return WalkResult::advance(); })
+          .Case<AIE::NextBDOp>(
+              [&](AIE::NextBDOp lock_op) { return WalkResult::advance(); })
+          .Case<AIE::EndOp>(
+              [&](AIE::EndOp lock_op) { return WalkResult::advance(); })
+          .Default([&](Operation *inner_op) {
+            auto error = block.getParentOp()->emitOpError(
+                "Unsupported operation within BD block.");
+            error.attachNote(inner_op->getLoc())
+                << "No lowering to NPU instructions available for this "
+                   "operation.";
+            return WalkResult::interrupt();
+          });
     });
-    if(unsupported_ops.wasInterrupted()) {
+    if (unsupported_ops.wasInterrupted()) {
       return failure();
     }
     return success();
@@ -124,34 +150,43 @@ struct AIEDMATasksToNPUPass
 
   AIE::DMABDOp getBdForBlock(Block &block) {
     auto bd_ops = block.getOps<AIE::DMABDOp>();
-    AIE::DMABDOp bd_op = *bd_ops.begin(); // Dereference first (and only, after previous checks) bd op iterator
+    AIE::DMABDOp bd_op = *bd_ops.begin(); // Dereference first (and only, after
+                                          // previous checks) bd op iterator
     return bd_op;
   }
 
-  std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>> getOptionalLockOpsForBlock(Block &block) {
-    //auto lock_ops = block.getOps<AIE::UseLockOp>();
+  std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
+  getOptionalLockOpsForBlock(Block &block) {
+    // auto lock_ops = block.getOps<AIE::UseLockOp>();
     return std::nullopt; // Not yet implemented
   }
 
-  LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op, AIE::TileOp &tile) {
+  LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
+                                      AIE::TileOp &tile) {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
     mlir::BlockArgument buf_arg = llvm::dyn_cast<mlir::BlockArgument>(buf);
-    if(!buf_arg) {
+    if (!buf_arg) {
       // TODO: Not yet implemented (for AIE.buffer references)
-      // Implementing this would involve taking the allocated buffer address and plugging it as a register write to `addr` below.
-      bd_op->emitOpError("At present, buffer arguments must be an input to the runtime sequence. Constant buffer arguments not yet implemented.");
+      // Implementing this would involve taking the allocated buffer address and
+      // plugging it as a register write to `addr` below.
+      bd_op->emitOpError(
+          "At present, buffer arguments must be an input to the runtime "
+          "sequence. Constant buffer arguments not yet implemented.");
       return failure();
     }
     unsigned arg_idx = buf_arg.getArgNumber();
-    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(target_model, bd_id, tile.getCol());
+    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(
+        target_model, bd_id, tile.getCol());
     int64_t offset = bd_op.getOffsetInBytes();
-    builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/addr, /*arg_idx*/arg_idx, /*arg_plus*/offset);
+    builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ addr,
+                                      /*arg_idx*/ arg_idx, /*arg_plus*/ offset);
     return success();
   }
 
-  LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile) {
+  LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block,
+                                AIE::TileOp &tile) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
     MemRefType buffer_type = bd_op.getBuffer().getType();
@@ -163,20 +198,27 @@ struct AIEDMATasksToNPUPass
     uint32_t len_addr_granularity = len * 8 / addr_granularity;
 
     if (offset * 8 % addr_granularity != 0) {
-      return bd_op->emitOpError("Offset must be aligned to ") << (addr_granularity/8) << " byte boundary.";
+      return bd_op->emitOpError("Offset must be aligned to ")
+             << (addr_granularity / 8) << " byte boundary.";
     }
 
-    if(len < addr_granularity/8) {
-      return bd_op->emitOpError("Transfer size of ") << len << " bytes falls below minimum hardware transfer unit of " << (addr_granularity/8) << " bytes.";
+    if (len < addr_granularity / 8) {
+      return bd_op->emitOpError("Transfer size of ")
+             << len << " bytes falls below minimum hardware transfer unit of "
+             << (addr_granularity / 8) << " bytes.";
     }
 
     // Process strides/wraps
-    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims = bd_op.getDimensions();
-    llvm::SmallVector<int64_t, 4> input_sizes = llvm::SmallVector<int64_t, 4>(4, 0);
-    llvm::SmallVector<int64_t, 4> input_strides = llvm::SmallVector<int64_t, 4>(4, 0);
-    if(dims) {
-      if(dims->size() > 4) {
-        return bd_op->emitOpError("At most four data layout transformation dimensions may be provided.");
+    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
+        bd_op.getDimensions();
+    llvm::SmallVector<int64_t, 4> input_sizes =
+        llvm::SmallVector<int64_t, 4>(4, 0);
+    llvm::SmallVector<int64_t, 4> input_strides =
+        llvm::SmallVector<int64_t, 4>(4, 0);
+    if (dims) {
+      if (dims->size() > 4) {
+        return bd_op->emitOpError("At most four data layout transformation "
+                                  "dimensions may be provided.");
       }
       for (size_t i = 0; i < dims->size(); i++) {
         // Pass down dimensions in reverse order; in the MLIR, this allows
@@ -187,22 +229,35 @@ struct AIEDMATasksToNPUPass
         input_strides[i] = (*dims)[j].getStride();
       }
     }
-    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(target_model, buffer_type, input_sizes, input_strides);
-    if(failed(AIEXDialect::verifyStridesWraps(bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes, strides))) {
+    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(
+        target_model, buffer_type, input_sizes, input_strides);
+    if (failed(AIEXDialect::verifyStridesWraps(
+            bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes,
+            input_strides, sizes, strides))) {
       return failure();
     }
-    if(dims) {
-      // Ensure the total transfer length and the length expressed in the lowest three dimensions of strides/wraps
-      // agree. (Fourth dimension is iteration/repeat count and repeats the whole BD, so should not be incorporated in length of a single BD invocation.)
+    if (dims) {
+      // Ensure the total transfer length and the length expressed in the lowest
+      // three dimensions of strides/wraps agree. (Fourth dimension is
+      // iteration/repeat count and repeats the whole BD, so should not be
+      // incorporated in length of a single BD invocation.)
       uint32_t len_dims_addr_granularity = 1;
-      for(size_t i = 0; i < 3; i++) {
+      for (size_t i = 0; i < 3; i++) {
         len_dims_addr_granularity *= sizes[i];
       }
-      if(len_dims_addr_granularity != len_addr_granularity) {
-        auto err = bd_op->emitOpError("Buffer descriptor length does not match length of transfer expressed by lowest three dimensions of data layout transformation strides/wraps. ")
-        << "BD length is " << (len_addr_granularity * addr_granularity / 8) << " bytes. "
-        << "Lowest three dimensions of data layout transformation would result in transfer of " << (len_dims_addr_granularity * addr_granularity / 8) << " bytes. ";
-        err.attachNote() << "Do not include the highest dimension size in transfer length, as this is the BD repeat count.";
+      if (len_dims_addr_granularity != len_addr_granularity) {
+        auto err =
+            bd_op->emitOpError(
+                "Buffer descriptor length does not match length of transfer "
+                "expressed by lowest three dimensions of data layout "
+                "transformation strides/wraps. ")
+            << "BD length is " << (len_addr_granularity * addr_granularity / 8)
+            << " bytes. "
+            << "Lowest three dimensions of data layout transformation would "
+               "result in transfer of "
+            << (len_dims_addr_granularity * addr_granularity / 8) << " bytes. ";
+        err.attachNote() << "Do not include the highest dimension size in "
+                            "transfer length, as this is the BD repeat count.";
         return failure();
       }
     }
@@ -210,43 +265,54 @@ struct AIEDMATasksToNPUPass
     // find next BD ID, if any
     uint32_t use_next_bd = 0;
     uint32_t next_bd_id = 0;
-    if(bd_op.getNextBdId().has_value()) {
+    if (bd_op.getNextBdId().has_value()) {
       next_bd_id = bd_op.getNextBdId().value();
       use_next_bd = 1;
     }
 
-    builder.create<NpuWriteBdOp>(bd_op.getLoc(),
-        tile.getCol(), bd_id, len_addr_granularity, offset, 0, 0, 0, 0,
+    builder.create<NpuWriteBdOp>(
+        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset, 0,
+        0, 0, 0,
         /* TODO: Strides/Wraps */
-        /*d0_size=*/sizes[0], /*d0_stride=*/strides[0], 
-        /*d1_size=*/sizes[1], /*d1_stride=*/strides[1], 
+        /*d0_size=*/sizes[0], /*d0_stride=*/strides[0],
+        /*d1_size=*/sizes[1], /*d1_stride=*/strides[1],
         /*d2_stride=*/strides[2],
-        /*iteration_current=*/0, /*iteration_size=*/sizes[3], /*iteration_stride=*/strides[3],
+        /*iteration_current=*/0, /*iteration_size=*/sizes[3],
+        /*iteration_stride=*/strides[3],
         /* TODO: Next BD */
-        /*next_bd=*/next_bd_id, 
-        /*row=*/tile.getRow(), 
+        /*next_bd=*/next_bd_id,
+        /*row=*/tile.getRow(),
         /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
         /* TODO: Locks */
-        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0, /*lock_acq_val=*/0, /*lock_ackq_id=*/0);
+        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
+        /*lock_acq_val=*/0, /*lock_ackq_id=*/0);
 
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {
     Region &body = op.getBody();
-    for(auto it = body.begin(); it != body.end(); ++it) {
-      Block &block = *it; 
+    for (auto it = body.begin(); it != body.end(); ++it) {
+      Block &block = *it;
       AIE::DMABDOp bd_op = getBdForBlock(block);
-      if(AIE::NextBDOp next_bd_op = llvm::dyn_cast<AIE::NextBDOp>(block.getTerminator())) {
-        if(bd_op.getNextBdId().has_value()) {
-          auto error = bd_op.emitOpError("Cannot specify both next_bd_id attribute and aie.next_bd operation."); 
-          error.attachNote(next_bd_op.getLoc()) << "Potentially conflicting next buffer descriptor ID specified here.";
+      if (AIE::NextBDOp next_bd_op =
+              llvm::dyn_cast<AIE::NextBDOp>(block.getTerminator())) {
+        if (bd_op.getNextBdId().has_value()) {
+          auto error =
+              bd_op.emitOpError("Cannot specify both next_bd_id attribute and "
+                                "aie.next_bd operation.");
+          error.attachNote(next_bd_op.getLoc())
+              << "Potentially conflicting next buffer descriptor ID specified "
+                 "here.";
           return failure();
         }
         Block &next_bd_block = *next_bd_op.getDest();
         AIE::DMABDOp next_dma_bd_op = getBdForBlock(next_bd_block);
-        assert(next_dma_bd_op.getBdId().has_value()); // Next BD should have assigned ID, and this should have been checked by earlier verifyBdInBlock() call
+        assert(next_dma_bd_op.getBdId()
+                   .has_value()); // Next BD should have assigned ID, and this
+                                  // should have been checked by earlier
+                                  // verifyBdInBlock() call
         bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
         OpBuilder builder(next_bd_op);
         builder.create<AIE::EndOp>(next_bd_op.getLoc());
@@ -255,15 +321,15 @@ struct AIEDMATasksToNPUPass
     }
     return success();
   }
-  
+
   LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.getTileOp();
 
-    if(!op.use_empty()) {
+    if (!op.use_empty()) {
       auto err = op.emitOpError("Cannot lower while op still has uses.");
       mlir::Operation::use_range uses = op.getOperation()->getUses();
-      for(auto it = uses.begin(); it != uses.end(); ++it) {
+      for (auto it = uses.begin(); it != uses.end(); ++it) {
         err.attachNote(it->getOwner()->getLoc()) << "Used here.";
       }
       return failure();
@@ -271,30 +337,30 @@ struct AIEDMATasksToNPUPass
 
     Region &body = op.getBody();
 
-    // Verify each BD block first; subsequent functions rely on them being well-formed
-    for(auto it = body.begin(); it != body.end(); ++it) {
-      if(failed(verifyNoUnsupportedOpsInBlock(*it))) {
+    // Verify each BD block first; subsequent functions rely on them being
+    // well-formed
+    for (auto it = body.begin(); it != body.end(); ++it) {
+      if (failed(verifyNoUnsupportedOpsInBlock(*it))) {
         return failure();
       }
-      if(failed(verifyBdInBlock(*it))) {
+      if (failed(verifyBdInBlock(*it))) {
         return failure();
       } else {
-        
       }
-      if(failed(verifyOptionalLocksInBlock(*it))) {
+      if (failed(verifyOptionalLocksInBlock(*it))) {
         return failure();
       }
     }
 
     // Hoist next_bd operations into next_bd_id attribute of the dma_bd
-    if(failed(hoistNextBdOpsIntoAttrs(op))) {
+    if (failed(hoistNextBdOpsIntoAttrs(op))) {
       return failure();
     }
 
     // Lower all BDs
-    for(auto it = body.begin(); it != body.end(); ++it) {
+    for (auto it = body.begin(); it != body.end(); ++it) {
       Block &block = *it;
-      if(failed(rewriteSingleBD(builder, block, tile))) {
+      if (failed(rewriteSingleBD(builder, block, tile))) {
         return failure();
       }
     }
@@ -306,12 +372,12 @@ struct AIEDMATasksToNPUPass
 
   LogicalResult rewriteDMAConfigureTaskOp(AIE::DeviceOp device) {
     WalkResult result = device.walk([&](DMAConfigureTaskOp op) {
-      if(failed(rewriteSingleDMAConfigureTaskOp(op))) {
+      if (failed(rewriteSingleDMAConfigureTaskOp(op))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
-    if(result.wasInterrupted()) {
+    if (result.wasInterrupted()) {
       return failure();
     }
     return success();

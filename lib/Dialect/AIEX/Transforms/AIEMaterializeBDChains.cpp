@@ -15,10 +15,10 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/Pass/Pass.h"
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/AnalysisManager.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Inliner.h"
 
@@ -39,12 +39,13 @@ struct AIEMaterializeBDChainsPass
 
     // Create BD op into which the result will be inlined
     DMAConfigureTaskOp configure_op = builder.create<DMAConfigureTaskOp>(
-        start_op.getLoc(), builder.getIndexType(), 
-        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
+        start_op.getLoc(), builder.getIndexType(), start_op.getTile(),
+        start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
     Region &target_region = configure_op.getBody();
 
-    // Clone BD definition into usage site, replacing abstract SSA values with concrete ones
+    // Clone BD definition into usage site, replacing abstract SSA values with
+    // concrete ones
     IRMapping arg_map;
     ValueRange values = start_op.getConcreteArgs();
     for (unsigned i = 0, n = source_region.getNumArguments(); i < n; i++) {
@@ -59,7 +60,7 @@ struct AIEMaterializeBDChainsPass
     start_op.getResult().replaceAllUsesWith(configure_op.getResult());
 
     // Remove definition too if this was the only/last usage of it
-    if(SymbolTable::symbolKnownUseEmpty(chain_def, device)) {
+    if (SymbolTable::symbolKnownUseEmpty(chain_def, device)) {
       chain_def.erase();
     }
 
@@ -81,7 +82,7 @@ struct AIEMaterializeBDChainsPass
     r = device.walk([&](DMAStartBdChainOp start_op) {
       return inlineUsage(device, start_op);
     });
-    if(r.wasInterrupted()) {
+    if (r.wasInterrupted()) {
       return signalPassFailure();
     }
 
@@ -89,24 +90,25 @@ struct AIEMaterializeBDChainsPass
     // Remove empty blocks
     r = device.walk([&](DMAConfigureTaskOp configure_task_op) {
       Region &body = configure_task_op.getBody();
-      for(auto it = body.begin(); it != body.end(); ++it) {
+      for (auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
         auto ops_it = block.without_terminator();
-        if(std::distance(ops_it.begin(), ops_it.end()) == 0) {
+        if (std::distance(ops_it.begin(), ops_it.end()) == 0) {
           block.erase();
           return WalkResult::advance();
         }
-        if(block.hasNoPredecessors() && !block.isEntryBlock()) {
-          auto error = block.getTerminator()->emitError("Block ending in this terminator does not form a chain with entry block.");
+        if (block.hasNoPredecessors() && !block.isEntryBlock()) {
+          auto error = block.getTerminator()->emitError(
+              "Block ending in this terminator does not form a chain with "
+              "entry block.");
           return WalkResult::interrupt();
         }
       }
       return WalkResult::advance();
     });
-    if(r.wasInterrupted()) {
+    if (r.wasInterrupted()) {
       return signalPassFailure();
     }
-
   }
 };
 

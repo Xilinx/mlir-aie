@@ -93,12 +93,12 @@ CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
 )
 
 DMA_TO_NPU = Pipeline().Nested(
-    "aie.device", 
+    "aie.device",
     Pipeline()
     .add_pass("aie-materialize-bd-chains")
     .add_pass("aie-assign-runtime-sequence-bd-ids")
     .add_pass("aie-dma-tasks-to-npu")
-    .add_pass("aie-dma-to-npu")
+    .add_pass("aie-dma-to-npu"),
 )
 
 

@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 
 #include "mlir/Pass/Pass.h"
 
@@ -26,10 +26,14 @@ BdIdGenerator::BdIdGenerator(int col, int row,
 
 std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex) {
   uint32_t bd_id = 0;
-  // Find the next free BD ID. This is not an efficient algorithm, but doesn't need to be since BD IDs are small numbers.
+  // Find the next free BD ID. This is not an efficient algorithm, but doesn't
+  // need to be since BD IDs are small numbers.
   // FIXME: Specify WireBundle
-  for(; bdIdAlreadyAssigned(bd_id) || !targetModel.bdCanAccessChannel(col, row, bd_id, channelIndex); bd_id++);
-  if(bd_id >= targetModel.getNumBDs(col, row)) {
+  for (; bdIdAlreadyAssigned(bd_id) ||
+         !targetModel.bdCanAccessChannel(col, row, bd_id, channelIndex);
+       bd_id++)
+    ;
+  if (bd_id >= targetModel.getNumBDs(col, row)) {
     return std::nullopt;
   }
   assignBdId(bd_id);
@@ -45,9 +49,7 @@ bool BdIdGenerator::bdIdAlreadyAssigned(uint32_t bdId) {
   return alreadyAssigned.count(bdId);
 }
 
-void BdIdGenerator::freeBdId(uint32_t bdId) {
-  alreadyAssigned.erase(bdId);
-}
+void BdIdGenerator::freeBdId(uint32_t bdId) { alreadyAssigned.erase(bdId); }
 
 struct AIEAssignBufferDescriptorIDsPass
     : AIEAssignBufferDescriptorIDsBase<AIEAssignBufferDescriptorIDsPass> {
@@ -80,9 +82,12 @@ struct AIEAssignBufferDescriptorIDsPass
                   gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
                   "bdId assigned by user but not found during previous walk");
             } else {
-              std::optional<int32_t> next_id = gen.nextBdId(dmaOp.getChannelIndex());
-              if(!next_id) {
-                bd.emitOpError() << "Allocator exhausted available BD IDs (maximum " << targetModel.getNumBDs(col, row) << " available).";
+              std::optional<int32_t> next_id =
+                  gen.nextBdId(dmaOp.getChannelIndex());
+              if (!next_id) {
+                bd.emitOpError()
+                    << "Allocator exhausted available BD IDs (maximum "
+                    << targetModel.getNumBDs(col, row) << " available).";
                 return signalPassFailure();
               }
               bd.setBdId(*next_id);
@@ -117,9 +122,12 @@ struct AIEAssignBufferDescriptorIDsPass
             assert(gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
                    "bdId assigned by user but not found during previous walk");
           } else {
-            std::optional<int32_t> next_id = gen.nextBdId(blockChannelMap[&block]);
-            if(!next_id) {
-              bd.emitOpError() << "Allocator exhausted available BD IDs (maximum " << targetModel.getNumBDs(col, row) << " available).";
+            std::optional<int32_t> next_id =
+                gen.nextBdId(blockChannelMap[&block]);
+            if (!next_id) {
+              bd.emitOpError()
+                  << "Allocator exhausted available BD IDs (maximum "
+                  << targetModel.getNumBDs(col, row) << " available).";
               return signalPassFailure();
             }
             bd.setBdId(*next_id);

@@ -29,21 +29,24 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col) {
-    return ((uint64_t)col << tm.getColumnShift()) | (0x1D004 + bd_id * 0x20);
+uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(
+    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col) {
+  return ((uint64_t)col << tm.getColumnShift()) | (0x1D004 + bd_id * 0x20);
 }
 
-/* Return the correct values to write to the hardware registers to configure strides and wraps given the input user-facing strides and wraps. 
+/* Return the correct values to write to the hardware registers to configure
+  strides and wraps given the input user-facing strides and wraps.
 
-  In the IR, we express strides in units of element data type, but the hardware requires it in units of address granularity.
-  Address granularity currently is 4 bytes for all hardware.
+  In the IR, we express strides in units of element data type, but the hardware
+  requires it in units of address granularity. Address granularity currently is
+  4 bytes for all hardware.
 
 
   User-facing strides/wraps relate to hardware as follows:
 
    - By default, stride 0 and size 1 is assumed if unspecified.
    - If only N strides/wraps are defined, those define the lowest N dimensions.
-  
+
   inputStride[3]        == iteration_stride / elemSizeFac + 1
   inputWrap[3]          == iteration_size + 1
     Highest-dimension stride/wrap is iteration count / iteration stride.
@@ -56,14 +59,19 @@ uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(const AIE::AIETa
   inputSize[0]          == d0_size / elemSizeFac
 
   where elemSizeFac == bufferElementSize / addressGranularity
-  where bufferElementSize == size in bytes of elements in buffer, 
+  where bufferElementSize == size in bytes of elements in buffer,
                              e.g. 4 for int32
-  where addressGranularity == transfer granularity in hardware, which is 
+  where addressGranularity == transfer granularity in hardware, which is
                               4 bytes for all current hardware
 
-  Note: strides are expressed offset by one from user input strides, because the hardware does not support a 0 stride (repeat).
+  Note: strides are expressed offset by one from user input strides, because the
+  hardware does not support a 0 stride (repeat).
   */
-std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDialect::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel, mlir::MemRefType referencedBufType, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides) {
+std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>>
+AIEXDialect::getHardwareStridesWraps(
+    const AIE::AIETargetModel &targetModel, mlir::MemRefType referencedBufType,
+    llvm::SmallVector<int64_t, 4> inputSizes,
+    llvm::SmallVector<int64_t, 4> inputStrides) {
   assert(inputSizes.size() == inputStrides.size());
 
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -73,36 +81,36 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
   llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
 
-  if(inputSizes[0] == 0) {
+  if (inputSizes[0] == 0) {
     return std::make_pair(sizes, strides);
   }
 
   // d0_size, d0_stride
   sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
   strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
-  if(strides[0] < 0) {
-    // For the case that stride < addressGranularity, but size > addressGranularity,
-    // we can allow this. This is verified in verify().
+  if (strides[0] < 0) {
+    // For the case that stride < addressGranularity, but size >
+    // addressGranularity, we can allow this. This is verified in verify().
     strides[0] = 0;
   }
 
   // d1_size, d1_stride
   sizes[1] = inputSizes[1];
-  if(inputSizes[1] > 1) {
+  if (inputSizes[1] > 1) {
     // Stride only matters if we have more than one iteration.
     strides[1] = inputStrides[1] * elemWidth / addressGranularity - 1;
   }
 
   // d2_size, d2_stride
   sizes[2] = inputSizes[2];
-  if(inputSizes[2] > 1) {
+  if (inputSizes[2] > 1) {
     // Stride only matters if we have more than one iteration.
     strides[2] = inputStrides[2] * elemWidth / addressGranularity - 1;
   }
 
   // iteration_size, iteration_stride
   // strides[3] doesn't need to lower to hardware if sizes[3] is one
-  if(inputSizes[3] > 1) {
+  if (inputSizes[3] > 1) {
     sizes[3] = inputSizes[3] - 1;
     strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
   }
@@ -110,7 +118,12 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   return std::make_pair(sizes, strides);
 }
 
-mlir::LogicalResult AIEXDialect::verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides, llvm::SmallVector<int64_t, 4> hardwareSizes, llvm::SmallVector<int64_t, 4> hardwareStrides) {
+mlir::LogicalResult AIEXDialect::verifyStridesWraps(
+    mlir::Operation *forOp, mlir::MemRefType referencedBufType, int tileCol,
+    int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
+    llvm::SmallVector<int64_t, 4> inputStrides,
+    llvm::SmallVector<int64_t, 4> hardwareSizes,
+    llvm::SmallVector<int64_t, 4> hardwareStrides) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -142,7 +155,8 @@ mlir::LogicalResult AIEXDialect::verifyStridesWraps(mlir::Operation *forOp, mlir
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] > 0 && inputStrides[i] < 1) {
-      return forOp->emitOpError("Input stride ") << i << " must be a positive integer.";
+      return forOp->emitOpError("Input stride ")
+             << i << " must be a positive integer.";
     }
   }
 
@@ -159,31 +173,33 @@ mlir::LogicalResult AIEXDialect::verifyStridesWraps(mlir::Operation *forOp, mlir
     step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
     wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
   } else {
-    return forOp->emitOpError("Unsupported tile type at (" + std::to_string(tileCol) +
-                       ", " + std::to_string(tileRow) +
-                       ") Must be ShimNOC, Mem or Core.");
+    return forOp->emitOpError(
+        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
+        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
   }
 
   if (hardwareSizes[3] > (1 << iter_bits))
     return forOp->emitOpError(
         "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
   if (hardwareStrides[2] && hardwareSizes[1] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError("Size 1 exceeds the [0:" +
-                       std::to_string((1 << wrap_bits) - 1) + "] range.");
+    return forOp->emitOpError(
+        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
+        "] range.");
   if (hardwareStrides[1] && hardwareSizes[0] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError("Size 0 exceeds the [0:" +
-                       std::to_string((1 << wrap_bits) - 1) + "] range.");
+    return forOp->emitOpError(
+        "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
+        "] range.");
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
   if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] != 1)
     return forOp->emitOpError("Stride 3 exceeds the [1:" +
-                       std::to_string(1 << step_bits) + "] range.");
+                              std::to_string(1 << step_bits) + "] range.");
   if (hardwareStrides[2] > (1 << step_bits))
     return forOp->emitOpError("Stride 2 exceeds the [1:" +
-                       std::to_string(1 << step_bits) + "] range.");
+                              std::to_string(1 << step_bits) + "] range.");
   if (hardwareStrides[1] > (1 << step_bits))
     return forOp->emitOpError("Stride 1 exceeds the [1:" +
-                       std::to_string(1 << step_bits) + "] range.");
+                              std::to_string(1 << step_bits) + "] range.");
 
   return success();
 }
@@ -297,7 +313,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         return getConstantIntValue(s).value();
       });
 
-  auto [hardwareSizes, hardwareStrides] = AIEXDialect::getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides);
+  auto [hardwareSizes, hardwareStrides] = AIEXDialect::getHardwareStridesWraps(
+      targetModel, buffer, inputSizes, inputStrides);
   int64_t offset = getOffsetInBytes();
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -309,7 +326,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  return AIEXDialect::verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes, inputStrides, hardwareSizes, hardwareStrides);
+  return AIEXDialect::verifyStridesWraps(*this, buffer, getX(), getY(),
+                                         inputSizes, inputStrides,
+                                         hardwareSizes, hardwareStrides);
 }
 
 //===----------------------------------------------------------------------===//
@@ -451,15 +470,15 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
 
 std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
   Region &body = getBody();
-  if(body.empty()) {
+  if (body.empty()) {
     return std::nullopt;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
-  if(bd_ops.empty()) {
+  if (bd_ops.empty()) {
     return std::nullopt;
   }
   AIE::DMABDOp bd = *bd_ops.begin();
-  if(!bd.getBdId().has_value()) {
+  if (!bd.getBdId().has_value()) {
     return std::nullopt;
   }
   return bd.getBdId().value();

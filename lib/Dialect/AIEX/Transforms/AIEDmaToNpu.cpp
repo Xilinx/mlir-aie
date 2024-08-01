@@ -281,15 +281,14 @@ public:
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    llvm::SmallVector<int64_t, 4> inputSizes =
-      llvm::map_to_vector(llvm::reverse(op.getMixedSizes()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
-    llvm::SmallVector<int64_t, 4> inputStrides =
-      llvm::map_to_vector(llvm::reverse(op.getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
-    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides);
+    llvm::SmallVector<int64_t, 4> inputSizes = llvm::map_to_vector(
+        llvm::reverse(op.getMixedSizes()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(
+        targetModel, bufferType, inputSizes, inputStrides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -298,8 +297,9 @@ public:
     // arg_idx
     AIEX::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIEX::RuntimeSequenceOp>();
-    if(!seq_op) {
-      op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at time of lowering.");
+    if (!seq_op) {
+      op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at "
+                      "time of lowering.");
       return failure();
     }
     Block &entryBB = seq_op.getBody().front();
@@ -317,9 +317,11 @@ public:
     bd_id = IntegerAttr::get(i32ty, op.getId());
 
     // buffer_length
-    uint64_t buffer_length_val = inputSizes[0] * bufferType.getElementTypeBitWidth() / targetModel.getAddressGenGranularity();
-    if(inputSizes.size() > 1) {
-      for(size_t i = 1; i < std::min(inputSizes.size(), (size_t)3); i++) {
+    uint64_t buffer_length_val = inputSizes[0] *
+                                 bufferType.getElementTypeBitWidth() /
+                                 targetModel.getAddressGenGranularity();
+    if (inputSizes.size() > 1) {
+      for (size_t i = 1; i < std::min(inputSizes.size(), (size_t)3); i++) {
         buffer_length_val *= inputSizes[i];
       }
     }
@@ -394,7 +396,8 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(targetModel, op.getId(), col);
+    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(
+        targetModel, op.getId(), col);
 
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 
