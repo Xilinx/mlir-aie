@@ -462,16 +462,16 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
 }
 
 //===----------------------------------------------------------------------===//
-// DMAStartTaskOp
+// DMAStartBdChainOp
 //===----------------------------------------------------------------------===//
 
-AIE::BDChainOp AIEX::DMAStartTaskOp::getBDChainOp() {
+AIE::BDChainOp AIEX::DMAStartBdChainOp::getBDChainOp() {
   AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
   AIE::BDChainOp chain = device.lookupSymbol<AIE::BDChainOp>(getSymbol());
   return chain;
 }
 
-LogicalResult AIEX::DMAStartTaskOp::verify() {
+LogicalResult AIEX::DMAStartBdChainOp::verify() {
   AIE::BDChainOp chain = getBDChainOp();
   if (!chain) {
     return emitOpError("symbol does not reference valid BD chain");

@@ -855,7 +855,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">
   }];
 }
 
-def AIE_DMAStartConfiguredTaskOp : AIEX_Op<"dma_start_configured_task", [HasParent<"RuntimeSequenceOp">]> {
+def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp">]> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
@@ -875,7 +875,7 @@ def AIE_DMAStartConfiguredTaskOp : AIEX_Op<"dma_start_configured_task", [HasPare
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAStartConfiguredTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAStartTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
   }];
 }
 
@@ -907,7 +907,7 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp
 }
 
 
-def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp">]>,
+def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequenceOp">]>,
     Results<(outs Index:$result)>
   {
 
@@ -929,7 +929,7 @@ def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp"
   );
 
   let assemblyFormat = [{ 
-    `on` ` ` `(` $tile `,` $direction `,` $channel `)` ` ` `run` ` ` $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` attr-dict 
+     $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` ` ` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict 
   }];
 
   let hasVerifier = 1;
@@ -940,7 +940,7 @@ def AIE_DMAStartTaskOp: AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp"
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAStartTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAStartBdChainOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
 
 }

@@ -29,7 +29,7 @@ using namespace xilinx::AIEX;
 struct AIEMaterializeBDChainsPass
     : AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
 
-  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartTaskOp start_op) {
+  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartBdChainOp start_op) {
     OpBuilder builder = OpBuilder(start_op);
 
     // Get referenced abstract BD chain
@@ -64,7 +64,7 @@ struct AIEMaterializeBDChainsPass
     }
 
     // Add a start BDs instruction
-    builder.create<DMAStartConfiguredTaskOp>(start_op.getLoc(), configure_op.getResult());
+    builder.create<DMAStartTaskOp>(start_op.getLoc(), configure_op.getResult());
 
     // After fully inlining, remove the original instruction
     start_op.erase();
@@ -78,7 +78,7 @@ struct AIEMaterializeBDChainsPass
     AIE::DeviceOp device = getOperation();
 
     // Wrap bd chains in DMAConfigureTaskOp regions before inlining
-    r = device.walk([&](DMAStartTaskOp start_op) {
+    r = device.walk([&](DMAStartBdChainOp start_op) {
       return inlineUsage(device, start_op);
     });
     if(r.wasInterrupted()) {

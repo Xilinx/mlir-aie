@@ -24,10 +24,10 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct DMAStartConfiguredTaskOpPattern : OpConversionPattern<DMAStartConfiguredTaskOp> {
+struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(DMAStartConfiguredTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
     DMAConfigureTaskOp bds_op = op.getBdsOp();
     AIE::TileOp tile = bds_op.getTileOp();
     std::optional<uint32_t> first_bd_id = bds_op.getFirstBdId();
@@ -295,10 +295,10 @@ struct AIEDMATasksToNPUPass
     // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
-    target.addIllegalOp<DMAStartConfiguredTaskOp>();
+    target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAStartConfiguredTaskOpPattern>(&getContext());
+    patterns.insert<DMAStartTaskOpPattern>(&getContext());
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
