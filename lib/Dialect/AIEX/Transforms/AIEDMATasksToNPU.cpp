@@ -28,16 +28,16 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureTaskOp bds_op = op.getBdsOp();
-    AIE::TileOp tile = bds_op.getTileOp();
-    std::optional<uint32_t> first_bd_id = bds_op.getFirstBdId();
+    DMAConfigureTaskOp task_op = op.getTaskOp();
+    AIE::TileOp tile = task_op.getTileOp();
+    std::optional<uint32_t> first_bd_id = task_op.getFirstBdId();
     if(!first_bd_id) {
         auto err = op.emitOpError("First buffer descriptor in chain has not been assigned an ID");
         err.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` pass first or manually assign an ID.";
         return failure();
     }
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
-        op, tile.getCol(), tile.getRow(), bds_op.getDirection(), bds_op.getChannel(), bds_op.getIssueToken(), bds_op.getRepeatCount(), *first_bd_id);
+        op, tile.getCol(), tile.getRow(), task_op.getDirection(), task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(), *first_bd_id);
     return success();
   }
 };
@@ -46,15 +46,15 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
-    DMAConfigureTaskOp bds_op = op.getBdsOp();
-    if(!bds_op.getIssueToken()) {
+    DMAConfigureTaskOp task_op = op.getTaskOp();
+    if(!task_op.getIssueToken()) {
       auto err = op.emitOpError("Cannot wait on a BD that is not configured to issue a token.");
-      err.attachNote(bds_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
-      return failure();
+      err.attachNote(task_op.getLoc()) << "Consider adding attribute `issue_token=true` here.";
+      return err;
     }
-    AIE::TileOp tile = bds_op.getTileOp();
+    AIE::TileOp tile = task_op.getTileOp();
     rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, tile.getCol(), tile.getRow(), (uint32_t)bds_op.getDirection(), bds_op.getChannel(), 1, 1);
+        op, tile.getCol(), tile.getRow(), (uint32_t)task_op.getDirection(), task_op.getChannel(), 1, 1);
     return success();
   }
 };
@@ -83,7 +83,7 @@ struct AIEDMATasksToNPUPass
     AIE::DMABDOp bd_op = *bd_ops.begin();
     if(!bd_op.getBdId().has_value()) {
       auto error = bd_op.emitOpError("Cannot lower buffer descriptor without assigned ID.");
-      error.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` pass first or manually assign an ID to this buffer descriptor.";
+      error.attachNote() << "Run the `--aie-assign-runtime-sequence-bd-ids` pass first or manually assign an ID to this buffer descriptor.";
       error.attachNote(block.getParentOp()->getLoc()) << "Error encountered while lowering this BD configuration.";
       return failure();
     }
@@ -155,16 +155,29 @@ struct AIEDMATasksToNPUPass
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
     MemRefType buffer_type = bd_op.getBuffer().getType();
+    uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();
     int64_t offset = bd_op.getOffsetInBytes();
-    uint32_t len_addr_granularity = bd_op.getLenInBytes() * 8 / target_model.getAddressGenGranularity();
+    uint32_t len = bd_op.getLenInBytes();
+    uint32_t len_addr_granularity = len * 8 / addr_granularity;
+
+    if (offset * 8 % addr_granularity != 0) {
+      return bd_op->emitOpError("Offset must be aligned to ") << (addr_granularity/8) << " byte boundary.";
+    }
+
+    if(len < addr_granularity/8) {
+      return bd_op->emitOpError("Transfer size of ") << len << " bytes falls below minimum hardware transfer unit of " << (addr_granularity/8) << " bytes.";
+    }
 
     // Process strides/wraps
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims = bd_op.getDimensions();
     llvm::SmallVector<int64_t, 4> input_sizes = llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> input_strides = llvm::SmallVector<int64_t, 4>(4, 0);
     if(dims) {
+      if(dims->size() > 4) {
+        return bd_op->emitOpError("At most four data layout transformation dimensions may be provided.");
+      }
       for (size_t i = 0; i < dims->size(); i++) {
         // Pass down dimensions in reverse order; in the MLIR, this allows
         // us to specify step sizes/wraps in the same order as we would
@@ -177,6 +190,21 @@ struct AIEDMATasksToNPUPass
     auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(target_model, buffer_type, input_sizes, input_strides);
     if(failed(AIEXDialect::verifyStridesWraps(bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes, strides))) {
       return failure();
+    }
+    if(dims) {
+      // Ensure the total transfer length and the length expressed in the lowest three dimensions of strides/wraps
+      // agree. (Fourth dimension is iteration/repeat count and repeats the whole BD, so should not be incorporated in length of a single BD invocation.)
+      uint32_t len_dims_addr_granularity = 1;
+      for(size_t i = 0; i < 3; i++) {
+        len_dims_addr_granularity *= sizes[i];
+      }
+      if(len_dims_addr_granularity != len_addr_granularity) {
+        auto err = bd_op->emitOpError("Buffer descriptor length does not match length of transfer expressed by lowest three dimensions of data layout transformation strides/wraps. ")
+        << "BD length is " << (len_addr_granularity * addr_granularity / 8) << " bytes. "
+        << "Lowest three dimensions of data layout transformation would result in transfer of " << (len_dims_addr_granularity * addr_granularity / 8) << " bytes. ";
+        err.attachNote() << "Do not include the highest dimension size in transfer length, as this is the BD repeat count.";
+        return failure();
+      }
     }
 
     // find next BD ID, if any

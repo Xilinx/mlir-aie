@@ -42,7 +42,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     WalkResult result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value()) {
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
-          op.emitOpError("Specified Buffer Descriptor ID ") << bd_op.getBdId().value() << " is already in use. Emit an aiex.dma_free_bds operation to reuse BDs.";
+          op.emitOpError("Specified buffer descriptor ID ") << bd_op.getBdId().value() << " is already in use. Emit an aiex.dma_free_task operation to reuse BDs.";
           return WalkResult::interrupt();
         }
         gen.assignBdId(bd_op.getBdId().value());
@@ -75,12 +75,21 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   LogicalResult runOnFreeBDs(DMAFreeTaskOp op, std::map<AIE::TileOp, BdIdGenerator> &gens) {
-    DMAConfigureTaskOp bds_op = op.getBdsOp();
-    AIE::TileOp tile = bds_op.getTileOp();
+    DMAConfigureTaskOp task_op = op.getTaskOp();
+    if(!task_op) {
+      auto err = op.emitOpError("does not reference a valid configure_task operation.");
+      Operation *task_op = op.getTask().getDefiningOp();
+      if(llvm::isa<DMAStartBdChainOp>(task_op)) {
+        err.attachNote(task_op->getLoc()) << "Lower this operation first using the --aie-materialize-bd-chains pass.";
+      }
+      return err;
+    }
+
+    AIE::TileOp tile = task_op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile, gens);
 
     // First, honor all the hard-coded BD IDs
-    WalkResult result = bds_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
+    WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (!bd_op.getBdId().has_value()) {
         bd_op.emitOpError("Free called on BD chain with unassigned IDs.");
         return WalkResult::interrupt();
@@ -113,7 +122,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     device.walk([&](DMAAwaitTaskOp op) {
       OpBuilder builder(op);
       builder.setInsertionPointAfter(op);
-      builder.create<DMAFreeTaskOp>(op.getLoc(), op.getBds());
+      builder.create<DMAFreeTaskOp>(op.getLoc(), op.getTask());
     });
 
     // TODO: Only walk the sequence function

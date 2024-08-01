@@ -91,7 +91,6 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   if(inputSizes[1] > 1) {
     // Stride only matters if we have more than one iteration.
     strides[1] = inputStrides[1] * elemWidth / addressGranularity - 1;
-    assert(strides[1] >= 0);
   }
 
   // d2_size, d2_stride
@@ -99,7 +98,6 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   if(inputSizes[2] > 1) {
     // Stride only matters if we have more than one iteration.
     strides[2] = inputStrides[2] * elemWidth / addressGranularity - 1;
-    assert(strides[2] >= 0);
   }
 
   // iteration_size, iteration_stride
@@ -107,7 +105,6 @@ std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> AIEXDial
   if(inputSizes[3] > 1) {
     sizes[3] = inputSizes[3] - 1;
     strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
-    assert(strides[3] >= 0);
   }
 
   return std::make_pair(sizes, strides);
@@ -117,6 +114,37 @@ mlir::LogicalResult AIEXDialect::verifyStridesWraps(mlir::Operation *forOp, mlir
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
+
+  for (int i = 0; i < 4; i++) {
+    // strides[0] == 1 is ok iff the tranfer size is a multiple of
+    // addressGranularity, which is checked below
+    if (i == 0 && inputStrides[i] == 1)
+      continue;
+    if (inputStrides[i] * elemWidth % addressGranularity != 0) {
+      std::stringstream msg;
+      msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
+          << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
+          << " bytes, which is not divisible by " << (addressGranularity / 8)
+          << ". ";
+      return forOp->emitOpError(msg.str());
+    }
+  }
+
+  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
+    std::stringstream msg;
+    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
+        << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
+        << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
+        << " bytes, which is not divisible by " << (addressGranularity / 8)
+        << ". ";
+    return forOp->emitOpError(msg.str());
+  }
+
+  for (int i = 0; i < 4; i++) {
+    if (inputSizes[i] > 0 && inputStrides[i] < 1) {
+      return forOp->emitOpError("Input stride ") << i << " must be a positive integer.";
+    }
+  }
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
@@ -157,30 +185,6 @@ mlir::LogicalResult AIEXDialect::verifyStridesWraps(mlir::Operation *forOp, mlir
     return forOp->emitOpError("Stride 1 exceeds the [1:" +
                        std::to_string(1 << step_bits) + "] range.");
 
-  for (int i = 0; i < 4; i++) {
-    // strides[0] == 1 is ok iff the tranfer size is a multiple of
-    // addressGranularity, which is checked below
-    if (i == 0 && inputStrides[i] == 1)
-      continue;
-    if (inputStrides[i] * elemWidth % addressGranularity != 0) {
-      std::stringstream msg;
-      msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
-          << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
-          << " bytes, which is not divisible by " << (addressGranularity / 8)
-          << ". ";
-      return forOp->emitOpError(msg.str());
-    }
-  }
-
-  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
-    std::stringstream msg;
-    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
-        << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
-        << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
-        << " bytes, which is not divisible by " << (addressGranularity / 8)
-        << ". ";
-    return forOp->emitOpError(msg.str());
-  }
   return success();
 }
 

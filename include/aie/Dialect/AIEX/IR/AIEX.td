@@ -839,19 +839,19 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">
     This operation informs the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
   }];
   let arguments = (
-    ins Index:$bds
+    ins Index:$task
   );
 
   let assemblyFormat = [{
-    `(` $bds `)` attr-dict
+    `(` $task `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureTaskOp getBdsOp();
+    DMAConfigureTaskOp getTaskOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAFreeTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -863,19 +863,19 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp
   }];
 
   let arguments = (
-    ins Index:$bds
+    ins Index:$task
   );
 
   let assemblyFormat = [{
-    `(` $bds `)` attr-dict
+    `(` $task `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureTaskOp getBdsOp();
+    DMAConfigureTaskOp getTaskOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAStartTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -890,19 +890,19 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp
   }];
 
   let arguments = (
-    ins Index:$bds
+    ins Index:$task
   );
 
   let assemblyFormat = [{
-    `(` $bds `)` attr-dict
+    `(` $task `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    DMAConfigureTaskOp getBdsOp();
+    DMAConfigureTaskOp getTaskOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getBdsOp() { return cast<DMAConfigureTaskOp>(getBds().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 

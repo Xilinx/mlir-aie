@@ -87,8 +87,8 @@ struct AIEMaterializeBDChainsPass
 
     // Verify inlined basic blocks do form a chain reachable from the start;
     // Remove empty blocks
-    r = device.walk([&](DMAConfigureTaskOp configure_bds_op) {
-      Region &body = configure_bds_op.getBody();
+    r = device.walk([&](DMAConfigureTaskOp configure_task_op) {
+      Region &body = configure_task_op.getBody();
       for(auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
         auto ops_it = block.without_terminator();
