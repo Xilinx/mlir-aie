@@ -68,7 +68,9 @@ class bottleneckBCore:
                  _weightsInBN10_1,_weightsInBN10_2,_weightsInBN10_3, _weightsInBN11_1,_weightsInBN11_2,_weightsInBN11_3, _weightsInBN12_1,_weightsInBN12_2,_weightsInBN12_3,
                  _rtpBN10_1,_rtpBN10_2,_rtpBN10_3,_rtpBN11_1,_rtpBN11_2,_rtpBN11_3,_rtpBN12_1,_rtpBN12_2,_rtpBN12_3,
                  _skipMemTile,
-                 _actIn, _actOut,):
+                 _actIn, _actOut, bn10_scaleFactor1,bn10_scaleFactor2,bn10_scaleFactor3,
+                           bn11_scaleFactor1,bn11_scaleFactor2,bn11_scaleFactor3,bn11_scaleFactorAdd,
+                           bn12_scaleFactor1,bn12_scaleFactor2,bn12_scaleFactor3,):
 
         self.computeTileBN10_1 = _computeTileBN10_1
         self.computeTileBN10_2 = _computeTileBN10_2
@@ -225,7 +227,7 @@ class bottleneckBCore:
         OF_b10_act_layer1_layer2 = object_fifo("OF_b10_act_layer1_layer2", self.computeTileBN10_1, [self.computeTileBN10_2], 4,b10_layer2_in,via_DMA=True) 
         OF_b10_act_layer2_layer3 = object_fifo("OF_b10_act_layer2_layer3", self.computeTileBN10_2, [self.computeTileBN10_3], 2,b10_layer3_in) 
         # ************************ bneck11 ************************ 
-        OF_b10_layer3_bn_11_layer1 = object_fifo("OF_b10_layer3_bn_11_layer1", self.computeTileBN10_3, [self.computeTileBN11_1,self.skipMemTile], [2, 2, 4], b11_layer1_in) 
+        OF_b10_layer3_bn_11_layer1 = object_fifo("OF_b10_layer3_bn_11_layer1", self.computeTileBN10_3, [self.computeTileBN11_1,self.skipMemTile], [2, 2, 6], b11_layer1_in) 
         OF_b11_skip = object_fifo("OF_b11_skip", self.skipMemTile, [self.computeTileBN11_3], 2,b11_layer1_in) 
         object_fifo_link(OF_b10_layer3_bn_11_layer1,OF_b11_skip ) 
         OF_b11_act_layer1_layer2 = object_fifo("OF_b11_act_layer1_layer2", self.computeTileBN11_1, [self.computeTileBN11_2], 4,b11_layer2_in,via_DMA=True) 
@@ -251,7 +253,7 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 
-                scale = memref.load(self.rtpBN10_layer1, [0])
+                scale = bn10_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = self.actIn.acquire(
                         ObjectFifoPort.Consume, 1
@@ -281,7 +283,7 @@ class bottleneckBCore:
         # # # Compute tile 3
         @core(self.computeTileBN10_2, "bn10_conv2dk3_dw.o")
         def core_body():
-            scale = 7
+            scale = bn10_scaleFactor2
             element0Weights = self.weightsInBN10_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -383,7 +385,7 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN10_layer3, [0])
+                scale = bn10_scaleFactor3
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b10_InH3):
@@ -418,7 +420,7 @@ class bottleneckBCore:
 
                 # acquire weights once
                 
-                scale = memref.load(self.rtpBN11_layer1, [0])
+                scale = bn11_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = OF_b10_layer3_bn_11_layer1.acquire(
                         ObjectFifoPort.Consume, 1
@@ -448,7 +450,7 @@ class bottleneckBCore:
         # # # # # # Compute tile 3
         @core(self.computeTileBN11_2, "bn11_conv2dk3_dw.o")
         def core_body():
-            scale = 8
+            scale = bn11_scaleFactor2
             element0Weights = self.weightsInBN11_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -547,8 +549,8 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN11_layer3 , [0])
-                skipScale = memref.load(self.rtpBN11_layer3 , [1])
+                scale = bn11_scaleFactor3
+                skipScale = bn11_scaleFactorAdd
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b10_InH3):
@@ -589,7 +591,7 @@ class bottleneckBCore:
 
                 # acquire weights once
                 
-                scale = memref.load(self.rtpBN12_layer1, [0])
+                scale = bn12_scaleFactor1
                 for _ in for_(b10_InH1):
                     element0ActivactionsIn = OF_b11_layer3_bn_12_layer1.acquire(
                         ObjectFifoPort.Consume, 1
@@ -618,7 +620,7 @@ class bottleneckBCore:
 
         @core(self.computeTileBN12_2, "bn12_conv2dk3_dw_stride2.o")
         def core_body():
-            scale = 8
+            scale = bn12_scaleFactor2
             element0Weights = self.weightsInBN12_layer2.acquire(ObjectFifoPort.Consume, 1)
             for _ in for_(sys.maxsize):
 
@@ -696,7 +698,7 @@ class bottleneckBCore:
             for _ in for_(0xFFFFFFFF):
                 
 
-                scale = memref.load(self.rtpBN12_layer3, [0])
+                scale = bn12_scaleFactor3
                 # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
                 for _ in for_(b12_InH2):
@@ -869,7 +871,9 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
         bottleneckBCore(bn10_tile_1,bn10_tile_2,bn10_tile_3,bn11_tile_1,bn11_tile_2,bn11_tile_3,bn12_tile_1,bn12_tile_2,bn12_tile_3,
                         bn10_1_wts_OF_L3L1,bn10_2_wts_OF_L3L1,bn10_3_wts_OF_L3L1,bn11_1_wts_OF_L3L1,bn11_2_wts_OF_L3L1,bn11_3_wts_OF_L3L1,bn12_1_wts_OF_L3L1,bn12_2_wts_OF_L3L1,bn12_3_wts_OF_L3L1,
                         bn10_1_rtp,bn10_2_rtp,bn10_3_rtp,bn11_1_rtp,bn11_2_rtp,bn11_3_rtp,bn12_1_rtp,bn12_2_rtp,bn12_3_rtp,
-                        MemTile01,act_in,act_out )
+                        MemTile01,act_in,act_out,bn10_scaleFactor1,bn10_scaleFactor2,bn10_scaleFactor3,
+                           bn11_scaleFactor1,bn11_scaleFactor2,bn11_scaleFactor3,bn11_scaleFactorAdd,
+                           bn12_scaleFactor1,bn12_scaleFactor2,bn12_scaleFactor3,  )
 
 
         # # instruction stream generation
