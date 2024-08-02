@@ -32,9 +32,6 @@ def AIEX_Dialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    static uint64_t getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col);
-    static std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>> getHardwareStridesWraps(const AIE::AIETargetModel &targetModel, mlir::MemRefType referencedBufType, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides);
-    static mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector<int64_t, 4> inputSizes, llvm::SmallVector<int64_t, 4> inputStrides, llvm::SmallVector<int64_t, 4> hardwareSizes, llvm::SmallVector<int64_t, 4> hardwareStrides);
   }];
 
 }
@@ -834,9 +831,11 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">]> {
-  let summary = "Inform Compilre Buffer Descriptor IDs can be reused";
+  let summary = "Free all Buffer Descriptor IDs Associated with the Given Task";
   let description = [{
-    This operation informs the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
+    This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
+
+    Potential future implementations of dynamic buffer descriptor allocators may lower this to a `free` instruction.
   }];
   let arguments = (
     ins Index:$task
@@ -920,7 +919,7 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequ
 
   let arguments = (
     ins FlatSymbolRefAttr:$symbol,
-        Variadic<AnyType>:$concrete_args,
+        Variadic<AnyType>:$args,
         Index:$tile,
         DMAChannelDir:$direction,
         I32Attr:$channel,
@@ -929,7 +928,7 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequ
   );
 
   let assemblyFormat = [{ 
-     $symbol `(` $concrete_args `)` `:` `(` type($concrete_args) `)` ` ` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict 
+     $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict 
   }];
 
   let hasVerifier = 1;

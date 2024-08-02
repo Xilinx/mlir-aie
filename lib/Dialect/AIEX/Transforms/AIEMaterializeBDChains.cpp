@@ -1,5 +1,4 @@
-//===- AIEMaterializeBDChains.cpp ---------------------------------*- C++
-//-*-===//
+//===- AIEMaterializeBDChains.cpp -------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,8 +7,6 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-
-#include <set>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -21,6 +18,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Inliner.h"
+
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -47,7 +46,7 @@ struct AIEMaterializeBDChainsPass
     // Clone BD definition into usage site, replacing abstract SSA values with
     // concrete ones
     IRMapping arg_map;
-    ValueRange values = start_op.getConcreteArgs();
+    ValueRange values = start_op.getArgs();
     for (unsigned i = 0, n = source_region.getNumArguments(); i < n; i++) {
       BlockArgument arg = source_region.getArgument(i);
       Value val = values[i];

@@ -287,8 +287,8 @@ public:
     llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(
-        targetModel, bufferType, inputSizes, inputStrides);
+    auto [sizes, strides] = getHardwareStridesWraps(targetModel, bufferType,
+                                                    inputSizes, inputStrides);
     int64_t offset = op.getOffsetInBytes();
 
     // column
@@ -396,8 +396,8 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(
-        targetModel, op.getId(), col);
+    uint64_t addr =
+        getBufferDescriptorAddressRegisterAddress(targetModel, op.getId(), col);
 
     rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
 

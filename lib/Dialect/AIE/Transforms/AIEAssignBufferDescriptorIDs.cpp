@@ -30,7 +30,7 @@ std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex) {
   // need to be since BD IDs are small numbers.
   // FIXME: Specify WireBundle
   for (; bdIdAlreadyAssigned(bd_id) ||
-         !targetModel.bdCanAccessChannel(col, row, bd_id, channelIndex);
+         !targetModel.isBdChannelAccessible(col, row, bd_id, channelIndex);
        bd_id++)
     ;
   if (bd_id >= targetModel.getNumBDs(col, row)) {

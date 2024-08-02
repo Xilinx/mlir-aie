@@ -1024,10 +1024,7 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-opt",
-                        "--aie-materialize-bd-chains",
-                        "--aie-assign-runtime-sequence-bd-ids",
-                        "--aie-dma-tasks-to-npu",
-                        "--aie-dma-to-npu",
+                        f"--pass-pipeline={DMA_TO_NPU ()}",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,

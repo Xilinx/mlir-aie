@@ -746,9 +746,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", [
-    //ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp", "DMAOp", "BDChainOp"]>,
-  ]> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -1003,7 +1001,6 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
@@ -1101,10 +1098,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"next_bd", [
-    Terminator, 
-    //ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
-  ]> {
+def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside

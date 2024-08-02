@@ -175,8 +175,8 @@ public:
 
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
-  virtual bool bdCanAccessChannel(int col, int row, uint32_t bd_id,
-                                  int channel) const = 0;
+  virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
+                                     int channel) const = 0;
 
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
@@ -262,8 +262,8 @@ public:
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
-  bool bdCanAccessChannel(int col, int row, uint32_t bd_id,
-                          int channel) const override {
+  bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
+                             int channel) const override {
     return true;
   }
   uint32_t getNumMemTileRows() const override { return 0; }
@@ -327,8 +327,8 @@ public:
     return isMemTile(col, row) ? 48 : 16;
   }
 
-  bool bdCanAccessChannel(int col, int row, uint32_t bd_id,
-                          int channel) const override {
+  bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
+                             int channel) const override {
     if (!isMemTile(col, row)) {
       return true;
     } else {

@@ -1,5 +1,4 @@
-//===- AIEDMATasksToNPU.cpp ---------------------------------*- C++
-//-*-===//
+//===- AIEDMATasksToNPU.cpp -------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -177,7 +176,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       return failure();
     }
     unsigned arg_idx = buf_arg.getArgNumber();
-    uint64_t addr = AIEXDialect::getBufferDescriptorAddressRegisterAddress(
+    uint64_t addr = getBufferDescriptorAddressRegisterAddress(
         target_model, bd_id, tile.getCol());
     int64_t offset = bd_op.getOffsetInBytes();
     builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ addr,
@@ -229,11 +228,11 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_strides[i] = (*dims)[j].getStride();
       }
     }
-    auto [sizes, strides] = AIEXDialect::getHardwareStridesWraps(
-        target_model, buffer_type, input_sizes, input_strides);
-    if (failed(AIEXDialect::verifyStridesWraps(
-            bd_op, buffer_type, tile.getCol(), tile.getRow(), input_sizes,
-            input_strides, sizes, strides))) {
+    auto [sizes, strides] = getHardwareStridesWraps(target_model, buffer_type,
+                                                    input_sizes, input_strides);
+    if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
+                                  tile.getRow(), input_sizes, input_strides,
+                                  sizes, strides))) {
       return failure();
     }
     if (dims) {

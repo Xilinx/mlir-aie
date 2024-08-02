@@ -29,8 +29,9 @@ void AIEXDialect::initialize() {
       >();
 }
 
-uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(
-    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col) {
+uint64_t
+getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm,
+                                          unsigned bd_id, unsigned col) {
   return ((uint64_t)col << tm.getColumnShift()) | (0x1D004 + bd_id * 0x20);
 }
 
@@ -68,10 +69,10 @@ uint64_t AIEXDialect::getBufferDescriptorAddressRegisterAddress(
   hardware does not support a 0 stride (repeat).
   */
 std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>>
-AIEXDialect::getHardwareStridesWraps(
-    const AIE::AIETargetModel &targetModel, mlir::MemRefType referencedBufType,
-    llvm::SmallVector<int64_t, 4> inputSizes,
-    llvm::SmallVector<int64_t, 4> inputStrides) {
+getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                        mlir::MemRefType referencedBufType,
+                        llvm::SmallVector<int64_t, 4> inputSizes,
+                        llvm::SmallVector<int64_t, 4> inputStrides) {
   assert(inputSizes.size() == inputStrides.size());
 
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -118,12 +119,13 @@ AIEXDialect::getHardwareStridesWraps(
   return std::make_pair(sizes, strides);
 }
 
-mlir::LogicalResult AIEXDialect::verifyStridesWraps(
-    mlir::Operation *forOp, mlir::MemRefType referencedBufType, int tileCol,
-    int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
-    llvm::SmallVector<int64_t, 4> inputStrides,
-    llvm::SmallVector<int64_t, 4> hardwareSizes,
-    llvm::SmallVector<int64_t, 4> hardwareStrides) {
+mlir::LogicalResult
+verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
+                   int tileCol, int tileRow,
+                   llvm::SmallVector<int64_t, 4> inputSizes,
+                   llvm::SmallVector<int64_t, 4> inputStrides,
+                   llvm::SmallVector<int64_t, 4> hardwareSizes,
+                   llvm::SmallVector<int64_t, 4> hardwareStrides) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
@@ -306,8 +308,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         return getConstantIntValue(s).value();
       });
 
-  auto [hardwareSizes, hardwareStrides] = AIEXDialect::getHardwareStridesWraps(
-      targetModel, buffer, inputSizes, inputStrides);
+  auto [hardwareSizes, hardwareStrides] =
+      getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides);
   int64_t offset = getOffsetInBytes();
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -319,9 +321,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  return AIEXDialect::verifyStridesWraps(*this, buffer, getX(), getY(),
-                                         inputSizes, inputStrides,
-                                         hardwareSizes, hardwareStrides);
+  return verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
+                            inputStrides, hardwareSizes, hardwareStrides);
 }
 
 //===----------------------------------------------------------------------===//
@@ -493,7 +494,7 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
     return emitOpError("symbol does not reference valid BD chain");
   }
 
-  auto actualArgTypes = getConcreteArgs().getTypes();
+  auto actualArgTypes = getArgs().getTypes();
   ArrayRef<Type> expectedArgTypes = chain.getEntryArgTypesAttr().getTypes();
   if (actualArgTypes.size() != expectedArgTypes.size()) {
     return emitOpError("Number of arguments mismatches.");

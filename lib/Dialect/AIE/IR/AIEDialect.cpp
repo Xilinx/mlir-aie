@@ -1555,8 +1555,7 @@ LogicalResult DMABDOp::verify() {
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
   // correct mem ops.
   Operation *p = (*this)->getParentOp();
-  if (!llvm::isa<MemOp>(*p) && !llvm::isa<MemTileDMAOp>(*p) &&
-      !llvm::isa<ShimDMAOp>(*p) && !llvm::isa<DMAOp>(*p)) {
+  if (!llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(*p)) {
     return success();
   }
 
