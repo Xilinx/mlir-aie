@@ -63,7 +63,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = True
+    enable_tracing = False
     trace_size = 65536
 
     dtype_in = None
@@ -284,7 +284,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             )
                             npu_dma_memcpy_nd(
                                 metadata="inA",
-                                bd_id=2 * tile_row + 2 + pingpong * rows_per_block//2,
+                                bd_id=2 + 4 * tile_row + pingpong * rows_per_block//2,
                                 mem=A,
                                 offsets=[0, 0, 0, A_row_offset],
                                 sizes=[N_div_n, K_div_k, m, k],
@@ -292,7 +292,7 @@ def my_matmul(M, K, N, m, k, n, dtype_in_str, dtype_out_str):
                             )
                             npu_dma_memcpy_nd(
                                 metadata="inB",
-                                bd_id=2 * tile_row + 2 + pingpong * rows_per_block//2 + 1,
+                                bd_id=3 + 4 * tile_row + pingpong * rows_per_block//2,
                                 mem=B,
                                 sizes=[N_div_n, K_div_k, k, n],
                                 strides=[n, k_x_N, N, 1],
