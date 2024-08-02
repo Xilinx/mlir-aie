@@ -1,3 +1,10 @@
+//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 module {
   aie.device(npu1_1col) {
     memref.global "public" @out_cons : memref<4096xi32>
