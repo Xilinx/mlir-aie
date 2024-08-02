@@ -627,6 +627,54 @@ struct ExtractTransposeFromContractionOp
   }
 };
 
+// This pattern flattens a `vector.transpose` operation for shapes that can be
+// handled by basic AIE shuffle ops.
+struct FlattenVectorTransposeOpPattern
+    : public OpConversionPattern<vector::TransposeOp> {
+  using OpConversionPattern<vector::TransposeOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransposeOp transpOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resTy = transpOp.getResultVectorType();
+    auto resShape = resTy.getShape();
+    auto elemTyBitWidth = resTy.getElementTypeBitWidth();
+    auto vBitWidth = std::accumulate(resShape.begin(), resShape.end(),
+                                     elemTyBitWidth, std::multiplies<>());
+    if (vBitWidth != 512)
+      return failure();
+
+    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32)
+      return failure();
+
+    // Verify leading dimensions are all 1.
+    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size() - 2); ++i)
+      if (resShape[i] != 1)
+        return failure();
+
+    // Only permutation of the 2 innermost dimensions are supported.
+    ArrayRef<int64_t> perm = transpOp.getPermutation();
+    for (int64_t i = 0; i < static_cast<int64_t>(perm.size() - 2); ++i)
+      if (perm[i] != i)
+        return failure();
+    if (perm.back() != static_cast<int64_t>(perm.size() - 2))
+      return failure();
+
+    auto flatVecTy =
+        VectorType::get({512 / elemTyBitWidth}, resTy.getElementType());
+    auto loc = transpOp.getLoc();
+    auto flatInput = rewriter.create<vector::ShapeCastOp>(loc, flatVecTy,
+                                                          adaptor.getVector());
+    auto flatTranspOp = rewriter.create<vector::FlatTransposeOp>(
+        loc, flatVecTy, flatInput, static_cast<int32_t>(resShape.back()),
+        static_cast<int32_t>(resShape[resShape.size() - 2]));
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(transpOp, resTy,
+                                                     flatTranspOp);
+
+    return success();
+  }
+};
+
 //============================================================================//
 //============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
@@ -690,6 +738,32 @@ static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target,
       [](vector::ContractionOp op) {
         return !isGemmBTransposedContractionOp(op);
       });
+  target.addDynamicallyLegalOp<vector::TransposeOp>([](vector::TransposeOp op) {
+    auto resTy = op.getResultVectorType();
+    auto resShape = resTy.getShape();
+    auto elemTyBitWidth = resTy.getElementTypeBitWidth();
+    auto vBitWidth = std::accumulate(resShape.begin(), resShape.end(),
+                                     elemTyBitWidth, std::multiplies<>());
+    if (vBitWidth != 512)
+      return true;
+
+    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32)
+      return true;
+
+    // Verify leading dimensions are all 1.
+    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size() - 2); ++i)
+      if (resShape[i] != 1)
+        return true;
+
+    // Only permutation of the 2 innermost dimensions are supported.
+    ArrayRef<int64_t> perm = op.getPermutation();
+    for (int64_t i = 0; i < static_cast<int64_t>(perm.size() - 2); ++i)
+      if (perm[i] != i)
+        return true;
+    if (perm.back() != static_cast<int64_t>(perm.size() - 2))
+      return true;
+    return false;
+  });
 }
 
 static void
@@ -699,7 +773,8 @@ populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns,
                                                   256);
   patterns
       .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(patterns.getContext());
+           FlattenMultDimTransferWritePattern, FlattenVectorTransposeOpPattern>(
+          patterns.getContext());
 }
 
 //============================================================================//
