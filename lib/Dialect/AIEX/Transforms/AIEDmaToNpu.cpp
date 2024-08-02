@@ -456,12 +456,13 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
+    std::vector<uint32_t> words(8, 0);
     auto bd_id = op.getBdId();
-    uint32_t bd_addr = (op.getColumn() << tm.getColumnShift()) |
+    uint32_t bd_addr;
+    if(op.getRow() == 0){
+    bd_addr = (op.getColumn() << tm.getColumnShift()) |
                        (op.getRow() << tm.getRowShift()) |
                        (0x1D000 + bd_id * 0x20);
-
-    std::vector<uint32_t> words(8, 0);
 
     // DMA_BDX_0
     words[0] = op.getBufferLength();
@@ -505,7 +506,52 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
     words[7] |= (op.getLockAcqEnable() & 0x1) << 12;
     words[7] |= (op.getLockAcqVal() & 0xef) << 5;
     words[7] |= op.getLockAcqId() & 0xf;
+    }
+    else{
+    bd_addr = (op.getColumn() << tm.getColumnShift()) |
+                       (op.getRow() << tm.getRowShift()) |
+                       (0xA0000 + bd_id * 0x20);
+    // DMA_BDX_0
+    words[0] |= (op.getEnablePacket() & 0x1) << 31;
+    words[0] |= (op.getPacketType() & 0x7) << 28;
+    words[0] |= (op.getPacketId() & 0x1f) << 23;
+    words[0] |= (op.getOutOfOrderId() & 0x3f) << 17;
+    words[0] |=  op.getBufferLength() & 0x1ffff;
 
+    // DMA_BDX_1
+    words[1] |= (op.getNextBd() & 0x3f) << 20;
+    words[1] |= (op.getUseNextBd() & 0x1) << 19;
+    words[1] |= op.getBufferOffset() & 0x7ffff;
+
+    // DMA_BDX_2
+    words[2] |= (op.getD0Size() & 0x3ff) << 17;
+    words[2] |= op.getD0Stride() & 0x1ffff;
+
+    // DMA_BDX_3
+    // TODO: Secure Access
+    words[3] |= (op.getD1Size() & 0x3ff) << 17;
+    words[3] |= op.getD1Stride() & 0x1ffff;
+
+    // DMA_BDX_4
+    // TODO: D2Size
+    words[4] |= op.getD2Stride() & 0x1ffff;
+
+    // DMA_BDX_5
+    // ToDO: D3Stride
+
+    // DMA_BDX_6
+    words[6] |= (op.getIterationCurrent() & 0x3f) << 23;
+    words[6] |= (op.getIterationSize() & 0x3f) << 17;
+    words[6] |= op.getIterationStride() & 0x1ffff;
+
+    // DMA_BDX_7
+    words[7] |= (op.getValidBd() & 0x1) << 31;
+    words[7] |= (op.getLockRelVal() & 0x7f) << 24;
+    words[7] |= (op.getLockRelId() & 0xff) << 16;
+    words[7] |= (op.getLockAcqEnable() & 0x1) << 15;
+    words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
+    words[7] |= op.getLockAcqId() & 0xff; 
+    }
     MemRefType memrefType = MemRefType::get({8}, rewriter.getI32Type());
     TensorType tensorType = RankedTensorType::get({8}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
