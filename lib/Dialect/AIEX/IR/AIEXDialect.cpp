@@ -141,16 +141,50 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
                    llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,
                    llvm::SmallVector<int64_t, 4> hardwareSizes,
-                   llvm::SmallVector<int64_t, 4> hardwareStrides) {
+                   llvm::SmallVector<int64_t, 4> hardwareStrides,
+                   bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
+
+  uint32_t wrap_bits = 0;
+  uint32_t step_bits = 0;
+  uint32_t iter_bits = 6;
+  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
+    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
+    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+  } else if (targetModel.isMemTile(tileCol, tileRow)) {
+    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
+  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
+    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+  } else {
+    return forOp->emitOpError(
+        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
+        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
+  }
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
       return forOp->emitOpError("Size ") << i << " must be a positive integer.";
     }
   }
+
+  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
+    std::stringstream msg;
+    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
+        << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
+        << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
+        << " bytes, which is not divisible by " << (addressGranularity / 8)
+        << ". ";
+    return forOp->emitOpError(msg.str());
+  }
+
+  if (skipTransformationChecks) {
+    return success();
+  }
+
   for (int i = 0; i < 3; i++) {
     if (inputSizes[i] > 1 && inputStrides[i] < 1) {
       // If inputSize[i] == 1, anything is allowable in the stride, since that
@@ -181,55 +215,30 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
     }
   }
 
-  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
-    std::stringstream msg;
-    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
-        << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
-        << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
-        << " bytes, which is not divisible by " << (addressGranularity / 8)
-        << ". ";
-    return forOp->emitOpError(msg.str());
-  }
-
-  uint32_t wrap_bits = 0;
-  uint32_t step_bits = 0;
-  uint32_t iter_bits = 6;
-  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else if (targetModel.isMemTile(tileCol, tileRow)) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
-  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else {
-    return forOp->emitOpError(
-        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
-        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
-  }
-
-  if (hardwareSizes[3] > (1 << iter_bits))
-    return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareSizes[1] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
   if (hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
-  // checked below
-  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
-    return forOp->emitOpError("Stride 3 exceeds the [1:" +
+  if (hardwareSizes[1] > (1 << wrap_bits) - 1)
+    return forOp->emitOpError(
+        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
+        "] range.");
+  if (hardwareSizes[3] > (1 << iter_bits))
+    return forOp->emitOpError(
+        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
+  if (hardwareStrides[0] > (1 << step_bits))
+    return forOp->emitOpError("Stride 0 exceeds the [1:" +
+                              std::to_string(1 << step_bits) + "] range.");
+  if (hardwareStrides[1] > (1 << step_bits))
+    return forOp->emitOpError("Stride 1 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
   if (hardwareStrides[2] > (1 << step_bits))
     return forOp->emitOpError("Stride 2 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits))
-    return forOp->emitOpError("Stride 1 exceeds the [1:" +
+  // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
+  // checked below
+  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
+    return forOp->emitOpError("Stride 3 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
 
   return success();
@@ -322,7 +331,8 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
         return getConstantIntValue(s).value();
       });
   return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputSizes[3] == 1 &&
-          inputStrides[1] == 0 && inputStrides[2] == 0 && inputStrides[3] == 0);
+          inputStrides[0] == 1 && inputStrides[1] == 0 &&
+          inputStrides[2] == 0 && inputStrides[3] == 0);
 }
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
@@ -379,12 +389,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  if (!isLinearTransferWithoutTransformation()) {
-    if (failed(verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
-                                  inputStrides, hardwareSizes,
-                                  hardwareStrides))) {
-      return failure();
-    }
+  bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+  if (failed(verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
+                                inputStrides, hardwareSizes, hardwareStrides,
+                                skipTransformationChecks))) {
+    return failure();
   }
 
   return success();

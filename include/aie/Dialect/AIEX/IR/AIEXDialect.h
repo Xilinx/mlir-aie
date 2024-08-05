@@ -38,7 +38,8 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
                    llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,
                    llvm::SmallVector<int64_t, 4> hardwareSizes,
-                   llvm::SmallVector<int64_t, 4> hardwareStrides);
+                   llvm::SmallVector<int64_t, 4> hardwareStrides,
+                   bool skipTransformationChecks = false);
 
 } // namespace AIEX
 } // namespace xilinx
