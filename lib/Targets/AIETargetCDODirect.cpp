@@ -325,8 +325,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
 
   // ND zero padding.
-  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
-      bdOp.getPadDims();
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims = bdOp.getPadDims();
   if (padDims) {
     XAie_DmaPadTensor dmaPadTensor = {};
     dmaPadTensor.NumDim = padDims->size();
