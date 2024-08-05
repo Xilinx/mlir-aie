@@ -353,14 +353,21 @@ public:
     // d2_stride
     d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
-    // iteration_current
-
-    // iteration_size
-    // strides[3] doesn't need to lower to hardware if sizes[3] is one
-    iteration_size = IntegerAttr::get(i32ty, sizes[3]);
-
-    // iteration_stride
-    iteration_stride = IntegerAttr::get(i32ty, strides[3]);
+    // iteration_current, iteration_size, iteration_stride, repeat_count
+    if (inputSizes[3] > 1) {
+      if (inputStrides[3] > 0) {
+        iteration_size = IntegerAttr::get(i32ty, sizes[3]);
+        iteration_stride = IntegerAttr::get(i32ty, strides[3]);
+      } else {
+        // We allow users to encode the repeat_count as a dimension 3 stride of
+        // 0. This must lower to a iteration wrap of 0, so no stride is ever
+        // added. We then repeat the BD using the repeat_count in
+        // NpuPushQueueOp.
+        iteration_size = zero;
+        iteration_stride = zero;
+      }
+    }
+    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // next_bd
 
@@ -378,9 +385,6 @@ public:
     // lock_acq_val
 
     // lock_acq_id
-
-    // repeat_count
-    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // Set the issue_token
     issue_token = BoolAttr::get(ctx, op.getIssueToken());

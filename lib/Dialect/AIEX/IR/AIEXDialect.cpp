@@ -83,16 +83,24 @@ getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
 
   if (inputSizes[0] == 0) {
+    // Illegal input, this won't transfer anything at all.
+    // Leave it to the verification functions to complain to the user.
     return std::make_pair(sizes, strides);
   }
 
   // d0_size, d0_stride
   sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
-  strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
-  if (strides[0] < 0) {
-    // For the case that stride < addressGranularity, but size >
-    // addressGranularity, we can allow this. This is verified in verify().
+  if (inputStrides[0] * elemWidth < addressGranularity) {
+    // While the hardware cannot transfer less than addressGranularity bits at
+    // a time, the user may expresses a contiguous transfer of multiple
+    // elements with a stride smaller than addressGranularity. We can thus set
+    // the stride to 1 (encoded in hardware as 0) here to allow such transfers.
+    // The verification function should ensure that
+    //    inputStrides[0] * elemWidth < addressGranularity
+    //    iff. inputSize[0] * elemWidth > addressGranularity.
     strides[0] = 0;
+  } else {
+    strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
   }
 
   // d1_size, d1_stride
@@ -110,10 +118,18 @@ getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   }
 
   // iteration_size, iteration_stride
-  // strides[3] doesn't need to lower to hardware if sizes[3] is one
   if (inputSizes[3] > 1) {
+    // Stride only matters if we have more than one iteration.
     sizes[3] = inputSizes[3] - 1;
-    strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
+    // Note that the iteration_stride must be positive, just like the other
+    // dimensions. However, one can encode a zero-stride "repeat" of the same
+    // transfer by setting a positive repeat_count on the pushToQueue instr,
+    // and setting the size here to 1. This causes the BD to "wrap" at every
+    // single iteration, effectively never adding the specified stride, in turn
+    // equalling a repeat without stride.
+    if (inputStrides[3] > 0) {
+      strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
+    }
   }
 
   return std::make_pair(sizes, strides);
@@ -129,6 +145,26 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
+
+  for (int i = 0; i < 4; i++) {
+    if (inputSizes[i] <= 0) {
+      return forOp->emitOpError("Size ") << i << " must be a positive integer.";
+    }
+  }
+  for (int i = 0; i < 3; i++) {
+    if (inputSizes[i] > 1 && inputStrides[i] < 1) {
+      // If inputSize[i] == 1, anything is allowable in the stride, since that
+      // stride will never be applied. For any larger size, we must verify that
+      // the stride is positive.
+      return forOp->emitOpError("Stride ")
+             << i << " must be a postive integer.";
+    }
+  }
+  // A value of zero is allowable for the fourth-dimension stride, as such a
+  // "repeat" can be accomplished by setting size==1 and repeat_count=size.
+  if (inputSizes[3] > 1 && inputStrides[3] < 0) {
+    return forOp->emitOpError("Stride 3 must be a non-negative integer.");
+  }
 
   for (int i = 0; i < 4; i++) {
     // strides[0] == 1 is ok iff the tranfer size is a multiple of
@@ -186,7 +222,7 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
         "] range.");
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
-  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] != 1)
+  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
     return forOp->emitOpError("Stride 3 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
   if (hardwareStrides[2] > (1 << step_bits))

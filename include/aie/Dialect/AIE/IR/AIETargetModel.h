@@ -333,9 +333,9 @@ public:
       return true;
     } else {
       if ((channel & 1) == 0) { // even channel number
-        return channel < 24;
+        return bd_id < 24;
       } else {
-        return channel >= 24;
+        return bd_id >= 24;
       }
     }
   }
