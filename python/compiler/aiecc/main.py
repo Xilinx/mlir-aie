@@ -1024,7 +1024,7 @@ class FlowRunner:
                     progress_bar.task,
                     [
                         "aie-opt",
-                        f"--pass-pipeline={DMA_TO_NPU ()}",
+                        f"--pass-pipeline={DMA_TO_NPU}",
                         file_with_addresses,
                         "-o",
                         generated_insts_mlir,
