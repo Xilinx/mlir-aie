@@ -13,6 +13,8 @@ from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
 
+import aie.utils.trace as trace_utils
+
 import json
 def read_scale_factors(file_path):
     with open(file_path, 'r') as file:
@@ -136,7 +138,7 @@ class bottleneckBCore:
 
 
 
-        enableTrace = False
+        enableTrace = True
         trace_size = 16384
         traceSizeInInt32s = trace_size // 4
 
@@ -748,7 +750,7 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
     b12_InH2 = 7
     b12_OutC3 = 80
 
-    enableTrace = False
+    enableTrace = True
     trace_size = 16384
     traceSizeInInt32s = trace_size // 4
 
@@ -898,6 +900,9 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
 
         bn12_Offset_32b = bn10_totalWeightsSize32b+bn11_totalWeightsSize32b
 
+        # Set up a circuit-switched flow from core to shim for tracing information
+        if trace_size > 0:
+            flow(bn10_tile_1, WireBundle.Trace, 0, ShimTile00, WireBundle.DMA, 1)
 
 
         totalWeightsSize32b_complete = (
@@ -924,6 +929,17 @@ def mobilenetV3_bn_10_11_12(start_row = 2, start_col = 0, bn10_scaleFactor1=10,b
             NpuWriteRTPOp("bn12_2_rtp", col=1, row=2, index=0, value=bn12_scaleFactor2)
             NpuWriteRTPOp("bn12_3_rtp", col=2, row=2, index=0, value=bn12_scaleFactor3)
             
+            N_in_bytes = b12_InW2 * b12_InH2 * b12_OutC3
+
+            if trace_size > 0:
+                trace_utils.configure_simple_tracing_aie2(
+                    bn10_tile_1,
+                    ShimTile00,
+                    ddr_id=2,
+                    size=trace_size,
+                    offset=N_in_bytes,
+                )
+
             npu_dma_memcpy_nd(
                 metadata="act_in",
                 bd_id=0,

@@ -110,7 +110,7 @@ def main(opts):
     npu_time_min = 9999999
     npu_time_max = 0
     trace_size = 16384
-    enable_trace = False
+    enable_trace = True
     trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -142,6 +142,8 @@ def main(opts):
         enable_trace=enable_trace,
         trace_size=trace_size,
     )
+    print("orig shape_out: ", shape_out)
+    print("shape_out size (+trace): ", app.buffers[4].shape)
     class QuantBottleneck(nn.Module):
         def __init__(self, in_planes=16, bn10_expand=16,bn10_project=16,bn11_expand=16,bn11_project=16,bn12_expand=16,bn12_project=16):
             super(QuantBottleneck, self).__init__()
@@ -578,10 +580,17 @@ def main(opts):
     write_wts(app,total_wts)
     for i in range(num_iter):
         start = time.time_ns()
-        aie_output = execute_inference(app, ifm_mem_fmt) 
+        # aie_output = execute_inference(app, ifm_mem_fmt) 
+        full_output = execute_inference(app, ifm_mem_fmt) 
         stop = time.time_ns()
         npu_time = stop - start
         times.append(npu_time)
+
+        print("full_output shape: ", full_output.shape)        
+        aie_output = full_output[:3920]
+        if i == 0:
+            trace_buffer = full_output[3920:]
+        print("trace shape: ", trace_buffer.shape, ", size: ", trace_buffer.size)
 
         # ------------------------------------------------------
         # Reorder output data-layout
@@ -613,6 +622,25 @@ def main(opts):
     average_time = sum(times) / num_iter
     best_time = min(times)
     print("\nNPU time= Avg: {}us, Best: {}us.".format(int((average_time) / 1000),int((best_time) / 1000)))
+
+    if trace_size > 0:
+        # trace_buffer = full_output[3920:]
+        print("trace_buffer shape: ",trace_buffer.shape)
+        print("trace_buffer dtype: ",trace_buffer.dtype)
+        print("0: ", trace_buffer[0])
+        print("1: ", trace_buffer[1])
+        print("2: ", trace_buffer[2])
+        print("3: ", trace_buffer[3])
+        print("4: ", trace_buffer[4])
+        print("5: ", trace_buffer[5])
+        print("6: ", trace_buffer[6])
+        print("7: ", trace_buffer[7])
+        print("8: ", trace_buffer[8])
+        print("9: ", trace_buffer[9])
+        print("10: ", trace_buffer[10])
+        print("11: ", trace_buffer[11])
+        # write_out_trace(trace_buffer, str(opts.trace_file))
+        write_out_trace(trace_buffer, "trace_mbv4_b.txt")
 
     if np.allclose(
         golden,
