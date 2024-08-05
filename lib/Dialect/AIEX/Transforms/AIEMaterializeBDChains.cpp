@@ -17,7 +17,7 @@
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Inliner.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 #include <set>
 
@@ -25,11 +25,15 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct AIEMaterializeBDChainsPass
-    : AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
+struct DMAInlineBDChainPattern : OpConversionPattern<DMAStartBdChainOp> {
+  using OpConversionPattern::OpConversionPattern;
 
-  WalkResult inlineUsage(AIE::DeviceOp device, DMAStartBdChainOp start_op) {
-    OpBuilder builder = OpBuilder(start_op);
+  LogicalResult
+  matchAndRewrite(DMAStartBdChainOp start_op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    AIE::DeviceOp device = start_op->getParentOfType<AIE::DeviceOp>();
+
+    rewriter.setInsertionPointAfter(start_op);
 
     // Get referenced abstract BD chain
     AIE::BDChainOp chain_def = start_op.getBDChainOp();
@@ -37,8 +41,8 @@ struct AIEMaterializeBDChainsPass
     Region &source_region = chain_def.getBody();
 
     // Create BD op into which the result will be inlined
-    DMAConfigureTaskOp configure_op = builder.create<DMAConfigureTaskOp>(
-        start_op.getLoc(), builder.getIndexType(), start_op.getTile(),
+    DMAConfigureTaskOp configure_op = rewriter.create<DMAConfigureTaskOp>(
+        start_op.getLoc(), rewriter.getIndexType(), start_op.getTile(),
         start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
     Region &target_region = configure_op.getBody();
@@ -64,30 +68,34 @@ struct AIEMaterializeBDChainsPass
     }
 
     // Add a start BDs instruction
-    builder.create<DMAStartTaskOp>(start_op.getLoc(), configure_op.getResult());
+    rewriter.create<DMAStartTaskOp>(start_op.getLoc(),
+                                    configure_op.getResult());
 
     // After fully inlining, remove the original instruction
-    start_op.erase();
+    rewriter.eraseOp(start_op);
 
-    return WalkResult::advance();
+    return success();
   }
+};
+
+struct AIEMaterializeBDChainsPass
+    : AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
 
   void runOnOperation() override {
-    WalkResult r;
-
     AIE::DeviceOp device = getOperation();
 
-    // Wrap bd chains in DMAConfigureTaskOp regions before inlining
-    r = device.walk([&](DMAStartBdChainOp start_op) {
-      return inlineUsage(device, start_op);
-    });
-    if (r.wasInterrupted()) {
-      return signalPassFailure();
+    ConversionTarget target(getContext());
+    target.addLegalDialect<AIEXDialect>();
+    target.addIllegalOp<DMAStartBdChainOp>();
+    RewritePatternSet patterns(&getContext());
+    patterns.insert<DMAInlineBDChainPattern>(&getContext());
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+      signalPassFailure();
     }
 
     // Verify inlined basic blocks do form a chain reachable from the start;
     // Remove empty blocks
-    r = device.walk([&](DMAConfigureTaskOp configure_task_op) {
+    WalkResult r = device.walk([&](DMAConfigureTaskOp configure_task_op) {
       Region &body = configure_task_op.getBody();
       for (auto it = body.begin(); it != body.end(); ++it) {
         Block &block = *it;
