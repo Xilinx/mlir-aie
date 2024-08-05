@@ -30,7 +30,7 @@ module {
   aie.shim_dma(%t00)  {
       aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32>)  {bd_id = 0 : i32, len = 4 : i32}
       aie.next_bd ^end
     ^end:
       aie.end

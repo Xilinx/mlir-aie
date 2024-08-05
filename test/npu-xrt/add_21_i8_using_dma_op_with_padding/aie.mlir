@@ -85,20 +85,20 @@ module {
       %objFifo_out0_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_lock"}
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi8>, 0, 8)
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi8>) {len = 8 : i32}
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi8>, 0, 8)
+        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi8>) {len = 8 : i32}
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi8>, 0, 16, [<size = 8, stride = 1>], [<const_pad_before = 4, const_pad_after = 4>])
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi8>, dims = [<size = 8, stride = 1>], pad_dims = [<const_pad_before = 4, const_pad_after = 4>]) {len = 16 : i32}
         aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi8>, 0, 16, [<size = 8, stride = 1>], [<const_pad_before = 4, const_pad_after = 4>])
+        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi8>, dims = [<size = 8, stride = 1>], pad_dims = [<const_pad_before = 4, const_pad_after = 4>]) {len = 16 : i32}
         aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       }]
       %2 = aie.dma(MM2S, 1) [{

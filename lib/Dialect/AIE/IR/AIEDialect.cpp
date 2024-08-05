@@ -1618,7 +1618,7 @@ LogicalResult DMABDOp::verify() {
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
   }
-  if (auto paddims = getPadDimensions(); paddims.has_value()) {
+  if (auto paddims = getPadDims(); paddims.has_value()) {
     auto dims = getDims();
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"

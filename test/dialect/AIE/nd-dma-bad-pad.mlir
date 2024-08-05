@@ -21,7 +21,7 @@ module {
       aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-error@+1 {{'aie.dma_bd' op Inner-most padding-before count must result in padding in 32-bit words.}}
-        aie.dma_bd(%buf : memref<256xi8>, 0, 8, [<size = 4, stride = 1>], [<const_pad_before = 2, const_pad_after = 2>], pad_value = 0)
+        aie.dma_bd(%buf : memref<256xi8>, dims = [<size = 4, stride = 1>], pad_dims = [<const_pad_before = 2, const_pad_after = 2>]) { len = 8 : i32, pad_value = 0 : i32 }
         aie.next_bd ^end
       ^end:
         aie.end
