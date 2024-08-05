@@ -338,36 +338,34 @@ public:
 
     // packet_type
 
-    // d0_size
-    d0_size = IntegerAttr::get(i32ty, sizes[0]);
+    if (!op.isLinearTransferWithoutTransformation()) {
+      // d0_size, d0_stride
+      d0_size = IntegerAttr::get(i32ty, sizes[0]);
+      d0_stride = IntegerAttr::get(i32ty, strides[0]);
 
-    // d0_stride
-    d0_stride = IntegerAttr::get(i32ty, strides[0]);
+      // d1_size, d1_stride
+      d1_size = IntegerAttr::get(i32ty, sizes[1]);
+      d1_stride = IntegerAttr::get(i32ty, strides[1]);
 
-    // d1_size
-    d1_size = IntegerAttr::get(i32ty, sizes[1]);
+      // d2_stride
+      d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
-    // d1_stride
-    d1_stride = IntegerAttr::get(i32ty, strides[1]);
-
-    // d2_stride
-    d2_stride = IntegerAttr::get(i32ty, strides[2]);
-
-    // iteration_current, iteration_size, iteration_stride, repeat_count
-    if (inputSizes[3] > 1) {
-      if (inputStrides[3] > 0) {
-        iteration_size = IntegerAttr::get(i32ty, sizes[3]);
-        iteration_stride = IntegerAttr::get(i32ty, strides[3]);
-      } else {
-        // We allow users to encode the repeat_count as a dimension 3 stride of
-        // 0. This must lower to a iteration wrap of 0, so no stride is ever
-        // added. We then repeat the BD using the repeat_count in
-        // NpuPushQueueOp.
-        iteration_size = zero;
-        iteration_stride = zero;
+      // iteration_current, iteration_size, iteration_stride, repeat_count
+      if (inputSizes[3] > 1) {
+        if (inputStrides[3] > 0) {
+          iteration_size = IntegerAttr::get(i32ty, sizes[3]);
+          iteration_stride = IntegerAttr::get(i32ty, strides[3]);
+        } else {
+          // We allow users to encode the repeat_count as a dimension 3 stride
+          // of 0. This must lower to a iteration wrap of 0, so no stride is
+          // ever added. We then repeat the BD using the repeat_count in
+          // NpuPushQueueOp.
+          iteration_size = zero;
+          iteration_stride = zero;
+        }
       }
+      repeat_count = IntegerAttr::get(i32ty, sizes[3]);
     }
-    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
 
     // next_bd
 

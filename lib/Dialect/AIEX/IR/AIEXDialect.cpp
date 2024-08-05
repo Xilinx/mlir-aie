@@ -212,11 +212,11 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
   if (hardwareSizes[3] > (1 << iter_bits))
     return forOp->emitOpError(
         "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareStrides[2] && hardwareSizes[1] > (1 << wrap_bits) - 1)
+  if (hardwareSizes[1] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareStrides[1] && hardwareSizes[0] > (1 << wrap_bits) - 1)
+  if (hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
@@ -309,6 +309,22 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   return offset;
 }
 
+// dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+// specify any data layout transformation, but simply express a contiguous
+// transfer of `len`.
+bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
+  llvm::SmallVector<int64_t, 4> inputSizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputSizes[3] == 1 &&
+          inputStrides[1] == 0 && inputStrides[2] == 0 && inputStrides[3] == 0);
+}
+
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
@@ -357,8 +373,21 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  return verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
-                            inputStrides, hardwareSizes, hardwareStrides);
+  // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
+  // specify any data layout transformation, but simply express a contiguous
+  // transfer of `len`. For backwards compatibility, we allow this to proceed
+  // even if it exceeds the maximum stride/wrap size of any one dimension,
+  // and simply do not lower any data layout transformations, since there is
+  // no other way to express this at the dma_memcpy_nd interface otherwise.
+  if (!isLinearTransferWithoutTransformation()) {
+    if (failed(verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
+                                  inputStrides, hardwareSizes,
+                                  hardwareStrides))) {
+      return failure();
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

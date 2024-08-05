@@ -583,6 +583,8 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
        target buffer will be skipped. In the IR, offsets are expressed in units
        of memref element data type size. */
     int64_t getOffsetInBytes(); 
+
+    bool isLinearTransferWithoutTransformation();
   }];
 
   let extraClassDefinition = [{
