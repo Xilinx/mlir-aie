@@ -80,8 +80,11 @@ int main(int argc, const char *argv[]) {
       xrt::bo(device, OUTPUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   int *buf_input = bo_input.map<int *>();
-  for (int i = 0; i < INPUT_SIZE / sizeof(buf_input[0]); i++) {
-    buf_input[i] = 1;
+  //for (int i = 0; i < INPUT_SIZE / sizeof(buf_input[0]); i++) {
+  for(int i = 0; i < INPUT_SIZE / 64; i++) {
+    for(int j = 0; j < 64; j++) {
+      buf_input[i*16+j] = i;
+    }
   }
   int *buf_output = bo_output.map<int *>();
   memset(buf_output, 0, OUTPUT_SIZE);
@@ -105,9 +108,13 @@ int main(int argc, const char *argv[]) {
   bo_output.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   bool pass = true;
-  for(int i = 0; i < OUTPUT_SIZE/sizeof(buf_output[0]); i++) {
-    std::cout << buf_output[i] << " ";
-    pass &= buf_output[i] == 2;
+  for(int i = 0; i < 16; i++) {
+    std::cout << "row " << i << " : ";
+    for(int j = 0; j < 64; j++) {
+      std::cout << buf_output[i * 16 + j] << " ";
+      pass &= buf_output[i * 16 + j] == 2;
+    }
+    std::cout << "\n\n";
   }
   std::cout << std::endl;
   std::cout << (pass ? "PASS!" : "FAIL.") << std::endl;
