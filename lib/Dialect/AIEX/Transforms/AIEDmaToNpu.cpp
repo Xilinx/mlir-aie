@@ -142,6 +142,43 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   }
 };
 
+struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
+  using OpConversionPattern::OpConversionPattern;
+
+  MaskWrite32SymToAddr(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
+
+  LogicalResult
+  matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (!op.getBuffer())
+      return failure();
+
+    auto device = op->getParentOfType<AIE::DeviceOp>();
+
+    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
+    if (!buffer)
+      return op->emitError("buffer '" + *op.getBuffer() +
+                           "' not found in device");
+
+    if (!buffer.getAddress())
+      return op->emitError("buffer must have address assigned");
+
+    const AIE::AIETargetModel &tm = device.getTargetModel();
+    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
+                       op.getAddress() * sizeof(uint32_t);
+    auto col = buffer.getTileOp().getCol();
+    auto row = buffer.getTileOp().getRow();
+    address |= ((col & 0xff) << tm.getColumnShift()) |
+               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
+
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, address, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
+    return success();
+  }
+};
+
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -568,11 +605,14 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuWrite32Op op) { return !op.getBuffer(); });
     target.addDynamicallyLegalOp<NpuBlockWriteOp>(
         [&](NpuBlockWriteOp op) { return !op.getBuffer(); });
+    target.addDynamicallyLegalOp<NpuMaskWrite32Op>(
+        [&](NpuMaskWrite32Op op) { return !op.getBuffer(); });
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
     patterns.insert<DmaWaitToSyncPattern>(&getContext(), cachingGetter);
+    patterns.insert<MaskWrite32SymToAddr>(&getContext());
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
