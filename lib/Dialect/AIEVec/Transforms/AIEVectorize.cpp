@@ -623,9 +623,9 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
 
 // Generate and return a select operation. The start, offset, etc. for lanes
 // are in opAttr.
-static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
-                                         unsigned lanes, VectState *state,
-                                         Location loc, Value ybuff = nullptr) {
+static aievec::aie1::SelectOp
+generateSelectOp(Value xbuff, AIEOpAttributes &opAttr, unsigned lanes,
+                 VectState *state, Location loc, Value ybuff = nullptr) {
   // Assert that we have computed the attributes (start, offset, etc.) for both
   // lanes, and that select is non-empty.
   assert(!opAttr.select.empty());
@@ -639,7 +639,7 @@ static aievec::SelectOp generateSelectOp(Value xbuff, AIEOpAttributes &opAttr,
   VectorType resultType = createVectorType(lanes, xtype.getElementType());
 
   // Create AIE dialect select op
-  auto selectOp = state->builder.create<aievec::SelectOp>(
+  auto selectOp = state->builder.create<aievec::aie1::SelectOp>(
       loc, resultType, xbuff, opAttr.select, opAttr.start[0], opAttr.offset[0],
       opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
       opAttr.offset_hi[1], opAttr.square[1], ybuff);

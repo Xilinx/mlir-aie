@@ -1098,7 +1098,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
 // Generate the select intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
-                                    aievec::SelectOp selectOp) {
+                                    aievec::aie1::SelectOp selectOp) {
   Value xbuff = selectOp.getXbuff();
   assert(xbuff && "xbuff empty in select op");
 
@@ -3271,14 +3271,14 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
               [&](auto op) { return printOperation(*this, op); })
           // AievecAie1 ops
           .Case<aievec::aie1::AddOp, aievec::aie1::SubOp, aievec::aie1::FMAOp,
-                aievec::aie1::MulOp>(
+                aievec::aie1::MulOp, aievec::aie1::SelectOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Aievec ops
-          .Case<AddElemOp, ConcatOp, ExtOp, PackOp, SelectOp, SRSOp, SubElemOp,
-                UPDOp, UPSOp, FMAElemOp, MulElemOp, BroadcastOp,
-                BroadcastScalarOp, MulConvOp, FMAConvOp, ShiftOp, ShuffleOp,
-                CastOp, MinOp, MaxOp, NegOp, CmpOp, SelOp, ExtElemOp, BxorOp,
-                BnegOp, BandOp, BorOp, UnpackOp, MatMulOp, LegacyShuffleOp>(
+          .Case<AddElemOp, ConcatOp, ExtOp, PackOp, SRSOp, SubElemOp, UPDOp,
+                UPSOp, FMAElemOp, MulElemOp, BroadcastOp, BroadcastScalarOp,
+                MulConvOp, FMAConvOp, ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp,
+                NegOp, CmpOp, SelOp, ExtElemOp, BxorOp, BnegOp, BandOp, BorOp,
+                UnpackOp, MatMulOp, LegacyShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
