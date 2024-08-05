@@ -111,7 +111,6 @@ def main(opts):
                 print("Verifying results ...")
             ref = np.arange(1, INOUT0_VOLUME + 1, dtype=INOUT0_DATATYPE) * scale_factor
             e = np.equal(output_buffer, ref)
-            print(ref, output_buffer)
             errors = errors + np.size(e) - np.count_nonzero(e)
 
         # Write trace values if trace_size > 0
