@@ -61,6 +61,29 @@ Interfaces: `InferTypeOpInterface`
 &laquo;unnamed&raquo; | index
 
 
+### `aie.bd_chain` (::xilinx::AIE::BDChainOp)
+
+_Definition of a Parametrizable Chain of Buffer Descriptors_
+
+This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
+Currently, only buffers and locks are parametrizable.
+
+Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
+At its usage sites, the abstract BD chain will be concretized with the given input arguments.
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>entry_arg_types_attr</code></td><td>::mlir::TypeAttr</td><td>type attribute of tuple</td></tr>
+</table>
+
+
 ### `aie.buffer` (::xilinx::AIE::BufferOp)
 
 _Declare a buffer_
@@ -535,8 +558,6 @@ counts before and after a dimension, to all dimensions in the data layout transf
 counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
 `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
 is 0). All counts are expressed in multiples of the element width.
-
-Traits: `HasParent<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>`
 
 #### Attributes:
 
@@ -1104,7 +1125,7 @@ Example:
   }
 ```
 
-Traits: `HasParent<MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp>`, `Terminator`
+Traits: `Terminator`
 
 #### Successors:
 
