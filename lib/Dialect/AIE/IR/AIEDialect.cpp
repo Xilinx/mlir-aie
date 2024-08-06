@@ -1581,10 +1581,6 @@ ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // offset
   if (succeeded(parser.parseOptionalComma())) {
-    // if (parser.parseKeyword("offset"))
-    //   return failure();
-    // if (parser.parseEqual())
-    //   return failure();
     if (parser.parseCustomAttributeWithFallback(
             offsetAttr, parser.getBuilder().getIntegerType(32))) {
       return failure();
@@ -1597,10 +1593,6 @@ ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // len
   if (succeeded(parser.parseOptionalComma())) {
-    // if (parser.parseKeyword("len"))
-    //   return failure();
-    // if (parser.parseEqual())
-    //   return failure();
     if (parser.parseCustomAttributeWithFallback(
             lenAttr, parser.getBuilder().getIntegerType(32))) {
       return failure();
@@ -1682,15 +1674,11 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
                   ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
                   0)) {
     printer << ",";
-    // printer << ' ' << "offset";
-    // printer << ' ' << "=";
     printer << ' ';
     printer.printAttributeWithoutType(getOffsetAttr());
   }
   if (getLenAttr()) {
     printer << ",";
-    // printer << ' ' << "len";
-    // printer << ' ' << "=";
     printer << ' ';
     printer.printAttributeWithoutType(getLenAttr());
   }
