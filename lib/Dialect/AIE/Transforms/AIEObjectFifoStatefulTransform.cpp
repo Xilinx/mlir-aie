@@ -13,7 +13,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -663,7 +663,8 @@ struct AIEObjectFifoStatefulTransformPass
       auto highestStride = dims.getValue().begin()->getStride() - 1;
       if (highestStride == 0) {
         repeatCount = dims.getValue().begin()->getSize();
-        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(), dims.getValue().drop_front(1));
+        dims = AIE::BDDimLayoutArrayAttr::get(op->getContext(),
+                                              dims.getValue().drop_front(1));
       }
     }
     if (op.getMemtileRepeat().has_value())
@@ -773,8 +774,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, repeatCount, bdBlock,
-                               endBlock);
+                               channelIndex, repeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
