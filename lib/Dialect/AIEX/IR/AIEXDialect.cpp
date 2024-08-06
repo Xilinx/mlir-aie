@@ -556,17 +556,32 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
   return bd.getBdId().value();
 }
 
-LogicalResult AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op, PatternRewriter &rewriter) {
+LogicalResult
+AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
+                                       PatternRewriter &rewriter) {
   // Verify inlined basic blocks do form a chain reachable from the start;
   // Remove empty blocks
   Region &body = op.getBody();
+  bool did_rewrite = false;
   for (auto it = body.begin(); it != body.end(); ++it) {
     Block &block = *it;
     auto ops_it = block.without_terminator();
     if (std::distance(ops_it.begin(), ops_it.end()) == 0) {
-      rewriter.eraseBlock(&block);
+      rewriter.eraseOp(block.getTerminator());
+      did_rewrite = true;
       continue;
     }
+  }
+  if (did_rewrite) {
+    return success();
+  }
+  return failure();
+}
+
+LogicalResult AIEX::DMAConfigureTaskOp::verify() {
+  Region &body = getBody();
+  for (auto it = body.begin(); it != body.end(); ++it) {
+    Block &block = *it;
     if (block.hasNoPredecessors() && !block.isEntryBlock()) {
       auto error = block.getTerminator()->emitError(
           "Block ending in this terminator does not form a chain with "

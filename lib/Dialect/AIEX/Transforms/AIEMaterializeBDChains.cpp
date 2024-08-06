@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Analysis/CallGraph.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/Pass.h"
@@ -26,14 +27,19 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct DMAInlineBDChainPattern : OpConversionPattern<DMAStartBdChainOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct DMAInlineBDChainPattern : RewritePattern {
 
-  LogicalResult
-  matchAndRewrite(DMAStartBdChainOp start_op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  DMAInlineBDChainPattern(MLIRContext *ctx)
+      : RewritePattern(DMAStartBdChainOp::getOperationName(), PatternBenefit(1),
+                       ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    DMAStartBdChainOp start_op = llvm::dyn_cast<DMAStartBdChainOp>(op);
+    if (!start_op) { // Not a match.
+      return failure();
+    }
     AIE::DeviceOp device = start_op->getParentOfType<AIE::DeviceOp>();
-
     rewriter.setInsertionPointAfter(start_op);
 
     // Get referenced abstract BD chain
@@ -61,7 +67,7 @@ struct DMAInlineBDChainPattern : OpConversionPattern<DMAStartBdChainOp> {
     source_region.cloneInto(&target_region, arg_map);
 
     // Replace result of dma start task with result of bd chain configuration
-    start_op.getResult().replaceAllUsesWith(configure_op.getResult());
+    rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());
 
     // Remove definition too if this was the only/last usage of it
     if (SymbolTable::symbolKnownUseEmpty(chain_def, device)) {
@@ -91,6 +97,7 @@ struct AIEMaterializeBDChainsPass
     target.addIllegalOp<DMAStartBdChainOp>();
     RewritePatternSet patterns(ctx);
     patterns.insert<DMAInlineBDChainPattern>(ctx);
+    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns, ctx);
     if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns)))) {
       signalPassFailure();
     }
