@@ -464,8 +464,7 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
   matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto extOp =
-        dyn_cast<vector::ExtractOp>(adaptor.getSource().getDefiningOp());
+    auto extOp = adaptor.getSource().getDefiningOp<vector::ExtractOp>();
 
     if (!extOp)
       return failure();
