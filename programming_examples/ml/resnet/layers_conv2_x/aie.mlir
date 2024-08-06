@@ -880,7 +880,7 @@ aie.device(npu1_3col) {
     } { link_with="conv2dk1_skip.o" }
 
 
-  func.func @sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
+  aiex.runtime_sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
                   // Trace output
 
       // Trace_Event0, Trace_Event1: Select which events to trace.
@@ -970,24 +970,24 @@ aie.device(npu1_3col) {
 
 
 
-      aiex.npu.rtp_write(0, 2, 0,  1) { buffer_sym_name = "rtp2" }
-      aiex.npu.rtp_write(0, 3, 0,  1) { buffer_sym_name = "rtp3" }
-      aiex.npu.rtp_write(0, 5, 0,  1) { buffer_sym_name = "rtp4" }
-      aiex.npu.rtp_write(0, 4, 0,  1)  { buffer_sym_name = "rtp5" }
-      aiex.npu.rtp_write(0, 4, 1,  0)  { buffer_sym_name = "rtp5" }
-      aiex.npu.rtp_write(0, 4, 2,  1)  { buffer_sym_name = "rtp5" }
+      aiex.npu.rtp_write(@rtp2, 0, 1)
+      aiex.npu.rtp_write(@rtp3, 0, 1)
+      aiex.npu.rtp_write(@rtp4, 0, 1)
+      aiex.npu.rtp_write(@rtp5, 0, 1)
+      aiex.npu.rtp_write(@rtp5, 1, 0)
+      aiex.npu.rtp_write(@rtp5, 2, 1)
 
-      aiex.npu.rtp_write(1, 5, 0,  1) { buffer_sym_name = "rtp15" }
-      aiex.npu.rtp_write(1, 4, 0,  1) { buffer_sym_name = "rtp14" }
-      aiex.npu.rtp_write(1, 2, 0,  1) { buffer_sym_name = "rtp12" }
-      aiex.npu.rtp_write(1, 3, 0,  1)  { buffer_sym_name = "rtp13" }
-      aiex.npu.rtp_write(1, 3, 1,  0)  { buffer_sym_name = "rtp13" }
+      aiex.npu.rtp_write(@rtp15, 0, 1)
+      aiex.npu.rtp_write(@rtp14, 0, 1)
+      aiex.npu.rtp_write(@rtp12, 0, 1)
+      aiex.npu.rtp_write(@rtp13, 0, 1)
+      aiex.npu.rtp_write(@rtp13, 1, 0)
 
-      aiex.npu.rtp_write(2, 2, 0,  1) { buffer_sym_name = "rtp22" }
-      aiex.npu.rtp_write(2, 3, 0,  1) { buffer_sym_name = "rtp23" }
-      aiex.npu.rtp_write(2, 5, 0,  1) { buffer_sym_name = "rtp25" }
-      aiex.npu.rtp_write(2, 4, 0,  1)  { buffer_sym_name = "rtp24" }
-      aiex.npu.rtp_write(2, 4, 1,  0)  { buffer_sym_name = "rtp24" }
+      aiex.npu.rtp_write(@rtp22, 0, 1)
+      aiex.npu.rtp_write(@rtp23, 0, 1)
+      aiex.npu.rtp_write(@rtp25, 0, 1)
+      aiex.npu.rtp_write(@rtp24, 0, 1)
+      aiex.npu.rtp_write(@rtp24, 1, 0)
 
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
@@ -999,14 +999,13 @@ aie.device(npu1_3col) {
       %total_wts_3_off = arith.constant  35840 : i64
 
       //dma_memcpy_nd ([offset in 32b words][length in 32b words][stride in 32b words])
-      aiex.npu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %in0[0, 0, 0, 0][1, 1, 1, %act_in][0, 0, 0, 1]) {id = 0 : i64, metadata = @inOF_act_L3L2} : memref<16384xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %out[0, 0, 0, 0][1, 1, 1, %act_out][0, 0, 0, 1]) {id = 2 : i64, metadata = @outOFL2L3} : memref<65536xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, 0][1, 1, 1, %total_wts][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_0_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
+      aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
 
       aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
-      return
     }
 
     }

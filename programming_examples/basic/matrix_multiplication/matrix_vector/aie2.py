@@ -32,26 +32,36 @@ def my_matmul():
     m_x_k = m * k
     m_x_K = m * K
 
-    vectorized = True
+    # FIXME vectorized kernel is currently erroneous
+    vectorized = False
+
+    dtype_in = T.i16
+    dtype_in_str = "i16"
+    dtype_out = T.i32
+    dtype_out_str = "i32"
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu1_4col)
         def device_body():
-            memRef_inA_ty = T.memref(m * k, T.bf16())
-            memRef_inB_ty = T.memref(k, T.bf16())
-            memRef_outC_ty = T.memref(m, T.f32())
-            memRef_A_ty = T.memref(m, k, T.bf16())
+            memRef_inA_ty = T.memref(m * k, dtype_in())
+            memRef_inB_ty = T.memref(k, dtype_in())
+            memRef_outC_ty = T.memref(m, dtype_out())
+            memRef_A_ty = T.memref(m, k, dtype_in())
 
             # AIE Core Function declarations
-            zero_scalar = external_func("zero_scalar_f32", inputs=[memRef_outC_ty])
-            zero = external_func("zero_vectorized_f32", inputs=[memRef_outC_ty])
+            zero_scalar = external_func(
+                f"zero_scalar_{dtype_out_str}", inputs=[memRef_outC_ty]
+            )
+            zero = external_func(
+                f"zero_vectorized_{dtype_out_str}", inputs=[memRef_outC_ty]
+            )
             matvec_scalar = external_func(
-                "matvec_scalar_bf16_f32",
+                f"matvec_scalar_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
             )
             matvec = external_func(
-                "matvec_vectorized_bf16_f32",
+                f"matvec_vectorized_{dtype_in_str}_{dtype_out_str}",
                 inputs=[memRef_A_ty, memRef_inB_ty, memRef_outC_ty],
             )
 
@@ -96,11 +106,15 @@ def my_matmul():
                     cores[i],
                     2,
                     memRef_A_ty,
-                    [
-                        (k // 2 // 2, 2),
-                        (m, k),
-                        (2, 1),
-                    ],  # transpose at 4-byte (2xbf16) granularity
+                    (
+                        [
+                            (k // 2 // 2, 2),
+                            (m, k),
+                            (2, 1),
+                        ]
+                        if vectorized
+                        else []
+                    ),  # transpose at 4-byte (2xbf16) granularity
                 )
                 object_fifo_link(
                     memA_fifos[memA_fifo_names[i]], inA_fifos[inA_fifo_names[i]]
@@ -128,14 +142,17 @@ def my_matmul():
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
-                @core(cores[i], "mv.o")
+                @core(cores[i], f"mv_{m}x{k}.o")
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
                         elem_out = outC_fifos[outC_fifo_names[i]].acquire(
                             ObjectFifoPort.Produce,
                             1,
                         )
-                        call(zero, [elem_out])
+                        if vectorized or True:
+                            call(zero, [elem_out])
+                        else:
+                            call(zero_scalar, [elem_out])
 
                         for _ in for_(K_div_k):
                             elem_in_a = inA_fifos[inA_fifo_names[i]].acquire(
@@ -146,7 +163,10 @@ def my_matmul():
                                 ObjectFifoPort.Consume,
                                 1,
                             )
-                            call(matvec, [elem_in_a, elem_in_b, elem_out])
+                            if vectorized:
+                                call(matvec, [elem_in_a, elem_in_b, elem_out])
+                            else:
+                                call(matvec_scalar, [elem_in_a, elem_in_b, elem_out])
                             inA_fifos[inA_fifo_names[i]].release(
                                 ObjectFifoPort.Consume,
                                 1,
@@ -165,10 +185,10 @@ def my_matmul():
 
             # To/from AIE-array data movement
 
-            @FuncOp.from_py_func(
-                T.memref(A_sz, T.bf16()),
-                T.memref(B_sz, T.bf16()),
-                T.memref(C_sz, T.f32()),
+            @runtime_sequence(
+                T.memref(A_sz, dtype_in()),
+                T.memref(B_sz, dtype_in()),
+                T.memref(C_sz, dtype_out()),
             )
             def sequence(A, B, C):
                 npu_dma_memcpy_nd(
@@ -176,7 +196,7 @@ def my_matmul():
                     bd_id=2,
                     mem=B,
                     sizes=[M_div_m_div_n_cores, 1, 1, K],
-                    strides=[0, 0, 0],
+                    strides=[0, 0, 0, 1],
                 )
                 for i in range(n_cores):
                     A_offset = i * M_div_m_div_n_cores * m * K
@@ -187,7 +207,7 @@ def my_matmul():
                         mem=A,
                         offsets=[0, 0, 0, A_offset],
                         sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                        strides=[m_x_K, k, K],
+                        strides=[m_x_K, k, K, 1],
                     )
                     npu_dma_memcpy_nd(
                         metadata=outC_fifo_names[i],
@@ -195,7 +215,7 @@ def my_matmul():
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
                         sizes=[1, 1, 1, C_sz_div_n_cores],
-                        strides=[0, 0, 0],
+                        strides=[0, 0, 0, 1],
                     )
 
                 for i in range(n_cores):

@@ -13,6 +13,7 @@
 
 #include "aie/Targets/AIETargets.h"
 
+#include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
@@ -28,7 +29,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/IndentedOstream.h"
-#include "mlir/Support/MathExtras.h"
 
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallSet.h"
@@ -37,6 +37,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <limits>
 #include <numeric>
@@ -87,7 +88,7 @@ LogicalResult interleaveCommaWithError(const Container &c, raw_ostream &os,
 namespace {
 /// Emitter that uses dialect specific emitters to emit C++ code.
 struct CppEmitter {
-  explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aieml);
+  explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aie2);
 
   /// Emits attribute or returns failure.
   LogicalResult emitAttribute(Location loc, Attribute attr);
@@ -200,7 +201,7 @@ struct CppEmitter {
   /// be declared at the beginning of a function.
   bool shouldDeclareVariablesAtTop() { return declareVariablesAtTop; }
 
-  bool aieml() { return aieml_; }
+  bool aie2() { return aie2_; }
 
 private:
   using ValueMapper = llvm::ScopedHashTable<Value, std::string>;
@@ -230,7 +231,7 @@ private:
 
   llvm::SmallSet<StringRef, 16> includeNames;
 
-  bool aieml_;
+  bool aie2_;
 };
 } // namespace
 
@@ -260,7 +261,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             // If the underlying element types are float, then we do not really
             // need an srs op if source of srsOp has only one use.
             Value source = srsOp.getSource();
-            if (!emitter.aieml() && llvm::isa<FloatType>(eltType) &&
+            if (!emitter.aie2() && llvm::isa<FloatType>(eltType) &&
                 source.getDefiningOp()->hasOneUse()) {
               StringRef srcName = emitter.getOrCreateName(source);
               emitter.setName(srsOp->getResult(0), srcName);
@@ -276,7 +277,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
             // If the underlying element types are float, then we do not really
             // need a ups op if the source accumulator has only one use.
             Value source = upsOp.getSource();
-            if (!emitter.aieml() && llvm::isa<FloatType>(eltType) &&
+            if (!emitter.aie2() && llvm::isa<FloatType>(eltType) &&
                 source.getDefiningOp()->hasOneUse()) {
               StringRef srcName = emitter.getOrCreateName(source);
               emitter.setName(upsOp->getResult(0), srcName);
@@ -600,9 +601,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
   }
 
   // If the vector size to be loaded is less than or equal to 256, we
-  // can just do a direct memory copy. If the translation is for AIEML,
+  // can just do a direct memory copy. If the translation is for AIE2,
   // this number should be doubled
-  if (vecSizeInBits <= (emitter.aieml() ? 1024 : 256)) {
+  if (vecSizeInBits <= (emitter.aie2() ? 1024 : 256)) {
     // Print the lhs
     if (failed(emitter.emitAssignPrefix(*updOp)))
       return failure();
@@ -702,7 +703,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
 
   // If the underlying element types are float, then we do not really need a
   // ups op. We can simply generate an assignment
-  if (!emitter.aieml() && llvm::isa<FloatType>(eltType)) {
+  if (!emitter.aie2() && llvm::isa<FloatType>(eltType)) {
     os << emitter.getOrCreateName(source);
     return success();
   }
@@ -715,9 +716,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
       os << "l";
   }
 
-  if (iType && emitter.aieml()) {
+  if (iType && emitter.aie2()) {
     os << "ups_to_v" << lanes << "acc" << iType.getWidth();
-  } else if (fType && emitter.aieml()) {
+  } else if (fType && emitter.aie2()) {
     os << "ups_to_v16accfloat";
   } else {
     os << "ups";
@@ -725,7 +726,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
 
   os << "(";
   os << emitter.getOrCreateName(source);
-  if (!(fType && emitter.aieml())) {
+  if (!(fType && emitter.aie2())) {
     os << ", ";
     os << std::to_string(shift);
   }
@@ -734,10 +735,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   return success();
 }
 
-// Generate the cast intrinsic for AIE-ML
+// Generate the cast intrinsic for AIE2
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::CastOp castOp) {
-  if (!emitter.aieml()) {
+  if (!emitter.aie2()) {
     return failure();
   }
 
@@ -784,7 +785,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-// Generate the unpack intrinsic for AIE-ML
+// Generate the unpack intrinsic for AIE2
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::UnpackOp unpackOp) {
 
@@ -829,7 +830,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   // If the underlying element types are float, then we do not really need an
   // srs op. We can simply generate an assignment
   if (llvm::isa<FloatType>(eltType)) {
-    if (emitter.aieml()) {
+    if (emitter.aie2()) {
       if (unsigned width = getElementSizeInBits(resType); width == 32)
         os << "srs";
       else if (width == 16)
@@ -858,7 +859,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   else if (srcWidth == 48 && resultWidth == 8)
     os << "b";
 
-  if (emitter.aieml())
+  if (emitter.aie2())
     os << "srs_to_v" << std::to_string(lanes) << "int"
        << std::to_string(resWidth);
   else
@@ -949,8 +950,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   unsigned lanes = getVectorLaneSize(resType);
   unsigned resWidth = getElementSizeInBits(resType);
 
-  // Print the version of ext for aie-ml
-  if (emitter.aieml()) {
+  // Print the version of ext for AIE2
+  if (emitter.aie2()) {
     os << "extract_v" << std::to_string(lanes);
     if (llvm::isa<IntegerType>(eltType))
       os << "int" << std::to_string(resWidth);
@@ -1333,7 +1334,8 @@ static LogicalResult printFMAOrMulConvOperand(CppEmitter &emitter, T op,
 }
 
 // Generate the Mul op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::MulOp mulOp) {
   auto lhs = mulOp.getLhs();
   auto rhs = mulOp.getRhs();
 
@@ -1368,14 +1370,47 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   os << opname;
   os << "(";
-  if (failed(printFMAOrMulOperand<aievec::MulOp>(emitter, mulOp, 0)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::MulOp>(emitter, mulOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::MulOp>(emitter, mulOp, 1)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::MulOp>(emitter, mulOp, 1)))
     return failure();
   os << ")";
 
   return success();
+}
+// convert operand to 512 bits
+static std::string printConversionTo512bit(CppEmitter &emitter, Value v) {
+  std::string vName = emitter.getOrCreateName(v).str();
+  auto vTy = cast<VectorType>(v.getType());
+  auto vShape = vTy.getShape();
+  int64_t elemBitWidth = vTy.getElementTypeBitWidth();
+  int64_t numElems = std::accumulate(vShape.begin(), vShape.end(), 1,
+                                     std::multiplies<int64_t>());
+  int64_t vBitWidth = numElems * elemBitWidth;
+  if (vBitWidth >= 512)
+    return vName;
+
+  int64_t newNumElems = 512 / elemBitWidth;
+
+  std::string vNewName = emitter.getNewName();
+  raw_indented_ostream &os = emitter.ostream();
+  auto newVecTy = VectorType::get({512 / elemBitWidth}, vTy.getElementType());
+  auto newTyName = *(
+      emitter.genCppTypeName(newVecTy, /*stdintType=*/false, /*isAcc=*/false));
+  auto oldTyName =
+      *(emitter.genCppTypeName(vTy, /*stdintType=*/false, /*isAcc=*/false));
+
+  os << newTyName << " " << vNewName << " = concat(";
+  if (newNumElems / numElems == 4) {
+    os << "concat(" << vName << ", undef_" << oldTyName << "())";
+    oldTyName = *(emitter.genCppTypeName(
+        VectorType::get({256 / elemBitWidth}, vTy.getElementType())));
+  } else {
+    os << vName;
+  }
+  os << ", undef_" << oldTyName << "());\n";
+  return vNewName;
 }
 
 // Generate the MulElem op
@@ -1387,6 +1422,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
   // The sources should have already been emitted
   if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
     return failure();
+
+  auto lhsName = printConversionTo512bit(emitter, lhs);
+  auto rhsName = printConversionTo512bit(emitter, rhs);
 
   std::string opname = "mul_elem";
 
@@ -1417,16 +1455,15 @@ static LogicalResult printOperation(CppEmitter &emitter,
     return failure();
 
   os << opname;
-  os << "(";
-  if (failed(printFMAOrMulElemOperand<aievec::MulElemOp>(emitter, mulElemOp,
-                                                         iType, lsize, 1)))
-    return failure();
-  os << ", ";
-  if (failed(printFMAOrMulElemOperand<aievec::MulElemOp>(emitter, mulElemOp,
-                                                         iType, lsize, 0)))
-    return failure();
+  os << "(" << lhsName;
+  if ((lsize == 32) && iType)
+    os << " ,"
+       << "undef_v16int32()";
+  os << " ," << rhsName;
+  if ((lsize == 32) && iType)
+    os << " , "
+       << "broadcast_zero_s32()";
   os << ")";
-
   return success();
 }
 
@@ -1478,7 +1515,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 // Generate the Add op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::AddOp addOp) {
   auto lhs = addOp.getLhs();
   auto rhs = addOp.getRhs();
 
@@ -1521,10 +1559,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
   // Otherwise this is complex scheme
   os << (floatType ? "fpadd" : "add" + std::to_string(lanes));
   os << "(";
-  if (failed(printAddOrSubOperand<aievec::AddOp>(emitter, addOp, 0)))
+  if (failed(printAddOrSubOperand<aievec::aie1::AddOp>(emitter, addOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printAddOrSubOperand<aievec::AddOp>(emitter, addOp, 1)))
+  if (failed(printAddOrSubOperand<aievec::aie1::AddOp>(emitter, addOp, 1)))
     return failure();
   os << ")";
 
@@ -1532,7 +1570,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
 }
 
 // Generate the Sub op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::SubOp subOp) {
   auto lhs = subOp.getLhs();
   auto rhs = subOp.getRhs();
 
@@ -1575,10 +1614,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
   // Otherwise this is complex scheme
   os << (floatType ? "fpsub" : "sub" + std::to_string(lanes));
   os << "(";
-  if (failed(printAddOrSubOperand<aievec::SubOp>(emitter, subOp, 0)))
+  if (failed(printAddOrSubOperand<aievec::aie1::SubOp>(emitter, subOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printAddOrSubOperand<aievec::SubOp>(emitter, subOp, 1)))
+  if (failed(printAddOrSubOperand<aievec::aie1::SubOp>(emitter, subOp, 1)))
     return failure();
   os << ")";
 
@@ -1829,7 +1868,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 // Generate the FMA op
-static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::aie1::FMAOp fmaOp) {
   auto acc = fmaOp.getAcc();
   auto lhs = fmaOp.getLhs();
   auto rhs = fmaOp.getRhs();
@@ -1867,10 +1907,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   os << "(";
   os << accName;
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::FMAOp>(emitter, fmaOp, 0)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::FMAOp>(emitter, fmaOp, 0)))
     return failure();
   os << ", ";
-  if (failed(printFMAOrMulOperand<aievec::FMAOp>(emitter, fmaOp, 1)))
+  if (failed(printFMAOrMulOperand<aievec::aie1::FMAOp>(emitter, fmaOp, 1)))
     return failure();
   os << ")";
 
@@ -1988,9 +2028,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-// Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE-ML
+// Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE2
 static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
-  if (!emitter.aieml())
+  if (!emitter.aie2())
     return failure();
 
   // The lhs and rhs should have already been emitted
@@ -2048,9 +2088,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
   return success();
 }
 
-// Generate the sel intrinsic for AIE-ML
+// Generate the sel intrinsic for AIE2
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
-  if (!emitter.aieml())
+  if (!emitter.aie2())
     return failure();
 
   // The lhs, rhs and sel should have already been emitted
@@ -2449,8 +2489,10 @@ static LogicalResult printOperation(CppEmitter &emitter, scf::ForOp forOp) {
   if (auto [constantLoopBound, tripCount] = getTripCount(forOp);
       constantLoopBound) {
     auto [constantStep, step] = getStep(forOp);
-    int64_t lb = constantStep && step > 0 ? floorDiv(tripCount, step) : 1;
-    int64_t ub = constantStep && step > 0 ? ceilDiv(tripCount, step) : 0;
+    int64_t lb =
+        constantStep && step > 0 ? llvm::divideFloorSigned(tripCount, step) : 1;
+    int64_t ub =
+        constantStep && step > 0 ? llvm::divideCeilSigned(tripCount, step) : 0;
     os << "chess_loop_range(";
     os << std::to_string(lb);
     os << ", ";
@@ -2708,39 +2750,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-static std::string printConversionTo512bit(CppEmitter &emitter, Value v) {
-  std::string vName = emitter.getOrCreateName(v).str();
-  auto vTy = cast<VectorType>(v.getType());
-  auto vShape = vTy.getShape();
-  int64_t elemBitWidth = vTy.getElementTypeBitWidth();
-  int64_t numElems = std::accumulate(vShape.begin(), vShape.end(), 1,
-                                     std::multiplies<int64_t>());
-  int64_t vBitWidth = numElems * elemBitWidth;
-  if (vBitWidth >= 512)
-    return vName;
-
-  int64_t newNumElems = 512 / elemBitWidth;
-
-  std::string vNewName = emitter.getNewName();
-  raw_indented_ostream &os = emitter.ostream();
-  auto newVecTy = VectorType::get({512 / elemBitWidth}, vTy.getElementType());
-  auto newTyName = *(
-      emitter.genCppTypeName(newVecTy, /*stdintType=*/false, /*isAcc=*/false));
-  auto oldTyName =
-      *(emitter.genCppTypeName(vTy, /*stdintType=*/false, /*isAcc=*/false));
-
-  os << newTyName << " " << vNewName << " = concat(";
-  if (newNumElems / numElems == 4) {
-    os << "concat(" << vName << ", undef_" << oldTyName << "())";
-    oldTyName = *(emitter.genCppTypeName(
-        VectorType::get({256 / elemBitWidth}, vTy.getElementType())));
-  } else {
-    os << vName;
-  }
-  os << ", undef_" << oldTyName << "());\n";
-  return vNewName;
-}
-
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::MatMulOp matmulOp) {
   auto lhs = matmulOp.getLhs();
@@ -2771,8 +2780,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aieml)
-    : os(os), declareVariablesAtTop(declareVariablesAtTop), aieml_(aieml) {
+CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop, bool aie2)
+    : os(os), declareVariablesAtTop(declareVariablesAtTop), aie2_(aie2) {
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
@@ -2933,7 +2942,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   if (auto dense = llvm::dyn_cast<DenseFPElementsAttr>(attr)) {
-    if (aieml() && dense.isSplat()) {
+    if (aie2() && dense.isSplat()) {
       if (auto vType = llvm::dyn_cast<VectorType>(dense.getType()))
         if (auto fType = llvm::dyn_cast<FloatType>(vType.getElementType())) {
           unsigned width = fType.getWidth();
@@ -2976,7 +2985,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
             os << ", 0)";
           }
         }
-      // TODO: Deal with multiple dense value case for AIEML.
+      // TODO: Deal with multiple dense value case for AIE2.
     } else {
       os << '{';
       interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
@@ -3020,7 +3029,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
       if (auto iType = llvm::dyn_cast<IntegerType>(vType.getElementType())) {
         unsigned width = iType.getWidth();
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
-          if (aieml()) {
+          if (aie2()) {
             if (width * getVectorLaneSize(vType) == 1024) {
               os << "concat(broadcast_zero_s" << width << "(), broadcast_zero_s"
                  << width << "())";
@@ -3037,7 +3046,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           return success();
         }
 
-        if (aieml() && dense.isSplat()) {
+        if (aie2() && dense.isSplat()) {
           std::string splatValue;
           if (width == 32)
             splatValue = getSplatValueOfIntDense<int32_t>(dense);
@@ -3054,7 +3063,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           os << ")";
           os << splatValue;
           os << ")";
-          // TODO: Handle multiple dense value case in AIEML.
+          // TODO: Handle multiple dense value case in AIE2.
         } else {
           os << '{';
           interleaveComma(dense, os, [&](const APInt &val) {
@@ -3260,12 +3269,16 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<memref::StoreOp, memref::ExpandShapeOp,
                 memref::CollapseShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<AddOp, AddElemOp, ConcatOp, ExtOp, FMAOp, MulOp, PackOp,
-                SelectOp, SRSOp, SubOp, SubElemOp, UPDOp, UPSOp, FMAElemOp,
-                MulElemOp, BroadcastOp, BroadcastScalarOp, MulConvOp, FMAConvOp,
-                ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp, NegOp, CmpOp, SelOp,
-                ExtElemOp, BxorOp, BnegOp, BandOp, BorOp, UnpackOp, MatMulOp,
-                LegacyShuffleOp>(
+          // AievecAie1 ops
+          .Case<aievec::aie1::AddOp, aievec::aie1::SubOp, aievec::aie1::FMAOp,
+                aievec::aie1::MulOp>(
+              [&](auto op) { return printOperation(*this, op); })
+          // Aievec ops
+          .Case<AddElemOp, ConcatOp, ExtOp, PackOp, SelectOp, SRSOp, SubElemOp,
+                UPDOp, UPSOp, FMAElemOp, MulElemOp, BroadcastOp,
+                BroadcastScalarOp, MulConvOp, FMAConvOp, ShiftOp, ShuffleOp,
+                CastOp, MinOp, MaxOp, NegOp, CmpOp, SelOp, ExtElemOp, BxorOp,
+                BnegOp, BandOp, BorOp, UnpackOp, MatMulOp, LegacyShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -3379,9 +3392,9 @@ CppEmitter::genCppTypeName(Type type, bool stdintType, bool isAcc) {
     auto iElTy = dyn_cast<IntegerType>(eltType);
     if (iElTy)
       iElTyBitWidth = iElTy.getWidth();
-    if (aieml() && (isAcc || iElTyBitWidth == 64)) {
+    if (aie2() && (isAcc || iElTyBitWidth == 64)) {
       if (iElTy) {
-        // AIE-ML has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
+        // AIE2 has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
         // intrinsics
         if ((numElems == 16 && iElTyBitWidth == 64) ||
             (numElems == 32 && iElTyBitWidth == 32) ||
@@ -3392,7 +3405,7 @@ CppEmitter::genCppTypeName(Type type, bool stdintType, bool isAcc) {
         return {};
       }
       if (isa<FloatType>(eltType)) {
-        // AIE-ML only has a `ups_to_v16accfloat` intrinsic
+        // AIE2 only has a `ups_to_v16accfloat` intrinsic
         ss << "accfloat";
         return ss.str();
       }
@@ -3436,8 +3449,8 @@ LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
   return success();
 }
 
-LogicalResult aievec::translateAIEVecToCpp(Operation *op, bool aieml,
+LogicalResult aievec::translateAIEVecToCpp(Operation *op, bool aie2,
                                            raw_ostream &os) {
-  CppEmitter emitter(os, false, aieml);
+  CppEmitter emitter(os, false, aie2);
   return emitter.emitOperation(*op, /*trailingSemicolon=*/false);
 }

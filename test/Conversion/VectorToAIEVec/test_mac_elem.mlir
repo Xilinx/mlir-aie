@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | FileCheck %s
 
 // CHECK-LABEL: func @test_mac_elem
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<16xi32>

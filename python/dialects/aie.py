@@ -108,7 +108,7 @@ def bd_dim_layout_array_attr_builder(
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
         tups = list(map(lambda t: bd_dim_layout(*t), tups))
     return Attribute.parse(
-        f'#aie<bd_dim_layout_arr[{", ".join(map(str, tups))}]>', context=context
+        f'#aie<bd_dim_layout_array[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -116,7 +116,8 @@ def bd_dim_layout_array_attr_builder(
 def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
     tup_arrs = list(map(bd_dim_layout_array_attr_builder, tup_arrs))
     return Attribute.parse(
-        f'#aie<bd_dim_layout_arr_arr[{", ".join(map(str, tup_arrs))}]>', context=context
+        f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
+        context=context,
     )
 
 
@@ -211,6 +212,7 @@ class object_fifo(ObjectFifoCreateOp):
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         via_DMA=None,
+        plio=None,
     ):
         self.datatype = datatype
         if not isinstance(consumerTiles, List):
@@ -230,6 +232,7 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsToStream=dimensionsToStream,
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
+            plio=plio,
         )
 
     def acquire(self, port, num_elem):

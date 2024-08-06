@@ -1,5 +1,5 @@
 // REQUIRES: valid_xchess_license
-// RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aieml" -lower-affine -canonicalize -cse | aie-translate --aieml -aievec-to-cpp -o gen_aie.cc
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -lower-affine -canonicalize -cse | aie-translate --aie2 -aievec-to-cpp -o gen_aie.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I. %S/testbench.cc %S/kernel.cc
 // RUN: cp -r %S/data . && xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" | FileCheck %s
 

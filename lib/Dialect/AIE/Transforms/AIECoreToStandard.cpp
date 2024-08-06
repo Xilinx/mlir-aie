@@ -15,6 +15,7 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -554,6 +555,7 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     target.addLegalDialect<VectorDialect>();
     target.addLegalDialect<arith::ArithDialect>();
     target.addLegalDialect<math::MathDialect>();
+    target.addLegalDialect<index::IndexDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     RewritePatternSet patterns(&getContext());

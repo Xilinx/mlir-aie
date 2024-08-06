@@ -324,6 +324,38 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
                             lenInBytes);
   }
 
+  // ND zero padding.
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
+      bdOp.getPadDimensions();
+  if (padDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = static_cast<XAie_PadDesc *>(
+        calloc(dmaPadTensor.NumDim, sizeof(XAie_PadDesc)));
+    if (!dmaPadTensor.PadDesc)
+      return bdOp.emitError("couldn't allocate array of XAie_PadDesc");
+    // libxaie requires stride in multiples of 32b
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    for (size_t i = 0; i < padDims->size(); i++) {
+      // Pass down dimensions in reverse order.
+      int j = padDims->size() - i - 1;
+      uint8_t before;
+      uint8_t after;
+      if (j > 0) {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore());
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter());
+      } else {
+        before = static_cast<uint8_t>(padDims.value()[i].getConstPadBefore() *
+                                      elementWidthIn32bWords);
+        after = static_cast<uint8_t>(padDims.value()[i].getConstPadAfter() *
+                                     elementWidthIn32bWords);
+      }
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
+                            &dmaPadTensor);
+  }
   if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,
@@ -711,6 +743,8 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
+
+  // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
@@ -775,6 +809,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
                                       bool enableCores) {
+
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
@@ -788,10 +823,16 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 
   AIEControl ctl(aieSim, xaieDebug, targetModel);
   initializeCDOGenerator(endianness, cdoDebug);
-  if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
-                                       enableCores);
+
+  auto result = [&]() {
+    if (emitUnified) {
+      return generateCDOUnified(ctl, workDirPath, targetOp, aieSim,
+                                enableCores);
+    }
+    return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
+                                         enableCores);
+  }();
+  return result;
 }
 // Not sure why but defining this with xilinx::AIE will create a duplicate
 // symbol in libAIETargets.a that then doesn't actually match the header?

@@ -39,6 +39,30 @@ using namespace xilinx::aievec;
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
 
+static TargetBackend decodeTargetBackend(const std::string backend) {
+  if (!backend.empty()) {
+    if (backend == "llvmir")
+      return TargetBackend::LLVMIR;
+    else if (backend != "cpp")
+      return TargetBackend::UNKNOWN;
+  }
+  return TargetBackend::CPP;
+}
+
+static AIEArch decodeAIETarget(const std::string target) {
+  if (!target.empty()) {
+    if (target == "aieml" || target == "aie2")
+      return AIEArch::AIE2;
+    else if (target != "aie")
+      return AIEArch::UNKNOWN;
+  }
+  return AIEArch::AIE;
+}
+
+//============================================================================//
+//================== Common AIE canonicalization analysis ====================//
+//============================================================================//
+
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD)
     return false;
@@ -302,6 +326,47 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
   }
 };
 
+// This pattern swaps a UnaryOpA followed by UnaryOpB. This pattern can be used
+// to improve pattern matching for mixed-type arithmetic ops, by getting sign
+// extension ops closer to the single-type arithmetic operations.
+template <class UnaryOpA, class UnaryOpB>
+struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
+  using OpRewritePattern<UnaryOpB>::OpRewritePattern;
+  // This function takes the chain of operations A->B, and returns the new type
+  // between B and A after the swap.
+  using InferTypeB2AFnTy = std::function<Type(UnaryOpA aOp, UnaryOpB bOp)>;
+  InferTypeB2AFnTy inferTypeB2A = nullptr;
+
+  SwapUnaryOpsPattern(MLIRContext *context, InferTypeB2AFnTy inferType)
+      : OpRewritePattern<UnaryOpB>(context), inferTypeB2A(inferType) {}
+
+  LogicalResult matchAndRewrite(UnaryOpB bOp,
+                                PatternRewriter &rewriter) const override {
+    static_assert(
+        UnaryOpA::template hasTrait<OpTrait::OneOperand>(),
+        "SwapUnaryOps can only be instantiated for single-operand ops");
+    static_assert(
+        UnaryOpB::template hasTrait<OpTrait::OneOperand>(),
+        "SwapUnaryOps can only be instantiated for single-operand ops");
+    UnaryOpA aOp = bOp.getOperand().template getDefiningOp<UnaryOpA>();
+    if (!aOp)
+      return rewriter.notifyMatchFailure(bOp, UnaryOpB::getOperationName() +
+                                                  " not preceeded by " +
+                                                  UnaryOpA::getOperationName());
+
+    Type newA2BTy = inferTypeB2A(aOp, bOp);
+
+    auto newA =
+        rewriter.create<UnaryOpB>(bOp->getLoc(), SmallVector<Type>({newA2BTy}),
+                                  aOp->getOperands(), bOp->getAttrs());
+    auto newB = rewriter.create<UnaryOpA>(
+        bOp->getLoc(), SmallVector<Type>({bOp.getResult().getType()}),
+        newA->getResults(), aOp->getAttrs());
+    rewriter.replaceOp(bOp, newB.getResult());
+    return success();
+  }
+};
+
 static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
                                                       Location loc, int numDims,
                                                       ValueRange indices,
@@ -388,8 +453,8 @@ struct FlattenMultDimTransferReadPattern
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds = llvm::to_vector(
-          inBoundsArrayAttrOpt.value().getAsValueRange<BoolAttr>());
+      SmallVector<bool> inBounds =
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -448,8 +513,8 @@ struct FlattenMultDimTransferWritePattern
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds = llvm::to_vector(
-          inBoundsArrayAttrOpt.value().getAsValueRange<BoolAttr>());
+      SmallVector<bool> inBounds =
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -563,7 +628,7 @@ struct ExtractTransposeFromContractionOp
 };
 
 //============================================================================//
-//============ AIEML canonicalization conversion patterns ===============//
+//============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
 
 //============================================================================//
@@ -605,11 +670,11 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns,
 }
 
 //============================================================================//
-//============== AIEML-specific canonicalization configuration ===============//
+//============== AIE2-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
-                                                    TargetBackend backend) {
+static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target,
+                                                   TargetBackend backend) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -628,8 +693,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target,
 }
 
 static void
-populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns,
-                                            TargetBackend backend) {
+populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns,
+                                           TargetBackend backend) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
   patterns
@@ -680,7 +745,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
@@ -697,33 +762,23 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    AIEArch aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml") {
-        aieVersion = AIEArch::AIE_ML;
-      } else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        signalPassFailure();
-        return;
-      }
+    AIEArch aieVersion = decodeAIETarget(aieTarget);
+    if (aieVersion == AIEArch::UNKNOWN) {
+      op->emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
     }
 
-    TargetBackend backend = TargetBackend::CPP;
-    if (!targetBackend.empty()) {
-      std::string backendStr = targetBackend;
-      if (backendStr == "llvmir") {
-        backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
-        signalPassFailure();
-        return;
-      }
+    TargetBackend backend = decodeTargetBackend(targetBackend);
+    if (backend == TargetBackend::UNKNOWN) {
+      op->emitError() << "unknown target backend '" << targetBackend << "'";
+      signalPassFailure();
+      return;
+    }
+    if (backend == TargetBackend::LLVMIR && aieVersion == AIEArch::AIE) {
+      op->emitError() << "targetting LLVM IR is not supported for AIEv1";
+      signalPassFailure();
+      return;
     }
 
     populateCommonAIECanonicalizeConversionPatterns(patterns, backend);
@@ -732,8 +787,8 @@ struct CanonicalizeVectorForAIEVecPass
       populateAIEv1CanonicalizeConversionPatterns(patterns, backend);
       configureAIEv1CanonicalizeLegalizations(target, backend);
     } else {
-      populateAIEMLCanonicalizeConversionPatterns(patterns, backend);
-      configureAIEMLCanonicalizeLegalizations(target, backend);
+      populateAIE2CanonicalizeConversionPatterns(patterns, backend);
+      configureAIE2CanonicalizeLegalizations(target, backend);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
@@ -765,6 +820,33 @@ static std::unique_ptr<::mlir::Pass> createHoistCastOpToDataSourcePass() {
   return std::make_unique<HoistCastOpToDataSourcePass>();
 }
 
+struct ReorderOperationsPass
+    : public PassWrapper<ReorderOperationsPass, OperationPass<>> {
+
+  void runOnOperation() override {
+    auto op = getOperation();
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+
+    patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>>(
+        patterns.getContext(),
+        [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -> Type {
+          Type extInElemTy = extOp.getIn().getType();
+          auto extInVecTy = dyn_cast<VectorType>(extInElemTy);
+          if (extInVecTy)
+            extInElemTy = extInVecTy.getElementType();
+          return VectorType::get(bcastOp.getResultVectorType().getShape(),
+                                 extInElemTy);
+        });
+
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+  }
+};
+
+static std::unique_ptr<::mlir::Pass> createReorderOperationsPass() {
+  return std::make_unique<ReorderOperationsPass>();
+}
+
 //============================================================================//
 //=============== Main Vector2Vector Pipeline Configuration ==================//
 //============================================================================//
@@ -774,7 +856,10 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
+  if (decodeTargetBackend(options.targetBackend) == TargetBackend::LLVMIR)
+    pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
-  pm.addPass(createHoistCastOpToDataSourcePass());
+  if (decodeTargetBackend(options.targetBackend) == TargetBackend::CPP)
+    pm.addPass(createHoistCastOpToDataSourcePass());
 }

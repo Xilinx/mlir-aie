@@ -14,6 +14,7 @@
 # CHECK: aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
 # CHECK: aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
 # CHECK: aiex.npu.writebd {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d2_stride = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
+# CHECK: aiex.npu.address_patch {addr = 118884 : ui32, arg_idx = 2 : i32, arg_plus = 1024 : i32}
 # CHECK: aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
 
 import sys
@@ -80,7 +81,7 @@ def passthroughKernel():
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
-            @FuncOp.from_py_func(tensor_ty, tensor_ty, tensor_ty)
+            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
                 if enableTrace:
                     configure_simple_tracing_aie2(
@@ -93,7 +94,16 @@ def passthroughKernel():
                         offset=tensorSize,
                         start=0x1,
                         stop=0x0,
-                        events=[0x4B, 0x22, 0x21, 0x25, 0x2D, 0x2C, 0x1A, 0x4F],
+                        events=[
+                            PortEvent(0x4B, 1, True),
+                            0x22,
+                            0x21,
+                            0x25,
+                            0x2D,
+                            0x2C,
+                            0x1A,
+                            PortEvent(0x4F, 1, False),
+                        ],
                     )
 
                 npu_dma_memcpy_nd(

@@ -14,7 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h" // Eddie added to get the NPU func ops
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -68,23 +68,15 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Putting the standard header
   output << hsa_cpp_file_header;
 
-  // Getting the func op which has the data movement
-  if (targetOp.getOps<mlir::func::FuncOp>().empty()) {
-    return success();
-  }
-
   // Getting the sequence function op which contains the instructions
-  mlir::func::FuncOp funcOp = NULL;
-  for (auto op : targetOp.getOps<mlir::func::FuncOp>()) {
-    if (op.getName().str().compare("sequence") == 0) {
-      funcOp = op;
-    }
-  }
-
-  // If no funcOp then just return
-  if (funcOp == NULL) {
+  auto sequenceOps = targetOp.getOps<AIEX::RuntimeSequenceOp>();
+  if (sequenceOps.empty()) {
+    // If no sequenceOp then just return
     return success();
+  } else if (std::distance(sequenceOps.begin(), sequenceOps.end()) > 1) {
+    return module.emitOpError("expected at most one sequence operation");
   }
+  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -95,10 +87,11 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   // Looping over every Memcpy operation so we take the correct number of
   // buffers
   int num_ops = 0;
-  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
+  for (auto op : sequenceOp.getOps<NpuDmaMemcpyNdOp>()) {
     // Getting the IDs of the buffers
     auto memref = op.getMemref();
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    Block &entryBB =
+        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -117,8 +110,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
   output << "\tuint64_t packet_id = 0;\n";
 
   int op_count = 0;
-  for (auto op : funcOp.getOps<NpuDmaMemcpyNdOp>()) {
-    auto dev = funcOp->getParentOfType<AIE::DeviceOp>();
+  for (auto op : sequenceOp.getOps<NpuDmaMemcpyNdOp>()) {
+    auto dev = sequenceOp->getParentOfType<AIE::DeviceOp>();
     if (!dev) {
       op.emitOpError("couldn't get DeviceOp");
       return failure();
@@ -134,8 +127,9 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     uint32_t ChannelId = infoOp->getChannelIndex();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
     int col = infoOp->getCol();
+    bool isPlio = infoOp->getPlio();
 
-    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     ::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
@@ -162,7 +156,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
 
     // Getting the ID of the buffer that we are using
     auto memref = op.getMemref();
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    Block &entryBB =
+        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -171,6 +166,10 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
       }
     }
 
+    if (strides[0] != 1)
+      return module.emitOpError("nd_memcpy inner-dimension stride != 1 is "
+                                "unsupported by HSA target");
+
     // Writing the packet information to perform the DMA
     output << "\thsa_agent_dispatch_packet_t pkt" << op_count << " ;\n";
     output << "\twr_idx  = hsa_queue_add_write_index_relaxed(q, 1);\n";
@@ -178,13 +177,14 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     output << "\tmlir_aie_packet_nd_memcpy(&pkt" << op_count
            << ", 0 /* herd_id */, " << col << " /* col */, " << isMM2S
            << " /* dir */, " << ChannelId
-           << "/* channel */, 4 /* Burst length */, 2 /* Memory space */, "
+           << "/* channel */, 4 /* Burst length */, " << (isPlio ? 1 : 2)
+           << " /* Memory space */, "
               "(uint64_t)buf"
            << arg_idx << " + " << offset << " /* Address */, " << sizes[0] * 4
-           << " /* 1d_length */, " << (strides[0] ? sizes[1] : 1)
-           << " /* 2d_length */, " << (strides[0] ? strides[0] * 4 : 0)
-           << " /* 2d_stride */, " << (strides[1] ? sizes[2] : 1)
-           << " /* 3d_length */, " << (strides[1] ? strides[1] * 4 : 0)
+           << " /* 1d_length */, " << (strides[1] ? sizes[1] : 1)
+           << " /* 2d_length */, " << (strides[1] ? strides[1] * 4 : 0)
+           << " /* 2d_stride */, " << (strides[2] ? sizes[2] : 1)
+           << " /* 3d_length */, " << (strides[2] ? strides[2] * 4 : 0)
            << " /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n";
 
     bool last_op = op_count == (num_ops - 1);

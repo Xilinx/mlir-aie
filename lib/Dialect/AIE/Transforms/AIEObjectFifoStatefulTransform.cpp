@@ -982,11 +982,12 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
-                                      int channelIndex) {
+                                      int channelIndex, bool plio) {
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex));
+                                        builder.getI64IntegerAttr(colIndex),
+                                        builder.getBoolAttr(plio));
   }
 
   void runOnOperation() override {
@@ -995,6 +996,8 @@ struct AIEObjectFifoStatefulTransformPass
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     auto ctx = device->getContext();
+    auto producerWireType = WireBundle::DMA;
+    auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
@@ -1134,13 +1137,15 @@ struct AIEObjectFifoStatefulTransformPass
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
+
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
             producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel);
+            producerChan.channel, producer.getPlio());
 
       for (auto consumer : consumers) {
+
         // create consumer tile DMA
         DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
@@ -1150,18 +1155,32 @@ struct AIEObjectFifoStatefulTransformPass
                   consumerChan.channel, 1, consumerDims);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
+
+        // If we have PLIO then figure out the direction and make that a PLIO
+        if (producer.getPlio()) {
+          producerWireType = producer.getProducerTileOp().isShimTile()
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+          consumerWireType = !(producer.getProducerTileOp().isShimTile())
+                                 ? WireBundle::PLIO
+                                 : WireBundle::DMA;
+        } else {
+          producerWireType = WireBundle::DMA;
+          consumerWireType = WireBundle::DMA;
+        }
+
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel);
+              consumerChan.channel, producer.getPlio());
 
         // create flow
         builder.setInsertionPointAfter(producer);
         builder.create<FlowOp>(builder.getUnknownLoc(),
-                               producer.getProducerTile(), WireBundle::DMA,
+                               producer.getProducerTile(), producerWireType,
                                producerChan.channel, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.channel);
+                               consumerWireType, consumerChan.channel);
       }
     }
 

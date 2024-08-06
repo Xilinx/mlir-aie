@@ -22,6 +22,7 @@ def AIEVectorize : Pass<"aie-vectorize", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::affine::AffineDialect",
     "xilinx::aievec::AIEVecDialect",
+    "xilinx::aievec::aie1::AIEVecAIE1Dialect",
     "mlir::arith::ArithDialect",
     "mlir::memref::MemRefDialect",
     "mlir::scf::SCFDialect",

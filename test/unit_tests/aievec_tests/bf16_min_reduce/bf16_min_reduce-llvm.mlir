@@ -4,7 +4,6 @@
 // REQUIRES: valid_xchess_license
 // REQUIRES: peano
 // RUN: mkdir -p %t/data; cd %t
-// RUN: aie-opt %s %vector-to-aievec% -o aievec.mlir
 // RUN: aie-opt %s %vector-to-llvmir% -o llvmir.mlir
 // RUN: aie-translate llvmir.mlir %llvmir-to-ll% -o dut.ll
 // RUN: %PEANO_INSTALL_DIR/bin/clang %clang_aie2_args -c dut.ll -o dut.o

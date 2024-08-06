@@ -12,8 +12,16 @@
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-bcf %s | FileCheck --check-prefix=BCF44 %s
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-ldscript %s | FileCheck --check-prefix=LD44 %s
 
-// CHECK-LABEL: Tile(5, 4)
-// CHECK: _symbol y 0x28000 32
+// CHECK-LABEL: Tile(3, 4)
+// CHECK: _symbol x 0x28000 32
+// CHECK: _symbol a 0x38000 16
+// CHECK: _symbol b 0x38010 64
+// CHECK: _symbol c 0x38050 1024
+// CHECK-LABEL: Tile(4, 3)
+// CHECK: _symbol a 0x30000 16
+// CHECK: _symbol b 0x30010 64
+// CHECK: _symbol c 0x30050 1024
+// CHECK: _symbol z 0x38000 32
 // CHECK-LABEL: Tile(4, 4)
 // CHECK: _symbol z 0x20000 32
 // CHECK: _symbol a 0x28000 16
@@ -26,16 +34,8 @@
 // CHECK: _symbol b 0x20010 64
 // CHECK: _symbol c 0x20050 1024
 // CHECK: _symbol t 0x38000 32
-// CHECK-LABEL: Tile(4, 3)
-// CHECK: _symbol a 0x30000 16
-// CHECK: _symbol b 0x30010 64
-// CHECK: _symbol c 0x30050 1024
-// CHECK: _symbol z 0x38000 32
-// CHECK-LABEL: Tile(3, 4)
-// CHECK: _symbol x 0x28000 32
-// CHECK: _symbol a 0x38000 16
-// CHECK: _symbol b 0x38010 64
-// CHECK: _symbol c 0x38050 1024
+// CHECK-LABEL: Tile(5, 4)
+// CHECK: _symbol y 0x28000 32
 
 // BCF44:      _entry_point _main_init
 // BCF44-NEXT: _symbol core_4_4 _after _main_init
@@ -83,8 +83,8 @@
 // LD44-NEXT: {
 // LD44-NEXT:   . = 0x0;
 // LD44-NEXT:  .text : {
-// LD44-NEXT:     /* the _main_init symbol from me_basic.o has to come at address zero. */
-// LD44-NEXT:     *me_basic.o(.text)
+// LD44-NEXT:     /* the _main_init symbol has to come at address zero. */
+// LD44-NEXT:     *crt0.o(.text)
 // LD44-NEXT:     . = 0x200;
 // LD44-NEXT:     _ctors_start = .;
 // LD44-NEXT:     _init_array_start = .;
