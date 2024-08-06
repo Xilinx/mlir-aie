@@ -92,7 +92,8 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
-void appendMaskWrite32(std::vector<uint32_t> &instructions, NpuMaskWrite32Op op) {
+void appendMaskWrite32(std::vector<uint32_t> &instructions,
+                       NpuMaskWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 7);
 
@@ -113,7 +114,7 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions, NpuMaskWrite32Op op)
                ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
   }
   words[3] = 0;
-  words[4] = op.getValue();                   // Value
+  words[4] = op.getValue(); // Value
   words[5] = op.getMask();
   words[6] = words.size() * sizeof(uint32_t); // Operation Size
 }
