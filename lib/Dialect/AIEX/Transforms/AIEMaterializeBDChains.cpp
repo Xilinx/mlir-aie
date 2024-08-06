@@ -39,7 +39,6 @@ struct DMAInlineBDChainPattern : RewritePattern {
     if (!start_op) { // Not a match.
       return failure();
     }
-    AIE::DeviceOp device = start_op->getParentOfType<AIE::DeviceOp>();
     rewriter.setInsertionPointAfter(start_op);
 
     // Get referenced abstract BD chain
@@ -69,11 +68,6 @@ struct DMAInlineBDChainPattern : RewritePattern {
     // Replace result of dma start task with result of bd chain configuration
     rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());
 
-    // Remove definition too if this was the only/last usage of it
-    if (SymbolTable::symbolKnownUseEmpty(chain_def, device)) {
-      chain_def.erase();
-    }
-
     // Add a start BDs instruction
     rewriter.create<DMAStartTaskOp>(start_op.getLoc(),
                                     configure_op.getResult());
@@ -97,8 +91,12 @@ struct AIEMaterializeBDChainsPass
     target.addIllegalOp<DMAStartBdChainOp>();
     RewritePatternSet patterns(ctx);
     patterns.insert<DMAInlineBDChainPattern>(ctx);
+    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
+    rewriter_config.enableRegionSimplification =
+        GreedySimplifyRegionLevel::Disabled;
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns),
+                                            rewriter_config))) {
       signalPassFailure();
     }
   }
