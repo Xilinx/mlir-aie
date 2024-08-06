@@ -30,22 +30,22 @@ func.func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<
     scf.for %arg4 = %c0_3 to %1 step %c8_4 {
       %6 = aievec.upd %arg2[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x?xf32>, vector<8xf32>
       %7 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x?xf32>, vector<16xf32>
-      %8 = aievec.mac %7, %2, %6 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %8 = aievec_aie1.mac %7, %2, %6 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %c1_5 = arith.constant 1 : index
       %9 = arith.addi %arg4, %c1_5 : index
       %10 = aievec.upd %arg0[%arg3, %9], %7 {index = 1 : i8, offset = 224 : i32} : memref<?x?xf32>, vector<16xf32>
-      %11 = aievec.mac %10, %2, %8 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %12 = aievec.mac %10, %2, %11 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %11 = aievec_aie1.mac %10, %2, %8 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %12 = aievec_aie1.mac %10, %2, %11 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %13 = aievec.upd %arg0[%4, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x?xf32>, vector<16xf32>
-      %14 = aievec.mac %13, %2, %12 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %14 = aievec_aie1.mac %13, %2, %12 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %15 = aievec.upd %arg0[%4, %9], %13 {index = 1 : i8, offset = 224 : i32} : memref<?x?xf32>, vector<16xf32>
-      %16 = aievec.mac %15, %2, %14 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %17 = aievec.mac %15, %2, %16 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %16 = aievec_aie1.mac %15, %2, %14 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %17 = aievec_aie1.mac %15, %2, %16 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %18 = aievec.upd %arg0[%5, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x?xf32>, vector<16xf32>
-      %19 = aievec.mac %18, %2, %17 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %19 = aievec_aie1.mac %18, %2, %17 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %20 = aievec.upd %arg0[%5, %9], %18 {index = 1 : i8, offset = 224 : i32} : memref<?x?xf32>, vector<16xf32>
-      %21 = aievec.mac %20, %2, %19 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %22 = aievec.mac %20, %3, %21 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %21 = aievec_aie1.mac %20, %2, %19 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %22 = aievec_aie1.mac %20, %3, %21 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       vector.transfer_write %22, %arg2[%arg3, %arg4] : vector<8xf32>, memref<?x?xf32>
     }
   }
@@ -119,22 +119,22 @@ func.func @conv2d_1(%arg0: memref<?x256xf32>, %arg1: memref<?xf32>, %arg2: memre
     scf.for %arg4 = %c0_2 to %c256 step %c8_3 {
       %5 = aievec.upd %arg2[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x256xf32>, vector<8xf32>
       %6 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x256xf32>, vector<16xf32>
-      %7 = aievec.mac %6, %1, %5 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %7 = aievec_aie1.mac %6, %1, %5 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %c1_4 = arith.constant 1 : index
       %8 = arith.addi %arg4, %c1_4 : index
       %9 = aievec.upd %arg0[%arg3, %8], %6 {index = 1 : i8, offset = 224 : i32} : memref<?x256xf32>, vector<16xf32>
-      %10 = aievec.mac %9, %1, %7 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %11 = aievec.mac %9, %1, %10 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %10 = aievec_aie1.mac %9, %1, %7 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %11 = aievec_aie1.mac %9, %1, %10 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %12 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x256xf32>, vector<16xf32>
-      %13 = aievec.mac %12, %1, %11 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %13 = aievec_aie1.mac %12, %1, %11 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "3"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %14 = aievec.upd %arg0[%3, %8], %12 {index = 1 : i8, offset = 224 : i32} : memref<?x256xf32>, vector<16xf32>
-      %15 = aievec.mac %14, %1, %13 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %16 = aievec.mac %14, %1, %15 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %15 = aievec_aie1.mac %14, %1, %13 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "4"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %16 = aievec_aie1.mac %14, %1, %15 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "5"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %17 = aievec.upd %arg0[%4, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<?x256xf32>, vector<16xf32>
-      %18 = aievec.mac %17, %1, %16 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %18 = aievec_aie1.mac %17, %1, %16 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "6"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       %19 = aievec.upd %arg0[%4, %8], %17 {index = 1 : i8, offset = 224 : i32} : memref<?x256xf32>, vector<16xf32>
-      %20 = aievec.mac %19, %1, %18 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
-      %21 = aievec.mac %19, %2, %20 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %20 = aievec_aie1.mac %19, %1, %18 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
+      %21 = aievec_aie1.mac %19, %2, %20 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
       vector.transfer_write %21, %arg2[%arg3, %arg4] : vector<8xf32>, memref<?x256xf32>
     }
   }

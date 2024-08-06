@@ -248,28 +248,28 @@ def color_threshold():
 
             tensorSize = width * height
 
-            @FuncOp.from_py_func(
+            @runtime_sequence(
                 T.memref(tensorSize, T.i8()),
                 T.memref(32, T.i32()),  # not used
                 T.memref(tensorSize, T.i8()),
             )
             def sequence(inTensor, notUsed, outTensor):
                 # thresholdValue, maxValue, thresholdType
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile2", col=0, row=2, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile2", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile2", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile2", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile3", col=0, row=3, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile3", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile3", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile3", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile4", col=0, row=4, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile4", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile4", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile4", index=2, value=0)
 
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=0, value=50)
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=1, value=255)
-                NpuWriteRTPOp("rtpComputeTile5", col=0, row=5, index=2, value=0)
+                NpuWriteRTPOp("rtpComputeTile5", index=0, value=50)
+                NpuWriteRTPOp("rtpComputeTile5", index=1, value=255)
+                NpuWriteRTPOp("rtpComputeTile5", index=2, value=0)
 
                 npu_dma_memcpy_nd(
                     metadata="inOOB_L3L2",

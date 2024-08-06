@@ -94,4 +94,4 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
 //      CHECK:        %[[T10:.*]] = aievec.upd %[[A0]][%[[T5]], %[[A4]]] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<64xi8>
 //      CHECK:        %[[T11:.*]] = aievec.fma_conv %[[T10]], %[[T3]], %[[T9]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
 //      CHECK:        %[[T12:.*]] = aievec.srs %[[T11]], %[[C0I32]] : vector<32xi32>, i32, vector<32xi8>
-//      CHECK:        vector.transfer_write %[[T12]], %[[A2]][%[[A3]], %[[A4]]] {in_bounds = [true]} : vector<32xi8>, memref<16x256xi8>
+//      CHECK:        vector.transfer_write %[[T12]], %[[A2]][%[[A3]], %[[A4]]] : vector<32xi8>, memref<16x256xi8>

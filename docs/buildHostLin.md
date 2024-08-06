@@ -122,7 +122,7 @@ You will...
 
     ```bash
     cd $LINUX_SRC_DIR
-    make olddefconfig
+    make O=$LINUX_BUILD_DIR olddefconfig
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable MODULE_SIG
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_TRUSTED_KEYS
     ./scripts/config --file $LINUX_BUILD_DIR/.config --disable SYSTEM_REVOCATION_KEYS
@@ -243,11 +243,11 @@ You will...
     sudo dpkg -i xrt_plugin.2.18.0_ubuntu22.04-x86_64-amdxdna.deb
     ```
     
-1. Check that the NPU is working if the device appears with xbutil:
+1. Check that the NPU is working if the device appears with xrt-smi:
    
    ```bash
    source /opt/xilinx/xrt/setup.sh
-   xbutil examine
+   xrt-smi examine
    ```
 
    > At the bottom of the output you should see:

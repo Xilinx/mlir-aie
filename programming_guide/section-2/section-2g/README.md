@@ -23,7 +23,7 @@
 
 In the preceding sections, we looked at how we can describe data movement between tiles *within* the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e., from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. 
 
-The operations that will be described in this section must be placed in a separate `sequence` function. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../section-3/) contains an example.
+The operations that will be described in this section must be placed in a separate `aie.runtime_sequence` operation. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../section-3/) contains an example.
 
 ### Guide to Managing Runtime Data Movement to/from Host Memory
 

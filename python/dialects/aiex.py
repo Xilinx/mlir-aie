@@ -23,7 +23,7 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
-from ..ir import DictAttr, IntegerAttr, UnitAttr
+from ..ir import DictAttr, IntegerAttr, UnitAttr, Type, InsertionPoint
 
 # noinspection PyUnresolvedReferences
 from ..extras.dialects.ext import memref
@@ -761,3 +761,17 @@ def broadcast_flow(
     if len(flows) == 1:
         flows = flows[0]
     return flows
+
+
+# Runtime sequence
+
+
+def runtime_sequence(*inputs: Type):
+    def decorator(f):
+        seq_op = RuntimeSequenceOp()
+        entry_block = seq_op.body.blocks.append(*inputs)
+        args = entry_block.arguments
+        with InsertionPoint(entry_block):
+            f(*args)
+
+    return decorator
