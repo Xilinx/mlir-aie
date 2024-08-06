@@ -446,13 +446,6 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`
 
 _Declare a dma buffer descriptor op_
 
-
-Syntax:
-
-```
-operation ::= `aie.dma_bd` `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
-```
-
 This operation describes a buffer descriptor for DMA operations. In particular, it specifies
 what buffer to use, and optionally:
 
