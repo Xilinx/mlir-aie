@@ -8,8 +8,6 @@
 // REQUIRES: ryzen_ai
 //
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
-// XFAIL: *
-// Referencing locks inside sequence function not yet implemented
 
 module {
   aie.device(npu1_4col) {
