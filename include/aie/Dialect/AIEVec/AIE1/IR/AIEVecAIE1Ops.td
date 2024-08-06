@@ -13,6 +13,7 @@
 #ifndef AIEVEC_AIE1_OPS
 #define AIEVEC_AIE1_OPS
 
+include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Dialect.td"
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -305,6 +306,26 @@ def AIEVecAIE1_SelectOp:
                         return idx==0 ? "xoffsets_hi" : "yoffsets_hi"; }
     llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
                         return idx==0 ? "xsquare" : "ysquare"; }
+  }];
+}
+
+def AIEVecAIE1_ExtOp:
+  AIEVecAIE1_Op<"ext", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$source,
+             ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE ext";
+  let description = [{
+    AMD-specific vector extract intrinsic. Selects contiguous lanes from 
+    the source vector, and transfers the data from those lanes to the 
+    result. The lane selection is controlled by index. There are two cases:
+    1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
+    2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
+    In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
+    In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
+    `$result = ext($source, $index)`
   }];
 }
 
