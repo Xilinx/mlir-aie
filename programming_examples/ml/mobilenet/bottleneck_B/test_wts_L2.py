@@ -589,7 +589,7 @@ def main(opts):
         print("full_output shape: ", full_output.shape)        
         aie_output = full_output[:3920]
         if i == 0:
-            trace_buffer = full_output[3920:]
+            trace_buffer = full_output[3920:].view(np.uint32)
         print("trace shape: ", trace_buffer.shape, ", size: ", trace_buffer.size)
 
         # ------------------------------------------------------
@@ -640,7 +640,7 @@ def main(opts):
         print("10: ", trace_buffer[10])
         print("11: ", trace_buffer[11])
         # write_out_trace(trace_buffer, str(opts.trace_file))
-        write_out_trace(trace_buffer, "trace_mbv4_b.txt")
+        write_out_trace(trace_buffer, "trace.txt")
 
     if np.allclose(
         golden,

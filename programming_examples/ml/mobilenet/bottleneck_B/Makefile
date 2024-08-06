@@ -104,5 +104,9 @@ clean:
 		build/insts.txt \
 		build/*.log aie_partition.json build/*.bin build/BOOT.BIN _x build/test.exe
 
+trace_py:
+	${powershell} python3 ${srcdir}/${testFileName}.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	../../../utils/parse_trace.py --filename trace.txt --mlir build/${mlirFileName}.mlir --colshift 1 > trace_mbv4.json
+
 run_py: 
 	${powershell} python3 ${srcdir}/${testFileName}.py -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
