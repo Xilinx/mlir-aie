@@ -287,8 +287,10 @@ public:
     llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    auto [sizes, strides] = getHardwareStridesWraps(targetModel, bufferType,
-                                                    inputSizes, inputStrides);
+    llvm::SmallVector<int64_t, 4> sizes(4);
+    llvm::SmallVector<int64_t, 4> strides(4);
+    getHardwareStridesWraps(targetModel, bufferType, inputSizes, inputStrides,
+                            sizes, strides);
     int64_t offset = op.getOffsetInBytes();
 
     // column

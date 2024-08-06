@@ -27,11 +27,12 @@ namespace AIEX {
 uint64_t
 getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm,
                                           unsigned bd_id, unsigned col);
-std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>>
-getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                        mlir::MemRefType referencedBufType,
-                        llvm::SmallVector<int64_t, 4> inputSizes,
-                        llvm::SmallVector<int64_t, 4> inputStrides);
+void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                             mlir::MemRefType referencedBufType,
+                             llvm::SmallVector<int64_t, 4> inputSizes,
+                             llvm::SmallVector<int64_t, 4> inputStrides,
+                             llvm::SmallVector<int64_t, 4> &sizes,
+                             llvm::SmallVector<int64_t, 4> &strides);
 mlir::LogicalResult
 verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
                    int tileCol, int tileRow,

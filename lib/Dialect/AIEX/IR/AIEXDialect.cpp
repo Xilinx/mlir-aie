@@ -14,6 +14,8 @@
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
+#include <algorithm>
+
 using namespace mlir;
 using namespace xilinx;
 
@@ -68,24 +70,27 @@ getBufferDescriptorAddressRegisterAddress(const AIE::AIETargetModel &tm,
   Note: strides are expressed offset by one from user input strides, because the
   hardware does not support a 0 stride (repeat).
   */
-std::pair<llvm::SmallVector<int64_t, 4>, llvm::SmallVector<int64_t, 4>>
-getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                        mlir::MemRefType referencedBufType,
-                        llvm::SmallVector<int64_t, 4> inputSizes,
-                        llvm::SmallVector<int64_t, 4> inputStrides) {
+void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
+                             mlir::MemRefType referencedBufType,
+                             llvm::SmallVector<int64_t, 4> inputSizes,
+                             llvm::SmallVector<int64_t, 4> inputStrides,
+                             llvm::SmallVector<int64_t, 4> &sizes,
+                             llvm::SmallVector<int64_t, 4> &strides) {
   assert(inputSizes.size() == inputStrides.size());
+  assert(sizes.size() == 4);
+  assert(strides.size() == 4);
 
   auto elemWidth = referencedBufType.getElementTypeBitWidth();
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
-  llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
-  llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
+  std::fill(sizes.begin(), sizes.end(), 0);
+  std::fill(strides.begin(), strides.end(), 0);
 
   if (inputSizes[0] == 0) {
     // Illegal input, this won't transfer anything at all.
     // Leave it to the verification functions to complain to the user.
-    return std::make_pair(sizes, strides);
+    return;
   }
 
   // d0_size, d0_stride
@@ -131,8 +136,6 @@ getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
       strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
     }
   }
-
-  return std::make_pair(sizes, strides);
 }
 
 mlir::LogicalResult
@@ -191,7 +194,7 @@ verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
       // stride will never be applied. For any larger size, we must verify that
       // the stride is positive.
       return forOp->emitOpError("Stride ")
-             << i << " must be a postive integer.";
+             << i << " must be a positive integer.";
     }
   }
   // A value of zero is allowable for the fourth-dimension stride, as such a
@@ -361,17 +364,18 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       }))
     return emitOpError("Only constant offsets currently supported.");
 
-  llvm::SmallVector<int64_t, 4> inputStrides =
-      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-
-  auto [hardwareSizes, hardwareStrides] =
-      getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides);
+  llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
+  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
+  getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides,
+                          hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2

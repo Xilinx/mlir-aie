@@ -17,6 +17,7 @@ module {
     aiex.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           aie.dma_bd(%arg0 : memref<32xi8>, 3, 4)
+          // expected-note@+1 {{Extra}}
           aie.dma_bd(%arg0 : memref<32xi8>, 3, 4)
           // expected-error@+1 {{This block contains multiple}}
           aie.end

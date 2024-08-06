@@ -86,11 +86,11 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       auto error = block.getTerminator()->emitOpError(
           "This block contains multiple aie.dma_bd operations. Exactly one is "
           "required.");
-      // auto it = bd_ops.begin();
-      // ++it;
-      // for(; it != it.end(); ++it) {
-      //   error.attachNote(it->getLoc()) << "Extra aie.dma_bd operation here.";
-      // }
+      auto it = bd_ops.begin();
+      ++it;
+      for (; it != bd_ops.end(); ++it) {
+        error.attachNote((*it)->getLoc()) << "Extra aie.dma_bd operation here.";
+      }
       return failure();
     }
     AIE::DMABDOp bd_op = *bd_ops.begin();
@@ -210,11 +210,13 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     // Process strides/wraps
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
         bd_op.getDimensions();
-    llvm::SmallVector<int64_t, 4> input_sizes =
-        llvm::SmallVector<int64_t, 4>(4, 0);
-    llvm::SmallVector<int64_t, 4> input_strides =
-        llvm::SmallVector<int64_t, 4>(4, 0);
-    if (dims) {
+    llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
+    llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
+    if (dims && dims->size() > 0) {
+      llvm::SmallVector<int64_t, 4> input_sizes =
+          llvm::SmallVector<int64_t, 4>(4, 1);
+      llvm::SmallVector<int64_t, 4> input_strides =
+          llvm::SmallVector<int64_t, 4>(4, 0);
       if (dims->size() > 4) {
         return bd_op->emitOpError("At most four data layout transformation "
                                   "dimensions may be provided.");
@@ -227,15 +229,13 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
       }
-    }
-    auto [sizes, strides] = getHardwareStridesWraps(target_model, buffer_type,
-                                                    input_sizes, input_strides);
-    if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
-                                  tile.getRow(), input_sizes, input_strides,
-                                  sizes, strides))) {
-      return failure();
-    }
-    if (dims) {
+      getHardwareStridesWraps(target_model, buffer_type, input_sizes,
+                              input_strides, sizes, strides);
+      if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
+                                    tile.getRow(), input_sizes, input_strides,
+                                    sizes, strides))) {
+        return failure();
+      }
       // Ensure the total transfer length and the length expressed in the lowest
       // three dimensions of strides/wraps agree. (Fourth dimension is
       // iteration/repeat count and repeats the whole BD, so should not be
