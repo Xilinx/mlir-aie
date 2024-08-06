@@ -830,6 +830,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
   let extraClassDefinition = [{
     AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">]> {

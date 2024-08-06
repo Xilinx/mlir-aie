@@ -18,6 +18,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include <set>
 
@@ -82,39 +83,16 @@ struct AIEMaterializeBDChainsPass
     : AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
 
   void runOnOperation() override {
+    MLIRContext *ctx = &getContext();
     AIE::DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addIllegalOp<DMAStartBdChainOp>();
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<DMAInlineBDChainPattern>(&getContext());
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    RewritePatternSet patterns(ctx);
+    patterns.insert<DMAInlineBDChainPattern>(ctx);
+    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns)))) {
       signalPassFailure();
-    }
-
-    // Verify inlined basic blocks do form a chain reachable from the start;
-    // Remove empty blocks
-    WalkResult r = device.walk([&](DMAConfigureTaskOp configure_task_op) {
-      Region &body = configure_task_op.getBody();
-      for (auto it = body.begin(); it != body.end(); ++it) {
-        Block &block = *it;
-        auto ops_it = block.without_terminator();
-        if (std::distance(ops_it.begin(), ops_it.end()) == 0) {
-          block.erase();
-          return WalkResult::advance();
-        }
-        if (block.hasNoPredecessors() && !block.isEntryBlock()) {
-          auto error = block.getTerminator()->emitError(
-              "Block ending in this terminator does not form a chain with "
-              "entry block.");
-          return WalkResult::interrupt();
-        }
-      }
-      return WalkResult::advance();
-    });
-    if (r.wasInterrupted()) {
-      return signalPassFailure();
     }
   }
 };
