@@ -83,11 +83,10 @@ module {
       aie.end
     } {link_with = "kernel.o"}
     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
-    func.func @sequence(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
+    aiex.runtime_sequence @sequence(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
       aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 0 : i64, metadata = @input_fifo} : memref<64xi32>
       aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 512][0, 0, 0, 1]) {id = 2 : i64, metadata = @output_fifo} : memref<64xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
-      return
     }
     aie.shim_dma_allocation @output_fifo(S2MM, 0, 0)
     %mem_0_2 = aie.mem(%tile_0_2) {
