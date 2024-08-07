@@ -30,6 +30,12 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEMaterializeBDChainsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEAssignRuntimeSequenceBDIDsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEDMATasksToNPUPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

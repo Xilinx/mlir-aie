@@ -13,6 +13,7 @@
 #ifndef AIEVEC_AIE1_OPS
 #define AIEVEC_AIE1_OPS
 
+include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Dialect.td"
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -247,6 +248,84 @@ def AIEVecAIE1_FMAOp :
     llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
                         return idx==0 ? "xsquare" : "zsquare"; }
     llvm::StringRef getSubAttrName() { return "fmsub"; }
+  }];
+}
+
+def AIEVecAIE1_SelectOp:
+  AIEVecAIE1_Op<"select", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$xbuff,
+               DefaultValuedStrAttr<StrAttr, "">:$select,
+               DefaultValuedStrAttr<StrAttr, "">:$xstart,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$xsquare,
+               DefaultValuedStrAttr<StrAttr, "">:$ystart,
+               DefaultValuedStrAttr<StrAttr, "">:$yoffsets,
+               DefaultValuedStrAttr<StrAttr, "">:$yoffsets_hi,
+               DefaultValuedStrAttr<StrAttr, "">:$ysquare,
+               Optional<AnyVector>:$ybuff)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector lane selection";
+  let description = [{
+    AMD-specific vector lane selection operation. It selects between the
+    first set of lanes or the second one according to the value in 'select'. 
+    If the bit in select is 0(1), it returns the value in the first(second) 
+    set of lanes.
+    `$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
+  }];
+  let builders = [
+    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$xbuff, "llvm::StringRef":$select,
+            "llvm::StringRef":$xstart,
+            "llvm::StringRef":$xoffsets, "llvm::StringRef":$xoffsets_hi,
+            "llvm::StringRef":$xsquare,
+            "llvm::StringRef":$ystart,
+            "llvm::StringRef":$yoffsets, "llvm::StringRef":$yoffsets_hi,
+            "llvm::StringRef":$ysquare),
+    [{build($_builder, $_state, resultType, xbuff, select,
+            xstart, xoffsets, xoffsets_hi, xsquare,
+            ystart, yoffsets, yoffsets_hi, ysquare, nullptr);}]>
+  ];
+  let extraClassDeclaration = [{
+    // Get the attributes
+    llvm::StringRef getStart(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXstart() : getYstart(); }
+    llvm::StringRef getOffset(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXoffsets() : getYoffsets(); }
+    llvm::StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXoffsetsHi() : getYoffsetsHi(); }
+    llvm::StringRef getSquare(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? getXsquare() : getYsquare(); }
+    // Get the attribute names
+    llvm::StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xstart" : "ystart"; }
+    llvm::StringRef getOffsetAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xoffsets" : "yoffsets"; }
+    llvm::StringRef getOffsetHiAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xoffsets_hi" : "yoffsets_hi"; }
+    llvm::StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1);
+                        return idx==0 ? "xsquare" : "ysquare"; }
+  }];
+}
+
+def AIEVecAIE1_ExtOp:
+  AIEVecAIE1_Op<"ext", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$source,
+             ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE ext";
+  let description = [{
+    AMD-specific vector extract intrinsic. Selects contiguous lanes from 
+    the source vector, and transfers the data from those lanes to the 
+    result. The lane selection is controlled by index. There are two cases:
+    1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
+    2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
+    In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
+    In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
+    `$result = ext($source, $index)`
   }];
 }
 

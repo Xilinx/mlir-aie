@@ -84,12 +84,30 @@ module  {
 
 // -----
 
-// CHECK: module
+// CHECK: runtime_sequence
 // CHECK: aiex.npu.write32 {address = 2098576 : ui32, value = 1234 : ui32}
 module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0,2)
     %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
-    aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
+    aiex.runtime_sequence() {
+      aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
+    }
+  }
+}
+
+// -----
+
+// CHECK: runtime_sequence
+// CHECK: aiex.npu.blockwrite(%0) {address = 2098576 : ui32} : memref<4xi32>
+module {
+  aie.device(npu1_1col) {
+    memref.global "private" constant @data : memref<4xi32> = dense<[4, 3, 2, 1]>
+    %tile02 = aie.tile(0,2)
+    %buf = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "buf"} : memref<128xi32>
+    aiex.runtime_sequence() {
+      %0 = memref.get_global @data : memref<4xi32>
+      aiex.npu.blockwrite(%0) {buffer = @buf, address = 100 : ui32, value = 1234 : ui32} : memref<4xi32>
+   }
   }
 }

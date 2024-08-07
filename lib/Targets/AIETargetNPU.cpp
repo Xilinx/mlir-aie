@@ -69,7 +69,6 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   auto words = reserveAndGetTail(instructions, 6);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
 
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
@@ -82,9 +81,11 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
-  if (col && row)
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
     words[2] = ((*col & 0xff) << tm.getColumnShift()) |
                ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
+  }
   words[3] = 0;
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
@@ -143,11 +144,19 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
     return;
   }
 
-  // XAIE_IO_BLOCKWRITE
   auto words = reserveAndGetTail(instructions, data.size() + 4);
+
+  // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
   words[1] = 0;
   words[2] = op.getAddress();
+  auto col = op.getColumn();
+  auto row = op.getRow();
+  if (col && row) {
+    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
+               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
+  }
   words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   unsigned i = 4;

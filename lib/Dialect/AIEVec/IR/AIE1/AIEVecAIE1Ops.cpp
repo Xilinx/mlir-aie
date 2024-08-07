@@ -339,6 +339,204 @@ ParseResult FMAOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAOp(parser, result, true);
 }
 
+//===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+// Print out select op.
+void SelectOp::print(OpAsmPrinter &p) {
+  // Print the xbuff
+  p << " " << getXbuff();
+  // Print the start, offsets, etc. for xbuff
+  if (getYbuff())
+    p << ", " << getYbuff();
+
+  // Print the attributes, but don't print attributes that are empty strings
+  SmallVector<StringRef, 10> elidedAttrs;
+  for (int idx = 0; idx < 2; ++idx) {
+    if (getStart(idx).empty())
+      elidedAttrs.push_back(getStartAttrName(idx));
+    if (getOffset(idx).empty())
+      elidedAttrs.push_back(getOffsetAttrName(idx));
+    if (getOffsetHi(idx).empty())
+      elidedAttrs.push_back(getOffsetHiAttrName(idx));
+    if (getSquare(idx).empty())
+      elidedAttrs.push_back(getSquareAttrName(idx));
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+
+  // And now print the types
+  p << " : " << getXbuff().getType();
+  if (getYbuff())
+    p << ", " << getYbuff().getType();
+  p << ", " << getResult().getType();
+}
+
+// Verify select op.
+LogicalResult SelectOp::verify() {
+  // Verify the types
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  VectorType xbuffType = llvm::dyn_cast<VectorType>(getXbuff().getType());
+
+  if (!resultType || !xbuffType)
+    return emitError("requires vector type");
+
+  // The underlying scalar element type of all vectors must match
+  Type rtype = resultType.getElementType();
+  Type xtype = xbuffType.getElementType();
+  if (rtype != xtype)
+    return emitError("types of result and xbuff must match");
+
+  // If yuff is present, its vector type should be same as xbuff
+  if (getYbuff()) {
+    VectorType ybuffType = llvm::dyn_cast<VectorType>(getYbuff().getType());
+    if (xbuffType != ybuffType)
+      return emitError("types of xbuff and ybuff must match");
+  }
+
+  // Compare the lanes. xtype should have more lanes
+  unsigned sourceLanes = getVectorLaneSize(xbuffType);
+  unsigned resultLanes = getVectorLaneSize(resultType);
+  if (sourceLanes < resultLanes)
+    return emitError("xbuff cannot be smaller than result");
+
+  return success();
+}
+
+// Parse select op.
+ParseResult SelectOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 3> types;
+  OpAsmParser::UnresolvedOperand xbuff, ybuff;
+
+  // Parse xbuff
+  if (parser.parseOperand(xbuff))
+    return failure();
+
+  // Parse optional ybuff
+  ParseResult hasYbuff = parser.parseOptionalComma();
+  if (hasYbuff.succeeded() && parser.parseOperand(ybuff))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Assert that there is at least two types
+  if (types.size() < 2)
+    return parser.emitError(typesLoc, "requires at least two type");
+
+  // Some verification
+  VectorType xbuffType = llvm::dyn_cast<VectorType>(types[0]);
+  if (!xbuffType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType ybuffType;
+  if (hasYbuff.succeeded()) {
+    ybuffType = llvm::dyn_cast<VectorType>(types[1]);
+    if (!ybuffType)
+      return parser.emitError(typesLoc, "requires vector type");
+  }
+  VectorType resultType = llvm::dyn_cast<VectorType>(types.back());
+  if (!resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the xbuff
+  if (parser.resolveOperand(xbuff, xbuffType, result.operands))
+    return failure();
+  // Populate optional ybuff in result
+  if (hasYbuff.succeeded())
+    if (parser.resolveOperand(ybuff, ybuffType, result.operands))
+      return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
+// ExtOp
+//===----------------------------------------------------------------------===//
+
+// Print out Ext op.
+void ExtOp::print(OpAsmPrinter &p) {
+  // Print the source vector
+  p << " " << getSource();
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify Ext op.
+LogicalResult ExtOp::verify() {
+  // Verify the types
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  if (!sourceType || !resultType)
+    return emitError("requires vector type");
+
+  // Check the number of lanes
+  unsigned sourceLanes = getVectorLaneSize(sourceType);
+  unsigned resultLanes = getVectorLaneSize(resultType);
+  // Source lanes must be greater than result lanes
+  if (sourceLanes / resultLanes <= 1)
+    return emitError("lanes in source vector must be at least "
+                     "twice that of result vector");
+  // Source lanes must be a multiple of result lanes
+  if (sourceLanes % resultLanes != 0)
+    return emitError("lanes in result vector must be a multiple "
+                     "of source vector lanes");
+
+  // Verify validity of index
+  unsigned factor = sourceLanes / resultLanes;
+  if (static_cast<unsigned>(getIndex()) >= factor)
+    return emitError("index out of bounds");
+
+  // The datatype of source and result must match
+  Type stype = sourceType.getElementType();
+  Type rtype = resultType.getElementType();
+  if (stype != rtype)
+    return emitError("source and result element type must be same");
+
+  return success();
+}
+
+// Parse Ext op.
+ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
+
+  // Parse the source vector
+  if (parser.parseOperand(source))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "requires one attribute");
+
+  // Assert that there are two types (source and result)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
+
+  // Some verification
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
+  if (!sourceType || !resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
 } // namespace xilinx::aievec::aie1
 
 // #define GET_ATTRDEF_CLASSES
