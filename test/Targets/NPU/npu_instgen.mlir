@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-npu-instgen | FileCheck %s
+// RUN: aie-translate --aie-npu-instgen %s | FileCheck %s
 module {
   aie.device(npu1_4col) {
     memref.global "private" constant @write_data : memref<8xi32> = dense<[100, 101, 102, 103, 104 ,105, 106, 107]>
