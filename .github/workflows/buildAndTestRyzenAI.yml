@@ -38,7 +38,8 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
-  VITIS: /opt/Xilinx/Vitis/2023.2
+  VITIS: /none
+  #/opt/Xilinx/Vitis/2023.2
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
